@@ -1,0 +1,83 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# monitoring-cron - Daily monitoring tasks for heartbeat system
+# Called from cron to regenerate dashboard and check for stale agents
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
+DASHBOARD_PATH="$CLAWD_DIR/agent-status/dashboard.md"
+HEARTBEAT_STATE="$CLAWD_DIR/memory/heartbeat-state.json"
+
+# Log to heartbeat state file
+LOG_FILE="$CLAWD_DIR/memory/monitoring-cron.log"
+exec >> "$LOG_FILE" 2>&1
+echo "$(date): Starting daily monitoring tasks"
+
+# Regenerate dashboard daily
+echo "Generating daily dashboard..."
+"$SCRIPT_DIR/generate-dashboard" > "$DASHBOARD_PATH"
+
+# Check for stale agents (>24h without activity)
+echo "Checking for stale agents..."
+NOW=$(date +%s)
+STALE_AGENTS=$("$SCRIPT_DIR/agent-health" --json | jq -r --arg now "$NOW" '
+  .agents[] | 
+  select(
+    (.last_activity != null) and 
+    (($now | tonumber) - (.last_activity | tonumber) > 86400)
+  ) | 
+  .name
+' | tr '\n' ' ')
+
+if [[ -n "$STALE_AGENTS" && "$STALE_AGENTS" != " " ]]; then
+    echo "⚠️ Stale agents detected: $STALE_AGENTS"
+    
+    # Update heartbeat state with alert
+    ALERT_MSG="Agents stale >24h: $STALE_AGENTS"
+    jq --arg msg "$ALERT_MSG" --arg time "$NOW" '
+      .alerts.active += [{
+        "type": "stale_agent",
+        "message": $msg,
+        "timestamp": ($time | tonumber),
+        "acknowledged": false
+      }]
+    ' "$HEARTBEAT_STATE" > /tmp/hb-state.json && mv /tmp/hb-state.json "$HEARTBEAT_STATE"
+    
+    # Notify via autarkia if running
+    if systemctl is-active --quiet autarkia 2>/dev/null; then
+        echo "Sending stale agent alert to main session..."
+        autarkia msg "⚠️ **Stale Agent Alert**: $STALE_AGENTS have been inactive for >24h. Check agent health and session activity." || true
+    fi
+else
+    echo "No stale agents detected"
+fi
+
+# Check heartbeat state for stale checks
+echo "Checking for stale heartbeat checks..."
+if [[ -f "$HEARTBEAT_STATE" ]]; then
+    STALE_CHECKS=$(jq -r --arg now "$NOW" '
+      .lastChecks | 
+      to_entries[] | 
+      select((.value != null) and (($now | tonumber) - .value > 86400)) | 
+      .key
+    ' "$HEARTBEAT_STATE" | tr '\n' ' ')
+    
+    if [[ -n "$STALE_CHECKS" && "$STALE_CHECKS" != " " ]]; then
+        echo "⚠️ Stale heartbeat checks: $STALE_CHECKS"
+        
+        # Update alert in state
+        ALERT_MSG="Heartbeat checks stale >24h: $STALE_CHECKS"
+        jq --arg msg "$ALERT_MSG" --arg time "$NOW" '
+          .alerts.active += [{
+            "type": "stale_checks",
+            "message": $msg,
+            "timestamp": ($time | tonumber),
+            "acknowledged": false
+          }]
+        ' "$HEARTBEAT_STATE" > /tmp/hb-state.json && mv /tmp/hb-state.json "$HEARTBEAT_STATE"
+    fi
+fi
+
+echo "$(date): Daily monitoring tasks completed"

@@ -1,0 +1,42 @@
+{
+  "task_id": "b8a55ae1-ed37-4f4c-9882-6c506c428fd5",
+  "correlation_id": "trace-1769817939-syn",
+  "source_agent": "syn",
+  "target_agent": "chiron", 
+  "task_type": "analysis",
+  "context": {
+    "description": "Test task: Analyze Q4 SQL performance and provide optimization recommendations",
+    "state": {},
+    "dependencies": [],
+    "resources_needed": []
+  },
+  "deadline": null,
+  "priority": "medium",
+  "callback": {
+    "method": "session_message",
+    "target": "syn",
+    "format": "json"
+  },
+  "sla": {
+    "max_duration": "PT1H",
+    "progress_interval": "PT15M",
+    "escalation_threshold": "PT2H"
+  },
+  "created_at": "2026-01-30T18:05:39-06:00",
+  "accepted_at": null,
+  "started_at": null,
+  "completed_at": null,
+  "status": "pending",
+  "progress": {
+    "percentage": 0,
+    "description": "Task created",
+    "updated_at": "2026-01-30T18:05:39-06:00"
+  },
+  "result": null,
+  "metadata": {
+    "version": "1.0",
+    "tags": [],
+    "retry_count": 0,
+    "parent_task_id": null
+  }
+}

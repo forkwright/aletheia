@@ -1,0 +1,24 @@
+Date,Payee,Transaction Type,Description,Reference,Status,Amount,Currency,Balance
+3/23/2025,Springfield Leather Co,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-356.00,USD,488.03
+3/15/2025,Kremer Pigments,Receive,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,+37.00,USD,844.03
+3/14/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-67.77,USD,807.03
+3/13/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-56.78,USD,874.80
+3/12/2025,Personal C,Receive,,"ACH Pull",SETTLED,+500.00,USD,931.58
+3/8/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-24.84,USD,431.58
+3/8/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-116.28,USD,456.42
+3/8/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-28.13,USD,572.70
+3/7/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-183.38,USD,600.83
+3/7/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-16.90,USD,784.21
+3/7/2025,KREMER PIGMENTS INC.,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-37.00,USD,801.11
+3/7/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-90.06,USD,838.11
+3/6/2025,Mountain Rose Herbs,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-26.99,USD,928.17
+3/6/2025,Botanical Colors,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-66.40,USD,955.16
+3/6/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-38.81,USD,1021.56
+3/6/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-194.34,USD,1060.37
+3/6/2025,ENTACO LIMITED,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-38.85,USD,1254.71
+3/5/2025,Personal C,Receive,,"ACH Pull",SETTLED,+1000.00,USD,1293.56
+3/5/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-71.23,USD,293.56
+3/5/2025,Amazon,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-92.31,USD,364.79
+3/5/2025,SP RM LEATHER,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-315.31,USD,457.10
+3/5/2025,Bucklegy.com LLC,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-237.59,USD,772.41
+3/4/2025,Personal C,Receive,,"ACH Pull",SETTLED,+1000.00,USD,1010.00

@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# agent-health - Monitor health of 5-agent ecosystem
+# Usage: agent-health [--json] [--agent AGENT] [--full]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHARED_DIR="$(dirname "$SCRIPT_DIR")"
+CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
+SESSIONS_DIR="$HOME/.clawdbot/agents"
+
+# Default options
+OUTPUT_FORMAT="table"
+TARGET_AGENT=""
+FULL_CHECK=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --json)
+            OUTPUT_FORMAT="json"
+            shift
+            ;;
+        --agent)
+            TARGET_AGENT="$2"
+            shift 2
+            ;;
+        --full)
+            FULL_CHECK=true
+            shift
+            ;;
+        --help|-h)
+            cat << EOF
+agent-health - Monitor health of 5-agent ecosystem
+
+USAGE:
+    agent-health [OPTIONS]
+
+OPTIONS:
+    --json              Output in JSON format
+    --agent AGENT       Check specific agent only (syn, syl, chiron, eiron, demiurge)
+    --full              Include detailed metrics (slower)
+    --help, -h          Show this help
+
+EXAMPLES:
+    agent-health                    # Quick overview of all agents
+    agent-health --agent syn        # Check only Syn
+    agent-health --json --full      # Complete data in JSON format
+EOF
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Agent list
+AGENTS=("syn" "syl" "chiron" "eiron" "demiurge")
+if [[ -n "$TARGET_AGENT" ]]; then
+    if [[ ! " ${AGENTS[*]} " =~  ${TARGET_AGENT}  ]]; then
+        echo "Error: Unknown agent '$TARGET_AGENT'" >&2
+        echo "Valid agents: ${AGENTS[*]}" >&2
+        exit 1
+    fi
+    AGENTS=("$TARGET_AGENT")
+fi
+
+# Helper functions
+get_last_activity() {
+    local agent="$1"
+    local sessions_path="$SESSIONS_DIR/$agent/sessions"
+    
+    if [[ ! -d "$sessions_path" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Find most recent session file
+    local latest_file
+    latest_file=$(find "$sessions_path" -name "*.md" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+    
+    if [[ -z "$latest_file" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Get file modification time
+    stat -c %Y "$latest_file" 2>/dev/null || echo "0"
+}
+
+get_session_count() {
+    local agent="$1"
+    local sessions_path="$SESSIONS_DIR/$agent/sessions"
+    
+    if [[ ! -d "$sessions_path" ]]; then
+        echo "0"
+        return
+    fi
+    
+    find "$sessions_path" -name "*.md" -type f 2>/dev/null | wc -l
+}
+
+get_error_rate() {
+    local agent="$1"
+    local sessions_path="$SESSIONS_DIR/$agent/sessions"
+    
+    if [[ ! -d "$sessions_path" || ! "$FULL_CHECK" == "true" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Count error patterns in recent sessions (last 24h)
+    local cutoff_time=$(($(date +%s) - 86400))
+    local total_messages=0
+    local error_messages=0
+    
+    while IFS= read -r -d '' file; do
+        if [[ $(stat -c %Y "$file" 2>/dev/null || echo 0) -gt $cutoff_time ]]; then
+            local messages
+            messages=$(grep -c "^## " "$file" 2>/dev/null || echo 0)
+            total_messages=$((total_messages + messages))
+            
+            local errors
+            errors=$(grep -ci "error\|failed\|exception\|timeout" "$file" 2>/dev/null || echo 0)
+            error_messages=$((error_messages + errors))
+        fi
+    done < <(find "$sessions_path" -name "*.md" -type f -print0 2>/dev/null)
+    
+    if [[ $total_messages -eq 0 ]]; then
+        echo "0"
+    else
+        local result
+        result=$(echo "scale=2; $error_messages * 100 / $total_messages" | bc 2>/dev/null)
+        echo "${result:-0}"
+    fi
+}
+
+estimate_token_usage() {
+    local agent="$1"
+    local sessions_path="$SESSIONS_DIR/$agent/sessions"
+    
+    if [[ ! -d "$sessions_path" || ! "$FULL_CHECK" == "true" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Rough token estimation from recent session content (last 24h)
+    local cutoff_time=$(($(date +%s) - 86400))
+    local total_chars=0
+    
+    while IFS= read -r -d '' file; do
+        if [[ $(stat -c %Y "$file" 2>/dev/null || echo 0) -gt $cutoff_time ]]; then
+            local chars
+            chars=$(wc -c < "$file" 2>/dev/null || echo 0)
+            total_chars=$((total_chars + chars))
+        fi
+    done < <(find "$sessions_path" -name "*.md" -type f -print0 2>/dev/null)
+    
+    # Rough estimate: 4 characters per token
+    echo $((total_chars / 4))
+}
+
+get_agent_status() {
+    local agent="$1"
+    local status_file="$CLAWD_DIR/agent-status/$agent.md"
+    
+    if [[ -f "$status_file" ]]; then
+        local last_update
+        last_update=$(stat -c %Y "$status_file" 2>/dev/null || echo 0)
+        local age=$(($(date +%s) - last_update))
+        
+        if [[ $age -lt 3600 ]]; then  # Less than 1 hour
+            echo "active"
+        elif [[ $age -lt 86400 ]]; then  # Less than 24 hours
+            echo "idle"
+        else
+            echo "stale"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
+check_blackboard() {
+    if command -v bb &> /dev/null && [[ "$FULL_CHECK" == "true" ]]; then
+        local count
+        count=$(bb list blocked 2>/dev/null | grep -c "^#" 2>/dev/null)
+        echo "${count:-0}"
+    else
+        echo "0"
+    fi
+}
+
+format_timestamp() {
+    local timestamp="$1"
+    if [[ "$timestamp" == "0" ]]; then
+        echo "never"
+    else
+        local age=$(($(date +%s) - timestamp))
+        if [[ $age -lt 60 ]]; then
+            echo "${age}s ago"
+        elif [[ $age -lt 3600 ]]; then
+            echo "$((age / 60))m ago"
+        elif [[ $age -lt 86400 ]]; then
+            echo "$((age / 3600))h ago"
+        else
+            echo "$((age / 86400))d ago"
+        fi
+    fi
+}
+
+# Collect data
+declare -A agent_data
+current_time=$(date +%s)
+blocked_tasks=$(check_blackboard 2>/dev/null)
+
+for agent in "${AGENTS[@]}"; do
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo "Checking $agent..." >&2
+    fi
+    
+    last_activity=$(get_last_activity "$agent")
+    session_count=$(get_session_count "$agent")
+    error_rate=$(get_error_rate "$agent")
+    token_estimate=$(estimate_token_usage "$agent")
+    status=$(get_agent_status "$agent")
+    
+    agent_data["$agent"]=$(cat << EOF
+{
+  "agent": "$agent",
+  "last_activity": $last_activity,
+  "last_activity_human": "$(format_timestamp "$last_activity")",
+  "session_count": $session_count,
+  "error_rate": $error_rate,
+  "token_estimate_24h": $token_estimate,
+  "status": "$status"
+}
+EOF
+)
+done
+
+# Output results
+if [[ "$OUTPUT_FORMAT" == "json" ]]; then
+    echo "{"
+    echo "  \"timestamp\": $current_time,"
+    echo "  \"blocked_tasks\": $blocked_tasks,"
+    echo "  \"agents\": {"
+    
+    first=true
+    for agent in "${AGENTS[@]}"; do
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            echo ","
+        fi
+        echo "    \"$agent\": ${agent_data[$agent]}"
+    done
+    
+    echo "  }"
+    echo "}"
+else
+    # Table format
+    echo "Agent Health Status - $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "======================================"
+    echo
+    
+    printf "%-10s %-8s %-15s %-8s %-8s %-10s\n" "Agent" "Status" "Last Activity" "Sessions" "Errors%" "Tokens/24h"
+    printf "%-10s %-8s %-15s %-8s %-8s %-10s\n" "------" "------" "-------------" "--------" "-------" "----------"
+    
+    for agent in "${AGENTS[@]}"; do
+        eval "$(echo "${agent_data[$agent]}" | jq -r '@sh "last_activity_human=\(.last_activity_human) session_count=\(.session_count) error_rate=\(.error_rate) token_estimate_24h=\(.token_estimate_24h) status=\(.status)"')"
+        
+        printf "%-10s %-8s %-15s %-8s %-8s %-10s\n" \
+            "$agent" \
+            "$status" \
+            "$last_activity_human" \
+            "$session_count" \
+            "$error_rate" \
+            "$token_estimate_24h"
+    done
+    
+    echo
+    if [[ "$blocked_tasks" != "0" ]]; then
+        echo "⚠️  $blocked_tasks blocked tasks on blackboard"
+    fi
+    
+    if [[ "$FULL_CHECK" == "false" ]]; then
+        echo
+        echo "💡 Use --full for detailed metrics (error rates, token usage)"
+    fi
+fi

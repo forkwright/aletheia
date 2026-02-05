@@ -1,0 +1,19 @@
+#!/bin/bash
+# Check and remount Metis SSHFS mounts if needed
+
+METIS_IP="192.168.0.17"
+
+# Check if Metis is reachable
+if ! ping -c 1 -W 2 "$METIS_IP" &>/dev/null; then
+    exit 0  # Metis offline, nothing to do
+fi
+
+# Check downloads mount
+if ! mountpoint -q /mnt/metis/downloads; then
+    sshfs syn@${METIS_IP}:/home/ck/Downloads /mnt/metis/downloads -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 2>/dev/null
+fi
+
+# Check documents mount  
+if ! mountpoint -q /mnt/metis/documents; then
+    sshfs syn@${METIS_IP}:/home/ck/Documents /mnt/metis/documents -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 2>/dev/null
+fi

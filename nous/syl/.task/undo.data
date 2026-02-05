@@ -1,0 +1,299 @@
+time 1769703083
+new [description:"Call Round Rock Pharm to pay\/order derm meds" due:"1770012000" entry:"1769703083" modified:"1769703083" priority:"M" project:"cody" status:"pending" uuid:"7e08e2a4-4789-4884-8527-1fa0c6e6113a"]
+---
+time 1769736168
+new [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736168" modified:"1769736168" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"205ffad8-413d-46f8-b8d7-58c6d912a3f0"]
+---
+time 1769736173
+new [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736173" modified:"1769736173" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"60e08278-6e43-4c4a-9e64-51f87be52423"]
+---
+time 1769736190
+new [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736190" imask:"0" modified:"1769736168" parent:"205ffad8-413d-46f8-b8d7-58c6d912a3f0" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"pending" uuid:"210db94f-f2cd-4b67-85f3-2305c715bcac"]
+---
+time 1769736190
+old [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736168" modified:"1769736168" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"205ffad8-413d-46f8-b8d7-58c6d912a3f0"]
+new [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736168" mask:"-" modified:"1769736190" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"205ffad8-413d-46f8-b8d7-58c6d912a3f0"]
+---
+time 1769736190
+new [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736190" imask:"0" modified:"1769736173" parent:"60e08278-6e43-4c4a-9e64-51f87be52423" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"pending" uuid:"6ec71d46-d74e-4372-9186-608bf5a6ae4e"]
+---
+time 1769736190
+old [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736173" modified:"1769736173" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"60e08278-6e43-4c4a-9e64-51f87be52423"]
+new [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736173" mask:"-" modified:"1769736190" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"60e08278-6e43-4c4a-9e64-51f87be52423"]
+---
+time 1769738530
+new [description:"Implement blackboard architecture for cross-agent communication +agent-system" entry:"1769738530" modified:"1769738530" priority:"H" project:"infra" status:"pending" uuid:"582aebfa-cad8-462b-92b4-5dfe4b282209"]
+---
+time 1769738530
+new [description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738530" priority:"H" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+---
+time 1769738530
+new [description:"Explore MCP ecosystem - survey available servers" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"92ad3d8e-88fc-4853-ad2e-3efcd926537f"]
+---
+time 1769738530
+new [description:"Implement iterative memory retrieval (multi-step queries)" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"c19ecedf-489d-44ea-81ca-6ae6312c4e83"]
+---
+time 1769738530
+new [description:"Research event graph storage for temporal reasoning" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"4026d83b-e3fd-4fea-83ae-34d5d429b694"]
+---
+time 1769738530
+new [description:"Define formal agent interface contracts +agent-system" entry:"1769738530" modified:"1769738530" priority:"L" project:"infra" status:"pending" uuid:"e9dbb66b-c32c-49d8-a590-30aa096273ff"]
+---
+time 1769738736
+old [description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738530" priority:"H" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+new [description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738736" priority:"H" project:"infra" status:"pending" tags:"memory,prototype" tags_memory:"x" tags_prototype:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+---
+time 1769738736
+old [description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738736" priority:"H" project:"infra" status:"pending" tags:"memory,prototype" tags_memory:"x" tags_prototype:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+new [annotation_1769738736:"Prototype complete: facts CLI, facts.jsonl storage, 12 seed facts. Full automation pending." description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738736" priority:"H" project:"infra" status:"pending" tags:"memory,prototype" tags_memory:"x" tags_prototype:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+---
+time 1769739204
+old [annotation_1769738736:"Prototype complete: facts CLI, facts.jsonl storage, 12 seed facts. Full automation pending." description:"Add atomic fact extraction to session consolidation" entry:"1769738530" modified:"1769738736" priority:"H" project:"infra" status:"pending" tags:"memory,prototype" tags_memory:"x" tags_prototype:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+new [annotation_1769738736:"Prototype complete: facts CLI, facts.jsonl storage, 12 seed facts. Full automation pending." description:"Add atomic fact extraction to session consolidation" end:"1769739204" entry:"1769738530" modified:"1769739204" priority:"H" project:"infra" status:"completed" tags:"memory,prototype" tags_memory:"x" tags_prototype:"x" uuid:"813fa904-d307-4b9d-a4f8-ec1aadc7c317"]
+---
+time 1769740661
+new [description:"Fix inbox-triage tilde expansion" entry:"1769740661" modified:"1769740661" priority:"H" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"84988cf8-460d-4690-83b5-7c7d6efec668"]
+---
+time 1769740661
+new [description:"Fix extract-facts read -r for backslash handling" entry:"1769740661" modified:"1769740661" priority:"H" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"522a7d0c-5e1b-46c6-9c00-79572da17faf"]
+---
+time 1769740661
+new [description:"Fix morning-brief shellcheck issues (14)" entry:"1769740661" modified:"1769740661" priority:"M" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"3cb4b2a8-37f5-4b16-85e3-4a35e01b73b3"]
+---
+time 1769740661
+new [description:"Fix code-audit shellcheck issues (7)" entry:"1769740661" modified:"1769740661" priority:"M" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"18c7d05c-2a88-4828-9ea0-0c945c0694bd"]
+---
+time 1769740661
+new [description:"Fix health-watchdog unused ALERT_FILE" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"5d794e80-77e8-449d-ba05-e6ccc709b044"]
+---
+time 1769740661
+new [description:"Fix coding-agent unused SOCKET" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"ad5a1369-1a45-4bed-9f2d-5e6597c9c89c"]
+---
+time 1769740661
+new [description:"Fix letta sed quoting SC2001" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"27e2902e-731f-4be6-8c20-da660aefaff2"]
+---
+time 1769740661
+new [description:"Fix mba script quoting SC2086" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"998dafe6-61d7-4267-bb1c-843ed0b40137"]
+---
+time 1769740661
+new [description:"Fix agent-status sed SC2001" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"2735420d-fb33-431b-95d3-684b07d7ed36"]
+---
+time 1769740661
+new [description:"Fix patch-clawdbot shellcheck (3)" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"c2fe19d6-a05e-4f6c-9d24-e945d1d22eab"]
+---
+time 1769740661
+new [description:"Fix self-audit shellcheck (3)" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"f7083286-2e14-4019-9c0f-3e41425c5fa1"]
+---
+time 1769740666
+new [description:"Add Task Orchestrator MCP server for cross-agent task coordination" entry:"1769740666" modified:"1769740666" priority:"H" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"2ef72f00-ddc1-40db-b00f-0ca929e7f752"]
+---
+time 1769740666
+new [description:"Add Google Calendar MCP server for proactive scheduling" entry:"1769740666" modified:"1769740666" priority:"H" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"4d5e9e32-3af4-4b59-bc8a-18a5c5c0039f"]
+---
+time 1769740666
+new [description:"Research and add Time MCP server (find working package)" entry:"1769740666" modified:"1769740666" priority:"M" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"786319d7-e999-4826-8481-cfa44c3b4ce3"]
+---
+time 1769740708
+old [description:"Fix inbox-triage tilde expansion" entry:"1769740661" modified:"1769740661" priority:"H" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"84988cf8-460d-4690-83b5-7c7d6efec668"]
+new [description:"Fix inbox-triage tilde expansion" end:"1769740708" entry:"1769740661" modified:"1769740708" priority:"H" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"84988cf8-460d-4690-83b5-7c7d6efec668"]
+---
+time 1769740724
+old [description:"Fix extract-facts read -r for backslash handling" entry:"1769740661" modified:"1769740661" priority:"H" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"522a7d0c-5e1b-46c6-9c00-79572da17faf"]
+new [description:"Fix extract-facts read -r for backslash handling" end:"1769740724" entry:"1769740661" modified:"1769740724" priority:"H" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"522a7d0c-5e1b-46c6-9c00-79572da17faf"]
+---
+time 1769740779
+old [description:"Add Task Orchestrator MCP server for cross-agent task coordination" entry:"1769740666" modified:"1769740666" priority:"H" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"2ef72f00-ddc1-40db-b00f-0ca929e7f752"]
+new [description:"Add Task Orchestrator MCP server for cross-agent task coordination" end:"1769740779" entry:"1769740666" modified:"1769740779" priority:"H" project:"infra" status:"completed" tags:"mcp" tags_mcp:"x" uuid:"2ef72f00-ddc1-40db-b00f-0ca929e7f752"]
+---
+time 1769740779
+old [description:"Add Google Calendar MCP server for proactive scheduling" entry:"1769740666" modified:"1769740666" priority:"H" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"4d5e9e32-3af4-4b59-bc8a-18a5c5c0039f"]
+new [description:"Add Google Calendar MCP server for proactive scheduling" entry:"1769740666" modified:"1769740779" priority:"H" project:"infra" status:"pending" tags:"blocked,mcp" tags_blocked:"x" tags_mcp:"x" uuid:"4d5e9e32-3af4-4b59-bc8a-18a5c5c0039f"]
+---
+time 1769740779
+new [dep_4d5e9e32-3af4-4b59-bc8a-18a5c5c0039f:"x" depends:"4d5e9e32-3af4-4b59-bc8a-18a5c5c0039f" description:"Set up Google Calendar OAuth credentials for MCP" entry:"1769740779" modified:"1769740779" priority:"M" project:"infra" status:"pending" tags:"blocked,mcp" tags_blocked:"x" tags_mcp:"x" uuid:"8afbd752-2b7a-40ad-86f7-6db53750bfa2"]
+---
+time 1769740821
+old [description:"Fix morning-brief shellcheck issues (14)" entry:"1769740661" modified:"1769740661" priority:"M" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"3cb4b2a8-37f5-4b16-85e3-4a35e01b73b3"]
+new [description:"Fix morning-brief shellcheck issues (14)" end:"1769740821" entry:"1769740661" modified:"1769740821" priority:"M" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"3cb4b2a8-37f5-4b16-85e3-4a35e01b73b3"]
+---
+time 1769740860
+old [description:"Fix health-watchdog unused ALERT_FILE" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"5d794e80-77e8-449d-ba05-e6ccc709b044"]
+new [description:"Fix health-watchdog unused ALERT_FILE" end:"1769740860" entry:"1769740661" modified:"1769740860" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"5d794e80-77e8-449d-ba05-e6ccc709b044"]
+---
+time 1769740860
+old [description:"Fix coding-agent unused SOCKET" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"ad5a1369-1a45-4bed-9f2d-5e6597c9c89c"]
+new [description:"Fix coding-agent unused SOCKET" end:"1769740860" entry:"1769740661" modified:"1769740860" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"ad5a1369-1a45-4bed-9f2d-5e6597c9c89c"]
+---
+time 1769740875
+old [description:"Explore MCP ecosystem - survey available servers" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"mcp" tags_mcp:"x" uuid:"92ad3d8e-88fc-4853-ad2e-3efcd926537f"]
+new [description:"Explore MCP ecosystem - survey available servers" end:"1769740875" entry:"1769738530" modified:"1769740875" priority:"M" project:"infra" status:"completed" tags:"mcp" tags_mcp:"x" uuid:"92ad3d8e-88fc-4853-ad2e-3efcd926537f"]
+---
+time 1769743458
+old [description:"Implement blackboard architecture for cross-agent communication +agent-system" entry:"1769738530" modified:"1769738530" priority:"H" project:"infra" status:"pending" uuid:"582aebfa-cad8-462b-92b4-5dfe4b282209"]
+new [description:"Implement blackboard architecture for cross-agent communication +agent-system" end:"1769743458" entry:"1769738530" modified:"1769743458" priority:"H" project:"infra" status:"completed" uuid:"582aebfa-cad8-462b-92b4-5dfe4b282209"]
+---
+time 1769745787
+new [description:"CrewAI: Implement semantic routing with embeddings" entry:"1769745787" modified:"1769745787" priority:"H" project:"infra" status:"pending" uuid:"5a150846-d9b1-48e2-8cee-1e99b4287aff"]
+---
+time 1769745787
+new [description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769745787" priority:"H" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+---
+time 1769745787
+new [description:"CrewAI: Connect health monitor to actual messaging" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"26483905-9558-4aac-8f27-e5f00ec78e1f"]
+---
+time 1769745787
+new [description:"CrewAI: Write E2E integration test" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"2aae0469-d43e-4766-91ef-5a73d8b7a904"]
+---
+time 1769745787
+new [description:"CrewAI: Unify memory systems" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"76d2473d-d8bf-403a-bfb6-bf71124196c9"]
+---
+time 1769745787
+new [description:"CrewAI: Add agent persistence between calls" entry:"1769745787" modified:"1769745787" priority:"L" project:"infra" status:"pending" uuid:"b781e7ad-3b73-4aff-8938-b6e13ee8555b"]
+---
+time 1769745955
+old [description:"CrewAI: Implement semantic routing with embeddings" entry:"1769745787" modified:"1769745787" priority:"H" project:"infra" status:"pending" uuid:"5a150846-d9b1-48e2-8cee-1e99b4287aff"]
+new [description:"CrewAI: Implement semantic routing with embeddings" end:"1769745955" entry:"1769745787" modified:"1769745955" priority:"H" project:"infra" status:"completed" uuid:"5a150846-d9b1-48e2-8cee-1e99b4287aff"]
+---
+time 1769745955
+old [description:"CrewAI: Connect health monitor to actual messaging" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"26483905-9558-4aac-8f27-e5f00ec78e1f"]
+new [description:"CrewAI: Connect health monitor to actual messaging" end:"1769745955" entry:"1769745787" modified:"1769745955" priority:"M" project:"infra" status:"completed" uuid:"26483905-9558-4aac-8f27-e5f00ec78e1f"]
+---
+time 1769746006
+old [description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769745787" priority:"H" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+new [description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769746006" priority:"L" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+---
+time 1769746006
+old [description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769746006" priority:"L" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+new [annotation_1769746006:"Actually not needed - Clawdbot agents handle execution, CrewAI is routing-only" description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769746006" priority:"L" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+---
+time 1769746120
+old [description:"CrewAI: Write E2E integration test" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"2aae0469-d43e-4766-91ef-5a73d8b7a904"]
+new [description:"CrewAI: Write E2E integration test" end:"1769746120" entry:"1769745787" modified:"1769746120" priority:"M" project:"infra" status:"completed" uuid:"2aae0469-d43e-4766-91ef-5a73d8b7a904"]
+---
+time 1769746318
+old [description:"CrewAI: Unify memory systems" entry:"1769745787" modified:"1769745787" priority:"M" project:"infra" status:"pending" uuid:"76d2473d-d8bf-403a-bfb6-bf71124196c9"]
+new [description:"CrewAI: Unify memory systems" end:"1769746318" entry:"1769745787" modified:"1769746318" priority:"M" project:"infra" status:"completed" uuid:"76d2473d-d8bf-403a-bfb6-bf71124196c9"]
+---
+time 1769746318
+old [description:"CrewAI: Unify memory systems" end:"1769746318" entry:"1769745787" modified:"1769746318" priority:"M" project:"infra" status:"completed" uuid:"76d2473d-d8bf-403a-bfb6-bf71124196c9"]
+new [annotation_1769746318:"Added memory.py tools: read\/write daily, read curated, search\/add facts, recall context. Disabled CrewAI built-in memory." description:"CrewAI: Unify memory systems" end:"1769746318" entry:"1769745787" modified:"1769746318" priority:"M" project:"infra" status:"completed" uuid:"76d2473d-d8bf-403a-bfb6-bf71124196c9"]
+---
+time 1769746318
+old [description:"CrewAI: Add agent persistence between calls" entry:"1769745787" modified:"1769745787" priority:"L" project:"infra" status:"pending" uuid:"b781e7ad-3b73-4aff-8938-b6e13ee8555b"]
+new [description:"CrewAI: Add agent persistence between calls" end:"1769746318" entry:"1769745787" modified:"1769746318" priority:"L" project:"infra" status:"completed" uuid:"b781e7ad-3b73-4aff-8938-b6e13ee8555b"]
+---
+time 1769746319
+old [description:"CrewAI: Add agent persistence between calls" end:"1769746318" entry:"1769745787" modified:"1769746318" priority:"L" project:"infra" status:"completed" uuid:"b781e7ad-3b73-4aff-8938-b6e13ee8555b"]
+new [annotation_1769746319:"Not needed - Clawdbot agents are persistent. CrewAI only routes, doesn't execute." description:"CrewAI: Add agent persistence between calls" end:"1769746318" entry:"1769745787" modified:"1769746319" priority:"L" project:"infra" status:"completed" uuid:"b781e7ad-3b73-4aff-8938-b6e13ee8555b"]
+---
+time 1769746319
+old [annotation_1769746006:"Actually not needed - Clawdbot agents handle execution, CrewAI is routing-only" description:"CrewAI: Fix API auth for \/message endpoint" entry:"1769745787" modified:"1769746006" priority:"L" project:"infra" status:"pending" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+new [annotation_1769746006:"Actually not needed - Clawdbot agents handle execution, CrewAI is routing-only" description:"CrewAI: Fix API auth for \/message endpoint" end:"1769746319" entry:"1769745787" modified:"1769746319" priority:"L" project:"infra" status:"completed" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+---
+time 1769746319
+old [annotation_1769746006:"Actually not needed - Clawdbot agents handle execution, CrewAI is routing-only" description:"CrewAI: Fix API auth for \/message endpoint" end:"1769746319" entry:"1769745787" modified:"1769746319" priority:"L" project:"infra" status:"completed" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+new [annotation_1769746006:"Actually not needed - Clawdbot agents handle execution, CrewAI is routing-only" annotation_1769746319:"Not needed - routing-only mode doesn't require API access. Clawdbot agents handle execution." description:"CrewAI: Fix API auth for \/message endpoint" end:"1769746319" entry:"1769745787" modified:"1769746319" priority:"L" project:"infra" status:"completed" uuid:"829782b5-15a3-4b58-96ef-b390d8316672"]
+---
+time 1769780207
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" modified:"1769780207" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1769780217
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780217" imask:"0" modified:"1769780207" parent:"cb090d3e-4fa9-478a-8546-8fdd0addf234" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"pending" uuid:"ac2c2b45-c0c3-4d0f-9523-36f4ebf3552d"]
+---
+time 1769780217
+old [description:"Start dishwasher" due:"1769826600" entry:"1769780207" modified:"1769780207" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"-" modified:"1769780217" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1769793320
+new [description:"Clean litter box" due:"1770012000" entry:"1769793320" modified:"1769793320" priority:"M" project:"cody" status:"pending" uuid:"a82df0d6-9d89-4edf-bcf2-76b21b1dadf1"]
+---
+time 1769868016
+new [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1770426000" entry:"1769868016" imask:"1" modified:"1769736190" parent:"205ffad8-413d-46f8-b8d7-58c6d912a3f0" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"pending" uuid:"bea8a499-fb71-47ea-b117-5b9f8c03eb20"]
+---
+time 1769868016
+old [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736168" mask:"-" modified:"1769736190" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"205ffad8-413d-46f8-b8d7-58c6d912a3f0"]
+new [description:"TRASH REMINDER: Put trash out to curb (Thursday 7pm)" due:"1769821200" entry:"1769736168" mask:"--" modified:"1769868016" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"205ffad8-413d-46f8-b8d7-58c6d912a3f0"]
+---
+time 1769868016
+new [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1770471000" entry:"1769868016" imask:"1" modified:"1769736190" parent:"60e08278-6e43-4c4a-9e64-51f87be52423" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"pending" uuid:"736cf2a0-22a2-462a-bfde-8e176f7faac0"]
+---
+time 1769868016
+old [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736173" mask:"-" modified:"1769736190" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"60e08278-6e43-4c4a-9e64-51f87be52423"]
+new [description:"TRASH REMINDER: Put trash out to curb (Friday 7:30am)" due:"1769866200" entry:"1769736173" mask:"--" modified:"1769868016" priority:"M" project:"household" recur:"weekly" rtype:"periodic" status:"recurring" uuid:"60e08278-6e43-4c4a-9e64-51f87be52423"]
+---
+time 1769868016
+new [description:"Start dishwasher" due:"1769913000" entry:"1769868016" imask:"1" modified:"1769780217" parent:"cb090d3e-4fa9-478a-8546-8fdd0addf234" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"pending" uuid:"14c7310e-9dec-4150-9ed6-35ae14b29edc"]
+---
+time 1769868016
+old [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"-" modified:"1769780217" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"--" modified:"1769868016" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1769954408
+new [description:"Start dishwasher" due:"1769999400" entry:"1769954408" imask:"2" modified:"1769868016" parent:"cb090d3e-4fa9-478a-8546-8fdd0addf234" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"pending" uuid:"759345ac-ff88-4d9a-8a50-ddab8f417d77"]
+---
+time 1769954408
+old [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"--" modified:"1769868016" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"---" modified:"1769954408" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1770040823
+new [description:"Start dishwasher" due:"1770085800" entry:"1770040823" imask:"3" modified:"1769954408" parent:"cb090d3e-4fa9-478a-8546-8fdd0addf234" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"pending" uuid:"a71834c8-307f-4f87-a023-24f56492b946"]
+---
+time 1770040823
+old [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"---" modified:"1769954408" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"----" modified:"1770040823" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1770127604
+new [description:"Start dishwasher" due:"1770172200" entry:"1770127604" imask:"4" modified:"1770040823" parent:"cb090d3e-4fa9-478a-8546-8fdd0addf234" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"pending" uuid:"e4f21d3c-7da0-4ac2-8c24-98ced5c70cb8"]
+---
+time 1770127604
+old [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"----" modified:"1770040823" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+new [description:"Start dishwasher" due:"1769826600" entry:"1769780207" mask:"-----" modified:"1770127604" priority:"M" project:"household" recur:"daily" rtype:"periodic" status:"recurring" uuid:"cb090d3e-4fa9-478a-8546-8fdd0addf234"]
+---
+time 1770145366
+old [description:"Call Round Rock Pharm to pay\/order derm meds" due:"1770012000" entry:"1769703083" modified:"1769703083" priority:"M" project:"cody" status:"pending" uuid:"7e08e2a4-4789-4884-8527-1fa0c6e6113a"]
+new [description:"Call Round Rock Pharm to pay\/order derm meds" due:"1770012000" end:"1770145366" entry:"1769703083" modified:"1770145366" priority:"M" project:"cody" status:"completed" uuid:"7e08e2a4-4789-4884-8527-1fa0c6e6113a"]
+---
+time 1770145366
+old [description:"Clean litter box" due:"1770012000" entry:"1769793320" modified:"1769793320" priority:"M" project:"cody" status:"pending" uuid:"a82df0d6-9d89-4edf-bcf2-76b21b1dadf1"]
+new [description:"Clean litter box" due:"1770012000" end:"1770145366" entry:"1769793320" modified:"1770145366" priority:"M" project:"cody" status:"completed" uuid:"a82df0d6-9d89-4edf-bcf2-76b21b1dadf1"]
+---
+time 1770150626
+old [description:"Fix code-audit shellcheck issues (7)" entry:"1769740661" modified:"1769740661" priority:"M" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"18c7d05c-2a88-4828-9ea0-0c945c0694bd"]
+new [description:"Fix code-audit shellcheck issues (7)" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"M" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"18c7d05c-2a88-4828-9ea0-0c945c0694bd"]
+---
+time 1770150626
+old [description:"Fix letta sed quoting SC2001" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"27e2902e-731f-4be6-8c20-da660aefaff2"]
+new [description:"Fix letta sed quoting SC2001" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"27e2902e-731f-4be6-8c20-da660aefaff2"]
+---
+time 1770150626
+old [description:"Fix mba script quoting SC2086" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"998dafe6-61d7-4267-bb1c-843ed0b40137"]
+new [description:"Fix mba script quoting SC2086" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"998dafe6-61d7-4267-bb1c-843ed0b40137"]
+---
+time 1770150626
+old [description:"Fix agent-status sed SC2001" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"2735420d-fb33-431b-95d3-684b07d7ed36"]
+new [description:"Fix agent-status sed SC2001" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"2735420d-fb33-431b-95d3-684b07d7ed36"]
+---
+time 1770150626
+old [description:"Fix patch-clawdbot shellcheck (3)" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"c2fe19d6-a05e-4f6c-9d24-e945d1d22eab"]
+new [description:"Fix patch-clawdbot shellcheck (3)" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"c2fe19d6-a05e-4f6c-9d24-e945d1d22eab"]
+---
+time 1770150626
+old [description:"Fix self-audit shellcheck (3)" entry:"1769740661" modified:"1769740661" priority:"L" project:"infra" status:"pending" tags:"techdebt" tags_techdebt:"x" uuid:"f7083286-2e14-4019-9c0f-3e41425c5fa1"]
+new [description:"Fix self-audit shellcheck (3)" end:"1770150626" entry:"1769740661" modified:"1770150626" priority:"L" project:"infra" status:"completed" tags:"techdebt" tags_techdebt:"x" uuid:"f7083286-2e14-4019-9c0f-3e41425c5fa1"]
+---
+time 1770152756
+old [description:"Implement iterative memory retrieval (multi-step queries)" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"c19ecedf-489d-44ea-81ca-6ae6312c4e83"]
+new [description:"Implement iterative memory retrieval (multi-step queries)" end:"1770152756" entry:"1769738530" modified:"1770152756" priority:"M" project:"infra" status:"completed" tags:"memory" tags_memory:"x" uuid:"c19ecedf-489d-44ea-81ca-6ae6312c4e83"]
+---
+time 1770152756
+old [description:"Research event graph storage for temporal reasoning" entry:"1769738530" modified:"1769738530" priority:"M" project:"infra" status:"pending" tags:"memory" tags_memory:"x" uuid:"4026d83b-e3fd-4fea-83ae-34d5d429b694"]
+new [description:"Research event graph storage for temporal reasoning" entry:"1769738530" modified:"1770152756" priority:"M" project:"infra" status:"pending" tags:"designed,memory" tags_designed:"x" tags_memory:"x" uuid:"4026d83b-e3fd-4fea-83ae-34d5d429b694"]
+---
+time 1770154693
+old [description:"Research event graph storage for temporal reasoning" entry:"1769738530" modified:"1770152756" priority:"M" project:"infra" status:"pending" tags:"designed,memory" tags_designed:"x" tags_memory:"x" uuid:"4026d83b-e3fd-4fea-83ae-34d5d429b694"]
+new [description:"Research event graph storage for temporal reasoning" end:"1770154693" entry:"1769738530" modified:"1770154693" priority:"M" project:"infra" status:"completed" tags:"designed,memory" tags_designed:"x" tags_memory:"x" uuid:"4026d83b-e3fd-4fea-83ae-34d5d429b694"]
+---
+time 1770155264
+old [description:"Define formal agent interface contracts +agent-system" entry:"1769738530" modified:"1769738530" priority:"L" project:"infra" status:"pending" uuid:"e9dbb66b-c32c-49d8-a590-30aa096273ff"]
+new [description:"Define formal agent interface contracts +agent-system" end:"1770155264" entry:"1769738530" modified:"1770155264" priority:"L" project:"infra" status:"completed" uuid:"e9dbb66b-c32c-49d8-a590-30aa096273ff"]
+---

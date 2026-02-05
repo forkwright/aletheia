@@ -1,0 +1,143 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# mine-memory-facts - Extract structured facts from narrative memory files
+# Uses pattern matching optimized for our memory file format
+
+set -uo pipefail
+
+SHARED_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}"
+FACTS_FILE="$SHARED_DIR/memory/facts.jsonl"
+
+add_fact() {
+    local subject="$1"
+    local predicate="$2"
+    local object="$3"
+    local category="${4:-insight}"
+    local confidence="${5:-0.7}"
+    
+    # Normalize
+    subject=$(echo "$subject" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | head -c 50)
+    predicate=$(echo "$predicate" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | head -c 30)
+    object=$(echo "$object" | head -c 200)
+    
+    # Skip if empty
+    [[ -z "$subject" || -z "$object" ]] && return
+    
+    # Check for duplicate
+    if grep -q "\"subject\":\"$subject\".*\"predicate\":\"$predicate\"" "$FACTS_FILE" 2>/dev/null; then
+        return
+    fi
+    
+    # Add fact
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local id=$(echo "$subject$predicate$object" | md5sum | cut -c1-8)
+    
+    echo "{\"id\":\"$id\",\"subject\":\"$subject\",\"predicate\":\"$predicate\",\"object\":\"$object\",\"confidence\":$confidence,\"category\":\"$category\",\"valid_from\":\"$timestamp\"}" >> "$FACTS_FILE"
+    echo "  + $subject.$predicate: ${object:0:60}..."
+}
+
+process_file() {
+    local file="$1"
+    local filename=$(basename "$file" .md)
+    local in_section=""
+    local current_topic=""
+    
+    echo "Processing: $filename"
+    
+    while IFS= read -r line; do
+        # Track sections
+        if [[ "$line" =~ ^##[[:space:]]+(.+)$ ]]; then
+            in_section="${BASH_REMATCH[1]}"
+            current_topic=$(echo "$in_section" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | cut -c1-30)
+        fi
+        
+        # Extract incident/issue names
+        if [[ "$line" =~ [Ii]ncident:?[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "experienced_incident" "${BASH_REMATCH[1]}" "system" 0.9
+        fi
+        
+        # Extract root causes
+        if [[ "$line" =~ [Rr]oot[[:space:]][Cc]ause:?[[:space:]]*(.+)$ ]] || [[ "$line" =~ ^\*\*Root[[:space:]]Cause\*\*:?[[:space:]]*(.+)$ ]]; then
+            local cause="${BASH_REMATCH[1]:-$line}"
+            cause=$(echo "$cause" | sed 's/\*//g')
+            [[ -n "$cause" ]] && add_fact "system" "root_cause" "$cause" "insight" 0.85
+        fi
+        
+        # Extract fixes/solutions
+        if [[ "$line" =~ [Ff]ix(ed)?:?[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "fix_applied" "${BASH_REMATCH[2]}" "system" 0.85
+        fi
+        
+        # Extract lessons learned
+        if [[ "$line" =~ [Ll]esson:?[[:space:]]+(.+)$ ]] || [[ "$line" =~ [Ll]earned:?[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "lesson_learned" "${BASH_REMATCH[1]}" "insight" 0.8
+        fi
+        
+        # Extract tool/system changes
+        if [[ "$line" =~ [Cc]hanged[[:space:]]+(from[[:space:]]+)?(.+)[[:space:]]to[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "changed_to" "${BASH_REMATCH[3]}" "system" 0.8
+        fi
+        
+        # Extract configurations
+        if [[ "$line" =~ [Cc]onfigured[[:space:]]+(.+)[[:space:]]+(to|for|with)[[:space:]]+(.+)$ ]]; then
+            add_fact "${BASH_REMATCH[1]}" "configured_for" "${BASH_REMATCH[3]}" "system" 0.75
+        fi
+        
+        # Extract preferences (Cody prefers X, likes X)
+        if [[ "$line" =~ [Cc]ody[[:space:]]+(prefers?|likes?|wants?)[[:space:]]+(.+)$ ]]; then
+            add_fact "cody" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "preference" 0.85
+        fi
+        
+        # Extract decisions
+        if [[ "$line" =~ [Dd]ecided[[:space:]]+(to[[:space:]]+)?(.+)$ ]]; then
+            add_fact "cody" "decided" "${BASH_REMATCH[2]}" "decision" 0.8
+        fi
+        
+        # Extract tool completions (✅ marks done items)
+        if [[ "$line" =~ ✅[[:space:]]*(.+)$ ]] || [[ "$line" =~ \(✅[[:space:]]?[Dd]one\)[[:space:]]*(.*)$ ]]; then
+            local completed="${BASH_REMATCH[1]}"
+            completed=$(echo "$completed" | sed 's/\*//g' | sed 's/(✅.*)//')
+            [[ -n "$completed" ]] && add_fact "system" "completed" "$completed" "project" 0.9
+        fi
+        
+        # Extract time estimates
+        if [[ "$line" =~ [Tt]ime:?[[:space:]]+~?([0-9]+[[:space:]]*(hours?|minutes?|mins?)) ]]; then
+            [[ -n "$current_topic" ]] && add_fact "$current_topic" "time_spent" "${BASH_REMATCH[1]}" "project" 0.7
+        fi
+        
+        # Extract tool installations
+        if [[ "$line" =~ [Ii]nstalled[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "has_installed" "${BASH_REMATCH[1]}" "system" 0.85
+        fi
+        
+        # Extract model/version info
+        if [[ "$line" =~ [Dd]ownloaded[[:space:]]+(.+)$ ]]; then
+            add_fact "system" "downloaded" "${BASH_REMATCH[1]}" "system" 0.85
+        fi
+        
+    done < "$file"
+}
+
+main() {
+    local workspace="${1:-${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn}"
+    local before=$(wc -l < "$FACTS_FILE" 2>/dev/null || echo "0")
+    
+    echo "=== Mining Memory Files for Facts ==="
+    echo "Workspace: $workspace"
+    echo "Facts before: $before"
+    echo ""
+    
+    # Process all memory files
+    find "$workspace/memory" -name "2026-*.md" -type f | sort | while read -r file; do
+        process_file "$file"
+    done
+    
+    local after=$(wc -l < "$FACTS_FILE")
+    echo ""
+    echo "=== Summary ==="
+    echo "Facts before: $before"
+    echo "Facts after: $after"
+    echo "Added: $((after - before))"
+}
+
+main "$@"

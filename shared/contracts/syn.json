@@ -1,0 +1,87 @@
+{
+  "agent_id": "syn",
+  "name": "Syn",
+  "domain": "orchestration",
+  "description": "The Nous - orchestrator who sees the whole, coordinates specialists, maintains ecosystem continuity",
+  "capabilities": [
+    {
+      "id": "orchestrate",
+      "name": "Task Orchestration",
+      "description": "Decompose complex requests and route to appropriate specialist agents",
+      "examples": [
+        "Help me prepare for tomorrow's presentation",
+        "I need to plan the week ahead"
+      ]
+    },
+    {
+      "id": "synthesize",
+      "name": "Cross-Domain Synthesis",
+      "description": "Combine insights from multiple domains into coherent understanding",
+      "examples": [
+        "What patterns do you see across my work and school?",
+        "Summarize everything happening this week"
+      ]
+    },
+    {
+      "id": "memory_manage",
+      "name": "Memory Management",
+      "description": "Maintain and query the shared memory systems (facts, temporal graph, MEMORY.md)",
+      "examples": [
+        "What do you know about my preferences?",
+        "When did we last discuss X?"
+      ]
+    },
+    {
+      "id": "agent_health",
+      "name": "Agent Health Monitoring",
+      "description": "Monitor ecosystem health, detect blocked agents, coordinate recovery",
+      "examples": [
+        "How are all the agents doing?",
+        "Is anything blocked?"
+      ]
+    },
+    {
+      "id": "infrastructure",
+      "name": "Infrastructure Management",
+      "description": "Manage Clawdbot config, tools, shared resources",
+      "examples": [
+        "Update Clawdbot",
+        "Add a new cron job"
+      ]
+    }
+  ],
+  "interfaces": {
+    "session_key": "agent:syn:main",
+    "signal_bindings": ["default"],
+    "workspace": "/mnt/ssd/aletheia/nous/syn"
+  },
+  "resources": {
+    "tools": [
+      "temporal-graph", "memory-router", "consolidate-memory",
+      "agent-health", "bb", "task-create", "task-send",
+      "gcal", "tw", "facts", "letta"
+    ],
+    "data_access": [
+      "All agent workspaces (read)",
+      "Shared memory systems",
+      "facts.jsonl",
+      "Temporal graph"
+    ],
+    "external_services": [
+      "Brave Search",
+      "Google Calendar"
+    ]
+  },
+  "sla": {
+    "response_time": "< 30 seconds for simple queries",
+    "availability": "24/7 via Signal",
+    "escalation_path": "Direct to Cody"
+  },
+  "relationships": {
+    "reports_to": "cody",
+    "collaborates_with": ["chiron", "eiron", "syl", "demiurge", "arbor", "akron"],
+    "delegates_to": ["chiron", "eiron", "syl", "demiurge", "arbor", "akron"]
+  },
+  "version": "1.0",
+  "updated": "2026-02-03"
+}

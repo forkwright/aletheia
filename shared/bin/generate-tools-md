@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Generate lean TOOLS.md from tools.yaml for each agent."""
+
+import yaml
+import sys
+from pathlib import Path
+
+ROOT = Path("/mnt/ssd/aletheia")
+TOOLS_YAML = ROOT / "shared" / "config" / "tools.yaml"
+
+def generate_syn():
+    """Generate Syn's TOOLS.md — lean reference, not prose."""
+    with open(TOOLS_YAML) as f:
+        tools = yaml.safe_load(f)
+    
+    lines = [
+        "# Tools Reference",
+        "",
+        "Full reference: `shared/config/tools.yaml`. Key commands below.",
+        "",
+    ]
+    
+    # SSH
+    lines.append("## SSH")
+    for name, info in tools["ssh"]["hosts"].items():
+        ts = f" (TS: {info['tailscale']})" if info.get("tailscale") else ""
+        lines.append(f"- **{name}**: {info['addr']}{ts} — {info['notes']}")
+    lines.append("")
+    
+    # Calendar
+    lines.append("## Calendar")
+    for name, cid in tools["calendar"]["ids"].items():
+        lines.append(f"- {name}: `gcal today -c {cid}`")
+    lines.append("")
+    
+    # Drive
+    lines.append("## Google Drive")
+    lines.append("- `gdrive p|s ls|cat|find|get|tree [path]`")
+    lines.append("- personal (p): cody.kickertz@gmail.com")
+    lines.append("- school (s): cody.kickertz@utexas.edu")
+    lines.append("")
+    
+    # Tasks
+    lines.append("## Tasks")
+    lines.append("- `tw` (list) / `tw add \"...\" project:X priority:H` / `tw done ID`")
+    lines.append("- Todoist: `mcporter call todoist.todoist_task_quick_add --args '{\"text\":\"...\"}'`")
+    lines.append("")
+    
+    # Memory
+    lines.append("## Memory/Knowledge")
+    lines.append("- `facts [stats|about|search|add]` — Structured facts store")
+    lines.append("- `memory-router \"query\"` — Federated memory search")
+    lines.append("- `letta ask|remember|recall` — Agent-specific memory")
+    lines.append("- `temporal-graph stats|events|timeline` — Knowledge graph")
+    lines.append("")
+    
+    # Aletheia
+    lines.append("## Aletheia")
+    lines.append("- `distill --agent X --text \"...\"` — Extract structured insights")
+    lines.append("- `assemble-context --agent X` — Compile session context")
+    lines.append("- `compile-context [agent]` — Regenerate AGENTS.md from templates")
+    lines.append("")
+    
+    # Research
+    lines.append("## Research")
+    lines.append("- `pplx \"query\" [--sources]` — Perplexity pro-search")
+    lines.append("")
+    
+    # Infrastructure
+    lines.append("## Infrastructure")
+    lines.append(f"- NAS mounts: {', '.join(tools['infrastructure']['nas_mounts'])}")
+    lines.append(f"- Docker: {tools['infrastructure']['docker']['count']} containers (media stack)")
+    lines.append("- Webchat: https://192.168.0.29:8443 (LAN) / https://100.87.6.45:8443 (TS)")
+    lines.append("")
+    
+    # Metis
+    lines.append("## Metis")
+    lines.append("- `ssh metis \"cmd\"` / `metis sync|push`")
+    lines.append("")
+    
+    # Agents
+    lines.append("## Agent Management")
+    lines.append("- `agent-health` / `agent-contracts show X` / `audit-all-agents`")
+    lines.append("")
+    
+    # OpenClaw
+    lines.append("## OpenClaw")
+    lines.append("- Validate: `openclaw doctor`")
+    lines.append("- Patch after update: `patch-openclaw`")
+    lines.append("- Config: bindings use `channel` not `provider`; model IDs need date suffix (pre-4.6)")
+    lines.append("")
+    
+    lines.append("---")
+    lines.append("*Generated from shared/config/tools.yaml*")
+    
+    return "\n".join(lines)
+
+if __name__ == "__main__":
+    agent = sys.argv[1] if len(sys.argv) > 1 else "syn"
+    
+    if agent == "syn":
+        content = generate_syn()
+    else:
+        # Other agents get a minimal version
+        content = generate_syn()  # TODO: per-agent customization
+    
+    outpath = ROOT / "nous" / agent / "TOOLS.md"
+    old_size = outpath.stat().st_size if outpath.exists() else 0
+    outpath.write_text(content)
+    new_size = len(content)
+    print(f"{agent}: TOOLS.md {old_size} → {new_size} bytes ({old_size - new_size:+d})")

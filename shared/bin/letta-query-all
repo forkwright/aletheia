@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+letta-query-all - Query all Letta agents for information
+
+Searches across all domain agents' memory stores and aggregates results.
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+CONFIG_FILE = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/config/letta-agents.json")
+LETTA_CMD = "${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/letta"
+
+
+def load_agents() -> dict:
+    """Load agent configuration"""
+    if not CONFIG_FILE.exists():
+        return {}
+    
+    config = json.loads(CONFIG_FILE.read_text())
+    return config.get("agents", {})
+
+
+def query_agent(agent_name: str, query: str, mode: str = "recall") -> dict:
+    """Query a single agent's memory"""
+    try:
+        cmd = [LETTA_CMD, "--agent", agent_name, mode, query]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        output = result.stdout.strip()
+        if result.returncode != 0 or not output:
+            return {
+                "agent": agent_name,
+                "success": False,
+                "error": result.stderr.strip() or "No response"
+            }
+        
+        return {
+            "agent": agent_name,
+            "success": True,
+            "response": output
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "agent": agent_name,
+            "success": False,
+            "error": "Timeout"
+        }
+    except Exception as e:
+        return {
+            "agent": agent_name,
+            "success": False,
+            "error": str(e)
+        }
+
+
+def query_all(query: str, mode: str = "recall", agents: list = None) -> list:
+    """Query all agents in parallel"""
+    all_agents = load_agents()
+    
+    if not all_agents:
+        print("No agents configured", file=sys.stderr)
+        return []
+    
+    # Filter to specified agents if provided
+    if agents:
+        all_agents = {k: v for k, v in all_agents.items() if k in agents}
+    
+    results = []
+    
+    # Query agents in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(query_agent, name, query, mode): name
+            for name in all_agents.keys()
+        }
+        
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+    
+    return results
+
+
+def format_results(results: list, verbose: bool = False) -> str:
+    """Format query results for display"""
+    lines = []
+    
+    successful = [r for r in results if r["success"]]
+    failed = [r for r in results if not r["success"]]
+    
+    if successful:
+        for r in successful:
+            agent = r["agent"]
+            response = r["response"]
+            
+            # Skip empty or "no results" responses
+            if not response or "no relevant" in response.lower():
+                if verbose:
+                    lines.append(f"[{agent}] (no relevant memories)")
+                continue
+            
+            lines.append(f"[{agent}]")
+            # Indent response
+            for line in response.split("\n"):
+                lines.append(f"  {line}")
+            lines.append("")
+    
+    if verbose and failed:
+        lines.append("---")
+        lines.append(f"Failed: {', '.join(r['agent'] for r in failed)}")
+    
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Query all Letta agents",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  letta-query-all "Cody's communication preferences"
+  letta-query-all "SQL optimization" --agents chiron akron
+  letta-query-all "family schedule" --mode ask
+  letta-query-all "project status" --json
+        """
+    )
+    
+    parser.add_argument("query", help="Query to search for")
+    parser.add_argument("--mode", choices=["recall", "ask"], default="recall",
+                       help="Query mode: recall (search memory) or ask (conversational)")
+    parser.add_argument("--agents", nargs="+", help="Specific agents to query")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    
+    args = parser.parse_args()
+    
+    results = query_all(args.query, args.mode, args.agents)
+    
+    if args.json:
+        print(json.dumps(results, indent=2))
+    else:
+        output = format_results(results, args.verbose)
+        if output:
+            print(output)
+        else:
+            print("No relevant memories found across agents")
+
+
+if __name__ == "__main__":
+    main()

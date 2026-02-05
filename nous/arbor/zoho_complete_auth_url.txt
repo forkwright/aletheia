@@ -1,0 +1,4 @@
+# Zoho Complete Authorization URL - NEW OAUTH APP
+# Use this URL to get authorization code with full permissions
+
+https://accounts.zoho.com/oauth/v2/auth?scope=ZohoMail.partner.organization,ZohoMail.organization.domains,ZohoMail.organization.accounts,ZohoMail.organization.groups,ZohoMail.organization.policy,ZohoMail.accounts,ZohoMail.messages,ZohoMail.folders,ZohoMail.tags&client_id=1000.HPERMIKMPYRD55M7UENK50QM725DAN&response_type=code&access_type=offline&redirect_uri=https://httpbin.org/get

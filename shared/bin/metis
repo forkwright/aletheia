@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# metis - Quick SSH commands to Metis laptop
+# syn user has access to dianoia, Claude Code, and file system
+
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: metis <command> [args]
+
+Commands:
+  ssh [cmd]       Run command on Metis (interactive shell if no cmd)
+  claude [args]   Run Claude Code on Metis
+  dianoia         Show dianoia status
+  projects        Show dianoia projects.json
+  inbox           List dianoia inbox
+  db [query]      Query dianoia.db (default: .tables)
+  sync <file>     Sync file from Metis to local
+  push <file>     Push file to Metis
+
+Examples:
+  metis ssh "ls -la"
+  metis claude --version
+  metis dianoia
+  metis sync ~/dianoia/state/projects.json
+EOF
+    exit 1
+}
+
+[[ $# -lt 1 ]] && usage
+
+case "$1" in
+    ssh)
+        shift
+        if [[ $# -eq 0 ]]; then
+            ssh -t metis  # Interactive
+        else
+            ssh metis "$*"
+        fi
+        ;;
+    claude)
+        shift
+        ssh metis "claude $*"
+        ;;
+    dianoia)
+        ssh metis "cat ~/dianoia/state/projects.json 2>/dev/null | jq -r '.projects[] | \"[\(.status)] \(.name): \(.description)\"' | head -20" || \
+        ssh metis "ls ~/dianoia/"
+        ;;
+    state)
+        ssh metis "cat ~/dianoia/state/projects.json" | jq .
+        ;;
+    inbox)
+        ssh metis "ls -la /home/ck/dianoia/inbox/ 2>/dev/null" || echo "Inbox empty or not accessible"
+        ;;
+    db)
+        shift
+        query="${1:-'.tables'}"
+        ssh metis "sqlite3 /home/ck/dianoia/state/dianoia.db \"$query\""
+        ;;
+    projects)
+        ssh metis "cat /home/ck/dianoia/state/projects.json" | jq '.'
+        ;;
+    sync)
+        [[ $# -lt 2 ]] && { echo "Usage: metis sync <remote-path> [local-path]"; exit 1; }
+        remote="$2"
+        local="${3:-.}"
+        scp "metis:$remote" "$local"
+        echo "Synced $remote to $local"
+        ;;
+    push)
+        [[ $# -lt 2 ]] && { echo "Usage: metis push <local-path> [remote-path]"; exit 1; }
+        local="$2"
+        remote="${3:-~}"
+        scp "$local" "metis:$remote"
+        echo "Pushed $local to metis:$remote"
+        ;;
+    *)
+        echo "Unknown command: $1" >&2
+        usage
+        ;;
+esac

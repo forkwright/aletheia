@@ -1,0 +1,4 @@
+Date,Payee,Account #,Transaction Type,Description,Reference,Status,Amount,Currency,Balance
+8/22/2025,Squarespace,,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-38.38,USD,161.92
+8/11/2025,Personal C,,Receive,,"ACH Pull",SETTLED,+162.00,USD,200.30
+8/2/2025,Google G Suite,,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-12.13,USD,38.30

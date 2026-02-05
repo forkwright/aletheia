@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""
+distill — Extract structured insights from session context before compaction.
+
+Called by the nous during pre-compaction memory flush. Receives raw text
+(conversation excerpt or session notes) on stdin and:
+  1. Extracts structured facts → facts.jsonl
+  2. Extracts events/entities → FalkorDB temporal graph
+  3. Saves session state → memory/session-state.yaml
+  4. Outputs a resumption summary for the compacted context
+
+Usage:
+  distill --agent syn                    # Interactive, reads stdin
+  distill --agent syn --session-file X   # Process session file
+  distill --agent syn --state            # Output current session state
+  distill --agent syn --resume           # Generate resumption context
+
+This is the core of Phase 1: nothing lost at compaction.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+NOUS = ROOT / "nous"
+SHARED = ROOT / "shared"
+FACTS_FILE = SHARED / "memory" / "facts.jsonl"
+
+def load_session_state(agent_id):
+    """Load existing session state for an agent."""
+    state_file = NOUS / agent_id / "memory" / "session-state.yaml"
+    if state_file.exists():
+        try:
+            import yaml
+            with open(state_file) as f:
+                return yaml.safe_load(f) or {}
+        except ImportError:
+            # Fallback: parse simple YAML manually
+            state = {}
+            with open(state_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if ': ' in line and not line.startswith('#'):
+                        key, val = line.split(': ', 1)
+                        state[key.strip()] = val.strip()
+            return state
+    return {}
+
+def save_session_state(agent_id, state):
+    """Save session state for an agent."""
+    state_file = NOUS / agent_id / "memory" / "session-state.yaml"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Write as simple YAML (avoid dependency)
+    with open(state_file, 'w') as f:
+        f.write(f"# Session state for {agent_id}\n")
+        f.write(f"# Updated: {datetime.now().isoformat()}\n")
+        f.write(f"# This file is machine-managed by distill\n\n")
+        for key, val in state.items():
+            if isinstance(val, list):
+                f.write(f"{key}:\n")
+                for item in val:
+                    f.write(f"  - {item}\n")
+            elif isinstance(val, dict):
+                f.write(f"{key}:\n")
+                for k, v in val.items():
+                    f.write(f"  {k}: {v}\n")
+            else:
+                f.write(f"{key}: {val}\n")
+
+def extract_facts_from_text(text):
+    """Extract structured facts from conversation text.
+    
+    Returns list of fact dicts ready for facts.jsonl.
+    """
+    facts = []
+    
+    # Pattern: explicit decisions
+    decision_patterns = [
+        r'(?:decided|decision|chose|choosing|going with|settled on)[:\s]+(.+?)(?:\.|$)',
+        r'(?:we\'ll|we will|let\'s|I\'ll)\s+(.+?)(?:\.|$)',
+    ]
+    for pattern in decision_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
+            facts.append({
+                "subject": "system",
+                "predicate": "decision",
+                "object": match.group(1).strip()[:200],
+                "confidence": 0.8,
+                "category": "decision",
+                "valid_from": datetime.now().isoformat(),
+            })
+    
+    # Pattern: preferences expressed
+    pref_patterns = [
+        r'(?:I prefer|I like|I want|I need|I hate|don\'t like)\s+(.+?)(?:\.|$)',
+        r'(?:should be|needs to be|must be)\s+(.+?)(?:\.|$)',
+    ]
+    for pattern in pref_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
+            facts.append({
+                "subject": "cody",
+                "predicate": "preference",
+                "object": match.group(1).strip()[:200],
+                "confidence": 0.7,
+                "category": "preference",
+                "valid_from": datetime.now().isoformat(),
+            })
+    
+    # Pattern: corrections ("actually", "no,", "that's wrong")
+    correction_patterns = [
+        r'(?:actually|no,|that\'s wrong|not quite|incorrect)[,\s]+(.+?)(?:\.|$)',
+    ]
+    for pattern in correction_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
+            facts.append({
+                "subject": "correction",
+                "predicate": "noted",
+                "object": match.group(1).strip()[:200],
+                "confidence": 0.9,
+                "category": "insight",
+                "valid_from": datetime.now().isoformat(),
+            })
+    
+    return facts
+
+def append_facts(new_facts):
+    """Append new facts to the shared facts store."""
+    if not new_facts:
+        return 0
+    
+    # Load existing to deduplicate
+    existing = set()
+    if FACTS_FILE.exists():
+        with open(FACTS_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        fact = json.loads(line)
+                        existing.add(f"{fact.get('subject','')}.{fact.get('predicate','')}.{fact.get('object','')[:50]}")
+                    except json.JSONDecodeError:
+                        pass
+    
+    added = 0
+    with open(FACTS_FILE, 'a') as f:
+        for fact in new_facts:
+            key = f"{fact['subject']}.{fact['predicate']}.{fact['object'][:50]}"
+            if key not in existing:
+                f.write(json.dumps(fact) + '\n')
+                existing.add(key)
+                added += 1
+    
+    return added
+
+def update_graph(facts, agent_id):
+    """Write extracted knowledge to the aletheia shared graph."""
+    if not facts:
+        return 0
+    
+    added = 0
+    for fact in facts:
+        try:
+            cmd = [
+                "aletheia-graph", "add",
+                fact.get("subject", "unknown"),
+                fact.get("predicate", "RELATED_TO"),
+                fact.get("object", "unknown"),
+                "--agent", agent_id,
+                "--domain", fact.get("category", "shared"),
+            ]
+            subprocess.run(cmd, capture_output=True, timeout=5)
+            added += 1
+        except Exception:
+            pass
+    return added
+
+def generate_resumption_context(agent_id):
+    """Generate a resumption summary from persisted state."""
+    state = load_session_state(agent_id)
+    
+    parts = []
+    
+    if state.get("focus"):
+        parts.append(f"Last focus: {state['focus']}")
+    
+    if state.get("open_threads"):
+        threads = state["open_threads"]
+        if isinstance(threads, list):
+            parts.append("Open threads: " + "; ".join(threads))
+    
+    if state.get("pending_decisions"):
+        decisions = state["pending_decisions"]
+        if isinstance(decisions, list):
+            parts.append("Pending decisions: " + "; ".join(decisions))
+    
+    if state.get("corrections"):
+        corrections = state["corrections"]
+        if isinstance(corrections, list):
+            parts.append("Recent corrections: " + "; ".join(corrections[-3:]))
+    
+    if state.get("last_updated"):
+        parts.append(f"State from: {state['last_updated']}")
+    
+    return "\n".join(parts) if parts else "No prior session state."
+
+def distill_text(text, agent_id):
+    """Main distillation: extract everything from text."""
+    results = {
+        "facts_extracted": 0,
+        "graph_updated": 0,
+        "state_updated": False,
+    }
+    
+    # 1. Extract facts
+    facts = extract_facts_from_text(text)
+    results["facts_extracted"] = append_facts(facts)
+    
+    # 2. Update shared graph
+    results["graph_updated"] = update_graph(facts, agent_id)
+    
+    # 3. Extract session state indicators
+    state = load_session_state(agent_id)
+    
+    # Update focus (last substantive topic)
+    lines = text.strip().split('\n')
+    # Simple heuristic: last non-empty, non-tool line as focus indicator
+    for line in reversed(lines):
+        line = line.strip()
+        if line and not line.startswith('{') and not line.startswith('[') and len(line) > 20:
+            state["focus"] = line[:200]
+            break
+    
+    state["last_updated"] = datetime.now().isoformat()
+    state["last_agent"] = agent_id
+    
+    save_session_state(agent_id, state)
+    results["state_updated"] = True
+    
+    # 4. Write to daily memory
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily_file = NOUS / agent_id / "memory" / f"{today}.md"
+    if daily_file.exists():
+        # Append a distillation note
+        with open(daily_file, 'a') as f:
+            f.write(f"\n### Distillation ({datetime.now().strftime('%H:%M')})\n")
+            if facts:
+                f.write(f"- Extracted {len(facts)} facts\n")
+            f.write(f"- Session state updated\n")
+    
+    return results
+
+def main():
+    parser = argparse.ArgumentParser(description="Distill session context into structured knowledge")
+    parser.add_argument("--agent", "-a", default="syn", help="Agent ID")
+    parser.add_argument("--state", action="store_true", help="Show current session state")
+    parser.add_argument("--resume", action="store_true", help="Generate resumption context")
+    parser.add_argument("--text", "-t", help="Text to distill (otherwise reads stdin)")
+    args = parser.parse_args()
+    
+    if args.state:
+        state = load_session_state(args.agent)
+        if state:
+            for k, v in state.items():
+                print(f"{k}: {v}")
+        else:
+            print("No session state.")
+        return
+    
+    if args.resume:
+        print(generate_resumption_context(args.agent))
+        return
+    
+    # Get text to distill
+    if args.text:
+        text = args.text
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        print("No input. Provide --text or pipe stdin.", file=sys.stderr)
+        sys.exit(1)
+    
+    if not text.strip():
+        print("Empty input.", file=sys.stderr)
+        sys.exit(1)
+    
+    results = distill_text(text, args.agent)
+    
+    print(f"Distilled for {args.agent}:")
+    print(f"  Facts extracted: {results['facts_extracted']}")
+    print(f"  Graph updated: {results['graph_updated']}")
+    print(f"  State updated: {results['state_updated']}")
+
+if __name__ == "__main__":
+    main()

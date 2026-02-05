@@ -1,0 +1,5 @@
+Date,Payee,Account #,Transaction Type,Description,Reference,Status,Amount,Currency,Balance
+1/27/2026,SP RM LEATHER,,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-80.65,USD,10.26
+1/26/2026,Buckleguy.com,,Spend,Unknown,"Corporate Card - 7415 (Business Virtual Card)",SETTLED,-517.49,USD,90.91
+1/23/2026,Spending Account,,Receive,,"ACH Pull",SETTLED,+350.00,USD,608.40
+1/23/2026,Spending Account,,Receive,,"ACH Pull",SETTLED,+250.00,USD,258.40

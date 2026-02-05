@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+memory-router-v2 - Iterative Memory Retrieval System (Phase 1)
+
+Enhanced memory router with:
+- Iterative query refinement
+- Synonym expansion
+- Multi-strategy retrieval
+- Result fusion and deduplication
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Dict, Set, Optional, Tuple
+
+# Configuration
+SHARED_DIR = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}")
+BASE_DIR = SHARED_DIR.parent
+FACTS_FILE = SHARED_DIR / "memory" / "facts.jsonl"
+
+# Agent workspace paths
+AGENT_DIRS = {
+    "syn": BASE_DIR / "clawd",
+    "syl": BASE_DIR / "syl", 
+    "chiron": BASE_DIR / "chiron",
+    "eiron": BASE_DIR / "eiron",
+    "demiurge": BASE_DIR / "demiurge",
+}
+
+# Domain keywords for auto-routing
+DOMAIN_KEYWORDS = {
+    "syl": ["family", "home", "personal", "kendall", "routine", "morning", "energy", "patterns"],
+    "chiron": ["work", "sql", "summus", "dashboard", "performance", "business", "project"],
+    "eiron": ["mba", "school", "homework", "academic", "study", "assignment", "capstone"],
+    "demiurge": ["craft", "leather", "making", "ardent", "handworks", "tools"],
+    "syn": ["agent", "memory", "system", "orchestration", "infrastructure"],
+}
+
+# Synonym mappings for query expansion
+SYNONYMS = {
+    # Communication
+    "communication": ["contact", "messaging", "interaction", "reach out", "talk"],
+    "preference": ["like", "style", "approach", "way", "choice"],
+    "preferences": ["likes", "styles", "approaches", "ways", "choices"],
+    
+    # Time/Routine
+    "morning": ["am", "early", "dawn", "wake up", "start of day"],
+    "routine": ["habit", "pattern", "schedule", "ritual", "practice"],
+    "daily": ["everyday", "regular", "recurring", "habitual"],
+    
+    # Performance
+    "performance": ["speed", "efficiency", "optimization", "improvement"],
+    "optimize": ["improve", "enhance", "tune", "speed up"],
+    "slow": ["sluggish", "lag", "delay", "bottleneck"],
+    "fast": ["quick", "rapid", "speedy", "efficient"],
+    
+    # Work
+    "sql": ["query", "database", "postgres", "queries"],
+    "dashboard": ["report", "visualization", "metrics", "analytics"],
+    "project": ["initiative", "work", "task", "effort"],
+    
+    # Personal
+    "energy": ["vitality", "alertness", "vigor", "stamina"],
+    "health": ["wellness", "wellbeing", "fitness", "condition"],
+    "mood": ["feeling", "emotion", "state", "temperament"],
+}
+
+# Concept clusters for semantic matching
+CONCEPT_CLUSTERS = {
+    "communication_style": ["prefer", "contact", "message", "call", "email", "text", "reach", "communication"],
+    "time_management": ["morning", "routine", "schedule", "habit", "daily", "time", "pattern"],
+    "work_performance": ["sql", "query", "optimize", "performance", "dashboard", "report", "efficiency"],
+    "personal_wellbeing": ["energy", "health", "mood", "sleep", "exercise", "stress", "wellness"],
+    "learning_education": ["mba", "school", "study", "learn", "course", "assignment", "academic"],
+}
+
+
+@dataclass
+class SearchResult:
+    """A single search result with metadata"""
+    source: str
+    content: str
+    relevance: float
+    confidence: float = 1.0
+    strategy: str = "exact"
+    iteration: int = 0
+    metadata: Dict = field(default_factory=dict)
+    
+    @property
+    def id(self) -> str:
+        """Unique identifier for deduplication"""
+        return f"{self.source}:{hash(self.content)}"
+    
+    @property
+    def combined_score(self) -> float:
+        """Combined score for ranking"""
+        return self.relevance * self.confidence
+
+
+class QueryExpander:
+    """Handles query expansion with synonyms and concepts"""
+    
+    def __init__(self, synonyms: Dict[str, List[str]], concepts: Dict[str, List[str]]):
+        self.synonyms = synonyms
+        self.concepts = concepts
+    
+    def expand_synonyms(self, query: str) -> List[str]:
+        """Expand query with synonym replacements"""
+        expansions = [query]
+        query_lower = query.lower()
+        words = query_lower.split()
+        
+        for word in words:
+            if word in self.synonyms:
+                for synonym in self.synonyms[word][:3]:  # Limit to top 3
+                    expanded = query_lower.replace(word, synonym)
+                    if expanded not in expansions:
+                        expansions.append(expanded)
+        
+        return expansions
+    
+    def expand_concepts(self, query: str) -> List[str]:
+        """Add related concept terms"""
+        expansions = []
+        query_lower = query.lower()
+        
+        for cluster_name, terms in self.concepts.items():
+            # Check if query relates to this cluster
+            matching_terms = [t for t in terms if t in query_lower]
+            if matching_terms:
+                # Add other terms from the cluster
+                for term in terms:
+                    if term not in query_lower:
+                        expansions.append(f"{query} {term}")
+                        if len(expansions) >= 3:
+                            break
+        
+        return expansions
+    
+    def expand(self, query: str, iteration: int) -> List[str]:
+        """Full expansion based on iteration"""
+        expansions = [query]
+        
+        # Always do synonym expansion
+        expansions.extend(self.expand_synonyms(query))
+        
+        # Add concept expansion on iteration 1+
+        if iteration >= 1:
+            expansions.extend(self.expand_concepts(query))
+        
+        # Deduplicate while preserving order
+        seen = set()
+        unique = []
+        for exp in expansions:
+            if exp.lower() not in seen:
+                seen.add(exp.lower())
+                unique.append(exp)
+        
+        return unique[:8]  # Limit total expansions
+
+
+class RetrievalStrategy:
+    """Base class for retrieval strategies"""
+    
+    def __init__(self, name: str):
+        self.name = name
+    
+    def search(self, query: str, confidence_threshold: float) -> List[SearchResult]:
+        raise NotImplementedError
+
+
+class ExactMatchStrategy(RetrievalStrategy):
+    """Word-overlap matching (original memory-router approach)"""
+    
+    def __init__(self):
+        super().__init__("exact")
+    
+    def calculate_similarity(self, query: str, text: str) -> float:
+        """Calculate word overlap similarity"""
+        if not query or not text:
+            return 0.0
+        
+        query_words = set(re.findall(r'\w+', query.lower()))
+        text_words = set(re.findall(r'\w+', text.lower()))
+        
+        # Filter short words
+        query_words = {w for w in query_words if len(w) > 2}
+        text_words = {w for w in text_words if len(w) > 2}
+        
+        if not query_words:
+            return 0.0
+        
+        matches = query_words & text_words
+        return len(matches) / len(query_words)
+    
+    def search_facts(self, query: str, confidence_threshold: float) -> List[SearchResult]:
+        """Search facts.jsonl"""
+        results = []
+        
+        if not FACTS_FILE.exists():
+            return results
+        
+        try:
+            with open(FACTS_FILE, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        fact = json.loads(line)
+                        subject = fact.get('subject', '')
+                        predicate = fact.get('predicate', '')
+                        obj = fact.get('object', '')
+                        confidence = float(fact.get('confidence', 1.0))
+                        valid_to = fact.get('valid_to')
+                        
+                        # Skip expired facts
+                        if valid_to:
+                            continue
+                        
+                        search_text = f"{subject} {predicate} {obj}"
+                        similarity = self.calculate_similarity(query, search_text)
+                        
+                        if similarity >= confidence_threshold:
+                            results.append(SearchResult(
+                                source="facts.jsonl",
+                                content=f"{subject} {predicate}: {obj}",
+                                relevance=similarity,
+                                confidence=confidence,
+                                strategy=self.name,
+                                metadata={"subject": subject, "predicate": predicate}
+                            ))
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            print(f"Error reading facts: {e}", file=sys.stderr)
+        
+        return results
+    
+    def search_memory_files(self, query: str, domains: List[str], confidence_threshold: float) -> List[SearchResult]:
+        """Search MEMORY.md and daily files"""
+        results = []
+        today = datetime.now().date()
+        
+        for domain in domains:
+            workspace = AGENT_DIRS.get(domain)
+            if not workspace or not workspace.exists():
+                continue
+            
+            # Search MEMORY.md (curated, high value)
+            memory_file = workspace / "MEMORY.md"
+            if memory_file.exists():
+                try:
+                    with open(memory_file, 'r') as f:
+                        for line_num, line in enumerate(f, 1):
+                            line = line.strip()
+                            if line and not line.startswith('#'):
+                                similarity = self.calculate_similarity(query, line)
+                                if similarity >= confidence_threshold:
+                                    results.append(SearchResult(
+                                        source=f"{domain}/MEMORY.md",
+                                        content=line,
+                                        relevance=similarity * 1.2,  # Boost curated content
+                                        confidence=1.0,
+                                        strategy=self.name,
+                                        metadata={"line": line_num, "curated": True}
+                                    ))
+                except Exception:
+                    pass
+            
+            # Search daily files with recency boost
+            memory_dir = workspace / "memory"
+            if memory_dir.exists():
+                for daily_file in sorted(memory_dir.glob("2026-*.md"), reverse=True)[:14]:
+                    try:
+                        # Calculate recency boost
+                        file_date_str = daily_file.stem
+                        file_date = datetime.strptime(file_date_str, "%Y-%m-%d").date()
+                        days_old = (today - file_date).days
+                        recency_boost = max(0.5, 1.0 - (days_old * 0.03))  # 3% decay per day
+                        
+                        with open(daily_file, 'r') as f:
+                            for line_num, line in enumerate(f, 1):
+                                line = line.strip()
+                                if line and not line.startswith('#'):
+                                    similarity = self.calculate_similarity(query, line)
+                                    if similarity >= confidence_threshold:
+                                        results.append(SearchResult(
+                                            source=f"{domain}/{daily_file.name}",
+                                            content=line,
+                                            relevance=similarity * recency_boost,
+                                            confidence=1.0,
+                                            strategy=self.name,
+                                            metadata={"line": line_num, "recency": recency_boost}
+                                        ))
+                    except Exception:
+                        pass
+        
+        return results
+    
+    def search(self, query: str, domains: List[str], confidence_threshold: float) -> List[SearchResult]:
+        """Execute exact match search across all sources"""
+        results = []
+        results.extend(self.search_facts(query, confidence_threshold))
+        results.extend(self.search_memory_files(query, domains, confidence_threshold))
+        return results
+
+
+class SemanticMatchStrategy(RetrievalStrategy):
+    """Concept-based semantic matching"""
+    
+    def __init__(self, concepts: Dict[str, List[str]]):
+        super().__init__("semantic")
+        self.concepts = concepts
+        self._build_term_index()
+    
+    def _build_term_index(self):
+        """Build reverse index from terms to clusters"""
+        self.term_to_clusters = defaultdict(list)
+        for cluster, terms in self.concepts.items():
+            for term in terms:
+                self.term_to_clusters[term].append(cluster)
+    
+    def get_query_concepts(self, query: str) -> Set[str]:
+        """Extract concept clusters relevant to query"""
+        query_lower = query.lower()
+        relevant_clusters = set()
+        
+        for term, clusters in self.term_to_clusters.items():
+            if term in query_lower:
+                relevant_clusters.update(clusters)
+        
+        return relevant_clusters
+    
+    def calculate_concept_similarity(self, query: str, text: str) -> float:
+        """Calculate similarity based on shared concepts"""
+        query_concepts = self.get_query_concepts(query)
+        text_concepts = self.get_query_concepts(text)
+        
+        if not query_concepts:
+            return 0.0
+        
+        shared = query_concepts & text_concepts
+        return len(shared) / len(query_concepts)
+    
+    def search(self, query: str, domains: List[str], confidence_threshold: float) -> List[SearchResult]:
+        """Search using concept matching"""
+        results = []
+        
+        if not FACTS_FILE.exists():
+            return results
+        
+        query_concepts = self.get_query_concepts(query)
+        if not query_concepts:
+            return results
+        
+        # Also do word overlap check for semantic results
+        exact_strategy = ExactMatchStrategy()
+        
+        try:
+            with open(FACTS_FILE, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    try:
+                        fact = json.loads(line)
+                        subject = fact.get('subject', '')
+                        predicate = fact.get('predicate', '')
+                        obj = fact.get('object', '')
+                        confidence = float(fact.get('confidence', 1.0))
+                        valid_to = fact.get('valid_to')
+                        
+                        if valid_to:
+                            continue
+                        
+                        search_text = f"{subject} {predicate} {obj}"
+                        concept_sim = self.calculate_concept_similarity(query, search_text)
+                        word_sim = exact_strategy.calculate_similarity(query, search_text)
+                        
+                        # Require BOTH concept match AND some word overlap
+                        # This reduces false positives from pure concept matching
+                        combined_sim = (concept_sim * 0.6) + (word_sim * 0.4)
+                        
+                        if combined_sim >= confidence_threshold and concept_sim > 0:
+                            results.append(SearchResult(
+                                source="facts.jsonl",
+                                content=f"{subject} {predicate}: {obj}",
+                                relevance=combined_sim,
+                                confidence=confidence,
+                                strategy=self.name,
+                                metadata={"subject": subject, "concepts": list(self.get_query_concepts(search_text))}
+                            ))
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            print(f"Error in semantic search: {e}", file=sys.stderr)
+        
+        return results
+
+
+class ResultFusion:
+    """Fuse and rank results from multiple strategies"""
+    
+    def __init__(self):
+        # Strategy weights
+        self.strategy_weights = {
+            "exact": 1.0,
+            "semantic": 0.8,
+        }
+    
+    def fuse(self, all_results: List[SearchResult], iteration: int) -> List[SearchResult]:
+        """Fuse results with deduplication and ranking"""
+        # Deduplicate by content hash
+        seen_content = {}
+        
+        for result in all_results:
+            content_key = result.content.lower().strip()
+            
+            if content_key in seen_content:
+                # Keep higher scoring version
+                existing = seen_content[content_key]
+                if result.combined_score > existing.combined_score:
+                    seen_content[content_key] = result
+            else:
+                seen_content[content_key] = result
+        
+        # Apply strategy weights and iteration decay
+        fused = []
+        for result in seen_content.values():
+            weight = self.strategy_weights.get(result.strategy, 0.5)
+            iteration_factor = 1.0 - (iteration * 0.1)  # Slight penalty for later iterations
+            
+            adjusted_result = SearchResult(
+                source=result.source,
+                content=result.content,
+                relevance=result.relevance * weight * iteration_factor,
+                confidence=result.confidence,
+                strategy=result.strategy,
+                iteration=iteration,
+                metadata=result.metadata
+            )
+            fused.append(adjusted_result)
+        
+        # Sort by combined score
+        fused.sort(key=lambda r: r.combined_score, reverse=True)
+        
+        return fused
+
+
+class IterativeRetriever:
+    """Main iterative retrieval engine"""
+    
+    def __init__(self, max_iterations: int = 3, confidence_threshold: float = 0.3):
+        self.max_iterations = max_iterations
+        self.confidence_threshold = confidence_threshold
+        
+        # Initialize components
+        self.expander = QueryExpander(SYNONYMS, CONCEPT_CLUSTERS)
+        self.strategies = [
+            ExactMatchStrategy(),
+            SemanticMatchStrategy(CONCEPT_CLUSTERS),
+        ]
+        self.fusion = ResultFusion()
+    
+    def determine_domains(self, query: str, specified: str = "auto") -> List[str]:
+        """Determine which domains to search"""
+        if specified == "all":
+            return list(AGENT_DIRS.keys())
+        elif specified != "auto":
+            return [specified]
+        
+        # Auto-detect based on keywords
+        query_lower = query.lower()
+        matched_domains = []
+        
+        for domain, keywords in DOMAIN_KEYWORDS.items():
+            if any(kw in query_lower for kw in keywords):
+                matched_domains.append(domain)
+        
+        return matched_domains if matched_domains else list(AGENT_DIRS.keys())
+    
+    def should_stop(self, confidence_trend: List[float], new_results: List[SearchResult], iteration: int) -> bool:
+        """Determine if we should stop iterating"""
+        # Stop if no new results
+        if not new_results:
+            return True
+        
+        # Stop if we have high confidence results
+        if new_results and new_results[0].combined_score > 0.8:
+            return True
+        
+        # Stop if confidence isn't improving
+        if len(confidence_trend) >= 2:
+            improvement = confidence_trend[-1] - confidence_trend[-2]
+            if improvement < 0.05:  # Less than 5% improvement
+                return True
+        
+        return False
+    
+    def search(self, query: str, domains: str = "auto", iterative: bool = True, debug: bool = False) -> List[SearchResult]:
+        """Execute iterative search"""
+        domain_list = self.determine_domains(query, domains)
+        
+        if debug:
+            print(f"[DEBUG] Query: '{query}'", file=sys.stderr)
+            print(f"[DEBUG] Domains: {domain_list}", file=sys.stderr)
+            print(f"[DEBUG] Iterative: {iterative}", file=sys.stderr)
+        
+        all_results = []
+        seen_ids = set()
+        confidence_trend = []
+        current_queries = [query]
+        
+        iterations = self.max_iterations if iterative else 1
+        
+        for iteration in range(iterations):
+            if debug:
+                print(f"[DEBUG] Iteration {iteration + 1}/{iterations}", file=sys.stderr)
+            
+            # Expand queries for this iteration
+            expanded_queries = []
+            for q in current_queries:
+                expanded_queries.extend(self.expander.expand(q, iteration))
+            
+            # Deduplicate expansions
+            expanded_queries = list(dict.fromkeys(expanded_queries))
+            
+            if debug:
+                print(f"[DEBUG] Queries: {expanded_queries[:5]}...", file=sys.stderr)
+            
+            # Execute all strategies on all expanded queries
+            iteration_results = []
+            for strategy in self.strategies:
+                for exp_query in expanded_queries:
+                    results = strategy.search(exp_query, domain_list, self.confidence_threshold)
+                    for r in results:
+                        r.iteration = iteration
+                    iteration_results.extend(results)
+            
+            # Fuse results
+            fused = self.fusion.fuse(iteration_results, iteration)
+            
+            # Filter already-seen results
+            new_results = [r for r in fused if r.id not in seen_ids]
+            
+            if new_results:
+                all_results.extend(new_results)
+                seen_ids.update(r.id for r in new_results)
+                confidence_trend.append(max(r.combined_score for r in new_results))
+                
+                # Extract key terms from top results for next iteration
+                if iteration < iterations - 1:
+                    top_content = " ".join(r.content for r in new_results[:3])
+                    # Simple term extraction
+                    words = re.findall(r'\b\w{4,}\b', top_content.lower())
+                    word_freq = defaultdict(int)
+                    for w in words:
+                        word_freq[w] += 1
+                    top_terms = sorted(word_freq.keys(), key=lambda w: word_freq[w], reverse=True)[:3]
+                    
+                    # Create refined query for next iteration
+                    refined = f"{query} {' '.join(top_terms)}"
+                    current_queries = [refined]
+            
+            if debug:
+                print(f"[DEBUG] Found {len(new_results)} new results (total: {len(all_results)})", file=sys.stderr)
+            
+            # Check stopping criteria
+            if self.should_stop(confidence_trend, new_results, iteration):
+                if debug:
+                    print(f"[DEBUG] Stopping early at iteration {iteration + 1}", file=sys.stderr)
+                break
+        
+        # Final sort
+        all_results.sort(key=lambda r: r.combined_score, reverse=True)
+        
+        return all_results
+
+
+def format_results(results: List[SearchResult], limit: int = 20) -> str:
+    """Format results for display"""
+    if not results:
+        return "No results found."
+    
+    output = []
+    for r in results[:limit]:
+        score_str = f"{r.combined_score * 100:.0f}%"
+        strategy_str = f"[{r.strategy}]" if r.strategy != "exact" else ""
+        iter_str = f"(iter {r.iteration + 1})" if r.iteration > 0 else ""
+        
+        output.append(f"Source: {r.source} (relevance: {score_str}) {strategy_str} {iter_str}")
+        output.append(f"> {r.content}")
+        output.append("")
+    
+    return "\n".join(output)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Iterative Memory Retrieval System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  memory-router-v2 "What are Cody's communication preferences?"
+  memory-router-v2 "SQL performance tips" --domains chiron
+  memory-router-v2 "morning routine" --iterative --max-iter 3
+  memory-router-v2 "system architecture" --no-iterative --debug
+        """
+    )
+    
+    parser.add_argument("query", help="Search query")
+    parser.add_argument("--domains", default="auto", help="Domains to search (auto|all|<domain>)")
+    parser.add_argument("--confidence", type=float, default=0.3, help="Minimum confidence threshold (0-1)")
+    parser.add_argument("--iterative", action="store_true", default=True, help="Enable iterative mode (default)")
+    parser.add_argument("--no-iterative", action="store_true", help="Disable iterative mode")
+    parser.add_argument("--max-iter", type=int, default=3, help="Maximum iterations (default: 3)")
+    parser.add_argument("--limit", type=int, default=20, help="Maximum results to show")
+    parser.add_argument("--debug", action="store_true", help="Show debug information")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    
+    args = parser.parse_args()
+    
+    # Handle iterative flag
+    iterative = not args.no_iterative
+    
+    # Create retriever
+    retriever = IterativeRetriever(
+        max_iterations=args.max_iter,
+        confidence_threshold=args.confidence
+    )
+    
+    # Execute search
+    results = retriever.search(
+        query=args.query,
+        domains=args.domains,
+        iterative=iterative,
+        debug=args.debug
+    )
+    
+    # Output results
+    if args.json:
+        output = [
+            {
+                "source": r.source,
+                "content": r.content,
+                "relevance": r.combined_score,
+                "strategy": r.strategy,
+                "iteration": r.iteration,
+            }
+            for r in results[:args.limit]
+        ]
+        print(json.dumps(output, indent=2))
+    else:
+        print(format_results(results, args.limit))
+
+
+if __name__ == "__main__":
+    main()

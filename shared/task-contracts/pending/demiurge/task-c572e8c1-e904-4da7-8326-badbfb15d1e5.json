@@ -1,0 +1,54 @@
+{
+  "task_id": "c572e8c1-e904-4da7-8326-badbfb15d1e5",
+  "correlation_id": "trace-1769818394-syn",
+  "source_agent": "syn",
+  "target_agent": "demiurge",
+  "task_type": "execution",
+  "context": {
+    "description": "Test fix: Create a simple leather bookmark",
+    "state": {},
+    "dependencies": [],
+    "resources_needed": []
+  },
+  "deadline": null,
+  "priority": "medium",
+  "callback": {
+    "method": "session_message",
+    "target": "syn",
+    "format": "json"
+  },
+  "sla": {
+    "max_duration": "PT1H",
+    "progress_interval": "PT15M",
+    "escalation_threshold": "PT2H"
+  },
+  "created_at": "2026-01-30T18:13:14-06:00",
+  "accepted_at": "2026-01-30T18:16:00-06:00",
+  "started_at": "2026-01-30T18:16:00-06:00",
+  "completed_at": "2026-01-30T18:17:00-06:00",
+  "status": "completed",
+  "progress": {
+    "percentage": 100,
+    "description": "Design spec complete. Ready for physical execution.",
+    "updated_at": "2026-01-30T18:17:00-06:00"
+  },
+  "result": {
+    "success": true,
+    "output": {
+      "design": {
+        "dimensions": "1.5in x 6in",
+        "material": "3-4oz vegetable tan",
+        "edges": "rounded corners, burnished",
+        "finish": "neatsfoot oil, natural",
+        "optional": "1/4in tassel hole"
+      },
+      "notes": "Scrap-friendly design. Good first project for beginners."
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "tags": ["test"],
+    "retry_count": 0,
+    "parent_task_id": null
+  }
+}

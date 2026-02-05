@@ -1,0 +1,33 @@
+{
+  "server": "http://localhost:8283",
+  "provider": "ollama-local",
+  "embedding": "ollama-local/nomic-embed-text:latest",
+  "model": "ollama-local/qwen2.5:7b",
+  "agents": {
+    "syn": "agent-4e4c1d66-926a-43a8-83df-43cb28b83de7",
+    "syl": "agent-a13bdfcb-bd57-466a-b61c-95f9caed1123",
+    "chiron": "agent-8b075c3c-c314-4a1c-bbf0-3ec4e0db3fe2",
+    "eiron": "agent-b4064ec8-5a39-4e61-b196-41b0966cf970",
+    "demiurge": "agent-a4746545-d82b-43c6-9769-c9a0f1f50b14",
+    "arbor": "agent-f7a1a7c2-da61-44a6-8b4d-b8d36ecdb2d5",
+    "akron": "agent-ef495654-a694-48ff-8325-1c7cd0626ad4"
+  },
+  "folders": {
+    "syn": "source-f90059a8-4b41-40da-9a0d-52bca7f2da48",
+    "syl": "source-75890575-79fa-46f9-add2-e93ac9da366f",
+    "chiron": "source-4f86b5fa-fcc5-455a-89fa-055df535d799",
+    "eiron": "source-681dedde-241a-47fc-9508-23444874297b",
+    "demiurge": "source-be31c902-e290-410c-96a6-cbd57e8935ec",
+    "arbor": "source-c8a5170e-fa0e-4e7a-80cf-dc25fee078a0",
+    "akron": "source-339512d5-f50f-4a33-9a5f-cd9085d07292"
+  },
+  "workspaces": {
+    "syn": "/mnt/ssd/aletheia/clawd",
+    "syl": "/mnt/ssd/aletheia/syl",
+    "chiron": "/mnt/ssd/aletheia/chiron",
+    "eiron": "/mnt/ssd/aletheia/eiron",
+    "demiurge": "/mnt/ssd/aletheia/demiurge",
+    "arbor": "/mnt/ssd/aletheia/arbor",
+    "akron": "/mnt/ssd/aletheia/akron"
+  }
+}

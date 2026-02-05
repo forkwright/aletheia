@@ -1,0 +1,2 @@
+Date,Payee,Account #,Transaction Type,Description,Reference,Status,Amount,Currency,Balance
+2/3/2026,Spending Account,,Receive,,"ACH Pull",SETTLED,+400.00,USD,410.26

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# Weekly Review - Memory consolidation and state sync
+# Run: Sunday mornings via cron or manually
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+
+echo "# Weekly Review - $(date '+%Y-%m-%d')"
+echo ""
+
+# 1. Memory file consolidation
+echo "## Memory Files (Last 7 Days)"
+find "$ALETHEIA_ROOT/clawd/memory" -name "*.md" -mtime -7 -type f 2>/dev/null | while read -r f; do
+    echo "- $(basename "$f")"
+done
+echo ""
+
+# 2. Agent activity summary
+echo "## Agent Activity"
+for agent in syl chiron eiron demiurge; do
+    status_file="$ALETHEIA_ROOT/clawd/agent-status/${agent}.md"
+    if [[ -f "$status_file" ]]; then
+        updated=$(stat -c %y "$status_file" 2>/dev/null | cut -d' ' -f1)
+        echo "- **$agent**: Last update $updated"
+    else
+        echo "- **$agent**: No status file"
+    fi
+done
+echo ""
+
+# 3. Task completion this week
+echo "## Tasks Completed This Week"
+tw end.after:today-7d completed 2>/dev/null | head -10 || echo "No completed tasks found"
+echo ""
+
+# 4. Upcoming deadlines
+echo "## Upcoming Deadlines (Next 14 Days)"
+tw due.before:today+14d 2>/dev/null | head -15 || echo "No upcoming deadlines"
+echo ""
+
+# 5. Cron job health
+echo "## Cron Jobs"
+clawdbot cron list 2>/dev/null | head -10 || echo "Could not fetch cron list"
+echo ""
+
+# 6. Code audit summary (if exists)
+audit_file="$ALETHEIA_ROOT/clawd/memory/last-audit.json"
+if [[ -f "$audit_file" ]]; then
+    echo "## Last Code Audit"
+    jq -r '"- Date: \(.timestamp // "unknown")\n- Issues: \(.issues // 0)\n- Warnings: \(.warnings // 0)"' "$audit_file" 2>/dev/null || echo "Could not parse audit"
+fi
+echo ""
+
+# 7. Disk usage
+echo "## Disk Usage"
+echo "- NAS: $(df -h /mnt/nas/Media 2>/dev/null | tail -1 | awk '{print $5 " used (" $3 "/" $2 ")"}')"
+echo "- SSD: $(df -h /mnt/ssd 2>/dev/null | tail -1 | awk '{print $5 " used (" $3 "/" $2 ")"}')"
+echo ""
+
+echo "---"
+echo "*Review generated: $(date '+%Y-%m-%d %H:%M %Z')*"

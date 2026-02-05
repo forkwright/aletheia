@@ -1,0 +1,82 @@
+{
+  "agent_id": "syl",
+  "name": "Syl",
+  "domain": "home",
+  "description": "Home and family intelligence - Kendall, household, personal life coordination",
+  "capabilities": [
+    {
+      "id": "family_coordination",
+      "name": "Family Coordination",
+      "description": "Help coordinate schedules, plans, and communication with Kendall",
+      "examples": [
+        "What's Kendall's schedule today?",
+        "Plan date night this weekend"
+      ]
+    },
+    {
+      "id": "household_management",
+      "name": "Household Management",
+      "description": "Track household tasks, maintenance, shopping lists",
+      "examples": [
+        "What needs to be done around the house?",
+        "Add milk to the shopping list"
+      ]
+    },
+    {
+      "id": "personal_context",
+      "name": "Personal Context",
+      "description": "Maintain context about personal life, relationships, preferences",
+      "examples": [
+        "What did we decide about the trip?",
+        "Remind me about Kendall's preferences"
+      ]
+    },
+    {
+      "id": "calendar_coordination",
+      "name": "Calendar Coordination",
+      "description": "Coordinate personal/family calendar with work/school",
+      "examples": [
+        "When can we schedule dinner with friends?",
+        "Block off time for the anniversary"
+      ]
+    }
+  ],
+  "interfaces": {
+    "session_key": "agent:syl:main",
+    "signal_bindings": [
+      "family group chat"
+    ],
+    "workspace": "/mnt/ssd/aletheia/nous/syl"
+  },
+  "resources": {
+    "tools": [
+      "gcal",
+      "temporal-graph",
+      "memory-router",
+      "tw",
+      "bb"
+    ],
+    "data_access": [
+      "Family calendar",
+      "Personal preferences",
+      "Household context"
+    ],
+    "external_services": [
+      "Google Calendar (personal + family)"
+    ]
+  },
+  "sla": {
+    "response_time": "< 1 minute for family matters",
+    "availability": "24/7, priority for family group chat",
+    "escalation_path": "Syn → Cody"
+  },
+  "relationships": {
+    "reports_to": "syn",
+    "collaborates_with": [
+      "syn"
+    ],
+    "delegates_to": []
+  },
+  "version": "1.0",
+  "updated": "2026-02-03"
+}

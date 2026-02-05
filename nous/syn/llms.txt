@@ -1,0 +1,50 @@
+# llms.txt - Agent-Readable Project Index
+# Syn's workspace - orchestration hub for the Nous agent ecosystem
+
+## Overview
+This is the primary workspace for Syn, the orchestrator agent in a 5-agent system.
+The system runs on Clawdbot (AI agent framework) with custom multi-agent coordination.
+
+## Quick Links
+- AGENTS.md - Operating manual and coordination protocols
+- SOUL.md - Identity and personality definition
+- USER.md - Human (Cody) context and preferences
+- TOOLS.md - Available tools and infrastructure notes
+- MEMORY.md - Curated long-term memory
+- HEARTBEAT.md - Periodic check-in protocols
+
+## Architecture
+- **Syn** (this workspace) - Orchestrator, meta-cognition, routing
+- **Chiron** (/mnt/ssd/moltbot/chiron) - Work domain (Summus, SQL, dashboards)
+- **Eiron** (/mnt/ssd/moltbot/eiron) - School domain (MBA, academics)
+- **Syl** (/mnt/ssd/moltbot/syl) - Home domain (family, routines)
+- **Demiurge** (/mnt/ssd/moltbot/demiurge) - Craft domain (leatherwork)
+
+## Key Directories
+- memory/ - Daily logs and session notes
+- agent-status/ - Health monitoring for all agents
+- research/ - Technical research and findings
+- bin/ - Workspace-specific scripts
+- /mnt/ssd/moltbot/shared/bin/ - Cross-agent shared tools
+
+## Coordination Tools
+- task-create / task-send - Formal task contracts between agents
+- bb (blackboard) - Quick coordination and messaging
+- memory-router - Federated search across all memory systems
+- agent-health - Ecosystem health monitoring
+
+## Memory Systems
+- facts.jsonl - Structured facts with confidence scores
+- MEMORY.md - Curated insights (per-agent)
+- memory/*.md - Daily session logs
+- Letta - Agent-specific memory stores
+- MCP Memory - Knowledge graph
+
+## Infrastructure
+- Server: worker-node (192.168.0.29) - Ubuntu 24.04
+- Primary dev: Metis (192.168.0.17) - Fedora laptop
+- NAS: HiFi-NAS (192.168.0.120) - Synology 32TB
+- Tailscale mesh for secure connectivity
+
+## For Full Documentation
+See /mnt/ssd/moltbot/clawd/docs/ or https://docs.clawd.bot

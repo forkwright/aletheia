@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-02-05T09:00:03-06:00",
+  "status": "alert",
+  "metrics": {
+    "files": 30741,
+    "memory_files": 43,
+    "review_files": 9,
+    "workspace_mb": 7296,
+    "nas_percent": 0,
+    "tasks_pending": 30,
+    "tasks_overdue": 6
+  },
+  "alerts": [
+    "File count high: 30741 (>100)",
+    "Memory files need consolidation: 43 (>14)",
+    "Workspace large: 7296MB (>500MB)",
+    "Overdue tasks: 6"
+  ]
+}

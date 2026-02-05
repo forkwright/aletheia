@@ -1,0 +1,4 @@
+# Zoho CORRECTED Authorization URL - Valid Scopes Only
+# Use this URL to get authorization code with verified permissions
+
+https://accounts.zoho.com/oauth/v2/auth?scope=ZohoMail.organization.accounts.ALL,ZohoMail.organization.domains.ALL,ZohoMail.organization.groups.ALL,ZohoMail.accounts.ALL,ZohoMail.messages.ALL,ZohoMail.folders.ALL,ZohoMail.tags.ALL&client_id=1000.HPERMIKMPYRD55M7UENK50QM725DAN&response_type=code&access_type=offline&redirect_uri=https://httpbin.org/get

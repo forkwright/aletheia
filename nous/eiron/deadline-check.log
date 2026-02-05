@@ -1,0 +1,6 @@
+[Mon Feb  2 06:00:01 PM CST 2026] Checking deadlines for 2026-02-03
+error: unknown command 'send'
+[Tue Feb  3 06:00:01 PM CST 2026] Checking deadlines for 2026-02-04
+error: unknown command 'send'
+[Wed Feb  4 06:00:01 PM CST 2026] Checking deadlines for 2026-02-05
+/mnt/ssd/moltbot/clawd/bin/eiron-deadline-check: line 15: clawdbot: command not found

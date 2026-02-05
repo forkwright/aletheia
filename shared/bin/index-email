@@ -1,0 +1,151 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# index-email - Index recent emails into facts.jsonl for searchable memory
+# Uses himalaya to access IMAP
+
+set -uo pipefail
+
+SHARED_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}"
+FACTS_FILE="$SHARED_DIR/memory/facts.jsonl"
+CACHE_DIR="$SHARED_DIR/cache/email-index"
+STATE_FILE="$CACHE_DIR/state.json"
+
+mkdir -p "$CACHE_DIR"
+
+# Initialize state
+[[ ! -f "$STATE_FILE" ]] && echo '{"last_indexed":null,"indexed_count":0}' > "$STATE_FILE"
+
+log() {
+    echo "[$(date +%H:%M:%S)] $*"
+}
+
+add_email_fact() {
+    local from="$1"
+    local subject="$2"
+    local date="$3"
+    local summary="${4:-}"
+    
+    # Normalize from address
+    local from_clean=$(echo "$from" | sed 's/[<>]//g' | head -c 100)
+    
+    # Create fact ID from subject hash
+    local id=$(echo "$from$subject$date" | md5sum | cut -c1-8)
+    
+    # Check for duplicate
+    if grep -q "\"id\":\"$id\"" "$FACTS_FILE" 2>/dev/null; then
+        return
+    fi
+    
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local object="from: $from_clean, date: $date, subject: ${subject:0:150}"
+    
+    echo "{\"id\":\"$id\",\"subject\":\"email\",\"predicate\":\"received\",\"object\":\"$object\",\"confidence\":0.85,\"category\":\"communication\",\"valid_from\":\"$timestamp\"}" >> "$FACTS_FILE"
+    
+    log "  + email from $from_clean: ${subject:0:50}..."
+}
+
+process_emails() {
+    local days="${1:-7}"
+    local count=0
+    
+    log "Fetching recent emails (last $days days)..."
+    
+    # Use himalaya to list recent emails
+    if ! command -v himalaya &>/dev/null; then
+        log "ERROR: himalaya not installed"
+        return 1
+    fi
+    
+    # Get list of recent emails from INBOX
+    local emails=$(himalaya list -n 50 2>/dev/null || true)
+    
+    if [[ -z "$emails" ]]; then
+        log "No emails found or himalaya not configured"
+        return 0
+    fi
+    
+    # Parse email list (himalaya output format: ID | FLAGS | FROM | SUBJECT)
+    echo "$emails" | while IFS='|' read -r id flags from subject; do
+        # Skip header
+        [[ "$id" =~ ^ID ]] && continue
+        [[ -z "$from" ]] && continue
+        
+        # Clean fields
+        id=$(echo "$id" | tr -d ' ')
+        from=$(echo "$from" | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        subject=$(echo "$subject" | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/"//g')
+        
+        # Get date (simplified - use today if not available)
+        local date=$(date +%Y-%m-%d)
+        
+        # Add as fact
+        add_email_fact "$from" "$subject" "$date" "" && ((count++))
+    done
+    
+    echo "$count"
+}
+
+index_important_senders() {
+    log "Indexing emails from important senders..."
+    
+    # Important senders to always index
+    local important_senders=(
+        "summus"
+        "utexas"
+        "mccombs"
+        "kendall"
+    )
+    
+    for sender in "${important_senders[@]}"; do
+        log "Checking emails from: $sender"
+        
+        # Search for emails from this sender
+        local results=$(himalaya search "from:$sender" -n 20 2>/dev/null || true)
+        
+        if [[ -n "$results" && "$results" != "No"* ]]; then
+            echo "$results" | while IFS='|' read -r id flags from subject; do
+                [[ "$id" =~ ^ID ]] && continue
+                [[ -z "$from" ]] && continue
+                
+                from=$(echo "$from" | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                subject=$(echo "$subject" | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/"//g')
+                local date=$(date +%Y-%m-%d)
+                
+                add_email_fact "$from" "$subject" "$date" ""
+            done
+        fi
+    done
+}
+
+main() {
+    local days="${1:-7}"
+    local before=$(wc -l < "$FACTS_FILE" 2>/dev/null || echo "0")
+    
+    log "=== Email Index ==="
+    log "Indexing emails from last $days days"
+    log "Facts before: $before"
+    echo ""
+    
+    # Process recent emails
+    process_emails "$days"
+    
+    # Also index from important senders
+    index_important_senders
+    
+    local after=$(wc -l < "$FACTS_FILE")
+    
+    # Update state
+    local now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local added=$((after - before))
+    jq --arg now "$now" --argjson count "$added" \
+        '.last_indexed = $now | .indexed_count += $count' \
+        "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    
+    echo ""
+    log "=== Summary ==="
+    log "Facts before: $before"
+    log "Facts after: $after"
+    log "Added: $added"
+}
+
+main "$@"

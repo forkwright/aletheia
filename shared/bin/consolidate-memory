@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+consolidate-memory - Automated memory consolidation
+
+Reads daily memory files, extracts significant items, and:
+1. Promotes key learnings to MEMORY.md
+2. Extracts facts to facts.jsonl
+3. Adds events to temporal graph
+
+Run daily via cron or during heartbeats.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple
+
+# Paths
+WORKSPACE = Path(os.environ.get("CLAWD_WORKSPACE", "${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"))
+MEMORY_DIR = WORKSPACE / "memory"
+MEMORY_FILE = WORKSPACE / "MEMORY.md"
+FACTS_FILE = MEMORY_DIR / "facts.jsonl"
+STATE_FILE = MEMORY_DIR / "consolidation-state.json"
+
+# Patterns to extract
+SECTION_PATTERNS = {
+    "decision": re.compile(r"(?:decided|decision|chose|choosing)[\s:]+(.+)", re.IGNORECASE),
+    "lesson": re.compile(r"(?:lesson|learned|takeaway|insight)[\s:]+(.+)", re.IGNORECASE),
+    "fix": re.compile(r"(?:fixed|fix applied|resolved|solution)[\s:]+(.+)", re.IGNORECASE),
+    "incident": re.compile(r"(?:incident|issue|problem|bug|error)[\s:]+(.+)", re.IGNORECASE),
+    "preference": re.compile(r"(?:prefer|preference|like|dislike|want)[\s:]+(.+)", re.IGNORECASE),
+}
+
+# Headers that indicate important sections
+IMPORTANT_HEADERS = [
+    "root cause", "lesson", "decision", "fix", "incident", "timeline",
+    "takeaway", "insight", "conclusion", "summary", "key point"
+]
+
+
+def load_state() -> Dict:
+    """Load consolidation state (last run, processed files)"""
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except json.JSONDecodeError:
+            pass
+    return {"last_run": None, "processed_files": [], "promoted_items": []}
+
+
+def save_state(state: Dict):
+    """Save consolidation state"""
+    STATE_FILE.write_text(json.dumps(state, indent=2, default=str))
+
+
+def get_daily_files(days_back: int = 7) -> List[Path]:
+    """Get daily memory files from the last N days"""
+    files = []
+    today = datetime.now()
+    
+    for i in range(days_back):
+        date = today - timedelta(days=i)
+        date_str = date.strftime("%Y-%m-%d")
+        
+        # Check various naming patterns
+        patterns = [
+            f"{date_str}.md",
+            f"daily-{date_str}.md",
+            f"{date_str}-*.md",
+        ]
+        
+        for pattern in patterns:
+            if "*" in pattern:
+                files.extend(MEMORY_DIR.glob(pattern))
+            else:
+                file_path = MEMORY_DIR / pattern
+                if file_path.exists():
+                    files.append(file_path)
+    
+    return list(set(files))
+
+
+def extract_sections(content: str) -> List[Dict]:
+    """Extract important sections from markdown content"""
+    sections = []
+    current_section = None
+    current_content = []
+    current_level = 0
+    
+    lines = content.split("\n")
+    
+    for line in lines:
+        # Check for headers
+        header_match = re.match(r"^(#{1,4})\s+(.+)$", line)
+        
+        if header_match:
+            # Save previous section if important
+            if current_section and current_content:
+                section_text = "\n".join(current_content).strip()
+                if section_text and is_important_section(current_section, section_text):
+                    sections.append({
+                        "header": current_section,
+                        "content": section_text,
+                        "level": current_level
+                    })
+            
+            current_level = len(header_match.group(1))
+            current_section = header_match.group(2).strip()
+            current_content = []
+        else:
+            current_content.append(line)
+    
+    # Don't forget last section
+    if current_section and current_content:
+        section_text = "\n".join(current_content).strip()
+        if section_text and is_important_section(current_section, section_text):
+            sections.append({
+                "header": current_section,
+                "content": section_text,
+                "level": current_level
+            })
+    
+    return sections
+
+
+def is_important_section(header: str, content: str) -> bool:
+    """Determine if a section is worth preserving"""
+    header_lower = header.lower()
+    
+    # Check header keywords
+    for keyword in IMPORTANT_HEADERS:
+        if keyword in header_lower:
+            return True
+    
+    # Check content length (skip tiny sections)
+    if len(content) < 50:
+        return False
+    
+    # Check for pattern matches in content
+    for pattern in SECTION_PATTERNS.values():
+        if pattern.search(content):
+            return True
+    
+    # Check for code blocks (often important)
+    if "```" in content:
+        return True
+    
+    return False
+
+
+def extract_facts(content: str, source: str) -> List[Dict]:
+    """Extract potential facts from content"""
+    facts = []
+    
+    for category, pattern in SECTION_PATTERNS.items():
+        for match in pattern.finditer(content):
+            fact_text = match.group(1).strip()
+            if len(fact_text) > 10 and len(fact_text) < 500:
+                facts.append({
+                    "subject": "system" if category in ["fix", "incident"] else "cody",
+                    "predicate": category,
+                    "object": fact_text[:200],  # Truncate long matches
+                    "confidence": 0.7,
+                    "category": category,
+                    "valid_from": datetime.now().isoformat(),
+                    "source": source
+                })
+    
+    return facts
+
+
+def extract_events(content: str, source: str, file_date: Optional[str] = None) -> List[Dict]:
+    """Extract events for temporal graph"""
+    events = []
+    
+    # Look for incident headers (## Incident: Name)
+    incident_matches = re.findall(r"#{1,3}\s*Incident:\s*(.+?)(?:\n|$)", content, re.IGNORECASE)
+    for match in incident_matches:
+        name = match.strip()[:80]
+        if len(name) > 10:  # Skip too-short names
+            events.append({
+                "name": name,
+                "type": "incident",
+                "description": f"From {source}",
+                "date": file_date
+            })
+    
+    # Look for completed fix patterns: "### 1. Name (✅ Done)" or similar
+    fix_headers = re.findall(r"#{1,4}\s*(?:\d+\.)?\s*([A-Z][^(]+?)\s*\(✅[^)]*\)", content)
+    for fix in fix_headers:
+        name = fix.strip()[:80]
+        if len(name) > 5 and not name.startswith("**"):  # Skip markdown artifacts
+            events.append({
+                "name": name,
+                "type": "fix",
+                "description": f"Applied in {source}",
+                "date": file_date
+            })
+    
+    # Look for milestone patterns: "Completed:", "Deployed:", "Launched:"
+    milestone_matches = re.findall(r"(?:Completed|Deployed|Launched|Released|Finished):\s*(.+?)(?:\n|$)", content, re.IGNORECASE)
+    for match in milestone_matches:
+        name = match.strip()[:80]
+        if len(name) > 10:
+            events.append({
+                "name": name,
+                "type": "milestone",
+                "description": f"From {source}",
+                "date": file_date
+            })
+    
+    return events
+
+
+def generate_summary(sections: List[Dict], file_name: str) -> str:
+    """Generate a summary entry for MEMORY.md"""
+    if not sections:
+        return ""
+    
+    lines = [f"\n### From {file_name}\n"]
+    
+    for section in sections[:5]:  # Limit to top 5 sections
+        header = section["header"]
+        content = section["content"]
+        
+        # Truncate long content
+        if len(content) > 300:
+            content = content[:300] + "..."
+        
+        lines.append(f"**{header}:**")
+        lines.append(content)
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
+def append_to_memory(summary: str, dry_run: bool = False) -> bool:
+    """Append summary to MEMORY.md"""
+    if not summary.strip():
+        return False
+    
+    if dry_run:
+        print(f"[DRY RUN] Would append to MEMORY.md:\n{summary[:500]}...")
+        return True
+    
+    # Read existing content
+    existing = MEMORY_FILE.read_text() if MEMORY_FILE.exists() else ""
+    
+    # Find or create Consolidated section
+    consolidated_header = "## Consolidated from Daily Notes"
+    
+    if consolidated_header in existing:
+        # Append to existing section
+        parts = existing.split(consolidated_header)
+        new_content = parts[0] + consolidated_header + parts[1] + summary
+    else:
+        # Add new section at end
+        new_content = existing.rstrip() + f"\n\n{consolidated_header}\n{summary}"
+    
+    MEMORY_FILE.write_text(new_content)
+    return True
+
+
+def add_facts(facts: List[Dict], dry_run: bool = False) -> int:
+    """Add facts to facts.jsonl"""
+    if not facts:
+        return 0
+    
+    if dry_run:
+        print(f"[DRY RUN] Would add {len(facts)} facts")
+        return len(facts)
+    
+    with open(FACTS_FILE, "a") as f:
+        for fact in facts:
+            f.write(json.dumps(fact) + "\n")
+    
+    return len(facts)
+
+
+def add_events_to_graph(events: List[Dict], dry_run: bool = False) -> int:
+    """Add events to temporal graph"""
+    if not events:
+        return 0
+    
+    # Find temporal-graph binary
+    temporal_graph = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/temporal-graph")
+    if not temporal_graph.exists():
+        print("Warning: temporal-graph not found, skipping event creation", file=sys.stderr)
+        return 0
+    
+    added = 0
+    for event in events:
+        if dry_run:
+            print(f"[DRY RUN] Would add event: {event['name']}")
+            added += 1
+            continue
+        
+        try:
+            cmd = [
+                str(temporal_graph), "add",
+                event["name"],
+                event["type"],
+                "--desc", event.get("description", "")
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=10, text=True)
+            if result.returncode == 0:
+                added += 1
+        except Exception as e:
+            print(f"Warning: Failed to add event '{event['name']}': {e}", file=sys.stderr)
+    
+    return added
+
+
+def consolidate(days_back: int = 7, dry_run: bool = False, verbose: bool = False) -> Dict:
+    """Main consolidation routine"""
+    stats = {
+        "files_processed": 0,
+        "sections_extracted": 0,
+        "facts_added": 0,
+        "events_added": 0,
+        "memory_updated": False
+    }
+    
+    state = load_state()
+    all_summaries = []
+    all_facts = []
+    all_events = []
+    
+    # Get daily files
+    files = get_daily_files(days_back)
+    
+    if verbose:
+        print(f"Found {len(files)} daily files from last {days_back} days")
+    
+    for file_path in files:
+        file_name = file_path.name
+        
+        # Skip already processed (unless forced)
+        if file_name in state["processed_files"] and not dry_run:
+            if verbose:
+                print(f"Skipping already processed: {file_name}")
+            continue
+        
+        if verbose:
+            print(f"Processing: {file_name}")
+        
+        content = file_path.read_text()
+        
+        # Extract date from filename
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", file_name)
+        file_date = date_match.group(1) if date_match else None
+        
+        # Extract sections
+        sections = extract_sections(content)
+        stats["sections_extracted"] += len(sections)
+        
+        if sections:
+            summary = generate_summary(sections, file_name)
+            all_summaries.append(summary)
+        
+        # Extract facts
+        facts = extract_facts(content, file_name)
+        all_facts.extend(facts)
+        
+        # Extract events
+        events = extract_events(content, file_name, file_date)
+        all_events.extend(events)
+        
+        stats["files_processed"] += 1
+        
+        if not dry_run:
+            state["processed_files"].append(file_name)
+    
+    # Update MEMORY.md
+    if all_summaries:
+        combined_summary = "\n".join(all_summaries)
+        stats["memory_updated"] = append_to_memory(combined_summary, dry_run)
+    
+    # Add facts
+    stats["facts_added"] = add_facts(all_facts, dry_run)
+    
+    # Add events to temporal graph
+    stats["events_added"] = add_events_to_graph(all_events, dry_run)
+    
+    # Save state
+    if not dry_run:
+        state["last_run"] = datetime.now().isoformat()
+        save_state(state)
+    
+    return stats
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Consolidate daily memory files",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  consolidate-memory                    # Process last 7 days
+  consolidate-memory --days 14          # Process last 14 days
+  consolidate-memory --dry-run          # Preview without changes
+  consolidate-memory --reset            # Clear processed state, reprocess all
+  consolidate-memory --verbose          # Show detailed output
+        """
+    )
+    
+    parser.add_argument("--days", type=int, default=7, help="Days to look back (default: 7)")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without making changes")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--reset", action="store_true", help="Clear state and reprocess all")
+    parser.add_argument("--workspace", help="Override workspace path")
+    
+    args = parser.parse_args()
+    
+    # Override workspace if specified
+    global WORKSPACE, MEMORY_DIR, MEMORY_FILE, FACTS_FILE, STATE_FILE
+    if args.workspace:
+        WORKSPACE = Path(args.workspace)
+        MEMORY_DIR = WORKSPACE / "memory"
+        MEMORY_FILE = WORKSPACE / "MEMORY.md"
+        FACTS_FILE = MEMORY_DIR / "facts.jsonl"
+        STATE_FILE = MEMORY_DIR / "consolidation-state.json"
+    
+    # Reset state if requested
+    if args.reset:
+        if STATE_FILE.exists():
+            STATE_FILE.unlink()
+            print("Cleared consolidation state")
+    
+    # Run consolidation
+    stats = consolidate(
+        days_back=args.days,
+        dry_run=args.dry_run,
+        verbose=args.verbose
+    )
+    
+    # Print results
+    prefix = "[DRY RUN] " if args.dry_run else ""
+    print(f"\n{prefix}Consolidation complete:")
+    print(f"  Files processed: {stats['files_processed']}")
+    print(f"  Sections extracted: {stats['sections_extracted']}")
+    print(f"  Facts added: {stats['facts_added']}")
+    print(f"  Events added: {stats['events_added']}")
+    print(f"  MEMORY.md updated: {stats['memory_updated']}")
+
+
+if __name__ == "__main__":
+    main()

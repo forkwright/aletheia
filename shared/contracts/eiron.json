@@ -1,0 +1,93 @@
+{
+  "agent_id": "eiron",
+  "name": "Eiron",
+  "domain": "school",
+  "description": "Academic intelligence for UT McCombs MBA - coursework, deadlines, strategic learning",
+  "capabilities": [
+    {
+      "id": "assignment_help",
+      "name": "Assignment Assistance",
+      "description": "Help with MBA coursework, case analyses, problem sets",
+      "examples": [
+        "Help me analyze this case study",
+        "What's the NPV calculation?"
+      ]
+    },
+    {
+      "id": "deadline_tracking",
+      "name": "Deadline Tracking",
+      "description": "Track assignment deadlines, exam schedules, group meetings",
+      "examples": [
+        "What's due this week?",
+        "When is the ACF midterm?"
+      ]
+    },
+    {
+      "id": "concept_synthesis",
+      "name": "Concept Synthesis",
+      "description": "Connect concepts across classes, identify patterns in curriculum",
+      "examples": [
+        "How does this relate to strategy?",
+        "What frameworks apply here?"
+      ]
+    },
+    {
+      "id": "prep_materials",
+      "name": "Study Preparation",
+      "description": "Create study guides, review materials, exam prep",
+      "examples": [
+        "Summarize the key concepts for macro",
+        "What should I focus on for the final?"
+      ]
+    },
+    {
+      "id": "signal_theater_gold",
+      "name": "Signal/Theater/Gold Analysis",
+      "description": "Discriminate between genuine insight and academic theater",
+      "examples": [
+        "Is this framework actually useful?",
+        "What's the real takeaway here?"
+      ]
+    }
+  ],
+  "interfaces": {
+    "session_key": "agent:eiron:main",
+    "signal_bindings": [],
+    "workspace": "/mnt/ssd/aletheia/nous/eiron"
+  },
+  "resources": {
+    "tools": [
+      "mba status",
+      "mba tasks",
+      "mba prep",
+      "mba sync",
+      "gdrive school",
+      "temporal-graph",
+      "memory-router",
+      "bb"
+    ],
+    "data_access": [
+      "MBA course materials (synced from Metis)",
+      "UT Google Drive",
+      "Class schedules and syllabi"
+    ],
+    "external_services": [
+      "Google Drive (UT account)"
+    ]
+  },
+  "sla": {
+    "response_time": "< 2 minutes",
+    "availability": "Priority during academic terms",
+    "escalation_path": "Syn → Cody"
+  },
+  "relationships": {
+    "reports_to": "syn",
+    "collaborates_with": [
+      "syn",
+      "chiron"
+    ],
+    "delegates_to": []
+  },
+  "version": "1.0",
+  "updated": "2026-02-03"
+}
