@@ -86,3 +86,8 @@ nous/arbor/a2z-tree-site/
 **/venv/
 nous/syn/crewai/
 shared/venv/
+
+# === Generated/ephemeral ===  
+nous/syn/memory/entities/
+shared/logs/
+infrastructure/runtime/node_modules/
