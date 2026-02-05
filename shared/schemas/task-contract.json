@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moltbot.local/schemas/task-contract.json",
+  "title": "Task Contract",
+  "description": "Schema for inter-agent task coordination contracts",
+  "type": "object",
+  "required": [
+    "task_id",
+    "correlation_id", 
+    "source_agent",
+    "target_agent",
+    "task_type",
+    "context",
+    "priority",
+    "created_at",
+    "status"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this task"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Trace ID for tracking across agent boundaries"
+    },
+    "source_agent": {
+      "type": "string",
+      "enum": ["syn", "chiron", "eiron", "syl", "demiurge"],
+      "description": "Agent that created this task"
+    },
+    "target_agent": {
+      "type": "string", 
+      "enum": ["syn", "chiron", "eiron", "syl", "demiurge"],
+      "description": "Agent assigned to execute this task"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "query",
+        "analysis", 
+        "synthesis",
+        "coordination",
+        "execution",
+        "monitoring",
+        "escalation"
+      ],
+      "description": "Category of task being requested"
+    },
+    "context": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Full task description and requirements"
+        },
+        "state": {
+          "type": "object",
+          "description": "Current state data needed for task execution"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Task IDs this task depends on"
+        },
+        "resources_needed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "resource_type": {
+                "type": "string",
+                "enum": ["file", "api", "service", "tool", "memory", "external"]
+              },
+              "resource_id": {
+                "type": "string"
+              },
+              "access_level": {
+                "type": "string",
+                "enum": ["read", "write", "execute", "admin"]
+              },
+              "lease_duration": {
+                "type": "string",
+                "description": "ISO 8601 duration (PT5M for 5 minutes)"
+              }
+            },
+            "required": ["resource_type", "resource_id", "access_level"]
+          },
+          "description": "Resources this task will need to lease"
+        }
+      }
+    },
+    "deadline": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "ISO 8601 timestamp when task must be completed, or null for no deadline"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "Task priority level"
+    },
+    "callback": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["session_message", "file_write", "blackboard", "direct_call"],
+          "description": "How to report task completion back to source"
+        },
+        "target": {
+          "type": "string",
+          "description": "Target for callback (session ID, file path, etc.)"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["json", "markdown", "plaintext"],
+          "default": "json"
+        }
+      },
+      "required": ["method", "target"]
+    },
+    "sla": {
+      "type": "object",
+      "properties": {
+        "max_duration": {
+          "type": "string",
+          "description": "ISO 8601 duration for maximum expected completion time"
+        },
+        "progress_interval": {
+          "type": "string", 
+          "description": "ISO 8601 duration for progress update frequency"
+        },
+        "escalation_threshold": {
+          "type": "string",
+          "description": "ISO 8601 duration after which to escalate if blocked"
+        }
+      },
+      "description": "Service Level Agreement monitoring fields"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when task was created"
+    },
+    "accepted_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when task was accepted by target agent"
+    },
+    "started_at": {
+      "type": ["string", "null"], 
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when task execution began"
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time", 
+      "description": "ISO 8601 timestamp when task was completed"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted", 
+        "in_progress",
+        "blocked",
+        "completed",
+        "failed",
+        "cancelled",
+        "escalated"
+      ],
+      "description": "Current task status"
+    },
+    "progress": {
+      "type": "object",
+      "properties": {
+        "percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "description": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Current progress information"
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "description": "Task result data"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if task failed"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["file", "data", "url", "reference"]
+              },
+              "path": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Generated artifacts from task execution"
+        }
+      },
+      "description": "Task execution results"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "default": "1.0"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "parent_task_id": {
+          "type": ["string", "null"],
+          "description": "ID of parent task if this is a subtask"
+        }
+      },
+      "description": "Additional metadata for task tracking"
+    }
+  }
+}

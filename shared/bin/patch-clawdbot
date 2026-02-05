@@ -1,0 +1,28 @@
+#!/bin/bash
+# Patch Clawdbot after updates
+# Run after: npm update -g clawdbot
+#
+# Tracked bugs we're patching around:
+# 1. Signal group ID case sensitivity (2026-01-29)
+#    - File: /usr/lib/node_modules/clawdbot/dist/channels/plugins/normalize/signal.js
+#    - Bug: .toLowerCase() on base64 group IDs breaks matching
+#    - Fix: Remove .toLowerCase() call
+
+set -e
+
+SIGNAL_NORMALIZE="/usr/lib/node_modules/clawdbot/dist/channels/plugins/normalize/signal.js"
+
+echo "Applying Clawdbot patches..."
+
+# Patch 1: Signal group ID case sensitivity
+# shellcheck disable=SC2016 # Single quotes intentional - matching literal JS template strings
+if grep -q '`group:\${id}`\.toLowerCase()' "$SIGNAL_NORMALIZE" 2>/dev/null; then
+    sed -i 's/`group:\${id}`\.toLowerCase()/`group:${id}`/g' "$SIGNAL_NORMALIZE"
+    echo "✓ Patched: Signal group ID case sensitivity"
+elif grep -q '`group:\${id}`' "$SIGNAL_NORMALIZE" 2>/dev/null; then
+    echo "○ Already patched: Signal group ID case sensitivity"
+else
+    echo "⚠ Could not find pattern to patch in $SIGNAL_NORMALIZE"
+fi
+
+echo "Done. Restart clawdbot if it was running."

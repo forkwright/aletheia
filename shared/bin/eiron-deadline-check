@@ -1,0 +1,18 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# Eiron deadline check - runs daily at 6pm
+# Pings the operator if there are deadlines due tomorrow
+
+set -e
+
+TOMORROW=$(date -d "+1 day" +%Y-%m-%d)
+TODAY=$(date +%Y-%m-%d)
+LOG="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/eiron/deadline-check.log"
+
+echo "[$(date)] Checking deadlines for $TOMORROW" >> "$LOG"
+
+# Send a message to Eiron to check and report
+# Using clawdbot send to trigger the agent
+clawdbot send --agent eiron --message "DEADLINE CHECK: Review Todoist MBA_PROGRAM project for any tasks due tomorrow ($TOMORROW). If any exist, send the operator a summary. If none, log and skip." >> "$LOG" 2>&1
+
+echo "[$(date)] Deadline check triggered" >> "$LOG"

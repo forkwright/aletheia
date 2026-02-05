@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -euo pipefail
+
+# Agent status aggregator - shows all domain agent status
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+STATUS_DIR="$ALETHEIA_ROOT/clawd/agent-status"
+
+echo "# Agent Status Overview"
+echo "*Generated: $(date -Iseconds)*"
+echo ""
+
+for agent in syl chiron eiron demiurge; do
+    file="$STATUS_DIR/${agent}.md"
+    if [[ -f "$file" ]]; then
+        # Get last modified time
+        modified=$(stat -c %y "$file" 2>/dev/null | cut -d. -f1)
+        # Get health status line
+        health=$(grep -m1 "Status:" "$file" 2>/dev/null | sed 's/.*Status://' | xargs)
+        echo "## ${agent^}"
+        echo "- **Last update:** $modified"
+        echo "- **Health:** $health"
+        
+        # Show blocked items if any
+        blocked=$(sed -n '/^## Blocked/,/^##/p' "$file" 2>/dev/null | grep "^-" | head -3)
+        if [[ -n "$blocked" ]]; then
+            echo "- **Blocked:**"
+            while IFS= read -r line; do
+                echo "  $line"
+            done <<< "$blocked"
+        fi
+        
+        # Show upcoming if any
+        upcoming=$(sed -n '/^## Upcoming/,/^##/p' "$file" 2>/dev/null | grep "^-" | head -3)
+        if [[ -n "$upcoming" ]]; then
+            echo "- **Upcoming:**"
+            while IFS= read -r line; do
+                echo "  $line"
+            done <<< "$upcoming"
+        fi
+        echo ""
+    else
+        echo "## ${agent^}"
+        echo "- **Status:** ⚪ No report yet"
+        echo ""
+    fi
+done

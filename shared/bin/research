@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -euo pipefail
+
+# Research wrapper - Perplexity with optimal prompting
+# Based on leaked Perplexity prompt engineering patterns
+#
+# Usage: research "query" [--sources] [--raw]
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+PPLX="$ALETHEIA_ROOT/clawd/bin/pplx"
+
+# Check if pplx exists
+if [ ! -x "$PPLX" ]; then
+    echo "Error: pplx tool not found at $PPLX"
+    exit 1
+fi
+
+QUERY=""
+SOURCES=false
+RAW=false
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --sources|-s)
+            SOURCES=true
+            shift
+            ;;
+        --raw|-r)
+            RAW=true
+            shift
+            ;;
+        *)
+            QUERY="$1"
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$QUERY" ]; then
+    cat << 'HELP'
+Research - Perplexity with optimal prompting
+
+Usage: research "query" [options]
+
+Options:
+  --sources, -s    Include source citations
+  --raw, -r        Return raw output (no formatting)
+
+Examples:
+  research "best practices for distributed systems"
+  research "Texas Bitcoin mining regulations 2026" --sources
+  research "Porter's Five Forces framework" --raw
+
+The query is automatically enhanced with:
+- Structured output request
+- Recency preference
+- Source quality guidance
+HELP
+    exit 0
+fi
+
+# Enhance query with optimal prompting patterns
+# Based on Perplexity's leaked internal prompt patterns
+ENHANCED_QUERY="$QUERY
+
+Please provide a comprehensive, well-structured response with:
+1. Key findings summarized upfront
+2. Relevant details organized by topic
+3. Current/recent information preferred
+4. Specific examples where applicable
+
+Focus on accuracy and cite authoritative sources."
+
+# Build pplx args
+PPLX_ARGS=""
+if [ "$SOURCES" = true ]; then
+    PPLX_ARGS="$PPLX_ARGS --sources"
+fi
+if [ "$RAW" = true ]; then
+    PPLX_ARGS="$PPLX_ARGS --raw"
+fi
+
+# Run query
+$PPLX "$ENHANCED_QUERY" $PPLX_ARGS

@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""
+compile-full-context — Generate a single CONTEXT.md per agent.
+
+With the OpenClaw workspace patch, if CONTEXT.md exists, only it + SOUL.md 
++ MEMORY.md get injected. This replaces AGENTS.md + TOOLS.md + USER.md + 
+IDENTITY.md + HEARTBEAT.md + BOOTSTRAP.md with ONE optimized file.
+
+Usage:
+  compile-full-context              # All agents
+  compile-full-context syn          # One agent
+  compile-full-context --disable    # Remove CONTEXT.md (revert to default files)
+"""
+
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+NOUS = ROOT / "nous"
+SHARED = ROOT / "shared"
+
+
+def read_if_exists(path):
+    """Read file content or return None."""
+    p = Path(path)
+    if p.exists():
+        return p.read_text().strip()
+    return None
+
+
+def compile_agent(agent_id):
+    """Compile a single CONTEXT.md for an agent."""
+    agent_dir = NOUS / agent_id
+    
+    # Read source files
+    agents_md = read_if_exists(agent_dir / "AGENTS.md")
+    tools_md = read_if_exists(agent_dir / "TOOLS.md")
+    user_md = read_if_exists(agent_dir / "USER.md")
+    identity_md = read_if_exists(agent_dir / "IDENTITY.md")
+    heartbeat_md = read_if_exists(agent_dir / "HEARTBEAT.md")
+    
+    parts = []
+    
+    # AGENTS.md content (already compiled from templates)
+    if agents_md:
+        parts.append(agents_md)
+    
+    # TOOLS.md (already lean from generate-tools-md)
+    if tools_md:
+        parts.append(tools_md)
+    
+    # USER.md — include but could be trimmed per agent
+    if user_md:
+        parts.append(user_md)
+    
+    # IDENTITY.md — only if it has real content (not just template)
+    if identity_md and "fill this in" not in identity_md.lower():
+        parts.append(identity_md)
+    
+    # HEARTBEAT.md
+    if heartbeat_md:
+        parts.append(heartbeat_md)
+    
+    content = "\n\n---\n\n".join(parts)
+    
+    context_path = agent_dir / "CONTEXT.md"
+    old_size = context_path.stat().st_size if context_path.exists() else 0
+    
+    # Calculate what we're replacing
+    individual_size = sum(
+        (agent_dir / f).stat().st_size 
+        for f in ["AGENTS.md", "TOOLS.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md", "BOOTSTRAP.md"]
+        if (agent_dir / f).exists()
+    )
+    
+    context_path.write_text(content)
+    new_size = len(content.encode())
+    
+    print(f"  {agent_id}: CONTEXT.md = {new_size} bytes (replaces {individual_size} bytes from 6 files, saves {individual_size - new_size})")
+    return new_size, individual_size
+
+
+def disable_agent(agent_id):
+    """Remove CONTEXT.md to revert to default file loading."""
+    context_path = NOUS / agent_id / "CONTEXT.md"
+    if context_path.exists():
+        context_path.unlink()
+        print(f"  {agent_id}: CONTEXT.md removed, reverting to default files")
+    else:
+        print(f"  {agent_id}: no CONTEXT.md to remove")
+
+
+def main():
+    disable = "--disable" in sys.argv
+    agents = [a for a in sys.argv[1:] if not a.startswith("--")]
+    
+    if not agents:
+        agents = [d.name for d in sorted(NOUS.iterdir()) if d.is_dir() and (d / "AGENTS.md").exists()]
+    
+    if disable:
+        for a in agents:
+            disable_agent(a)
+        return
+    
+    total_saved = 0
+    for a in agents:
+        new, old = compile_agent(a)
+        total_saved += (old - new)
+    
+    print(f"\nTotal: {total_saved} bytes saved across {len(agents)} agents")
+
+
+if __name__ == "__main__":
+    main()

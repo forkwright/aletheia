@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+#
+# audit-all-agents - Run agent audit on all 7 agent workspaces
+#
+
+AGENTS=(clawd syl chiron eiron demiurge arbor akron)
+LOG_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/logs/agent-audits"
+TIMESTAMP=$(date '+%Y-%m-%d_%H%M')
+
+mkdir -p "$LOG_DIR"
+
+echo "=== Agent Audit Run: $TIMESTAMP ==="
+
+for agent in "${AGENTS[@]}"; do
+    workspace="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/$agent"
+    
+    if [[ -d "$workspace" ]]; then
+        echo ""
+        echo "--- Auditing: $agent ---"
+        ${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/agent-audit "$workspace" > "$LOG_DIR/${agent}-${TIMESTAMP}.log" 2>&1
+        
+        if [[ $? -eq 0 ]]; then
+            echo "✓ $agent: OK"
+        else
+            echo "⚠️ $agent: Issues found (see $LOG_DIR/${agent}-${TIMESTAMP}.log)"
+        fi
+    else
+        echo "⚠️ $agent: Workspace not found"
+    fi
+done
+
+echo ""
+echo "Logs saved to: $LOG_DIR"
+
+# Keep only last 7 days of logs
+find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null

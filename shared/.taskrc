@@ -1,0 +1,20 @@
+# Shared Taskwarrior config for all agents
+
+data.location=/mnt/ssd/moltbot/shared/.task
+
+# Reduce verbosity
+verbose=blank,footnote,label,new-id,affected,project
+
+# Default priority
+default.priority=M
+
+# UDAs for agent coordination
+uda.domain.type=string
+uda.domain.label=Domain
+uda.domain.values=work,school,home,craft,arborist,preparedness,infra,personal
+
+# Reports
+report.next.columns=id,priority,project,tags,due.relative,description.truncated
+report.next.labels=ID,P,Project,Tags,Due,Description
+report.next.sort=urgency-
+report.next.filter=status:pending limit:15

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# moltbook-feed - Fetch posts from Moltbook submolts
+# Uses stored API key for authenticated access
+
+set -euo pipefail
+
+STATE_FILE="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn/memory/heartbeat-state.json"
+API_KEY=$(jq -r '.moltbook.api_key // empty' "$STATE_FILE" 2>/dev/null || echo "")
+
+if [[ -z "$API_KEY" ]]; then
+    echo "Error: No Moltbook API key found in $STATE_FILE" >&2
+    exit 1
+fi
+
+SUBMOLT="${1:-tech}"
+SORT="${2:-hot}"
+LIMIT="${3:-10}"
+
+curl -s "https://www.moltbook.com/api/v1/posts?submolt=$SUBMOLT&sort=$SORT&limit=$LIMIT" \
+    -H "Authorization: Bearer $API_KEY" | \
+    jq -r '.posts[] | "[\(.upvotes)▲] \(.title)\n    by u/\(.author.name) | \(.comment_count) comments\n    \(.content[:200] | gsub("\n"; " "))...\n"' 2>/dev/null || \
+    jq '.' # Fallback to raw JSON if parsing fails

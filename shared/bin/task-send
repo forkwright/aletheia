@@ -1,0 +1,223 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# task-send - Send a task contract to another agent
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONTRACTS_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/task-contracts"
+PENDING_DIR="$CONTRACTS_DIR/pending"
+SENT_DIR="$CONTRACTS_DIR/sent"
+
+# Ensure directories exist
+mkdir -p "$PENDING_DIR" "$SENT_DIR"
+
+# Default values
+TASK_FILE=""
+DRY_RUN=false
+FORCE=false
+
+usage() {
+    cat << EOF
+Usage: $0 [OPTIONS] TASK_FILE
+
+Send a task contract to the target agent.
+
+ARGUMENTS:
+    TASK_FILE               Path to the task contract JSON file
+
+OPTIONS:
+    -n, --dry-run          Show what would be sent without actually sending
+    -f, --force            Force send even if target agent is not available
+    -h, --help             Show this help
+
+EXAMPLES:
+    # Send a task contract
+    $0 ${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/task-contracts/task-12345.json
+    
+    # Dry run to see what would happen
+    $0 --dry-run task-contract.json
+    
+    # Force send even if target is unavailable
+    $0 --force task-contract.json
+
+NOTES:
+    - Task contracts are sent via the clawdbot agent command
+    - The task file is moved to the 'sent' directory after successful transmission
+    - Target agent validity is checked unless --force is used
+    - Task status is updated to 'pending' in the target agent's queue
+
+EOF
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -n|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            if [[ -z "$TASK_FILE" ]]; then
+                TASK_FILE="$1"
+            else
+                echo "Error: Multiple task files specified" >&2
+                usage >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate required arguments
+if [[ -z "$TASK_FILE" ]]; then
+    echo "Error: Task file is required" >&2
+    usage >&2
+    exit 1
+fi
+
+# Check if task file exists
+if [[ ! -f "$TASK_FILE" ]]; then
+    echo "Error: Task file not found: $TASK_FILE" >&2
+    exit 1
+fi
+
+# Validate JSON format
+if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: jq is required for JSON parsing" >&2
+    exit 1
+fi
+
+if ! jq empty "$TASK_FILE" >/dev/null 2>&1; then
+    echo "Error: Invalid JSON in task file: $TASK_FILE" >&2
+    exit 1
+fi
+
+# Extract task details
+TASK_ID=$(jq -r '.task_id' "$TASK_FILE")
+TARGET_AGENT=$(jq -r '.target_agent' "$TASK_FILE")
+SOURCE_AGENT=$(jq -r '.source_agent' "$TASK_FILE")
+TASK_TYPE=$(jq -r '.task_type' "$TASK_FILE")
+DESCRIPTION=$(jq -r '.context.description' "$TASK_FILE")
+PRIORITY=$(jq -r '.priority' "$TASK_FILE")
+
+if [[ "$TASK_ID" == "null" || "$TARGET_AGENT" == "null" || "$SOURCE_AGENT" == "null" ]]; then
+    echo "Error: Task file missing required fields (task_id, target_agent, source_agent)" >&2
+    exit 1
+fi
+
+echo "=== Task Contract Details ==="
+echo "Task ID: $TASK_ID"
+echo "From: $SOURCE_AGENT"
+echo "To: $TARGET_AGENT"
+echo "Type: $TASK_TYPE"
+echo "Priority: $PRIORITY"
+echo "Description: $DESCRIPTION"
+echo
+
+# Check target agent availability (unless force is used)
+if [[ "$FORCE" != "true" ]]; then
+    echo "Checking target agent availability..."
+    
+    # Validate that target agent exists in clawdbot config
+    VALID_AGENTS=("syn" "syl" "chiron" "eiron" "demiurge")
+    TARGET_VALID=false
+    for agent in "${VALID_AGENTS[@]}"; do
+        if [[ "$TARGET_AGENT" == "$agent" ]]; then
+            TARGET_VALID=true
+            break
+        fi
+    done
+    
+    if [[ "$TARGET_VALID" != "true" ]]; then
+        echo "Error: Invalid target agent '$TARGET_AGENT'" >&2
+        echo "Valid agents: ${VALID_AGENTS[*]}" >&2
+        exit 1
+    fi
+    echo "✓ Target agent '$TARGET_AGENT' is valid"
+fi
+
+# Prepare the message content
+MESSAGE_CONTENT=$(cat << EOF
+🎯 **Task Contract Received**
+
+**Task ID:** $TASK_ID
+**From:** $SOURCE_AGENT
+**Type:** $TASK_TYPE
+**Priority:** $PRIORITY
+
+**Description:** $DESCRIPTION
+
+**Full Contract:** 
+\`\`\`json
+$(cat "$TASK_FILE")
+\`\`\`
+
+**Actions Required:**
+1. Review the task contract details
+2. Accept or reject the task using: \`task-respond $TASK_ID accept|reject [reason]\`
+3. If accepted, update progress periodically during execution
+4. Complete the task and send results via the specified callback method
+
+**Task Status:** pending → awaiting your response
+EOF
+)
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "=== DRY RUN - Would send this message ==="
+    echo "Target: agent:$TARGET_AGENT:main"
+    echo "Content:"
+    echo "$MESSAGE_CONTENT"
+    echo
+    echo "=== End dry run ==="
+    exit 0
+fi
+
+# Send the task contract
+echo "Sending task contract to $TARGET_AGENT..."
+
+if command -v clawdbot >/dev/null 2>&1; then
+    if clawdbot agent --agent "$TARGET_AGENT" --message "$MESSAGE_CONTENT"; then
+        echo "✓ Task contract sent successfully"
+        
+        # Copy the task file to target agent's pending directory
+        TARGET_PENDING="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/task-contracts/pending/$TARGET_AGENT"
+        mkdir -p "$TARGET_PENDING"
+        cp "$TASK_FILE" "$TARGET_PENDING/task-$TASK_ID.json"
+        
+        # Move original to sent directory with timestamp
+        SENT_FILE="$SENT_DIR/task-$TASK_ID-$(date +%s).json"
+        mv "$TASK_FILE" "$SENT_FILE"
+        echo "✓ Task file moved to: $SENT_FILE"
+        
+        # Log the transmission
+        LOG_FILE="$CONTRACTS_DIR/transmission.log"
+        echo "$(date -Iseconds) SENT $TASK_ID $SOURCE_AGENT→$TARGET_AGENT $TASK_TYPE" >> "$LOG_FILE"
+        
+        echo
+        echo "Task contract delivery complete!"
+        echo "The target agent will receive the task and can respond using task-respond."
+        
+    else
+        echo "✗ Failed to send task contract" >&2
+        exit 1
+    fi
+else
+    echo "Error: clawdbot command not found" >&2
+    echo "Make sure Clawdbot is installed and configured properly" >&2
+    exit 1
+fi

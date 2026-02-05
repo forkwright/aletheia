@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# pre-compact - Enhanced context preservation before compaction
+# Called by agent before context compacts
+# Based on research-compaction.md findings
+
+set -euo pipefail
+
+WORKSPACE="${1:-${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn}"
+CONVERSATION_FILE="$WORKSPACE/.clawdbot/current_conversation.jsonl"
+DATE=$(date '+%Y-%m-%d')
+TIME=$(date '+%H:%M')
+TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')
+MEMORY_DIR="$WORKSPACE/memory"
+OUTPUT="$MEMORY_DIR/compaction-${TIMESTAMP}.md"
+INSIGHTS_OUTPUT="$MEMORY_DIR/insights-${TIMESTAMP}.json"
+
+mkdir -p "$MEMORY_DIR"
+
+# Check if conversation file exists
+if [[ ! -f "$CONVERSATION_FILE" ]]; then
+    echo "Warning: Conversation file not found: $CONVERSATION_FILE"
+    echo "Creating basic summary template..."
+    
+    cat > "$OUTPUT" << EOF
+# Pre-Compaction Summary
+
+**Timestamp:** ${DATE} ${TIME}
+**Workspace:** $WORKSPACE
+
+## Warning
+No conversation file found for enhanced extraction.
+Manual entry required.
+
+## Session Highlights
+
+<!-- Fill in key accomplishments, decisions, and context -->
+
+## Key Decisions Made
+
+<!-- Important choices that should persist -->
+
+## Files Modified
+
+$(find "$WORKSPACE" -type f -name "*.md" -mmin -120 2>/dev/null | head -20 | while read f; do echo "- $(basename "$f")"; done)
+
+---
+
+*This file preserves context across compaction boundaries.*
+EOF
+
+    echo "Created basic summary: $OUTPUT"
+    exit 0
+fi
+
+echo "🧠 Enhanced pre-compaction starting..."
+echo "📂 Workspace: $WORKSPACE"
+echo "💬 Conversation: $CONVERSATION_FILE"
+
+# Phase 1: Extract insights before any compaction
+echo "🔍 Phase 1: Extracting insights and decisions..."
+
+if command -v extract-insights >/dev/null 2>&1; then
+    extract-insights --input "$CONVERSATION_FILE" --output "$INSIGHTS_OUTPUT" --workspace "$WORKSPACE"
+    EXTRACTION_SUCCESS=true
+else
+    echo "⚠️  extract-insights not found, using basic extraction..."
+    EXTRACTION_SUCCESS=false
+fi
+
+# Phase 2: Analyze conversation structure
+echo "📊 Phase 2: Analyzing conversation structure..."
+
+# Count total turns and recent activity
+TOTAL_TURNS=0
+RECENT_TURNS=0
+DECISION_COUNT=0
+PREFERENCE_COUNT=0
+
+if [[ -f "$CONVERSATION_FILE" ]]; then
+    TOTAL_TURNS=$(wc -l < "$CONVERSATION_FILE" 2>/dev/null || echo "0")
+    
+    # Count recent turns (last 2 hours)
+    CUTOFF_TIME=$(date -d '2 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')
+    
+    # Basic pattern detection
+    DECISION_COUNT=$(grep -c '"content".*\(decided\|choose\|decision\|will do\|let'\''s go with\)' "$CONVERSATION_FILE" 2>/dev/null || echo "0")
+    PREFERENCE_COUNT=$(grep -c '"content".*\(prefer\|like\|want\|should\|better if\)' "$CONVERSATION_FILE" 2>/dev/null || echo "0")
+fi
+
+# Phase 3: Create structured summary
+echo "📝 Phase 3: Creating structured summary..."
+
+cat > "$OUTPUT" << EOF
+# Pre-Compaction Summary
+
+**Timestamp:** ${DATE} ${TIME}
+**Workspace:** $WORKSPACE
+**Conversation Turns:** $TOTAL_TURNS
+**Decisions Detected:** $DECISION_COUNT
+**Preferences Detected:** $PREFERENCE_COUNT
+
+## Extraction Status
+
+- **Enhanced extraction:** $(if $EXTRACTION_SUCCESS; then echo "✅ Completed"; else echo "❌ Failed - manual entry required"; fi)
+- **Insights file:** $(if [[ -f "$INSIGHTS_OUTPUT" ]]; then echo "✅ $INSIGHTS_OUTPUT"; else echo "❌ Not created"; fi)
+
+## Session Analysis
+
+### Key Decisions Made
+EOF
+
+# Extract decisions if insights were successfully extracted
+if [[ -f "$INSIGHTS_OUTPUT" && $EXTRACTION_SUCCESS == true ]]; then
+    echo "📋 Extracting decisions from insights..."
+    
+    # Add decisions from insights
+    if command -v jq >/dev/null 2>&1 && [[ -f "$INSIGHTS_OUTPUT" ]]; then
+        if jq -e '.decisions' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            jq -r '.decisions[]? | "- **\(.type // "Decision"):** \(.description // .content)"' "$INSIGHTS_OUTPUT" >> "$OUTPUT" 2>/dev/null || echo "<!-- No decisions extracted -->" >> "$OUTPUT"
+        else
+            echo "<!-- No decisions found in insights -->" >> "$OUTPUT"
+        fi
+    else
+        echo "<!-- jq not available for decision extraction -->" >> "$OUTPUT"
+    fi
+else
+    cat >> "$OUTPUT" << EOF
+
+<!-- MANUAL ENTRY REQUIRED -->
+<!-- Fill in key decisions made during this session -->
+<!-- Example: -->
+<!-- - **Architecture:** Chose multi-agent system over monolithic -->
+<!-- - **Technology:** Selected FalkorDB for graph storage -->
+
+EOF
+fi
+
+cat >> "$OUTPUT" << EOF
+
+### User Preferences Expressed
+EOF
+
+# Extract preferences if insights were successfully extracted
+if [[ -f "$INSIGHTS_OUTPUT" && $EXTRACTION_SUCCESS == true ]]; then
+    if command -v jq >/dev/null 2>&1; then
+        if jq -e '.preferences' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            jq -r '.preferences[]? | "- **\(.domain // "General"):** \(.preference)"' "$INSIGHTS_OUTPUT" >> "$OUTPUT" 2>/dev/null || echo "<!-- No preferences extracted -->" >> "$OUTPUT"
+        else
+            echo "<!-- No preferences found in insights -->" >> "$OUTPUT"
+        fi
+    else
+        echo "<!-- jq not available for preference extraction -->" >> "$OUTPUT"
+    fi
+else
+    cat >> "$OUTPUT" << EOF
+
+<!-- MANUAL ENTRY REQUIRED -->
+<!-- Fill in new preferences discovered -->
+<!-- Example: -->
+<!-- - **Communication:** Prefers direct answers over explanations -->
+<!-- - **Tools:** Wants CLI-based tools over web interfaces -->
+
+EOF
+fi
+
+cat >> "$OUTPUT" << EOF
+
+### Emergent Insights
+EOF
+
+# Extract insights if available
+if [[ -f "$INSIGHTS_OUTPUT" && $EXTRACTION_SUCCESS == true ]]; then
+    if command -v jq >/dev/null 2>&1; then
+        if jq -e '.insights' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            jq -r '.insights[]? | "- \(.insight)"' "$INSIGHTS_OUTPUT" >> "$OUTPUT" 2>/dev/null || echo "<!-- No insights extracted -->" >> "$OUTPUT"
+        else
+            echo "<!-- No insights found in extraction -->" >> "$OUTPUT"
+        fi
+    else
+        echo "<!-- jq not available for insight extraction -->" >> "$OUTPUT"
+    fi
+else
+    cat >> "$OUTPUT" << EOF
+
+<!-- MANUAL ENTRY REQUIRED -->
+<!-- Fill in patterns or insights that emerged across multiple turns -->
+<!-- Example: -->
+<!-- - User consistently prefers structured over narrative responses -->
+<!-- - Performance optimization is a key decision criteria -->
+
+EOF
+fi
+
+cat >> "$OUTPUT" << EOF
+
+### Reasoning Chains
+EOF
+
+# Extract reasoning chains if available
+if [[ -f "$INSIGHTS_OUTPUT" && $EXTRACTION_SUCCESS == true ]]; then
+    if command -v jq >/dev/null 2>&1; then
+        if jq -e '.reasoning_chains' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            jq -r '.reasoning_chains[]? | "#### \(.topic)\n\(.chain[]? | "- \(.)")' "$INSIGHTS_OUTPUT" >> "$OUTPUT" 2>/dev/null || echo "<!-- No reasoning chains extracted -->" >> "$OUTPUT"
+        else
+            echo "<!-- No reasoning chains found -->" >> "$OUTPUT"
+        fi
+    else
+        echo "<!-- jq not available for reasoning chain extraction -->" >> "$OUTPUT"
+    fi
+else
+    cat >> "$OUTPUT" << EOF
+
+<!-- MANUAL ENTRY REQUIRED -->
+<!-- Fill in important reasoning chains that led to decisions -->
+<!-- Format: Problem → Analysis → Decision → Rationale -->
+
+EOF
+fi
+
+cat >> "$OUTPUT" << EOF
+
+## Active Work
+
+### In Progress
+EOF
+
+# Find recent modifications and active projects
+find "$WORKSPACE" -type f -name "*.md" -mmin -240 2>/dev/null | head -10 | while read f; do
+    echo "- $(basename "$f") (modified $(stat -c '%y' "$f" 2>/dev/null | cut -d' ' -f1))"
+done >> "$OUTPUT" 2>/dev/null
+
+cat >> "$OUTPUT" << EOF
+
+### Pending Follow-ups
+EOF
+
+# Check for TODO patterns in recent files
+if command -v rg >/dev/null 2>&1; then
+    rg -i "todo|fixme|note:|follow.?up" "$WORKSPACE" --type md -m 5 2>/dev/null | sed 's/^/- /' >> "$OUTPUT" || echo "<!-- No TODOs found -->" >> "$OUTPUT"
+else
+    grep -r -i "todo\|fixme\|note:" "$WORKSPACE" --include="*.md" 2>/dev/null | head -5 | sed 's/^/- /' >> "$OUTPUT" || echo "<!-- No TODOs found -->" >> "$OUTPUT"
+fi
+
+cat >> "$OUTPUT" << EOF
+
+## Context Preservation Actions
+
+### Memory Updates Required
+EOF
+
+# Phase 4: Update persistent memory with extracted insights
+echo "💾 Phase 4: Updating persistent memory..."
+
+MEMORY_UPDATES=0
+
+if [[ -f "$INSIGHTS_OUTPUT" && $EXTRACTION_SUCCESS == true ]]; then
+    # Update facts.jsonl with decisions and preferences
+    if command -v facts >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+        
+        # Add decisions to facts
+        if jq -e '.decisions[]' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            while IFS= read -r decision; do
+                DECISION_TEXT=$(echo "$decision" | jq -r '.description // .content')
+                DECISION_TYPE=$(echo "$decision" | jq -r '.type // "decision"')
+                
+                if [[ -n "$DECISION_TEXT" && "$DECISION_TEXT" != "null" ]]; then
+                    facts add "session" "decision" "$DECISION_TEXT" --category decision --confidence 0.9 --occurred "$DATE" >/dev/null 2>&1 && {
+                        echo "- ✅ Added decision to facts.jsonl: $DECISION_TEXT" >> "$OUTPUT"
+                        ((MEMORY_UPDATES++))
+                    } || {
+                        echo "- ❌ Failed to add decision: $DECISION_TEXT" >> "$OUTPUT"
+                    }
+                fi
+            done < <(jq -c '.decisions[]?' "$INSIGHTS_OUTPUT" 2>/dev/null || echo "")
+        fi
+        
+        # Add preferences to facts  
+        if jq -e '.preferences[]' "$INSIGHTS_OUTPUT" >/dev/null 2>&1; then
+            while IFS= read -r pref; do
+                PREF_TEXT=$(echo "$pref" | jq -r '.preference')
+                PREF_DOMAIN=$(echo "$pref" | jq -r '.domain // "general"')
+                
+                if [[ -n "$PREF_TEXT" && "$PREF_TEXT" != "null" ]]; then
+                    facts add "the operator" "prefers" "$PREF_TEXT" --category preference --confidence 0.8 --occurred "$DATE" >/dev/null 2>&1 && {
+                        echo "- ✅ Added preference to facts.jsonl: $PREF_TEXT" >> "$OUTPUT"
+                        ((MEMORY_UPDATES++))
+                    } || {
+                        echo "- ❌ Failed to add preference: $PREF_TEXT" >> "$OUTPUT"
+                    }
+                fi
+            done < <(jq -c '.preferences[]?' "$INSIGHTS_OUTPUT" 2>/dev/null || echo "")
+        fi
+    else
+        echo "- ⚠️ facts command or jq not available - manual memory update required" >> "$OUTPUT"
+    fi
+else
+    cat >> "$OUTPUT" << EOF
+- ⚠️ No insights file available - manual memory update required
+- Check session for decisions, preferences, and insights to add to:
+  - facts.jsonl (via \`facts add\`)
+  - MEMORY.md (for long-term patterns)
+  - Daily memory file ($MEMORY_DIR/$DATE.md)
+EOF
+fi
+
+# Summary statistics
+cat >> "$OUTPUT" << EOF
+
+### Update Summary
+- **Memory updates applied:** $MEMORY_UPDATES
+- **Insights file:** $(if [[ -f "$INSIGHTS_OUTPUT" ]]; then echo "$INSIGHTS_OUTPUT"; else echo "None created"; fi)
+- **Summary file:** $OUTPUT
+
+---
+
+*Enhanced pre-compaction completed. Context preserved across compaction boundaries.*
+*Next: Review and edit this summary before compaction completes.*
+EOF
+
+# Phase 5: Output summary
+echo ""
+echo "✅ Pre-compaction analysis complete!"
+echo "📊 Statistics:"
+echo "   - Conversation turns: $TOTAL_TURNS"
+echo "   - Decisions detected: $DECISION_COUNT" 
+echo "   - Preferences detected: $PREFERENCE_COUNT"
+echo "   - Memory updates: $MEMORY_UPDATES"
+echo ""
+echo "📄 Files created:"
+echo "   - Summary: $OUTPUT"
+if [[ -f "$INSIGHTS_OUTPUT" ]]; then
+    echo "   - Insights: $INSIGHTS_OUTPUT"
+fi
+echo ""
+echo "🔄 Next steps:"
+echo "   1. Review the summary file: $OUTPUT"
+echo "   2. Edit manually if extraction failed"
+echo "   3. Continue with compaction"
+echo ""
+
+# Return path to summary for potential caller use
+echo "$OUTPUT"

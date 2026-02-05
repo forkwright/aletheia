@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# auto-status - Generate agent status from session activity
+# Usage: auto-status [agent]
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+AGENT="${1:-all}"
+STATUS_DIR="$ALETHEIA_ROOT/clawd/agent-status"
+
+generate_status() {
+    local agent="$1"
+    local workspace="$ALETHEIA_ROOT/$agent"
+    local status_file="$STATUS_DIR/${agent}.md"
+    
+    # Skip if no workspace
+    [[ -d "$workspace" ]] || return 0
+    
+    # Check for recent memory files
+    local recent_memory=""
+    if [[ -d "$workspace/memory" ]]; then
+        recent_memory=$(find "$workspace/memory" -name "*.md" -mtime -1 -type f 2>/dev/null | head -1)
+    fi
+    
+    # Check for recent file activity
+    local last_activity=""
+    last_activity=$(find "$workspace" -type f -name "*.md" -mmin -60 2>/dev/null | wc -l)
+    
+    # Generate status
+    cat > "$status_file" << EOF
+# $agent Status
+
+**Last auto-generated:** $(date '+%Y-%m-%d %H:%M:%S')
+
+## Health
+$(if [[ "$last_activity" -gt 0 ]]; then echo "🟢 Active (${last_activity} files modified in last hour)"; else echo "⚪ Quiet"; fi)
+
+## Recent Memory
+$(if [[ -n "$recent_memory" ]]; then echo "- $(basename "$recent_memory")"; else echo "- No recent memory files"; fi)
+
+## Blocked
+- None detected
+
+## Notes
+*Auto-generated from filesystem activity. Manual updates override.*
+EOF
+    echo "Generated: $status_file"
+}
+
+mkdir -p "$STATUS_DIR"
+
+if [[ "$AGENT" == "all" ]]; then
+    for a in syl chiron eiron demiurge; do
+        generate_status "$a"
+    done
+else
+    generate_status "$AGENT"
+fi

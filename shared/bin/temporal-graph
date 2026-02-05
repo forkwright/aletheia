@@ -1,0 +1,870 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+temporal-graph - Temporal Event Graph Management
+
+Phase 1 Implementation:
+- Schema creation for Event, Fact, Entity nodes
+- Migration from facts.jsonl to graph
+- Basic temporal queries (before/after)
+"""
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+
+try:
+    from falkordb import FalkorDB
+except ImportError:
+    print("Installing falkordb package...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "falkordb", "-q"])
+    from falkordb import FalkorDB
+
+# Configuration
+FALKORDB_HOST = os.environ.get("FALKORDB_HOST", "localhost")
+FALKORDB_PORT = int(os.environ.get("FALKORDB_PORT", "6379"))
+GRAPH_NAME = "temporal_events"
+FACTS_FILE = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/memory/facts.jsonl")
+
+
+class TemporalGraph:
+    """Manage temporal event graph in FalkorDB"""
+    
+    def __init__(self):
+        self.db = FalkorDB(host=FALKORDB_HOST, port=FALKORDB_PORT)
+        self.graph = self.db.select_graph(GRAPH_NAME)
+    
+    def init_schema(self):
+        """Create indices and constraints for temporal queries"""
+        # FalkorDB uses simpler index syntax
+        indices = [
+            # Event indices
+            "CREATE INDEX ON :Event(start_time)",
+            "CREATE INDEX ON :Event(end_time)",
+            "CREATE INDEX ON :Event(event_type)",
+            "CREATE INDEX ON :Event(name)",
+            
+            # Fact indices
+            "CREATE INDEX ON :Fact(valid_from)",
+            "CREATE INDEX ON :Fact(valid_to)",
+            "CREATE INDEX ON :Fact(subject)",
+            "CREATE INDEX ON :Fact(predicate)",
+            
+            # Entity indices
+            "CREATE INDEX ON :Entity(name)",
+            "CREATE INDEX ON :Entity(type)",
+        ]
+        
+        created = 0
+        for idx in indices:
+            try:
+                self.graph.query(idx)
+                created += 1
+            except Exception as e:
+                err_str = str(e).lower()
+                if "already indexed" in err_str or "index already exists" in err_str:
+                    created += 1  # Count existing as success
+                else:
+                    print(f"Warning: {e}", file=sys.stderr)
+        
+        return created
+    
+    def migrate_facts(self, limit: Optional[int] = None, dry_run: bool = False) -> Dict[str, int]:
+        """Migrate facts.jsonl to graph nodes"""
+        stats = {
+            "facts_processed": 0,
+            "facts_created": 0,
+            "entities_created": 0,
+            "relations_created": 0,
+            "errors": 0,
+        }
+        
+        if not FACTS_FILE.exists():
+            print(f"Facts file not found: {FACTS_FILE}", file=sys.stderr)
+            return stats
+        
+        # Track entities to avoid duplicates
+        entities_seen = set()
+        
+        with open(FACTS_FILE, 'r') as f:
+            for i, line in enumerate(f):
+                if limit and i >= limit:
+                    break
+                
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    fact = json.loads(line)
+                except json.JSONDecodeError:
+                    stats["errors"] += 1
+                    continue
+                
+                stats["facts_processed"] += 1
+                
+                subject = fact.get("subject", "").replace("'", "\\'")
+                predicate = fact.get("predicate", "").replace("'", "\\'")
+                obj = fact.get("object", "").replace("'", "\\'")
+                confidence = float(fact.get("confidence", 1.0))
+                category = fact.get("category", "general").replace("'", "\\'")
+                valid_from = fact.get("valid_from") or datetime.now().isoformat()
+                valid_to = fact.get("valid_to")
+                
+                if not subject or not predicate or not obj:
+                    continue
+                
+                # Create fact node
+                fact_id = f"fact_{i}"
+                valid_to_str = f"'{valid_to}'" if valid_to else "null"
+                
+                # FalkorDB doesn't support datetime(), store as string
+                fact_query = f"""
+                MERGE (f:Fact {{id: '{fact_id}'}})
+                SET f.subject = '{subject}',
+                    f.predicate = '{predicate}',
+                    f.object = '{obj}',
+                    f.confidence = {confidence},
+                    f.category = '{category}',
+                    f.valid_from = '{valid_from}',
+                    f.valid_to = {valid_to_str}
+                RETURN f
+                """
+                
+                if not dry_run:
+                    try:
+                        self.graph.query(fact_query)
+                        stats["facts_created"] += 1
+                    except Exception as e:
+                        print(f"Error creating fact: {e}", file=sys.stderr)
+                        stats["errors"] += 1
+                        continue
+                else:
+                    stats["facts_created"] += 1
+                
+                # Create entity for subject if not seen
+                if subject.lower() not in entities_seen:
+                    entity_type = self._infer_entity_type(subject, category)
+                    entity_query = f"""
+                    MERGE (e:Entity {{name: '{subject}'}})
+                    SET e.type = '{entity_type}'
+                    RETURN e
+                    """
+                    
+                    if not dry_run:
+                        try:
+                            self.graph.query(entity_query)
+                            stats["entities_created"] += 1
+                        except Exception:
+                            pass
+                    else:
+                        stats["entities_created"] += 1
+                    
+                    entities_seen.add(subject.lower())
+                
+                # Create relationship from entity to fact
+                rel_query = f"""
+                MATCH (e:Entity {{name: '{subject}'}}), (f:Fact {{id: '{fact_id}'}})
+                MERGE (e)-[:HAS_FACT]->(f)
+                """
+                
+                if not dry_run:
+                    try:
+                        self.graph.query(rel_query)
+                        stats["relations_created"] += 1
+                    except Exception:
+                        pass
+                else:
+                    stats["relations_created"] += 1
+        
+        return stats
+    
+    def _infer_entity_type(self, name: str, category: str) -> str:
+        """Infer entity type from name and category"""
+        name_lower = name.lower()
+        
+        if name_lower in ["the operator", "partner", "adam", "child"]:
+            return "person"
+        elif name_lower in ["syn", "syl", "chiron", "eiron", "demiurge", "akron", "arbor"]:
+            return "agent"
+        elif name_lower in ["system", "clawdbot", "falkordb", "ollama", "letta"]:
+            return "system"
+        elif "ardent" in name_lower:
+            return "business"
+        elif category in ["project", "work"]:
+            return "project"
+        else:
+            return "entity"
+    
+    def add_event(self, name: str, event_type: str, description: str = "",
+                  start_time: Optional[str] = None, end_time: Optional[str] = None,
+                  tags: List[str] = None) -> bool:
+        """Add a new event to the graph"""
+        
+        event_id = f"event_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        start = start_time or datetime.now().isoformat()
+        end_str = f"'{end_time}'" if end_time else "null"
+        tags_str = str(tags or []).replace("'", '"')  # FalkorDB needs double quotes for arrays
+        created_at = datetime.now().isoformat()
+        
+        query = f"""
+        CREATE (e:Event {{
+            id: '{event_id}',
+            name: '{name.replace("'", "\\'")}',
+            event_type: '{event_type}',
+            description: '{description.replace("'", "\\'")}',
+            start_time: '{start}',
+            end_time: {end_str},
+            tags: {tags_str},
+            created_at: '{created_at}'
+        }})
+        RETURN e.id
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return True
+        except Exception as e:
+            print(f"Error adding event: {e}", file=sys.stderr)
+            return False
+    
+    def query_events(self, after: Optional[str] = None, before: Optional[str] = None,
+                     event_type: Optional[str] = None, limit: int = 20) -> List[Dict]:
+        """Query events with temporal filters"""
+        
+        conditions = []
+        
+        # Using string comparison (ISO format sorts correctly)
+        if after:
+            after_dt = self._parse_time(after)
+            conditions.append(f"e.start_time >= '{after_dt.isoformat()}'")
+        
+        if before:
+            before_dt = self._parse_time(before)
+            conditions.append(f"e.start_time <= '{before_dt.isoformat()}'")
+        
+        if event_type:
+            conditions.append(f"e.event_type = '{event_type}'")
+        
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        
+        query = f"""
+        MATCH (e:Event)
+        {where_clause}
+        RETURN e.id as id, e.name as name, e.event_type as type,
+               e.start_time as start_time, e.end_time as end_time,
+               e.description as description
+        ORDER BY e.start_time DESC
+        LIMIT {limit}
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def query_facts(self, subject: Optional[str] = None, predicate: Optional[str] = None,
+                    valid_at: Optional[str] = None, limit: int = 20) -> List[Dict]:
+        """Query facts with filters"""
+        
+        conditions = []
+        
+        if subject:
+            # Use toLower for case-insensitive, CONTAINS for partial match
+            conditions.append(f"toLower(f.subject) CONTAINS toLower('{subject}')")
+        
+        if predicate:
+            conditions.append(f"toLower(f.predicate) CONTAINS toLower('{predicate}')")
+        
+        if valid_at:
+            at_dt = self._parse_time(valid_at)
+            conditions.append(f"f.valid_from <= '{at_dt.isoformat()}'")
+            conditions.append(f"(f.valid_to IS NULL OR f.valid_to >= '{at_dt.isoformat()}')")
+        
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        
+        query = f"""
+        MATCH (f:Fact)
+        {where_clause}
+        RETURN f.subject as subject, f.predicate as predicate, f.object as object,
+               f.confidence as confidence, f.valid_from as valid_from, f.valid_to as valid_to
+        ORDER BY f.valid_from DESC
+        LIMIT {limit}
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def query_timeline(self, entity: str, days: int = 30) -> List[Dict]:
+        """Get timeline of events/facts for an entity"""
+        
+        start_dt = datetime.now() - timedelta(days=days)
+        
+        query = f"""
+        MATCH (e:Entity {{name: '{entity}'}})-[:HAS_FACT]->(f:Fact)
+        WHERE f.valid_from >= '{start_dt.isoformat()}'
+        RETURN 'fact' as type, f.predicate as event, f.object as detail,
+               f.valid_from as time, f.confidence as confidence
+        ORDER BY f.valid_from DESC
+        LIMIT 50
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def get_stats(self) -> Dict[str, int]:
+        """Get graph statistics"""
+        stats = {}
+        
+        queries = {
+            "events": "MATCH (e:Event) RETURN count(e)",
+            "facts": "MATCH (f:Fact) RETURN count(f)",
+            "entities": "MATCH (n:Entity) RETURN count(n)",
+            "relationships": "MATCH ()-[r]->() RETURN count(r)",
+        }
+        
+        for name, query in queries.items():
+            try:
+                result = self.graph.query(query)
+                # FalkorDB returns result_set directly
+                if result.result_set:
+                    stats[name] = result.result_set[0][0]
+                else:
+                    stats[name] = 0
+            except Exception as e:
+                print(f"Stats error for {name}: {e}", file=sys.stderr)
+                stats[name] = 0
+        
+        return stats
+    
+    # ============ Phase 2: Temporal Relationships ============
+    
+    def link_events(self, from_event: str, to_event: str, relation: str, 
+                    confidence: float = 1.0) -> bool:
+        """Create a temporal relationship between two events"""
+        
+        valid_relations = ["BEFORE", "AFTER", "DURING", "CONTAINS", "OVERLAPS", 
+                          "MEETS", "CAUSED_BY", "TRIGGERED", "RELATED_TO"]
+        
+        relation = relation.upper()
+        if relation not in valid_relations:
+            print(f"Invalid relation. Valid: {', '.join(valid_relations)}", file=sys.stderr)
+            return False
+        
+        query = f"""
+        MATCH (a:Event), (b:Event)
+        WHERE a.name = '{from_event.replace("'", "\\'")}' 
+          AND b.name = '{to_event.replace("'", "\\'")}'
+        MERGE (a)-[r:{relation} {{confidence: {confidence}}}]->(b)
+        RETURN type(r) as rel
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return bool(result.result_set)
+        except Exception as e:
+            print(f"Error linking events: {e}", file=sys.stderr)
+            return False
+    
+    def auto_link_temporal(self, window_hours: int = 24) -> Dict[str, int]:
+        """Automatically create BEFORE/AFTER relationships based on timestamps"""
+        
+        stats = {"links_created": 0, "events_processed": 0}
+        
+        # Get all events ordered by time
+        query = """
+        MATCH (e:Event)
+        WHERE e.start_time IS NOT NULL
+        RETURN e.id as id, e.name as name, e.start_time as start_time
+        ORDER BY e.start_time
+        """
+        
+        try:
+            result = self.graph.query(query)
+            events = self._parse_result(result)
+        except Exception as e:
+            print(f"Error getting events: {e}", file=sys.stderr)
+            return stats
+        
+        if len(events) < 2:
+            return stats
+        
+        # Create BEFORE relationships for adjacent events
+        for i in range(len(events) - 1):
+            current = events[i]
+            next_event = events[i + 1]
+            stats["events_processed"] += 1
+            
+            # Check if already linked
+            check_query = f"""
+            MATCH (a:Event {{id: '{current['id']}'}})-[r:BEFORE]->(b:Event {{id: '{next_event['id']}'}})
+            RETURN r
+            """
+            
+            try:
+                check = self.graph.query(check_query)
+                if check.result_set:
+                    continue  # Already linked
+            except:
+                pass
+            
+            # Create BEFORE relationship
+            link_query = f"""
+            MATCH (a:Event {{id: '{current['id']}'}}), (b:Event {{id: '{next_event['id']}'}})
+            CREATE (a)-[:BEFORE {{auto: true}}]->(b)
+            """
+            
+            try:
+                self.graph.query(link_query)
+                stats["links_created"] += 1
+            except Exception as e:
+                print(f"Error creating link: {e}", file=sys.stderr)
+        
+        return stats
+    
+    def query_before(self, event_name: str, limit: int = 10) -> List[Dict]:
+        """Find events that happened before a given event"""
+        
+        query = f"""
+        MATCH (target:Event {{name: '{event_name.replace("'", "\\'")}'}})<-[:BEFORE*1..5]-(before:Event)
+        RETURN before.name as name, before.event_type as type, 
+               before.start_time as time, before.description as description
+        ORDER BY before.start_time DESC
+        LIMIT {limit}
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def query_after(self, event_name: str, limit: int = 10) -> List[Dict]:
+        """Find events that happened after a given event"""
+        
+        query = f"""
+        MATCH (target:Event {{name: '{event_name.replace("'", "\\'")}'}})-[:BEFORE*1..5]->(after:Event)
+        RETURN after.name as name, after.event_type as type,
+               after.start_time as time, after.description as description
+        ORDER BY after.start_time ASC
+        LIMIT {limit}
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def query_causal_chain(self, effect_name: str, depth: int = 5) -> List[Dict]:
+        """Find causal chain leading to an event (traverse CAUSED_BY edges)"""
+        
+        # CAUSED_BY points from effect to cause, so we follow that direction
+        query = f"""
+        MATCH path = (effect:Event {{name: '{effect_name.replace("'", "\\'")}' }})-[:CAUSED_BY*1..{depth}]->(cause:Event)
+        RETURN cause.name as cause, cause.start_time as cause_time,
+               effect.name as effect, length(path) as chain_length
+        ORDER BY chain_length
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return self._parse_result(result)
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def add_causal(self, cause: str, effect: str, confidence: float = 0.8,
+                   evidence: str = "") -> bool:
+        """Add a causal relationship between events"""
+        
+        evidence_escaped = evidence.replace("'", "\\'")
+        
+        query = f"""
+        MATCH (c:Event), (e:Event)
+        WHERE c.name = '{cause.replace("'", "\\'")}' 
+          AND e.name = '{effect.replace("'", "\\'")}'
+        MERGE (e)-[r:CAUSED_BY {{confidence: {confidence}, evidence: '{evidence_escaped}'}}]->(c)
+        RETURN type(r) as rel
+        """
+        
+        try:
+            result = self.graph.query(query)
+            return bool(result.result_set)
+        except Exception as e:
+            print(f"Error adding causal link: {e}", file=sys.stderr)
+            return False
+    
+    def find_patterns(self, event_type: Optional[str] = None, min_frequency: int = 2) -> List[Dict]:
+        """Find recurring event patterns (sequences that happen together)"""
+        
+        type_filter = f"WHERE a.event_type = '{event_type}'" if event_type else ""
+        
+        query = f"""
+        MATCH (a:Event)-[:BEFORE]->(b:Event)
+        {type_filter}
+        RETURN a.event_type as first_type, b.event_type as second_type,
+               count(*) as frequency
+        ORDER BY frequency DESC
+        LIMIT 20
+        """
+        
+        try:
+            result = self.graph.query(query)
+            patterns = self._parse_result(result)
+            return [p for p in patterns if p.get('frequency', 0) >= min_frequency]
+        except Exception as e:
+            print(f"Query error: {e}", file=sys.stderr)
+            return []
+    
+    def _parse_time(self, time_str: str) -> datetime:
+        """Parse various time formats"""
+        time_str = time_str.lower().strip()
+        
+        # Relative times
+        if time_str == "now":
+            return datetime.now()
+        elif time_str == "today":
+            return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        elif time_str == "yesterday":
+            return datetime.now() - timedelta(days=1)
+        elif time_str.endswith(" ago"):
+            parts = time_str[:-4].split()
+            num = int(parts[0])
+            unit = parts[1] if len(parts) > 1 else "days"
+            if "day" in unit:
+                return datetime.now() - timedelta(days=num)
+            elif "hour" in unit:
+                return datetime.now() - timedelta(hours=num)
+            elif "week" in unit:
+                return datetime.now() - timedelta(weeks=num)
+        
+        # Try ISO format
+        try:
+            return datetime.fromisoformat(time_str)
+        except ValueError:
+            pass
+        
+        # Try common formats
+        for fmt in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y"]:
+            try:
+                return datetime.strptime(time_str, fmt)
+            except ValueError:
+                continue
+        
+        raise ValueError(f"Cannot parse time: {time_str}")
+    
+    def _parse_result(self, result) -> List[Dict]:
+        """Parse FalkorDB query result"""
+        if not result or not result.result_set:
+            return []
+        
+        headers = result.header
+        rows = []
+        
+        for row in result.result_set:
+            row_dict = {}
+            for i, col in enumerate(headers):
+                # Header is [[type, name], ...] format
+                if isinstance(col, (list, tuple)) and len(col) >= 2:
+                    col_name = col[1]
+                else:
+                    col_name = str(col)
+                
+                value = row[i]
+                # Convert FalkorDB types to Python types
+                if hasattr(value, 'isoformat'):
+                    value = value.isoformat()
+                elif isinstance(value, list):
+                    value = list(value)  # Ensure it's a regular list
+                elif isinstance(value, (dict, set)):
+                    value = str(value)
+                row_dict[col_name] = value
+            rows.append(row_dict)
+        
+        return rows
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Temporal Event Graph Management",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Phase 1: Basic operations
+  temporal-graph init                          # Initialize schema
+  temporal-graph migrate --full                # Migrate facts.jsonl to graph
+  temporal-graph stats                         # Show graph statistics
+  
+  temporal-graph events --after "1 day ago"    # Events from last day
+  temporal-graph facts --subject the operator          # Facts about the operator
+  temporal-graph timeline the operator --days 7        # the operator's last 7 days
+  temporal-graph add "Sprint done" milestone --desc "Memory v2"
+  
+  # Phase 2: Temporal relationships
+  temporal-graph auto-link                     # Auto-create BEFORE/AFTER links
+  temporal-graph before "Event X"              # What happened before X?
+  temporal-graph after "Event X"               # What happened after X?
+  
+  temporal-graph link "A" CAUSED_BY "B"        # A was caused by B
+  temporal-graph cause "Cause" "Effect"        # Add causal relationship
+  temporal-graph chain "Effect event"          # Find causal chain to event
+  temporal-graph patterns                      # Find recurring sequences
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+    
+    # init
+    init_parser = subparsers.add_parser("init", help="Initialize graph schema")
+    
+    # migrate
+    migrate_parser = subparsers.add_parser("migrate", help="Migrate facts.jsonl to graph")
+    migrate_parser.add_argument("--limit", type=int, help="Limit number of facts")
+    migrate_parser.add_argument("--full", action="store_true", help="Migrate all facts")
+    migrate_parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    
+    # stats
+    stats_parser = subparsers.add_parser("stats", help="Show graph statistics")
+    
+    # events
+    events_parser = subparsers.add_parser("events", help="Query events")
+    events_parser.add_argument("--after", help="Events after this time")
+    events_parser.add_argument("--before", help="Events before this time")
+    events_parser.add_argument("--type", help="Filter by event type")
+    events_parser.add_argument("--limit", type=int, default=20, help="Max results")
+    
+    # facts
+    facts_parser = subparsers.add_parser("facts", help="Query facts in graph")
+    facts_parser.add_argument("--subject", help="Filter by subject")
+    facts_parser.add_argument("--predicate", help="Filter by predicate")
+    facts_parser.add_argument("--valid-at", help="Facts valid at this time")
+    facts_parser.add_argument("--limit", type=int, default=20, help="Max results")
+    
+    # timeline
+    timeline_parser = subparsers.add_parser("timeline", help="Entity timeline")
+    timeline_parser.add_argument("entity", help="Entity name")
+    timeline_parser.add_argument("--days", type=int, default=30, help="Days to look back")
+    
+    # add (event)
+    add_parser = subparsers.add_parser("add", help="Add new event")
+    add_parser.add_argument("name", help="Event name")
+    add_parser.add_argument("type", help="Event type (milestone, action, state_change, etc.)")
+    add_parser.add_argument("--desc", default="", help="Description")
+    add_parser.add_argument("--start", help="Start time (default: now)")
+    add_parser.add_argument("--end", help="End time")
+    add_parser.add_argument("--tags", nargs="+", help="Tags")
+    
+    # ============ Phase 2: Temporal Relationships ============
+    
+    # link - create relationship between events
+    link_parser = subparsers.add_parser("link", help="Link two events with a relationship")
+    link_parser.add_argument("from_event", help="Source event name")
+    link_parser.add_argument("relation", help="Relationship type (BEFORE, AFTER, CAUSED_BY, etc.)")
+    link_parser.add_argument("to_event", help="Target event name")
+    link_parser.add_argument("--confidence", type=float, default=1.0, help="Confidence (0-1)")
+    
+    # auto-link - automatically link events by time
+    autolink_parser = subparsers.add_parser("auto-link", help="Auto-create temporal links")
+    autolink_parser.add_argument("--window", type=int, default=24, help="Time window in hours")
+    
+    # before - what happened before an event
+    before_parser = subparsers.add_parser("before", help="Events before a given event")
+    before_parser.add_argument("event", help="Event name")
+    before_parser.add_argument("--limit", type=int, default=10, help="Max results")
+    
+    # after - what happened after an event
+    after_parser = subparsers.add_parser("after", help="Events after a given event")
+    after_parser.add_argument("event", help="Event name")
+    after_parser.add_argument("--limit", type=int, default=10, help="Max results")
+    
+    # cause - add causal relationship
+    cause_parser = subparsers.add_parser("cause", help="Add causal relationship")
+    cause_parser.add_argument("cause_event", help="Cause event name")
+    cause_parser.add_argument("effect_event", help="Effect event name")
+    cause_parser.add_argument("--confidence", type=float, default=0.8, help="Confidence (0-1)")
+    cause_parser.add_argument("--evidence", default="", help="Evidence for causation")
+    
+    # chain - find causal chain leading to an event
+    chain_parser = subparsers.add_parser("chain", help="Find causal chain to an event")
+    chain_parser.add_argument("event", help="Effect event name")
+    chain_parser.add_argument("--depth", type=int, default=5, help="Max chain depth")
+    
+    # patterns - find recurring patterns
+    patterns_parser = subparsers.add_parser("patterns", help="Find event patterns")
+    patterns_parser.add_argument("--type", help="Filter by event type")
+    patterns_parser.add_argument("--min-freq", type=int, default=2, help="Min frequency")
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    tg = TemporalGraph()
+    
+    if args.command == "init":
+        count = tg.init_schema()
+        print(f"Initialized schema ({count} indices created/verified)")
+    
+    elif args.command == "migrate":
+        limit = None if args.full else (args.limit or 50)
+        stats = tg.migrate_facts(limit=limit, dry_run=args.dry_run)
+        prefix = "[DRY RUN] " if args.dry_run else ""
+        print(f"{prefix}Migration complete:")
+        for key, value in stats.items():
+            print(f"  {key}: {value}")
+    
+    elif args.command == "stats":
+        stats = tg.get_stats()
+        print("Graph Statistics:")
+        for key, value in stats.items():
+            print(f"  {key}: {value}")
+    
+    elif args.command == "events":
+        results = tg.query_events(
+            after=args.after,
+            before=args.before,
+            event_type=args.type,
+            limit=args.limit
+        )
+        if results:
+            for r in results:
+                print(f"[{r.get('type', 'event')}] {r.get('name')} @ {r.get('start_time')}")
+                if r.get('description'):
+                    print(f"    {r['description']}")
+        else:
+            print("No events found")
+    
+    elif args.command == "facts":
+        results = tg.query_facts(
+            subject=args.subject,
+            predicate=args.predicate,
+            valid_at=args.valid_at,
+            limit=args.limit
+        )
+        if results:
+            for r in results:
+                conf = f" ({r['confidence']:.0%})" if r.get('confidence') else ""
+                print(f"{r['subject']} {r['predicate']}: {r['object']}{conf}")
+        else:
+            print("No facts found")
+    
+    elif args.command == "timeline":
+        results = tg.query_timeline(args.entity, args.days)
+        if results:
+            print(f"Timeline for {args.entity} (last {args.days} days):")
+            for r in results:
+                print(f"  [{r.get('time', '?')}] {r.get('event')}: {r.get('detail')}")
+        else:
+            print(f"No timeline data for {args.entity}")
+    
+    elif args.command == "add":
+        success = tg.add_event(
+            name=args.name,
+            event_type=args.type,
+            description=args.desc,
+            start_time=args.start,
+            end_time=args.end,
+            tags=args.tags
+        )
+        if success:
+            print(f"Added event: {args.name}")
+        else:
+            print("Failed to add event", file=sys.stderr)
+            sys.exit(1)
+    
+    # ============ Phase 2 Commands ============
+    
+    elif args.command == "link":
+        success = tg.link_events(
+            args.from_event, 
+            args.to_event, 
+            args.relation,
+            args.confidence
+        )
+        if success:
+            print(f"Linked: {args.from_event} --[{args.relation}]--> {args.to_event}")
+        else:
+            print("Failed to link events", file=sys.stderr)
+            sys.exit(1)
+    
+    elif args.command == "auto-link":
+        stats = tg.auto_link_temporal(args.window)
+        print(f"Auto-linking complete:")
+        print(f"  Events processed: {stats['events_processed']}")
+        print(f"  Links created: {stats['links_created']}")
+    
+    elif args.command == "before":
+        results = tg.query_before(args.event, args.limit)
+        if results:
+            print(f"Events before '{args.event}':")
+            for r in results:
+                print(f"  [{r.get('type', '?')}] {r.get('name')} @ {r.get('time')}")
+                if r.get('description'):
+                    print(f"      {r['description']}")
+        else:
+            print(f"No events found before '{args.event}'")
+    
+    elif args.command == "after":
+        results = tg.query_after(args.event, args.limit)
+        if results:
+            print(f"Events after '{args.event}':")
+            for r in results:
+                print(f"  [{r.get('type', '?')}] {r.get('name')} @ {r.get('time')}")
+                if r.get('description'):
+                    print(f"      {r['description']}")
+        else:
+            print(f"No events found after '{args.event}'")
+    
+    elif args.command == "cause":
+        success = tg.add_causal(
+            args.cause_event,
+            args.effect_event,
+            args.confidence,
+            args.evidence
+        )
+        if success:
+            print(f"Added: {args.effect_event} --[CAUSED_BY]--> {args.cause_event}")
+        else:
+            print("Failed to add causal link", file=sys.stderr)
+            sys.exit(1)
+    
+    elif args.command == "chain":
+        results = tg.query_causal_chain(args.event, args.depth)
+        if results:
+            print(f"Causal chain leading to '{args.event}':")
+            for r in results:
+                print(f"  {r.get('cause')} → {r.get('effect')} (depth: {r.get('chain_length')})")
+        else:
+            print(f"No causal chain found for '{args.event}'")
+    
+    elif args.command == "patterns":
+        results = tg.find_patterns(args.type, args.min_freq)
+        if results:
+            print("Event patterns (type sequences):")
+            for r in results:
+                print(f"  {r.get('first_type')} → {r.get('second_type')}: {r.get('frequency')}x")
+        else:
+            print("No patterns found")
+
+
+if __name__ == "__main__":
+    main()
