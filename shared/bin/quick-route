@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""
+quick-route — Fast domain routing for incoming messages.
+
+Given a message, determines if it should be handled by a specific nous
+or by Syn directly. Used for proactive engagement.
+
+Usage:
+    quick-route "message text"           # Returns nous ID or 'syn'
+    quick-route "message text" --json    # Full analysis
+"""
+
+import json
+import sys
+
+ROUTES = {
+    "chiron": ["sql", "redshift", "dashboard", "data", "employer", "roi", 
+               "pepm", "claims", "analytics", "production table", "work"],
+    "eiron": ["homework", "capstone", "mba", "paper", "ercot", "workstream",
+              "macroeconomics", "tbc", "school", "class", "assignment"],
+    "demiurge": ["leather", "belt", "buckle", "stitch", "ardent", "dye",
+                 "bindery", "photography", "craft", "film"],
+    "syl": ["partner", "child", "grocery", "family", "baby", 
+            "pediatrician", "schedule"],
+    "akron": ["truck", "cummins", "diesel", "radio", "overlanding",
+              "ram ", "battery", "cb ", "ham "],
+    "arbor": ["tree", "adam", "arborist", "business_city", "a2z"],
+}
+
+def route(message: str) -> dict:
+    msg_lower = message.lower()
+    scores = {}
+    
+    for nous, keywords in ROUTES.items():
+        hits = [k for k in keywords if k in msg_lower]
+        if hits:
+            scores[nous] = {"score": len(hits), "matched": hits}
+    
+    if not scores:
+        return {"route": "syn", "confidence": 1.0, "reason": "no domain match"}
+    
+    best = max(scores.items(), key=lambda x: x[1]["score"])
+    return {
+        "route": best[0],
+        "confidence": min(best[1]["score"] / 3.0, 1.0),
+        "matched": best[1]["matched"],
+        "reason": f"matched {', '.join(best[1]['matched'])}",
+    }
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: quick-route 'message'")
+        sys.exit(1)
+    
+    result = route(sys.argv[1])
+    
+    if "--json" in sys.argv:
+        print(json.dumps(result, indent=2))
+    else:
+        print(result["route"])
