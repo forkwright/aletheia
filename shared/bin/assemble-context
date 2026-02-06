@@ -97,6 +97,42 @@ def get_pending_tasks(agent_id):
     return []
 
 
+def get_domain_knowledge(agent_id, limit=8):
+    """Get high-confidence domain-specific knowledge from the graph."""
+    agent_domains = {
+        "syn": "cognition", "demiurge": "craft", "chiron": "work",
+        "eiron": "school", "syl": "home", "arbor": "general", "akron": "vehicle",
+    }
+    domain = agent_domains.get(agent_id, "general")
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "falkordb", "redis-cli",
+             "GRAPH.QUERY", "aletheia",
+             f"MATCH (s)-[r]->(o) WHERE s.domain = '{domain}' AND "
+             f"r.confidence >= 0.7 RETURN s.name, type(r), o.name "
+             f"ORDER BY r.confidence DESC LIMIT {limit}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            lines = [l.strip() for l in result.stdout.strip().split('\n')
+                     if l.strip() and not l.startswith(('s.name', 'type(r)', 'o.name',
+                                                        'Cached', 'Query', 'internal'))]
+            knowledge = []
+            i = 0
+            while i + 2 < len(lines):
+                s, r, o = lines[i], lines[i+1], lines[i+2]
+                # Skip if any part looks like a header
+                if s in ('s.name', 'type(r)', 'o.name'):
+                    i += 3
+                    continue
+                knowledge.append(f"{s} —{r}→ {o}")
+                i += 3
+            return knowledge
+    except Exception:
+        pass
+    return []
+
+
 def get_graph_context(agent_id, limit=10):
     """Get recent cross-domain insights from the shared graph.
     Also reinforces accessed facts (confidence bump)."""
@@ -266,17 +302,19 @@ def assemble(agent_id, brief=False):
     if brief:
         return "\n".join(parts)
     
-    # Parallel I/O: fetch calendar, graph, and tasks simultaneously
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    # Parallel I/O: fetch calendar, graph, tasks, and domain knowledge simultaneously
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         cal_future = executor.submit(get_calendar_context)
         graph_future = executor.submit(get_graph_context, agent_id)
         tasks_future = executor.submit(get_pending_tasks, agent_id)
         discoveries_future = executor.submit(get_graph_discoveries, agent_id)
+        domain_future = executor.submit(get_domain_knowledge, agent_id)
         
         cal = cal_future.result()
         graph_data = graph_future.result()
         tasks = tasks_future.result()
         discoveries = discoveries_future.result()
+        domain_knowledge = domain_future.result()
     
     # Recent facts (decisions, preferences, corrections)
     facts = load_recent_facts(agent_id, limit=15)
@@ -322,6 +360,13 @@ def assemble(agent_id, brief=False):
         parts.append("## Shared Knowledge (recent)")
         for triple in graph_data:
             parts.append(f"- {triple}")
+        parts.append("")
+    
+    # Domain knowledge (already fetched in parallel above)
+    if domain_knowledge:
+        parts.append("## Domain Knowledge")
+        for k in domain_knowledge:
+            parts.append(f"- {k}")
         parts.append("")
     
     # Graph discoveries (already fetched in parallel above)
