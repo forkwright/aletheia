@@ -158,3 +158,23 @@ document_processing:
   venv: "/mnt/ssd/aletheia/infrastructure/docling/.venv"
   primary_user: "eiron"
   notes: "Uses Docling. Handles PDF, DOCX, HTML, images."
+
+research:
+  scholar:
+    description: "Academic paper search via OpenAlex (250M+ papers, free, no key)"
+    command: "scholar"
+    examples:
+      - 'scholar "distributed cognition emergence" --limit 10'
+      - 'scholar "binding problem" --since 2020 --verbose'
+    notes: "S1/S2 source discovery. Always verify before citing."
+  wiki:
+    description: "Wikipedia lookup for concept orientation"
+    command: "wiki"
+    examples:
+      - 'wiki "Poincaré section"'
+      - 'wiki --search "topological dynamics"'
+    notes: "S4 grey literature. Use for orientation only, cite primary sources."
+  perplexity:
+    description: "Perplexity pro-search for research synthesis"
+    command: "pplx"
+    notes: "Best for broad synthesis. Verify sources independently."
