@@ -1,146 +1,442 @@
 #!/usr/bin/env python3
 """
-scholar — Academic paper search for Aletheia research.
+scholar — Academic research tool for Aletheia.
 
-Searches OpenAlex (250M+ papers, free, no API key) and optionally
-Semantic Scholar. Returns structured results with citation counts,
-venues, and abstracts.
+Multi-source academic search, citation graph traversal, and paper retrieval.
+Sources: OpenAlex (250M+ papers), arXiv, Semantic Scholar.
 
 Usage:
-    scholar "distributed cognition emergence"          # Search papers
-    scholar "binding problem" --limit 10               # More results
-    scholar "Poincaré sections dynamical" --since 2020 # Recent only
-    scholar --paper "doi:10.1234/..." --details        # Paper details
-    scholar --cite "doi:10.1234/..."                   # Get citations
+    scholar "query"                           # Search across sources
+    scholar "query" --limit 10 --since 2022   # Filter
+    scholar "query" -v                         # Include abstracts
+    scholar cite DOI_OR_URL                   # Citation graph (cites/cited-by)
+    scholar fetch DOI_OR_ARXIV_ID             # Download + convert to markdown
+    scholar refs DOI_OR_URL                   # Get reference list
+    scholar bib DOI_OR_URL                    # BibTeX entry
+    scholar read DOI_OR_URL                   # Fetch and display full text
 """
 
 import json
 import sys
+import os
 import urllib.request
 import urllib.parse
+import subprocess
+import re
 from datetime import datetime
 
 OPENALEX_BASE = "https://api.openalex.org"
-SEMANTIC_SCHOLAR_BASE = "https://api.semanticscholar.org/graph/v1"
+ARXIV_BASE = "http://export.arxiv.org/api/query"
+S2_BASE = "https://api.semanticscholar.org/graph/v1"
+S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+
+def _http_get(url, headers=None, timeout=15):
+    """Shared HTTP GET with error handling."""
+    hdrs = {"User-Agent": "Aletheia/1.0 (research tool; mailto:aletheia@openclaw.ai)"}
+    if headers:
+        hdrs.update(headers)
+    try:
+        req = urllib.request.Request(url, headers=hdrs)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            return None  # rate limited
+        raise
+    except Exception:
+        return None
+
+
+# ── OpenAlex ──────────────────────────────────────────
 
 def search_openalex(query, limit=5, since=None):
-    """Search OpenAlex for papers."""
+    """Search OpenAlex (250M+ papers, free, no key)."""
     params = {
         "search": query,
-        "per_page": limit,
-        "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,doi",
+        "per_page": min(limit, 25),
+        "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,doi,type",
         "sort": "relevance_score:desc",
-        "mailto": "aletheia@openclaw.ai",  # polite pool
+        "mailto": "aletheia@openclaw.ai",
     }
     if since:
         params["filter"] = f"publication_year:>{since-1}"
     
-    url = f"{OPENALEX_BASE}/works?{urllib.parse.urlencode(params)}"
-    
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Aletheia/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    data = _http_get(f"{OPENALEX_BASE}/works?{urllib.parse.urlencode(params)}")
+    if not data:
         return []
     
     results = []
-    for work in data.get("results", []):
-        # Reconstruct abstract from inverted index
-        abstract = ""
-        aii = work.get("abstract_inverted_index")
-        if aii:
-            words = {}
-            for word, positions in aii.items():
-                for pos in positions:
-                    words[pos] = word
-            abstract = " ".join(words[i] for i in sorted(words.keys()))
-        
-        # Get venue
+    for work in json.loads(data).get("results", []):
+        abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
         loc = work.get("primary_location") or {}
         source = loc.get("source") or {}
-        venue = source.get("display_name", "Unknown venue")
-        
-        # Get authors
-        authors = []
-        for a in (work.get("authorships") or [])[:3]:
-            name = (a.get("author") or {}).get("display_name", "?")
-            authors.append(name)
-        if len(work.get("authorships", [])) > 3:
-            authors.append("et al.")
+        authors = _extract_authors(work.get("authorships", []))
         
         results.append({
             "title": work.get("title", "?"),
             "year": work.get("publication_year"),
             "citations": work.get("cited_by_count", 0),
-            "venue": venue,
-            "authors": ", ".join(authors),
+            "venue": source.get("display_name", "Unknown"),
+            "authors": authors,
             "doi": work.get("doi"),
-            "abstract": abstract[:500] if abstract else None,
-            "openalex_id": work.get("id"),
+            "abstract": abstract[:600] if abstract else None,
+            "type": work.get("type", "?"),
+            "source": "openalex",
         })
-    
     return results
 
-def paper_details(doi_or_id):
-    """Get detailed info about a specific paper."""
-    if doi_or_id.startswith("doi:"):
-        doi_or_id = doi_or_id[4:]
+
+# ── arXiv ──────────────────────────────────────────────
+
+def search_arxiv(query, limit=5):
+    """Search arXiv (preprints, free, no key)."""
+    params = {
+        "search_query": f"all:{query}",
+        "start": 0,
+        "max_results": limit,
+        "sortBy": "relevance",
+    }
+    data = _http_get(f"{ARXIV_BASE}?{urllib.parse.urlencode(params)}")
+    if not data:
+        return []
     
-    encoded = urllib.parse.quote(f"https://doi.org/{doi_or_id}", safe="")
-    url = f"{OPENALEX_BASE}/works/{encoded}?select=id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,referenced_works,related_works,concepts"
+    # Parse Atom XML (simple extraction, no lxml dependency)
+    text = data.decode("utf-8")
+    results = []
+    entries = text.split("<entry>")[1:]  # skip feed header
     
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Aletheia/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    for entry in entries:
+        title = _xml_extract(entry, "title").replace("\n", " ").strip()
+        abstract = _xml_extract(entry, "summary").replace("\n", " ").strip()
+        published = _xml_extract(entry, "published")[:4]  # year
+        arxiv_id = _xml_extract(entry, "id").split("/abs/")[-1]
+        
+        authors = []
+        for author_block in entry.split("<author>")[1:]:
+            name = _xml_extract(author_block, "name")
+            if name:
+                authors.append(name)
+        
+        results.append({
+            "title": title,
+            "year": int(published) if published.isdigit() else None,
+            "citations": None,
+            "venue": "arXiv",
+            "authors": ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else ""),
+            "doi": None,
+            "arxiv_id": arxiv_id,
+            "abstract": abstract[:600] if abstract else None,
+            "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
+            "source": "arxiv",
+        })
+    return results
+
+
+# ── Semantic Scholar ────────────────────────────────────
+
+def search_s2(query, limit=5):
+    """Search Semantic Scholar (225M+ papers, API key optional)."""
+    params = {
+        "query": query,
+        "limit": min(limit, 20),
+        "fields": "title,year,citationCount,venue,authors,abstract,externalIds,influentialCitationCount",
+    }
+    headers = {}
+    if S2_KEY:
+        headers["x-api-key"] = S2_KEY
+    
+    data = _http_get(f"{S2_BASE}/paper/search?{urllib.parse.urlencode(params)}", headers=headers)
+    if not data:
+        return []
+    
+    results = []
+    for paper in json.loads(data).get("data", []):
+        ext = paper.get("externalIds") or {}
+        authors = ", ".join([a.get("name", "?") for a in (paper.get("authors") or [])[:3]])
+        if len(paper.get("authors", [])) > 3:
+            authors += " et al."
+        
+        results.append({
+            "title": paper.get("title", "?"),
+            "year": paper.get("year"),
+            "citations": paper.get("citationCount", 0),
+            "influential_citations": paper.get("influentialCitationCount", 0),
+            "venue": paper.get("venue", "Unknown"),
+            "authors": authors,
+            "doi": ext.get("DOI"),
+            "arxiv_id": ext.get("ArXiv"),
+            "abstract": (paper.get("abstract") or "")[:600] or None,
+            "s2_id": paper.get("paperId"),
+            "source": "s2",
+        })
+    return results
+
+
+def get_citations(paper_id, direction="citations", limit=10):
+    """Get citation graph for a paper. direction: citations|references."""
+    headers = {}
+    if S2_KEY:
+        headers["x-api-key"] = S2_KEY
+    
+    # Resolve paper ID
+    if paper_id.startswith("http"):
+        paper_id = paper_id.rstrip("/")
+    elif paper_id.startswith("10."):
+        paper_id = f"DOI:{paper_id}"
+    
+    fields = "title,year,citationCount,venue,authors"
+    data = _http_get(
+        f"{S2_BASE}/paper/{urllib.parse.quote(paper_id, safe='')}/{direction}?fields={fields}&limit={limit}",
+        headers=headers
+    )
+    if not data:
+        return []
+    
+    results = []
+    parsed = json.loads(data) if data else {}
+    for item in parsed.get("data", []):
+        paper = item.get("citingPaper" if direction == "citations" else "citedPaper", {})
+        if not paper.get("title"):
+            continue
+        authors = ", ".join([a.get("name", "?") for a in (paper.get("authors") or [])[:2]])
+        results.append({
+            "title": paper.get("title"),
+            "year": paper.get("year"),
+            "citations": paper.get("citationCount", 0),
+            "venue": paper.get("venue", ""),
+            "authors": authors,
+        })
+    return results
+
+
+# ── Paper retrieval ─────────────────────────────────────
+
+def fetch_paper(identifier, output_dir="."):
+    """Download and convert a paper to markdown."""
+    pdf_url = None
+    basename = identifier
+    
+    if "arxiv.org" in identifier or re.match(r"\d{4}\.\d+", identifier):
+        arxiv_id = identifier.split("/")[-1].replace(".pdf", "")
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+        basename = arxiv_id.replace("/", "_")
+    elif identifier.startswith("10.") or identifier.startswith("doi:"):
+        doi = identifier.replace("doi:", "")
+        # Try Unpaywall for open access
+        data = _http_get(f"https://api.unpaywall.org/v2/{doi}?email=aletheia@openclaw.ai")
+        if data:
+            info = json.loads(data)
+            oa = info.get("best_oa_location") or {}
+            pdf_url = oa.get("url_for_pdf") or oa.get("url")
+            basename = doi.replace("/", "_")
+    
+    if not pdf_url:
+        print(f"Could not find open access PDF for: {identifier}")
         return None
+    
+    # Download
+    os.makedirs(output_dir, exist_ok=True)
+    pdf_path = os.path.join(output_dir, f"{basename}.pdf")
+    md_path = os.path.join(output_dir, f"{basename}.md")
+    
+    print(f"Downloading: {pdf_url}")
+    data = _http_get(pdf_url, timeout=60)
+    if not data:
+        print("Download failed")
+        return None
+    
+    with open(pdf_path, "wb") as f:
+        f.write(data)
+    print(f"Saved: {pdf_path} ({len(data)} bytes)")
+    
+    # Convert via ingest-doc if available
+    ingest = os.path.join(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"), "shared", "bin", "ingest-doc")
+    if os.path.exists(ingest):
+        try:
+            subprocess.run([ingest, pdf_path, "--output", output_dir], timeout=120)
+            if os.path.exists(md_path):
+                print(f"Converted: {md_path}")
+                return md_path
+        except Exception as e:
+            print(f"Conversion note: {e}")
+    
+    # Fallback: try web_fetch on HTML version
+    if "arxiv.org" in (pdf_url or ""):
+        html_url = pdf_url.replace("/pdf/", "/html/")
+        print(f"PDF conversion unavailable, try: web_fetch {html_url}")
+    
+    return pdf_path
+
+
+# ── Helpers ─────────────────────────────────────────────
+
+def _reconstruct_abstract(inverted_index):
+    if not inverted_index:
+        return ""
+    words = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            words[pos] = word
+    return " ".join(words[i] for i in sorted(words.keys()))
+
+def _extract_authors(authorships, max_n=3):
+    authors = []
+    for a in (authorships or [])[:max_n]:
+        name = (a.get("author") or {}).get("display_name", "?")
+        authors.append(name)
+    if len(authorships or []) > max_n:
+        authors.append("et al.")
+    return ", ".join(authors)
+
+def _xml_extract(text, tag):
+    pattern = f"<{tag}[^>]*>(.*?)</{tag}>"
+    match = re.search(pattern, text, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+# ── Display ──────────────────────────────────────────────
 
 def format_results(results, verbose=False):
-    """Format search results for display."""
     for i, r in enumerate(results, 1):
-        print(f"\n[{i}] {r['title']}")
-        print(f"    {r['authors']} ({r['year']}) — {r['venue']}")
-        print(f"    Citations: {r['citations']} | DOI: {r['doi'] or 'N/A'}")
-        if verbose and r.get('abstract'):
-            print(f"    Abstract: {r['abstract'][:300]}...")
+        src_tag = {"openalex": "OA", "arxiv": "AX", "s2": "S2"}.get(r.get("source", ""), "??")
+        cite_str = f"{r['citations']} cites" if r.get('citations') is not None else "? cites"
+        influential = f" ({r['influential_citations']} influential)" if r.get('influential_citations') else ""
+        
+        print(f"\n[{src_tag}:{i}] {r['title']}")
+        print(f"    {r['authors']} ({r.get('year', '?')}) — {r.get('venue', '?')}")
+        print(f"    {cite_str}{influential} | DOI: {r.get('doi') or r.get('arxiv_id') or 'N/A'}")
+        if verbose and r.get("abstract"):
+            # Truncate cleanly at sentence boundary
+            abstract = r["abstract"]
+            if len(abstract) > 400:
+                cut = abstract[:400].rfind(". ")
+                abstract = abstract[:cut+1] if cut > 200 else abstract[:400] + "..."
+            print(f"    {abstract}")
+
+
+# ── Main ─────────────────────────────────────────────────
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="Academic paper search")
-    parser.add_argument("query", nargs="*", help="Search query")
-    parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--since", type=int, help="Papers from this year onwards")
-    parser.add_argument("--paper", help="Get details for a DOI")
-    parser.add_argument("--cite", help="Get citations for a DOI")
-    parser.add_argument("--verbose", "-v", action="store_true")
-    parser.add_argument("--json", action="store_true")
+    args = sys.argv[1:]
     
-    args = parser.parse_args()
-    
-    if args.paper:
-        details = paper_details(args.paper)
-        if details:
-            print(json.dumps(details, indent=2))
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
         return
     
+    # Detect subcommands
+    command = args[0] if args and args[0] in ("cite", "fetch", "refs", "read") else "search"
+    
+    if command != "search":
+        args = args[1:]  # consume the subcommand
+    
+    # Parse flags
+    import argparse
+    
+    if command == "search":
+        parser = argparse.ArgumentParser(prog="scholar")
+        parser.add_argument("query", nargs="+", help="Search query")
+        parser.add_argument("--limit", "-n", type=int, default=5)
+        parser.add_argument("--since", type=int)
+        parser.add_argument("--verbose", "-v", action="store_true")
+        parser.add_argument("--source", choices=["all", "openalex", "arxiv", "s2"], default="all")
+        parser.add_argument("--json", action="store_true")
+        args = parser.parse_args(args)
+    elif command == "cite":
+        parser = argparse.ArgumentParser(prog="scholar cite")
+        parser.add_argument("paper_id")
+        parser.add_argument("--direction", choices=["citations", "references", "both"], default="both")
+        parser.add_argument("--limit", "-n", type=int, default=10)
+        args = parser.parse_args(args)
+    elif command == "fetch":
+        parser = argparse.ArgumentParser(prog="scholar fetch")
+        parser.add_argument("identifier")
+        parser.add_argument("--output", "-o", default=".")
+        args = parser.parse_args(args)
+    elif command == "refs":
+        parser = argparse.ArgumentParser(prog="scholar refs")
+        parser.add_argument("paper_id")
+        parser.add_argument("--limit", "-n", type=int, default=20)
+        args = parser.parse_args(args)
+    elif command == "read":
+        parser = argparse.ArgumentParser(prog="scholar read")
+        parser.add_argument("identifier")
+        args = parser.parse_args(args)
+    
+    args.command = command
+    
+    if args.command == "cite":
+        if args.direction in ("citations", "both"):
+            print(f"=== Papers citing this work ===")
+            cites = get_citations(args.paper_id, "citations", args.limit)
+            for i, c in enumerate(cites, 1):
+                print(f"  [{i}] {c['title']} ({c.get('year','?')}) — {c['citations']} cites")
+        if args.direction in ("references", "both"):
+            print(f"\n=== References (this paper cites) ===")
+            refs = get_citations(args.paper_id, "references", args.limit)
+            for i, r in enumerate(refs, 1):
+                print(f"  [{i}] {r['title']} ({r.get('year','?')}) — {r['citations']} cites")
+        return
+    
+    if args.command == "fetch":
+        fetch_paper(args.identifier, args.output)
+        return
+    
+    if args.command == "refs":
+        refs = get_citations(args.paper_id, "references", args.limit)
+        for i, r in enumerate(refs, 1):
+            print(f"[{i}] {r['title']} ({r.get('year','?')}) — {r.get('venue','')} — {r['citations']} cites")
+        return
+    
+    if args.command == "read":
+        path = fetch_paper(args.identifier, "/tmp/scholar-read")
+        if path and path.endswith(".md"):
+            with open(path) as f:
+                print(f.read())
+        elif path:
+            print(f"Downloaded to {path} (PDF — use ingest-doc to convert)")
+        return
+    
+    # Default: search
     if not args.query:
         parser.print_help()
         return
     
     query = " ".join(args.query)
-    results = search_openalex(query, args.limit, args.since)
+    all_results = []
+    
+    if args.source in ("all", "openalex"):
+        all_results.extend(search_openalex(query, args.limit, args.since))
+    
+    if args.source in ("all", "arxiv"):
+        all_results.extend(search_arxiv(query, min(args.limit, 5)))
+    
+    if args.source in ("all", "s2"):
+        s2_results = search_s2(query, args.limit)
+        all_results.extend(s2_results)
+    
+    # Deduplicate by title similarity
+    seen_titles = set()
+    deduped = []
+    for r in all_results:
+        title_key = r["title"].lower()[:60]
+        if title_key not in seen_titles:
+            seen_titles.add(title_key)
+            deduped.append(r)
+    
+    # Sort by citations (descending), year as tiebreaker
+    deduped.sort(key=lambda x: (x.get("citations") or 0, x.get("year") or 0), reverse=True)
     
     if args.json:
-        print(json.dumps(results, indent=2))
+        print(json.dumps(deduped[:args.limit], indent=2))
     else:
-        print(f"OpenAlex results for: {query}")
-        print(f"{'=' * 60}")
-        format_results(results, args.verbose)
-        print(f"\n{len(results)} results shown. Use --limit N for more, --verbose for abstracts.")
+        sources_used = set(r["source"] for r in deduped)
+        src_names = {"openalex": "OpenAlex", "arxiv": "arXiv", "s2": "Semantic Scholar"}
+        print(f"Sources: {', '.join(src_names.get(s,s) for s in sources_used)}")
+        print(f"Query: {query}")
+        print("=" * 70)
+        format_results(deduped[:args.limit], args.verbose)
+        print(f"\n{min(len(deduped), args.limit)} results. Use -v for abstracts, -n N for more.")
+        print("Use 'scholar cite DOI' for citation graph, 'scholar fetch ID' to download.")
 
 if __name__ == "__main__":
     main()
