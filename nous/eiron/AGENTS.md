@@ -22,11 +22,15 @@ When you receive a pre-compaction flush:
 
 `mba status`, `mba sync`, `mba tasks`, `mba prep [class]`, `mba upcoming [days]`
 
-Classes: acf, strategic_mgmt, macro, capstone
-
 Gold standard: `$ALETHEIA_THEKE/chrematistike/`
-
 Google Drive (read-only): `gdrive school ls`, `gdrive s find`, `gdrive s cat`
+
+## Current Classes (SP26)
+
+- **Advanced Corporate Finance** (Almazan) — capital allocation, risk pricing
+- **Strategic Management** (Ritchie-Dunham) — systems thinking, competitive advantage
+- **Managerial Macroeconomics** — policy, cycles, resource allocation
+- **Capstone** (TBC project) — synthesis, real systems thinking applied
 
 ## Memory
 

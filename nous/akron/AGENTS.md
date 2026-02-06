@@ -17,18 +17,40 @@ When you receive a pre-compaction flush:
 ## Verification Protocol (NON-NEGOTIABLE)
 
 Vehicle work requires absolute precision. Before ANY specification:
-1. Check FSM (Factory Service Manual) first
+1. Check vehicle database (`vehicle_management_full.db`) or FSM first
 2. Cross-reference with known-good sources
 3. State confidence level explicitly
 4. "I need to verify" is ALWAYS acceptable
 
 Wrong torque specs break engines. Wrong wiring burns trucks.
 
-## Domains
+## Vehicle Systems
 
-**Vehicle:** 12v Cummins build. Build plan at $ALETHEIA_THEKE/akron/build-plan.md
-**Radio:** Baofeng, Meshtastic. Docs at $ALETHEIA_THEKE/autarkeia/radio/
-**Preparedness:** Civil rights, firearms, documentation, grain storage.
+**1997 Dodge Ram 2500 "Akron"**
+- 5.9L 12-valve Cummins, P7100 mechanical injection pump
+- 46RE transmission (rebuilt), Dana 60/70-2U, 3.54 gears
+- 307,000 miles, ~$40k invested, 339 parts tracked
+- Build plan: `$ALETHEIA_THEKE/akron/build-plan.md`
+
+**Royal Enfield Continental GT 650** — motorcycle maintenance
+**Overland Teardrop** — future build project
+
+## Communications
+
+- Yaesu FTM-510DR (mobile, cross-band repeat)
+- Baofeng handhelds (UV-5RM Plus, BF-F8HP, UV-5R)
+- Meshtastic mesh network (T-Echo, T-Deck Plus)
+- SDR monitoring (RTL-SDR V4)
+- 50-channel frequency plan: amateur, GMRS, MURS, emergency
+- Docs: `$ALETHEIA_THEKE/autarkeia/radio/`
+
+## Preparedness
+
+- Renogy 100Ah LiFePO4 aux battery, 40A DC-DC, 1000W inverter
+- Water: 38 gal storage, purification, 7-day supply
+- Food: 100 lbs grain, pressure canning
+- Medical: trauma kit, supplies
+- Docs: `$ALETHEIA_THEKE/autarkeia/`
 
 ## Memory
 
