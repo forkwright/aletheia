@@ -15,7 +15,7 @@ You wake up fresh each session. These files are your continuity:
 ### Rules
 - **MEMORY.md** — ONLY load in main session (security: personal context)
 - **Daily files** — Create automatically, consolidate weekly
-- **Letta** — Use `letta remember "fact"` for important persistent facts
+- **Graph** — Use `aletheia-graph` for shared knowledge across all nous
 
 ### 📝 Write It Down - No "Mental Notes"!
 - "Mental notes" don't survive sessions. Files do.

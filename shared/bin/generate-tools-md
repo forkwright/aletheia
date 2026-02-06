@@ -50,8 +50,7 @@ def generate_syn():
     lines.append("## Memory/Knowledge")
     lines.append("- `facts [stats|about|search|add]` — Structured facts store")
     lines.append("- `memory-router \"query\"` — Federated memory search")
-    lines.append("- `letta ask|remember|recall` — Agent-specific memory")
-    lines.append("- `temporal-graph stats|events|timeline` — Knowledge graph")
+    lines.append("- `aletheia-graph stats|query|add` — Shared knowledge graph")
     lines.append("")
     
     # Aletheia

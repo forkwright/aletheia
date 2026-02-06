@@ -24,8 +24,7 @@ Full reference: `shared/config/tools.yaml`. Key commands below.
 ## Memory/Knowledge
 - `facts [stats|about|search|add]` — Structured facts store
 - `memory-router "query"` — Federated memory search
-- `letta ask|remember|recall` — Agent-specific memory
-- `temporal-graph stats|events|timeline` — Knowledge graph
+- `aletheia-graph stats|query|add` — Shared knowledge graph
 
 ## Aletheia
 - `distill --agent X --text "..."` — Extract structured insights

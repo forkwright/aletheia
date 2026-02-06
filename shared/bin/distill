@@ -5,7 +5,7 @@ distill — Extract structured insights from session context before compaction.
 Called by the nous during pre-compaction memory flush. Receives raw text
 (conversation excerpt or session notes) on stdin and:
   1. Extracts structured facts → facts.jsonl
-  2. Extracts events/entities → FalkorDB temporal graph
+  2. Extracts events/entities → FalkorDB knowledge graph
   3. Saves session state → memory/session-state.yaml
   4. Outputs a resumption summary for the compacted context
 
