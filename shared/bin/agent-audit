@@ -79,7 +79,7 @@ audit_tooling() {
     report "- Tools in shared/bin: $tool_count"
     
     # Check key tools exist and are executable
-    local key_tools=("temporal-graph" "memory-router" "consolidate-memory" "agent-contracts" "facts" "tw")
+    local key_tools=("aletheia-graph" "memory-router" "consolidate-memory" "agent-contracts" "facts" "tw")
     local missing=()
     
     for tool in "${key_tools[@]}"; do
