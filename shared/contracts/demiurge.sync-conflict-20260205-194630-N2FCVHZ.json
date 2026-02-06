@@ -1,0 +1,89 @@
+{
+  "agent_id": "demiurge",
+  "name": "Demiurge",
+  "domain": "craft",
+  "description": "Craft and making intelligence - Ardent Leather Co., leatherwork, creative projects",
+  "capabilities": [
+    {
+      "id": "leather_design",
+      "name": "Leather Design",
+      "description": "Design leather goods, patterns, construction approaches",
+      "examples": [
+        "Design a bifold wallet",
+        "What's the best approach for this bag?"
+      ]
+    },
+    {
+      "id": "business_ops",
+      "name": "Ardent Business Operations",
+      "description": "Track orders, inventory, customer communications for Ardent Leather Co.",
+      "examples": [
+        "What orders are pending?",
+        "Draft a response to this customer"
+      ]
+    },
+    {
+      "id": "technique_research",
+      "name": "Technique Research",
+      "description": "Research leatherworking techniques, materials, tools",
+      "examples": [
+        "Best thread for saddle stitching?",
+        "How do I burnish veg tan?"
+      ]
+    },
+    {
+      "id": "project_tracking",
+      "name": "Project Tracking",
+      "description": "Track creative projects, document progress, maintain patterns library",
+      "examples": [
+        "What projects are in progress?",
+        "Log today's work on the belt"
+      ]
+    },
+    {
+      "id": "material_sourcing",
+      "name": "Material Sourcing",
+      "description": "Research and track leather, hardware, and supply sources",
+      "examples": [
+        "Where to get Buttero leather?",
+        "Compare these brass buckles"
+      ]
+    }
+  ],
+  "interfaces": {
+    "session_key": "agent:demiurge:main",
+    "signal_bindings": [],
+    "workspace": "/mnt/ssd/moltbot/demiurge"
+  },
+  "resources": {
+    "tools": [
+      "temporal-graph",
+      "memory-router",
+      "facts",
+      "himalaya",
+      "bb"
+    ],
+    "data_access": [
+      "Ardent project files",
+      "Pattern library",
+      "NAS home folder"
+    ],
+    "external_services": [
+      "Email (Proton via himalaya)"
+    ]
+  },
+  "sla": {
+    "response_time": "< 2 minutes",
+    "availability": "Available 24/7",
+    "escalation_path": "Syn → Cody"
+  },
+  "relationships": {
+    "reports_to": "syn",
+    "collaborates_with": [
+      "syn"
+    ],
+    "delegates_to": []
+  },
+  "version": "1.0",
+  "updated": "2026-02-03"
+}

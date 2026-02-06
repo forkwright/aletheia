@@ -130,7 +130,21 @@ Full sweep of active files completed. 62 files updated: moltbot→aletheia, claw
 
 Active system is clean of pre-Aletheia naming. Historical memory files left as-is.
 
-*Updated: 2026-02-05 19:15 CST*
+## 6-Phase Build Plan Complete (2026-02-05)
+
+All six phases shipped in a single day:
+1. Distillation (structured extraction replaces lossy compaction)
+2. Context Compilation (assemble-context, compile-context, generate-tools-md)
+3. Shared Awareness (FalkorDB graph, ~400 nodes)
+4. Attention System (attention-check, adaptive prosoche)
+5. OpenClaw Patches (8 patches in local fork)
+6. Character Refinement (SOUL.md audit — character separated from operations)
+
+**Key correction:** Own CLI args can use `--nous` not `--agent`. The boundary between "ours" and "upstream" must be understood, not assumed.
+
+**distill bug:** session-state.yaml parsing fails on unquoted special chars. Needs fix.
+
+*Updated: 2026-02-05 19:47 CST*
 
 ---
 

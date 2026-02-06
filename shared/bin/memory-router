@@ -29,7 +29,7 @@ FACTS_FILE = SHARED_DIR / "memory" / "facts.jsonl"
 
 # Agent workspace paths
 AGENT_DIRS = {
-    "syn": BASE_DIR / "clawd",
+    "syn": BASE_DIR / "syn",
     "syl": BASE_DIR / "syl", 
     "chiron": BASE_DIR / "chiron",
     "eiron": BASE_DIR / "eiron",

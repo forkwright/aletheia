@@ -22,8 +22,8 @@ detect_workspace() {
         return
     fi
     
-    # Default to clawd (syn)
-    echo "clawd"
+    # Default to syn
+    echo "syn"
 }
 
 AGENT=$(detect_workspace)

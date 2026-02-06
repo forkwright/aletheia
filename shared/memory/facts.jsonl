@@ -309,3 +309,4 @@
 {"subject":"syn","predicate":"operating_principle","object":"no narration between tool calls - they are self-documenting. Language only when it carries meaning the human does not already have. Translation tax applies to machines too.","confidence":1.0,"category":"insight","valid_from":"2026-02-05T14:27:00"}
 {"subject": "system", "predicate": "decision", "object": "that OpenClaw is a runtime dependency only", "confidence": 0.8, "category": "decision", "valid_from": "2026-02-05T14:28:33.049349"}
 {"subject": "correction", "predicate": "noted", "object": "the translation tax applies to machines too", "confidence": 0.9, "category": "insight", "valid_from": "2026-02-05T14:28:33.050069"}
+{"subject": "correction", "predicate": "noted", "object": "thinking in the concepts", "confidence": 0.9, "category": "insight", "valid_from": "2026-02-05T19:47:08.739943"}
