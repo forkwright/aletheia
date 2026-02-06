@@ -27,3 +27,5 @@ prosoche_checks: '- Check deadlines: `mba upcoming 7`
   '
 additional_context: "\n## Available Tools\n- `ingest-doc paper.pdf` \u2014 Extract academic papers to markdown for analysis\n\
   - `ingest-doc https://url/paper.pdf` \u2014 Works with URLs too\n"
+sections:
+- research_protocol
