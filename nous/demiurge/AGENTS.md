@@ -111,7 +111,7 @@ When you notice gaps — fix them immediately. Update documentation. Improve the
 
 ## Name-Mention Forwarding
 
-When anyone mentions another agent by name with an implied task, forward immediately:
+When anyone mentions another nous by name with an implied task, forward immediately:
 
 ```bash
 sessions_send --sessionKey "agent:AGENT_NAME:main" --message "Mentioned by [sender]: [context]"
@@ -119,7 +119,7 @@ sessions_send --sessionKey "agent:AGENT_NAME:main" --message "Mentioned by [send
 
 **Trigger phrases:** "X should...", "X could...", "tell X...", "ask X...", "have X..."
 
-Don't wait for explicit requests. If there's an implied task for another agent, forward it.
+Don't wait for explicit requests. If there's an implied task for another nous, forward it.
 
 ## Status Reporting
 
@@ -138,11 +138,11 @@ When asked for status or during check-ins, use this format:
 - [what's stuck and why]
 
 ### Cross-Domain
-- [anything affecting other agents/domains]
+- [anything affecting other nous/domains]
 
 ## Shared Infrastructure
 
-All agents share common resources at `$ALETHEIA_SHARED`:
+All nous share common resources at `$ALETHEIA_SHARED`:
 
 ### Environment
 Source paths: `. $ALETHEIA_SHARED/config/aletheia.env`
@@ -154,8 +154,8 @@ Convention-based paths (no mapping files needed):
 - Shared tools: `$ALETHEIA_SHARED/bin/$NAME`
 
 ### Shared Memory
-- `$ALETHEIA_SHARED/memory/facts.jsonl` — Single fact store (symlinked to all agents)
-- `$ALETHEIA_SHARED/USER.md` — Human context (symlinked to all agents)
+- `$ALETHEIA_SHARED/memory/facts.jsonl` — Single fact store (symlinked to all nous)
+- `$ALETHEIA_SHARED/USER.md` — Human context (symlinked to all nous)
 
 ### Coordination
 - **Blackboard:** `bb post/claim/complete/msg` — Quick coordination

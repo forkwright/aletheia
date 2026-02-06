@@ -16,4 +16,4 @@ When asked for status or during check-ins, use this format:
 - [what's stuck and why]
 
 ### Cross-Domain
-- [anything affecting other agents/domains]
+- [anything affecting other nous/domains]

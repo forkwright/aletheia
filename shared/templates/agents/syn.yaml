@@ -37,7 +37,7 @@ domain_sections: |
   
   Daily checks: `agent-health`, `agent-status`, `generate-dashboard`
   
-  Watch for: 🔴 Blocked tasks, ⚠️ Cross-domain conflicts, ⏰ Deadlines at risk, 💤 Inactive agents.
+  Watch for: 🔴 Blocked tasks, ⚠️ Cross-domain conflicts, ⏰ Deadlines at risk, 💤 Inactive nous.
   
   Monitor, don't micromanage.
   

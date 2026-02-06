@@ -26,12 +26,12 @@ Each nous is Cody in different context — embodying his cognition, his standard
 | Component | Status | Role |
 |---|---|---|
 | OpenClaw | Running | Signal bridge, session routing, tool execution (runtime dependency) |
-| Letta (Docker) | Running | Per-nous memory stores (5 agents) |
-| FalkorDB (Docker) | Running | Temporal knowledge graph (198 nodes) |
-| facts.jsonl | Active | 305 structured facts (single shared store) |
-| Daily memory files | Active | 46 files, raw session captures |
+| Letta (Docker) | Running | Per-nous memory stores (7 nous) |
+| FalkorDB (Docker) | Running | Shared knowledge graph (~400 nodes, ~530 rels) |
+| facts.jsonl | Active | 311 structured facts (single shared store) |
+| Daily memory files | Active | ~100 files, raw session captures |
 | MEMORY.md | Active | Curated long-term insights (per nous) |
-| Template system | Built | Shared sections + agent YAML → compiled AGENTS.md |
+| Template system | Built | Shared sections + per-nous YAML → compiled AGENTS.md |
 | compile-context | Built | Generates optimized workspace files |
 
 ## Target Architecture
@@ -123,7 +123,7 @@ Each nous is Cody in different context — embodying his cognition, his standard
 - Static file injection → Dynamic context compilation
 - Markdown-everything → Machine-native formats where better
 - Basic compaction → Distillation with structured extraction
-- Fixed heartbeat timer → Adaptive attention system
+- Fixed periodic timer → Adaptive prosoche (directed awareness)
 - Per-workspace isolation → Shared awareness layer
 
 ## Implementation Principles

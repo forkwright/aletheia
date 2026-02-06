@@ -18,7 +18,7 @@
 
 ## Git Workflow
 
-See /templates/repo-task.md for explicit agent instructions.
+See /templates/repo-task.md for explicit task instructions.
 
 Key rules:
 - Feature branches from develop

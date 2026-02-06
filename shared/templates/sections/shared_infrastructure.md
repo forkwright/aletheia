@@ -1,7 +1,7 @@
 
 ## Shared Infrastructure
 
-All agents share common resources at `$ALETHEIA_SHARED`:
+All nous share common resources at `$ALETHEIA_SHARED`:
 
 ### Environment
 Source paths: `. $ALETHEIA_SHARED/config/aletheia.env`
@@ -13,8 +13,8 @@ Convention-based paths (no mapping files needed):
 - Shared tools: `$ALETHEIA_SHARED/bin/$NAME`
 
 ### Shared Memory
-- `$ALETHEIA_SHARED/memory/facts.jsonl` — Single fact store (symlinked to all agents)
-- `$ALETHEIA_SHARED/USER.md` — Human context (symlinked to all agents)
+- `$ALETHEIA_SHARED/memory/facts.jsonl` — Single fact store (symlinked to all nous)
+- `$ALETHEIA_SHARED/USER.md` — Human context (symlinked to all nous)
 
 ### Coordination
 - **Blackboard:** `bb post/claim/complete/msg` — Quick coordination

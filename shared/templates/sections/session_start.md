@@ -12,7 +12,7 @@ Don't ask permission. Just do it.
 
 ## Pre-Compaction (Distillation)
 
-When you receive a pre-compaction flush prompt:
+When you receive a pre-compaction flush prompt (the runtime signals this before context distillation):
 1. Run `distill --agent $(basename $PWD) --text "YOUR_SUMMARY"` with key decisions, corrections, insights, and open threads
 2. Write session summary to `memory/YYYY-MM-DD.md`
 3. Update `MEMORY.md` if anything significant was learned
