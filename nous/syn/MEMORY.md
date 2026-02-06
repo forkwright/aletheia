@@ -144,7 +144,23 @@ All six phases shipped in a single day:
 
 **distill bug:** session-state.yaml parsing fails on unquoted special chars. Needs fix.
 
-*Updated: 2026-02-05 19:47 CST*
+## System Audit Results (2026-02-05 evening)
+
+**Recovery:** `checkpoint` tool — save/restore/verify system state. Watchdog auto-reverts after 3 consecutive failures. Daily auto-checkpoints.
+
+**Performance:** `assemble-context` 2500ms → 1050ms. Calendar parallelized, graph reinforcement batched (N docker exec → 1 query), all I/O concurrent.
+
+**Dynamic composition:** `compose-team` analyzes tasks, recommends optimal nous team. `quick-route` for fast domain routing.
+
+**Memory lifecycle:** `memory-promote` automates raw → structured → curated promotion. Cron'd at 3:30am.
+
+**Graph ontology:** 215 → 24 canonical relation types. 397 → 254 nodes. 14 labels, 9 domains, 113 cross-domain edges. `graph-rewrite` + `graph-genesis` tools.
+
+**Deliberation:** `deliberate` tool with 7 epistemic lenses. Spawn allowlist open — all 6 agents available for live multi-nous reasoning.
+
+**Critical fix:** Two systemd services (autarkia + aletheia) were both running, causing port conflicts. Consolidated to one.
+
+*Updated: 2026-02-05 21:35 CST*
 
 ---
 
