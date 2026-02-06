@@ -138,6 +138,65 @@ def get_graph_context(agent_id, limit=10):
     return []
 
 
+def get_graph_discoveries(agent_id, limit=5):
+    """Get hypothetical connections and serendipity finds relevant to this agent."""
+    discoveries = []
+    
+    # Map agent domains
+    agent_domains = {
+        "syn": ["cognition", "infrastructure", "general"],
+        "demiurge": ["craft"],
+        "chiron": ["work"],
+        "eiron": ["school"],
+        "syl": ["home"],
+        "arbor": ["general"],
+        "akron": ["vehicle"],
+    }
+    domains = agent_domains.get(agent_id, ["general"])
+    
+    # Check serendipity finds
+    ser_path = SHARED / "memory" / "graph-serendipity.jsonl"
+    if ser_path.exists():
+        with open(ser_path) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    find = json.loads(line)
+                    # Include if either domain matches this agent
+                    if (find.get("source_domain") in domains or 
+                        find.get("target_domain") in domains):
+                        score = find.get("score", 0)
+                        if score > 0.2:
+                            discoveries.append(
+                                f"🔮 {find['source']} ({find['source_domain']}) "
+                                f"↔ {find['target']} ({find['target_domain']}) "
+                                f"via {find['bridge']} [score={score:.2f}]"
+                            )
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    
+    # Check link predictions
+    pred_path = SHARED / "memory" / "graph-predictions.jsonl"
+    if pred_path.exists():
+        with open(pred_path) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    pred = json.loads(line)
+                    if pred.get("confidence", 0) > 0.3:
+                        shared = pred.get("shared_via", [])
+                        discoveries.append(
+                            f"⚡ Predicted link: {pred['source']} ↔ {pred['target']} "
+                            f"(via {', '.join(shared[:2])})"
+                        )
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    
+    return discoveries[:limit]
+
+
 def get_calendar_context():
     """Get today's calendar events if available."""
     try:
@@ -226,6 +285,14 @@ def assemble(agent_id, brief=False):
         parts.append("## Shared Knowledge (recent)")
         for triple in graph_data:
             parts.append(f"- {triple}")
+        parts.append("")
+    
+    # Graph discoveries (hypothetical connections, serendipity)
+    discoveries = get_graph_discoveries(agent_id)
+    if discoveries:
+        parts.append("## Graph Discoveries")
+        for d in discoveries:
+            parts.append(f"- {d}")
         parts.append("")
     
     # Recent daily notes (abbreviated)
