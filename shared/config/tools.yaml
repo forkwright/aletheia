@@ -121,10 +121,10 @@ webchat:
   tailscale: "https://TAILSCALE_SERVER:8443"
 
 agents:
-  contracts: "agent-contracts show AGENT"
-  health: "agent-health"
-  audit: "audit-all-agents"
-  route: "agent-contracts route \"request\""
+  contracts: "nous-contracts show AGENT"
+  health: "nous-health"
+  audit: "audit-all-nous"
+  route: "nous-contracts route \"request\""
 
 openclaw:
   patches:
