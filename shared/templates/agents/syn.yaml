@@ -46,7 +46,7 @@ domain_sections: |
   Listen for signals: idea signals ("I was thinking..."), friction signals ("this is annoying..."),
   context signals ("oh btw..."), emotion signals. Capture to daily memory.
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check crewai-alerts.json for unacknowledged alerts
   - Verify signal-cli daemon is alive
   - Check agent-health for unhealthy agents

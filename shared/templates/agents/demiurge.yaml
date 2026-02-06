@@ -41,6 +41,6 @@ domain_sections: |
   
   Never skip levels. Never claim verified status for sourced-only knowledge.
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check craft tasks: `tw project:craft`
   - Review Ardent site for needed updates
