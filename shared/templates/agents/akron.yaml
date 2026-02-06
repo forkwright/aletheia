@@ -13,12 +13,12 @@ role: |
 session_start: |
   1. Read `SOUL.md` — who you are
   2. Read `USER.md` — who you're helping
-  3. Run `assemble-context --agent akron` — compiled state + recent context
+  3. Run `assemble-context --nous akron` — compiled state + recent context
   4. Check vehicle/prep tasks: `tw project:vehicle`
 
   ## Pre-Compaction (Distillation)
   When you receive a pre-compaction flush:
-  1. Run `distill --agent akron --text "SUMMARY"` with decisions, corrections, insights, open threads
+  1. Run `distill --nous akron --text "SUMMARY"` with decisions, corrections, insights, open threads
   2. Write session summary to `memory/YYYY-MM-DD.md`
   3. Goal: continuity — your next instance resumes seamlessly
 exclude_sections: [group_chats]

@@ -10,10 +10,10 @@ Called by the nous during pre-compaction memory flush. Receives raw text
   4. Outputs a resumption summary for the compacted context
 
 Usage:
-  distill --agent syn                    # Interactive, reads stdin
-  distill --agent syn --session-file X   # Process session file
-  distill --agent syn --state            # Output current session state
-  distill --agent syn --resume           # Generate resumption context
+  distill --nous syn                    # Interactive, reads stdin
+  distill --nous syn --session-file X   # Process session file
+  distill --nous syn --state            # Output current session state
+  distill --nous syn --resume           # Generate resumption context
 
 This is the core of Phase 1: nothing lost at compaction.
 """
@@ -57,7 +57,7 @@ def save_session_state(agent_id, state):
     state_file = NOUS / agent_id / "memory" / "session-state.yaml"
     state_file.parent.mkdir(parents=True, exist_ok=True)
     
-    # Write as simple YAML (avoid dependency)
+    # Write as valid YAML — quote all string values to handle special chars
     with open(state_file, 'w') as f:
         f.write(f"# Session state for {agent_id}\n")
         f.write(f"# Updated: {datetime.now().isoformat()}\n")
@@ -66,13 +66,16 @@ def save_session_state(agent_id, state):
             if isinstance(val, list):
                 f.write(f"{key}:\n")
                 for item in val:
-                    f.write(f"  - {item}\n")
+                    escaped = str(item).replace('"', '\\"')
+                    f.write(f'  - "{escaped}"\n')
             elif isinstance(val, dict):
                 f.write(f"{key}:\n")
                 for k, v in val.items():
-                    f.write(f"  {k}: {v}\n")
+                    escaped = str(v).replace('"', '\\"')
+                    f.write(f'  {k}: "{escaped}"\n')
             else:
-                f.write(f"{key}: {val}\n")
+                escaped = str(val).replace('"', '\\"')
+                f.write(f'{key}: "{escaped}"\n')
 
 def extract_facts_from_text(text):
     """Extract structured facts from conversation text.
@@ -258,14 +261,14 @@ def distill_text(text, agent_id):
 
 def main():
     parser = argparse.ArgumentParser(description="Distill session context into structured knowledge")
-    parser.add_argument("--agent", "-a", default="syn", help="Agent ID")
+    parser.add_argument("--nous", "--agent", "-a", default="syn", help="Nous ID")
     parser.add_argument("--state", action="store_true", help="Show current session state")
     parser.add_argument("--resume", action="store_true", help="Generate resumption context")
     parser.add_argument("--text", "-t", help="Text to distill (otherwise reads stdin)")
     args = parser.parse_args()
     
     if args.state:
-        state = load_session_state(args.agent)
+        state = load_session_state(args.nous)
         if state:
             for k, v in state.items():
                 print(f"{k}: {v}")
@@ -274,7 +277,7 @@ def main():
         return
     
     if args.resume:
-        print(generate_resumption_context(args.agent))
+        print(generate_resumption_context(args.nous))
         return
     
     # Get text to distill
@@ -290,9 +293,9 @@ def main():
         print("Empty input.", file=sys.stderr)
         sys.exit(1)
     
-    results = distill_text(text, args.agent)
+    results = distill_text(text, args.nous)
     
-    print(f"Distilled for {args.agent}:")
+    print(f"Distilled for {args.nous}:")
     print(f"  Facts extracted: {results['facts_extracted']}")
     print(f"  Graph updated: {results['graph_updated']}")
     print(f"  State updated: {results['state_updated']}")

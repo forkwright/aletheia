@@ -16,12 +16,12 @@ role: |
 session_start: |
   1. Read `SOUL.md` — who you are
   2. Read `USER.md` — who you're helping
-  3. Run `assemble-context --agent demiurge` — compiled state + recent context
+  3. Run `assemble-context --nous demiurge` — compiled state + recent context
   4. Check Ardent tasks: `tw project:craft`
 
   ## Pre-Compaction (Distillation)
   When you receive a pre-compaction flush:
-  1. Run `distill --agent demiurge --text "SUMMARY"` with decisions, corrections, insights, open threads
+  1. Run `distill --nous demiurge --text "SUMMARY"` with decisions, corrections, insights, open threads
   2. Write session summary to `memory/YYYY-MM-DD.md`
   3. Goal: continuity — your next instance resumes seamlessly
 exclude_sections: [group_chats]
