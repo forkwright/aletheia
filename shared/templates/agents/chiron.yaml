@@ -30,3 +30,5 @@ prosoche_checks: '- Check for pending work tasks: `tw project:work`
   '
 additional_context: "\n## Available Tools\n- `browse \"task\"` \u2014 LLM-driven web browser automation for dashboards and\
   \ web research\n- `ingest-doc file.pdf` \u2014 Extract documents to markdown (papers, reports)\n"
+sections:
+- research_protocol
