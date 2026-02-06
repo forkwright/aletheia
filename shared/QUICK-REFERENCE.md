@@ -98,7 +98,7 @@ When session approaches context limit, Clawdbot triggers silent turn to save imp
 
 | What | Where |
 |------|-------|
-| Shared tools | `/mnt/ssd/moltbot/shared/bin/` |
+| Shared tools | `/mnt/ssd/aletheia/shared/bin/` |
 | Facts | `memory/facts.jsonl` |
 | Entity pages | `memory/entities/*.md` |
 | Daily logs | `memory/YYYY-MM-DD.md` |

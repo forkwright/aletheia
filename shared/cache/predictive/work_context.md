@@ -3,7 +3,7 @@
 ## Recent Work Facts
 - chiron model: anthropic/claude-opus-4-5
 - the operator dimensional_resonance: everything must work at multiple layers of abstraction simultaneously
-- system signal_bug_fix: patch-clawdbot script to fix base64 group ID case sensitivity
+- system signal_bug_fix: patch-runtime script to fix base64 group ID case sensitivity
 - worker_node tailscale_ip: TAILSCALE_SERVER
 - nas_host tailscale_ip: TAILSCALE_NAS
 - laptop tailscale_ip: TAILSCALE_LAPTOP

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://moltbot.local/schemas/task-contract.json",
+  "$id": "https://aletheia.local/schemas/task-contract.json",
   "title": "Task Contract",
   "description": "Schema for inter-agent task coordination contracts",
   "type": "object",

@@ -6,9 +6,9 @@ set -euo pipefail
 # Usage: mba <command> [args]
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
-MBA_DIR="$ALETHEIA_ROOT/clawd/mba"
+MBA_DIR="$ALETHEIA_ROOT/nous/eiron/mba"
 LAPTOP_DIR="ck@LAPTOP_IP:~/dianoia/chrematistike"
-TW="$ALETHEIA_ROOT/clawd/bin/tw"
+TW="tw"
 
 case "${1:-status}" in
     status)

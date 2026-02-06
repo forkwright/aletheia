@@ -60,11 +60,11 @@ Claim with: \`bb claim ${task_id:0:8}\`"
 
   log "Notifying $agent ($session) about task ${task_id:0:8}"
   
-  # Use clawdbot CLI to send to session
+  # Use openclaw API to send to session
   # If agent doesn't have active session, this queues for next wakeup
   curl -s -X POST "http://localhost:18789/api/sessions/send" \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $(cat /home/syn/.clawdbot/gateway-token 2>/dev/null || echo '')" \
+    -H "Authorization: Bearer $(cat /home/syn/.openclaw/gateway-token 2>/dev/null || echo '')" \
     -d "{
       \"sessionKey\": \"$session\",
       \"message\": $(echo "$message" | jq -Rs .)

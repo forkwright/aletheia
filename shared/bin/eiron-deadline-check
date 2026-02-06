@@ -12,7 +12,8 @@ LOG="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/eiron/deadline-check.log"
 echo "[$(date)] Checking deadlines for $TOMORROW" >> "$LOG"
 
 # Send a message to Eiron to check and report
-# Using clawdbot send to trigger the agent
-clawdbot send --agent eiron --message "DEADLINE CHECK: Review Todoist MBA_PROGRAM project for any tasks due tomorrow ($TOMORROW). If any exist, send the operator a summary. If none, log and skip." >> "$LOG" 2>&1
+# Using openclaw send to trigger the agent
+# TODO: migrate to sessions_send
+openclaw send --agent eiron --message "DEADLINE CHECK: Review Todoist MBA_PROGRAM project for any tasks due tomorrow ($TOMORROW). If any exist, send the operator a summary. If none, log and skip." >> "$LOG" 2>&1
 
 echo "[$(date)] Deadline check triggered" >> "$LOG"

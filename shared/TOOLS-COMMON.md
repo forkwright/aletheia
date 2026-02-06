@@ -1,7 +1,7 @@
 # Common Tools (All Agents)
 
 ## Shared bin/
-All agents have access to shared tools at `/mnt/ssd/moltbot/shared/bin/`:
+All agents have access to shared tools at `/mnt/ssd/aletheia/shared/bin/`:
 
 | Tool | Purpose |
 |------|---------|
@@ -34,8 +34,8 @@ mcporter call <server.tool> --args '{"key": "value"}'
 
 | System | Location | Purpose |
 |--------|----------|---------|
-| facts.jsonl | /mnt/ssd/moltbot/shared/memory/ | Atomic facts (all agents write) |
-| mcp-memory.json | /mnt/ssd/moltbot/shared/memory/ | Knowledge graph |
+| facts.jsonl | /mnt/ssd/aletheia/shared/memory/ | Atomic facts (all agents write) |
+| mcp-memory.json | /mnt/ssd/aletheia/shared/memory/ | Knowledge graph |
 | Letta | localhost:8283 | Queryable memory |
 
 ---

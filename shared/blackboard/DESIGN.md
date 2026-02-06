@@ -11,7 +11,7 @@ The blackboard enables agents (Syn, Syl, Chiron, Eiron, Demiurge) to collaborate
 ### 1. Blackboard (Shared State)
 
 ```
-/mnt/ssd/moltbot/shared/blackboard/
+/mnt/ssd/aletheia/shared/blackboard/
 ├── tasks.jsonl       # Task queue (requests, claims, completions)
 ├── messages.jsonl    # Inter-agent messages
 ├── state.json        # Current system state snapshot

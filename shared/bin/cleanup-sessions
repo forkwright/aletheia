@@ -6,7 +6,7 @@ set -euo pipefail
 
 DAYS=${2:-7}
 DRY_RUN=false
-ARCHIVE_DIR="$HOME/.clawdbot/archive"
+ARCHIVE_DIR="$HOME/.openclaw/archive"
 LOG_FILE="/tmp/cleanup-sessions-$(date +%Y%m%d_%H%M%S).log"
 
 # Parse arguments
@@ -40,7 +40,7 @@ log() {
 log "Starting cleanup - days threshold: $DAYS, dry-run: $DRY_RUN"
 
 # Check disk usage before
-BEFORE_USAGE=$(df -h ~/.clawdbot | tail -1 | awk '{print $3}')
+BEFORE_USAGE=$(df -h ~/.openclaw | tail -1 | awk '{print $3}')
 log "Disk usage before cleanup: $BEFORE_USAGE"
 
 # Create archive directories
@@ -64,7 +64,7 @@ archive_files() {
         while IFS= read -r file; do
             if [[ -f "$file" ]]; then
                 local relative_path
-                relative_path=$(echo "$file" | sed "s|$HOME/.clawdbot/||")
+                relative_path=$(echo "$file" | sed "s|$HOME/.openclaw/||")
                 local archive_path="$ARCHIVE_DIR/$relative_path"
                 local archive_dir
                 archive_dir=$(dirname "$archive_path")
@@ -83,14 +83,14 @@ archive_files() {
 }
 
 # Archive session files
-archive_files "$HOME/.clawdbot/nous/*/sessions" "agents" "*.jsonl"
+archive_files "$HOME/.openclaw/nous/*/sessions" "agents" "*.jsonl"
 
 # Archive cron logs
-archive_files "$HOME/.clawdbot/cron/runs" "cron" "*.jsonl"
+archive_files "$HOME/.openclaw/cron/runs" "cron" "*.jsonl"
 
 # Clean up empty session files
 log "Checking for empty session files..."
-EMPTY_FILES=$(find ~/.clawdbot/nous/*/sessions/ -name "*.jsonl" -size 0 2>/dev/null || true)
+EMPTY_FILES=$(find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" -size 0 2>/dev/null || true)
 if [[ -n "$EMPTY_FILES" ]]; then
     log "Found empty session files:"
     echo "$EMPTY_FILES" | while IFS= read -r file; do
@@ -106,7 +106,7 @@ fi
 # Check for broken JSONL files (files that don't end with newline or have malformed JSON)
 log "Checking for potentially broken session files..."
 BROKEN_COUNT=0
-find ~/.clawdbot/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | while IFS= read -r file; do
+find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | while IFS= read -r file; do
     if [[ -f "$file" ]] && [[ -s "$file" ]]; then
         # Check if file ends with newline
         if [[ "$(tail -c1 "$file" 2>/dev/null | wc -l)" -eq 0 ]]; then
@@ -127,12 +127,12 @@ if [[ $BROKEN_COUNT -eq 0 ]]; then
 fi
 
 # Check disk usage after
-AFTER_USAGE=$(df -h ~/.clawdbot | tail -1 | awk '{print $3}')
+AFTER_USAGE=$(df -h ~/.openclaw | tail -1 | awk '{print $3}')
 log "Disk usage after cleanup: $AFTER_USAGE"
 
 # Summary statistics
-TOTAL_SESSIONS=$(find ~/.clawdbot/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | wc -l)
-SESSION_SIZE=$(du -sh ~/.clawdbot/nous/*/sessions/ 2>/dev/null | awk '{sum+=$1} END {print sum"M"}')
+TOTAL_SESSIONS=$(find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | wc -l)
+SESSION_SIZE=$(du -sh ~/.openclaw/nous/*/sessions/ 2>/dev/null | awk '{sum+=$1} END {print sum"M"}')
 ARCHIVED_COUNT=$(find "$ARCHIVE_DIR" -name "*.jsonl" 2>/dev/null | wc -l || echo "0")
 
 log "=== CLEANUP SUMMARY ==="

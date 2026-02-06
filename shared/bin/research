@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage: research "query" [--sources] [--raw]
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
-PPLX="$ALETHEIA_ROOT/clawd/bin/pplx"
+PPLX="pplx"
 
 # Check if pplx exists
 if [ ! -x "$PPLX" ]; then
