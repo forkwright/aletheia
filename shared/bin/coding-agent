@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# coding-agent - Send tasks to Claude Code instances via tmux
+# Usage: coding-agent <session> <task>
+#        coding-agent status [session]
+#        coding-agent output <session>
+
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+coding-agent - Control Claude Code instances via tmux
+
+Usage:
+    coding-agent send <session> "<task>"   Send a task to Claude Code
+    coding-agent status [session]          Check session status
+    coding-agent output <session> [lines]  Get recent output
+    coding-agent list                      List known sessions
+
+Sessions:
+    work     - Chiron's work Claude Code on Laptop
+    personal - Local personal Claude Code
+
+Examples:
+    coding-agent send work "Fix the bug in api.py"
+    coding-agent status work
+    coding-agent output work 100
+EOF
+}
+
+send_to_laptop() {
+    local session="$1"
+    local task="$2"
+    
+    # SSH to Laptop and send via tmux
+    ssh -o ConnectTimeout=5 syn@laptop "
+        tmux send-keys -t '$session' -l -- '$task'
+        tmux send-keys -t '$session' Enter
+    " 2>/dev/null
+}
+
+get_laptop_output() {
+    local session="$1"
+    local lines="${2:-200}"
+    
+    ssh -o ConnectTimeout=5 syn@laptop "
+        tmux capture-pane -p -J -t '$session' -S -$lines
+    " 2>/dev/null
+}
+
+check_laptop_status() {
+    local session="$1"
+    
+    if ssh -o ConnectTimeout=5 syn@laptop "tmux has-session -t '$session' 2>/dev/null"; then
+        # Check if prompt is visible (Claude Code done)
+        local output
+        output=$(get_laptop_output "$session" 5)
+        if echo "$output" | grep -qE '(❯|claude>|\$)'; then
+            echo "✅ Ready (prompt visible)"
+        else
+            echo "⏳ Running..."
+        fi
+    else
+        echo "❌ Session not found"
+    fi
+}
+
+case "${1:-help}" in
+    send)
+        if [[ $# -lt 3 ]]; then
+            echo "Usage: coding-agent send <session> <task>"
+            exit 1
+        fi
+        session="$2"
+        task="$3"
+        
+        case "$session" in
+            work)
+                echo "Sending to work Claude Code on Laptop..."
+                send_to_laptop "work-claude" "$task"
+                echo "✅ Task sent"
+                ;;
+            *)
+                echo "Unknown session: $session"
+                echo "Known sessions: work, personal"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    status)
+        session="${2:-all}"
+        
+        if [[ "$session" == "all" ]]; then
+            echo "=== Coding Agent Status ==="
+            echo ""
+            echo "work (Laptop):"
+            check_laptop_status "work-claude" || echo "  Cannot connect to Laptop"
+        else
+            case "$session" in
+                work)
+                    check_laptop_status "work-claude"
+                    ;;
+                *)
+                    echo "Unknown session: $session"
+                    exit 1
+                    ;;
+            esac
+        fi
+        ;;
+        
+    output)
+        if [[ $# -lt 2 ]]; then
+            echo "Usage: coding-agent output <session> [lines]"
+            exit 1
+        fi
+        session="$2"
+        lines="${3:-200}"
+        
+        case "$session" in
+            work)
+                get_laptop_output "work-claude" "$lines"
+                ;;
+            *)
+                echo "Unknown session: $session"
+                exit 1
+                ;;
+        esac
+        ;;
+        
+    list)
+        echo "Known coding agent sessions:"
+        echo "  work     - Chiron's work Claude Code on Laptop (tmux: work-claude)"
+        echo "  personal - Local personal Claude Code (not yet configured)"
+        ;;
+        
+    help|--help|-h)
+        usage
+        ;;
+        
+    *)
+        echo "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

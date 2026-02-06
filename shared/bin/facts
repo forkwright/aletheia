@@ -1,0 +1,692 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+facts - Query and manage atomic facts in memory with bi-temporal tracking.
+
+Usage:
+    facts                           List all current facts
+    facts search <query>            Search facts by text
+    facts about <subject>           Facts about a subject (the operator, system, etc.)
+    facts category <cat>            Facts by category (preference, decision, etc.)
+    facts add <subject> <pred> <obj> [--category CAT] [--confidence N] [--occurred DATE]
+    facts invalidate <id> [--reason TEXT]
+    facts update <id> <value>       Update a fact (creates new version)
+    facts stats                     Show fact statistics
+    facts duplicates                Find duplicate subject.predicate pairs
+
+Bi-temporal queries:
+    facts at <time>                 Facts as known at a point in time
+    facts timeline <start> [end]    Facts that changed in a time range
+    facts when <query>              When we learned facts matching query
+
+Bi-temporal model:
+    - occurred_at: When the fact became true in reality
+    - learned_at: When we recorded this knowledge
+    - valid_from/valid_to: Period of validity
+
+Facts stored in: memory/facts.jsonl
+"""
+
+import argparse
+import json
+from datetime import datetime
+from pathlib import Path
+
+
+def get_facts_file():
+    """Get path to facts.jsonl."""
+    import os
+    workspace = Path(os.environ.get('ALETHEIA_ROOT', '${ALETHEIA_ROOT:-/mnt/ssd/aletheia}')) / 'clawd'
+    return workspace / 'memory' / 'facts.jsonl'
+
+
+def load_facts(include_invalid=False):
+    """Load all facts from facts.jsonl."""
+    facts_file = get_facts_file()
+    facts = []
+    if facts_file.exists():
+        with open(facts_file) as f:
+            for line in f:
+                if line.strip():
+                    fact = json.loads(line)
+                    if include_invalid or fact.get('valid_to') is None:
+                        facts.append(fact)
+    return facts
+
+
+def save_fact(fact):
+    """Append a fact to facts.jsonl."""
+    facts_file = get_facts_file()
+    with open(facts_file, 'a') as f:
+        f.write(json.dumps(fact) + '\n')
+
+
+def format_fact(fact, verbose=False):
+    """Format a fact for display."""
+    subj = fact.get('subject', '?')
+    pred = fact.get('predicate', '?')
+    obj = fact.get('object', '?')
+    cat = fact.get('category', '?')
+    conf = fact.get('confidence', 0)
+    
+    line = f"  [{cat[:4]}] {subj}.{pred} = {obj}"
+    if verbose:
+        line += f" (conf:{conf:.1f}, id:{fact.get('id', '?')[:12]})"
+    return line
+
+
+def cmd_list(args):
+    """List all facts."""
+    facts = load_facts()
+    if not facts:
+        print("No facts found.")
+        return
+    
+    # Group by subject
+    by_subject = {}
+    for f in facts:
+        subj = f.get('subject', 'unknown')
+        by_subject.setdefault(subj, []).append(f)
+    
+    for subj in sorted(by_subject.keys()):
+        print(f"\n{subj}:")
+        for fact in by_subject[subj]:
+            print(format_fact(fact, verbose=args.verbose))
+    
+    print(f"\n({len(facts)} facts)")
+
+
+def cmd_search(args):
+    """Search facts by text."""
+    facts = load_facts()
+    query = args.query.lower()
+    
+    matches = []
+    for f in facts:
+        text = json.dumps(f).lower()
+        if query in text:
+            matches.append(f)
+    
+    if not matches:
+        print(f"No facts matching '{args.query}'")
+        return
+    
+    for f in matches:
+        print(format_fact(f, verbose=True))
+    print(f"\n({len(matches)} matches)")
+
+
+def cmd_about(args):
+    """Facts about a subject."""
+    facts = load_facts()
+    subject = args.subject.lower()
+    
+    matches = [f for f in facts if f.get('subject', '').lower() == subject]
+    
+    if not matches:
+        print(f"No facts about '{args.subject}'")
+        return
+    
+    print(f"\nFacts about {args.subject}:")
+    for f in matches:
+        print(format_fact(f, verbose=True))
+
+
+def cmd_category(args):
+    """Facts by category."""
+    facts = load_facts()
+    cat = args.category.lower()
+    
+    matches = [f for f in facts if f.get('category', '').lower() == cat]
+    
+    if not matches:
+        print(f"No facts in category '{args.category}'")
+        return
+    
+    print(f"\n{args.category} facts:")
+    for f in matches:
+        print(format_fact(f, verbose=True))
+
+
+def cmd_add(args):
+    """Add a new fact with bi-temporal tracking."""
+    now = datetime.now().isoformat()
+    
+    # occurred_at = when it actually happened (user can specify, defaults to now)
+    # learned_at = when we recorded it (always now)
+    occurred_at = args.occurred or now
+    
+    fact = {
+        'id': f"fact-{now}-{hash(args.subject + args.predicate) % 10000:04d}",
+        'op': 'create',
+        'subject': args.subject,
+        'predicate': args.predicate,
+        'object': args.object,
+        'object_type': 'string',
+        'confidence': args.confidence,
+        'category': args.category,
+        'reason': args.reason or 'Manual entry',
+        'source_file': 'manual',
+        # Bi-temporal fields
+        'occurred_at': occurred_at,      # When the fact became true in reality
+        'learned_at': now,               # When we recorded this knowledge
+        'valid_from': occurred_at,       # Start of validity (same as occurred_at)
+        'valid_to': None                 # End of validity (null = still true)
+    }
+    
+    save_fact(fact)
+    print(f"Added: {format_fact(fact)}")
+
+
+def cmd_invalidate(args):
+    """Invalidate a fact by ID."""
+    facts_file = get_facts_file()
+    facts = load_facts(include_invalid=True)
+    
+    found = None
+    for f in facts:
+        if f.get('id', '').startswith(args.id):
+            found = f
+            break
+    
+    if not found:
+        print(f"Fact not found: {args.id}")
+        return
+    
+    # Rewrite file with updated fact
+    timestamp = datetime.now().isoformat()
+    with open(facts_file, 'w') as out:
+        for f in facts:
+            if f.get('id') == found['id']:
+                f['valid_to'] = timestamp
+                f['invalidation_reason'] = args.reason or 'Manual invalidation'
+            out.write(json.dumps(f) + '\n')
+    
+    print(f"Invalidated: {format_fact(found)}")
+
+
+def cmd_update(args):
+    """Update a fact's value (creates new version, invalidates old)."""
+    facts_file = get_facts_file()
+    facts = load_facts(include_invalid=True)
+    
+    found = None
+    for f in facts:
+        if f.get('id', '').startswith(args.id):
+            found = f
+            break
+    
+    if not found:
+        print(f"Fact not found: {args.id}")
+        return
+    
+    timestamp = datetime.now().isoformat()
+    
+    # Invalidate old fact
+    with open(facts_file, 'w') as out:
+        for f in facts:
+            if f.get('id') == found['id']:
+                f['valid_to'] = timestamp
+                f['invalidation_reason'] = f'Updated to: {args.value}'
+            out.write(json.dumps(f) + '\n')
+    
+    # Create new fact
+    new_fact = {
+        'id': f"fact-{timestamp}-{hash(found['subject'] + found['predicate'] + args.value) % 10000:04d}",
+        'op': 'update',
+        'subject': found['subject'],
+        'predicate': found['predicate'],
+        'object': args.value,
+        'object_type': found.get('object_type', 'string'),
+        'confidence': args.confidence or found.get('confidence', 0.9),
+        'category': found.get('category', 'insight'),
+        'reason': args.reason or f'Updated from: {found.get("object")}',
+        'previous_id': found['id'],
+        'source_file': 'manual',
+        'extracted_at': timestamp,
+        'valid_from': timestamp,
+        'valid_to': None
+    }
+    
+    save_fact(new_fact)
+    print(f"Updated: {found['subject']}.{found['predicate']}")
+    print(f"  Old: {found.get('object')}")
+    print(f"  New: {args.value}")
+
+
+def cmd_duplicates(args):
+    """Find potential duplicate facts."""
+    facts = load_facts()
+    
+    # Group by subject+predicate
+    groups = {}
+    for f in facts:
+        key = f"{f.get('subject')}.{f.get('predicate')}"
+        groups.setdefault(key, []).append(f)
+    
+    dups_found = False
+    for key, group in groups.items():
+        if len(group) > 1:
+            dups_found = True
+            print(f"\n{key}:")
+            for f in group:
+                print(f"  [{f.get('id')[:16]}] = {f.get('object')}")
+    
+    if not dups_found:
+        print("No duplicate subject.predicate pairs found.")
+
+
+def cmd_at(args):
+    """Show facts as they were known at a point in time."""
+    from dateutil import parser as dateparser
+    from dateutil.tz import tzlocal
+    
+    target_time = dateparser.parse(args.time)
+    if target_time.tzinfo is None:
+        target_time = target_time.replace(tzinfo=tzlocal())
+    
+    facts = load_facts(include_invalid=True)
+    
+    def parse_time(s):
+        if not s:
+            return None
+        t = dateparser.parse(s)
+        if t and t.tzinfo is None:
+            t = t.replace(tzinfo=tzlocal())
+        return t
+    
+    # Filter to facts we knew at that time AND were valid at that time
+    known_then = []
+    for f in facts:
+        learned = parse_time(f.get('learned_at') or f.get('extracted_at'))
+        valid_from = parse_time(f.get('valid_from') or f.get('occurred_at'))
+        valid_to = f.get('valid_to')
+        
+        if not learned:
+            continue
+        
+        # Must have been learned by target time
+        if learned > target_time:
+            continue
+        
+        # Must have been valid at target time
+        if valid_from and valid_from > target_time:
+            continue
+        if valid_to:
+            vt = parse_time(valid_to)
+            if vt and vt <= target_time:
+                continue
+            
+        known_then.append(f)
+    
+    if not known_then:
+        print(f"No facts known at {args.time}")
+        return
+    
+    print(f"\nFacts known at {target_time.strftime('%Y-%m-%d %H:%M')}:")
+    for f in known_then:
+        print(format_fact(f, verbose=args.verbose))
+    print(f"\n({len(known_then)} facts)")
+
+
+def cmd_timeline(args):
+    """Show facts that changed in a time range."""
+    from dateutil import parser as dateparser
+    from dateutil.tz import tzlocal
+    
+    def parse_time(s):
+        if not s:
+            return None
+        t = dateparser.parse(s)
+        if t and t.tzinfo is None:
+            t = t.replace(tzinfo=tzlocal())
+        return t
+    
+    start = parse_time(args.start)
+    end = parse_time(args.end) if args.end else datetime.now(tzlocal())
+    
+    facts = load_facts(include_invalid=True)
+    
+    changes = []
+    for f in facts:
+        learned = parse_time(f.get('learned_at') or f.get('extracted_at'))
+        valid_to = f.get('valid_to')
+        
+        if not learned:
+            continue
+        
+        # Fact learned in range
+        if start <= learned <= end:
+            changes.append(('LEARNED', learned, f))
+        
+        # Fact invalidated in range
+        if valid_to:
+            inv_time = parse_time(valid_to)
+            if inv_time and start <= inv_time <= end:
+                changes.append(('INVALIDATED', inv_time, f))
+    
+    changes.sort(key=lambda x: x[1])
+    
+    if not changes:
+        print(f"No changes between {start.date()} and {end.date()}")
+        return
+    
+    print(f"\nTimeline {start.date()} to {end.date()}:")
+    current_date = None
+    for action, time, fact in changes:
+        if time.date() != current_date:
+            current_date = time.date()
+            print(f"\n  {current_date}:")
+        print(f"    {time.strftime('%H:%M')} [{action}] {fact.get('subject')}.{fact.get('predicate')} = {fact.get('object')}")
+    
+    print(f"\n({len(changes)} changes)")
+
+
+def cmd_when(args):
+    """Show when we learned facts about a subject or predicate."""
+    from dateutil import parser as dateparser
+    
+    facts = load_facts(include_invalid=True)
+    query = args.query.lower()
+    
+    matches = []
+    for f in facts:
+        text = f"{f.get('subject', '')} {f.get('predicate', '')} {f.get('object', '')}".lower()
+        if query in text:
+            learned = dateparser.parse(f.get('learned_at') or f.get('extracted_at', '2000-01-01'))
+            matches.append((learned, f))
+    
+    matches.sort(key=lambda x: x[0])
+    
+    if not matches:
+        print(f"No facts matching '{args.query}'")
+        return
+    
+    print(f"\nWhen we learned about '{args.query}':")
+    for learned, f in matches:
+        status = "✓" if f.get('valid_to') is None else "✗"
+        print(f"  {learned.strftime('%Y-%m-%d %H:%M')} {status} {f.get('subject')}.{f.get('predicate')} = {f.get('object')}")
+
+
+def cmd_reinforce(args):
+    """Reinforce a fact with supporting evidence, increasing confidence."""
+    facts_file = get_facts_file()
+    facts = load_facts(include_invalid=True)
+    
+    found = None
+    for f in facts:
+        if f.get('id', '').startswith(args.id):
+            found = f
+            break
+    
+    if not found:
+        print(f"Fact not found: {args.id}")
+        return
+    
+    timestamp = datetime.now().isoformat()
+    old_conf = found.get('confidence', 0.5)
+    
+    # Confidence increases: move toward 1.0 by 10% of remaining distance
+    new_conf = min(1.0, old_conf + (1.0 - old_conf) * 0.1)
+    
+    # Track evidence
+    supporting = found.get('supporting_evidence', [])
+    if args.evidence:
+        supporting.append({
+            'text': args.evidence,
+            'added': timestamp,
+            'source': args.source or 'manual'
+        })
+    
+    # Rewrite with updated confidence
+    with open(facts_file, 'w') as out:
+        for f in facts:
+            if f.get('id') == found['id']:
+                f['confidence'] = new_conf
+                f['supporting_evidence'] = supporting
+                f['last_reinforced'] = timestamp
+            out.write(json.dumps(f) + '\n')
+    
+    print(f"Reinforced: {found['subject']}.{found['predicate']}")
+    print(f"  Confidence: {old_conf:.2f} → {new_conf:.2f}")
+    print(f"  Supporting evidence: {len(supporting)} items")
+
+
+def cmd_contradict(args):
+    """Contradict a fact with opposing evidence, decreasing confidence."""
+    facts_file = get_facts_file()
+    facts = load_facts(include_invalid=True)
+    
+    found = None
+    for f in facts:
+        if f.get('id', '').startswith(args.id):
+            found = f
+            break
+    
+    if not found:
+        print(f"Fact not found: {args.id}")
+        return
+    
+    timestamp = datetime.now().isoformat()
+    old_conf = found.get('confidence', 0.5)
+    
+    # Confidence decreases: move toward 0.0 by 15% of current value
+    new_conf = max(0.0, old_conf * 0.85)
+    
+    # Track evidence
+    contradicting = found.get('contradicting_evidence', [])
+    if args.evidence:
+        contradicting.append({
+            'text': args.evidence,
+            'added': timestamp,
+            'source': args.source or 'manual'
+        })
+    
+    # If confidence drops below threshold, flag for review
+    needs_review = new_conf < 0.3
+    
+    # Rewrite with updated confidence
+    with open(facts_file, 'w') as out:
+        for f in facts:
+            if f.get('id') == found['id']:
+                f['confidence'] = new_conf
+                f['contradicting_evidence'] = contradicting
+                f['last_contradicted'] = timestamp
+                if needs_review:
+                    f['needs_review'] = True
+            out.write(json.dumps(f) + '\n')
+    
+    print(f"Contradicted: {found['subject']}.{found['predicate']}")
+    print(f"  Confidence: {old_conf:.2f} → {new_conf:.2f}")
+    if needs_review:
+        print(f"  ⚠️  Low confidence - flagged for review")
+
+
+def cmd_conflicts(args):
+    """Find potentially conflicting facts."""
+    facts = load_facts()
+    
+    # Group by subject.predicate
+    by_key = {}
+    for f in facts:
+        key = f"{f.get('subject', '')}.{f.get('predicate', '')}"
+        by_key.setdefault(key, []).append(f)
+    
+    # Find conflicts (same subject.predicate, different values)
+    conflicts = []
+    for key, group in by_key.items():
+        if len(group) > 1:
+            values = set(str(f.get('object', '')) for f in group)
+            if len(values) > 1:
+                conflicts.append((key, group))
+    
+    if not conflicts:
+        print("No conflicting facts found.")
+        return
+    
+    print(f"\n=== Found {len(conflicts)} potential conflicts ===\n")
+    for key, group in conflicts:
+        print(f"{key}:")
+        for f in group:
+            conf = f.get('confidence', 0)
+            val = f.get('object', '?')
+            fid = f.get('id', '?')[:16]
+            source = f.get('source_file', '?')
+            print(f"  • {val} (c={conf:.0%}, id={fid}, src={source})")
+        print()
+
+
+def cmd_review(args):
+    """Show facts flagged for review (low confidence or conflicting)."""
+    facts = load_facts()
+    
+    flagged = [f for f in facts if f.get('needs_review') or f.get('confidence', 1.0) < 0.3]
+    
+    if not flagged:
+        print("No facts need review.")
+        return
+    
+    print(f"\n=== {len(flagged)} facts need review ===\n")
+    for f in flagged:
+        print(f"  {f.get('subject')}.{f.get('predicate')} = {f.get('object')}")
+        print(f"    Confidence: {f.get('confidence', 0):.0%}")
+        if f.get('contradicting_evidence'):
+            print(f"    Contradictions: {len(f['contradicting_evidence'])}")
+        print(f"    ID: {f.get('id', '?')}")
+        print()
+
+
+def cmd_stats(args):
+    """Show fact statistics."""
+    facts = load_facts(include_invalid=True)
+    valid = [f for f in facts if f.get('valid_to') is None]
+    invalid = [f for f in facts if f.get('valid_to') is not None]
+    
+    print("\nFact Statistics:")
+    print(f"  Total: {len(facts)}")
+    print(f"  Valid: {len(valid)}")
+    print(f"  Invalidated: {len(invalid)}")
+    
+    # By category
+    cats = {}
+    for f in valid:
+        cat = f.get('category', 'unknown')
+        cats[cat] = cats.get(cat, 0) + 1
+    
+    print("\nBy category:")
+    for cat, count in sorted(cats.items(), key=lambda x: -x[1]):
+        print(f"  {cat}: {count}")
+    
+    # By subject
+    subjs = {}
+    for f in valid:
+        subj = f.get('subject', 'unknown')
+        subjs[subj] = subjs.get(subj, 0) + 1
+    
+    print("\nBy subject:")
+    for subj, count in sorted(subjs.items(), key=lambda x: -x[1]):
+        print(f"  {subj}: {count}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Query and manage atomic facts')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    subparsers = parser.add_subparsers(dest='command')
+    
+    # List
+    list_p = subparsers.add_parser('list', help='List all facts')
+    list_p.set_defaults(func=cmd_list)
+    
+    # Search
+    search_p = subparsers.add_parser('search', help='Search facts')
+    search_p.add_argument('query')
+    search_p.set_defaults(func=cmd_search)
+    
+    # About
+    about_p = subparsers.add_parser('about', help='Facts about subject')
+    about_p.add_argument('subject')
+    about_p.set_defaults(func=cmd_about)
+    
+    # Category
+    cat_p = subparsers.add_parser('category', help='Facts by category')
+    cat_p.add_argument('category')
+    cat_p.set_defaults(func=cmd_category)
+    
+    # Add
+    add_p = subparsers.add_parser('add', help='Add a fact')
+    add_p.add_argument('subject')
+    add_p.add_argument('predicate')
+    add_p.add_argument('object')
+    add_p.add_argument('--category', default='insight')
+    add_p.add_argument('--confidence', type=float, default=0.9)
+    add_p.add_argument('--reason')
+    add_p.add_argument('--occurred', help='When the fact occurred (ISO date, defaults to now)')
+    add_p.set_defaults(func=cmd_add)
+    
+    # Invalidate
+    inv_p = subparsers.add_parser('invalidate', help='Invalidate a fact')
+    inv_p.add_argument('id')
+    inv_p.add_argument('--reason')
+    inv_p.set_defaults(func=cmd_invalidate)
+    
+    # Update
+    upd_p = subparsers.add_parser('update', help='Update a fact value')
+    upd_p.add_argument('id')
+    upd_p.add_argument('value')
+    upd_p.add_argument('--confidence', type=float)
+    upd_p.add_argument('--reason')
+    upd_p.set_defaults(func=cmd_update)
+    
+    # Duplicates
+    dup_p = subparsers.add_parser('duplicates', help='Find duplicate facts')
+    dup_p.set_defaults(func=cmd_duplicates)
+    
+    # Stats
+    stats_p = subparsers.add_parser('stats', help='Show statistics')
+    stats_p.set_defaults(func=cmd_stats)
+    
+    # Confidence evolution commands
+    reinforce_p = subparsers.add_parser('reinforce', help='Reinforce a fact with supporting evidence')
+    reinforce_p.add_argument('id', help='Fact ID (or prefix)')
+    reinforce_p.add_argument('--evidence', '-e', help='Supporting evidence text')
+    reinforce_p.add_argument('--source', '-s', help='Evidence source')
+    reinforce_p.set_defaults(func=cmd_reinforce)
+    
+    contradict_p = subparsers.add_parser('contradict', help='Contradict a fact with opposing evidence')
+    contradict_p.add_argument('id', help='Fact ID (or prefix)')
+    contradict_p.add_argument('--evidence', '-e', help='Contradicting evidence text')
+    contradict_p.add_argument('--source', '-s', help='Evidence source')
+    contradict_p.set_defaults(func=cmd_contradict)
+    
+    conflicts_p = subparsers.add_parser('conflicts', help='Find potentially conflicting facts')
+    conflicts_p.set_defaults(func=cmd_conflicts)
+    
+    review_p = subparsers.add_parser('review', help='Show facts flagged for review')
+    review_p.set_defaults(func=cmd_review)
+    
+    # Temporal queries
+    at_p = subparsers.add_parser('at', help='Facts as known at a point in time')
+    at_p.add_argument('time', help='Point in time (e.g., "2026-01-15", "yesterday", "last week")')
+    at_p.set_defaults(func=cmd_at)
+    
+    timeline_p = subparsers.add_parser('timeline', help='Facts that changed in a time range')
+    timeline_p.add_argument('start', help='Start time')
+    timeline_p.add_argument('end', nargs='?', help='End time (defaults to now)')
+    timeline_p.set_defaults(func=cmd_timeline)
+    
+    when_p = subparsers.add_parser('when', help='When we learned facts matching query')
+    when_p.add_argument('query', help='Search query')
+    when_p.set_defaults(func=cmd_when)
+    
+    args = parser.parse_args()
+    
+    if args.command is None:
+        # Default to list
+        args.verbose = False
+        cmd_list(args)
+    else:
+        args.func(args)
+
+
+if __name__ == '__main__':
+    main()

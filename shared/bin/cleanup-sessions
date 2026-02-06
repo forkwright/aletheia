@@ -1,0 +1,148 @@
+#!/bin/bash
+# Cleanup script for stale Clawdbot sessions and logs
+# Usage: cleanup-sessions [--dry-run] [--days N]
+
+set -euo pipefail
+
+DAYS=${2:-7}
+DRY_RUN=false
+ARCHIVE_DIR="$HOME/.openclaw/archive"
+LOG_FILE="/tmp/cleanup-sessions-$(date +%Y%m%d_%H%M%S).log"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --days)
+            DAYS="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--dry-run] [--days N]"
+            echo "  --dry-run  Show what would be done without making changes"
+            echo "  --days N   Archive files older than N days (default: 7)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"
+}
+
+log "Starting cleanup - days threshold: $DAYS, dry-run: $DRY_RUN"
+
+# Check disk usage before
+BEFORE_USAGE=$(df -h ~/.openclaw | tail -1 | awk '{print $3}')
+log "Disk usage before cleanup: $BEFORE_USAGE"
+
+# Create archive directories
+if [[ "$DRY_RUN" == "false" ]]; then
+    mkdir -p "$ARCHIVE_DIR"/{agents,cron,logs}
+    mkdir -p "$ARCHIVE_DIR/agents"/{main,chiron,eiron,demiurge,syl}/sessions
+fi
+
+# Function to archive files
+archive_files() {
+    local search_path="$1"
+    local archive_subdir="$2"
+    local file_pattern="$3"
+    
+    local files_found
+    files_found=$(find "$search_path" -name "$file_pattern" -mtime +$DAYS 2>/dev/null || true)
+    
+    if [[ -n "$files_found" ]]; then
+        log "Found $(echo "$files_found" | wc -l) files to archive in $search_path"
+        
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                local relative_path
+                relative_path=$(echo "$file" | sed "s|$HOME/.openclaw/||")
+                local archive_path="$ARCHIVE_DIR/$relative_path"
+                local archive_dir
+                archive_dir=$(dirname "$archive_path")
+                
+                log "Archiving: $file -> $archive_path"
+                
+                if [[ "$DRY_RUN" == "false" ]]; then
+                    mkdir -p "$archive_dir"
+                    mv "$file" "$archive_path"
+                fi
+            fi
+        done <<< "$files_found"
+    else
+        log "No files older than $DAYS days found in $search_path"
+    fi
+}
+
+# Archive session files
+archive_files "$HOME/.openclaw/nous/*/sessions" "agents" "*.jsonl"
+
+# Archive cron logs
+archive_files "$HOME/.openclaw/cron/runs" "cron" "*.jsonl"
+
+# Clean up empty session files
+log "Checking for empty session files..."
+EMPTY_FILES=$(find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" -size 0 2>/dev/null || true)
+if [[ -n "$EMPTY_FILES" ]]; then
+    log "Found empty session files:"
+    echo "$EMPTY_FILES" | while IFS= read -r file; do
+        log "  Removing empty file: $file"
+        if [[ "$DRY_RUN" == "false" ]]; then
+            rm "$file"
+        fi
+    done
+else
+    log "No empty session files found"
+fi
+
+# Check for broken JSONL files (files that don't end with newline or have malformed JSON)
+log "Checking for potentially broken session files..."
+BROKEN_COUNT=0
+find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | while IFS= read -r file; do
+    if [[ -f "$file" ]] && [[ -s "$file" ]]; then
+        # Check if file ends with newline
+        if [[ "$(tail -c1 "$file" 2>/dev/null | wc -l)" -eq 0 ]]; then
+            log "  Warning: File doesn't end with newline: $file"
+            ((BROKEN_COUNT++))
+        fi
+        
+        # Check if each line is valid JSON (sample first and last few lines)
+        if ! (head -5 "$file" && tail -5 "$file") | jq . >/dev/null 2>&1; then
+            log "  Warning: File contains invalid JSON: $file"
+            ((BROKEN_COUNT++))
+        fi
+    fi
+done
+
+if [[ $BROKEN_COUNT -eq 0 ]]; then
+    log "No broken session files detected"
+fi
+
+# Check disk usage after
+AFTER_USAGE=$(df -h ~/.openclaw | tail -1 | awk '{print $3}')
+log "Disk usage after cleanup: $AFTER_USAGE"
+
+# Summary statistics
+TOTAL_SESSIONS=$(find ~/.openclaw/nous/*/sessions/ -name "*.jsonl" 2>/dev/null | wc -l)
+SESSION_SIZE=$(du -sh ~/.openclaw/nous/*/sessions/ 2>/dev/null | awk '{sum+=$1} END {print sum"M"}')
+ARCHIVED_COUNT=$(find "$ARCHIVE_DIR" -name "*.jsonl" 2>/dev/null | wc -l || echo "0")
+
+log "=== CLEANUP SUMMARY ==="
+log "Sessions remaining: $TOTAL_SESSIONS"
+log "Session data size: $SESSION_SIZE"
+log "Files archived: $ARCHIVED_COUNT"
+log "Log saved to: $LOG_FILE"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    log "DRY RUN - No actual changes made"
+fi
+
+log "Cleanup completed successfully"

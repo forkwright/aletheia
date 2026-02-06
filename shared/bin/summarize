@@ -1,0 +1,781 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+#
+# SUMMARIZE - Advanced summarization tool for long-form content
+# Handles articles, podcasts, research papers with intelligent chunking
+# 
+# Usage:
+#   summarize <URL|FILE|-> [--format FORMAT] [--length LENGTH] [--timestamps]
+#
+# Formats: bullets, narrative, brief, detailed
+# Lengths: short, medium, long
+#
+# Examples:
+#   summarize https://example.com/article.html
+#   summarize podcast.mp3 --format bullets --timestamps
+#   echo "text" | summarize - --format brief
+#
+
+set -euo pipefail
+
+# Configuration
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+CACHE_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/cache/summarize"
+WHISPER_MODEL="small.en"  # good balance of speed/accuracy
+MAX_CHUNK_SIZE=2000      # tokens per chunk
+OVERLAP_SIZE=200         # token overlap between chunks
+
+# Create cache directory
+mkdir -p "$CACHE_DIR"
+
+# Default options
+FORMAT="bullets"
+LENGTH="medium"
+SHOW_TIMESTAMPS=false
+INPUT=""
+VERBOSE=false
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log() {
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "${BLUE}[INFO]${NC} $*" >&2
+    fi
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+    exit 1
+}
+
+success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $*" >&2
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --format)
+                FORMAT="$2"
+                shift 2
+                ;;
+            --length)
+                LENGTH="$2" 
+                shift 2
+                ;;
+            --timestamps)
+                SHOW_TIMESTAMPS=true
+                shift
+                ;;
+            --verbose|-v)
+                VERBOSE=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            -)
+                INPUT="-"
+                shift
+                ;;
+            -*)
+                error "Unknown option: $1"
+                ;;
+            *)
+                if [[ -z "$INPUT" ]]; then
+                    INPUT="$1"
+                else
+                    error "Multiple inputs specified. Use one of: URL, file path, or '-' for stdin"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$INPUT" ]]; then
+        error "No input specified. Use --help for usage information."
+    fi
+
+    # Validate format
+    case "$FORMAT" in
+        bullets|narrative|brief|detailed) ;;
+        *) error "Invalid format: $FORMAT. Use: bullets, narrative, brief, detailed" ;;
+    esac
+
+    # Validate length
+    case "$LENGTH" in
+        short|medium|long) ;;
+        *) error "Invalid length: $LENGTH. Use: short, medium, long" ;;
+    esac
+}
+
+show_help() {
+    cat << 'EOF'
+SUMMARIZE - Advanced summarization tool
+
+USAGE:
+    summarize <INPUT> [OPTIONS]
+
+INPUT:
+    URL           - Web page to summarize
+    FILE_PATH     - Local file (text, audio, video)
+    -             - Read from stdin
+
+OPTIONS:
+    --format FORMAT   Output format (default: bullets)
+                      bullets   - Bullet point summary
+                      narrative - Paragraph format
+                      brief     - Very concise summary
+                      detailed  - Comprehensive summary with sections
+
+    --length LENGTH   Summary length (default: medium)
+                      short  - ~200 words
+                      medium - ~500 words  
+                      long   - ~1000+ words
+
+    --timestamps      Include timestamps (for audio/video)
+    --verbose, -v     Show detailed processing steps
+    --help, -h        Show this help
+
+EXAMPLES:
+    # Summarize web article
+    summarize https://example.com/article.html
+
+    # Summarize podcast with timestamps
+    summarize podcast.mp3 --format bullets --timestamps
+
+    # Brief summary from text file
+    summarize document.txt --format brief --length short
+
+    # Pipe text for summarization
+    echo "Long text..." | summarize - --format narrative
+EOF
+}
+
+# Detect content type from input
+detect_content_type() {
+    local input="$1"
+    
+    if [[ "$input" == "-" ]]; then
+        echo "text"
+    elif [[ "$input" =~ ^https?:// ]]; then
+        echo "url"
+    elif [[ -f "$input" ]]; then
+        # Check file extension
+        local ext="${input##*.}"
+        case "${ext,,}" in
+            mp3|wav|m4a|flac|aac|ogg|wma)
+                echo "audio"
+                ;;
+            mp4|avi|mkv|mov|wmv|webm)
+                echo "video"
+                ;;
+            txt|md|pdf|doc|docx|html|htm)
+                echo "document"
+                ;;
+            *)
+                # Try to detect by content
+                if file "$input" | grep -q "audio"; then
+                    echo "audio"
+                elif file "$input" | grep -q "video"; then
+                    echo "video"
+                else
+                    echo "document"
+                fi
+                ;;
+        esac
+    else
+        error "Input not found: $input"
+    fi
+}
+
+# Extract text from URL
+extract_from_url() {
+    local url="$1"
+    local cache_file="$CACHE_DIR/url_$(echo "$url" | md5sum | cut -d' ' -f1).txt"
+    
+    log "Extracting content from URL: $url"
+    
+    if [[ -f "$cache_file" && $(find "$cache_file" -mmin -60 2>/dev/null) ]]; then
+        log "Using cached content"
+        cat "$cache_file"
+    else
+        log "Fetching fresh content"
+        if command -v web_fetch >/dev/null; then
+            web_fetch "$url" > "$cache_file"
+        elif command -v curl >/dev/null; then
+            curl -s "$url" | \
+                sed 's/<[^>]*>//g' | \
+                sed 's/&[a-zA-Z][a-zA-Z]*;//g' | \
+                tr '\n' ' ' | \
+                tr -s ' ' > "$cache_file"
+        else
+            error "Neither web_fetch nor curl available for URL extraction"
+        fi
+        cat "$cache_file"
+    fi
+}
+
+# Extract text from document
+extract_from_document() {
+    local file="$1"
+    
+    log "Extracting text from document: $file"
+    
+    case "${file##*.}" in
+        txt|md)
+            cat "$file"
+            ;;
+        pdf)
+            if command -v pdftotext >/dev/null; then
+                pdftotext "$file" -
+            else
+                error "pdftotext not available for PDF extraction"
+            fi
+            ;;
+        html|htm)
+            if command -v lynx >/dev/null; then
+                lynx -dump "$file"
+            else
+                sed 's/<[^>]*>//g' "$file"
+            fi
+            ;;
+        *)
+            # Try to read as text
+            cat "$file" 2>/dev/null || error "Cannot read file: $file"
+            ;;
+    esac
+}
+
+# Transcribe audio/video using Whisper
+transcribe_audio() {
+    local file="$1"
+    local cache_file="$CACHE_DIR/transcribe_$(basename "$file" | tr '.' '_').txt"
+    
+    log "Transcribing audio: $file"
+    
+    if [[ -f "$cache_file" ]]; then
+        log "Using cached transcription"
+        cat "$cache_file"
+    else
+        log "Running Whisper transcription..."
+        
+        local whisper_opts="--model $WHISPER_MODEL --language en"
+        if [[ "$SHOW_TIMESTAMPS" == true ]]; then
+            whisper_opts="$whisper_opts --verbose True"
+        fi
+        
+        if command -v whisper >/dev/null; then
+            whisper "$file" $whisper_opts --output_format txt --output_dir "$CACHE_DIR" 
+            # Find the generated transcript file
+            local transcript_file="$CACHE_DIR/$(basename "$file" | sed 's/\.[^.]*$//')".txt
+            if [[ -f "$transcript_file" ]]; then
+                mv "$transcript_file" "$cache_file"
+                cat "$cache_file"
+            else
+                error "Whisper transcription failed"
+            fi
+        else
+            error "Whisper not available for audio transcription"
+        fi
+    fi
+}
+
+# Intelligent text chunking for long documents
+chunk_text() {
+    local text="$1"
+    local chunk_dir="$CACHE_DIR/chunks_$$"
+    
+    mkdir -p "$chunk_dir"
+    
+    # Estimate token count (rough: 1 token ≈ 4 characters)
+    local char_count=$(echo "$text" | wc -c)
+    local estimated_tokens=$((char_count / 4))
+    
+    log "Text length: ~$estimated_tokens tokens"
+    
+    if [[ $estimated_tokens -le $MAX_CHUNK_SIZE ]]; then
+        # Text is small enough, no chunking needed
+        echo "$text" > "$chunk_dir/chunk_01.txt"
+    else
+        # Split into overlapping chunks
+        log "Splitting into chunks of ~$MAX_CHUNK_SIZE tokens with $OVERLAP_SIZE overlap"
+        
+        # Split by sentences first to preserve context
+        echo "$text" | \
+            sed 's/\. /.\n/g' | \
+            python3 -c "
+import sys
+import os
+
+sentences = []
+for line in sys.stdin:
+    line = line.strip()
+    if line:
+        sentences.append(line)
+
+chunk_size = $MAX_CHUNK_SIZE * 4  # Convert tokens to chars
+overlap_size = $OVERLAP_SIZE * 4
+chunk_num = 1
+current_chunk = ''
+chunk_dir = '$chunk_dir'
+
+for i, sentence in enumerate(sentences):
+    if len(current_chunk) + len(sentence) > chunk_size and current_chunk:
+        # Save current chunk
+        with open(f'{chunk_dir}/chunk_{chunk_num:02d}.txt', 'w') as f:
+            f.write(current_chunk.strip())
+        
+        # Start new chunk with overlap
+        overlap_text = current_chunk[-overlap_size:] if len(current_chunk) > overlap_size else current_chunk
+        current_chunk = overlap_text + ' ' + sentence
+        chunk_num += 1
+    else:
+        current_chunk += ' ' + sentence if current_chunk else sentence
+
+# Save the last chunk
+if current_chunk:
+    with open(f'{chunk_dir}/chunk_{chunk_num:02d}.txt', 'w') as f:
+        f.write(current_chunk.strip())
+"
+    fi
+    
+    echo "$chunk_dir"
+}
+
+# Generate summary prompt based on format and length
+get_summary_prompt() {
+    local format="$1"
+    local length="$2"
+    local is_chunk="$3"
+    local chunk_info="$4"
+    
+    local base_prompt=""
+    
+    # Length specifications
+    case "$length" in
+        short)
+            local word_target="150-250 words"
+            ;;
+        medium)
+            local word_target="400-600 words"
+            ;;
+        long)
+            local word_target="800-1200 words"
+            ;;
+    esac
+    
+    # Format-specific prompts
+    case "$format" in
+        bullets)
+            base_prompt="Create a comprehensive bullet-point summary ($word_target) with:
+• Key themes and main arguments
+• Important facts, statistics, and evidence
+• Critical insights and conclusions
+• Action items or recommendations (if any)
+
+Use clear, concise bullet points with sub-bullets for details."
+            ;;
+        narrative)
+            base_prompt="Write a flowing narrative summary ($word_target) that:
+• Captures the main storyline and key themes
+• Explains important concepts and relationships
+• Highlights critical insights and conclusions
+• Maintains logical flow between ideas
+
+Write in clear, engaging paragraphs."
+            ;;
+        brief)
+            base_prompt="Create a concise executive summary (100-200 words) that:
+• States the core message in the first sentence
+• Lists 3-5 key takeaways
+• Mentions any critical data points or conclusions
+
+Be extremely concise but comprehensive."
+            ;;
+        detailed)
+            base_prompt="Create a comprehensive detailed summary ($word_target) with:
+• Executive summary
+• Main themes and arguments (with supporting evidence)
+• Key insights and analysis
+• Important quotes or data points
+• Conclusions and implications
+• Any action items or next steps
+
+Organize into clear sections with headers."
+            ;;
+    esac
+    
+    if [[ "$is_chunk" == true ]]; then
+        base_prompt="$base_prompt
+
+$chunk_info
+
+Focus on extracting key information from this section that will be useful for creating a final comprehensive summary."
+    fi
+    
+    echo "$base_prompt"
+}
+
+# Summarize text using available AI tools
+summarize_text() {
+    local text="$1"
+    local format="$2"
+    local length="$3"
+    local is_chunk="${4:-false}"
+    local chunk_info="${5:-}"
+    
+    local prompt=$(get_summary_prompt "$format" "$length" "$is_chunk" "$chunk_info")
+    
+    log "Generating summary using AI..."
+    
+    # Try Claude CLI first
+    if command -v claude >/dev/null; then
+        echo "$text" | claude -p "$prompt"
+    # Try research/pplx as fallback
+    elif command -v pplx >/dev/null 2>&1 || [[ -x "$SCRIPT_DIR/pplx" ]] || [[ -x "$SCRIPT_DIR/research" ]]; then
+        log "Using research tool for AI summarization"
+        
+        # Create a truncated version for AI processing (pplx has limits)
+        local truncated_text=$(echo "$text" | head -c 6000)
+        
+        # Get word target for the length
+        local word_target
+        case "$length" in
+            short) word_target="150-250 words" ;;
+            medium) word_target="400-600 words" ;;
+            long) word_target="800-1200 words" ;;
+        esac
+        
+        # Create a more specific prompt that avoids generic responses
+        local specific_prompt="Summarize ONLY the following specific text content. Do not provide general advice about summarization. 
+
+Format: $format
+Length target: $word_target
+Instructions: $prompt
+
+CONTENT TO SUMMARIZE:
+---
+$truncated_text
+---
+
+Provide ONLY a summary of the above content, not advice about summarization."
+        
+        # Use research tool if available, otherwise try pplx directly
+        if [[ -x "$SCRIPT_DIR/research" ]]; then
+            echo "$specific_prompt" | "$SCRIPT_DIR/research" "Summarize this specific content" --raw
+        elif [[ -x "$SCRIPT_DIR/pplx" ]]; then
+            "$SCRIPT_DIR/pplx" "$specific_prompt" --raw
+        else
+            pplx "$specific_prompt" --raw
+        fi
+    else
+        # Enhanced rule-based summarization using text analysis
+        log "Using intelligent text processing for summarization"
+        
+        echo "=== SUMMARY ==="
+        echo ""
+        
+        case "$format" in
+            bullets)
+                echo "**Key Points:**"
+                # Extract meaningful sentences with improved logic
+                echo "$text" | \
+                    python3 -c "
+import sys, re
+
+text = sys.stdin.read()
+sentences = re.split(r'[.!?]+', text)
+sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+
+# Score sentences based on key indicators
+scored_sentences = []
+for i, sentence in enumerate(sentences):
+    score = 0
+    sentence_lower = sentence.lower()
+    
+    # First/last sentences are often important
+    if i == 0 or i == len(sentences) - 1:
+        score += 3
+    
+    # Sentences with numbers/statistics
+    if re.search(r'\d+(?:%|percent|million|billion|thousand)', sentence_lower):
+        score += 2
+    
+    # Sentences with key words
+    key_words = ['important', 'significant', 'key', 'main', 'primary', 'results', 'findings', 
+                'conclusion', 'however', 'therefore', 'furthermore', 'moreover', 'additionally']
+    for word in key_words:
+        if word in sentence_lower:
+            score += 1
+    
+    # Sentences that start with transition words
+    transitions = ['however', 'therefore', 'furthermore', 'moreover', 'additionally', 'consequently']
+    if any(sentence_lower.startswith(t) for t in transitions):
+        score += 1
+    
+    # Avoid very long sentences
+    if len(sentence) > 200:
+        score -= 1
+    
+    scored_sentences.append((score, sentence))
+
+# Sort by score and take top sentences
+scored_sentences.sort(reverse=True)
+word_limit = 200 if '$length' == 'short' else 400 if '$length' == 'medium' else 600
+
+word_count = 0
+for score, sentence in scored_sentences[:10]:  # Top 10 candidates
+    if word_count + len(sentence.split()) <= word_limit and sentence.strip():
+        print('• ' + sentence.strip())
+        word_count += len(sentence.split())
+        if word_count >= word_limit:
+            break
+"
+                ;;
+            brief)
+                echo "**Executive Summary:**"
+                echo "$text" | python3 -c "
+import sys
+text = sys.stdin.read()
+# Extract first paragraph and conclusion
+paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+if paragraphs:
+    # First paragraph
+    first = paragraphs[0][:400] + '...' if len(paragraphs[0]) > 400 else paragraphs[0]
+    print(first)
+    if len(paragraphs) > 1:
+        print()
+        # Last paragraph (likely conclusion)
+        last = paragraphs[-1][:300] + '...' if len(paragraphs[-1]) > 300 else paragraphs[-1]
+        print(last)
+"
+                ;;
+            narrative)
+                echo "**Summary:**"
+                echo "$text" | python3 -c "
+import sys, re
+text = sys.stdin.read()
+# Extract key sentences and weave into narrative
+sentences = re.split(r'[.!?]+', text)
+sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
+
+# Take strategic sentences for narrative flow
+total_sentences = len(sentences)
+indices = [0]  # Always include first
+if total_sentences > 5:
+    indices.extend([total_sentences//4, total_sentences//2, 3*total_sentences//4])
+indices.append(total_sentences-1)  # Always include last
+
+word_count = 0
+word_limit = 300 if '$length' == 'short' else 500 if '$length' == 'medium' else 800
+
+for i in sorted(set(indices)):
+    if i < len(sentences) and word_count < word_limit:
+        sentence = sentences[i].strip()
+        if sentence and word_count + len(sentence.split()) <= word_limit:
+            print(sentence + '.', end=' ')
+            word_count += len(sentence.split())
+print()
+"
+                ;;
+            detailed)
+                echo "**Comprehensive Summary:**"
+                echo ""
+                echo "**Overview:**"
+                echo "$text" | head -c 500 | python3 -c "
+import sys
+text = sys.stdin.read()
+# Clean up and format first section
+print(text.strip().replace('\n', ' ')[:400] + '...' if len(text) > 400 else text.strip())
+"
+                echo ""
+                echo "**Key Content:**"
+                echo "$text" | python3 -c "
+import sys, re
+text = sys.stdin.read()
+paragraphs = [p.strip() for p in text.split('\n\n') if len(p.strip()) > 50]
+
+for i, para in enumerate(paragraphs[:5]):  # Max 5 paragraphs
+    if para:
+        summary = para[:200] + '...' if len(para) > 200 else para
+        print(f'• {summary}')
+        print()
+"
+                ;;
+        esac
+        
+        echo ""
+        echo "*(Generated using intelligent text processing)*"
+    fi
+}
+
+# Hierarchical summarization for large documents
+hierarchical_summarize() {
+    local chunk_dir="$1"
+    local format="$2"
+    local length="$3"
+    
+    local chunks=($(ls "$chunk_dir"/chunk_*.txt | sort))
+    local chunk_count=${#chunks[@]}
+    
+    if [[ $chunk_count -eq 1 ]]; then
+        # Single chunk, direct summarization
+        log "Single chunk detected, summarizing directly"
+        summarize_text "$(cat "${chunks[0]}")" "$format" "$length"
+    else
+        # Multiple chunks, hierarchical approach
+        log "Multiple chunks detected ($chunk_count), using hierarchical summarization"
+        
+        local summary_dir="$CACHE_DIR/summaries_$$"
+        mkdir -p "$summary_dir"
+        
+        # Step 1: Summarize each chunk
+        local chunk_summaries=()
+        for i in "${!chunks[@]}"; do
+            local chunk_file="${chunks[$i]}"
+            local chunk_num=$((i + 1))
+            local chunk_info="This is section $chunk_num of $chunk_count from a larger document."
+            
+            log "Summarizing chunk $chunk_num/$chunk_count..."
+            local summary_file="$summary_dir/summary_$(printf "%02d" $chunk_num).txt"
+            
+            summarize_text "$(cat "$chunk_file")" "bullets" "medium" true "$chunk_info" > "$summary_file"
+            chunk_summaries+=("$summary_file")
+        done
+        
+        # Step 2: Combine chunk summaries
+        log "Combining chunk summaries into final summary..."
+        local combined_summary=$(cat "${chunk_summaries[@]}")
+        
+        # Step 3: Final summarization
+        local final_prompt="The following are summaries from $chunk_count sections of a larger document. Create a comprehensive final summary that synthesizes all the information:
+
+$(get_summary_prompt "$format" "$length" false "")"
+        
+        # Use the same AI fallback logic as summarize_text
+        if command -v claude >/dev/null; then
+            echo "$combined_summary" | claude -p "$final_prompt"
+        elif command -v pplx >/dev/null 2>&1 || [[ -x "$SCRIPT_DIR/pplx" ]] || [[ -x "$SCRIPT_DIR/research" ]]; then
+            # Get word target for final summary
+            local word_target
+            case "$length" in
+                short) word_target="150-250 words" ;;
+                medium) word_target="400-600 words" ;;
+                long) word_target="800-1200 words" ;;
+            esac
+            
+            local synthesis_request="Create a comprehensive final summary by synthesizing the following section summaries. Do not provide advice about summarization.
+
+Format: $format
+Length target: $word_target
+
+SECTION SUMMARIES TO SYNTHESIZE:
+---
+$combined_summary
+---
+
+Provide ONLY a final unified summary of the content, not advice about summarization."
+            
+            if [[ -x "$SCRIPT_DIR/research" ]]; then
+                echo "$synthesis_request" | "$SCRIPT_DIR/research" "Synthesize these summaries into final summary" --raw
+            else
+                pplx "$synthesis_request" --raw 2>/dev/null || {
+                    echo "=== COMPREHENSIVE SUMMARY ==="
+                    echo ""
+                    cat "${chunk_summaries[@]}"
+                }
+            fi
+        else
+            echo "=== COMPREHENSIVE SUMMARY ==="
+            echo ""
+            cat "${chunk_summaries[@]}"
+        fi
+    fi
+}
+
+# Add timestamps to summary (for audio content)
+add_timestamps() {
+    local summary="$1"
+    local transcript_with_timestamps="$2"
+    
+    if [[ "$SHOW_TIMESTAMPS" == true && -n "$transcript_with_timestamps" ]]; then
+        echo "=== SUMMARY WITH TIMESTAMPS ==="
+        echo ""
+        echo "$summary"
+        echo ""
+        echo "=== KEY MOMENTS ==="
+        echo ""
+        # Extract key timestamps from transcript
+        echo "$transcript_with_timestamps" | \
+            grep -E "\[[0-9]+:[0-9]+\]" | \
+            head -10 || true
+    else
+        echo "$summary"
+    fi
+}
+
+# Main processing function
+main() {
+    parse_args "$@"
+    
+    log "Starting summarization process..."
+    log "Input: $INPUT"
+    log "Format: $FORMAT"
+    log "Length: $LENGTH"
+    log "Timestamps: $SHOW_TIMESTAMPS"
+    
+    local content_type=$(detect_content_type "$INPUT")
+    log "Content type detected: $content_type"
+    
+    local text=""
+    local transcript_with_timestamps=""
+    
+    # Extract text based on content type
+    case "$content_type" in
+        url)
+            text=$(extract_from_url "$INPUT")
+            ;;
+        text)
+            text=$(cat)
+            ;;
+        document)
+            text=$(extract_from_document "$INPUT")
+            ;;
+        audio|video)
+            transcript_with_timestamps=$(transcribe_audio "$INPUT")
+            text="$transcript_with_timestamps"
+            ;;
+        *)
+            error "Unsupported content type: $content_type"
+            ;;
+    esac
+    
+    if [[ -z "$text" ]]; then
+        error "No text extracted from input"
+    fi
+    
+    # Chunk the text if needed
+    local chunk_dir=$(chunk_text "$text")
+    
+    # Generate hierarchical summary
+    local summary=$(hierarchical_summarize "$chunk_dir" "$FORMAT" "$LENGTH")
+    
+    # Add timestamps if requested and available
+    add_timestamps "$summary" "$transcript_with_timestamps"
+    
+    # Cleanup
+    rm -rf "$chunk_dir" "$CACHE_DIR/summaries_$$" 2>/dev/null || true
+    
+    success "Summary generated successfully"
+}
+
+# Run main function with all arguments
+main "$@"

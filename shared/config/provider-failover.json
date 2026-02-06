@@ -1,0 +1,70 @@
+{
+  "$schema": "Provider failover configuration",
+  "version": "1.0.0",
+  "description": "Multi-provider failover configuration for LLM requests",
+  
+  "providers": {
+    "anthropic": {
+      "priority": 1,
+      "models": ["claude-sonnet-4-20250514", "claude-opus-4-0-20250514", "claude-haiku-3-5-20241022"],
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "env_key": "ANTHROPIC_API_KEY",
+      "rate_limit_retry_after": 60,
+      "max_retries": 3
+    },
+    "openrouter": {
+      "priority": 2,
+      "models": ["anthropic/claude-sonnet-4", "anthropic/claude-opus-4", "openai/gpt-4o"],
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "env_key": "OPENROUTER_API_KEY",
+      "rate_limit_retry_after": 30,
+      "max_retries": 3
+    },
+    "openai": {
+      "priority": 3,
+      "models": ["gpt-4o", "gpt-4o-mini"],
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "env_key": "OPENAI_API_KEY",
+      "rate_limit_retry_after": 60,
+      "max_retries": 2
+    },
+    "azure": {
+      "priority": 4,
+      "models": ["gpt-4o", "gpt-4o-mini", "Mistral-large-2411"],
+      "endpoint": "https://models.inference.ai.azure.com/chat/completions",
+      "env_key": "GITHUB_TOKEN",
+      "rate_limit_retry_after": 30,
+      "max_retries": 2
+    }
+  },
+  
+  "failover_rules": {
+    "on_rate_limit": "next_provider",
+    "on_timeout": "retry_then_next",
+    "on_5xx": "next_provider",
+    "on_network_error": "next_provider",
+    "max_total_retries": 5
+  },
+  
+  "model_equivalents": {
+    "claude-sonnet-4": {
+      "anthropic": "claude-sonnet-4-20250514",
+      "openrouter": "anthropic/claude-sonnet-4"
+    },
+    "claude-opus-4": {
+      "anthropic": "claude-opus-4-0-20250514",
+      "openrouter": "anthropic/claude-opus-4"
+    },
+    "gpt-4o": {
+      "openai": "gpt-4o",
+      "openrouter": "openai/gpt-4o",
+      "azure": "gpt-4o"
+    }
+  },
+  
+  "health_check": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "cache_ttl_seconds": 300
+  }
+}

@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""Extract facts from today's memory file automatically."""
+
+import json
+import re
+from datetime import datetime, timedelta
+from pathlib import Path
+
+WORKSPACE = Path('${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn')
+MEMORY_DIR = WORKSPACE / 'memory'
+FACTS_FILE = MEMORY_DIR / 'facts.jsonl'
+
+def load_existing_facts():
+    """Load existing fact keys to avoid duplicates."""
+    existing = set()
+    if FACTS_FILE.exists():
+        with open(FACTS_FILE) as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        fact = json.loads(line)
+                        key = f"{fact.get('subject')}.{fact.get('predicate')}"
+                        existing.add(key)
+                    except:
+                        pass
+    return existing
+
+def extract_facts_from_text(text, source_file):
+    """Extract atomic facts from markdown text."""
+    facts = []
+    timestamp = datetime.now().isoformat()
+    
+    # Pattern: look for key-value patterns in the text
+    # e.g., "status: deployed", "model: opus", etc.
+    patterns = [
+        r'(\w+):\s+`([^`]+)`',  # key: `value`
+        r'\*\*(\w+)\*\*:\s+([^\n]+)',  # **key**: value
+        r'(\w+)\s*[=:]\s*"([^"]+)"',  # key = "value" or key: "value"
+    ]
+    
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            pred, obj = match.groups()
+            facts.append({
+                'subject': 'extracted',
+                'predicate': pred.lower(),
+                'object': obj.strip(),
+                'source_file': source_file
+            })
+    
+    return facts
+
+def main():
+    # Check today and yesterday
+    today = datetime.now().strftime('%Y-%m-%d')
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    existing = load_existing_facts()
+    new_facts = []
+    timestamp = datetime.now().isoformat()
+    
+    for date in [today, yesterday]:
+        memory_file = MEMORY_DIR / f'{date}.md'
+        if not memory_file.exists():
+            continue
+            
+        content = memory_file.read_text()
+        extracted = extract_facts_from_text(content, f'{date}.md')
+        
+        for fact in extracted:
+            key = f"{fact['subject']}.{fact['predicate']}"
+            if key not in existing:
+                fact.update({
+                    'id': f"fact-{timestamp}-{hash(key) % 10000:04d}",
+                    'op': 'create',
+                    'object_type': 'string',
+                    'confidence': 0.8,
+                    'category': 'extracted',
+                    'reason': f'Auto-extracted from {fact["source_file"]}',
+                    'occurred_at': timestamp,
+                    'learned_at': timestamp,
+                    'valid_from': timestamp,
+                    'valid_to': None
+                })
+                new_facts.append(fact)
+                existing.add(key)
+    
+    # Append new facts
+    if new_facts:
+        with open(FACTS_FILE, 'a') as f:
+            for fact in new_facts:
+                f.write(json.dumps(fact) + '\n')
+    
+    print(f"Extracted {len(new_facts)} new facts")
+
+if __name__ == '__main__':
+    main()

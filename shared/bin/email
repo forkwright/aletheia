@@ -1,0 +1,55 @@
+#!/bin/bash
+# email - Simple Proton email interface via bridge
+# Usage: email [inbox|read N|send TO SUBJECT BODY|folders]
+
+IMAP_URL="imap://127.0.0.1:1143"
+SMTP_URL="smtp://127.0.0.1:1025"
+USER="the operator.user@mail.example.com:AUTH_HASH_REDACTED"
+
+case "${1:-inbox}" in
+    inbox|list)
+        LIMIT="${2:-10}"
+        curl -s --insecure --url "$IMAP_URL/INBOX" \
+            --user "$USER" --ssl \
+            -X "FETCH 1:$LIMIT (ENVELOPE)" 2>/dev/null | \
+            grep "FETCH (ENVELOPE" | \
+            while read -r line; do
+                # Extract date and subject
+                date=$(echo "$line" | grep -oP 'ENVELOPE \("\K[^"]+')
+                subject=$(echo "$line" | grep -oP 'ENVELOPE \("[^"]*" "\K[^"]+')
+                from=$(echo "$line" | grep -oP '\(\("[^"]*" NIL "[^"]*" "[^"]+' | head -1 | grep -oP '"[^"]+' | tail -2 | tr -d '"' | paste -sd'@')
+                echo "• [$date] $subject (from: $from)"
+            done
+        ;;
+    read)
+        MSG="${2:-1}"
+        curl -s --insecure --url "$IMAP_URL/INBOX" \
+            --user "$USER" --ssl \
+            -X "FETCH $MSG BODY[TEXT]" 2>/dev/null | \
+            sed '1d;$d' | head -50
+        ;;
+    folders)
+        curl -s --insecure --url "$IMAP_URL" \
+            --user "$USER" --ssl \
+            -X "LIST \"\" *" 2>/dev/null | grep LIST
+        ;;
+    send)
+        TO="$2"
+        SUBJECT="$3"
+        BODY="$4"
+        if [ -z "$TO" ] || [ -z "$SUBJECT" ]; then
+            echo "Usage: email send TO SUBJECT [BODY]"
+            exit 1
+        fi
+        echo -e "From: user@example.com\nTo: $TO\nSubject: $SUBJECT\n\n${BODY:-}" | \
+            curl -s --insecure --url "$SMTP_URL" \
+            --mail-from "user@example.com" \
+            --mail-rcpt "$TO" \
+            --user "$USER" --ssl \
+            --upload-file -
+        echo "Sent to $TO"
+        ;;
+    *)
+        echo "Usage: email [inbox|read N|send TO SUBJECT BODY|folders]"
+        ;;
+esac

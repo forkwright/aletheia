@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Contract",
+  "description": "Formal interface definition for a Clawdbot agent",
+  "type": "object",
+  "required": ["agent_id", "name", "domain", "capabilities", "interfaces"],
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "Unique agent identifier (e.g., 'syn', 'chiron')"
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name"
+    },
+    "domain": {
+      "type": "string",
+      "description": "Primary domain of expertise"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the agent's purpose"
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "List of capabilities the agent provides",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Capability identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable capability name"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this capability does"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "Expected input format"
+          },
+          "output_schema": {
+            "type": "object",
+            "description": "Expected output format"
+          },
+          "examples": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Example requests"
+          }
+        }
+      }
+    },
+    "interfaces": {
+      "type": "object",
+      "description": "How to interact with this agent",
+      "properties": {
+        "session_key": {
+          "type": "string",
+          "description": "Session key for sessions_send"
+        },
+        "signal_bindings": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Signal groups/contacts bound to this agent"
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Filesystem workspace path"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "description": "Resources this agent has access to",
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Available tools/commands"
+        },
+        "data_access": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Data sources accessible"
+        },
+        "external_services": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "External APIs/services"
+        }
+      }
+    },
+    "sla": {
+      "type": "object",
+      "description": "Service level expectations",
+      "properties": {
+        "response_time": {
+          "type": "string",
+          "description": "Expected response time"
+        },
+        "availability": {
+          "type": "string",
+          "description": "When agent is available"
+        },
+        "escalation_path": {
+          "type": "string",
+          "description": "Who to escalate to if agent unavailable"
+        }
+      }
+    },
+    "relationships": {
+      "type": "object",
+      "description": "Relationships with other agents",
+      "properties": {
+        "reports_to": {
+          "type": "string",
+          "description": "Supervising agent"
+        },
+        "collaborates_with": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Peer agents for collaboration"
+        },
+        "delegates_to": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Agents this one can delegate to"
+        }
+      }
+    },
+    "version": {
+      "type": "string",
+      "description": "Contract version"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "description": "Last updated date"
+    }
+  }
+}

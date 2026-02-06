@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""
+aletheia-graph — Shared awareness layer via FalkorDB.
+
+The knowledge graph is the shared substrate. All nous read/write to it.
+When one nous learns something, others can find it without being told.
+
+Usage:
+  aletheia-graph add <subject> <relation> <object> [--agent AGENT] [--domain DOMAIN]
+  aletheia-graph query <cypher>
+  aletheia-graph ask "natural language question"
+  aletheia-graph recent [--hours 24] [--agent AGENT]
+  aletheia-graph connections <entity>
+  aletheia-graph stats
+  aletheia-graph propagate --from AGENT  # push cross-cutting insights to shared space
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime
+
+GRAPH_NAME = "aletheia"  # New graph, not temporal_events
+
+def graph_query(cypher):
+    """Execute a Cypher query against FalkorDB."""
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "falkordb", "redis-cli",
+             "GRAPH.QUERY", GRAPH_NAME, cypher],
+            capture_output=True, text=True, timeout=10
+        )
+        return result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return "ERROR: query timeout"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+def ensure_schema():
+    """Create indexes if they don't exist."""
+    queries = [
+        "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.name)",
+        "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.domain)",
+        "CREATE INDEX IF NOT EXISTS FOR (n:Insight) ON (n.agent)",
+        "CREATE INDEX IF NOT EXISTS FOR (n:Insight) ON (n.timestamp)",
+    ]
+    for q in queries:
+        graph_query(q)
+
+def add_knowledge(subject, relation, obj, agent="unknown", domain="shared", confidence=0.8, evidence=""):
+    """Add a relationship to the graph."""
+    ensure_schema()
+    
+    ts = int(datetime.now().timestamp())
+    safe = lambda s: s.replace("'", "\\'").replace('"', '\\"')
+    
+    # Merge nodes (create if not exist, update if exist)
+    cypher = (
+        f"MERGE (s:Entity {{name: '{safe(subject)}'}}) "
+        f"MERGE (o:Entity {{name: '{safe(obj)}'}}) "
+        f"CREATE (s)-[r:{safe(relation.upper().replace(' ', '_'))} "
+        f"{{agent: '{safe(agent)}', domain: '{safe(domain)}', "
+        f"confidence: {confidence}, timestamp: {ts}, "
+        f"evidence: '{safe(evidence)}'}}]->(o) "
+        f"RETURN s.name, type(r), o.name"
+    )
+    return graph_query(cypher)
+
+def get_connections(entity):
+    """Get all connections for an entity."""
+    safe = entity.replace("'", "\\'")
+    cypher = (
+        f"MATCH (n:Entity {{name: '{safe}'}})-[r]->(m) "
+        f"RETURN n.name, type(r), m.name, r.agent, r.confidence "
+        f"UNION "
+        f"MATCH (m)-[r]->(n:Entity {{name: '{safe}'}}) "
+        f"RETURN m.name, type(r), n.name, r.agent, r.confidence"
+    )
+    return graph_query(cypher)
+
+def get_recent(hours=24, agent=None):
+    """Get recent knowledge additions."""
+    cutoff = int(datetime.now().timestamp()) - (hours * 3600)
+    agent_filter = f"AND r.agent = '{agent}'" if agent else ""
+    cypher = (
+        f"MATCH (s)-[r]->(o) "
+        f"WHERE r.timestamp > {cutoff} {agent_filter} "
+        f"RETURN s.name, type(r), o.name, r.agent, r.timestamp "
+        f"ORDER BY r.timestamp DESC LIMIT 20"
+    )
+    return graph_query(cypher)
+
+def get_stats():
+    """Get graph statistics."""
+    nodes = graph_query("MATCH (n) RETURN count(n) as count")
+    edges = graph_query("MATCH ()-[r]->() RETURN count(r) as count")
+    agents = graph_query("MATCH ()-[r]->() RETURN DISTINCT r.agent as agent, count(r) as count")
+    domains = graph_query("MATCH (n:Entity) RETURN DISTINCT n.domain as domain, count(n) as count")
+    
+    return f"Nodes: {nodes}\nEdges: {edges}\nBy agent: {agents}\nBy domain: {domains}"
+
+def propagate_from(agent):
+    """Find cross-cutting insights from an agent and mark them as shared."""
+    # Find insights that reference entities from other domains
+    cypher = (
+        f"MATCH (s)-[r {{agent: '{agent}'}}]->(o) "
+        f"WHERE r.domain <> 'shared' "
+        f"AND EXISTS {{ MATCH (o)-[r2]->(x) WHERE r2.agent <> '{agent}' }} "
+        f"SET r.domain = 'shared' "
+        f"RETURN s.name, type(r), o.name"
+    )
+    return graph_query(cypher)
+
+def main():
+    parser = argparse.ArgumentParser(description="Aletheia shared knowledge graph")
+    sub = parser.add_subparsers(dest="command")
+    
+    # add
+    add_p = sub.add_parser("add")
+    add_p.add_argument("subject")
+    add_p.add_argument("relation")
+    add_p.add_argument("object")
+    add_p.add_argument("--agent", default="unknown")
+    add_p.add_argument("--domain", default="shared")
+    add_p.add_argument("--confidence", type=float, default=0.8)
+    add_p.add_argument("--evidence", default="")
+    
+    # query
+    q_p = sub.add_parser("query")
+    q_p.add_argument("cypher")
+    
+    # recent
+    r_p = sub.add_parser("recent")
+    r_p.add_argument("--hours", type=int, default=24)
+    r_p.add_argument("--agent", default=None)
+    
+    # connections
+    c_p = sub.add_parser("connections")
+    c_p.add_argument("entity")
+    
+    # stats
+    sub.add_parser("stats")
+    
+    # propagate
+    p_p = sub.add_parser("propagate")
+    p_p.add_argument("--from", dest="from_agent", required=True)
+    
+    args = parser.parse_args()
+    
+    if args.command == "add":
+        result = add_knowledge(args.subject, args.relation, args.object,
+                              agent=args.agent, domain=args.domain,
+                              confidence=args.confidence, evidence=args.evidence)
+        print(result)
+    elif args.command == "query":
+        print(graph_query(args.cypher))
+    elif args.command == "recent":
+        print(get_recent(hours=args.hours, agent=args.agent))
+    elif args.command == "connections":
+        print(get_connections(args.entity))
+    elif args.command == "stats":
+        print(get_stats())
+    elif args.command == "propagate":
+        print(propagate_from(args.from_agent))
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()

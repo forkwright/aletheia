@@ -1,0 +1,246 @@
+#!/bin/bash
+#
+# inbox-triage - Check dianoia inbox on Laptop and categorize items by domain
+# 
+# Usage: inbox-triage [--verbose]
+#
+
+set -euo pipefail
+
+# Configuration
+LAPTOP_HOST="syn@LAPTOP_IP"
+INBOX_PATH="\$HOME/dianoia/inbox"  # Escaped $ for remote expansion via SSH
+VERBOSE=false
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: inbox-triage [--verbose]"
+            echo "Check dianoia inbox on Laptop and categorize items by domain"
+            echo ""
+            echo "Options:"
+            echo "  -v, --verbose    Show detailed output"
+            echo "  -h, --help       Show this help"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Helper functions
+log() {
+    if [[ $VERBOSE == true ]]; then
+        echo -e "${BLUE}[INFO]${NC} $*" >&2
+    fi
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*" >&2
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+success() {
+    echo -e "${GREEN}[OK]${NC} $*" >&2
+}
+
+# Test SSH connectivity
+test_ssh() {
+    log "Testing SSH connectivity to $LAPTOP_HOST..."
+    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$LAPTOP_HOST" "echo 'SSH OK'" >/dev/null 2>&1; then
+        success "SSH connection to Laptop established"
+        return 0
+    else
+        error "Cannot connect to Laptop ($LAPTOP_HOST)"
+        echo ""
+        echo "SSH Setup Required:"
+        echo "1. Ensure Laptop (LAPTOP_IP) is reachable"
+        echo "2. Set up SSH key authentication:"
+        echo "   ssh-copy-id syn@LAPTOP_IP"
+        echo "3. Or add to ~/.ssh/config:"
+        echo "   Host laptop"
+        echo "     HostName LAPTOP_IP"
+        echo "     User syn"
+        echo "     IdentityFile ~/.ssh/id_rsa"
+        return 1
+    fi
+}
+
+# Check if dianoia inbox exists
+check_inbox() {
+    log "Checking for dianoia inbox directory..."
+    if ssh "$LAPTOP_HOST" "test -d $INBOX_PATH" 2>/dev/null; then
+        success "Dianoia inbox found at $INBOX_PATH"
+        return 0
+    else
+        warn "Dianoia inbox not found"
+        echo ""
+        echo "Dianoia Setup Required:"
+        echo "1. SSH to Laptop: ssh $LAPTOP_HOST"
+        echo "2. Create inbox structure:"
+        echo "   mkdir -p ~/dianoia/inbox"
+        echo "   mkdir -p ~/dianoia/processed"
+        echo "3. Usage: Drop files into ~/dianoia/inbox/ for triage"
+        echo ""
+        echo "Domain routing examples:"
+        echo "  • work_report.pdf → Chiron (work domain)"
+        echo "  • assignment.docx → Eiron (school domain)"  
+        echo "  • grocery_list.txt → Syl (home domain)"
+        echo "  • project_idea.md → Demiurge (craft domain)"
+        return 1
+    fi
+}
+
+# Categorize file by domain based on filename patterns
+categorize_file() {
+    local file="$1"
+    local basename
+    basename=$(basename "$file")
+    local lowercase
+    lowercase=$(echo "$basename" | tr '[:upper:]' '[:lower:]')
+    
+    # Work domain patterns (→ Chiron)
+    if [[ $lowercase =~ (work|employer|business|contract|invoice|report|meeting|client|project_mgmt) ]]; then
+        echo "work"
+        return
+    fi
+    
+    # School domain patterns (→ Eiron) 
+    if [[ $lowercase =~ (school|utexas|mba|assignment|homework|syllabus|exam|grade|course|class) ]]; then
+        echo "school"
+        return
+    fi
+    
+    # Home domain patterns (→ Syl)
+    if [[ $lowercase =~ (home|family|personal|bill|grocery|recipe|health|finance|tax|insurance) ]]; then
+        echo "home"
+        return
+    fi
+    
+    # Craft domain patterns (→ Demiurge)
+    if [[ $lowercase =~ (craft|diy|project|build|make|design|creative|art|code|hack) ]]; then
+        echo "craft"
+        return
+    fi
+    
+    # Default to home for uncategorized
+    echo "home"
+}
+
+# Get agent for domain
+get_agent() {
+    case $1 in
+        work) echo "Chiron" ;;
+        school) echo "Eiron" ;;
+        home) echo "Syl" ;;
+        craft) echo "Demiurge" ;;
+        *) echo "Syl" ;;
+    esac
+}
+
+# Main triage function
+triage_inbox() {
+    log "Scanning inbox for unprocessed items..."
+    
+    # Get file listing from remote
+    local files
+    files=$(ssh "$LAPTOP_HOST" "find $INBOX_PATH -type f 2>/dev/null || true")
+    
+    if [[ -z "$files" ]]; then
+        echo "📭 Inbox is empty - nothing to process"
+        return 0
+    fi
+    
+    # Count files
+    local total_files
+    total_files=$(echo "$files" | wc -l)
+    
+    echo "📬 Found $total_files item(s) in inbox"
+    echo ""
+    
+    # Categorize files
+    declare -A domain_files
+    declare -A domain_counts
+    
+    while IFS= read -r file; do
+        if [[ -n "$file" ]]; then
+            local domain
+            domain=$(categorize_file "$file")
+            
+            if [[ -z "${domain_files[$domain]:-}" ]]; then
+                domain_files[$domain]="$file"
+                domain_counts[$domain]=1
+            else
+                domain_files[$domain]+=$'\n'"$file"
+                ((domain_counts[$domain]++))
+            fi
+        fi
+    done <<< "$files"
+    
+    # Output routing summary
+    echo "📋 ROUTING SUMMARY:"
+    echo "=================="
+    
+    for domain in work school home craft; do
+        if [[ -n "${domain_counts[$domain]:-}" ]]; then
+            local agent
+            agent=$(get_agent "$domain")
+            local count=${domain_counts[$domain]}
+            
+            echo ""
+            echo "🎯 $domain ($count item(s)) → $agent:"
+            
+            while IFS= read -r file; do
+                if [[ -n "$file" ]]; then
+                    echo "  • $(basename "$file")"
+                fi
+            done <<< "${domain_files[$domain]}"
+        fi
+    done
+    
+    echo ""
+    echo "💡 Next steps:"
+    echo "1. Review categorization above"
+    echo "2. Route items to appropriate domain agents"
+    echo "3. Move processed files: ssh $LAPTOP_HOST 'mv $INBOX_PATH/* ~/dianoia/processed/'"
+}
+
+# Main execution
+main() {
+    echo "🔍 Dianoia Inbox Triage"
+    echo "======================="
+    echo ""
+    
+    # Test SSH first
+    if ! test_ssh; then
+        exit 1
+    fi
+    
+    # Check if inbox exists
+    if ! check_inbox; then
+        exit 1
+    fi
+    
+    # Run triage
+    triage_inbox
+}
+
+# Run main function
+main "$@"

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# Consolidate session learnings into graph and facts
+# Called by agents at end of significant conversations
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+WORKSPACE="$ALETHEIA_ROOT/clawd"
+TODAY=$(date +%Y-%m-%d)
+
+echo "=== Session Consolidation ==="
+
+# 1. Extract facts from today's memory
+echo "Extracting facts..."
+"$WORKSPACE"/bin/daily-facts
+
+# 2. Sync to graph
+echo "Syncing to graph..."
+"$WORKSPACE"/bin/graph-sync
+
+# 3. Report
+echo ""
+echo "=== Status ==="
+"$WORKSPACE"/bin/facts stats 2>/dev/null | grep -E "Total:|Valid:"
+"$WORKSPACE"/bin/graph status 2>/dev/null | grep "Nodes:"
+
+echo ""
+echo "Consolidation complete"

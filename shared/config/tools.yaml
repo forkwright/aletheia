@@ -1,0 +1,150 @@
+# tools.yaml — Machine-native tool reference
+# Source of truth. TOOLS.md is generated from this.
+
+ssh:
+  hosts:
+    nas: {addr: "NAS_IP", user: syn, notes: "Synology 923+, 32TB"}
+    laptop: {addr: "LAPTOP_IP", user: syn, notes: "Fedora laptop, primary dev", tailscale: "TAILSCALE_LAPTOP"}
+    server-host: {addr: localhost, user: syn, notes: "Ubuntu 24.04, this server", tailscale: "TAILSCALE_SERVER"}
+
+infrastructure:
+  nas_mounts: ["/mnt/nas/Media", "/mnt/nas/docker", "/mnt/nas/photos", "/mnt/nas/vpn_media"]
+  docker: {count: 21, manager: portainer, notes: "media stack"}
+  tailscale:
+    server-host: "TAILSCALE_SERVER"
+    nas-host: "TAILSCALE_NAS"
+    laptop: "TAILSCALE_LAPTOP"
+
+calendar:
+  tool: gcal
+  commands:
+    list: "gcal calendars"
+    events: "gcal events -c CAL_ID -d DAYS"
+    today: "gcal today -c CAL_ID"
+  ids:
+    personal: "user@example.com"
+    family: "family@group.calendar.example.com"
+    work: "cforkwright@employer.example.com"
+
+gdrive:
+  accounts:
+    personal: {alias: p, email: "user@example.com"}
+    school: {alias: [s, ut], email: "user@university.example.com"}
+  commands:
+    ls: "gdrive {account} ls [path]"
+    cat: "gdrive {account} cat <file>"
+    find: "gdrive {account} find <name>"
+    get: "gdrive {account} get <file>"
+    tree: "gdrive {account} tree [path]"
+
+research:
+  pplx: {cmd: "pplx \"query\"", flags: ["--sources", "--raw"]}
+
+facts:
+  store: "/mnt/ssd/aletheia/shared/memory/facts.jsonl"
+  commands:
+    list: "facts"
+    stats: "facts stats"
+    about: "facts about <subject>"
+    category: "facts category <cat>"
+    search: "facts search <query>"
+    add: "facts add <subj> <pred> <obj>"
+    update: "facts update <id> <value>"
+    reinforce: "facts reinforce <id> -e \"evidence\""
+    contradict: "facts contradict <id> -e \"evidence\""
+
+tasks:
+  tool: tw
+  commands:
+    list: "tw"
+    add: "tw add \"desc\" project:X priority:H/M/L"
+    done: "tw done ID"
+    today: "tw today"
+    week: "tw week"
+  namespaces: {syn: "project:infra,project:personal,project:aletheia"}
+
+todoist:
+  tool: mcporter
+  projects:
+    inbox: "6fMGGrWFxP5qVrQj"
+    personal: "6fMGHP6prqhwF4Mh"
+    employer: "6fMGHj4w8Qx2m88M"
+    mba_program: "6fMGJQh8fpJ6cQ3W"
+    alethia: "6fh76Qgxfq88Xj3v"
+  commands:
+    list: "mcporter call todoist.todoist_task_get"
+    create: "mcporter call todoist.todoist_task_create --args '{\"content\":\"...\"}'"
+    complete: "mcporter call todoist.todoist_task_complete --args '{\"task_name\":\"...\"}'"
+    quick_add: "mcporter call todoist.todoist_task_quick_add --args '{\"text\":\"...\"}'"
+
+memory:
+  letta:
+    port: 8283
+    agents:
+      syn: "agent-644c65f8-72d4-440d-ba5d-330a3d391f8e"
+      syl: "agent-9aa39693-3bbe-44ae-afb6-041d37ac45a2"
+      chiron: "agent-48ff1c5e-9a65-44bd-9667-33019caa7ef3"
+      eiron: "agent-40014ebe-121d-4d0b-8ad4-7fecc528375d"
+      demiurge: "agent-3d459f2b-867a-4ff2-8646-c38820810cb5"
+    commands:
+      status: "letta status"
+      ask: "letta ask \"question\""
+      remember: "letta remember \"fact\""
+      recall: "letta recall \"topic\""
+      query_all: "letta-query-all \"query\""
+  memory_router: "memory-router \"query\""
+  temporal_graph:
+    db: falkordb
+    graph: temporal_events
+    commands:
+      stats: "temporal-graph stats"
+      events: "temporal-graph events --after \"1 day ago\""
+      timeline: "temporal-graph timeline <entity> --days 7"
+
+aletheia:
+  distill: "distill --agent AGENT --text \"SUMMARY\""
+  assemble: "assemble-context --agent AGENT"
+  compile: "compile-context [AGENT]"
+
+mba:
+  commands:
+    status: "mba status"
+    sync: "mba sync"
+    tasks: "mba tasks"
+    upcoming: "mba upcoming 7"
+    prep: "mba prep <class>"
+  classes: [acf, strategic_mgmt, macro, capstone]
+
+work:
+  commands:
+    status: "work status"
+    sync: "work sync"
+    projects: "work projects"
+    sql: "work sql [domain]"
+
+laptop:
+  commands:
+    ssh: "ssh laptop \"cmd\""
+    interactive: "laptop ssh"
+    claude: "laptop claude [args]"
+    sync: "laptop sync <remote> [local]"
+    push: "laptop push <local> [remote]"
+
+webchat:
+  lan: "https://SERVER_IP:8443"
+  tailscale: "https://TAILSCALE_SERVER:8443"
+
+agents:
+  contracts: "agent-contracts show AGENT"
+  health: "agent-health"
+  audit: "audit-all-agents"
+  route: "agent-contracts route \"request\""
+
+openclaw:
+  patches:
+    signal_group_id: {file: "normalize/signal.js", bug: ".toLowerCase() breaks base64 group IDs"}
+    apply: "patch-runtime (in shared/bin/)"
+  config:
+    bindings_use: "channel (not provider)"
+    model_ids: "full date suffix for pre-4.6 models"
+    validate: "openclaw doctor"

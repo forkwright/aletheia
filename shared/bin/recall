@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+recall - Quick semantic memory recall for agents.
+
+Usage:
+    recall "what do I know about X"     Search all memory sources
+    recall --facts "query"              Search only facts
+    recall --graph "query"              Search only graph
+"""
+
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+WORKSPACE = Path('${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn')
+
+
+def search_facts(query: str, limit: int = 5):
+    """Search facts.jsonl."""
+    facts_file = WORKSPACE / 'memory' / 'facts.jsonl'
+    if not facts_file.exists():
+        return []
+    
+    results = []
+    query_lower = query.lower()
+    
+    with open(facts_file) as f:
+        for line in f:
+            if line.strip():
+                fact = json.loads(line)
+                text = f"{fact.get('subject', '')} {fact.get('predicate', '')} {fact.get('object', '')}".lower()
+                if query_lower in text or any(q in text for q in query_lower.split()):
+                    results.append(fact)
+    
+    return results[:limit]
+
+
+def search_graph(query: str, limit: int = 5):
+    """Search knowledge graph."""
+    try:
+        result = subprocess.run(
+            [str(WORKSPACE / 'bin' / 'graph'), 'search', query, '--limit', str(limit)],
+            capture_output=True, text=True, timeout=30
+        )
+        return result.stdout
+    except:
+        return ""
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Semantic memory recall')
+    parser.add_argument('query', nargs='+')
+    parser.add_argument('--facts', action='store_true', help='Search only facts')
+    parser.add_argument('--graph', action='store_true', help='Search only graph')
+    parser.add_argument('--limit', type=int, default=5)
+    
+    args = parser.parse_args()
+    query = ' '.join(args.query)
+    
+    # If neither specified, search both
+    search_both = not args.facts and not args.graph
+    
+    if args.facts or search_both:
+        print("=== Facts ===")
+        facts = search_facts(query, args.limit)
+        if facts:
+            for f in facts:
+                print(f"  {f.get('subject')}.{f.get('predicate')} = {f.get('object')}")
+        else:
+            print("  (no matches)")
+        print()
+    
+    if args.graph or search_both:
+        print("=== Graph ===")
+        graph_results = search_graph(query, args.limit)
+        if graph_results.strip():
+            for line in graph_results.strip().split('\n'):
+                if line.strip() and not line.startswith('Results for'):
+                    print(f"  {line.strip()}")
+        else:
+            print("  (no matches)")
+
+
+if __name__ == '__main__':
+    main()

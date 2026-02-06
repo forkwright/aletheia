@@ -1,0 +1,287 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+
+# index-gdrive - Index Google Drive files and create facts for retrieval
+# Usage: index-gdrive [days_back] [--dry-run]
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FACTS_FILE="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn/memory/facts.jsonl"
+GDRIVE_CMD="$SCRIPT_DIR/gdrive"
+TEMP_DIR=$(mktemp -d)
+DAYS_BACK=30
+DRY_RUN=false
+DEBUG=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --debug)
+            DEBUG=true
+            shift
+            ;;
+        --help)
+            echo "Usage: index-gdrive [days_back] [--dry-run] [--debug]"
+            echo "  days_back: Number of days to look back (default: 30)"
+            echo "  --dry-run: Show what would be done without making changes"
+            echo "  --debug:   Enable debug output"
+            exit 0
+            ;;
+        [0-9]*)
+            DAYS_BACK=$1
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+trap "rm -rf $TEMP_DIR" EXIT
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+}
+
+debug() {
+    [[ $DEBUG == true ]] && log "DEBUG: $*"
+}
+
+# Calculate cutoff date (DAYS_BACK ago)
+if command -v gdate >/dev/null 2>&1; then
+    # macOS
+    CUTOFF_DATE=$(gdate -d "${DAYS_BACK} days ago" -u +%Y-%m-%dT%H:%M:%SZ)
+else
+    # Linux
+    CUTOFF_DATE=$(date -d "${DAYS_BACK} days ago" -u +%Y-%m-%dT%H:%M:%SZ)
+fi
+
+log "Indexing files modified since $CUTOFF_DATE (${DAYS_BACK} days ago)"
+
+# Text file extensions to extract content from
+TEXT_EXTENSIONS="txt|md|doc|docx|pdf|csv|json|yml|yaml|py|js|sh|sql|html"
+
+# Function to check if file extension is text-based
+is_text_file() {
+    local filename="$1"
+    local extension="${filename##*.}"
+    [[ "$filename" =~ \.(${TEXT_EXTENSIONS})$ ]] || [[ "$extension" =~ ^(${TEXT_EXTENSIONS})$ ]]
+}
+
+# Function to extract summary from text content
+extract_summary() {
+    local content="$1"
+    local max_chars=500
+    
+    # Remove extra whitespace and get first few lines
+    echo "$content" | \
+        sed 's/[[:space:]]\+/ /g' | \
+        head -c $max_chars | \
+        sed 's/[[:space:]]*$//'
+}
+
+# Function to generate fact ID
+generate_fact_id() {
+    local file_path="$1"
+    local fact_type="$2"
+    echo "gdrive-${fact_type}-$(echo "$file_path" | sha256sum | cut -d' ' -f1 | head -c16)"
+}
+
+# Function to check if fact already exists
+fact_exists() {
+    local fact_id="$1"
+    [[ -f "$FACTS_FILE" ]] && grep -q "\"id\":[[:space:]]*\"$fact_id\"" "$FACTS_FILE"
+}
+
+# Function to add a fact
+add_fact() {
+    local subject="$1"
+    local predicate="$2" 
+    local object="$3"
+    local category="$4"
+    local confidence="$5"
+    local fact_id="$6"
+    local source_info="$7"
+    
+    if fact_exists "$fact_id"; then
+        debug "Fact $fact_id already exists, skipping"
+        return
+    fi
+    
+    local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    
+    local fact_json=$(jq -n -c \
+        --arg id "$fact_id" \
+        --arg op "create" \
+        --arg subject "$subject" \
+        --arg predicate "$predicate" \
+        --arg object "$object" \
+        --arg object_type "string" \
+        --argjson confidence "$confidence" \
+        --arg category "$category" \
+        --arg reason "Google Drive indexing" \
+        --arg source_file "$source_info" \
+        --arg extracted_at "$timestamp" \
+        --arg valid_from "$timestamp" \
+        '{
+            id: $id,
+            op: $op,
+            subject: $subject,
+            predicate: $predicate,
+            object: $object,
+            object_type: $object_type,
+            confidence: $confidence,
+            category: $category,
+            reason: $reason,
+            source_file: $source_file,
+            extracted_at: $extracted_at,
+            valid_from: $valid_from,
+            valid_to: null
+        }'
+    )
+    
+    if [[ $DRY_RUN == true ]]; then
+        log "DRY RUN: Would add fact: $predicate = $object"
+    else
+        echo "$fact_json" >> "$FACTS_FILE"
+        log "Added fact: $subject -> $predicate"
+    fi
+}
+
+# Function to process a file and extract facts
+process_file() {
+    local file_json="$1"
+    
+    local name=$(echo "$file_json" | jq -r '.Name')
+    local path=$(echo "$file_json" | jq -r '.Path')
+    local size=$(echo "$file_json" | jq -r '.Size')
+    local modtime=$(echo "$file_json" | jq -r '.ModTime')
+    local mimetype=$(echo "$file_json" | jq -r '.MimeType')
+    local file_id=$(echo "$file_json" | jq -r '.ID')
+    
+    debug "Processing file: $path"
+    
+    # Store basic metadata
+    local metadata_id=$(generate_fact_id "$path" "metadata")
+    local metadata="Path: $path | Size: $size bytes | Modified: $modtime | Type: $mimetype | ID: $file_id"
+    add_fact "gdrive_file" "metadata" "$metadata" "system" 0.9 "$metadata_id" "gdrive:$path"
+    
+    # Store file location fact
+    local location_id=$(generate_fact_id "$path" "location")
+    add_fact "$name" "gdrive_location" "$path" "system" 1.0 "$location_id" "gdrive:$path"
+    
+    # Extract content for text files
+    if is_text_file "$name"; then
+        debug "Extracting content from text file: $name"
+        
+        # Get file content (limit to first 5KB to avoid huge files)
+        local content_file="$TEMP_DIR/content.txt"
+        if $GDRIVE_CMD personal cat "$path" 2>/dev/null | head -c 5120 > "$content_file"; then
+            if [[ -s "$content_file" ]]; then
+                local content=$(cat "$content_file")
+                local summary=$(extract_summary "$content")
+                
+                if [[ -n "$summary" ]]; then
+                    # Create content summary fact
+                    local summary_id=$(generate_fact_id "$path" "summary")
+                    add_fact "$name" "content_summary" "$summary" "insight" 0.8 "$summary_id" "gdrive:$path"
+                    
+                    # Extract key topics (simple keyword extraction)
+                    local topics=$(echo "$content" | \
+                        grep -oiE '\b[A-Z][a-zA-Z]{4,}\b' | \
+                        sort | uniq -c | sort -nr | \
+                        head -5 | \
+                        awk '{print $2}' | \
+                        tr '\n' ', ' | \
+                        sed 's/, $//')
+                    
+                    if [[ -n "$topics" ]]; then
+                        local topics_id=$(generate_fact_id "$path" "topics")
+                        add_fact "$name" "key_topics" "$topics" "insight" 0.7 "$topics_id" "gdrive:$path"
+                    fi
+                fi
+            fi
+        else
+            debug "Could not read content from $path"
+        fi
+    fi
+    
+    return 0
+}
+
+# Main execution
+main() {
+    log "Starting Google Drive indexing..."
+    
+    # Create backup of facts file
+    if [[ -f "$FACTS_FILE" && $DRY_RUN == false ]]; then
+        cp "$FACTS_FILE" "${FACTS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    # Get all files from Google Drive
+    log "Fetching file list from Google Drive..."
+    local files_json="$TEMP_DIR/files.json"
+    
+    if ! $GDRIVE_CMD personal lsjson > "$files_json" 2>/dev/null; then
+        log "ERROR: Failed to fetch Google Drive files"
+        exit 1
+    fi
+    
+    # Filter files by date and process them
+    local processed=0
+    local skipped=0
+    
+    while IFS= read -r file_line; do
+        if [[ -z "$file_line" ]]; then
+            continue
+        fi
+        
+        # Parse JSON and check if it's a file (not directory)
+        local is_dir=$(echo "$file_line" | jq -r '.IsDir // false' 2>/dev/null || echo "false")
+        local mod_time=$(echo "$file_line" | jq -r '.ModTime' 2>/dev/null || echo "")
+        local name=$(echo "$file_line" | jq -r '.Name' 2>/dev/null || echo "unknown")
+        
+        if [[ "$is_dir" == "true" ]]; then
+            debug "Skipping directory: $name"
+            continue
+        fi
+        
+        if [[ -z "$mod_time" ]]; then
+            debug "Skipping file with no modification time: $name"
+            continue
+        fi
+        
+        # Check if file is recent enough
+        debug "Comparing: $mod_time > $CUTOFF_DATE"
+        if [[ "$mod_time" > "$CUTOFF_DATE" ]]; then
+            debug "File is recent, processing: $name"
+            if process_file "$file_line"; then
+                ((processed++))
+            else
+                debug "Failed to process file: $name"
+            fi
+        else
+            debug "Skipping old file: $name (modified: $mod_time)"
+            ((skipped++))
+        fi
+        
+    done < <(cat "$files_json" | jq -c '.[]' 2>/dev/null || echo "")
+    
+    log "Indexing complete. Processed: $processed files, Skipped: $skipped old files"
+    
+    if [[ $DRY_RUN == false ]]; then
+        log "Facts stored in $FACTS_FILE"
+    fi
+    
+    return 0
+}
+
+# Run main function
+main "$@"
+exit 0

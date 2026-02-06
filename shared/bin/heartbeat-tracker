@@ -1,0 +1,297 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# heartbeat-tracker - Update heartbeat tracking data
+# Usage: heartbeat-tracker [check_type] [--force]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
+HEARTBEAT_FILE="$CLAWD_DIR/memory/heartbeat-state.json"
+
+# Ensure heartbeat file exists
+if [[ ! -f "$HEARTBEAT_FILE" ]]; then
+    cat > "$HEARTBEAT_FILE" << 'EOF'
+{
+  "lastHeartbeat": null,
+  "agents": "green",
+  "infra": "green",
+  "lastChecks": {
+    "email": null,
+    "calendar": null,
+    "weather": null,
+    "agents": null,
+    "blackboard": null,
+    "system": null
+  },
+  "alerts": {
+    "active": [],
+    "history": []
+  },
+  "metrics": {
+    "totalSessions": 0,
+    "avgResponseTime": 0,
+    "errorCount": 0,
+    "lastAgentActivity": {}
+  }
+}
+EOF
+fi
+
+# Parse arguments
+CHECK_TYPE="${1:-all}"
+FORCE_CHECK=false
+if [[ "${2:-}" == "--force" ]]; then
+    FORCE_CHECK=true
+fi
+
+# Current timestamp
+CURRENT_TIME=$(date +%s)
+CURRENT_ISO=$(date -Iseconds)
+
+# Helper function to update JSON
+update_heartbeat() {
+    local check_type="$1"
+    local status="${2:-green}"
+    
+    # Create temp file for atomic update
+    local temp_file
+    temp_file=$(mktemp)
+    
+    # Update the JSON
+    jq \
+        --arg check_type "$check_type" \
+        --arg timestamp "$CURRENT_TIME" \
+        --arg iso_time "$CURRENT_ISO" \
+        --arg status "$status" \
+        '
+        .lastHeartbeat = $iso_time |
+        .lastChecks[$check_type] = ($timestamp | tonumber) |
+        if $status == "red" then
+            .infra = "red"
+        else
+            .infra = "green"
+        end
+        ' \
+        "$HEARTBEAT_FILE" > "$temp_file"
+    
+    mv "$temp_file" "$HEARTBEAT_FILE"
+}
+
+# Helper function to check if enough time has passed
+should_check() {
+    local check_type="$1"
+    local interval_seconds="$2"
+    
+    if [[ "$FORCE_CHECK" == "true" ]]; then
+        return 0
+    fi
+    
+    local last_check
+    last_check=$(jq -r ".lastChecks.$check_type // 0" "$HEARTBEAT_FILE")
+    
+    if [[ "$last_check" == "null" || "$last_check" == "0" ]]; then
+        return 0
+    fi
+    
+    local time_since=$((CURRENT_TIME - last_check))
+    return $((time_since < interval_seconds))
+}
+
+# Agent health check
+check_agents() {
+    if ! should_check "agents" 1800; then  # 30 minutes
+        return 0
+    fi
+    
+    echo "Checking agent health..." >&2
+    
+    local health_data
+    health_data=$(agent-health --json 2>/dev/null || echo "{}")
+    
+    # Check for critical issues
+    local status="green"
+    local stale_count
+    stale_count=$(echo "$health_data" | jq '[.agents // {} | .[] | select(.status == "stale")] | length' 2>/dev/null || echo "0")
+    
+    local blocked_count
+    blocked_count=$(echo "$health_data" | jq '.blocked_tasks // 0' 2>/dev/null || echo "0")
+    
+    if [[ "$stale_count" -gt 0 ]] || [[ "$blocked_count" -gt 2 ]]; then
+        status="yellow"
+    fi
+    
+    # Update agent activity metrics
+    local temp_file
+    temp_file=$(mktemp)
+    
+    jq \
+        --argjson health_data "$health_data" \
+        --arg timestamp "$CURRENT_TIME" \
+        '
+        .metrics.lastAgentActivity = ($health_data.agents // {} | to_entries | map({(.key): (.value.last_activity // 0)}) | add) |
+        .lastChecks.agents = ($timestamp | tonumber)
+        ' \
+        "$HEARTBEAT_FILE" > "$temp_file"
+    
+    mv "$temp_file" "$HEARTBEAT_FILE"
+    
+    echo "Agent health: $status"
+    update_heartbeat "agents" "$status"
+}
+
+# Blackboard check
+check_blackboard() {
+    if ! should_check "blackboard" 900; then  # 15 minutes
+        return 0
+    fi
+    
+    if ! command -v bb &> /dev/null; then
+        update_heartbeat "blackboard" "yellow"
+        return 0
+    fi
+    
+    echo "Checking blackboard..." >&2
+    
+    local blocked_count
+    blocked_count=$(bb list blocked 2>/dev/null | grep -c "^#" || echo "0")
+    
+    local status="green"
+    if [[ "$blocked_count" -gt 3 ]]; then
+        status="yellow"
+    elif [[ "$blocked_count" -gt 5 ]]; then
+        status="red"
+    fi
+    
+    echo "Blackboard: $blocked_count blocked tasks"
+    update_heartbeat "blackboard" "$status"
+}
+
+# System check
+check_system() {
+    if ! should_check "system" 600; then  # 10 minutes
+        return 0
+    fi
+    
+    echo "Checking system health..." >&2
+    
+    local status="green"
+    
+    # Check memory usage
+    local memory_pct
+    memory_pct=$(free | awk '/^Mem:/ {printf "%.0f", $3/$2 * 100.0}')
+    if [[ "$memory_pct" -gt 90 ]]; then
+        status="red"
+    elif [[ "$memory_pct" -gt 80 ]]; then
+        status="yellow"
+    fi
+    
+    # Check disk usage
+    local disk_pct
+    disk_pct=$(df ${ALETHEIA_ROOT:-/mnt/ssd/aletheia} | awk 'NR==2 {print $5}' | sed 's/%//')
+    if [[ "$disk_pct" -gt 90 ]]; then
+        status="red"
+    elif [[ "$disk_pct" -gt 80 ]]; then
+        status="yellow"
+    fi
+    
+    # Check gateway
+    if ! systemctl is-active --quiet autarkia 2>/dev/null; then
+        status="red"
+    fi
+    
+    echo "System: Memory ${memory_pct}%, Disk ${disk_pct}%"
+    update_heartbeat "system" "$status"
+}
+
+# Email check (placeholder)
+check_email() {
+    if ! should_check "email" 3600; then  # 1 hour
+        return 0
+    fi
+    
+    echo "Email check not implemented" >&2
+    update_heartbeat "email" "green"
+}
+
+# Calendar check (placeholder)
+check_calendar() {
+    if ! should_check "calendar" 1800; then  # 30 minutes
+        return 0
+    fi
+    
+    echo "Calendar check not implemented" >&2
+    update_heartbeat "calendar" "green"
+}
+
+# Weather check (placeholder)
+check_weather() {
+    if ! should_check "weather" 7200; then  # 2 hours
+        return 0
+    fi
+    
+    echo "Weather check not implemented" >&2
+    update_heartbeat "weather" "green"
+}
+
+# Generate summary
+show_summary() {
+    echo
+    echo "=== Heartbeat Summary ==="
+    
+    local summary
+    summary=$(jq -r '
+        "Last heartbeat: " + (.lastHeartbeat // "never") + "\n" +
+        "Overall status: " + (.infra // "unknown") + "\n" +
+        "\nLast checks:" + (
+            .lastChecks | to_entries | map(
+                "  " + .key + ": " + (
+                    if .value then
+                        (now - .value | if . < 3600 then "\(. / 60 | floor)m ago" else "\(. / 3600 | floor)h ago" end)
+                    else "never" end
+                )
+            ) | join("\n")
+        )
+    ' "$HEARTBEAT_FILE")
+    
+    echo "$summary"
+}
+
+# Main execution
+case "$CHECK_TYPE" in
+    all)
+        check_agents
+        check_blackboard
+        check_system
+        check_email
+        check_calendar
+        check_weather
+        show_summary
+        ;;
+    agents)
+        check_agents
+        ;;
+    blackboard)
+        check_blackboard
+        ;;
+    system)
+        check_system
+        ;;
+    email)
+        check_email
+        ;;
+    calendar)
+        check_calendar
+        ;;
+    weather)
+        check_weather
+        ;;
+    summary)
+        show_summary
+        ;;
+    *)
+        echo "Unknown check type: $CHECK_TYPE" >&2
+        echo "Valid types: all, agents, blackboard, system, email, calendar, weather, summary" >&2
+        exit 1
+        ;;
+esac

@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+#
+# agent-audit - Automated Agent Maintenance & Alignment Check
+#
+# Runs comprehensive audit of an agent workspace:
+# 1. Tooling verification
+# 2. Facts & memory gap check
+# 3. File cleanup (archive stale files)
+# 4. Domain alignment verification
+# 5. Generate report
+#
+# Usage: agent-audit [workspace] [--dry-run] [--verbose]
+#
+
+set -euo pipefail
+
+# Defaults
+WORKSPACE="${1:-${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn}"
+DRY_RUN=false
+VERBOSE=false
+ARCHIVE_DAYS=7  # Archive files older than this
+
+# Parse flags
+for arg in "$@"; do
+    case $arg in
+        --dry-run) DRY_RUN=true ;;
+        --verbose|-v) VERBOSE=true ;;
+        --help|-h)
+            echo "Usage: agent-audit [workspace] [--dry-run] [--verbose]"
+            echo ""
+            echo "Options:"
+            echo "  workspace    Agent workspace path (default: ${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn)"
+            echo "  --dry-run    Preview changes without making them"
+            echo "  --verbose    Show detailed output"
+            exit 0
+            ;;
+    esac
+done
+
+# Validate workspace
+if [[ ! -d "$WORKSPACE" ]]; then
+    echo "Error: Workspace not found: $WORKSPACE" >&2
+    exit 1
+fi
+
+MEMORY_DIR="$WORKSPACE/memory"
+ARCHIVE_DIR="$MEMORY_DIR/archive"
+SHARED_BIN="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin"
+CONTRACTS_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/contracts"
+
+# Get agent name from workspace
+AGENT_NAME=$(basename "$WORKSPACE")
+[[ "$AGENT_NAME" == "clawd" ]] && AGENT_NAME="syn"
+
+# Report variables
+REPORT=""
+ISSUES=()
+FIXES=()
+
+log() {
+    if $VERBOSE; then
+        echo "$@"
+    fi
+}
+
+report() {
+    REPORT+="$1"$'\n'
+}
+
+# ============================================
+# 1. TOOLING AUDIT
+# ============================================
+audit_tooling() {
+    report "## Tooling Audit"
+    report ""
+    
+    local tool_count=$(ls -1 "$SHARED_BIN" 2>/dev/null | wc -l)
+    report "- Tools in shared/bin: $tool_count"
+    
+    # Check key tools exist and are executable
+    local key_tools=("temporal-graph" "memory-router" "consolidate-memory" "agent-contracts" "facts" "tw")
+    local missing=()
+    
+    for tool in "${key_tools[@]}"; do
+        if [[ ! -x "$SHARED_BIN/$tool" ]] && ! command -v "$tool" &>/dev/null; then
+            missing+=("$tool")
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        report "- ⚠️ Missing tools: ${missing[*]}"
+        ISSUES+=("Missing tools: ${missing[*]}")
+    else
+        report "- All key tools available ✓"
+    fi
+    
+    # Check for tools modified today
+    local today_tools=$(find "$SHARED_BIN" -maxdepth 1 -type f -mtime 0 2>/dev/null | wc -l)
+    if [[ $today_tools -gt 0 ]]; then
+        report "- Tools modified today: $today_tools"
+    fi
+    
+    report ""
+}
+
+# ============================================
+# 2. FACTS & MEMORY AUDIT
+# ============================================
+audit_facts() {
+    report "## Facts & Memory"
+    report ""
+    
+    local facts_file="$MEMORY_DIR/facts.jsonl"
+    if [[ -f "$facts_file" ]]; then
+        local fact_count=$(wc -l < "$facts_file")
+        report "- Facts: $fact_count"
+        
+        # Check for facts about this agent
+        local agent_facts=$(grep -c "\"$AGENT_NAME\"" "$facts_file" 2>/dev/null || echo "0")
+        report "- Facts about $AGENT_NAME: $agent_facts"
+        
+        if [[ $agent_facts -lt 3 ]]; then
+            ISSUES+=("Low fact coverage for $AGENT_NAME ($agent_facts facts)")
+        fi
+    else
+        report "- ⚠️ No facts.jsonl found"
+        ISSUES+=("No facts.jsonl in workspace")
+    fi
+    
+    # Check MEMORY.md
+    if [[ -f "$WORKSPACE/MEMORY.md" ]]; then
+        local memory_lines=$(wc -l < "$WORKSPACE/MEMORY.md")
+        report "- MEMORY.md: $memory_lines lines"
+    fi
+    
+    report ""
+}
+
+# ============================================
+# 3. FILE CLEANUP
+# ============================================
+cleanup_files() {
+    report "## File Cleanup"
+    report ""
+    
+    [[ ! -d "$MEMORY_DIR" ]] && return
+    
+    # Create archive if needed
+    if ! $DRY_RUN; then
+        mkdir -p "$ARCHIVE_DIR"
+    fi
+    
+    local archived=0
+    local total_files=$(find "$MEMORY_DIR" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
+    
+    # Patterns to archive (completed/stale work)
+    local archive_patterns=(
+        "cleanup-*.md"
+        "debug-*.md"
+        "fix-*.md"
+        "validate-*.md"
+        "context-extraction-*.md"
+        "audit-*.md"
+    )
+    
+    for pattern in "${archive_patterns[@]}"; do
+        # Use nullglob to handle no matches
+        shopt -s nullglob
+        for file in "$MEMORY_DIR"/$pattern; do
+            [[ ! -f "$file" ]] && continue
+            local filename=$(basename "$file")
+            
+            # Skip if already in archive
+            [[ -f "$ARCHIVE_DIR/$filename" ]] && continue
+            
+            log "Archiving: $filename"
+            if ! $DRY_RUN; then
+                mv "$file" "$ARCHIVE_DIR/"
+            fi
+            ((archived++)) || true
+        done
+        shopt -u nullglob
+    done
+    
+    # Archive old tooling audits (keep only most recent)
+    shopt -s nullglob
+    for file in "$MEMORY_DIR"/tooling-audit-*.md; do
+        [[ ! -f "$file" ]] && continue
+        local filename=$(basename "$file")
+        
+        # Check if older than 3 days
+        if [[ $(find "$file" -mtime +3 2>/dev/null) ]]; then
+            log "Archiving old audit: $filename"
+            if ! $DRY_RUN; then
+                mv "$file" "$ARCHIVE_DIR/"
+            fi
+            ((archived++)) || true
+        fi
+    done
+    shopt -u nullglob
+    
+    local remaining=$(find "$MEMORY_DIR" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
+    
+    if [[ $archived -gt 0 ]]; then
+        report "- Archived: $archived files"
+        FIXES+=("Archived $archived stale files")
+    fi
+    report "- Memory files: $total_files → $remaining"
+    report ""
+}
+
+# ============================================
+# 4. DOMAIN ALIGNMENT
+# ============================================
+audit_alignment() {
+    report "## Domain Alignment"
+    report ""
+    
+    # Check SOUL.md exists
+    if [[ -f "$WORKSPACE/SOUL.md" ]]; then
+        report "- SOUL.md: Present ✓"
+    else
+        report "- ⚠️ SOUL.md: Missing"
+        ISSUES+=("No SOUL.md in workspace")
+    fi
+    
+    # Check AGENTS.md exists
+    if [[ -f "$WORKSPACE/AGENTS.md" ]]; then
+        report "- AGENTS.md: Present ✓"
+        
+        # Check for outdated agent count references
+        if grep -q "5-agent" "$WORKSPACE/AGENTS.md" 2>/dev/null; then
+            ISSUES+=("AGENTS.md has outdated '5-agent' reference")
+        fi
+    fi
+    
+    # Check contract exists
+    if [[ -f "$CONTRACTS_DIR/$AGENT_NAME.json" ]]; then
+        report "- Contract: Present ✓"
+        
+        # Validate contract JSON
+        if ! jq empty "$CONTRACTS_DIR/$AGENT_NAME.json" 2>/dev/null; then
+            ISSUES+=("Contract JSON is invalid")
+        fi
+    else
+        report "- ⚠️ Contract: Missing ($CONTRACTS_DIR/$AGENT_NAME.json)"
+        ISSUES+=("No agent contract defined")
+    fi
+    
+    report ""
+}
+
+# ============================================
+# 5. GENERATE REPORT
+# ============================================
+generate_report() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M')
+    
+    echo "# Agent Audit Report: $AGENT_NAME"
+    echo "*Generated: $timestamp*"
+    echo ""
+    
+    if $DRY_RUN; then
+        echo "**[DRY RUN MODE]**"
+        echo ""
+    fi
+    
+    echo "$REPORT"
+    
+    # Summary
+    echo "## Summary"
+    echo ""
+    
+    if [[ ${#ISSUES[@]} -gt 0 ]]; then
+        echo "### Issues Found (${#ISSUES[@]})"
+        for issue in "${ISSUES[@]}"; do
+            echo "- ⚠️ $issue"
+        done
+        echo ""
+    else
+        echo "✅ No issues found"
+        echo ""
+    fi
+    
+    if [[ ${#FIXES[@]} -gt 0 ]]; then
+        echo "### Actions Taken"
+        for fix in "${FIXES[@]}"; do
+            echo "- ✓ $fix"
+        done
+        echo ""
+    fi
+}
+
+# ============================================
+# MAIN
+# ============================================
+main() {
+    log "Starting audit for $AGENT_NAME ($WORKSPACE)"
+    log ""
+    
+    audit_tooling
+    audit_facts
+    cleanup_files
+    audit_alignment
+    
+    generate_report
+    
+    # Exit with error if issues found
+    if [[ ${#ISSUES[@]} -gt 0 ]]; then
+        exit 1
+    fi
+}
+
+main

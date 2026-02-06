@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+generate-workspaces — Build agent workspace files from templates + overrides.
+
+Single source of truth. Edit templates or agent configs, run this, done.
+
+Usage:
+    generate-workspaces              # Generate all agents
+    generate-workspaces chiron       # Generate one agent
+    generate-workspaces --dry-run    # Preview without writing
+    generate-workspaces --diff       # Show what would change
+"""
+
+import os
+import sys
+import yaml
+import hashlib
+from pathlib import Path
+from datetime import datetime
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"))
+NOUS = ROOT / "nous"
+SHARED = ROOT / "shared"
+TEMPLATES = SHARED / "templates"
+AGENTS_DIR = TEMPLATES / "agents"
+
+def load_yaml(path):
+    """Load YAML file, return dict."""
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+def load_text(path):
+    """Load text file."""
+    with open(path) as f:
+        return f.read()
+
+def render_agents_md(agent_id, agent_config, shared_sections):
+    """Compose AGENTS.md from shared sections + agent-specific content."""
+    parts = []
+    
+    # Header
+    name = agent_config.get("name", agent_id.capitalize())
+    parts.append(f"# {name} — Operating Manual\n")
+    
+    # Agent-specific role/identity (always first)
+    if "role" in agent_config:
+        parts.append(agent_config["role"])
+    
+    # Session start protocol
+    if "session_start" in agent_config:
+        parts.append("\n## Every Session\n")
+        parts.append(agent_config["session_start"])
+    else:
+        parts.append(shared_sections.get("session_start", ""))
+    
+    # Domain-specific sections
+    if "domain_sections" in agent_config:
+        parts.append(agent_config["domain_sections"])
+    
+    # Shared sections (included for all agents unless excluded)
+    excludes = set(agent_config.get("exclude_sections", []))
+    
+    section_order = [
+        "memory", "tasks", "safety", "external_vs_internal",
+        "group_chats", "self_evolution", "crewai_routing",
+        "name_forwarding", "status_reporting", "shared_infrastructure"
+    ]
+    
+    for section_name in section_order:
+        if section_name in excludes:
+            continue
+        if section_name in shared_sections:
+            parts.append(shared_sections[section_name])
+    
+    # Agent-specific footer
+    if "footer" in agent_config:
+        parts.append(agent_config["footer"])
+    
+    return "\n".join(parts)
+
+def render_heartbeat_md(agent_id, agent_config, shared_sections):
+    """Compose HEARTBEAT.md from shared base + agent-specific checks."""
+    parts = []
+    
+    # Shared heartbeat base
+    parts.append(shared_sections.get("heartbeat_base", ""))
+    
+    # Agent-specific checks
+    if "heartbeat_checks" in agent_config:
+        parts.append("\n## Domain-Specific Checks\n")
+        parts.append(agent_config["heartbeat_checks"])
+    
+    return "\n".join(parts)
+
+def ensure_symlinks(agent_id):
+    """Ensure standard symlinks exist for shared files."""
+    agent_dir = NOUS / agent_id
+    
+    symlinks = {
+        "USER.md": SHARED / "USER.md",
+        "bin": SHARED / "bin",
+        "QUICK-REFERENCE.md": SHARED / "QUICK-REFERENCE.md",
+    }
+    
+    for name, target in symlinks.items():
+        link_path = agent_dir / name
+        if link_path.is_symlink():
+            if link_path.resolve() == target.resolve():
+                continue
+            link_path.unlink()
+        elif link_path.exists():
+            # Regular file exists where symlink should be — back it up
+            backup = link_path.with_suffix(link_path.suffix + ".bak")
+            link_path.rename(backup)
+            print(f"  backed up {name} → {backup.name}")
+        
+        link_path.symlink_to(target)
+        print(f"  ✓ {agent_id}/{name} → shared/")
+
+def file_hash(path):
+    """MD5 hash of file contents."""
+    return hashlib.md5(Path(path).read_bytes()).hexdigest()
+
+def main():
+    dry_run = "--dry-run" in sys.argv
+    show_diff = "--diff" in sys.argv
+    
+    # Filter to specific agent?
+    agents_filter = [a for a in sys.argv[1:] if not a.startswith("--")]
+    
+    # Load shared sections
+    shared_sections = {}
+    sections_dir = TEMPLATES / "sections"
+    if sections_dir.exists():
+        for f in sections_dir.glob("*.md"):
+            shared_sections[f.stem] = f.read_text()
+    
+    # Load agent configs
+    if not AGENTS_DIR.exists():
+        print(f"No agent configs at {AGENTS_DIR}")
+        print("Run 'generate-workspaces --init' to create from existing files")
+        return
+    
+    for config_file in sorted(AGENTS_DIR.glob("*.yaml")):
+        agent_id = config_file.stem
+        
+        if agents_filter and agent_id not in agents_filter:
+            continue
+        
+        agent_config = load_yaml(config_file)
+        agent_dir = NOUS / agent_id
+        
+        if not agent_dir.exists():
+            print(f"⚠ {agent_id}: workspace not found at {agent_dir}")
+            continue
+        
+        print(f"\n{'[DRY RUN] ' if dry_run else ''}{agent_id}:")
+        
+        # Ensure symlinks
+        if not dry_run:
+            ensure_symlinks(agent_id)
+        
+        # Generate AGENTS.md if template sections exist
+        if shared_sections:
+            new_content = render_agents_md(agent_id, agent_config, shared_sections)
+            target = agent_dir / "AGENTS.md"
+            
+            if target.exists():
+                old_hash = file_hash(target)
+                new_hash = hashlib.md5(new_content.encode()).hexdigest()
+                if old_hash == new_hash:
+                    print(f"  AGENTS.md: unchanged")
+                else:
+                    if show_diff:
+                        print(f"  AGENTS.md: CHANGED (old={old_hash[:8]} new={new_hash[:8]})")
+                    if not dry_run:
+                        target.write_text(new_content)
+                        print(f"  ✓ AGENTS.md: updated")
+            elif not dry_run:
+                target.write_text(new_content)
+                print(f"  ✓ AGENTS.md: created")
+    
+    if not dry_run:
+        print(f"\n✓ Workspace generation complete ({datetime.now().strftime('%H:%M:%S')})")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# Letta memory CLI - multi-agent support
+# Usage: letta [--agent NAME] <command> [args]
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+LETTA_CONFIG="$ALETHEIA_ROOT/shared/config/letta-agents.json"
+LETTA_URL=$(jq -r '.server' "$LETTA_CONFIG") || { echo "Failed to read config"; exit 1; }
+
+# Determine which agent to use
+# 1. Check --agent flag
+# 2. Check LETTA_AGENT env var  
+# 3. Detect from workspace path
+# 4. Default to syn
+
+AGENT=""
+if [[ "${1:-}" == "--agent" ]]; then
+  AGENT="$2"
+  shift 2
+fi
+
+if [[ -z "$AGENT" && -n "${LETTA_AGENT:-}" ]]; then
+  AGENT="$LETTA_AGENT"
+fi
+
+if [[ -z "$AGENT" ]]; then
+  # Try to detect from current workspace
+  case "$PWD" in
+    */syl*) AGENT="syl" ;;
+    */chiron*) AGENT="chiron" ;;
+    */eiron*) AGENT="eiron" ;;
+    */demiurge*) AGENT="demiurge" ;;
+    *) AGENT="syn" ;;
+  esac
+fi
+
+AGENT_ID=$(jq -r ".agents.${AGENT}" "$LETTA_CONFIG") || { echo "Failed to get agent ID"; exit 1; }
+if [[ "$AGENT_ID" == "null" ]]; then
+  echo "Unknown agent: $AGENT" >&2
+  exit 1
+fi
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+  status)
+    if curl -sf "$LETTA_URL/v1/nous/" > /dev/null 2>&1; then
+      echo "Letta: running at $LETTA_URL"
+      echo "Agent: ${AGENT}-memory ($AGENT_ID)"
+    else
+      echo "Letta: not running"
+      exit 1
+    fi
+    ;;
+
+  ask|query)
+    query="$*"
+    curl -s -X POST "$LETTA_URL/v1/nous/$AGENT_ID/messages" \
+      -H "Content-Type: application/json" \
+      -d "{\"messages\": [{\"role\": \"user\", \"content\": \"$query\"}]}" \
+      | jq -r '.messages[-1].content // .messages[-1].text // .'
+    ;;
+
+  remember|store)
+    fact="$*"
+    curl -s -X POST "$LETTA_URL/v1/nous/$AGENT_ID/messages" \
+      -H "Content-Type: application/json" \
+      -d "{\"messages\": [{\"role\": \"user\", \"content\": \"Remember this fact: $fact\"}]}" \
+      | jq -r '.messages[-1].content // "Stored"'
+    ;;
+
+  recall)
+    # Old archival search (less reliable)
+    topic="$*"
+    curl -s -X POST "$LETTA_URL/v1/nous/$AGENT_ID/archival-memory/search" \
+      -H "Content-Type: application/json" \
+      -d "{\"text\": \"$topic\", \"limit\": 10}" \
+      | jq -r '.[] | .text' 2>/dev/null || echo "No results found"
+    ;;
+
+  search)
+    # Semantic search via source passages
+    topic="$*"
+    # Get source IDs from agent object (not /sources/ endpoint which is buggy)
+    sources=$(curl -s "$LETTA_URL/v1/nous/$AGENT_ID" | jq -r '.sources[].id // empty')
+    found=0
+    for src in $sources; do
+      encoded=$(printf '%s' "$topic" | jq -sRr @uri)
+      results=$(curl -s "$LETTA_URL/v1/sources/$src/passages/?query=$encoded&limit=5" | jq -r '.[].text // empty' 2>/dev/null)
+      if [[ -n "$results" ]]; then
+        echo "$results"
+        found=1
+      fi
+    done
+    [[ $found -eq 0 ]] && echo "No results found"
+    ;;
+
+  blocks)
+    curl -s "$LETTA_URL/v1/nous/$AGENT_ID/core-memory" \
+      | jq -r '.blocks[] | "[\(.label)] \(.value[:80])..."'
+    ;;
+
+  agents)
+    echo "Available agents:"
+    jq -r '.agents | to_entries[] | "  \(.key): \(.value)"' "$LETTA_CONFIG"
+    ;;
+
+  *)
+    echo "Usage: letta [--agent NAME] <command> [args]"
+    echo "Commands:"
+    echo "  status    - Check Letta server and agent status"
+    echo "  ask       - Ask the agent a question (uses LLM)"
+    echo "  remember  - Store a fact in agent memory"
+    echo "  search    - Semantic search in attached sources (recommended)"
+    echo "  recall    - Old archival memory search"
+    echo "  blocks    - Show core memory blocks"
+    echo "  agents    - List available agents"
+    echo ""
+    echo "Agents: syn, syl, chiron, eiron, demiurge"
+    ;;
+esac

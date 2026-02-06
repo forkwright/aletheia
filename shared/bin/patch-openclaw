@@ -1,0 +1,27 @@
+#!/bin/bash
+# Patch OpenClaw after updates
+# Run after: npm update -g openclaw
+#
+# Tracked bugs we're patching around:
+# 1. Signal group ID case sensitivity (still present in 2026.2.1)
+#    - File: /usr/lib/node_modules/openclaw/dist/channels/plugins/normalize/signal.js
+#    - Bug: .toLowerCase() on base64 group IDs breaks matching
+#    - Fix: Remove .toLowerCase() call
+
+set -e
+
+SIGNAL_NORMALIZE="/usr/lib/node_modules/openclaw/dist/channels/plugins/normalize/signal.js"
+
+echo "Applying OpenClaw patches..."
+
+# Patch 1: Signal group ID case sensitivity
+if grep -q '`group:\${id}`\.toLowerCase()' "$SIGNAL_NORMALIZE" 2>/dev/null; then
+    sudo sed -i 's/`group:\${id}`\.toLowerCase()/`group:${id}`/g' "$SIGNAL_NORMALIZE"
+    echo "✓ Patched: Signal group ID case sensitivity"
+elif grep -q '`group:\${id}`' "$SIGNAL_NORMALIZE" 2>/dev/null; then
+    echo "○ Already patched: Signal group ID case sensitivity"
+else
+    echo "⚠ Could not find pattern to patch in $SIGNAL_NORMALIZE"
+fi
+
+echo "Done. Restart openclaw if it was running."

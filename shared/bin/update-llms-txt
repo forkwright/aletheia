@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# update-llms-txt - Regenerate llms-full.txt for agent-readable docs
+
+set -euo pipefail
+
+WORKSPACE="${1:-${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn}"
+OUTPUT="$WORKSPACE/llms-full.txt"
+
+if [[ ! -d "$WORKSPACE" ]]; then
+    echo "Error: Workspace not found: $WORKSPACE" >&2
+    exit 1
+fi
+
+{
+    echo "# llms-full.txt - Complete Documentation Compilation"
+    echo "# Generated: $(date -Iseconds)"
+    echo "# Workspace: $WORKSPACE"
+    echo ""
+    echo "================================================================================"
+    echo ""
+    
+    for doc in AGENTS.md SOUL.md USER.md TOOLS.md HEARTBEAT.md MEMORY.md; do
+        if [[ -f "$WORKSPACE/$doc" ]]; then
+            echo "=== $doc ==="
+            cat "$WORKSPACE/$doc"
+            echo ""
+            echo "================================================================================"
+            echo ""
+        fi
+    done
+} > "$OUTPUT"
+
+lines=$(wc -l < "$OUTPUT")
+echo "Generated $OUTPUT ($lines lines)"

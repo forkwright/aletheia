@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""
+assemble-context — Dynamic context assembly for session start.
+
+Instead of static file injection, assembles optimal context from:
+  1. Session state (what was I doing?)
+  2. Relevant facts (what do I need to know?)
+  3. Calendar/time awareness (what's happening today?)
+  4. Recent activity (what changed since last session?)
+  5. Task state (what's pending?)
+
+Writes a compiled context block that the nous can read at session start.
+
+Usage:
+  assemble-context --agent syn         # Full assembly
+  assemble-context --agent syn --brief # Minimal resumption only
+"""
+
+import argparse
+import json
+import os
+import subprocess
+from datetime import datetime, timedelta
+from pathlib import Path
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+NOUS = ROOT / "nous"
+SHARED = ROOT / "shared"
+FACTS_FILE = SHARED / "memory" / "facts.jsonl"
+
+
+def load_session_state(agent_id):
+    state_file = NOUS / agent_id / "memory" / "session-state.yaml"
+    if not state_file.exists():
+        return {}
+    state = {}
+    with open(state_file) as f:
+        for line in f:
+            line = line.strip()
+            if ': ' in line and not line.startswith('#') and not line.startswith('-'):
+                key, val = line.split(': ', 1)
+                state[key.strip()] = val.strip()
+    return state
+
+
+def load_recent_facts(agent_id, limit=20):
+    """Load most recent facts relevant to this agent."""
+    if not FACTS_FILE.exists():
+        return []
+    
+    facts = []
+    with open(FACTS_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                fact = json.loads(line)
+                facts.append(fact)
+            except json.JSONDecodeError:
+                continue
+    
+    # Sort by recency, return latest
+    facts.sort(key=lambda f: f.get("valid_from", ""), reverse=True)
+    return facts[:limit]
+
+
+def get_recent_daily_notes(agent_id, days=2):
+    """Get content from recent daily memory files."""
+    memory_dir = NOUS / agent_id / "memory"
+    notes = []
+    for i in range(days):
+        date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        note_file = memory_dir / f"{date}.md"
+        if note_file.exists():
+            content = note_file.read_text().strip()
+            # Truncate long files
+            if len(content) > 2000:
+                content = content[:2000] + "\n...(truncated)"
+            notes.append({"date": date, "content": content})
+    return notes
+
+
+def get_pending_tasks(agent_id):
+    """Get pending tasks from taskwarrior."""
+    try:
+        result = subprocess.run(
+            ["task", "project:aletheia", "status:pending", "export"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            tasks = json.loads(result.stdout)
+            return [{"desc": t["description"], "priority": t.get("priority", ""), 
+                     "due": t.get("due", "")} for t in tasks[:10]]
+    except Exception:
+        pass
+    return []
+
+
+def get_graph_context(agent_id, limit=10):
+    """Get recent cross-domain insights from the shared graph.
+    Also reinforces accessed facts (confidence bump)."""
+    try:
+        result = subprocess.run(
+            ["aletheia-graph", "recent", "--hours", "48"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split('\n')
+            skip = {'s.name', 'type(r)', 'o.name', 'r.agent', 'r.timestamp', 
+                    'Cached execution:', 'Query internal'}
+            data = [l.strip() for l in lines 
+                    if l.strip() and not any(l.strip().startswith(s) for s in skip)]
+            triples = []
+            i = 0
+            while i + 4 < len(data):
+                triples.append(f"{data[i]} —{data[i+1]}→ {data[i+2]}")
+                # Reinforce: bump confidence of accessed facts
+                try:
+                    s = data[i].replace("'", "\\'")
+                    o = data[i+2].replace("'", "\\'")
+                    r = data[i+1]
+                    subprocess.run(
+                        ["docker", "exec", "falkordb", "redis-cli",
+                         "GRAPH.QUERY", "aletheia",
+                         f"MATCH (s:Entity {{name: '{s}'}})-[r:{r}]->(o:Entity {{name: '{o}'}}) "
+                         f"SET r.confidence = CASE WHEN r.confidence IS NULL THEN 0.85 "
+                         f"ELSE CASE WHEN r.confidence + 0.05 > 1.0 THEN 1.0 "
+                         f"ELSE r.confidence + 0.05 END END"],
+                        capture_output=True, timeout=3
+                    )
+                except Exception:
+                    pass
+                i += 5
+            return triples[:limit]
+    except Exception:
+        pass
+    return []
+
+
+def get_calendar_context():
+    """Get today's calendar events if available."""
+    try:
+        result = subprocess.run(
+            ["gcal", "today", "-c", "user@example.com"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def assemble(agent_id, brief=False):
+    """Assemble context for an agent."""
+    parts = []
+    now = datetime.now()
+    
+    # Header
+    parts.append(f"# Context Assembly — {agent_id}")
+    parts.append(f"Generated: {now.strftime('%Y-%m-%d %H:%M')} CST")
+    parts.append("")
+    
+    # Session state (most important for continuity)
+    state = load_session_state(agent_id)
+    if state:
+        parts.append("## Session State")
+        if state.get("focus"):
+            parts.append(f"Last focus: {state['focus']}")
+        if state.get("last_updated"):
+            parts.append(f"Last active: {state['last_updated']}")
+        if state.get("open_threads"):
+            parts.append(f"Open threads: {state['open_threads']}")
+        if state.get("pending_decisions"):
+            parts.append(f"Pending: {state['pending_decisions']}")
+        parts.append("")
+    
+    if brief:
+        return "\n".join(parts)
+    
+    # Recent facts (decisions, preferences, corrections)
+    facts = load_recent_facts(agent_id, limit=15)
+    if facts:
+        recent_decisions = [f for f in facts if f.get("category") == "decision"]
+        recent_prefs = [f for f in facts if f.get("category") == "preference"]
+        recent_insights = [f for f in facts if f.get("category") == "insight"]
+        
+        if recent_decisions:
+            parts.append("## Recent Decisions")
+            for f in recent_decisions[:5]:
+                parts.append(f"- {f['object']}")
+            parts.append("")
+        
+        if recent_prefs:
+            parts.append("## Active Preferences")
+            for f in recent_prefs[:5]:
+                parts.append(f"- {f['subject']}: {f['object']}")
+            parts.append("")
+        
+        if recent_insights:
+            parts.append("## Recent Insights")
+            for f in recent_insights[:5]:
+                parts.append(f"- {f['object']}")
+            parts.append("")
+    
+    # Tasks
+    tasks = get_pending_tasks(agent_id)
+    if tasks:
+        parts.append("## Pending Tasks")
+        for t in tasks[:7]:
+            priority = f" [{t['priority']}]" if t.get('priority') else ""
+            parts.append(f"- {t['desc']}{priority}")
+        parts.append("")
+    
+    # Calendar (if available)
+    cal = get_calendar_context()
+    if cal:
+        parts.append("## Today's Calendar")
+        parts.append(cal)
+        parts.append("")
+    
+    # Graph insights (cross-domain awareness)
+    graph_data = get_graph_context(agent_id)
+    if graph_data:
+        parts.append("## Shared Knowledge (recent)")
+        for triple in graph_data:
+            parts.append(f"- {triple}")
+        parts.append("")
+    
+    # Recent daily notes (abbreviated)
+    notes = get_recent_daily_notes(agent_id, days=1)
+    if notes:
+        parts.append("## Recent Activity")
+        for note in notes:
+            # Just the headers from daily notes
+            lines = note["content"].split("\n")
+            headers = [l for l in lines if l.startswith("#")]
+            if headers:
+                for h in headers[:10]:
+                    parts.append(f"  {h}")
+        parts.append("")
+    
+    return "\n".join(parts)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--agent", "-a", default="syn")
+    parser.add_argument("--brief", "-b", action="store_true")
+    parser.add_argument("--output", "-o", help="Write to file instead of stdout")
+    args = parser.parse_args()
+    
+    context = assemble(args.agent, brief=args.brief)
+    
+    if args.output:
+        Path(args.output).write_text(context)
+        print(f"Written to {args.output}")
+    else:
+        print(context)
+
+
+if __name__ == "__main__":
+    main()
