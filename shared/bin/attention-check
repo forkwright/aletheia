@@ -255,6 +255,28 @@ def check_graph_discoveries():
     return discoveries
 
 
+def check_cross_nous_relevance():
+    """Proactive engagement: detect when active sessions mention other domains."""
+    alerts = []
+    try:
+        bb_path = SHARED / "blackboard"
+        if bb_path.exists():
+            for f in sorted(bb_path.glob("*.json"), reverse=True)[:5]:
+                try:
+                    with open(f) as fh:
+                        msg = json.load(fh)
+                    if msg.get("type") == "cross-domain" and not msg.get("acknowledged"):
+                        alerts.append(
+                            f"📡 Cross-domain signal: {msg.get('from', '?')} mentioned "
+                            f"{msg.get('domain', '?')} context → consider {msg.get('suggest', '?')}"
+                        )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return alerts
+
+
 def main():
     all_alerts = []
     
@@ -295,52 +317,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-def check_cross_nous_relevance():
-    """Proactive engagement: detect when active sessions mention other domains.
-    
-    Reads recent session transcripts to find implied cross-domain relevance.
-    If Cody is talking to Demiurge about leather and mentions 'data' or 'dashboard',
-    Syn should notice and offer Chiron's help (or just forward).
-    """
-    alerts = []
-    try:
-        # Check for active sessions (other than main)
-        sessions_dir = Path.home() / ".openclaw" / "sessions"
-        if not sessions_dir.exists():
-            return alerts
-        
-        # Domain keywords → nous mapping (inverse of compose-team)
-        domain_signals = {
-            "chiron": ["sql", "redshift", "dashboard", "data model", "roi", "pepm",
-                       "claims", "production table", "analytics"],
-            "eiron": ["homework", "capstone", "mba", "paper", "ercot", "workstream",
-                      "academic", "citation"],
-            "demiurge": ["leather", "belt", "buckle", "stitch", "ardent", "dye",
-                         "bindery", "photography"],
-            "syl": ["kendall", "cooper", "grocery", "family", "appointment",
-                    "pediatrician", "schedule"],
-            "akron": ["truck", "cummins", "diesel", "radio", "overlanding",
-                      "battery", "electrical"],
-            "arbor": ["tree", "adam", "arborist", "galveston"],
-        }
-        
-        # Check blackboard for recent cross-domain mentions
-        bb_path = SHARED / "blackboard"
-        if bb_path.exists():
-            recent = []
-            for f in sorted(bb_path.glob("*.json"), reverse=True)[:5]:
-                try:
-                    with open(f) as fh:
-                        msg = json.load(fh)
-                    if msg.get("type") == "cross-domain" and not msg.get("acknowledged"):
-                        alerts.append(
-                            f"📡 Cross-domain signal: {msg.get('from', '?')} mentioned "
-                            f"{msg.get('domain', '?')} context → consider {msg.get('suggest', '?')}"
-                        )
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    return alerts

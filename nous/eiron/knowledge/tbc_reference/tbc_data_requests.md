@@ -1,6 +1,8 @@
 # TBC Data Requests Tracker
 
 *For Next Touchpoint with Stephen/Jessi*
+*Updated: 2026-02-06 — Phase 1 segmentation NOT blocked by these gaps (public data sufficient)*
+*These are Phase 2 / broader project needs unless marked otherwise*
 
 ## Member Data
 - [ ] Complete member database (companies + individuals) with join dates

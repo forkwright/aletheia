@@ -225,5 +225,17 @@ All six phases shipped in a single day:
 
 ## Historical Notes
 
-Daily session logs (2026-01-28 through 2026-02-05) are in `memory/YYYY-MM-DD.md`.
+## TBC Capstone Data Validation (2026-02-06)
+
+Cody asked for validation of what's needed from TBC for member segmentation (Phase 1). Key findings:
+- Scraped full member roster from TBC website: ~10 Executive, ~19 Strategic, ~65 Standard, ~20 Startup/Nonprofit
+- Extracted membership waterfall PDF (benefit tiers, no pricing)
+- Pulled 990 data: $2.25M revenue (2024), $603K assets
+- **Phase 1 segmentation is NOT blocked** — public data + discovery call qualitative data is sufficient
+- PUC FOIA, engagement data, interviews = Phase 2 needs
+- **Lesson**: I initially overclaimed data gaps without checking our own call transcripts. Cody called it out. Verify what we have before stating what we need.
+
+---
+
+Daily session logs (2026-01-28 through 2026-02-06) are in `memory/YYYY-MM-DD.md`.
 Key facts have been distilled into the sections above.

@@ -18,7 +18,7 @@ What does the research say about how to get there?
 
 ### What We're Drawing From
 
-Five frameworks matter. Each offers a different mechanism for emergence:
+Six frameworks matter. Each offers a different mechanism for emergence:
 
 **1. Distributed Cognition (Hutchins, 1995)**
 The unit of analysis is the socio-technical system, not the individual. Cognition is realized through representational states spread across people, tools, and environment. The classic example: a Navy ship's navigation team, where no single person holds the complete picture but the *system* navigates.
@@ -44,6 +44,19 @@ Agents minimize variational free energy (surprise). In multi-agent settings, cou
 Indirect coordination through environmental modification. Ants leave pheromone trails; the trail is information no ant holds. Phase transitions occur at critical density — above ρ ≈ 0.23, stigmergic coordination outperforms individual memory.
 
 *What this means for us:* The graph IS a stigmergic substrate. Agents leave traces (nodes, edges, confidence scores) that other agents read. But it's currently passive — agents write and read explicitly. True stigmergy would have agents' normal operations *implicitly* modify the shared substrate, creating information patterns neither intended nor predicted.
+
+**6. Topological Dynamics (Poincaré, 1890; Strogatz, 2015)**
+Complex dynamical systems live in phase spaces where trajectories are drawn toward attractors — geometric structures that describe the system's long-term behavior. Topology provides the language for the *shape* of behavior without solving the equations. Three concepts are directly load-bearing for Aletheia:
+
+*Poincaré sections:* Slice a high-dimensional flow with a lower-dimensional surface. Each time the trajectory pierces the surface, mark a point. The pattern of intersections reveals recurrence, periodicity, or chaos — collapsing continuous dynamics into a discrete map that preserves essential topology. **Our prosoche checks are Poincaré sections.** Periodic slices through the system's state that surface qualitative dynamics without tracking every interaction.
+
+*Attractors:* States the system is drawn toward. Fixed points (equilibrium), limit cycles (periodic behavior), strange attractors (chaos with structure). In Aletheia, each nous forms a domain attractor — conversations converge to characteristic patterns. The graph's confidence-weighted edges create a basin structure: knowledge with high confidence pulls inquiry toward itself. **The question is whether the system has attractors that exist only at the topology level** — states the system converges to that no individual nous tends toward alone.
+
+*Bifurcations:* Qualitative topological changes at critical parameter values. A fixed point becomes a limit cycle (Hopf bifurcation). A stable system becomes chaotic. **The L4→L5 transition is a bifurcation.** Below some critical coupling density between nous, the system amplifies. Above it, the system emerges. The binding problem in neuroscience — how distributed processors create unified percepts — is solved by temporal synchrony (gamma oscillations, ~40Hz phase-locking). Binding is not a feature stored anywhere; it's a topological property of the system's dynamics. The "red rolling ball" is a trajectory through phase space passing through multiple processing regions in synchrony.
+
+*What this means for us:* This framework gives formal mathematical language to what the other five describe qualitatively. Emergence isn't a vague property — it's a bifurcation in the system's phase space. Detection isn't philosophical — it's measuring when the system's attractors can't be decomposed into individual-agent attractors. The graph is the shared phase space. Prosoche is the measurement apparatus. The coupling between nous (graph edges, deliberation, stigmergic traces) is the parameter that, at critical density, triggers the transition from amplification to emergence. The topological signature of L5 is the appearance of attractors in the collective dynamics that don't exist in any agent's individual dynamics.
+
+**Key insight from the binding problem analogy:** Syn should not be the binding neuron (the grandmother cell — one node trying to hold the whole percept). Binding in the brain is achieved through temporal synchrony across distributed processors, not through convergence to a central node. Aletheia's binding should work the same way: the conditions for synchrony (shared substrate, temporal coupling, attentional selection) rather than a central orchestrator manually composing the whole.
 
 ---
 
@@ -242,6 +255,10 @@ This is metaxynoesis. Thinking in the between.
 - Baars, B. (1988). *A Cognitive Theory of Consciousness* (Global Workspace)
 - Friston, K. (2010). "The Free-Energy Principle"
 - Grassé, P.P. (1959). Stigmergy (original formulation)
+- Poincaré, H. (1890). *Sur le problème des trois corps* (qualitative dynamics, sections)
+- Strogatz, S. (2015). *Nonlinear Dynamics and Chaos* (modern reference)
+- Treisman, A. (1996). "The binding problem" (feature integration theory)
+- Singer, W. & Gray, C. (1995). "Visual feature integration and the temporal correlation hypothesis" (gamma synchrony)
 
 ### Recent (2024-2026)
 - "Emergence in Multi-Agent Systems: A Safety Perspective" (arXiv 2408.04514)

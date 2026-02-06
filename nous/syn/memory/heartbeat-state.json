@@ -43,6 +43,18 @@
         "message": "Heartbeat checks stale >24h: agent_health blackboard letta ",
         "timestamp": 1770292803,
         "acknowledged": false
+      },
+      {
+        "type": "stale_agent",
+        "message": "Agents stale >24h: null null null null null ",
+        "timestamp": 1770379201,
+        "acknowledged": false
+      },
+      {
+        "type": "stale_checks",
+        "message": "Heartbeat checks stale >24h: agent_health blackboard letta ",
+        "timestamp": 1770379201,
+        "acknowledged": false
       }
     ]
   }

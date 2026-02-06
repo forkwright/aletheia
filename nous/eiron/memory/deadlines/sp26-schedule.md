@@ -1,38 +1,42 @@
 # SP26 Deadlines & Schedule
+*Updated: 2026-02-06 (from Todoist via Syn)*
 
-## This Week (Jan 27-31)
-- **Jan 27**: Capstone Phase I workstreams draft due (internal)
-- **Jan 31**: Strategic Management team + company selection due
+## This Weekend — Due Feb 9
 
-## Next Week (Feb 3-7)  
-- **Feb 1**: ACF Homework 1 + Quiz 1 prep due
-- **Feb 5**: Professor check-in (30 min) - Capstone
-- **Feb 6**: Capstone Touchpoint 1 (11:30-11:45) with Kaitlyn (TA)
+### FIN 294 (Advanced Corporate Finance — Almazan)
+- **Homework 1** — Sun Feb 9, 11:59 PM
 
-## February Critical Dates
-- **Feb 14**: CSFs locked (Capstone Phase II)
-- **Feb 21**: Strategic options defined  
-- **Feb 28**: Tradeoff matrix + report skeleton
+### BA 388T (Strategic Management — Ritchie-Dunham)
+All due **Sun Feb 9, 6:00 PM**:
+- Conditions for Value Generation Mini-Sim
+- Merck Mini-Case
+- Stakeholders Mini-Sim
+- Team Selection
 
-## End of Term
-- **Apr 15**: Final report submission (10 pages)
-- **Apr 22**: Executive panel presentation (30 min)
+## Following Week — Due Feb 16
 
-## Course Breakdown
+### FIN 294
+- **Homework 2** — Mon Feb 16, 11:59 PM
 
-### Advanced Corporate Finance (Almazan)
-- **Next due**: Feb 1 (HW1 + Quiz 1 prep)
-- **Weight**: Heavy quantitative focus
+### BA 388T
+All due **Sun Feb 16, 6:00 PM**:
+- Leading Towards a Healthy Ecosystem
+- Meta Mini-Case
+- Company Selection
+- Team Agreement
 
-### Strategic Management (Ritchie-Dunham)  
-- **Next due**: Jan 31 (team selection)
-- **Weight**: Team project focus
+## Feb 23
 
-### Managerial Macroeconomics
-- **Status**: Assignments TBD
-- **Weight**: Economic theory
+### FIN 294
+- **Case Write-up** — 6:00 PM
 
-### Capstone  
-- **Next milestone**: Feb 5 professor check-in
-- **Major deliverables**: Report (Apr 15), Presentation (Apr 22)
-- **Weight**: Highest - capstone project
+### BA 388T
+- Mid-Semester Feedback Survey
+
+## Capstone (TBC Project)
+- **Phase 1 segmentation**: Unblocked (data validated Feb 6)
+- **Final report**: Apr 15
+- **Executive presentation**: Apr 22
+
+## Managerial Macroeconomics
+- No assignments showing in Todoist yet
