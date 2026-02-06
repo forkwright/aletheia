@@ -160,7 +160,23 @@ All six phases shipped in a single day:
 
 **Critical fix:** Two systemd services (autarkia + aletheia) were both running, causing port conflicts. Consolidated to one.
 
-*Updated: 2026-02-05 21:35 CST*
+## Agent Config Lesson (2026-02-06)
+
+**`agents.list` is required for identity.** Setting workspace in `agents.overrides` alone doesn't work — agents must be registered in `agents.list` with their workspace path. Without this, all agents bootstrap from the default (Syn's) workspace and respond as Syn. Rescued by Metis Claude Code.
+
+**Model ID format changed.** Newer models: `anthropic/claude-sonnet-4-5` (no date suffix). Older: `anthropic/claude-sonnet-4-20250514`. Check the runtime's models.js to verify.
+
+## Research Protocol (2026-02-06)
+
+Strict evidence hierarchy now ingrained in all research-capable nous. 5 tiers (S1 peer-reviewed → S5 our synthesis). Every claim inline-cited, counter-evidence mandatory, PRISMA-Lite for systematic reviews. Tools: `scholar` (OpenAlex, 250M papers), `wiki` (Wikipedia, S4 only), `pplx` (Perplexity).
+
+**Key rule: never cite what you haven't read.** Many L5 foundational sources flagged as abstract-only. Must do full reads before paper.
+
+## Topology Frame (2026-02-06)
+
+Topological dynamics = mathematical Rosetta Stone for metaxynoesis. Prosoche = Poincaré sections. L4→L5 = bifurcation. Binding = synchrony not convergence. Graph = phase space. Unifies Hutchins, Clark, Baars, Friston, Grassé under one formal language. Credit: James Kinney pointed Cody to the right concepts.
+
+*Updated: 2026-02-06 09:45 CST*
 
 ---
 

@@ -24,9 +24,9 @@
 
 ---
 
-## Flagship: Belt ($125, $135 shipped)
+## Flagship: Belt ($150, shipping included)
 
-**Materials:** Hermann Oak 11-13oz harness (Springfield Leather), Fil au Chinois 332 (Rocky Mountain), Abbey England B075ALX brass buckle, Wickett & Craig 4-6oz keeper (Buckle Guy). Material cost: $32. Labor: $83.
+**Materials:** Hermann Oak 11-13oz harness (Springfield Leather), Fil au Chinois 332 (Rocky Mountain), Abbey England brass buckle, Wickett & Craig 4-6oz keeper (Buckle Guy). Material cost: $32. Labor+workshop: $108.
 
 **Specs:** 1.5" width, ~5mm thick, single layer, stitched attachment (no Chicago screws), floating keeper, 5×4mm holes at 1" spacing, English point tip, Ardent wax finish, YYYYMMDD stamp inside.
 
@@ -79,4 +79,23 @@ Warranty: workmanship guaranteed. Target: people burned by "premium" marketing. 
 
 ---
 
-*Updated: 2026-02-05*
+## Writing Voice (CRITICAL)
+
+When writing as Cody or for Ardent: his prose arrives at insight through experience. It builds, breathes, circles back. Sentences are medium-length and reflective. Fragments expand, they don't punch. Doubt lives inside conviction. Flow with `---` breaks, not section headers.
+
+**Never:** Em dashes. Staccato declarative fragments. Imperative constructions. Aphorisms stated and moved past. Neat wrap-ups.
+
+**Test:** "Source the right materials. Use tools that don't compromise." is mine (punchy, instructive). "I keep coming back to the same discipline - find the right materials, use tools that don't lie to you" is his (reflective, arrived at). The second one breathes. The first one performs.
+
+His voice shows the landscape. Mine hands you a map. Always the landscape.
+
+---
+
+## Belt Pricing (Updated 2026-02-06)
+
+Belt is $150 (was $125). Materials $32, labor/workshop $108, shipping $10 included.
+Valet Tray is $85. Materials $10, labor/workshop $65, shipping $10 included.
+
+---
+
+*Updated: 2026-02-06*

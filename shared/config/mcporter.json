@@ -1,26 +1,21 @@
 {
   "mcpServers": {
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"],
-      "env": {
-        "MEMORY_FILE_PATH": "/mnt/ssd/aletheia/shared/memory/mcp-memory.json"
-      }
-    },
     "github": {
-      "command": "npx", 
-      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
       }
     },
     "sequential-thinking": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    },
-    "task-orchestrator": {
-      "command": "npx",
-      "args": ["-y", "task-orchestrator-mcp"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
     },
     "google-calendar": {
       "command": "google-calendar-mcp",
