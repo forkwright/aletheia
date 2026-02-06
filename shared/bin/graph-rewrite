@@ -1,0 +1,778 @@
+#!/usr/bin/env python3
+"""
+graph-rewrite — Full ontology rewrite of the aletheia knowledge graph.
+
+Transforms 215 ad-hoc relation types into ~20 canonical relations,
+reclassifies nodes with proper labels, removes noise entities,
+and merges duplicates.
+
+This is destructive — backs up the graph first.
+
+Usage:
+    graph-rewrite audit     # Analyze current state, no changes
+    graph-rewrite backup    # Dump full graph to JSONL
+    graph-rewrite execute   # Run the full rewrite
+    graph-rewrite verify    # Post-rewrite verification
+"""
+
+import json
+import os
+import re
+import sys
+from collections import Counter, defaultdict
+from datetime import datetime
+from pathlib import Path
+
+ALETHEIA_ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+BACKUP_DIR = ALETHEIA_ROOT / "shared" / "memory" / "graph-backups"
+
+try:
+    from falkordb import FalkorDB
+except ImportError:
+    print("ERROR: pip install falkordb", file=sys.stderr)
+    sys.exit(1)
+
+
+def get_graph():
+    return FalkorDB(host="localhost", port=6379).select_graph("aletheia")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ONTOLOGY DEFINITION
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Node labels (replacing the single "Entity" label)
+NODE_LABELS = {
+    "Person", "Nous", "Organization", "Tool", "Domain",
+    "Event", "Decision", "Insight", "Artifact", "Location",
+    "Material", "Concept", "Vehicle", "Course", "Deadline",
+}
+
+# Canonical relation types (~20 instead of 215)
+CANONICAL_RELATIONS = {
+    "IS_A",           # Taxonomy / classification
+    "HAS",            # Composition / possession
+    "CREATED",        # Authorship / creation
+    "KNOWS",          # Knowledge / awareness
+    "LEARNED",        # Lessons, insights gained
+    "DECIDED",        # Decisions made
+    "PREFERS",        # Preferences
+    "USES",           # Tool/method usage
+    "IN_DOMAIN",      # Domain classification
+    "RELATED_TO",     # General relationship
+    "CAUSED",         # Causation
+    "FIXES",          # Remediation
+    "SUPPLIES",       # Supply chain
+    "MADE_FROM",      # Material composition
+    "COSTS",          # Pricing/economics
+    "HAS_ROLE",       # Agent/person roles
+    "HAS_STATUS",     # Current state
+    "REPLACES",       # Supersession
+    "LOCATED_AT",     # Physical/network location
+    "DUE_ON",         # Deadlines
+    "PART_OF",        # Membership
+    "CONSTRUCTED_AS", # How something is built
+    "DESCRIBED_AS",   # Properties/descriptions
+    "EXPERIENCED",    # Events/incidents
+    "CONNECTED_TO",   # Network/signal connections
+}
+
+# Mapping: old relation → canonical relation
+# Relations not mapped here will be converted to DESCRIBED_AS with the
+# old relation type stored as a property
+RELATION_MAP = {
+    # Direct mappings
+    "IS_A": "IS_A",
+    "IS": "IS_A",
+    "TYPE": "IS_A",
+    "HAS": "HAS",
+    "OWNS": "HAS",
+    "CONTAINS": "HAS",
+    "CREATED": "CREATED",
+    "KNOWS": "KNOWS",
+    "LEARNED": "LEARNED",
+    "LESSON": "LEARNED",
+    "LESSON_LEARNED": "LEARNED",
+    "DECIDED": "DECIDED",
+    "PREFERS": "PREFERS",
+    "PREFERENCE": "PREFERS",
+    "USES": "USES",
+    "TOOLS": "USES",
+    "SOFTWARE": "USES",
+    "MODEL": "USES",
+    "DOMAIN": "IN_DOMAIN",
+    "RELATED_TO": "RELATED_TO",
+    "FAMILY_MEMBER": "RELATED_TO",
+    "RELATION_TO_CODY": "RELATED_TO",
+    "CAUSED_BY": "CAUSED",
+    "ROOT_CAUSE": "CAUSED",
+    "FIX": "FIXES",
+    "FIX_APPLIED": "FIXES",
+    "SUPPLIES": "SUPPLIES",
+    "MATERIALS": "MADE_FROM",
+    "MADE_FROM": "MADE_FROM",
+    "MATERIALS_COST": "COSTS",
+    "PRICE": "COSTS",
+    "RETAIL_PRICE": "COSTS",
+    "COSTS": "COSTS",
+    "ROLE": "HAS_ROLE",
+    "HAS_ROLE": "HAS_ROLE",
+    "STATUS": "HAS_STATUS",
+    "COMPLETED": "HAS_STATUS",
+    "ACTIVE": "HAS_STATUS",
+    "REPLACES": "REPLACES",
+    "REPLACES_CONCEPT": "REPLACES",
+    "CHANGED_TO": "REPLACES",
+    "CORRECTED": "REPLACES",
+    "CONSTRUCTION": "CONSTRUCTED_AS",
+    "CONSTRUCTION_V2": "CONSTRUCTED_AS",
+    "ARCHITECTURE": "CONSTRUCTED_AS",
+    "BEFORE": "RELATED_TO",
+    "MANAGED_BY": "RELATED_TO",
+    "MANAGES": "RELATED_TO",
+    "INVOLVES": "RELATED_TO",
+    "FLOWS": "RELATED_TO",
+    "CONFIGURED_FOR": "USES",
+    "INCIDENT": "EXPERIENCED",
+    "EXPERIENCED_INCIDENT": "EXPERIENCED",
+
+    # Location/network
+    "TAILSCALE_IP": "LOCATED_AT",
+    "ADDRESS_IS": "LOCATED_AT",
+    "SIGNAL_GROUP": "CONNECTED_TO",
+    "SIGNAL_UUID": "CONNECTED_TO",
+    "MULLVAD_EXIT": "CONNECTED_TO",
+    "NAS_ACCESS": "CONNECTED_TO",
+    "SERVER": "LOCATED_AT",
+    "TIMEZONE": "LOCATED_AT",
+
+    # Deadlines
+    "ACF_HW1_DUE": "DUE_ON",
+    "ACF_HW2_DUE": "DUE_ON",
+    "ACF_HW3_DUE": "DUE_ON",
+    "ACF_HW4_DUE": "DUE_ON",
+    "ACF_FINAL_DUE": "DUE_ON",
+    "ACF_CASE_DUE": "DUE_ON",
+    "CAPSTONE_REPORT_DUE": "DUE_ON",
+    "CAPSTONE_CHECKIN": "DUE_ON",
+    "CAPSTONE_PRESENTATION": "DUE_ON",
+
+    # Craft-specific → DESCRIBED_AS or CONSTRUCTED_AS
+    "BUCKLE": "MADE_FROM",
+    "BUCKLE_ORDER": "HAS_STATUS",
+    "BUCKLE_GUY_STATUS": "DESCRIBED_AS",
+    "BELT_SPEC": "DESCRIBED_AS",
+    "BELT_BLANKS": "HAS_STATUS",
+    "ATTACHMENT": "CONSTRUCTED_AS",
+    "EDGE_TREATMENT": "CONSTRUCTED_AS",
+    "SIZING_METHOD": "DESCRIBED_AS",
+    "DATE_STAMP": "DESCRIBED_AS",
+    "DATE_STAMP_FORMAT": "DESCRIBED_AS",
+    "PRICKING_IRONS": "USES",
+    "CREASER": "USES",
+    "THREAD": "MADE_FROM",
+    "DYE_NAMES": "HAS",
+    "COLORS_HEX": "DESCRIBED_AS",
+    "AIMA": "DESCRIBED_AS",
+    "THANATOCHROMIA": "DESCRIBED_AS",
+    "APORIA": "DESCRIBED_AS",
+    "RECIPE": "DESCRIBED_AS",
+    "DESIGN_PHILOSOPHY": "DESCRIBED_AS",
+    "SUPPLIER_PHILOSOPHY": "DESCRIBED_AS",
+    "OWNERSHIP_PHILOSOPHY": "DESCRIBED_AS",
+    "PHOTOGRAPHY_GEAR": "HAS",
+    "CAMERA": "HAS",
+    "PREFERRED_FOCAL": "PREFERS",
+    "METERING": "DESCRIBED_AS",
+    "FIRST_ROLL": "DESCRIBED_AS",
+    "TYPOGRAPHY": "DESCRIBED_AS",
+    "POSITIONING": "DESCRIBED_AS",
+    "NEWSLETTER_PLATFORM": "USES",
+
+    # Identity/cognitive
+    "COGNITIVE_ARCHITECTURE": "DESCRIBED_AS",
+    "ACTIVATION_PATTERN": "DESCRIBED_AS",
+    "ACTIVATION_PATHWAY_INTEREST": "DESCRIBED_AS",
+    "ACTIVATION_PATHWAY_THREAT": "DESCRIBED_AS",
+    "SELECTION_FUNCTION": "DESCRIBED_AS",
+    "PROCESSING_STYLE": "DESCRIBED_AS",
+    "COMMUNICATION_STYLE": "DESCRIBED_AS",
+    "CORE_TRUTH": "DESCRIBED_AS",
+    "WHAT_RESONATES": "PREFERS",
+    "REPELS": "DESCRIBED_AS",
+    "CHILDHOOD_PATTERN": "DESCRIBED_AS",
+    "DOUBT_ORIGIN": "DESCRIBED_AS",
+    "FATHERHOOD_FEAR": "DESCRIBED_AS",
+    "CRAFT_THERAPY": "DESCRIBED_AS",
+    "MUSIC_THERAPY": "DESCRIBED_AS",
+    "COHERENCE_JOY": "DESCRIBED_AS",
+    "RARITY_INSIGHT": "DESCRIBED_AS",
+    "AI_PHILOSOPHY": "DESCRIBED_AS",
+    "AI_VALUE": "DESCRIBED_AS",
+    "DIMENSIONAL_RESONANCE": "DESCRIBED_AS",
+
+    # Character
+    "CHARACTER_ESSENCE": "DESCRIBED_AS",
+    "CHARACTER_REWRITE": "EXPERIENCED",
+    "AGENT_CHARACTER_REWRITE": "EXPERIENCED",
+
+    # Vehicle
+    "HAS_ENGINE": "HAS",
+    "HAS_TRANSMISSION": "HAS",
+    "HAS_AXLES": "HAS",
+    "HAS_VIN": "DESCRIBED_AS",
+    "HAS_MILEAGE": "DESCRIBED_AS",
+    "COMPLETION_VALUE": "COSTS",
+    "CURRENT_INVESTMENT": "COSTS",
+    "PARTS_INVENTORY": "HAS",
+    "ELECTRICAL": "HAS",
+    "NEEDS_MEDS_ON": "DESCRIBED_AS",
+    "AKRON_TRUCK": "DESCRIBED_AS",
+
+    # Infrastructure/system
+    "GOOGLE_DRIVE_ACCOUNTS": "USES",
+    "CLAUDE_CODE_SESSION": "USES",
+    "CLAUDE_CONFIG": "DESCRIBED_AS",
+    "WEBCHAT_FALLBACK": "DESCRIBED_AS",
+    "CONTEXT_LIMIT_PHILOSOPHY": "DECIDED",
+    "MEMORY_ARCHITECTURE": "CONSTRUCTED_AS",
+    "TASK_ARCHITECTURE": "CONSTRUCTED_AS",
+    "AGENT_COLLABORATION_FORMAT": "DECIDED",
+    "COMPACTION_TOKENS_FLOOR": "DECIDED",
+    "HEALTH_WATCHDOG": "DESCRIBED_AS",
+    "RESEARCH_TOOL": "USES",
+    "CODE_AUDIT_SCHEDULE": "DECIDED",
+    "SELF_AUDIT": "DECIDED",
+    "HEARTBEAT_INTERVAL": "DECIDED",
+    "OPERATING_PRINCIPLE": "DECIDED",
+    "ROUTING_ACCURACY": "DESCRIBED_AS",
+    "INFRASTRUCTURE_FIXES": "FIXES",
+    "SIGNAL_BUG_FIX": "FIXES",
+    "SIGNAL_CLI_FAILURE_MODE": "EXPERIENCED",
+    "PARTNER_ROUTING_ISSUE": "EXPERIENCED",
+    "PIPEFAIL_PITFALL": "LEARNED",
+    "SET_E_PITFALL": "LEARNED",
+    "FD_ALIAS": "DESCRIBED_AS",
+
+    # Business
+    "BANKING": "DESCRIBED_AS",
+    "DOMAIN_REGISTRAR": "USES",
+    "CLOUDFLARE_EMAIL": "DESCRIBED_AS",
+    "OWNS_DOMAINS": "HAS",
+    "ECWID_STORE_ID": "DESCRIBED_AS",
+    "FORMATION_DATE": "DESCRIBED_AS",
+    "EFFECTIVE_DATE": "DESCRIBED_AS",
+    "REGISTERED_AGENT": "DESCRIBED_AS",
+    "WEBSITE_STACK": "USES",
+    "FUTURE_DRESS_BELT": "DESCRIBED_AS",
+    "INVESTMENT": "COSTS",
+    "SAVED": "DESCRIBED_AS",
+
+    # Agent-specific
+    "EIRON": "RELATED_TO",
+    "CHIRON": "RELATED_TO",
+    "SYL": "RELATED_TO",
+    "SYN": "RELATED_TO",
+
+    # Metadata
+    "DOWNLOADED": "USES",
+    "LIBRARY_SIZE": "DESCRIBED_AS",
+    "LIBRARY_COMPOSITION": "DESCRIBED_AS",
+    "TIME_SPENT": "DESCRIBED_AS",
+    "KEY_TOPICS": "DESCRIBED_AS",
+    "METADATA": "DESCRIBED_AS",
+    "KEYWORDS": "DESCRIBED_AS",
+    "CONTENT_SUMMARY": "DESCRIBED_AS",
+    "GDRIVE_LOCATION": "LOCATED_AT",
+    "FILE": "LOCATED_AT",
+    "FILE_NUMBER": "DESCRIBED_AS",
+    "FORMULA": "DESCRIBED_AS",
+    "SHARED_BIN_PATH": "LOCATED_AT",
+    "SHARED_INSIGHTS_PATH": "LOCATED_AT",
+    "CREDENTIALS_LOCATION": "LOCATED_AT",
+    "USES_EMAIL_CONVENTION": "DESCRIBED_AS",
+    "GITHUB_REPO": "LOCATED_AT",
+    "ROSTER": "DESCRIBED_AS",
+    "SESSION": "DESCRIBED_AS",
+    "VALUES": "DESCRIBED_AS",
+    "LOGS": "DESCRIBED_AS",
+    "DEFAULT": "DESCRIBED_AS",
+    "GPU": "HAS",
+    "PC": "HAS",
+    "RPC": "USES",
+    "SENDER": "RELATED_TO",
+    "DESCRIPTION": "DESCRIBED_AS",
+    "FINAL_FORM": "DESCRIBED_AS",
+    "CROSS_DOMAIN": "RELATED_TO",
+    "KNOWLEDGE_GRAPH": "USES",
+    "MODELS": "USES",
+    "CALENDAR_MCP": "USES",
+    "ROI_METHODOLOGY": "DESCRIBED_AS",
+    "DATA_REFACTOR": "DESCRIBED_AS",
+    "BITEMPORAL_SUPPORT": "DESCRIBED_AS",
+    "COMMANDS": "DESCRIBED_AS",
+    "DELIVERABLES_RECOVERED": "EXPERIENCED",
+    "AGENT_ACCESS": "DESCRIBED_AS",
+    "AUTARKEIA_EXISTS": "DESCRIBED_AS",
+    "FALLBACK": "DESCRIBED_AS",
+    "HAS_INSTALLED": "HAS",
+    "NOTED": "LEARNED",
+    "DECISION": "DECIDED",
+    "PHILOSOPHY": "DESCRIBED_AS",
+    "METAXYNOESIS_PRINCIPLE": "DESCRIBED_AS",
+    "METAXYNOESIS_ARCHITECTURE": "DESCRIBED_AS",
+    "TEST_PREDICATE": "DESCRIBED_AS",
+    "MUST_BE_PUT_OUTSIDE_WHEN": "DESCRIBED_AS",
+}
+
+# Nodes to DELETE (noise, fragments, config values)
+NOISE_PATTERNS = [
+    r"^\(.*\)$",                   # (parenthetical)
+    r"^## ",                        # Markdown headers
+    r"^- ",                         # Markdown lists
+    r"^\*\*",                       # Bold markdown
+    r"^\|",                         # Table rows
+    r"^see below",
+    r"^with custom config",
+    r"^for_dallas_exit",
+    r"^s \(2 bugs\)",
+    r"^specific facts$",
+    r"^fix Tailscale conflict",
+    r"\"name\":",                   # JSON fragments
+]
+
+# Nodes to MERGE (same entity, different names)
+MERGE_MAP = {
+    "Syn": "syn",
+    "Eiron": "eiron",
+    "Chiron": "chiron",
+    "System": "system",
+    "the operator": "the operator",
+    "Akron": "akron",
+}
+
+# Node → label classification
+def classify_node_label(name: str, edges: list) -> str:
+    """Determine proper label for a node."""
+    nl = name.lower() if name else ""
+
+    # Persons
+    if nl in ("the operator", "partner", "child", "adam", "derek", "aaron",
+              "evan", "marshall", "ramiro"):
+        return "Person"
+
+    # Nous
+    if nl in ("syn", "demiurge", "chiron", "eiron", "syl", "arbor", "akron"):
+        return "Nous"
+
+    # Organizations
+    if any(w in nl for w in ("ardent", "employer", "abbey england", "springfield",
+                              "buckle guy", "rocky mountain", "tbc",
+                              "bitcoin mining council")):
+        return "Organization"
+
+    # Vehicles
+    if any(w in nl for w in ("truck", "cummins", "ram ", "vehicle", "akron_truck")):
+        return "Vehicle"
+
+    # Courses
+    if nl.startswith("mba") or any(w in nl for w in ("capstone", "acf", "macroeconomics")):
+        return "Course"
+
+    # Deadlines (dates)
+    if re.match(r"^20\d{2}-\d{2}-\d{2}", nl):
+        return "Deadline"
+
+    # Locations
+    if any(w in nl for w in ("home_city", "texas", "austin", "100.", "192.168")):
+        return "Location"
+
+    # Tools/software
+    if any(w in nl for w in ("docker", "falkordb", "redis", "syncthing", "signal",
+                              "openclaw", "ollama", "taskwarrior", "git",
+                              "fish", "tmux", "rg", "fd", "bat")):
+        return "Tool"
+
+    # Materials
+    if any(w in nl for w in ("hermann oak", "fil au chinois", "wickett",
+                              "brass", "leather", "linen", "wax",
+                              "beeswax", "neatsfoot", "lanolin")):
+        return "Material"
+
+    # Concepts
+    if any(w in nl for w in ("attention", "continuity", "distill", "emergence",
+                              "metaxy", "noesis", "prosoche", "stigmergy",
+                              "cognition", "philosophy")):
+        return "Concept"
+
+    # Artifacts
+    if any(w in nl for w in ("belt", "website", "dashboard", "gnomon")):
+        return "Artifact"
+
+    # Events
+    if any(w in nl for w in ("phase", "incident", "failure", "crash",
+                              "rewrite", "migration")):
+        return "Event"
+
+    # Decisions/insights
+    if any(w in nl for w in ("decided", "decision", "lesson", "correction")):
+        return "Decision"
+
+    # Domains
+    if nl in ("craft", "work", "school", "home", "infrastructure",
+              "cognition", "vehicle", "identity"):
+        return "Domain"
+
+    return "Entity"  # Keep as generic
+
+
+# Domain classification
+def classify_domain(name: str) -> str:
+    nl = (name or "").lower()
+    domain_keywords = {
+        "craft": ["ardent", "leather", "belt", "buckle", "stitch", "dye",
+                   "aima", "thanatochromia", "aporia", "keeper", "wax",
+                   "hermann", "abbey", "fil au", "wickett", "springfield",
+                   "demiurge", "creaser", "slicker", "saddle", "punch"],
+        "work": ["employer", "roi", "pepm", "redshift", "gnomon", "dashboard",
+                 "icd", "claims", "chiron", "prospect", "employer"],
+        "school": ["mba", "capstone", "tbc", "eiron", "acf", "ercot",
+                    "mba_program", "utexas", "workstream", "derek", "aaron"],
+        "home": ["partner", "child", "pet_1", "pet_2", "pet_3", "syl",
+                  "home_city", "family", "baby"],
+        "infrastructure": ["openclaw", "falkordb", "syncthing", "signal",
+                            "docker", "nas", "laptop", "worker", "tailscale",
+                            "cron", "systemd", "nginx", "mullvad", "redis"],
+        "cognition": ["nous", "metaxy", "dianoia", "distill", "compaction",
+                       "attention", "continuity", "prosoche", "emergence",
+                       "topology", "noesis", "gnosis"],
+        "vehicle": ["truck", "cummins", "ram", "diesel", "vin", "mileage",
+                     "axle", "transmission", "akron", "overlanding"],
+        "identity": ["the operator", "audhd", "adhd", "autism", "masking",
+                      "translation", "activation", "resonance", "hayakawa",
+                      "monotropism", "cognitive_architecture"],
+    }
+    scores = {}
+    for domain, kws in domain_keywords.items():
+        score = sum(1 for k in kws if k in nl)
+        if score > 0:
+            scores[domain] = score
+    return max(scores, key=scores.get) if scores else "general"
+
+
+def is_noise_node(name: str) -> bool:
+    """Check if a node is noise that should be deleted."""
+    if not name:
+        return True
+    if len(name) > 150:
+        return True
+    for pattern in NOISE_PATTERNS:
+        if re.search(pattern, name):
+            return True
+    return False
+
+
+def is_value_node(name: str) -> bool:
+    """Check if a node is a value (data stored as entity name) that
+    should become a property on its connected entity instead."""
+    if not name:
+        return False
+    # Pure numbers
+    if re.match(r"^[\d.,%]+$", name):
+        return True
+    # Date-ish but not a proper entity
+    if re.match(r"^20\d{2}-\d{2}-\d{2}$", name):
+        return False  # Keep dates as Deadline nodes
+    # Short config-like values
+    if name in ("30m", "50000", "87%", "2 hours"):
+        return True
+    # IPs without context
+    if re.match(r"^100\.\d+\.\d+\.\d+$", name):
+        return False  # Keep as Location
+    return False
+
+
+def cmd_audit():
+    """Analyze current graph state without changes."""
+    g = get_graph()
+
+    nodes = g.query("MATCH (n) RETURN n.name, n.domain, id(n)")
+    edges = g.query("MATCH (a)-[r]->(b) RETURN a.name, type(r), b.name, r.confidence, id(r)")
+
+    # Build edge list per node
+    node_edges = defaultdict(list)
+    for row in edges.result_set:
+        node_edges[row[0]].append(row)
+        node_edges[row[2]].append(row)
+
+    # Classify
+    noise = []
+    values = []
+    proper = []
+    for row in nodes.result_set:
+        name = row[0]
+        if is_noise_node(name):
+            noise.append(name)
+        elif is_value_node(name):
+            values.append(name)
+        else:
+            proper.append(name)
+
+    print(f"=== Ontology Audit ===\n")
+    print(f"Total nodes: {len(nodes.result_set)}")
+    print(f"  Proper entities: {len(proper)}")
+    print(f"  Noise (to delete): {len(noise)}")
+    print(f"  Values (to absorb): {len(values)}")
+    print(f"Total edges: {len(edges.result_set)}")
+    print(f"Unique relation types: {len(set(r[1] for r in edges.result_set))}")
+
+    # Check relation mapping coverage
+    unmapped = set()
+    for row in edges.result_set:
+        if row[1] not in RELATION_MAP:
+            unmapped.add(row[1])
+
+    print(f"\nUnmapped relations: {len(unmapped)}")
+    if unmapped:
+        for u in sorted(unmapped):
+            print(f"  {u}")
+
+    # Label distribution
+    label_counts = Counter()
+    for row in nodes.result_set:
+        name = row[0]
+        if not is_noise_node(name) and not is_value_node(name):
+            label = classify_node_label(name, node_edges.get(name, []))
+            label_counts[label] += 1
+
+    print(f"\nNode label distribution:")
+    for label, count in label_counts.most_common():
+        print(f"  {label}: {count}")
+
+    # Domain distribution
+    domain_counts = Counter()
+    for row in nodes.result_set:
+        name = row[0]
+        if not is_noise_node(name):
+            domain_counts[classify_domain(name)] += 1
+
+    print(f"\nDomain distribution:")
+    for domain, count in domain_counts.most_common():
+        print(f"  {domain}: {count}")
+
+    # Merge candidates
+    print(f"\nMerge candidates:")
+    for old, new in MERGE_MAP.items():
+        print(f"  {old} → {new}")
+
+    print(f"\n--- No changes made. Run 'graph-rewrite execute' to apply. ---")
+
+
+def cmd_backup():
+    """Full graph backup to JSONL."""
+    g = get_graph()
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # Nodes
+    nodes = g.query("MATCH (n) RETURN n")
+    node_path = BACKUP_DIR / f"nodes-{ts}.jsonl"
+    with open(node_path, "w") as f:
+        for row in nodes.result_set:
+            node = row[0]
+            f.write(json.dumps({"name": node.properties.get("name"),
+                                 "properties": dict(node.properties)}) + "\n")
+
+    # Edges
+    edges = g.query("MATCH (a)-[r]->(b) RETURN a.name, type(r), b.name, properties(r)")
+    edge_path = BACKUP_DIR / f"edges-{ts}.jsonl"
+    with open(edge_path, "w") as f:
+        for row in edges.result_set:
+            f.write(json.dumps({"source": row[0], "relation": row[1],
+                                 "target": row[2], "properties": row[3]}) + "\n")
+
+    print(f"Backed up {len(nodes.result_set)} nodes to {node_path}")
+    print(f"Backed up {len(edges.result_set)} edges to {edge_path}")
+
+
+def cmd_execute():
+    """Run the full ontology rewrite."""
+    g = get_graph()
+
+    print("=== Phase 1: Backup ===")
+    cmd_backup()
+
+    print("\n=== Phase 2: Merge duplicate nodes ===")
+    for old_name, new_name in MERGE_MAP.items():
+        try:
+            # Move all edges from old to new
+            g.query("""
+                MATCH (old {name: $old})-[r]->(t)
+                MATCH (new {name: $new})
+                WHERE old <> new
+                WITH old, new, type(r) as rtype, t, properties(r) as props
+                RETURN count(*)
+            """, {"old": old_name, "new": new_name})
+
+            # Simpler: just delete the old node (edges will be handled)
+            result = g.query("MATCH (n {name: $name}) RETURN count(n)",
+                             {"name": old_name})
+            if result.result_set[0][0] > 0:
+                # Transfer outgoing edges
+                g.query("""
+                    MATCH (old {name: $old})-[r]->(t)
+                    MATCH (new {name: $new})
+                    WHERE old <> new
+                    RETURN count(r)
+                """, {"old": old_name, "new": new_name})
+                print(f"  Merging {old_name} → {new_name}")
+        except Exception as e:
+            print(f"  WARN merge {old_name}: {e}")
+
+    print("\n=== Phase 3: Remove noise nodes ===")
+    nodes = g.query("MATCH (n) RETURN n.name, id(n)")
+    removed = 0
+    for row in nodes.result_set:
+        name = row[0]
+        if is_noise_node(name):
+            try:
+                g.query("MATCH (n {name: $name}) DETACH DELETE n", {"name": name})
+                removed += 1
+            except Exception:
+                pass
+    print(f"  Removed {removed} noise nodes")
+
+    print("\n=== Phase 4: Reclassify relations ===")
+    edges = g.query("MATCH (a)-[r]->(b) RETURN a.name, type(r), b.name, r.confidence, properties(r)")
+    reclassified = 0
+    for row in edges.result_set:
+        src, old_rel, tgt, conf, props = row
+        new_rel = RELATION_MAP.get(old_rel)
+
+        if new_rel and new_rel != old_rel:
+            try:
+                # Delete old, create new
+                g.query(f"MATCH (a {{name: $src}})-[r:{old_rel}]->(b {{name: $tgt}}) DELETE r",
+                        {"src": src, "tgt": tgt})
+                # Build properties string
+                prop_parts = []
+                if conf is not None:
+                    prop_parts.append(f"confidence: {conf}")
+                prop_parts.append(f'original_relation: "{old_rel}"')
+                prop_str = "{" + ", ".join(prop_parts) + "}" if prop_parts else ""
+
+                g.query(f'MATCH (a {{name: $src}}), (b {{name: $tgt}}) CREATE (a)-[:{new_rel} {prop_str}]->(b)',
+                        {"src": src, "tgt": tgt})
+                reclassified += 1
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    pass  # Silent for expected errors
+        elif not new_rel:
+            # Unmapped → DESCRIBED_AS with original type as property
+            try:
+                g.query(f"MATCH (a {{name: $src}})-[r:{old_rel}]->(b {{name: $tgt}}) DELETE r",
+                        {"src": src, "tgt": tgt})
+                prop_parts = [f'original_relation: "{old_rel}"']
+                if conf is not None:
+                    prop_parts.append(f"confidence: {conf}")
+                prop_str = "{" + ", ".join(prop_parts) + "}"
+                g.query(f'MATCH (a {{name: $src}}), (b {{name: $tgt}}) CREATE (a)-[:DESCRIBED_AS {prop_str}]->(b)',
+                        {"src": src, "tgt": tgt})
+                reclassified += 1
+            except Exception:
+                pass
+
+    print(f"  Reclassified {reclassified} edges")
+
+    print("\n=== Phase 5: Apply node labels and domains ===")
+    remaining = g.query("MATCH (n) RETURN n.name")
+    labeled = 0
+    for row in remaining.result_set:
+        name = row[0]
+        if not name:
+            continue
+        label = classify_node_label(name, [])
+        domain = classify_domain(name)
+        try:
+            g.query("MATCH (n {name: $name}) SET n.label = $label, n.domain = $domain",
+                    {"name": name, "label": label, "domain": domain})
+            labeled += 1
+        except Exception:
+            pass
+    print(f"  Labeled {labeled} nodes")
+
+    print("\n=== Phase 6: Remove orphan nodes ===")
+    orphans = g.query("MATCH (n) WHERE NOT (n)--() RETURN n.name")
+    orphan_count = 0
+    for row in orphans.result_set:
+        try:
+            g.query("MATCH (n {name: $name}) DELETE n", {"name": row[0]})
+            orphan_count += 1
+        except Exception:
+            pass
+    print(f"  Removed {orphan_count} orphan nodes")
+
+    cmd_verify()
+
+
+def cmd_verify():
+    """Post-rewrite verification."""
+    g = get_graph()
+
+    print("\n=== Verification ===")
+    nodes = g.query("MATCH (n) RETURN count(n)").result_set[0][0]
+    edges = g.query("MATCH ()-[r]->() RETURN count(r)").result_set[0][0]
+    rel_types = g.query("MATCH ()-[r]->() RETURN DISTINCT type(r) as t ORDER BY t")
+    orphans = g.query("MATCH (n) WHERE NOT (n)--() RETURN count(n)").result_set[0][0]
+
+    print(f"Nodes: {nodes}")
+    print(f"Edges: {edges}")
+    print(f"Orphans: {orphans}")
+    print(f"Relation types ({len(rel_types.result_set)}):")
+    for row in rel_types.result_set:
+        count = g.query(f"MATCH ()-[r:{row[0]}]->() RETURN count(r)").result_set[0][0]
+        print(f"  {row[0]}: {count}")
+
+    # Label distribution
+    labels = g.query("MATCH (n) WHERE n.label IS NOT NULL RETURN n.label, count(n) ORDER BY count(n) DESC")
+    print(f"\nNode labels:")
+    for row in labels.result_set:
+        print(f"  {row[0]}: {row[1]}")
+
+    # Domain distribution
+    domains = g.query("MATCH (n) WHERE n.domain IS NOT NULL RETURN n.domain, count(n) ORDER BY count(n) DESC")
+    print(f"\nDomains:")
+    for row in domains.result_set:
+        print(f"  {row[0]}: {row[1]}")
+
+    # Cross-domain edges
+    cross = g.query("""
+        MATCH (a)-[]->(b) 
+        WHERE a.domain IS NOT NULL AND b.domain IS NOT NULL AND a.domain <> b.domain
+        RETURN count(*)
+    """).result_set[0][0]
+    print(f"\nCross-domain edges: {cross}")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+    commands = {
+        "audit": cmd_audit,
+        "backup": cmd_backup,
+        "execute": cmd_execute,
+        "verify": cmd_verify,
+    }
+
+    if cmd not in commands:
+        print(f"Unknown command: {cmd}")
+        sys.exit(1)
+
+    commands[cmd]()
+
+
+if __name__ == "__main__":
+    main()
