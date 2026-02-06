@@ -112,26 +112,34 @@ def get_graph_context(agent_id, limit=10):
             data = [l.strip() for l in lines 
                     if l.strip() and not any(l.strip().startswith(s) for s in skip)]
             triples = []
+            reinforce_names = []
             i = 0
             while i + 4 < len(data):
                 triples.append(f"{data[i]} —{data[i+1]}→ {data[i+2]}")
-                # Reinforce: bump confidence of accessed facts
+                reinforce_names.append((data[i], data[i+1], data[i+2]))
+                i += 5
+
+            # Batch reinforce: single graph query bumps all accessed facts
+            if reinforce_names:
                 try:
-                    s = data[i].replace("'", "\\'")
-                    o = data[i+2].replace("'", "\\'")
-                    r = data[i+1]
+                    # Build a single Cypher query that bumps all at once
+                    conditions = []
+                    for s, r, o in reinforce_names[:20]:
+                        s_esc = s.replace("'", "\\'").replace('"', '\\"')
+                        o_esc = o.replace("'", "\\'").replace('"', '\\"')
+                        conditions.append(f"(s.name = '{s_esc}' AND o.name = '{o_esc}')")
+                    where = " OR ".join(conditions)
                     subprocess.run(
                         ["docker", "exec", "falkordb", "redis-cli",
                          "GRAPH.QUERY", "aletheia",
-                         f"MATCH (s:Entity {{name: '{s}'}})-[r:{r}]->(o:Entity {{name: '{o}'}}) "
+                         f"MATCH (s)-[r]->(o) WHERE {where} "
                          f"SET r.confidence = CASE WHEN r.confidence IS NULL THEN 0.85 "
                          f"ELSE CASE WHEN r.confidence + 0.05 > 1.0 THEN 1.0 "
                          f"ELSE r.confidence + 0.05 END END"],
-                        capture_output=True, timeout=3
+                        capture_output=True, timeout=5
                     )
                 except Exception:
                     pass
-                i += 5
             return triples[:limit]
     except Exception:
         pass
@@ -198,21 +206,41 @@ def get_graph_discoveries(agent_id, limit=5):
 
 
 def get_calendar_context():
-    """Get today's calendar events if available."""
-    try:
-        result = subprocess.run(
-            ["gcal", "today", "-c", "cody.kickertz@gmail.com"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return None
+    """Get today's calendar events from all calendars (parallel)."""
+    import concurrent.futures
+    calendars = [
+        ("personal", "cody.kickertz@gmail.com"),
+        ("family", "family13408790289857991137@group.calendar.google.com"),
+        ("work", "ckickertz@summusglobal.com"),
+    ]
+
+    def fetch_cal(name_id):
+        name, cal_id = name_id
+        try:
+            result = subprocess.run(
+                ["gcal", "today", "-c", cal_id],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return f"[{name}]\n{result.stdout.strip()}"
+        except Exception:
+            pass
+        return None
+
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(fetch_cal, c): c for c in calendars}
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            if result:
+                results.append(result)
+
+    return "\n".join(results) if results else None
 
 
 def assemble(agent_id, brief=False):
     """Assemble context for an agent."""
+    import concurrent.futures
     parts = []
     now = datetime.now()
     
@@ -237,6 +265,18 @@ def assemble(agent_id, brief=False):
     
     if brief:
         return "\n".join(parts)
+    
+    # Parallel I/O: fetch calendar, graph, and tasks simultaneously
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        cal_future = executor.submit(get_calendar_context)
+        graph_future = executor.submit(get_graph_context, agent_id)
+        tasks_future = executor.submit(get_pending_tasks, agent_id)
+        discoveries_future = executor.submit(get_graph_discoveries, agent_id)
+        
+        cal = cal_future.result()
+        graph_data = graph_future.result()
+        tasks = tasks_future.result()
+        discoveries = discoveries_future.result()
     
     # Recent facts (decisions, preferences, corrections)
     facts = load_recent_facts(agent_id, limit=15)
@@ -263,8 +303,7 @@ def assemble(agent_id, brief=False):
                 parts.append(f"- {f['object']}")
             parts.append("")
     
-    # Tasks
-    tasks = get_pending_tasks(agent_id)
+    # Tasks (already fetched in parallel above)
     if tasks:
         parts.append("## Pending Tasks")
         for t in tasks[:7]:
@@ -272,23 +311,20 @@ def assemble(agent_id, brief=False):
             parts.append(f"- {t['desc']}{priority}")
         parts.append("")
     
-    # Calendar (if available)
-    cal = get_calendar_context()
+    # Calendar (already fetched in parallel above)
     if cal:
         parts.append("## Today's Calendar")
         parts.append(cal)
         parts.append("")
     
-    # Graph insights (cross-domain awareness)
-    graph_data = get_graph_context(agent_id)
+    # Graph insights (already fetched in parallel above)
     if graph_data:
         parts.append("## Shared Knowledge (recent)")
         for triple in graph_data:
             parts.append(f"- {triple}")
         parts.append("")
     
-    # Graph discoveries (hypothetical connections, serendipity)
-    discoveries = get_graph_discoveries(agent_id)
+    # Graph discoveries (already fetched in parallel above)
     if discoveries:
         parts.append("## Graph Discoveries")
         for d in discoveries:

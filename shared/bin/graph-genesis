@@ -476,6 +476,45 @@ def cmd_report():
                 print(f"  {t['source']} ({t['source_domain']}) <-> {t['target']} ({t['target_domain']}) via {t['bridge']}")
 
 
+
+def cmd_feedback():
+    """Record feedback on graph predictions/serendipity."""
+    if len(sys.argv) < 4:
+        print("Usage: graph-genesis feedback <source-target> <useful|not-useful>")
+        print("  Example: graph-genesis feedback 'chiron-syn' useful")
+        return
+    
+    item_id = sys.argv[2]
+    verdict = sys.argv[3]
+    
+    feedback_path = os.path.join(ALETHEIA_ROOT, "shared", "memory", "graph-feedback.jsonl")
+    entry = {
+        "id": item_id,
+        "verdict": verdict,
+        "timestamp": datetime.now().isoformat(),
+        "agent": os.environ.get("AGENT_ID", "syn"),
+    }
+    
+    with open(feedback_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    
+    print(f"Feedback recorded: {item_id} → {verdict}")
+    
+    if verdict == "useful":
+        g = get_graph()
+        parts = item_id.split("-", 1)
+        if len(parts) == 2:
+            src, tgt = parts[0].replace("'", "\\'"), parts[1].replace("'", "\\'")
+            try:
+                g.query(f"""
+                    MATCH (a {{name: \'{src}\'}}), (b {{name: \'{tgt}\'}})
+                    MERGE (a)-[:RELATED_TO {{confidence: 0.8, source: 'prediction_validated'}}]->(b)
+                """)
+                print(f"  Promoted to graph: {src} → {tgt}")
+            except Exception as e:
+                print(f"  Promotion note: {e}")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -488,6 +527,7 @@ def main():
         "predict": cmd_predict,
         "serendipity": cmd_serendipity,
         "report": cmd_report,
+        "feedback": cmd_feedback,
         "all": lambda: (cmd_clean(), print(), cmd_classify(), print(), 
                         cmd_predict(), print(), cmd_serendipity(), print(),
                         cmd_report()),

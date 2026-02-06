@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.1",
+    "lastTouchedAt": "2026-02-06T03:03:12.637Z"
+  },
+  "env": {
+    "PATH": "/mnt/ssd/aletheia/shared/bin:/usr/local/bin:/usr/bin:/bin"
+  },
+  "wizard": {
+    "lastRunAt": "2026-01-28T21:07:30.464Z",
+    "lastRunVersion": "2026.1.24-3",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "browser": {
+    "enabled": true,
+    "executablePath": "/usr/bin/google-chrome",
+    "headless": true,
+    "noSandbox": true,
+    "defaultProfile": "clawd"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-opus-4-6",
+        "fallbacks": [
+          "anthropic/claude-sonnet-4-20250514",
+          "google/gemini-2.0-flash",
+          "anthropic/claude-3-5-haiku-20241022"
+        ]
+      },
+      "workspace": "/mnt/ssd/aletheia/nous/syn",
+      "memorySearch": {
+        "enabled": true,
+        "provider": "openai",
+        "remote": {
+          "baseUrl": "http://localhost:11434/v1/",
+          "apiKey": "ollama"
+        },
+        "fallback": "none",
+        "model": "nomic-embed-text"
+      },
+      "compaction": {
+        "mode": "safeguard",
+        "reserveTokensFloor": 50000,
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 8000,
+          "prompt": "Pre-compaction distillation. Run: distill --agent $(basename $PWD) --text \"$(summarize key decisions, corrections, insights, preferences expressed, and open threads from this session)\". Then write a session summary to memory/YYYY-MM-DD.md. Include: what was discussed, what was decided, what's pending, what corrections were made. Reply NO_REPLY after.",
+          "systemPrompt": "DISTILLATION PHASE — Session approaching compaction. Your task: 1) Run the distill command to extract structured facts and update session state. 2) Write key insights to daily memory. 3) Update MEMORY.md if anything significant was learned. Preserve: decisions made, corrections received, preferences expressed, open threads, task state. The goal is continuity — your next instance should resume seamlessly."
+        }
+      },
+      "heartbeat": {
+        "every": "45m",
+        "activeHours": {
+          "start": "08:00",
+          "end": "23:00"
+        },
+        "target": "last"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8,
+        "model": "anthropic/claude-sonnet-4-20250514"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "name": "Syn",
+        "workspace": "/mnt/ssd/aletheia/nous/syn",
+        "subagents": {
+          "allowAgents": [
+            "chiron",
+            "eiron",
+            "demiurge",
+            "syl",
+            "akron",
+            "arbor"
+          ]
+        },
+        "sandbox": {
+          "mode": "off"
+        }
+      }
+    ]
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "brave",
+        "apiKey": "BSA5kZBUOES7sDo-9T0mxHpU4pNG2Gv"
+      }
+    },
+    "agentToAgent": {
+      "enabled": true
+    }
+  },
+  "bindings": [
+    {
+      "agentId": "syl",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "dm",
+          "id": "48d8b030-eb68-4440-a749-dc35c67876e7"
+        }
+      }
+    },
+    {
+      "agentId": "syl",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "ieiSVQz4K/q+MF/Ncu3f1HkNpJbafsccgPOhC72kvXM="
+        }
+      }
+    },
+    {
+      "agentId": "chiron",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "Dvsd3XZZ+oSkchtUanOZFTAaIQz3QvPBJ7OrwG7+yg0="
+        }
+      }
+    },
+    {
+      "agentId": "eiron",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "LAP385oF/YtzJ4KvzIzSCXvKLZjKa1NL/UL4ObhMmLA="
+        }
+      }
+    },
+    {
+      "agentId": "demiurge",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "Ld0+Bef3B3Ntvjnb1uPJ9J4l8UIOOzDcMf8CKPEr3VE="
+        }
+      }
+    },
+    {
+      "agentId": "arbor",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "6OrfyMBoWdM1hCuAhqiMnIxKAak/L9u+jTa2NsF1Z3g="
+        }
+      }
+    },
+    {
+      "agentId": "akron",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "ndqnaiZ30F+gI7pHuEG5Biq0vkcm4rekrAHunReSJgs="
+        }
+      }
+    }
+  ],
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "account": "+15124288605",
+      "cliPath": "/usr/local/bin/signal-cli",
+      "dmPolicy": "pairing",
+      "groupPolicy": "allowlist"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "controlUi": {
+      "allowInsecureAuth": true
+    },
+    "auth": {
+      "mode": "token",
+      "token": "1ce0f5d7ebf2121598c5916ddd8e335f599946ab28d0ded9"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "signal": {
+        "enabled": true
+      }
+    }
+  }
+}
