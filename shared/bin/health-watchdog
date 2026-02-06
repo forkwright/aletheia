@@ -1,0 +1,45 @@
+#!/bin/bash
+# Health watchdog - checks if Syn is responsive
+# Run via cron every 15 minutes
+# If unhealthy, attempts recovery and alerts
+
+set -e
+
+LOG="/tmp/syn-watchdog.log"
+CODY_UUID="00000000-0000-0000-0000-000000000000"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"
+}
+
+send_alert() {
+    # Send via signal-cli directly (bypasses autarkia)
+    signal-cli -a +1XXXXXXXXXX send -m "$1" "uuid:$CODY_UUID" 2>/dev/null || true
+    log "ALERT: $1"
+}
+
+# Check 1: Is autarkia service running?
+if ! systemctl is-active --quiet autarkia; then
+    log "Service down, attempting restart..."
+    sudo systemctl restart autarkia
+    sleep 10
+    
+    if systemctl is-active --quiet autarkia; then
+        log "Service recovered"
+        send_alert "⚠️ Syn watchdog: Service was down, auto-recovered."
+    else
+        send_alert "🚨 Syn watchdog: Service down, restart failed. Manual intervention needed."
+        exit 1
+    fi
+else
+    log "Service healthy"
+fi
+
+# Check 2: Is gateway responding?
+if ! curl -sf "http://localhost:18789/health" > /dev/null 2>&1; then
+    log "Gateway not responding"
+    # Don't restart immediately - might just be slow
+    # But note it in case of pattern
+fi
+
+log "Watchdog check complete"

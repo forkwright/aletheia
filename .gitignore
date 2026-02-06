@@ -1,0 +1,101 @@
+# === Personal / Vault ===
+theke/
+projects/
+archive/
+
+# === Secrets ===
+*.env
+**/credentials*
+**/secrets*
+**/*.key
+**/*.pem
+**/api-key
+
+# === Infrastructure (local-only) ===
+infrastructure/signal-cli/
+infrastructure/repos/
+infrastructure/data/
+infrastructure/syncthing/
+
+# === Runtime ===
+node_modules/
+__pycache__/
+*.pyc
+.cache/
+
+# === Agent session data (ephemeral) ===
+nous/*/memory/session-state.yaml
+nous/*/memory/assembled-context.md
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Syncthing ===
+.stfolder/
+.stignore
+.stversions/
+
+# === OpenClaw workspace backups ===
+*.aletheia-backup
+
+# === Embedded repos ===
+nous/arbor/a2z-tree-site/
+
+# === Backup files ===
+*.bak
+*.pre-compile.bak
+
+# === Legacy ===
+clawd
+
+# === Financial data ===
+nous/demiurge/documents/relay-exports/
+nous/demiurge/relay-import/
+**/*relay*.csv
+**/*transaction*.csv
+
+# === Large/binary ===
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp3
+*.mp4
+*.zip
+*.tar.gz
+nous/arbor/ZOHO-API-SETUP.md
+
+# === Config with tokens ===
+nous/*/config/
+nous/arbor/ZOHO-API-SETUP.md
+nous/arbor/A2Z_ZOHO_INTEGRATION_PLAN.md
+nous/arbor/get_zoho_complete_access.sh
+nous/demiurge/ardent-stripe-webhook/
+nous/demiurge/scripts/workdrive-sync.sh
+nous/arbor/knowledge/
+
+# === Nested git repos ===
+nous/demiurge/writing/
+nous/demiurge/ardent-site/
+nous/arbor/a2z-tree-site/
+
+# === Python venvs ===
+**/venv/
+**/.venv/
+**/lib/python*/
+**/site-packages/
+
+# === Catch-all for venvs and python packages ===
+**/pyvenv.cfg
+**/.venv*
+**/venv/
+nous/syn/crewai/
+shared/venv/
+
+# === Generated/ephemeral ===  
+nous/syn/memory/entities/
+shared/logs/
+infrastructure/runtime/node_modules/

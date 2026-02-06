@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+"""
+letta-populate - Populate Letta agents with memories from facts.jsonl and MEMORY.md
+
+Usage:
+  letta-populate [--agent NAME] [--source facts|memory|all] [--dry-run]
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from datetime import datetime
+
+CONFIG_FILE = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/config/letta-agents.json")
+FACTS_FILE = Path("${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn/memory/facts.jsonl")
+MEMORY_FILE = Path("${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn/MEMORY.md")
+LETTA_CMD = "${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/letta"
+
+# Domain mapping - which facts go to which agent
+DOMAIN_MAP = {
+    "syn": ["system", "agents", "meta", "orchestration", "infrastructure", "openclaw"],
+    "syl": ["family", "home", "partner", "household", "kids", "child", "pet_1"],
+    "chiron": ["work", "employer", "sql", "dashboard", "data", "rso", "sms"],
+    "eiron": ["school", "mba", "mba_program", "coursework", "class", "strategic", "acf", "macro"],
+    "demiurge": ["craft", "leather", "ardent", "making", "belt", "dye", "wax", "thread"]
+}
+
+def load_config():
+    if CONFIG_FILE.exists():
+        return json.loads(CONFIG_FILE.read_text())
+    return {"agents": {}}
+
+def load_facts():
+    if not FACTS_FILE.exists():
+        return []
+    
+    facts = []
+    for line in FACTS_FILE.read_text().strip().split("\n"):
+        if line:
+            try:
+                facts.append(json.loads(line))
+            except:
+                pass
+    return facts
+
+def determine_agent(fact):
+    """Determine which agent should receive this fact"""
+    subject = fact.get("subject", "").lower()
+    predicate = fact.get("predicate", "").lower()
+    obj = fact.get("object", "").lower()
+    category = fact.get("category", "").lower()
+    
+    text = f"{subject} {predicate} {obj} {category}"
+    
+    for agent, keywords in DOMAIN_MAP.items():
+        for kw in keywords:
+            if kw in text:
+                return agent
+    
+    # Default to syn for general facts
+    return "syn"
+
+def remember(agent: str, text: str, dry_run: bool = False) -> bool:
+    """Add a memory to an agent"""
+    if dry_run:
+        print(f"  [DRY RUN] {agent}: {text[:80]}...")
+        return True
+    
+    try:
+        result = subprocess.run(
+            [LETTA_CMD, "--agent", agent, "remember", text],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        return result.returncode == 0
+    except Exception as e:
+        print(f"  Error: {e}", file=sys.stderr)
+        return False
+
+def populate_from_facts(agents: list, dry_run: bool = False):
+    """Populate agents from facts.jsonl"""
+    facts = load_facts()
+    print(f"\nPopulating from facts.jsonl ({len(facts)} facts)")
+    
+    counts = {a: 0 for a in agents}
+    
+    for fact in facts:
+        agent = determine_agent(fact)
+        if agent not in agents:
+            continue
+        
+        # Format fact as memory text
+        text = f"{fact['subject']}.{fact['predicate']} = {fact['object']}"
+        if fact.get('category'):
+            text += f" (category: {fact['category']})"
+        
+        if remember(agent, text, dry_run):
+            counts[agent] += 1
+    
+    print("\nFacts populated:")
+    for agent, count in counts.items():
+        print(f"  {agent}: {count}")
+
+def populate_from_memory(agents: list, dry_run: bool = False):
+    """Populate agents from MEMORY.md sections"""
+    if not MEMORY_FILE.exists():
+        print("MEMORY.md not found")
+        return
+    
+    content = MEMORY_FILE.read_text()
+    sections = content.split("\n## ")
+    
+    print(f"\nPopulating from MEMORY.md ({len(sections)} sections)")
+    
+    for section in sections[1:]:  # Skip header
+        lines = section.strip().split("\n")
+        title = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+        
+        if not body or len(body) < 20:
+            continue
+        
+        # Determine agent based on section title
+        title_lower = title.lower()
+        agent = "syn"  # Default
+        
+        for a, keywords in DOMAIN_MAP.items():
+            if any(kw in title_lower for kw in keywords):
+                agent = a
+                break
+        
+        if agent in agents:
+            # Chunk large sections
+            if len(body) > 500:
+                chunks = [body[i:i+500] for i in range(0, len(body), 450)]
+                for i, chunk in enumerate(chunks):
+                    remember(agent, f"[{title} part {i+1}]: {chunk}", dry_run)
+            else:
+                remember(agent, f"[{title}]: {body}", dry_run)
+            
+            print(f"  → {agent}: {title}")
+
+def populate_core_knowledge(agents: list, dry_run: bool = False):
+    """Seed core knowledge that every agent should have"""
+    
+    core_facts = [
+        ("syn", "the operator is my human partner. AuDHD, IQ ~147. Builds systems, seeks truth."),
+        ("syn", "I am Syn (σύννους), the orchestrator. I coordinate the 7-agent ecosystem."),
+        ("syn", "The agents are: Syn (meta), Syl (home), Chiron (work), Eiron (school), Demiurge (craft), Arbor (arborist), Akron (preparedness)."),
+        ("syl", "Partner is the operator's wife. They have two kids."),
+        ("syl", "Child and Pet are the operator's children."),
+        ("chiron", "Summus Global is the operator's employer. He works on SQL dashboards and data analytics."),
+        ("eiron", "the operator is in the Texas Executive MBA program at UT Austin."),
+        ("demiurge", "Ardent Leatherworks is the operator's leather business. Focus on dimensional craft."),
+    ]
+    
+    print("\nSeeding core knowledge")
+    for agent, fact in core_facts:
+        if agent in agents:
+            remember(agent, fact, dry_run)
+            print(f"  → {agent}: {fact[:60]}...")
+
+def main():
+    parser = argparse.ArgumentParser(description="Populate Letta agents with memories")
+    parser.add_argument("--agent", help="Specific agent to populate (default: all)")
+    parser.add_argument("--source", choices=["facts", "memory", "core", "all"], default="all",
+                       help="Source to populate from")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without changes")
+    
+    args = parser.parse_args()
+    
+    config = load_config()
+    all_agents = list(config.get("agents", {}).keys())
+    
+    if args.agent:
+        if args.agent not in all_agents:
+            print(f"Unknown agent: {args.agent}")
+            print(f"Available: {', '.join(all_agents)}")
+            sys.exit(1)
+        agents = [args.agent]
+    else:
+        agents = all_agents
+    
+    print(f"Populating agents: {', '.join(agents)}")
+    if args.dry_run:
+        print("[DRY RUN MODE]")
+    
+    if args.source in ["core", "all"]:
+        populate_core_knowledge(agents, args.dry_run)
+    
+    if args.source in ["facts", "all"]:
+        populate_from_facts(agents, args.dry_run)
+    
+    if args.source in ["memory", "all"]:
+        populate_from_memory(agents, args.dry_run)
+    
+    print("\nDone!")
+
+if __name__ == "__main__":
+    main()

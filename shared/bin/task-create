@@ -1,0 +1,276 @@
+#!/bin/bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+# task-create - Create a new task contract for inter-agent coordination
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCHEMA_PATH="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/schemas/task-contract.json"
+CONTRACTS_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/task-contracts"
+
+# Ensure contracts directory exists
+mkdir -p "$CONTRACTS_DIR"
+
+# Default values
+SOURCE_AGENT=""
+TARGET_AGENT=""
+TASK_TYPE=""
+DESCRIPTION=""
+PRIORITY="medium"
+DEADLINE=""
+CALLBACK_METHOD=""
+CALLBACK_TARGET=""
+CORRELATION_ID=""
+OUTPUT_FILE=""
+INTERACTIVE=false
+
+usage() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Create a new task contract for inter-agent coordination.
+
+OPTIONS:
+    -s, --source AGENT       Source agent (syn|chiron|eiron|syl|demiurge)
+    -t, --target AGENT       Target agent (syn|chiron|eiron|syl|demiurge)  
+    -T, --type TYPE          Task type (query|analysis|synthesis|coordination|execution|monitoring|escalation)
+    -d, --description TEXT   Task description
+    -p, --priority LEVEL     Priority (high|medium|low) [default: medium]
+    -D, --deadline DATETIME  Deadline (ISO 8601 format, e.g., 2024-12-31T23:59:59Z)
+    -c, --correlation-id ID  Correlation ID for tracing
+    -C, --callback METHOD:TARGET  Callback method and target (e.g., session_message:syn)
+    -o, --output FILE        Output file path [default: auto-generated]
+    -i, --interactive        Interactive mode to prompt for missing values
+    -h, --help              Show this help
+
+EXAMPLES:
+    # Basic task creation
+    $0 -s syn -t chiron -T analysis -d "Analyze Q4 performance data"
+    
+    # With deadline and callback
+    $0 -s syn -t eiron -T query -d "Research MBA application deadlines" \\
+       -D "2024-12-15T17:00:00Z" -C "session_message:syn"
+    
+    # Interactive mode
+    $0 -i
+    
+    # Output to specific file  
+    $0 -s syn -t syl -T coordination -d "Plan family vacation" -o /tmp/vacation-task.json
+
+EOF
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -s|--source)
+            SOURCE_AGENT="$2"
+            shift 2
+            ;;
+        -t|--target)
+            TARGET_AGENT="$2"
+            shift 2
+            ;;
+        -T|--type)
+            TASK_TYPE="$2"
+            shift 2
+            ;;
+        -d|--description)
+            DESCRIPTION="$2"
+            shift 2
+            ;;
+        -p|--priority)
+            PRIORITY="$2"
+            shift 2
+            ;;
+        -D|--deadline)
+            DEADLINE="$2"
+            shift 2
+            ;;
+        -c|--correlation-id)
+            CORRELATION_ID="$2"
+            shift 2
+            ;;
+        -C|--callback)
+            IFS=':' read -r CALLBACK_METHOD CALLBACK_TARGET <<< "$2"
+            shift 2
+            ;;
+        -o|--output)
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        -i|--interactive)
+            INTERACTIVE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Interactive mode
+if [[ "$INTERACTIVE" == "true" ]]; then
+    echo "=== Interactive Task Contract Creation ==="
+    echo
+    
+    if [[ -z "$SOURCE_AGENT" ]]; then
+        echo "Source agent (syn|chiron|eiron|syl|demiurge):"
+        read -r SOURCE_AGENT
+    fi
+    
+    if [[ -z "$TARGET_AGENT" ]]; then
+        echo "Target agent (syn|chiron|eiron|syl|demiurge):"
+        read -r TARGET_AGENT
+    fi
+    
+    if [[ -z "$TASK_TYPE" ]]; then
+        echo "Task type (query|analysis|synthesis|coordination|execution|monitoring|escalation):"
+        read -r TASK_TYPE
+    fi
+    
+    if [[ -z "$DESCRIPTION" ]]; then
+        echo "Task description:"
+        read -r DESCRIPTION
+    fi
+    
+    if [[ "$PRIORITY" == "medium" ]]; then
+        echo "Priority (high|medium|low) [medium]:"
+        read -r input
+        [[ -n "$input" ]] && PRIORITY="$input"
+    fi
+    
+    if [[ -z "$DEADLINE" ]]; then
+        echo "Deadline (ISO 8601 format, e.g., 2024-12-31T23:59:59Z) [optional]:"
+        read -r DEADLINE
+    fi
+    
+    if [[ -z "$CALLBACK_METHOD" ]]; then
+        echo "Callback method (session_message|file_write|blackboard|direct_call) [session_message]:"
+        read -r CALLBACK_METHOD
+        [[ -z "$CALLBACK_METHOD" ]] && CALLBACK_METHOD="session_message"
+        
+        echo "Callback target (session ID, file path, etc.):"
+        read -r CALLBACK_TARGET
+    fi
+fi
+
+# Validate required fields
+if [[ -z "$SOURCE_AGENT" || -z "$TARGET_AGENT" || -z "$TASK_TYPE" || -z "$DESCRIPTION" ]]; then
+    echo "Error: Missing required fields (source, target, type, description)" >&2
+    usage >&2
+    exit 1
+fi
+
+# Validate agent names
+valid_agents="syn chiron eiron syl demiurge"
+if [[ ! $valid_agents =~ $SOURCE_AGENT ]]; then
+    echo "Error: Invalid source agent: $SOURCE_AGENT" >&2
+    exit 1
+fi
+if [[ ! $valid_agents =~ $TARGET_AGENT ]]; then
+    echo "Error: Invalid target agent: $TARGET_AGENT" >&2
+    exit 1
+fi
+
+# Validate task type
+valid_types="query analysis synthesis coordination execution monitoring escalation"
+if [[ ! $valid_types =~ $TASK_TYPE ]]; then
+    echo "Error: Invalid task type: $TASK_TYPE" >&2
+    exit 1
+fi
+
+# Validate priority
+valid_priorities="high medium low"
+if [[ ! $valid_priorities =~ $PRIORITY ]]; then
+    echo "Error: Invalid priority: $PRIORITY" >&2
+    exit 1
+fi
+
+# Generate UUIDs and timestamps
+TASK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+CREATED_AT=$(date -Iseconds | sed 's/+00:00/Z/')
+
+# Generate correlation ID if not provided
+if [[ -z "$CORRELATION_ID" ]]; then
+    CORRELATION_ID="trace-$(date +%s)-$SOURCE_AGENT"
+fi
+
+# Set default callback if not provided
+if [[ -z "$CALLBACK_METHOD" ]]; then
+    CALLBACK_METHOD="session_message"
+    CALLBACK_TARGET="$SOURCE_AGENT"
+fi
+
+# Generate output filename if not provided
+if [[ -z "$OUTPUT_FILE" ]]; then
+    OUTPUT_FILE="$CONTRACTS_DIR/task-${TASK_ID}.json"
+fi
+
+# Build the JSON contract
+cat > "$OUTPUT_FILE" << EOF
+{
+  "task_id": "$TASK_ID",
+  "correlation_id": "$CORRELATION_ID",
+  "source_agent": "$SOURCE_AGENT",
+  "target_agent": "$TARGET_AGENT", 
+  "task_type": "$TASK_TYPE",
+  "context": {
+    "description": "$DESCRIPTION",
+    "state": {},
+    "dependencies": [],
+    "resources_needed": []
+  },$(if [[ -n "$DEADLINE" ]]; then echo "
+  \"deadline\": \"$DEADLINE\","; else echo "
+  \"deadline\": null,"; fi)
+  "priority": "$PRIORITY",
+  "callback": {
+    "method": "$CALLBACK_METHOD",
+    "target": "$CALLBACK_TARGET",
+    "format": "json"
+  },
+  "sla": {
+    "max_duration": "PT1H",
+    "progress_interval": "PT15M",
+    "escalation_threshold": "PT2H"
+  },
+  "created_at": "$CREATED_AT",
+  "accepted_at": null,
+  "started_at": null,
+  "completed_at": null,
+  "status": "pending",
+  "progress": {
+    "percentage": 0,
+    "description": "Task created",
+    "updated_at": "$CREATED_AT"
+  },
+  "result": null,
+  "metadata": {
+    "version": "1.0",
+    "tags": [],
+    "retry_count": 0,
+    "parent_task_id": null
+  }
+}
+EOF
+
+# Validate against schema if jq is available
+if command -v jq >/dev/null 2>&1; then
+    if ! jq empty "$OUTPUT_FILE" >/dev/null 2>&1; then
+        echo "Error: Generated invalid JSON" >&2
+        exit 1
+    fi
+fi
+
+echo "Task contract created: $OUTPUT_FILE"
+echo "Task ID: $TASK_ID"
+echo "Correlation ID: $CORRELATION_ID"
+echo
+echo "To send this task:"
+echo "  task-send '$OUTPUT_FILE'"

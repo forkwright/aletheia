@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""
+attention-check — Adaptive awareness system.
+
+Replaces static heartbeat with context-aware attention.
+Called by heartbeat cron, but generates a DIFFERENT prompt
+based on what actually needs attention right now.
+
+Outputs a prompt for the nous, or nothing if truly nothing needs attention.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+NOUS = ROOT / "nous"
+SHARED = ROOT / "shared"
+
+
+def check_tasks():
+    """Check for overdue or approaching deadlines."""
+    alerts = []
+    try:
+        result = subprocess.run(
+            ["task", "status:pending", "+OVERDUE", "export"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            tasks = json.loads(result.stdout)
+            if tasks:
+                alerts.append(f"⚠ {len(tasks)} overdue tasks: " + 
+                            ", ".join(t["description"][:40] for t in tasks[:3]))
+    except Exception:
+        pass
+    
+    try:
+        result = subprocess.run(
+            ["task", "status:pending", "+DUE", "export"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            tasks = json.loads(result.stdout)
+            due_soon = []
+            now = datetime.now()
+            for t in tasks:
+                if "due" in t:
+                    try:
+                        due = datetime.strptime(t["due"], "%Y%m%dT%H%M%SZ")
+                        if due - now < timedelta(hours=24):
+                            due_soon.append(t["description"][:40])
+                    except ValueError:
+                        pass
+            if due_soon:
+                alerts.append(f"⏰ Due <24h: " + ", ".join(due_soon[:3]))
+    except Exception:
+        pass
+    
+    return alerts
+
+
+def check_calendar():
+    """Check for upcoming events in next 2 hours."""
+    alerts = []
+    try:
+        result = subprocess.run(
+            ["gcal", "today", "-c", "user@example.com"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Simple check: if there are events today
+            lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+            if lines:
+                alerts.append(f"📅 Today: {len(lines)} calendar events")
+    except Exception:
+        pass
+    return alerts
+
+
+def check_system_health():
+    """Check infrastructure health."""
+    alerts = []
+    
+    # Signal-cli
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "aletheia"],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.stdout.strip() != "active":
+            alerts.append("🔴 aletheia.service not active")
+    except Exception:
+        pass
+    
+    # Docker containers
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", "health=unhealthy", "--format", "{{.Names}}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.stdout.strip():
+            unhealthy = result.stdout.strip().split('\n')
+            alerts.append(f"🔴 Unhealthy containers: {', '.join(unhealthy)}")
+    except Exception:
+        pass
+    
+    # Disk space
+    try:
+        result = subprocess.run(
+            ["df", "/mnt/ssd", "--output=pcent"],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.returncode == 0:
+            pct = result.stdout.strip().split('\n')[-1].strip().rstrip('%')
+            if int(pct) > 85:
+                alerts.append(f"⚠ Disk /mnt/ssd at {pct}%")
+    except Exception:
+        pass
+    
+    # Memory
+    try:
+        result = subprocess.run(
+            ["free", "-m"],
+            capture_output=True, text=True, timeout=3
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if line.startswith("Mem:"):
+                    parts = line.split()
+                    total, used = int(parts[1]), int(parts[2])
+                    pct = (used / total) * 100
+                    if pct > 85:
+                        alerts.append(f"⚠ RAM at {pct:.0f}% ({used}MB/{total}MB)")
+    except Exception:
+        pass
+    
+    return alerts
+
+
+def check_agents():
+    """Check for stale/blocked agents."""
+    alerts = []
+    try:
+        result = subprocess.run(
+            ["agent-health"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                line_lower = line.lower().strip()
+                # Skip header/footer lines
+                if any(skip in line_lower for skip in ['agent', 'status', '---', '💡', 'use --']):
+                    continue
+                if 'blocked' in line_lower:
+                    alerts.append(f"🔴 Agent blocked: {line.strip()}")
+    except Exception:
+        pass
+    return alerts
+
+
+def check_blackboard():
+    """Check for unclaimed tasks on blackboard."""
+    alerts = []
+    try:
+        result = subprocess.run(
+            ["bb", "list"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            lines = [l for l in result.stdout.split('\n') 
+                    if l.strip() and not l.startswith("===")]
+            if lines:
+                alerts.append(f"📋 {len(lines)} blackboard items")
+    except Exception:
+        pass
+    return alerts
+
+
+def check_crewai_alerts():
+    """Check for unacknowledged alerts."""
+    alerts_file = SHARED / "crewai-alerts.json"
+    if alerts_file.exists():
+        try:
+            data = json.loads(alerts_file.read_text())
+            if data:
+                return [f"⚡ {len(data)} unacknowledged alerts"]
+        except (json.JSONDecodeError, Exception):
+            pass
+    return []
+
+
+def time_context():
+    """Generate time-aware context."""
+    now = datetime.now()
+    hour = now.hour
+    weekday = now.strftime("%A")
+    
+    hints = []
+    if hour < 8:
+        hints.append("Early morning — prep context for the day")
+    elif hour == 8:
+        hints.append("Morning — good time for daily brief")
+    elif 12 <= hour <= 13:
+        hints.append("Midday")
+    elif hour >= 22:
+        hints.append("Late evening — wind down, capture any open threads")
+    
+    if weekday in ("Saturday", "Sunday"):
+        hints.append("Weekend — lower urgency unless flagged")
+    
+    return hints
+
+
+def main():
+    all_alerts = []
+    
+    all_alerts.extend(check_tasks())
+    all_alerts.extend(check_calendar())
+    all_alerts.extend(check_system_health())
+    all_alerts.extend(check_agents())
+    all_alerts.extend(check_blackboard())
+    all_alerts.extend(check_crewai_alerts())
+    
+    time_hints = time_context()
+    
+    if not all_alerts and not time_hints:
+        # Truly nothing. Don't even generate a prompt.
+        sys.exit(0)
+    
+    if not all_alerts and time_hints:
+        # Just time context, no alerts. Still mostly quiet.
+        # Only surface if it's a meaningful time (morning brief, evening wrap)
+        meaningful_times = [h for h in time_hints if "brief" in h or "wind down" in h or "prep" in h]
+        if not meaningful_times:
+            sys.exit(0)
+    
+    # Build the attention prompt
+    parts = []
+    if all_alerts:
+        parts.append("Attention needed:")
+        for a in all_alerts:
+            parts.append(f"  {a}")
+    
+    if time_hints:
+        parts.append("Context: " + "; ".join(time_hints))
+    
+    print("\n".join(parts))
+
+
+if __name__ == "__main__":
+    main()

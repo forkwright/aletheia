@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -euo pipefail
+
+# Taskwarrior wrapper - auto-detects agent workspace
+# Uses workspace-specific config if available, falls back to shared
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
+
+# Detect workspace from PWD or CLAWD_WORKSPACE
+detect_workspace() {
+    # Check CLAWD_WORKSPACE first
+    if [[ -n "${CLAWD_WORKSPACE:-}" ]]; then
+        basename "$CLAWD_WORKSPACE"
+        return
+    fi
+    
+    # Try to detect from current directory
+    local pwd="$PWD"
+    if [[ "$pwd" == "$ALETHEIA_ROOT/"* ]]; then
+        echo "$pwd" | sed "s|$ALETHEIA_ROOT/||" | cut -d/ -f1
+        return
+    fi
+    
+    # Default to clawd (syn)
+    echo "clawd"
+}
+
+AGENT=$(detect_workspace)
+WORKSPACE="$ALETHEIA_ROOT/$AGENT"
+
+# Use agent-specific config if exists, else shared
+if [[ -f "$WORKSPACE/.taskrc" ]]; then
+    export TASKRC="$WORKSPACE/.taskrc"
+    export TASKDATA="$WORKSPACE/.task"
+else
+    # Use shared task data
+    export TASKRC="$ALETHEIA_ROOT/shared/.taskrc"
+    export TASKDATA="$ALETHEIA_ROOT/shared/.task"
+fi
+
+# Create task data dir if needed
+mkdir -p "$TASKDATA" 2>/dev/null || true
+
+# Shortcuts
+case "${1:-}" in
+    "")
+        # Default: show next tasks
+        exec task next
+        ;;
+    today)
+        shift
+        exec task due:today "$@"
+        ;;
+    week)
+        shift
+        exec task due.before:1w "$@"
+        ;;
+    done)
+        shift
+        exec task done "$@"
+        ;;
+    *)
+        exec task "$@"
+        ;;
+esac

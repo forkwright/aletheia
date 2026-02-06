@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# pplx - Perplexity research wrapper
+# Usage: pplx "query" [--raw|--sources]
+
+set -euo pipefail
+
+PPLX_KEY="${PERPLEXITY_API_KEY:-YOUR_PERPLEXITY_API_KEY}"
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: pplx \"query\" [--raw|--sources]"
+  exit 1
+fi
+
+query="$1"
+flag="${2:-}"
+
+response=$(curl -s https://api.perplexity.ai/v1/responses \
+  -H "Authorization: Bearer $PPLX_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"preset\": \"pro-search\",
+    \"input\": $(printf '%s' "$query" | jq -Rs .)
+  }")
+
+if [[ "$flag" == "--raw" ]]; then
+  echo "$response" | jq .
+  exit 0
+fi
+
+# Extract text from message output (second item in output array)
+text=$(echo "$response" | jq -r '
+  .output[] | select(.type == "message") | .content[0].text // empty
+' 2>/dev/null)
+
+if [[ -z "$text" ]]; then
+  # Fallback: try error message
+  text=$(echo "$response" | jq -r '.error.message // "No response"')
+fi
+
+echo "$text"
+
+# Show sources if requested
+if [[ "$flag" == "--sources" ]]; then
+  echo ""
+  echo "---"
+  echo "Sources:"
+  echo "$response" | jq -r '
+    .output[] | select(.type == "search_results") | .results[]? | "- \(.title): \(.url)"
+  ' 2>/dev/null | head -8
+fi
+
+# Show cost
+cost=$(echo "$response" | jq -r '.usage.cost.total_cost // empty' 2>/dev/null)
+if [[ -n "$cost" ]]; then
+  echo ""
+  echo "[Cost: \$$cost]"
+fi
