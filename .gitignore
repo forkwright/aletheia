@@ -99,3 +99,4 @@ shared/venv/
 nous/syn/memory/entities/
 shared/logs/
 infrastructure/runtime/node_modules/
+*sync-conflict*
