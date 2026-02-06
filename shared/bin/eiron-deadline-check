@@ -1,5 +1,6 @@
 #!/bin/bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -eo pipefail
 # Eiron deadline check - runs daily at 6pm
 # Pings the operator if there are deadlines due tomorrow
 

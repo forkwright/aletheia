@@ -1,5 +1,6 @@
 #!/bin/bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -eo pipefail
 # Self-audit script - run via heartbeat or manually
 # Returns JSON with status and alerts
 
