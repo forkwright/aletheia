@@ -27,8 +27,8 @@ Full reference: `shared/config/tools.yaml`. Key commands below.
 - `aletheia-graph stats|query|add` — Shared knowledge graph
 
 ## Aletheia
-- `distill --agent X --text "..."` — Extract structured insights
-- `assemble-context --agent X` — Compile session context
+- `distill --nous X --text "..."` — Extract structured insights
+- `assemble-context --nous X` — Compile session context
 - `compile-context [agent]` — Regenerate AGENTS.md from templates
 
 ## Research

@@ -55,8 +55,8 @@ def generate_syn():
     
     # Aletheia
     lines.append("## Aletheia")
-    lines.append("- `distill --agent X --text \"...\"` — Extract structured insights")
-    lines.append("- `assemble-context --agent X` — Compile session context")
+    lines.append("- `distill --nous X --text \"...\"` — Extract structured insights")
+    lines.append("- `assemble-context --nous X` — Compile session context")
     lines.append("- `compile-context [agent]` — Regenerate AGENTS.md from templates")
     lines.append("")
     

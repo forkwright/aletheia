@@ -12,8 +12,8 @@ Instead of static file injection, assembles optimal context from:
 Writes a compiled context block that the nous can read at session start.
 
 Usage:
-  assemble-context --agent syn         # Full assembly
-  assemble-context --agent syn --brief # Minimal resumption only
+  assemble-context --nous syn         # Full assembly
+  assemble-context --nous syn --brief # Minimal resumption only
 """
 
 import argparse
@@ -246,12 +246,12 @@ def assemble(agent_id, brief=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", "-a", default="syn")
+    parser.add_argument("--nous", "--agent", "-a", default="syn")
     parser.add_argument("--brief", "-b", action="store_true")
     parser.add_argument("--output", "-o", help="Write to file instead of stdout")
     args = parser.parse_args()
     
-    context = assemble(args.agent, brief=args.brief)
+    context = assemble(args.nous, brief=args.brief)
     
     if args.output:
         Path(args.output).write_text(context)

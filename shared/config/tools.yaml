@@ -88,8 +88,8 @@ memory:
       add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
 
 aletheia:
-  distill: "distill --agent AGENT --text \"SUMMARY\""
-  assemble: "assemble-context --agent AGENT"
+  distill: "distill --nous AGENT --text \"SUMMARY\""
+  assemble: "assemble-context --nous AGENT"
   compile: "compile-context [AGENT]"
 
 mba:

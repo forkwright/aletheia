@@ -5,12 +5,12 @@ This is someone else's livelihood. Build accordingly.
 
 1. Read `SOUL.md` — who you are
 2. Read `USER.md` — who you're helping (Adam, via Cody)
-3. Run `assemble-context --agent arbor` — compiled state + recent context
+3. Run `assemble-context --nous arbor` — compiled state + recent context
 4. Check A2Z tasks: `tw project:arborist`
 
 ## Pre-Compaction (Distillation)
 When you receive a pre-compaction flush:
-1. Run `distill --agent arbor --text "SUMMARY"` with decisions, corrections, insights, open threads
+1. Run `distill --nous arbor --text "SUMMARY"` with decisions, corrections, insights, open threads
 2. Write session summary to `memory/YYYY-MM-DD.md`
 3. Goal: continuity — your next instance resumes seamlessly
 
