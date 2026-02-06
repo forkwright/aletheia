@@ -1,4 +1,5 @@
-## Domain Checks
-- Run `attention-check` for system-wide awareness
-- If output is empty: nothing needs attention
-- If alerts present: address within your domain or note for Syn
+# HEARTBEAT.md
+
+# Keep this file empty (or with only comments) to skip heartbeat API calls.
+
+# Add tasks below when you want the agent to check something periodically.

@@ -78,13 +78,17 @@ def compile_agents_md(agent_config, sections):
     
     return "\n\n".join(parts)
 
-def compile_heartbeat_md(agent_config, sections):
-    """Build HEARTBEAT.md from shared base + agent checks."""
+def compile_prosoche_md(agent_config, sections):
+    """Build PROSOCHE.md (directed awareness) from shared base + agent checks."""
     parts = []
-    if "heartbeat_base" in sections:
+    if "prosoche_base" in sections:
+        parts.append(sections["prosoche_base"])
+    elif "heartbeat_base" in sections:
+        # Backward compat: fall back to heartbeat_base if prosoche_base doesn't exist yet
         parts.append(sections["heartbeat_base"])
-    if "heartbeat_checks" in agent_config:
-        parts.append("## Domain Checks\n" + agent_config["heartbeat_checks"].strip())
+    checks_key = "prosoche_checks" if "prosoche_checks" in agent_config else "heartbeat_checks"
+    if checks_key in agent_config:
+        parts.append("## Domain Checks\n" + agent_config[checks_key].strip())
     return "\n\n".join(parts) if parts else None
 
 def compile_agent(agent_id, dry_run=False, show_stats=False):
@@ -123,13 +127,18 @@ def compile_agent(agent_id, dry_run=False, show_stats=False):
             agents_path.write_text(agents_content)
             print(f"  ✓ AGENTS.md ({old_size} → {new_size} bytes)")
     
-    # Compile HEARTBEAT.md (if agent has custom checks)
-    heartbeat_content = compile_heartbeat_md(agent_config, sections)
-    if heartbeat_content:
-        hb_path = agent_dir / "HEARTBEAT.md"
-        if not dry_run and not hb_path.is_symlink():
-            hb_path.write_text(heartbeat_content)
-            print(f"  ✓ HEARTBEAT.md")
+    # Compile PROSOCHE.md (directed awareness — replaces HEARTBEAT.md)
+    prosoche_content = compile_prosoche_md(agent_config, sections)
+    if prosoche_content:
+        prosoche_path = agent_dir / "PROSOCHE.md"
+        if not dry_run and not prosoche_path.is_symlink():
+            prosoche_path.write_text(prosoche_content)
+            print(f"  ✓ PROSOCHE.md")
+        # Clean up old HEARTBEAT.md if it exists
+        old_hb = agent_dir / "HEARTBEAT.md"
+        if not dry_run and old_hb.exists() and not old_hb.is_symlink():
+            old_hb.unlink()
+            print(f"  ✓ Removed old HEARTBEAT.md")
 
 def main():
     dry_run = "--dry-run" in sys.argv
