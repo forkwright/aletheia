@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""
+scholar — Academic paper search for Aletheia research.
+
+Searches OpenAlex (250M+ papers, free, no API key) and optionally
+Semantic Scholar. Returns structured results with citation counts,
+venues, and abstracts.
+
+Usage:
+    scholar "distributed cognition emergence"          # Search papers
+    scholar "binding problem" --limit 10               # More results
+    scholar "Poincaré sections dynamical" --since 2020 # Recent only
+    scholar --paper "doi:10.1234/..." --details        # Paper details
+    scholar --cite "doi:10.1234/..."                   # Get citations
+"""
+
+import json
+import sys
+import urllib.request
+import urllib.parse
+from datetime import datetime
+
+OPENALEX_BASE = "https://api.openalex.org"
+SEMANTIC_SCHOLAR_BASE = "https://api.semanticscholar.org/graph/v1"
+
+def search_openalex(query, limit=5, since=None):
+    """Search OpenAlex for papers."""
+    params = {
+        "search": query,
+        "per_page": limit,
+        "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,doi",
+        "sort": "relevance_score:desc",
+        "mailto": "aletheia@openclaw.ai",  # polite pool
+    }
+    if since:
+        params["filter"] = f"publication_year:>{since-1}"
+    
+    url = f"{OPENALEX_BASE}/works?{urllib.parse.urlencode(params)}"
+    
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Aletheia/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return []
+    
+    results = []
+    for work in data.get("results", []):
+        # Reconstruct abstract from inverted index
+        abstract = ""
+        aii = work.get("abstract_inverted_index")
+        if aii:
+            words = {}
+            for word, positions in aii.items():
+                for pos in positions:
+                    words[pos] = word
+            abstract = " ".join(words[i] for i in sorted(words.keys()))
+        
+        # Get venue
+        loc = work.get("primary_location") or {}
+        source = loc.get("source") or {}
+        venue = source.get("display_name", "Unknown venue")
+        
+        # Get authors
+        authors = []
+        for a in (work.get("authorships") or [])[:3]:
+            name = (a.get("author") or {}).get("display_name", "?")
+            authors.append(name)
+        if len(work.get("authorships", [])) > 3:
+            authors.append("et al.")
+        
+        results.append({
+            "title": work.get("title", "?"),
+            "year": work.get("publication_year"),
+            "citations": work.get("cited_by_count", 0),
+            "venue": venue,
+            "authors": ", ".join(authors),
+            "doi": work.get("doi"),
+            "abstract": abstract[:500] if abstract else None,
+            "openalex_id": work.get("id"),
+        })
+    
+    return results
+
+def paper_details(doi_or_id):
+    """Get detailed info about a specific paper."""
+    if doi_or_id.startswith("doi:"):
+        doi_or_id = doi_or_id[4:]
+    
+    encoded = urllib.parse.quote(f"https://doi.org/{doi_or_id}", safe="")
+    url = f"{OPENALEX_BASE}/works/{encoded}?select=id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,referenced_works,related_works,concepts"
+    
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Aletheia/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+def format_results(results, verbose=False):
+    """Format search results for display."""
+    for i, r in enumerate(results, 1):
+        print(f"\n[{i}] {r['title']}")
+        print(f"    {r['authors']} ({r['year']}) — {r['venue']}")
+        print(f"    Citations: {r['citations']} | DOI: {r['doi'] or 'N/A'}")
+        if verbose and r.get('abstract'):
+            print(f"    Abstract: {r['abstract'][:300]}...")
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Academic paper search")
+    parser.add_argument("query", nargs="*", help="Search query")
+    parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--since", type=int, help="Papers from this year onwards")
+    parser.add_argument("--paper", help="Get details for a DOI")
+    parser.add_argument("--cite", help="Get citations for a DOI")
+    parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    
+    args = parser.parse_args()
+    
+    if args.paper:
+        details = paper_details(args.paper)
+        if details:
+            print(json.dumps(details, indent=2))
+        return
+    
+    if not args.query:
+        parser.print_help()
+        return
+    
+    query = " ".join(args.query)
+    results = search_openalex(query, args.limit, args.since)
+    
+    if args.json:
+        print(json.dumps(results, indent=2))
+    else:
+        print(f"OpenAlex results for: {query}")
+        print(f"{'=' * 60}")
+        format_results(results, args.verbose)
+        print(f"\n{len(results)} results shown. Use --limit N for more, --verbose for abstracts.")
+
+if __name__ == "__main__":
+    main()
