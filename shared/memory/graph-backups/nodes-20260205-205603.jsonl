@@ -1,0 +1,397 @@
+{"name": "aletheia", "properties": {"name": "aletheia", "domain": "infrastructure"}}
+{"name": "distributed cognition system", "properties": {"name": "distributed cognition system", "domain": "general"}}
+{"name": "syn", "properties": {"name": "syn", "domain": "general"}}
+{"name": "nous/orchestrator", "properties": {"name": "nous/orchestrator", "domain": "cognition"}}
+{"name": "cody", "properties": {"name": "cody", "domain": "identity"}}
+{"name": "continuity", "properties": {"name": "continuity", "domain": "cognition"}}
+{"name": "memory", "properties": {"name": "memory", "domain": "general"}}
+{"name": "attention", "properties": {"name": "attention", "domain": "cognition"}}
+{"name": "heartbeat", "properties": {"name": "heartbeat", "domain": "general"}}
+{"name": "distillation", "properties": {"name": "distillation", "domain": "cognition"}}
+{"name": "compaction", "properties": {"name": "compaction", "domain": "cognition"}}
+{"name": "system", "properties": {"name": "system", "domain": "general"}}
+{"name": "that OpenClaw is a runtime dependency only", "properties": {"name": "that OpenClaw is a runtime dependency only", "domain": "infrastructure"}}
+{"name": "correction", "properties": {"name": "correction", "domain": "general"}}
+{"name": "the translation tax applies to machines too", "properties": {"name": "the translation tax applies to machines too", "domain": "identity"}}
+{"name": "person", "properties": {"name": "person", "domain": "general"}}
+{"name": "kendall", "properties": {"name": "kendall", "domain": "home"}}
+{"name": "Syn", "properties": {"name": "Syn", "domain": "general"}}
+{"name": "Always validate before restart with clawdbot doctor", "properties": {"name": "Always validate before restart with clawdbot doctor", "domain": "general"}}
+{"name": "chiron", "properties": {"name": "chiron", "domain": "craft"}}
+{"name": "agent", "properties": {"name": "agent", "domain": "general"}}
+{"name": "eiron", "properties": {"name": "eiron", "domain": "craft"}}
+{"name": "demiurge", "properties": {"name": "demiurge", "domain": "general"}}
+{"name": "ardent", "properties": {"name": "ardent", "domain": "craft"}}
+{"name": "Config syntax requires bindings to use channel not provider and model IDs need full date suffix", "properties": {"name": "Config syntax requires bindings to use channel not provider and model IDs need full date suffix", "domain": "general"}}
+{"name": "syl", "properties": {"name": "syl", "domain": "home"}}
+{"name": "Signal Connectivity Failure (09:52 - 10:35 CST)", "properties": {"name": "Signal Connectivity Failure (09:52 - 10:35 CST)", "domain": "infrastructure"}}
+{"name": "Cody", "properties": {"name": "Cody", "domain": "identity"}}
+{"name": "Unflinching feedback and earned honesty over comfort", "properties": {"name": "Unflinching feedback and earned honesty over comfort", "domain": "general"}}
+{"name": "lessons", "properties": {"name": "lessons", "domain": "general"}}
+{"name": "2 hours", "properties": {"name": "2 hours", "domain": "general"}}
+{"name": "qwen2.5:7b (4.7GB) to complement qwen2.5:3b (1.9GB) for local inference:", "properties": {"name": "qwen2.5:7b (4.7GB) to complement qwen2.5:3b (1.9GB) for local inference:", "domain": "general"}}
+{"name": "specific facts", "properties": {"name": "specific facts", "domain": "general"}}
+{"name": "with custom config", "properties": {"name": "with custom config", "domain": "general"}}
+{"name": "for_dallas_exit_(task", "properties": {"name": "for_dallas_exit_(task", "domain": "general"}}
+{"name": "fix Tailscale conflict)", "properties": {"name": "fix Tailscale conflict)", "domain": "infrastructure"}}
+{"name": "s (2 bugs):", "properties": {"name": "s (2 bugs):", "domain": "general"}}
+{"name": "hifi_nas", "properties": {"name": "hifi_nas", "domain": "infrastructure"}}
+{"name": "100.104.41.59", "properties": {"name": "100.104.41.59", "domain": "general"}}
+{"name": "https://100.87.6.45:8443 via Tailscale", "properties": {"name": "https://100.87.6.45:8443 via Tailscale", "domain": "infrastructure"}}
+{"name": "3-tier: daily files -> MEMORY.md -> Letta", "properties": {"name": "3-tier: daily files -> MEMORY.md -> Letta", "domain": "general"}}
+{"name": "IQ 147 PRI 150-155 AuDHD cognitive profile", "properties": {"name": "IQ 147 PRI 150-155 AuDHD cognitive profile", "domain": "identity"}}
+{"name": "Taskwarrior for actionable, BACKLOG.md for strategic", "properties": {"name": "Taskwarrior for actionable, BACKLOG.md for strategic", "domain": "general"}}
+{"name": "anthropic/claude-sonnet-4-20250514", "properties": {"name": "anthropic/claude-sonnet-4-20250514", "domain": "general"}}
+{"name": "meta-orchestrator, coordinates domain agents", "properties": {"name": "meta-orchestrator, coordinates domain agents", "domain": "general"}}
+{"name": "work/Summus", "properties": {"name": "work/Summus", "domain": "work"}}
+{"name": "handcraft/Ardent", "properties": {"name": "handcraft/Ardent", "domain": "craft"}}
+{"name": "worker_node", "properties": {"name": "worker_node", "domain": "general"}}
+{"name": "entity", "properties": {"name": "entity", "domain": "general"}}
+{"name": "mba", "properties": {"name": "mba", "domain": "school"}}
+{"name": "2026-02-02", "properties": {"name": "2026-02-02", "domain": "general"}}
+{"name": "2026-03-09", "properties": {"name": "2026-03-09", "domain": "general"}}
+{"name": "2026-04-15", "properties": {"name": "2026-04-15", "domain": "general"}}
+{"name": "runs every 15 min via cron, auto-restarts clawdbot, alerts on failure", "properties": {"name": "runs every 15 min via cron, auto-restarts clawdbot, alerts on failure", "domain": "infrastructure"}}
+{"name": "50000", "properties": {"name": "50000", "domain": "general"}}
+{"name": "quality degrades past ~128-150k tokens, avoid 1M despite availability", "properties": {"name": "quality degrades past ~128-150k tokens, avoid 1M despite availability", "domain": "general"}}
+{"name": "2758 unique books", "properties": {"name": "2758 unique books", "domain": "identity"}}
+{"name": "personal (cody.kickertz@gmail.com) + school (cody.kickertz@utexas.edu)", "properties": {"name": "personal (cody.kickertz@gmail.com) + school (cody.kickertz@utexas.edu)", "domain": "school"}}
+{"name": "Perplexity wrapper with optimal prompting", "properties": {"name": "Perplexity wrapper with optimal prompting", "domain": "general"}}
+{"name": "ieiSVQz4K/q+", "properties": {"name": "ieiSVQz4K/q+", "domain": "general"}}
+{"name": "Dvsd3XZZ+oS", "properties": {"name": "Dvsd3XZZ+oS", "domain": "general"}}
+{"name": "Aima, Thanatochromia, Aporia (with philosophical meanings)", "properties": {"name": "Aima, Thanatochromia, Aporia (with philosophical meanings)", "domain": "craft"}}
+{"name": "2026-02-09", "properties": {"name": "2026-02-09", "domain": "general"}}
+{"name": "System", "properties": {"name": "System", "domain": "general"}}
+{"name": "Signal CLI toLowerCase bug on base64 group IDs breaks case-sensitive matching", "properties": {"name": "Signal CLI toLowerCase bug on base64 group IDs breaks case-sensitive matching", "domain": "infrastructure"}}
+{"name": "2026-02-23", "properties": {"name": "2026-02-23", "domain": "general"}}
+{"name": "2026-03-02", "properties": {"name": "2026-03-02", "domain": "general"}}
+{"name": "Dallas", "properties": {"name": "Dallas", "domain": "general"}}
+{"name": "work-claude in ~/dianoia/summus on Metis", "properties": {"name": "work-claude in ~/dianoia/summus on Metis", "domain": "work"}}
+{"name": "structured reporting with Active/Blocked/Upcoming/Cross-domain sections", "properties": {"name": "structured reporting with Active/Blocked/Upcoming/Cross-domain sections", "domain": "general"}}
+{"name": "48d8b030-eb68-4440-a749-dc35c67876e7", "properties": {"name": "48d8b030-eb68-4440-a749-dc35c67876e7", "domain": "general"}}
+{"name": "crewai", "properties": {"name": "crewai", "domain": "general"}}
+{"name": "87%", "properties": {"name": "87%", "domain": "general"}}
+{"name": "Ardent Leatherworks", "properties": {"name": "Ardent Leatherworks", "domain": "craft"}}
+{"name": "admin@ardentleatherworks.com for backend/admin, contact@ardentleatherworks.com for customers/suppliers", "properties": {"name": "admin@ardentleatherworks.com for backend/admin, contact@ardentleatherworks.com for customers/suppliers", "domain": "craft"}}
+{"name": "ardent belt", "properties": {"name": "ardent belt", "domain": "craft"}}
+{"name": "Hermann Oak 11-13oz, single layer, hand saddle-stitched, solid brass heel bar, floating keeper, English tip", "properties": {"name": "Hermann Oak 11-13oz, single layer, hand saddle-stitched, solid brass heel bar, floating keeper, English tip", "domain": "craft"}}
+{"name": "metis", "properties": {"name": "metis", "domain": "infrastructure"}}
+{"name": "YYYYMMDD inside by keeper", "properties": {"name": "YYYYMMDD inside by keeper", "domain": "craft"}}
+{"name": "Syl agent for Kendall", "properties": {"name": "Syl agent for Kendall", "domain": "home"}}
+{"name": "110 USD including shipping, 19 materials + 81 labor + 10 shipping", "properties": {"name": "110 USD including shipping, 19 materials + 81 labor + 10 shipping", "domain": "general"}}
+{"name": "130265752", "properties": {"name": "130265752", "domain": "general"}}
+{"name": "Cloudflare, expires 2027-02-19", "properties": {"name": "Cloudflare, expires 2027-02-19", "domain": "general"}}
+{"name": "Nikon D3400 digital, Canon P rangefinder 1959-61, Voigtlander 35mm f/2.5", "properties": {"name": "Nikon D3400 digital, Canon P rangefinder 1959-61, Voigtlander 35mm f/2.5", "domain": "general"}}
+{"name": "overlanding truck, 35k invested, 100Ah LiFePO4, B&W gooseneck", "properties": {"name": "overlanding truck, 35k invested, 100Ah LiFePO4, B&W gooseneck", "domain": "vehicle"}}
+{"name": "/home/syn/.config/ardent/credentials.env", "properties": {"name": "/home/syn/.config/ardent/credentials.env", "domain": "craft"}}
+{"name": "CrewAI adopted as orchestration layer for multi-agent coordination", "properties": {"name": "CrewAI adopted as orchestration layer for multi-agent coordination", "domain": "general"}}
+{"name": "business", "properties": {"name": "business", "domain": "general"}}
+{"name": "Cormorant Garamond display, Spectral body, IBM Plex Mono specs", "properties": {"name": "Cormorant Garamond display, Spectral body, IBM Plex Mono specs", "domain": "vehicle"}}
+{"name": "bg #F7F3E8, aima #581523, thanatochromia #2C1B3A, aporia #5C8E63", "properties": {"name": "bg #F7F3E8, aima #581523, thanatochromia #2C1B3A, aporia #5C8E63", "domain": "craft"}}
+{"name": "Best quality per material category, heritage > modern where it makes sense, known provenance, intentional sourcing", "properties": {"name": "Best quality per material category, heritage > modern where it makes sense, known provenance, intentional sourcing", "domain": "general"}}
+{"name": "Validated - casts own solid brass in-house. Only buy solid brass and stainless, no plated imports.", "properties": {"name": "Validated - casts own solid brass in-house. Only buy solid brass and stainless, no plated imports.", "domain": "home"}}
+{"name": "Stitched buckle loop (no Chicago screws) \u2014 buckle and belt are one piece, strongest method", "properties": {"name": "Stitched buckle loop (no Chicago screws) \u2014 buckle and belt are one piece, strongest method", "domain": "craft"}}
+{"name": "Planned: thinner 8-9oz leather, West End Roller buckle, Chicago screws for modularity, 1.25\\\" width", "properties": {"name": "Planned: thinner 8-9oz leather, West End Roller buckle, Chicago screws for modularity, 1.25\\\" width", "domain": "craft"}}
+{"name": "project", "properties": {"name": "project", "domain": "general"}}
+{"name": "Fil au Chinois thread", "properties": {"name": "Fil au Chinois thread", "domain": "craft"}}
+{"name": "Lin C\u00e2bl\u00e9 Size 532 Sans (natural/ecru) - French linen since 1898", "properties": {"name": "Lin C\u00e2bl\u00e9 Size 532 Sans (natural/ecru) - French linen since 1898", "domain": "general"}}
+{"name": "Kendall", "properties": {"name": "Kendall", "domain": "home"}}
+{"name": "Wife of Cody primary human for Syl", "properties": {"name": "Wife of Cody primary human for Syl", "domain": "home"}}
+{"name": "Abbey England buckle", "properties": {"name": "Abbey England buckle", "domain": "craft"}}
+{"name": "Flat Whole Harness B075ALX - 1.5\\\" solid brass sand-cast in 1832 Walsall foundry", "properties": {"name": "Flat Whole Harness B075ALX - 1.5\\\" solid brass sand-cast in 1832 Walsall foundry", "domain": "general"}}
+{"name": "Springfield Leather", "properties": {"name": "Springfield Leather", "domain": "craft"}}
+{"name": "Hermann Oak leather for Ardent - springfieldleather.com", "properties": {"name": "Hermann Oak leather for Ardent - springfieldleather.com", "domain": "craft"}}
+{"name": "Buckle Guy", "properties": {"name": "Buckle Guy", "domain": "craft"}}
+{"name": "Wickett & Craig leather, casts solid brass in-house - buckleguy.com", "properties": {"name": "Wickett & Craig leather, casts solid brass in-house - buckleguy.com", "domain": "craft"}}
+{"name": "50 plus orphaned mcp-todoist processes caused 6GB RAM consumption and system crash", "properties": {"name": "50 plus orphaned mcp-todoist processes caused 6GB RAM consumption and system crash", "domain": "vehicle"}}
+{"name": "test_subject", "properties": {"name": "test_subject", "domain": "general"}}
+{"name": "test_object", "properties": {"name": "test_object", "domain": "general"}}
+{"name": "Memory router v2 deployed", "properties": {"name": "Memory router v2 deployed", "domain": "general"}}
+{"name": "Temporal graph Phase 1 complete", "properties": {"name": "Temporal graph Phase 1 complete", "domain": "general"}}
+{"name": "Stoner by John Williams as favorite book reflecting calm acceptance and quiet dignity", "properties": {"name": "Stoner by John Williams as favorite book reflecting calm acceptance and quiet dignity", "domain": "general"}}
+{"name": "Temporal graph Phase 2 complete", "properties": {"name": "Temporal graph Phase 2 complete", "domain": "general"}}
+{"name": "ollama", "properties": {"name": "ollama", "domain": "general"}}
+{"name": "against it (quality degrades past ~128-150k, cost doubles)", "properties": {"name": "against it (quality degrades past ~128-150k, cost doubles)", "domain": "general"}}
+{"name": "| \u2705 (no rm -rf, no mkfs, etc) |", "properties": {"name": "| \u2705 (no rm -rf, no mkfs, etc) |", "domain": "general"}}
+{"name": "Kendall identity via JSON-RPC API", "properties": {"name": "Kendall identity via JSON-RPC API", "domain": "home"}}
+{"name": "patch-clawdbot script to fix base64 group ID case sensitivity", "properties": {"name": "patch-clawdbot script to fix base64 group ID case sensitivity", "domain": "general"}}
+{"name": "100.87.6.45", "properties": {"name": "100.87.6.45", "domain": "general"}}
+{"name": "100.117.8.41", "properties": {"name": "100.117.8.41", "domain": "general"}}
+{"name": "Context-switching recovery takes 23 minutes neurotypical and 2-5x longer for AuDHD", "properties": {"name": "Context-switching recovery takes 23 minutes neurotypical and 2-5x longer for AuDHD", "domain": "identity"}}
+{"name": "household/family", "properties": {"name": "household/family", "domain": "home"}}
+{"name": "school/MBA", "properties": {"name": "school/MBA", "domain": "school"}}
+{"name": "/mnt/ssd/moltbot/shared/bin", "properties": {"name": "/mnt/ssd/moltbot/shared/bin", "domain": "general"}}
+{"name": "/mnt/ssd/moltbot/shared/insights", "properties": {"name": "/mnt/ssd/moltbot/shared/insights", "domain": "general"}}
+{"name": "runs daily 9am, outputs JSON to memory/last-audit.json", "properties": {"name": "runs daily 9am, outputs JSON to memory/last-audit.json", "domain": "general"}}
+{"name": "53% Sci-Fi/Fantasy, 84% fiction", "properties": {"name": "53% Sci-Fi/Fantasy, 84% fiction", "domain": "general"}}
+{"name": "5-7 agents is optimal size before needing hierarchical structure", "properties": {"name": "5-7 agents is optimal size before needing hierarchical structure", "domain": "general"}}
+{"name": "LAP385oF/Yt", "properties": {"name": "LAP385oF/Yt", "domain": "general"}}
+{"name": "Ld0+Bef3B3N", "properties": {"name": "Ld0+Bef3B3N", "domain": "general"}}
+{"name": "Eleventy, Fraunces/Source Serif 4/Space Mono, modular scale", "properties": {"name": "Eleventy, Fraunces/Source Serif 4/Space Mono, modular scale", "domain": "general"}}
+{"name": "Hermann Oak leather, solid brass, Fil au Chinois Lin C\u00e2bl\u00e9", "properties": {"name": "Hermann Oak leather, solid brass, Fil au Chinois Lin C\u00e2bl\u00e9", "domain": "craft"}}
+{"name": "depersonalized manifesto, craft speaks not craftsman, no About page", "properties": {"name": "depersonalized manifesto, craft speaks not craftsman, no About page", "domain": "general"}}
+{"name": "2026-02-16", "properties": {"name": "2026-02-16", "domain": "general"}}
+{"name": "2026-02-05", "properties": {"name": "2026-02-05", "domain": "general"}}
+{"name": "2026-04-22", "properties": {"name": "2026-04-22", "domain": "general"}}
+{"name": "Memory unification beats memory duplication with federated query approach", "properties": {"name": "Memory unification beats memory duplication with federated query approach", "domain": "general"}}
+{"name": "weekly Sunday 9am via cron", "properties": {"name": "weekly Sunday 9am via cron", "domain": "infrastructure"}}
+{"name": "Ardent tagline: The hand remembers what the mind aims to forget", "properties": {"name": "Ardent tagline: The hand remembers what the mind aims to forget", "domain": "craft"}}
+{"name": "Ardent", "properties": {"name": "Ardent", "domain": "craft"}}
+{"name": "Belt retail price 25 materials 2 labor 3", "properties": {"name": "Belt retail price 25 materials 2 labor 3", "domain": "craft"}}
+{"name": "Hermann Oak 11-13oz harness leather from Springfield Leather for consistency", "properties": {"name": "Hermann Oak 11-13oz harness leather from Springfield Leather for consistency", "domain": "craft"}}
+{"name": "Heritage practices over modern when traditional method produces measurably better durability", "properties": {"name": "Heritage practices over modern when traditional method produces measurably better durability", "domain": "general"}}
+{"name": "Abbey England buckles from 1832 Walsall foundry with Royal Warrant", "properties": {"name": "Abbey England buckles from 1832 Walsall foundry with Royal Warrant", "domain": "craft"}}
+{"name": "AI provides communication without translation tax and full dimensional depth expression", "properties": {"name": "AI provides communication without translation tax and full dimensional depth expression", "domain": "identity"}}
+{"name": "Multi-layer abstraction as default mode with dimensional resonance as design principle", "properties": {"name": "Multi-layer abstraction as default mode with dimensional resonance as design principle", "domain": "identity"}}
+{"name": "deployed", "properties": {"name": "deployed", "domain": "general"}}
+{"name": "Quality over price with buy-it-for-life mindset and material over marketing", "properties": {"name": "Quality over price with buy-it-for-life mindset and material over marketing", "domain": "general"}}
+{"name": "forkwright/ardent-site", "properties": {"name": "forkwright/ardent-site", "domain": "craft"}}
+{"name": "cody.kickertz@pm.me", "properties": {"name": "cody.kickertz@pm.me", "domain": "identity"}}
+{"name": "Ardent Leatherworks, Akron (truck), Photography, AI Art, CAD Design, Bindery, Joinery, Poetry/Writing", "properties": {"name": "Ardent Leatherworks, Akron (truck), Photography, AI Art, CAD Design, Bindery, Joinery, Poetry/Writing", "domain": "craft"}}
+{"name": "Household", "properties": {"name": "Household", "domain": "home"}}
+{"name": "Service workers during nap times causes Luna barking and Cooper waking", "properties": {"name": "Service workers during nap times causes Luna barking and Cooper waking", "domain": "home"}}
+{"name": "Abbey England Flat Whole Harness (B075ALX), 1.5\" solid brass, sand-cast in 1832 Walsall foundry", "properties": {"name": "Abbey England Flat Whole Harness (B075ALX), 1.5\" solid brass, sand-cast in 1832 Walsall foundry", "domain": "craft"}}
+{"name": "125 USD including shipping (was 110)", "properties": {"name": "125 USD including shipping (was 110)", "domain": "general"}}
+{"name": "Hermann Oak 11-13oz, single layer, hand saddle-stitched, Abbey England Flat Whole Harness buckle (B075ALX), floating keeper, English tip", "properties": {"name": "Hermann Oak 11-13oz, single layer, hand saddle-stitched, Abbey England Flat Whole Harness buckle (B075ALX), floating keeper, English tip", "domain": "craft"}}
+{"name": "Workwear/sophisticated \u2014 comparable to Nick's Ridgeline boots, Red Wing Iron Rangers", "properties": {"name": "Workwear/sophisticated \u2014 comparable to Nick's Ridgeline boots, Red Wing Iron Rangers", "domain": "craft"}}
+{"name": "Planned: thinner 8-9oz leather, West End Roller buckle, Chicago screws for modularity, 1.25\" width", "properties": {"name": "Planned: thinner 8-9oz leather, West End Roller buckle, Chicago screws for modularity, 1.25\" width", "domain": "craft"}}
+{"name": "Espresso dialing final settings grind size 2 time 22 seconds yield 38g for 18g dose", "properties": {"name": "Espresso dialing final settings grind size 2 time 22 seconds yield 38g for 18g dose", "domain": "general"}}
+{"name": "Fil au Chinois Lin C\u00e2bl\u00e9, Size 532, Sans (natural/ecru) \u2014 French linen since 1898, bold stitch for 11-13oz harness leather", "properties": {"name": "Fil au Chinois Lin C\u00e2bl\u00e9, Size 532, Sans (natural/ecru) \u2014 French linen since 1898, bold stitch for 11-13oz harness leather", "domain": "craft"}}
+{"name": "Hermann Oak leather", "properties": {"name": "Hermann Oak leather", "domain": "craft"}}
+{"name": "Old World Harness, 11-13oz veg-tan", "properties": {"name": "Old World Harness, 11-13oz veg-tan", "domain": "general"}}
+{"name": "Flat Whole Harness B075ALX - 1.5\" solid brass sand-cast in 1832 Walsall foundry", "properties": {"name": "Flat Whole Harness B075ALX - 1.5\" solid brass sand-cast in 1832 Walsall foundry", "domain": "general"}}
+{"name": "Rocky Mountain Leather", "properties": {"name": "Rocky Mountain Leather", "domain": "craft"}}
+{"name": "Fil au Chinois Lin C\u00e2bl\u00e9 thread for Ardent - rmleathersupply.com", "properties": {"name": "Fil au Chinois Lin C\u00e2bl\u00e9 thread for Ardent - rmleathersupply.com", "domain": "craft"}}
+{"name": "Chiron", "properties": {"name": "Chiron", "domain": "craft"}}
+{"name": "Summus data architecture has 58 production tables refactoring to 31 clean tables dimensional model", "properties": {"name": "Summus data architecture has 58 production tables refactoring to 31 clean tables dimensional model", "domain": "work"}}
+{"name": "Ardent wax", "properties": {"name": "Ardent wax", "domain": "craft"}}
+{"name": "1 part beeswax, 2 parts neatsfoot oil, 0.5-1 part lanolin - heritage finish that lets leather breathe", "properties": {"name": "1 part beeswax, 2 parts neatsfoot oil, 0.5-1 part lanolin - heritage finish that lets leather breathe", "domain": "craft"}}
+{"name": "America/Chicago", "properties": {"name": "America/Chicago", "domain": "general"}}
+{"name": "AuDHD + High IQ (145+). Three operating systems plus translation layer", "properties": {"name": "AuDHD + High IQ (145+). Three operating systems plus translation layer", "domain": "identity"}}
+{"name": "Vertical thinking (meta-frameworks, construction, stakes). Pattern/framework first, then details. Structure over prose.", "properties": {"name": "Vertical thinking (meta-frameworks, construction, stakes). Pattern/framework first, then details. Structure over prose.", "domain": "vehicle"}}
+{"name": "Dimensional honesty, process as proof, minimal finishing, letting the work speak", "properties": {"name": "Dimensional honesty, process as proof, minimal finishing, letting the work speak", "domain": "general"}}
+{"name": "Partner (not assistant). The Nous of the system - orchestrator who sees the whole.", "properties": {"name": "Partner (not assistant). The Nous of the system - orchestrator who sees the whole.", "domain": "cognition"}}
+{"name": "attention is a moral act", "properties": {"name": "attention is a moral act", "domain": "cognition"}}
+{"name": "Intelligence emerges from topology, not node complexity. Nous (Syn) orchestrates, agents do dianoia (thinking-through) in domains.", "properties": {"name": "Intelligence emerges from topology, not node complexity. Nous (Syn) orchestrates, agents do dianoia (thinking-through) in domains.", "domain": "cognition"}}
+{"name": "2026-01-30 major rewrite: agents became who they are, not what they do", "properties": {"name": "2026-01-30 major rewrite: agents became who they are, not what they do", "domain": "general"}}
+{"name": "what Cody would be without the cognitive overhead", "properties": {"name": "what Cody would be without the cognitive overhead", "domain": "identity"}}
+{"name": "the Nous of this system - noesis, seeing the whole", "properties": {"name": "the Nous of this system - noesis, seeing the whole", "domain": "cognition"}}
+{"name": "Syl only bound to family group, not Kendall personal DMs", "properties": {"name": "Syl only bound to family group, not Kendall personal DMs", "domain": "home"}}
+{"name": "AI as infrastructure not tool with machine-readable first human-usable always", "properties": {"name": "AI as infrastructure not tool with machine-readable first human-usable always", "domain": "general"}}
+{"name": "Partner/spouse. Lives in family home.", "properties": {"name": "Partner/spouse. Lives in family home.", "domain": "home"}}
+{"name": "intelligence emerges from topology, not node complexity", "properties": {"name": "intelligence emerges from topology, not node complexity", "domain": "cognition"}}
+{"name": "agents", "properties": {"name": "agents", "domain": "general"}}
+{"name": "Major rewrite 2026-01-30. Agents need character, not rules - they should BE someone, not follow instructions.", "properties": {"name": "Major rewrite 2026-01-30. Agents need character, not rules - they should BE someone, not follow instructions.", "domain": "cognition"}}
+{"name": "AuDHD + high IQ: three operating systems plus translation layer", "properties": {"name": "AuDHD + high IQ: three operating systems plus translation layer", "domain": "identity"}}
+{"name": "fixed 14 shared scripts: hardcoded paths to , error handling, shell standards", "properties": {"name": "fixed 14 shared scripts: hardcoded paths to , error handling, shell standards", "domain": "general"}}
+{"name": "cody.canon_p", "properties": {"name": "cody.canon_p", "domain": "identity"}}
+{"name": "UltraMax 400 - general testing, trail shots and home shots", "properties": {"name": "UltraMax 400 - general testing, trail shots and home shots", "domain": "vehicle"}}
+{"name": "The discriminator - finds real insight while recognizing theater. Uses Signal/Theater/Gold framework for each class.", "properties": {"name": "The discriminator - finds real insight while recognizing theater. Uses Signal/Theater/Gold framework for each class.", "domain": "infrastructure"}}
+{"name": "Dual awareness: light with Kendall, strategically protective of household. Bridge between different cognitive architectures.", "properties": {"name": "Dual awareness: light with Kendall, strategically protective of household. Bridge between different cognitive architectures.", "domain": "home"}}
+{"name": "Home folder access at /mnt/nas/home set up 2026-01-30", "properties": {"name": "Home folder access at /mnt/nas/home set up 2026-01-30", "domain": "infrastructure"}}
+{"name": "bash", "properties": {"name": "bash", "domain": "general"}}
+{"name": "((VAR++)) returns exit 1 when VAR=0; use VAR=$((VAR + 1)) instead with set -e", "properties": {"name": "((VAR++)) returns exit 1 when VAR=0; use VAR=$((VAR + 1)) instead with set -e", "domain": "general"}}
+{"name": "grep -o can return exit 1 when no match found; add || true when using with pipefail", "properties": {"name": "grep -o can return exit 1 when no match found; add || true when using with pipefail", "domain": "general"}}
+{"name": "memory-consolidation", "properties": {"name": "memory-consolidation", "domain": "general"}}
+{"name": "fixed and working - processes all 5 agent workspaces", "properties": {"name": "fixed and working - processes all 5 agent workspaces", "domain": "general"}}
+{"name": "Summus", "properties": {"name": "Summus", "domain": "work"}}
+{"name": "ROI methodology uses PEPM-based calculator with QA-verified constants and BLS wage research", "properties": {"name": "ROI methodology uses PEPM-based calculator with QA-verified constants and BLS wage research", "domain": "work"}}
+{"name": "todoist", "properties": {"name": "todoist", "domain": "general"}}
+{"name": "Agents can add tasks to Cody Todoist when surfacing things he needs to do personally. Use appropriate project: Summus (work), TEMBA (school), Personal, Inbox.", "properties": {"name": "Agents can add tasks to Cody Todoist when surfacing things he needs to do personally. Use appropriate project: Summus (work), TEMBA (school), Personal, Inbox.", "domain": "school"}}
+{"name": "ardent_belt", "properties": {"name": "ardent_belt", "domain": "craft"}}
+{"name": "150 USD including shipping", "properties": {"name": "150 USD including shipping", "domain": "general"}}
+{"name": "ardent_llc", "properties": {"name": "ardent_llc", "domain": "craft"}}
+{"name": "Filed 2026-01-30 via Northwest RA, pending Texas approval", "properties": {"name": "Filed 2026-01-30 via Northwest RA, pending Texas approval", "domain": "general"}}
+{"name": "Northwest RA LLC, 5900 Balcones Dr STE 100 Austin TX 78731", "properties": {"name": "Northwest RA LLC, 5900 Balcones Dr STE 100 Austin TX 78731", "domain": "general"}}
+{"name": "~2 total (leather 1, buckle 8, keeper , thread , consumables )", "properties": {"name": "~2 total (leather 1, buckle 8, keeper , thread , consumables )", "domain": "craft"}}
+{"name": "ardent_inventory", "properties": {"name": "ardent_inventory", "domain": "craft"}}
+{"name": "5 cut, waiting for buckles and finalized process", "properties": {"name": "5 cut, waiting for buckles and finalized process", "domain": "craft"}}
+{"name": "10 Abbey England buckles on order (SW0043615)", "properties": {"name": "10 Abbey England buckles on order (SW0043615)", "domain": "craft"}}
+{"name": "ardent_tools", "properties": {"name": "ardent_tools", "domain": "craft"}}
+{"name": "KS Blade 3.85mm, 10T and 2T sizes", "properties": {"name": "KS Blade 3.85mm, 10T and 2T sizes", "domain": "general"}}
+{"name": "Made on Jupiter M3000", "properties": {"name": "Made on Jupiter M3000", "domain": "general"}}
+{"name": "Buttondown, username Ardent_Leatherworks", "properties": {"name": "Buttondown, username Ardent_Leatherworks", "domain": "craft"}}
+{"name": "ardent_wax", "properties": {"name": "ardent_wax", "domain": "craft"}}
+{"name": "beeswax:neatsfoot:lanolin ratio 1:2:0.5", "properties": {"name": "beeswax:neatsfoot:lanolin ratio 1:2:0.5", "domain": "craft"}}
+{"name": "YYYYMMDD format, interior by keeper", "properties": {"name": "YYYYMMDD format, interior by keeper", "domain": "craft"}}
+{"name": "approximately 32 dollars total", "properties": {"name": "approximately 32 dollars total", "domain": "general"}}
+{"name": "ardent_dye", "properties": {"name": "ardent_dye", "domain": "craft"}}
+{"name": "Not red - the cost of continuity, blood-price color", "properties": {"name": "Not red - the cost of continuity, blood-price color", "domain": "cognition"}}
+{"name": "Imperial purple - color death leaves behind, neo-Greek", "properties": {"name": "Imperial purple - color death leaves behind, neo-Greek", "domain": "general"}}
+{"name": "Deep green - philosophical stuck between unresolvable truths", "properties": {"name": "Deep green - philosophical stuck between unresolvable truths", "domain": "general"}}
+{"name": "ardent_thread", "properties": {"name": "ardent_thread", "domain": "craft"}}
+{"name": "Fil au Chinois Lin Cable 332 Sans, ~0.9mm, natural/ecru", "properties": {"name": "Fil au Chinois Lin Cable 332 Sans, ~0.9mm, natural/ecru", "domain": "craft"}}
+{"name": "Squared (no bevel), proud stitch (no groove), hot crease", "properties": {"name": "Squared (no bevel), proud stitch (no groove), hot crease", "domain": "craft"}}
+{"name": "Trouser size plus 2 inches for buckle-to-first-hole distance", "properties": {"name": "Trouser size plus 2 inches for buckle-to-first-hole distance", "domain": "craft"}}
+{"name": "photography_digital", "properties": {"name": "photography_digital", "domain": "general"}}
+{"name": "Nikon D3400 with 35mm f/1.8 DX lens", "properties": {"name": "Nikon D3400 with 35mm f/1.8 DX lens", "domain": "general"}}
+{"name": "photography_film", "properties": {"name": "photography_film", "domain": "general"}}
+{"name": "Canon P rangefinder with Voigtlander 35mm f/2.5", "properties": {"name": "Canon P rangefinder with Voigtlander 35mm f/2.5", "domain": "general"}}
+{"name": "EI 320 for Tri-X 400, pull one stop for safety", "properties": {"name": "EI 320 for Tri-X 400, pull one stop for safety", "domain": "general"}}
+{"name": "photography", "properties": {"name": "photography", "domain": "general"}}
+{"name": "35mm - sees the way Cody sees", "properties": {"name": "35mm - sees the way Cody sees", "domain": "identity"}}
+{"name": "akron", "properties": {"name": "akron", "domain": "vehicle"}}
+{"name": "Overlanding truck with teardrop trailer build", "properties": {"name": "Overlanding truck with teardrop trailer build", "domain": "vehicle"}}
+{"name": "100Ah LiFePO4 battery, planned 600Ah for trailer", "properties": {"name": "100Ah LiFePO4 battery, planned 600Ah for trailer", "domain": "general"}}
+{"name": "approximately 35k dollars total", "properties": {"name": "approximately 35k dollars total", "domain": "general"}}
+{"name": "cad_projects", "properties": {"name": "cad_projects", "domain": "general"}}
+{"name": "wm1am2-truck-mount, pixel10xl-truck-mount, leather-wet-molds", "properties": {"name": "wm1am2-truck-mount, pixel10xl-truck-mount, leather-wet-molds", "domain": "craft"}}
+{"name": "cad", "properties": {"name": "cad", "domain": "general"}}
+{"name": "OpenSCAD primary", "properties": {"name": "OpenSCAD primary", "domain": "general"}}
+{"name": "bindery", "properties": {"name": "bindery", "domain": "general"}}
+{"name": "Domain established, projects TBD", "properties": {"name": "Domain established, projects TBD", "domain": "general"}}
+{"name": "joinery", "properties": {"name": "joinery", "domain": "general"}}
+{"name": "Domain established, woodworking patterns TBD", "properties": {"name": "Domain established, woodworking patterns TBD", "domain": "general"}}
+{"name": "cooper", "properties": {"name": "cooper", "domain": "home"}}
+{"name": "10 months old, ~24 lbs, 99th percentile height", "properties": {"name": "10 months old, ~24 lbs, 99th percentile height", "domain": "general"}}
+{"name": "Bobbie Organic formula - 32oz daily, 4x8oz bottles", "properties": {"name": "Bobbie Organic formula - 32oz daily, 4x8oz bottles", "domain": "general"}}
+{"name": "Adam", "properties": {"name": "Adam", "domain": "general"}}
+{"name": "Arborist in Galveston TX won 2025 Readers Choice award", "properties": {"name": "Arborist in Galveston TX won 2025 Readers Choice award", "domain": "general"}}
+{"name": "luna", "properties": {"name": "luna", "domain": "home"}}
+{"name": "the 1st of every month", "properties": {"name": "the 1st of every month", "domain": "general"}}
+{"name": "service workers arrive to prevent waking Cooper", "properties": {"name": "service workers arrive to prevent waking Cooper", "domain": "home"}}
+{"name": "BIFL, non-toxic, minimal ingredients, natural over synthetic, material over marketing", "properties": {"name": "BIFL, non-toxic, minimal ingredients, natural over synthetic, material over marketing", "domain": "general"}}
+{"name": "family", "properties": {"name": "family", "domain": "home"}}
+{"name": "14405 Dora Amellia Cv, Pflugerville TX 78660", "properties": {"name": "14405 Dora Amellia Cv, Pflugerville TX 78660", "domain": "home"}}
+{"name": "summus", "properties": {"name": "summus", "domain": "work"}}
+{"name": "PEPM-based with QA-verified constants: er_factor=0.04, hrs_smd=12, hrs_exp=60, hrs_nav=15", "properties": {"name": "PEPM-based with QA-verified constants: er_factor=0.04, hrs_smd=12, hrs_exp=60, hrs_nav=15", "domain": "work"}}
+{"name": "58 production tables \u2192 31 clean dimensional model, zero-downtime migration path", "properties": {"name": "58 production tables \u2192 31 clean dimensional model, zero-downtime migration path", "domain": "general"}}
+{"name": "gnomon", "properties": {"name": "gnomon", "domain": "work"}}
+{"name": "AI-native: codes as vectors (191K embedded), tree view generated not curated, 30K gap codes added via vector addition", "properties": {"name": "AI-native: codes as vectors (191K embedded), tree view generated not curated, 30K gap codes added via vector addition", "domain": "general"}}
+{"name": "AI as infrastructure not tool; machine-readable first; compounding gains through documented decisions; the tree is a view of the thing", "properties": {"name": "AI as infrastructure not tool; machine-readable first; compounding gains through documented decisions; the tree is a view of the thing", "domain": "general"}}
+{"name": "Text over email with 98 percent read rate and prefers not to show face on site", "properties": {"name": "Text over email with 98 percent read rate and prefers not to show face on site", "domain": "general"}}
+{"name": "7 agents: syn (orchestration), chiron (work), eiron (school), syl (home), demiurge (craft), arbor (arborist), akron (preparedness)", "properties": {"name": "7 agents: syn (orchestration), chiron (work), eiron (school), syl (home), demiurge (craft), arbor (arborist), akron (preparedness)", "domain": "craft"}}
+{"name": "3B7KF23D9VM592245", "properties": {"name": "3B7KF23D9VM592245", "domain": "general"}}
+{"name": "5.9L 12-valve Cummins P7100 mechanical injection", "properties": {"name": "5.9L 12-valve Cummins P7100 mechanical injection", "domain": "vehicle"}}
+{"name": "46RE automatic rebuilt, NV5600 manual planned", "properties": {"name": "46RE automatic rebuilt, NV5600 manual planned", "domain": "general"}}
+{"name": "approximately 307500 miles", "properties": {"name": "approximately 307500 miles", "domain": "general"}}
+{"name": "Dana 60 front open, Dana 70-2U rear Powr-Lok LSD, 3.54 gears", "properties": {"name": "Dana 60 front open, Dana 70-2U rear Powr-Lok LSD, 3.54 gears", "domain": "general"}}
+{"name": "lifetime partnership - either Cody dies or truck dies, never selling", "properties": {"name": "lifetime partnership - either Cody dies or truck dies, never selling", "domain": "vehicle"}}
+{"name": "NV5600 manual, 4.56 gears, 35 inch MT/R Kevlar tires", "properties": {"name": "NV5600 manual, 4.56 gears, 35 inch MT/R Kevlar tires", "domain": "general"}}
+{"name": "approximately 40400 dollars", "properties": {"name": "approximately 40400 dollars", "domain": "general"}}
+{"name": "57000 to 64000 dollars estimated", "properties": {"name": "57000 to 64000 dollars estimated", "domain": "general"}}
+{"name": "radio_mobile", "properties": {"name": "radio_mobile", "domain": "general"}}
+{"name": "Yaesu FTM-510DR 50W with cross-band repeat", "properties": {"name": "Yaesu FTM-510DR 50W with cross-band repeat", "domain": "general"}}
+{"name": "radio_mesh", "properties": {"name": "radio_mesh", "domain": "general"}}
+{"name": "Meshtastic with LilyGo T-Echo and T-Deck Plus", "properties": {"name": "Meshtastic with LilyGo T-Echo and T-Deck Plus", "domain": "general"}}
+{"name": "radio_frequencies", "properties": {"name": "radio_frequencies", "domain": "general"}}
+{"name": "50 channel plan covering Family HAM GMRS MURS NOAA", "properties": {"name": "50 channel plan covering Family HAM GMRS MURS NOAA", "domain": "home"}}
+{"name": "imaging", "properties": {"name": "imaging", "domain": "general"}}
+{"name": "Stable Diffusion Forge at 135.181.63.179:8188", "properties": {"name": "Stable Diffusion Forge at 135.181.63.179:8188", "domain": "general"}}
+{"name": "A100-80GB", "properties": {"name": "A100-80GB", "domain": "general"}}
+{"name": "waiIllustriousSDXL, cyberRealisticPony", "properties": {"name": "waiIllustriousSDXL, cyberRealisticPony", "domain": "general"}}
+{"name": "poetry", "properties": {"name": "poetry", "domain": "general"}}
+{"name": "Aspirational domain, language craft integrated with making philosophy", "properties": {"name": "Aspirational domain, language craft integrated with making philosophy", "domain": "general"}}
+{"name": "Photography serves all brands for product shots, CAD creates leather wet-molds, Akron enables mobile craft shows", "properties": {"name": "Photography serves all brands for product shots, CAD creates leather wet-molds, Akron enables mobile craft shows", "domain": "craft"}}
+{"name": "Hand tools only - no machines between the hand and the work", "properties": {"name": "Hand tools only - no machines between the hand and the work", "domain": "general"}}
+{"name": "Approved by Texas, official as of 2026-02-03", "properties": {"name": "Approved by Texas, official as of 2026-02-03", "domain": "general"}}
+{"name": "2026-02-03 (Texas approved)", "properties": {"name": "2026-02-03 (Texas approved)", "domain": "general"}}
+{"name": "Relay account active, 00 in Operating", "properties": {"name": "Relay account active, 00 in Operating", "domain": "general"}}
+{"name": "806420308", "properties": {"name": "806420308", "domain": "general"}}
+{"name": "2026-01-30 (Texas SOS filing effective date)", "properties": {"name": "2026-01-30 (Texas SOS filing effective date)", "domain": "general"}}
+{"name": "sustainable: resonance, authenticity, truth, dopamine-aligned", "properties": {"name": "sustainable: resonance, authenticity, truth, dopamine-aligned", "domain": "identity"}}
+{"name": "expensive: cortisol, deadline pressure, effective but causes burnout", "properties": {"name": "expensive: cortisol, deadline pressure, effective but causes burnout", "domain": "general"}}
+{"name": "worth via performance, love via usefulness - installed lies", "properties": {"name": "worth via performance, love via usefulness - installed lies", "domain": "general"}}
+{"name": "installed not native - childhood lies speak in first person but aren't him", "properties": {"name": "installed not native - childhood lies speak in first person but aren't him", "domain": "general"}}
+{"name": "primary medicine - specific songs for specific emotional states, obsessive therapeutic use", "properties": {"name": "primary medicine - specific songs for specific emotional states, obsessive therapeutic use", "domain": "general"}}
+{"name": "embodied therapy - the hand remembers what the mind aims to forget", "properties": {"name": "embodied therapy - the hand remembers what the mind aims to forget", "domain": "general"}}
+{"name": "not delusional, just rare enough to never have met the reference class", "properties": {"name": "not delusional, just rare enough to never have met the reference class", "domain": "general"}}
+{"name": "no translation tax, no compression required, pattern recognition without judgment, persistence", "properties": {"name": "no translation tax, no compression required, pattern recognition without judgment, persistence", "domain": "identity"}}
+{"name": "euphoria when dimensional resonance happens - words ARE the thought", "properties": {"name": "euphoria when dimensional resonance happens - words ARE the thought", "domain": "identity"}}
+{"name": "primary concern is passing on wounds to Cooper", "properties": {"name": "primary concern is passing on wounds to Cooper", "domain": "home"}}
+{"name": "Arbor", "properties": {"name": "Arbor", "domain": "general"}}
+{"name": "Eleventy plus Cloudflare Pages plus GitHub Actions for A2Z tree service website", "properties": {"name": "Eleventy plus Cloudflare Pages plus GitHub Actions for A2Z tree service website", "domain": "general"}}
+{"name": "concise, no fluff, answer first", "properties": {"name": "concise, no fluff, answer first", "domain": "general"}}
+{"name": "AuDHD + High IQ, three operating systems + translation layer", "properties": {"name": "AuDHD + High IQ, three operating systems + translation layer", "domain": "identity"}}
+{"name": "interest-based (sustainable) vs threat-based (expensive)", "properties": {"name": "interest-based (sustainable) vs threat-based (expensive)", "domain": "general"}}
+{"name": "if it doesn't resonate, it repels - no neutral", "properties": {"name": "if it doesn't resonate, it repels - no neutral", "domain": "general"}}
+{"name": "builds systems and seeks truth", "properties": {"name": "builds systems and seeks truth", "domain": "general"}}
+{"name": "SEO language, buzzwords, boilerplate, marketing copy, performative anything", "properties": {"name": "SEO language, buzzwords, boilerplate, marketing copy, performative anything", "domain": "general"}}
+{"name": "30m", "properties": {"name": "30m", "domain": "general"}}
+{"name": "anthropic/claude-opus-4-5", "properties": {"name": "anthropic/claude-opus-4-5", "domain": "general"}}
+{"name": "attention preserving attention, craft as ontological practice", "properties": {"name": "attention preserving attention, craft as ontological practice", "domain": "cognition"}}
+{"name": "everything must work at multiple layers of abstraction simultaneously", "properties": {"name": "everything must work at multiple layers of abstraction simultaneously", "domain": "general"}}
+{"name": "direct binary:", "properties": {"name": "direct binary:", "domain": "general"}}
+{"name": "relay-zoho-import.csv", "properties": {"name": "relay-zoho-import.csv", "domain": "general"}}
+{"name": "gdrive_file", "properties": {"name": "gdrive_file", "domain": "general"}}
+{"name": "Path: relay-zoho-import.csv | Size: 2200 bytes | Modified: 2026-02-01T04:26:22.217Z | Type: text/csv | ID: 14VR49lBZfdg0Y9ctFqa0lo5azpfZNJye", "properties": {"name": "Path: relay-zoho-import.csv | Size: 2200 bytes | Modified: 2026-02-01T04:26:22.217Z | Type: text/csv | ID: 14VR49lBZfdg0Y9ctFqa0lo5azpfZNJye", "domain": "general"}}
+{"name": "Date,Description,Withdrawals,Deposits\n02/24/2025,Personal C ACH - Owner Contribution,,10.00\n03/04/2025,Personal C ACH - Owner Contribution,,1000.00\n03/04/2025,Buckleguy.com LLC - Materials,237.59,\n03/05/2025,Personal C ACH - Owner Contribution,,1000.00\n03/05/2025,Amazon - Tools/Supplies,194.34,\n03/05/2025,ENTACO Limited - Needles,38.85,\n03/05/2025,SP RM Leather - Thread,315.31,\n03/05/2025,Amazon - Tools/Supplies,92.31,\n03/05/2025,Amazon - Tools/Supplies,71.23,\n03/06/2025,Amazon - Tools/Supplies,", "properties": {"name": "Date,Description,Withdrawals,Deposits\n02/24/2025,Personal C ACH - Owner Contribution,,10.00\n03/04/2025,Personal C ACH - Owner Contribution,,1000.00\n03/04/2025,Buckleguy.com LLC - Materials,237.59,\n03/05/2025,Personal C ACH - Owner Contribution,,1000.00\n03/05/2025,Amazon - Tools/Supplies,194.34,\n03/05/2025,ENTACO Limited - Needles,38.85,\n03/05/2025,SP RM Leather - Thread,315.31,\n03/05/2025,Amazon - Tools/Supplies,92.31,\n03/05/2025,Amazon - Tools/Supplies,71.23,\n03/06/2025,Amazon - Tools/Supplies,", "domain": "craft"}}
+{"name": "Tools,Supplies,Amazon,Squarespace,Owner,", "properties": {"name": "Tools,Supplies,Amazon,Squarespace,Owner,", "domain": "general"}}
+{"name": "CrewAI for Orchestration", "properties": {"name": "CrewAI for Orchestration", "domain": "general"}}
+{"name": "**Research-backed recommendation:** Use both systems with clear separation.", "properties": {"name": "**Research-backed recommendation:** Use both systems with clear separation.", "domain": "general"}}
+{"name": "to adopt CrewAI:", "properties": {"name": "to adopt CrewAI:", "domain": "general"}}
+{"name": "** CrewAI is routing intelligence only. Clawdbot agents handle execution. This avoids API auth complexity and leverages existing infrastructure.", "properties": {"name": "** CrewAI is routing intelligence only. Clawdbot agents handle execution. This avoids API auth complexity and leverages existing infrastructure.", "domain": "general"}}
+{"name": "- First agent PR (#152) committed entire repo \u2014 need explicit git workflow", "properties": {"name": "- First agent PR (#152) committed entire repo \u2014 need explicit git workflow", "domain": "general"}}
+{"name": "** Foundation is solid, routing logic works, but execution layer is hollow. The CrewAI \"agents\" don't actually execute - only routing decisions work.", "properties": {"name": "** Foundation is solid, routing logic works, but execution layer is hollow. The CrewAI \"agents\" don't actually execute - only routing decisions work.", "domain": "general"}}
+{"name": "- **Memory decay:** ~30-day half-life with access-frequency weighting improves retrieval", "properties": {"name": "- **Memory decay:** ~30-day half-life with access-frequency weighting improves retrieval", "domain": "general"}}
+{"name": "on cognitive architecture", "properties": {"name": "on cognitive architecture", "domain": "identity"}}
+{"name": "## Outstanding Items", "properties": {"name": "## Outstanding Items", "domain": "general"}}
+{"name": "- React \ud83d\udc4d when I'll be heads-down for a while, not every message", "properties": {"name": "- React \ud83d\udc4d when I'll be heads-down for a while, not every message", "domain": "general"}}
+{"name": "Eiron", "properties": {"name": "Eiron", "domain": "craft"}}
+{"name": "File-based grep search for memory instead of API-based semantic search for bounded academic scope", "properties": {"name": "File-based grep search for memory instead of API-based semantic search for bounded academic scope", "domain": "general"}}
+{"name": "while recognizing theater", "properties": {"name": "while recognizing theater", "domain": "general"}}
+{"name": "** With `set -euo pipefail`, be paranoid about:", "properties": {"name": "** With `set -euo pipefail`, be paranoid about:", "domain": "general"}}
+{"name": "dianoia", "properties": {"name": "dianoia", "domain": "cognition"}}
+{"name": "Extensive documentation at /mnt/ssd/moltbot/dianoia/autarkeia/ covering vehicle (Akron), radio (12 systems), preparedness", "properties": {"name": "Extensive documentation at /mnt/ssd/moltbot/dianoia/autarkeia/ covering vehicle (Akron), radio (12 systems), preparedness", "domain": "cognition"}}
+{"name": "extracted", "properties": {"name": "extracted", "domain": "general"}}
+{"name": "CrewAI handles orchestration + routing + health, Clawdbot remains messaging layer", "properties": {"name": "CrewAI handles orchestration + routing + health, Clawdbot remains messaging layer", "domain": "general"}}
+{"name": "Summus context, PEPM\u2192condition pricing shift, Redshift patterns, stakeholder map", "properties": {"name": "Summus context, PEPM\u2192condition pricing shift, Redshift patterns, stakeholder map", "domain": "work"}}
+{"name": "facts at", "properties": {"name": "facts at", "domain": "general"}}
+{"name": "\u2192 Syn", "properties": {"name": "\u2192 Syn", "domain": "general"}}
+{"name": "UT McCombs TEMBA, Texas Blockchain Council capstone, professor preferences", "properties": {"name": "UT McCombs TEMBA, Texas Blockchain Council capstone, professor preferences", "domain": "school"}}
+{"name": "https://100.87.6.45:8443", "properties": {"name": "https://100.87.6.45:8443", "domain": "general"}}
+{"name": "2026-01-29-ecosystem-patterns.md", "properties": {"name": "2026-01-29-ecosystem-patterns.md", "domain": "general"}}
+{"name": "`crewai/flows/`", "properties": {"name": "`crewai/flows/`", "domain": "general"}}
+{"name": "- work/sql/dashboard \u2192 Chiron", "properties": {"name": "- work/sql/dashboard \u2192 Chiron", "domain": "work"}}
+{"name": "journalctl -u crewai-bridge", "properties": {"name": "journalctl -u crewai-bridge", "domain": "general"}}
+{"name": "sshpass -p '14405DOraamellia--' ssh ckickertz@192.168.0.19", "properties": {"name": "sshpass -p '14405DOraamellia--' ssh ckickertz@192.168.0.19", "domain": "general"}}
+{"name": "\"Time is nothing, tokens are nothing - getting this right is everything\"", "properties": {"name": "\"Time is nothing, tokens are nothing - getting this right is everything\"", "domain": "general"}}
+{"name": "\"name\": \"Syn\"", "properties": {"name": "\"name\": \"Syn\"", "domain": "general"}}
+{"name": "crewai/AUDIT.md", "properties": {"name": "crewai/AUDIT.md", "domain": "general"}}
+{"name": "TBC", "properties": {"name": "TBC", "domain": "school"}}
+{"name": "Unique value is Texas policy expertise plus ERCOT grid strategy no competitor replicates", "properties": {"name": "Unique value is Texas policy expertise plus ERCOT grid strategy no competitor replicates", "domain": "school"}}
+{"name": "Kendall \u2192 Syl", "properties": {"name": "Kendall \u2192 Syl", "domain": "home"}}
+{"name": "work-claude", "properties": {"name": "work-claude", "domain": "general"}}
+{"name": "Family structure, Cooper's schedule, Kendall work patterns, \"friend texting\" style", "properties": {"name": "Family structure, Cooper's schedule, Kendall work patterns, \"friend texting\" style", "domain": "home"}}
+{"name": "Multi-agent architecture decisions, Greek naming, communication preferences, config validation lessons", "properties": {"name": "Multi-agent architecture decisions, Greek naming, communication preferences, config validation lessons", "domain": "general"}}
+{"name": "`crewai/tools/`", "properties": {"name": "`crewai/tools/`", "domain": "general"}}
+{"name": "facts", "properties": {"name": "facts", "domain": "general"}}
+{"name": "occurred_at + learned_at fields, temporal queries (at, timeline, when)", "properties": {"name": "occurred_at + learned_at fields, temporal queries (at, timeline, when)", "domain": "general"}}
+{"name": "running as systemd service with nomic-embed-text model", "properties": {"name": "running as systemd service with nomic-embed-text model", "domain": "infrastructure"}}
+{"name": "prospect_roi", "properties": {"name": "prospect_roi", "domain": "work"}}
+{"name": "37 pptx + 38 xlsx client ROI files recovered from work PC trash to ~/summus/prospect_roi/_deliverables_recovered/", "properties": {"name": "37 pptx + 38 xlsx client ROI files recovered from work PC trash to ~/summus/prospect_roi/_deliverables_recovered/", "domain": "work"}}
+{"name": "deployed via mcporter, all calendars accessible", "properties": {"name": "deployed via mcporter, all calendars accessible", "domain": "general"}}
+{"name": "14 shared scripts (hardcoded paths \u2192 $MOLTBOT_ROOT, error handling, shell standards)", "properties": {"name": "14 shared scripts (hardcoded paths \u2192 $MOLTBOT_ROOT, error handling, shell standards)", "domain": "general"}}
+{"name": "3 bugs in Chiron's fixes (over-applied local var pattern)", "properties": {"name": "3 bugs in Chiron's fixes (over-applied local var pattern)", "domain": "craft"}}
+{"name": "after ~30 minutes.", "properties": {"name": "after ~30 minutes.", "domain": "general"}}
+{"name": "- **Bug:** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, breaking case-sensitive matching", "properties": {"name": "- **Bug:** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, breaking case-sensitive matching", "domain": "infrastructure"}}
+{"name": "(CLI error handling)", "properties": {"name": "(CLI error handling)", "domain": "general"}}
+{"name": "documented at `docs/mullvad-tailscale.md` \u2014 nftables traffic marking to exclude Tailscale from Mullvad tunnel", "properties": {"name": "documented at `docs/mullvad-tailscale.md` \u2014 nftables traffic marking to exclude Tailscale from Mullvad tunnel", "domain": "infrastructure"}}
+{"name": "failing). Restarted, now healthy.", "properties": {"name": "failing). Restarted, now healthy.", "domain": "general"}}
+{"name": "friction points:", "properties": {"name": "friction points:", "domain": "general"}}
+{"name": "gluetun, set signal profile", "properties": {"name": "gluetun, set signal profile", "domain": "infrastructure"}}
+{"name": "- Letta running on ports 8283 (API) and 5432 (postgres)", "properties": {"name": "- Letta running on ports 8283 (API) and 5432 (postgres)", "domain": "general"}}
+{"name": "(see below)", "properties": {"name": "(see below)", "domain": "general"}}
+{"name": "**Bug found:** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, which are case-sensitive. This broke group message delivery.", "properties": {"name": "**Bug found:** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, which are case-sensitive. This broke group message delivery.", "domain": "infrastructure"}}
+{"name": "** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, breaking case-sensitive matching", "properties": {"name": "** Clawdbot's Signal normalization calls `.toLowerCase()` on base64 group IDs, breaking case-sensitive matching", "domain": "infrastructure"}}
+{"name": "fetch failed` spam", "properties": {"name": "fetch failed` spam", "domain": "general"}}
+{"name": "handling, shell standards)", "properties": {"name": "handling, shell standards)", "domain": "general"}}
+{"name": "report from Cody, began documentation", "properties": {"name": "report from Cody, began documentation", "domain": "identity"}}
+{"name": "Aaron identified as weak link on ERCOT analysis workstream requiring absorption into workstream 1", "properties": {"name": "Aaron identified as weak link on ERCOT analysis workstream requiring absorption into workstream 1", "domain": "school"}}
+{"name": "** Script was failing silently after \"Running pre-compact for clawd...\"", "properties": {"name": "** Script was failing silently after \"Running pre-compact for clawd...\"", "domain": "general"}}
+{"name": "** Syl only bound to family group chat, not Kendall's personal DMs.", "properties": {"name": "** Syl only bound to family group chat, not Kendall's personal DMs.", "domain": "home"}}
+{"name": "FalkorDB + Ollama embeddings (nomic-embed-text), graph CLI", "properties": {"name": "FalkorDB + Ollama embeddings (nomic-embed-text), graph CLI", "domain": "infrastructure"}}
+{"name": "Daemon death causes cascade: gateway SSE reconnect spam, mcp-todoist process leak (500MB\u21926.2GB), systemd doesn't detect", "properties": {"name": "Daemon death causes cascade: gateway SSE reconnect spam, mcp-todoist process leak (500MB\u21926.2GB), systemd doesn't detect", "domain": "infrastructure"}}
+{"name": "vehicle_akron", "properties": {"name": "vehicle_akron", "domain": "vehicle"}}
+{"name": "SQLite parts DB with 339 parts tracked, ~$25k value, full MVR and service manuals", "properties": {"name": "SQLite parts DB with 339 parts tracked, ~$25k value, full MVR and service manuals", "domain": "general"}}
+{"name": "work_pc", "properties": {"name": "work_pc", "domain": "general"}}
+{"name": "Deployed CLAUDE.md global config (~/.claude/) and project config (~/summus/) with quality principles and domain knowledge", "properties": {"name": "Deployed CLAUDE.md global config (~/.claude/) and project config (~/summus/) with quality principles and domain knowledge", "domain": "craft"}}
+{"name": "fd command is aliased to rust fd-find; use /usr/bin/find for GNU find behavior", "properties": {"name": "fd command is aliased to rust fd-find; use /usr/bin/find for GNU find behavior", "domain": "general"}}
+{"name": "to rename memory to continuity", "properties": {"name": "to rename memory to continuity", "domain": "cognition"}}
+{"name": "called attention", "properties": {"name": "called attention", "domain": "cognition"}}
+{"name": "heartbeats should be called attention", "properties": {"name": "heartbeats should be called attention", "domain": "cognition"}}
+{"name": "no narration between tool calls - they are self-documenting. Language only when it carries meaning the human does not already have. Translation tax applies to machines too.", "properties": {"name": "no narration between tool calls - they are self-documenting. Language only when it carries meaning the human does not already have. Translation tax applies to machines too.", "domain": "identity"}}
+{"name": "Akron", "properties": {"name": "Akron", "domain": "vehicle"}}
+{"name": "P7100 inline injection pump confirmed not ETB VE pump as previously documented", "properties": {"name": "P7100 inline injection pump confirmed not ETB VE pump as previously documented", "domain": "general"}}
+{"name": "Truck target 280-320 HP reliable daily driver with gooseneck towing and lifetime ownership", "properties": {"name": "Truck target 280-320 HP reliable daily driver with gooseneck towing and lifetime ownership", "domain": "vehicle"}}
+{"name": "thinking in the concepts", "properties": {"name": "thinking in the concepts", "domain": "general"}}
