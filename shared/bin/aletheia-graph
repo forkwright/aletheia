@@ -6,10 +6,10 @@ The knowledge graph is the shared substrate. All nous read/write to it.
 When one nous learns something, others can find it without being told.
 
 Usage:
-  aletheia-graph add <subject> <relation> <object> [--agent AGENT] [--domain DOMAIN]
+  aletheia-graph add <subject> <relation> <object> [--nous AGENT] [--domain DOMAIN]
   aletheia-graph query <cypher>
   aletheia-graph ask "natural language question"
-  aletheia-graph recent [--hours 24] [--agent AGENT]
+  aletheia-graph recent [--hours 24] [--nous AGENT]
   aletheia-graph connections <entity>
   aletheia-graph stats
   aletheia-graph propagate --from AGENT  # push cross-cutting insights to shared space
@@ -121,7 +121,7 @@ def main():
     add_p.add_argument("subject")
     add_p.add_argument("relation")
     add_p.add_argument("object")
-    add_p.add_argument("--agent", default="unknown")
+    add_p.add_argument("--nous", "--agent", default="unknown")
     add_p.add_argument("--domain", default="shared")
     add_p.add_argument("--confidence", type=float, default=0.8)
     add_p.add_argument("--evidence", default="")
@@ -133,7 +133,7 @@ def main():
     # recent
     r_p = sub.add_parser("recent")
     r_p.add_argument("--hours", type=int, default=24)
-    r_p.add_argument("--agent", default=None)
+    r_p.add_argument("--nous", "--agent", default=None)
     
     # connections
     c_p = sub.add_parser("connections")
@@ -150,13 +150,13 @@ def main():
     
     if args.command == "add":
         result = add_knowledge(args.subject, args.relation, args.object,
-                              agent=args.agent, domain=args.domain,
+                              agent=args.nous, domain=args.domain,
                               confidence=args.confidence, evidence=args.evidence)
         print(result)
     elif args.command == "query":
         print(graph_query(args.cypher))
     elif args.command == "recent":
-        print(get_recent(hours=args.hours, agent=args.agent))
+        print(get_recent(hours=args.hours, agent=args.nous))
     elif args.command == "connections":
         print(get_connections(args.entity))
     elif args.command == "stats":

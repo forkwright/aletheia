@@ -2,8 +2,8 @@
 """
 attention-check — Adaptive awareness system.
 
-Replaces static heartbeat with context-aware attention.
-Called by heartbeat cron, but generates a DIFFERENT prompt
+Replaces static periodic checks with context-aware directed attention.
+Called during prosoche cycle, generates an adaptive awareness prompt
 based on what actually needs attention right now.
 
 Outputs a prompt for the nous, or nothing if truly nothing needs attention.
@@ -146,7 +146,7 @@ def check_agents():
     alerts = []
     try:
         result = subprocess.run(
-            ["agent-health"],
+            ["nous-health"],
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:

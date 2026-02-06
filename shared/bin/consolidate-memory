@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+import os
+os.environ.setdefault("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+os.environ.setdefault("ALETHEIA_SHARED", os.path.join(os.environ["ALETHEIA_ROOT"], "shared"))
+os.environ.setdefault("ALETHEIA_NOUS", os.path.join(os.environ["ALETHEIA_ROOT"], "nous"))
 """
 consolidate-memory - Automated memory consolidation
 
 Reads daily memory files, extracts significant items, and:
 1. Promotes key learnings to MEMORY.md
 2. Extracts facts to facts.jsonl
-3. Adds events to temporal graph
+3. Adds events to knowledge graph
 
 Run daily via cron or during heartbeats.
 """
@@ -176,7 +179,7 @@ def extract_facts(content: str, source: str) -> List[Dict]:
 
 
 def extract_events(content: str, source: str, file_date: Optional[str] = None) -> List[Dict]:
-    """Extract events for temporal graph"""
+    """Extract events for knowledge graph"""
     events = []
     
     # Look for incident headers (## Incident: Name)
@@ -284,14 +287,14 @@ def add_facts(facts: List[Dict], dry_run: bool = False) -> int:
 
 
 def add_events_to_graph(events: List[Dict], dry_run: bool = False) -> int:
-    """Add events to temporal graph"""
+    """Add events to aletheia knowledge graph"""
     if not events:
         return 0
     
-    # Find temporal-graph binary
-    temporal_graph = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/temporal-graph")
-    if not temporal_graph.exists():
-        print("Warning: temporal-graph not found, skipping event creation", file=sys.stderr)
+    # Find aletheia-graph binary
+    aletheia_graph = Path(os.environ.get("ALETHEIA_SHARED", "/mnt/ssd/aletheia/shared")) / "bin" / "aletheia-graph"
+    if not aletheia_graph.exists():
+        print("Warning: aletheia-graph not found, skipping event creation", file=sys.stderr)
         return 0
     
     added = 0
@@ -303,7 +306,7 @@ def add_events_to_graph(events: List[Dict], dry_run: bool = False) -> int:
         
         try:
             cmd = [
-                str(temporal_graph), "add",
+                str(aletheia_graph), "add",
                 event["name"],
                 event["type"],
                 "--desc", event.get("description", "")
@@ -385,7 +388,7 @@ def consolidate(days_back: int = 7, dry_run: bool = False, verbose: bool = False
     # Add facts
     stats["facts_added"] = add_facts(all_facts, dry_run)
     
-    # Add events to temporal graph
+    # Add events to knowledge graph
     stats["events_added"] = add_events_to_graph(all_events, dry_run)
     
     # Save state

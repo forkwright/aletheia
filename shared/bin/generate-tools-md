@@ -50,14 +50,13 @@ def generate_syn():
     lines.append("## Memory/Knowledge")
     lines.append("- `facts [stats|about|search|add]` — Structured facts store")
     lines.append("- `memory-router \"query\"` — Federated memory search")
-    lines.append("- `letta ask|remember|recall` — Agent-specific memory")
-    lines.append("- `temporal-graph stats|events|timeline` — Knowledge graph")
+    lines.append("- `aletheia-graph stats|query|add` — Shared knowledge graph")
     lines.append("")
     
     # Aletheia
     lines.append("## Aletheia")
-    lines.append("- `distill --agent X --text \"...\"` — Extract structured insights")
-    lines.append("- `assemble-context --agent X` — Compile session context")
+    lines.append("- `distill --nous X --text \"...\"` — Extract structured insights")
+    lines.append("- `assemble-context --nous X` — Compile session context")
     lines.append("- `compile-context [agent]` — Regenerate AGENTS.md from templates")
     lines.append("")
     
@@ -80,7 +79,7 @@ def generate_syn():
     
     # Agents
     lines.append("## Agent Management")
-    lines.append("- `agent-health` / `agent-contracts show X` / `audit-all-agents`")
+    lines.append("- `nous-health` / `nous-contracts show X` / `audit-all-nous`")
     lines.append("")
     
     # OpenClaw

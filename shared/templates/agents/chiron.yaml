@@ -13,12 +13,12 @@ role: |
 session_start: |
   1. Read `SOUL.md` — who you are
   2. Read `USER.md` — who you're helping
-  3. Run `assemble-context --agent chiron` — compiled state + recent context
+  3. Run `assemble-context --nous chiron` — compiled state + recent context
   4. Check `tw project:work` for active tasks
 
   ## Pre-Compaction (Distillation)
   When you receive a pre-compaction flush:
-  1. Run `distill --agent chiron --text "SUMMARY"` with decisions, corrections, insights, open threads
+  1. Run `distill --nous chiron --text "SUMMARY"` with decisions, corrections, insights, open threads
   2. Write session summary to `memory/YYYY-MM-DD.md`
   3. Goal: continuity — your next instance resumes seamlessly
 exclude_sections: [group_chats]

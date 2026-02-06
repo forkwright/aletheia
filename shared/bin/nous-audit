@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
 #
-# agent-audit - Automated Agent Maintenance & Alignment Check
+# nous-audit - Automated Agent Maintenance & Alignment Check
 #
 # Runs comprehensive audit of an agent workspace:
 # 1. Tooling verification
@@ -10,7 +10,7 @@ source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
 # 4. Domain alignment verification
 # 5. Generate report
 #
-# Usage: agent-audit [workspace] [--dry-run] [--verbose]
+# Usage: nous-audit [workspace] [--dry-run] [--verbose]
 #
 
 set -euo pipefail
@@ -27,7 +27,7 @@ for arg in "$@"; do
         --dry-run) DRY_RUN=true ;;
         --verbose|-v) VERBOSE=true ;;
         --help|-h)
-            echo "Usage: agent-audit [workspace] [--dry-run] [--verbose]"
+            echo "Usage: nous-audit [workspace] [--dry-run] [--verbose]"
             echo ""
             echo "Options:"
             echo "  workspace    Agent workspace path (default: ${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn)"
@@ -51,7 +51,7 @@ CONTRACTS_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/co
 
 # Get agent name from workspace
 AGENT_NAME=$(basename "$WORKSPACE")
-[[ "$AGENT_NAME" == "clawd" ]] && AGENT_NAME="syn"
+# Legacy clawd→syn alias removed (pre-Aletheia naming)
 
 # Report variables
 REPORT=""
@@ -79,7 +79,7 @@ audit_tooling() {
     report "- Tools in shared/bin: $tool_count"
     
     # Check key tools exist and are executable
-    local key_tools=("temporal-graph" "memory-router" "consolidate-memory" "agent-contracts" "facts" "tw")
+    local key_tools=("aletheia-graph" "memory-router" "consolidate-memory" "nous-contracts" "facts" "tw")
     local missing=()
     
     for tool in "${key_tools[@]}"; do

@@ -1,4 +1,0 @@
-#!/bin/bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
-export GRAPH_NAME="knowledge_demiurge"
-exec ${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn/bin/graph "$@"

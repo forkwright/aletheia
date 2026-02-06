@@ -7,10 +7,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
-DASHBOARD_PATH="$CLAWD_DIR/agent-status/dashboard.md"
+DASHBOARD_PATH="$CLAWD_DIR/nous-status/dashboard.md"
 
 # Get agent health data
-HEALTH_JSON=$("$SCRIPT_DIR/agent-health" --json --full 2>/dev/null)
+HEALTH_JSON=$("$SCRIPT_DIR/nous-health" --json --full 2>/dev/null)
 
 # Extract timestamp and blocked tasks
 TIMESTAMP=$(echo "$HEALTH_JSON" | jq -r '.timestamp')

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
 #
-# audit-all-agents - Run agent audit on all 7 agent workspaces
+# audit-all-nous - Run agent audit on all 7 agent workspaces
 #
 
-AGENTS=(clawd syl chiron eiron demiurge arbor akron)
-LOG_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/logs/agent-audits"
+AGENTS=(syn syl chiron eiron demiurge arbor akron)
+LOG_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/logs/nous-audits"
 TIMESTAMP=$(date '+%Y-%m-%d_%H%M')
 
 mkdir -p "$LOG_DIR"
@@ -18,7 +18,7 @@ for agent in "${AGENTS[@]}"; do
     if [[ -d "$workspace" ]]; then
         echo ""
         echo "--- Auditing: $agent ---"
-        ${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/agent-audit "$workspace" > "$LOG_DIR/${agent}-${TIMESTAMP}.log" 2>&1
+        ${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/nous-audit "$workspace" > "$LOG_DIR/${agent}-${TIMESTAMP}.log" 2>&1
         
         if [[ $? -eq 0 ]]; then
             echo "✓ $agent: OK"

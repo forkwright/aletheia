@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
-# auto-status - Generate agent status from session activity
-# Usage: auto-status [agent]
+# nous-auto-status - Generate nous status from session activity
+# Usage: nous-auto-status [nous]
 
 set -euo pipefail
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
 AGENT="${1:-all}"
-STATUS_DIR="$ALETHEIA_ROOT/nous/syn/agent-status"
+STATUS_DIR="$ALETHEIA_ROOT/nous/syn/nous-status"
 
 generate_status() {
     local agent="$1"

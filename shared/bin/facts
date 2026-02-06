@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+import os
+os.environ.setdefault('ALETHEIA_ROOT', '/mnt/ssd/aletheia')
+os.environ.setdefault('ALETHEIA_SHARED', os.path.join(os.environ['ALETHEIA_ROOT'], 'shared'))
 """
 facts - Query and manage atomic facts in memory with bi-temporal tracking.
 
@@ -36,8 +38,8 @@ from pathlib import Path
 def get_facts_file():
     """Get path to facts.jsonl."""
     import os
-    workspace = Path(os.environ.get('ALETHEIA_ROOT', '${ALETHEIA_ROOT:-/mnt/ssd/aletheia}')) / 'clawd'
-    return workspace / 'memory' / 'facts.jsonl'
+    shared = Path(os.environ.get('ALETHEIA_SHARED', '/mnt/ssd/aletheia/shared'))
+    return shared / 'memory' / 'facts.jsonl'
 
 
 def load_facts(include_invalid=False):

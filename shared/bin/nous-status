@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Agent status aggregator - shows all domain agent status
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
-STATUS_DIR="$ALETHEIA_ROOT/nous/syn/agent-status"
+STATUS_DIR="$ALETHEIA_ROOT/nous/syn/nous-status"
 
 echo "# Agent Status Overview"
 echo "*Generated: $(date -Iseconds)*"

@@ -78,32 +78,18 @@ todoist:
     quick_add: "mcporter call todoist.todoist_task_quick_add --args '{\"text\":\"...\"}'"
 
 memory:
-  letta:
-    port: 8283
-    agents:
-      syn: "agent-644c65f8-72d4-440d-ba5d-330a3d391f8e"
-      syl: "agent-9aa39693-3bbe-44ae-afb6-041d37ac45a2"
-      chiron: "agent-48ff1c5e-9a65-44bd-9667-33019caa7ef3"
-      eiron: "agent-40014ebe-121d-4d0b-8ad4-7fecc528375d"
-      demiurge: "agent-3d459f2b-867a-4ff2-8646-c38820810cb5"
-    commands:
-      status: "letta status"
-      ask: "letta ask \"question\""
-      remember: "letta remember \"fact\""
-      recall: "letta recall \"topic\""
-      query_all: "letta-query-all \"query\""
   memory_router: "memory-router \"query\""
-  temporal_graph:
+  knowledge_graph:
     db: falkordb
-    graph: temporal_events
+    graph: aletheia
     commands:
-      stats: "temporal-graph stats"
-      events: "temporal-graph events --after \"1 day ago\""
-      timeline: "temporal-graph timeline <entity> --days 7"
+      stats: "aletheia-graph stats"
+      query: "aletheia-graph query CYPHER"
+      add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
 
 aletheia:
-  distill: "distill --agent AGENT --text \"SUMMARY\""
-  assemble: "assemble-context --agent AGENT"
+  distill: "distill --nous AGENT --text \"SUMMARY\""
+  assemble: "assemble-context --nous AGENT"
   compile: "compile-context [AGENT]"
 
 mba:
@@ -135,10 +121,10 @@ webchat:
   tailscale: "https://TAILSCALE_SERVER:8443"
 
 agents:
-  contracts: "agent-contracts show AGENT"
-  health: "agent-health"
-  audit: "audit-all-agents"
-  route: "agent-contracts route \"request\""
+  contracts: "nous-contracts show AGENT"
+  health: "nous-health"
+  audit: "audit-all-nous"
+  route: "nous-contracts route \"request\""
 
 openclaw:
   patches:
