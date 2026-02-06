@@ -134,3 +134,27 @@ openclaw:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"
     validate: "openclaw doctor"
+
+# === New Capabilities (2026-02-05) ===
+
+langfuse:
+  description: "Session observability and cross-nous pattern analysis"
+  url: "http://localhost:3100"
+  dashboard: "http://192.168.0.29:3100"
+  commands:
+    status: "trace-session --stats"
+  notes: "Self-hosted. Configure API keys via dashboard."
+
+browser_automation:
+  description: "LLM-driven web browser automation"
+  command: "browse"
+  venv: "/mnt/ssd/aletheia/infrastructure/browser-use/.venv"
+  primary_user: "chiron"
+  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
+
+document_processing:
+  description: "PDF and document extraction to markdown"
+  command: "ingest-doc"
+  venv: "/mnt/ssd/aletheia/infrastructure/docling/.venv"
+  primary_user: "eiron"
+  notes: "Uses Docling. Handles PDF, DOCX, HTML, images."
