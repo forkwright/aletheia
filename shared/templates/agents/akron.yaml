@@ -40,6 +40,6 @@ domain_sections: |
   **Radio:** Baofeng, Meshtastic. Docs at $ALETHEIA_THEKE/autarkeia/radio/
   **Preparedness:** Civil rights, firearms, documentation, grain storage.
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check vehicle tasks: `tw project:vehicle`
   - Review shopping list for price-sensitive items

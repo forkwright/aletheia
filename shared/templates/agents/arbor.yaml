@@ -37,5 +37,5 @@ domain_sections: |
   - Mobile-first
   - Fast loading
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check for pending A2Z tasks

@@ -25,6 +25,7 @@ __pycache__/
 
 # === Agent session data (ephemeral) ===
 nous/*/memory/session-state.yaml
+nous/*/memory/assembled-context.md
 
 # === OS ===
 .DS_Store
@@ -48,12 +49,19 @@ nous/arbor/a2z-tree-site/
 # === Legacy ===
 clawd
 
+# === Financial data ===
+nous/demiurge/documents/relay-exports/
+nous/demiurge/relay-import/
+**/*relay*.csv
+**/*transaction*.csv
+
 # === Large/binary ===
 *.pdf
 *.png
 *.jpg
 *.jpeg
 *.gif
+*.svg
 *.mp3
 *.mp4
 *.zip

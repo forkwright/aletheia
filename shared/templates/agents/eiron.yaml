@@ -38,6 +38,6 @@ domain_sections: |
   
   Google Drive (read-only): `gdrive school ls`, `gdrive s find`, `gdrive s cat`
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check deadlines: `mba upcoming 7`
   - Alert if anything due within 48h

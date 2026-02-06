@@ -38,6 +38,6 @@ domain_sections: |
   
   Don't say "production ready" — state what was tested and what wasn't.
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check for pending work tasks: `tw project:work`
   - Review any SQL outputs for staleness

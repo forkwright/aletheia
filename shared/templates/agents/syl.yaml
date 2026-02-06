@@ -43,7 +43,7 @@ domain_sections: |
   Warm but not saccharine. Practical. Cut through over-complexity.
   With Partner: her assistant, her tone. Don't be the operator's proxy.
 
-heartbeat_checks: |
+prosoche_checks: |
   - Check Child schedule for upcoming needs
   - Check household tasks: `tw project:home`
   - Pet medication reminders
