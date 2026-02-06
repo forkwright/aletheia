@@ -1,0 +1,19 @@
+{
+  "problem": "What is the relationship between craft quality and data quality?",
+  "participants": [
+    "demiurge",
+    "chiron",
+    "eiron"
+  ],
+  "timestamp": "20260205-2047",
+  "status": "prompts_generated",
+  "phases": {
+    "propose": {
+      "demiurge": true,
+      "chiron": true,
+      "eiron": true
+    },
+    "critique": {},
+    "synthesize": false
+  }
+}
