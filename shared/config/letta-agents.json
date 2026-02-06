@@ -22,12 +22,12 @@
     "akron": "source-339512d5-f50f-4a33-9a5f-cd9085d07292"
   },
   "workspaces": {
-    "syn": "/mnt/ssd/aletheia/clawd",
-    "syl": "/mnt/ssd/aletheia/syl",
-    "chiron": "/mnt/ssd/aletheia/chiron",
-    "eiron": "/mnt/ssd/aletheia/eiron",
-    "demiurge": "/mnt/ssd/aletheia/demiurge",
-    "arbor": "/mnt/ssd/aletheia/arbor",
-    "akron": "/mnt/ssd/aletheia/akron"
+    "syn": "/mnt/ssd/aletheia/nous/syn",
+    "syl": "/mnt/ssd/aletheia/nous/syl",
+    "chiron": "/mnt/ssd/aletheia/nous/chiron",
+    "eiron": "/mnt/ssd/aletheia/nous/eiron",
+    "demiurge": "/mnt/ssd/aletheia/nous/demiurge",
+    "arbor": "/mnt/ssd/aletheia/nous/arbor",
+    "akron": "/mnt/ssd/aletheia/nous/akron"
   }
 }

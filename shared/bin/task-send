@@ -42,7 +42,7 @@ EXAMPLES:
     $0 --force task-contract.json
 
 NOTES:
-    - Task contracts are sent via the clawdbot agent command
+    - Task contracts are sent via the openclaw sessions_send
     - The task file is moved to the 'sent' directory after successful transmission
     - Target agent validity is checked unless --force is used
     - Task status is updated to 'pending' in the target agent's queue
@@ -133,7 +133,7 @@ echo
 if [[ "$FORCE" != "true" ]]; then
     echo "Checking target agent availability..."
     
-    # Validate that target agent exists in clawdbot config
+    # Validate that target agent exists in openclaw config
     VALID_AGENTS=("syn" "syl" "chiron" "eiron" "demiurge")
     TARGET_VALID=false
     for agent in "${VALID_AGENTS[@]}"; do
@@ -190,8 +190,8 @@ fi
 # Send the task contract
 echo "Sending task contract to $TARGET_AGENT..."
 
-if command -v clawdbot >/dev/null 2>&1; then
-    if clawdbot agent --agent "$TARGET_AGENT" --message "$MESSAGE_CONTENT"; then
+if command -v openclaw >/dev/null 2>&1; then
+    if openclaw agent --agent "$TARGET_AGENT" --message "$MESSAGE_CONTENT"; then
         echo "✓ Task contract sent successfully"
         
         # Copy the task file to target agent's pending directory
@@ -217,7 +217,7 @@ if command -v clawdbot >/dev/null 2>&1; then
         exit 1
     fi
 else
-    echo "Error: clawdbot command not found" >&2
+    echo "Error: openclaw command not found" >&2
     echo "Make sure Clawdbot is installed and configured properly" >&2
     exit 1
 fi

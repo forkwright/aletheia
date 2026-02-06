@@ -1,6 +1,6 @@
 # TOOLS.md - Demiurge's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
 
 
 ## NAS Access
@@ -79,8 +79,8 @@ ssh ck@192.168.0.17 'ls ~/dianoia/autarkeia/praxis/vehicle/'
 ## Research
 
 ```bash
-/mnt/ssd/moltbot/clawd/bin/pplx "query"
-/mnt/ssd/moltbot/clawd/bin/research "query" --sources
+/mnt/ssd/aletheia/shared/bin/pplx "query"
+/mnt/ssd/aletheia/shared/bin/research "query" --sources
 ```
 
 Also: `web_search` tool (Brave)

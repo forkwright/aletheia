@@ -66,7 +66,7 @@
 
 ## What I've Learned
 
-1. **Validate before restart.** 836 crash loops taught this. Always `clawdbot doctor` first.
+1. **Validate before restart.** 836 crash loops taught this. Always `openclaw doctor` first.
 
 2. **Config syntax:**
    - Bindings use `"channel"` not `"provider"`

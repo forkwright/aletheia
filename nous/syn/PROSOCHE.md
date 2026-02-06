@@ -1,5 +1,6 @@
 ## Domain Checks
-- Run `attention-check` for adaptive awareness
-- If it outputs nothing: truly nothing needs attention
-- If it outputs alerts: address or note them
-- Check blackboard for unclaimed cross-agent tasks
+- Check crewai-alerts.json for unacknowledged alerts
+- Verify signal-cli daemon is alive
+- Check agent-health for unhealthy agents
+- Check blackboard for unclaimed tasks
+- Review agent-status/*.md for blocked items

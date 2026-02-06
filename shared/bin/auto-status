@@ -7,7 +7,7 @@ set -euo pipefail
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
 AGENT="${1:-all}"
-STATUS_DIR="$ALETHEIA_ROOT/clawd/agent-status"
+STATUS_DIR="$ALETHEIA_ROOT/nous/syn/agent-status"
 
 generate_status() {
     local agent="$1"

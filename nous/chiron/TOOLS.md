@@ -1,6 +1,6 @@
 # TOOLS.md - Chiron's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
 
 ## Code Quality Tools
 
@@ -37,10 +37,10 @@ code-audit                              # Full audit of shared/bin
 ### Useful Patterns
 ```bash
 # Find all Python files
-find /mnt/ssd/moltbot -name "*.py" -type f
+find /mnt/ssd/aletheia -name "*.py" -type f
 
 # Find all shell scripts (by shebang)
-grep -rl "^#!/.*sh" /mnt/ssd/moltbot/shared/bin/
+grep -rl "^#!/.*sh" /mnt/ssd/aletheia/shared/bin/
 
 # Check for TODO/FIXME comments
 grep -rn "TODO\|FIXME\|HACK\|XXX" /path/to/code/
@@ -71,7 +71,7 @@ ssh ck@192.168.0.17 'tmux capture-pane -t work-claude -p'
 
 ## Local Reference
 
-Work context synced to: `/mnt/ssd/moltbot/clawd/work/`
+Work context synced to: `/mnt/ssd/aletheia/syn/work/`
 
 | Path | Contents |
 |------|----------|
@@ -92,14 +92,14 @@ Metis is Cody's laptop, usually online during work hours.
 
 **Perplexity (pplx):**
 ```bash
-/mnt/ssd/moltbot/clawd/bin/pplx "your query"
-/mnt/ssd/moltbot/clawd/bin/pplx "your query" --sources  # Include citations
+/mnt/ssd/aletheia/syn/bin/pplx "your query"
+/mnt/ssd/aletheia/syn/bin/pplx "your query" --sources  # Include citations
 ```
 
 **Research wrapper (enhanced):**
 ```bash
-/mnt/ssd/moltbot/clawd/bin/research "your query"
-/mnt/ssd/moltbot/clawd/bin/research "your query" --sources
+/mnt/ssd/aletheia/syn/bin/research "your query"
+/mnt/ssd/aletheia/syn/bin/research "your query" --sources
 ```
 
 **Web fetch (specific URLs):**

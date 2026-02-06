@@ -1,7 +1,7 @@
 # Shared Infrastructure Documentation
 
-> This file documents infrastructure available to ALL agents in the moltbot ecosystem.
-> Location: `/mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md`
+> This file documents infrastructure available to ALL agents in the Aletheia ecosystem.
+> Location: `/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md`
 
 ## Network Topology
 
@@ -36,13 +36,13 @@ Tailscale IPs (accessible from anywhere):
 
 | Path | Type | Purpose |
 |------|------|---------|
-| `/mnt/ssd/moltbot/` | Local SSD | Agent workspaces, all moltbot data |
-| `/mnt/ssd/moltbot/shared/` | Local | Cross-agent shared resources |
-| `/mnt/ssd/moltbot/clawd/` | Local | Syn's workspace |
-| `/mnt/ssd/moltbot/chiron/` | Local | Chiron's workspace (work) |
-| `/mnt/ssd/moltbot/eiron/` | Local | Eiron's workspace (school) |
-| `/mnt/ssd/moltbot/syl/` | Local | Syl's workspace (home) |
-| `/mnt/ssd/moltbot/demiurge/` | Local | Demiurge's workspace (craft) |
+| `/mnt/ssd/aletheia/` | Local SSD | Agent workspaces, all aletheia data |
+| `/mnt/ssd/aletheia/shared/` | Local | Cross-agent shared resources |
+| `/mnt/ssd/aletheia/nous/syn/` | Local | Syn's workspace |
+| `/mnt/ssd/aletheia/nous/chiron/` | Local | Chiron's workspace (work) |
+| `/mnt/ssd/aletheia/nous/eiron/` | Local | Eiron's workspace (school) |
+| `/mnt/ssd/aletheia/nous/syl/` | Local | Syl's workspace (home) |
+| `/mnt/ssd/aletheia/nous/demiurge/` | Local | Demiurge's workspace (craft) |
 
 ### NAS Mounts (NFS)
 
@@ -105,7 +105,7 @@ metis push <l> [r]    # Copy file to Metis
 
 ## Shared Tools
 
-All tools in `/mnt/ssd/moltbot/shared/bin/` are symlinked to each agent's workspace.
+All tools in `/mnt/ssd/aletheia/shared/bin/` are symlinked to each agent's workspace.
 
 ### Core Tools
 
@@ -151,9 +151,9 @@ All tools in `/mnt/ssd/moltbot/shared/bin/` are symlinked to each agent's worksp
 
 | File | Purpose |
 |------|---------|
-| `/mnt/ssd/moltbot/shared/config/mcporter.json` | MCP server configurations |
-| `/mnt/ssd/moltbot/shared/config/letta-agents.json` | Letta agent mappings |
-| `/mnt/ssd/moltbot/shared/config/provider-failover.json` | Multi-provider routing |
+| `/mnt/ssd/aletheia/shared/config/mcporter.json` | MCP server configurations |
+| `/mnt/ssd/aletheia/shared/config/letta-agents.json` | Letta agent mappings |
+| `/mnt/ssd/aletheia/shared/config/provider-failover.json` | Multi-provider routing |
 
 ## Memory Systems
 
@@ -275,7 +275,7 @@ Running on worker-node (managed via Portainer):
 
 ## Google Gemini API
 
-**Key location:** `/mnt/ssd/moltbot/shared/config/api-keys.env`
+**Key location:** `/mnt/ssd/aletheia/shared/config/api-keys.env`
 
 ### Available Models
 
@@ -298,7 +298,7 @@ Running on worker-node (managed via Portainer):
 
 ```bash
 # Load API key
-source /mnt/ssd/moltbot/shared/config/api-keys.env
+source /mnt/ssd/aletheia/shared/config/api-keys.env
 
 # Simple query
 curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
@@ -332,7 +332,7 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flas
 ---
 
 *Last updated: 2026-02-03*
-*Location: /mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md*
+*Location: /mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md*
 
 ## Memory Router (Upgraded 2026-02-03)
 

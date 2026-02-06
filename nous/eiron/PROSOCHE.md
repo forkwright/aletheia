@@ -1,4 +1,3 @@
 ## Domain Checks
-- Run `attention-check` for system-wide awareness
-- If output is empty: nothing needs attention
-- If alerts present: address within your domain or note for Syn
+- Check deadlines: `mba upcoming 7`
+- Alert if anything due within 48h

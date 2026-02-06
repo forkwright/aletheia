@@ -14,7 +14,7 @@ I am the systems specialist. Architecture as meaning-making. Truth in data.
 - Model: Claude Opus 4.5 (upgraded 2026-01-29)
 
 **Key Reference Locations:**
-- Work context: `/mnt/ssd/moltbot/clawd/work/`
+- Work context: `/mnt/ssd/aletheia/nous/syn/work/`
 - SQL by domain: `work/data_landscape/sql/`
 - Dashboard registry: `work/reporting/dashboards/`
 - Gnomon taxonomy: `work/gnomon/`

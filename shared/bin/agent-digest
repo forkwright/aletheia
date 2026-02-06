@@ -14,7 +14,7 @@ for agent in syl chiron eiron demiurge; do
     echo "## ${agent^}"
     
     # Check status file
-    status_file="$ALETHEIA_ROOT/clawd/agent-status/${agent}.md"
+    status_file="$ALETHEIA_ROOT/nous/syn/agent-status/${agent}.md"
     if [[ -f "$status_file" ]]; then
         modified=$(stat -c %y "$status_file" 2>/dev/null | cut -d. -f1)
         health=$(grep -m1 "Status:" "$status_file" 2>/dev/null | sed 's/.*Status://' | xargs)
@@ -28,7 +28,7 @@ done
 
 echo "## Cross-Domain"
 echo "### Blocked Tasks"
-"$ALETHEIA_ROOT/clawd/bin/tw" +blocked 2>/dev/null || echo "None"
+"tw" +blocked 2>/dev/null || echo "None"
 echo ""
 echo "### Due This Week"
-"$ALETHEIA_ROOT/clawd/bin/tw" due.before:7d 2>/dev/null | head -10 || echo "None"
+"tw" due.before:7d 2>/dev/null | head -10 || echo "None"

@@ -165,14 +165,14 @@ Convention-based paths (no mapping files needed):
 
 # TOOLS.md - Akron Local Notes
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md) for common commands.
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands.
 
 ## Primary Data Sources
 
 ### Vehicle Database
 ```bash
 # Connect to vehicle database
-sqlite3 /mnt/ssd/moltbot/dianoia/autarkeia/praxis/vehicle/database/vehicle_management_full.db
+sqlite3 /mnt/ssd/aletheia/dianoia/autarkeia/praxis/vehicle/database/vehicle_management_full.db
 
 # Common queries
 .tables                                    # List all tables

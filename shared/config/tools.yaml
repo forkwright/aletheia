@@ -143,7 +143,7 @@ agents:
 openclaw:
   patches:
     signal_group_id: {file: "normalize/signal.js", bug: ".toLowerCase() breaks base64 group IDs"}
-    apply: "/mnt/ssd/aletheia/infrastructure/clawd/bin/patch-runtime"
+    apply: "patch-runtime (in shared/bin/)"
   config:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"

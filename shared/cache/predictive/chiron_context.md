@@ -3,7 +3,7 @@
 ## Recent Work Facts
 - chiron model: anthropic/claude-opus-4-5
 - cody dimensional_resonance: everything must work at multiple layers of abstraction simultaneously
-- system signal_bug_fix: patch-clawdbot script to fix base64 group ID case sensitivity
+- system signal_bug_fix: patch-runtime script to fix base64 group ID case sensitivity
 - worker_node tailscale_ip: 100.87.6.45
 - hifi_nas tailscale_ip: 100.104.41.59
 - metis tailscale_ip: 100.117.8.41

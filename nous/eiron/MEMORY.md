@@ -32,9 +32,9 @@
 - **Strategy**: Absorb Aaron's ERCOT work into Workstream 1 to prevent failure
 
 #### Key Files
-- `/mnt/ssd/moltbot/clawd/mba/sp26/capstone/CLAUDE.md` - Project context
-- `/mnt/ssd/moltbot/clawd/mba/sp26/capstone/PROJECT_STATUS.md` - Status tracker
-- `/mnt/ssd/moltbot/clawd/mba/sp26/capstone/project/ROADMAP.md` - Derek's master plan
+- `/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/CLAUDE.md` - Project context
+- `/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/PROJECT_STATUS.md` - Status tracker
+- `/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/project/ROADMAP.md` - Derek's master plan
 
 ### SP26 Other Courses
 - **Advanced Corporate Finance** (Almazan): HW1 + Quiz 1 prep due Feb 1
@@ -45,7 +45,7 @@
 ## Infrastructure
 
 ### Drive vs Local Status
-- **Local**: Complete project structure at `/mnt/ssd/moltbot/clawd/mba/sp26/capstone/`
+- **Local**: Complete project structure at `/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/`
 - **Drive**: SP26 Capstone folder doesn't exist yet on gdrive-school:TEMBA/
 - **Sync**: Monitoring script created (`sync_capstone.sh`)
 
@@ -58,7 +58,7 @@
 - ✅ School email (`cody.kickertz@utexas.edu`)
 - ✅ School calendar (gcal integration)
 - ✅ School Google Drive (`gdrive-school:TEMBA/`)
-- ✅ MBA local system (`/mnt/ssd/moltbot/clawd/mba/`)
+- ✅ MBA local system (`/mnt/ssd/aletheia/nous/syn/mba/`)
 - ✅ Taskwarrior for MBA tasks (`tw project:mba`)
 
 ## Coordination
@@ -66,7 +66,7 @@
 ### With Syn (Main Agent)
 - **Reporting**: Status updates via sessions_send
 - **Escalation**: Cross-domain impacts, bandwidth conflicts
-- **Status file**: `/mnt/ssd/moltbot/clawd/agent-status/eiron.md` (to be created)
+- **Status file**: `/mnt/ssd/aletheia/nous/syn/agent-status/eiron.md` (to be created)
 
 ### Ecosystem Position
 - **Syn**: Deep orchestrator, handles philosophy/complexity

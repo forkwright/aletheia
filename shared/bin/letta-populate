@@ -21,7 +21,7 @@ LETTA_CMD = "${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/
 
 # Domain mapping - which facts go to which agent
 DOMAIN_MAP = {
-    "syn": ["system", "agents", "meta", "orchestration", "infrastructure", "clawdbot"],
+    "syn": ["system", "agents", "meta", "orchestration", "infrastructure", "openclaw"],
     "syl": ["family", "home", "kendall", "household", "kids", "cooper", "luna"],
     "chiron": ["work", "summus", "sql", "dashboard", "data", "rso", "sms"],
     "eiron": ["school", "mba", "temba", "coursework", "class", "strategic", "acf", "macro"],

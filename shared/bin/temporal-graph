@@ -192,7 +192,7 @@ class TemporalGraph:
             return "person"
         elif name_lower in ["syn", "syl", "chiron", "eiron", "demiurge", "akron", "arbor"]:
             return "agent"
-        elif name_lower in ["system", "clawdbot", "falkordb", "ollama", "letta"]:
+        elif name_lower in ["system", "openclaw", "falkordb", "ollama", "letta"]:
             return "system"
         elif "ardent" in name_lower:
             return "business"

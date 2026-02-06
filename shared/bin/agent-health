@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHARED_DIR="$(dirname "$SCRIPT_DIR")"
 CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
-SESSIONS_DIR="$HOME/.clawdbot/agents"
+SESSIONS_DIR="$HOME/.openclaw/agents"
 
 # Default options
 OUTPUT_FORMAT="table"

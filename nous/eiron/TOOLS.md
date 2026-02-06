@@ -1,6 +1,6 @@
 # TOOLS.md - Eiron's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/moltbot/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
 
 
 ## Memory System
@@ -21,13 +21,13 @@ memory/teams/               # Team member analysis
 
 ## MBA System (Local)
 
-Gold standard at: `/mnt/ssd/moltbot/clawd/mba/`
+Gold standard at: `/mnt/ssd/aletheia/syn/mba/`
 
 ```bash
 # Quick access (via Syn's tools)
-/mnt/ssd/moltbot/clawd/bin/mba status
-/mnt/ssd/moltbot/clawd/bin/mba prep acf
-/mnt/ssd/moltbot/clawd/bin/mba tasks
+/mnt/ssd/aletheia/syn/bin/mba status
+/mnt/ssd/aletheia/syn/bin/mba prep acf
+/mnt/ssd/aletheia/syn/bin/mba tasks
 ```
 
 | Path | Contents |
@@ -55,22 +55,22 @@ rclone cat "gdrive-school:TEMBA/path/to/file"
 
 MBA tasks tracked in Taskwarrior:
 ```bash
-/mnt/ssd/moltbot/clawd/bin/tw project:mba
-/mnt/ssd/moltbot/clawd/bin/tw project:capstone
+/mnt/ssd/aletheia/syn/bin/tw project:mba
+/mnt/ssd/aletheia/syn/bin/tw project:capstone
 ```
 
 ## Calendar
 
 Deadlines in Google Calendar (via gcal):
 ```bash
-/mnt/ssd/moltbot/clawd/bin/gcal events -c cody.kickertz@gmail.com -d 14
+/mnt/ssd/aletheia/syn/bin/gcal events -c cody.kickertz@gmail.com -d 14
 ```
 
 ## Metis Sync
 
 MBA materials sync from Metis:
 ```bash
-/mnt/ssd/moltbot/clawd/bin/mba sync
+/mnt/ssd/aletheia/syn/bin/mba sync
 ```
 
 Source: `ck@192.168.0.17:~/dianoia/chrematistike/`

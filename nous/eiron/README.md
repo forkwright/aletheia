@@ -17,12 +17,12 @@
 
 ```bash
 # Local MBA system
-/mnt/ssd/moltbot/clawd/mba/sp26/capstone/
+/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/
 
 # Key files for analysis
-/mnt/ssd/moltbot/clawd/mba/sp26/capstone/CLAUDE.md          # Project context
-/mnt/ssd/moltbot/clawd/mba/sp26/capstone/PROJECT_STATUS.md  # Status tracker  
-/mnt/ssd/moltbot/clawd/mba/sp26/capstone/project/ROADMAP.md # Derek's master plan
+/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/CLAUDE.md          # Project context
+/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/PROJECT_STATUS.md  # Status tracker  
+/mnt/ssd/aletheia/nous/syn/mba/sp26/capstone/project/ROADMAP.md # Derek's master plan
 
 # Team drive (needs setup)
 gdrive-school:TEMBA/SP26 Capstone/  # Doesn't exist yet

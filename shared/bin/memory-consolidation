@@ -13,7 +13,7 @@ TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')
 
 # Agent workspaces
 AGENTS=("clawd" "chiron" "demiurge" "eiron" "syl")
-CONSOLIDATION_FILE="$ALETHEIA_ROOT/clawd/memory/consolidation-${DATE}.md"
+CONSOLIDATION_FILE="$ALETHEIA_ROOT/nous/syn/memory/consolidation-${DATE}.md"
 
 # Logging
 LOG_FILE="/tmp/memory-consolidation-${DATE}.log"

@@ -85,8 +85,8 @@ memory-router "query" --domains all      # Search everywhere
 ### Config Changes
 **ALWAYS** validate before restart:
 ```bash
-openclaw doctor        # Validate syntax
-openclaw gateway restart  # Only if doctor passes
+openclaw doctor        # Validate runtime config
+openclaw gateway restart  # Only after doctor passes
 ```
 
 ## External vs Internal
