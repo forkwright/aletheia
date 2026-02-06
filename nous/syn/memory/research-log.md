@@ -45,3 +45,9 @@ Confidence: Medium-High for the conceptual mapping. Low for the formal mathemati
 - [2026-02-06 10:19] **search**: `metaxynoesis distributed cognition human-AI` → 3 results
 - [2026-02-06 10:19] **bib**: `10.1017/s0140525x12000477` → 1 results
 - [2026-02-06 10:19] **info**: `10.1017/s0140525x12000477` → 1 results
+- [2026-02-06 12:54] **cite**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:56] **cite**: `10.1017/s0140525x12000477` → 0 results

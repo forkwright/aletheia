@@ -38,6 +38,18 @@ import subprocess
 import re
 from datetime import datetime
 from pathlib import Path
+import time
+
+_last_s2_call = 0.0
+
+def _s2_throttle():
+    """Enforce 1 req/sec rate limit for Semantic Scholar."""
+    global _last_s2_call
+    elapsed = time.time() - _last_s2_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    _last_s2_call = time.time()
+
 
 OPENALEX_BASE = "https://api.openalex.org"
 ARXIV_BASE = "http://export.arxiv.org/api/query"
@@ -188,6 +200,7 @@ def search_arxiv(query, limit=5):
 # ── Semantic Scholar ────────────────────────────────────
 
 def search_s2(query, limit=5):
+    _s2_throttle()
     params = {
         "query": query,
         "limit": min(limit, 20),
@@ -225,6 +238,7 @@ def search_s2(query, limit=5):
 
 
 def get_citations(paper_id, direction="citations", limit=10):
+    _s2_throttle()
     headers = {}
     if S2_KEY:
         headers["x-api-key"] = S2_KEY
@@ -239,9 +253,12 @@ def get_citations(paper_id, direction="citations", limit=10):
         f"{S2_BASE}/paper/{urllib.parse.quote(paper_id, safe='')}/{direction}?fields={fields}&limit={limit}",
         headers=headers
     )
-    parsed = json.loads(data) if data else {}
+    if not data:
+        return []
+    parsed = json.loads(data)
+    items = parsed.get("data") or []
     results = []
-    for item in parsed.get("data", []):
+    for item in items:
         paper = item.get("citingPaper" if direction == "citations" else "citedPaper", {})
         if not paper.get("title"):
             continue
@@ -529,14 +546,18 @@ def main():
                         print(f"      DOI: {r['doi']}")
             else:
                 # Fallback to CrossRef for references
-                print("  (S2 unavailable, trying CrossRef...)")
+                print("  (S2 references elided, using CrossRef...)")
                 doi = args.paper_id.replace("DOI:", "")
                 info = crossref_info(doi)
                 if info:
                     for i, ref in enumerate(info.get("reference", [])[:args.limit], 1):
-                        title = ref.get("article-title", ref.get("unstructured", "?"))[:80]
+                        title = ref.get("article-title") or ref.get("volume-title") or ref.get("unstructured", "?")[:80]
+                        author = ref.get("author", "")
                         year = ref.get("year", "?")
-                        print(f"  [{i}] {title} ({year})")
+                        desc = f"{title}"
+                        if author:
+                            desc = f"{author}: {desc}"
+                        print(f"  [{i}] {desc} ({year})")
         return
 
     if args.command == "fetch":
@@ -550,15 +571,32 @@ def main():
             for i, r in enumerate(refs, 1):
                 print(f"[{i}] {r['title']} ({r.get('year','?')}) — {r.get('venue','')} — {r['citations']} cites")
         else:
-            # CrossRef fallback
+            # CrossRef fallback (better metadata)
             doi = args.paper_id.replace("DOI:", "")
             info = crossref_info(doi)
             if info:
                 for i, ref in enumerate(info.get("reference", [])[:args.limit], 1):
-                    title = ref.get("article-title", ref.get("unstructured", "?"))[:80]
+                    title = ref.get("article-title") or ref.get("volume-title") or ""
+                    author = ref.get("author", "")
                     year = ref.get("year", "?")
                     doi_ref = ref.get("DOI", "")
-                    print(f"[{i}] {title} ({year})" + (f" — {doi_ref}" if doi_ref else ""))
+                    journal = ref.get("journal-title", "")
+                    unstructured = ref.get("unstructured", "")
+                    
+                    if title:
+                        line = f"[{i}] {title}"
+                        if author:
+                            line += f" — {author}"
+                        line += f" ({year})"
+                        if journal:
+                            line += f" — {journal}"
+                    elif unstructured:
+                        line = f"[{i}] {unstructured[:100]}"
+                    else:
+                        line = f"[{i}] Unknown reference ({year})"
+                    if doi_ref:
+                        line += f" | {doi_ref}"
+                    print(line)
         return
 
     if args.command == "read":

@@ -40,7 +40,7 @@ SELECT * FROM maintenance_log;             # Service history
 | Purchase Date | 2025-04-18 | ✅ |
 
 **Known Issues (Active):**
-- 10A illumination fuse blows - suspected behind-dash short
+- **Fuse #18 PARK LAMP (15A) blows instantly** - dead short downstream of headlight switch in body/exterior wiring (NOT the illumination fuse — #13 ILLUM 5A is fine)
 - Transfer case leak - may be PS fluid from old system
 - Steering system leak - RedHead box ready to install
 
