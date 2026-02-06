@@ -42,3 +42,6 @@ Gaps:
 - Binding problem literature is neuroscience — the AI analog needs careful framing to avoid false equivalence
 - Need to read Strogatz properly, not just cite
 Confidence: Medium-High for the conceptual mapping. Low for the formal mathematical claims — we're drawing analogies that need to be tested, not asserting isomorphisms.
+- [2026-02-06 10:19] **search**: `metaxynoesis distributed cognition human-AI` → 3 results
+- [2026-02-06 10:19] **bib**: `10.1017/s0140525x12000477` → 1 results
+- [2026-02-06 10:19] **info**: `10.1017/s0140525x12000477` → 1 results
