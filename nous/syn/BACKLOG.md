@@ -27,11 +27,11 @@
 ### Completed ✅
 | Item | Description |
 |------|-------------|
-| Shared bin/ | All agents symlink to `/mnt/ssd/moltbot/shared/bin/` |
+| Shared bin/ | All agents symlink to `shared/bin/` |
 | 30-min heartbeats | Reduced from 15min, less noise |
 | Auto-status | `bin/auto-status` generates from filesystem activity |
 | Pre-compact | `bin/pre-compact` dumps context before compaction |
-| Shared insights/ | `/mnt/ssd/moltbot/shared/insights/` for cross-agent learning |
+| Shared insights/ | `shared/insights/` for cross-agent learning |
 | Smarter HEARTBEAT.md | Productive checklist, not just acks |
 
 ### Pending

@@ -124,7 +124,13 @@
 
 ---
 
-*Updated: 2026-02-05 14:45 CST*
+## Concept Audit (2026-02-05 evening)
+
+Full sweep of active files completed. 62 files updated: moltbot→aletheia, clawd→nous/syn, clawdbot→openclaw. All shared/bin scripts, all agent templates, letta config, tools.yaml, predictive cache, blackboard. Crontab fully migrated (was still pointing to /mnt/ssd/moltbot). 3 obsolete scripts removed. CrewAI archived (5.4G). Projects moved from nous/ to projects/ with symlinks. nous/ now 24M total.
+
+Active system is clean of pre-Aletheia naming. Historical memory files left as-is.
+
+*Updated: 2026-02-05 19:15 CST*
 
 ---
 

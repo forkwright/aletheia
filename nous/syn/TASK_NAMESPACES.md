@@ -10,7 +10,7 @@ All agents use shared Taskwarrior database with domain-specific namespaces.
 | **Eiron** | `project:school` | school.acf, school.strategy, school.capstone |
 | **Syl** | `project:home` | home.calendar, home.errands, home.maintenance |
 | **Demiurge** | `project:craft` | craft.leather, craft.bindery, craft.joinery |
-| **Syn** | `project:infra` | infra.clawdbot, infra.nas, infra.backup |
+| **Syn** | `project:infra` | infra.openclaw, infra.nas, infra.backup |
 | **Syn** | `project:personal` | personal.health, personal.finance |
 
 ## Standard Tags

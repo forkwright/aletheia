@@ -1,4 +1,4 @@
-# Moltbot/Clawdbot Community Usage Patterns
+# OpenClaw Community Usage Patterns
 
 *Research via Perplexity, 2026-01-28*
 
