@@ -35,7 +35,8 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 /mnt/ssd/aletheia/                    ~29GB
 ├── .git/            forkwright/aletheia (private repo, recovery mechanism)
 ├── RESCUE.md        This file
-├── nous/            7 nous workspaces — 24M total (lean: config, memory, knowledge)
+├── README.md        Repo overview
+├── nous/            7 nous workspaces — 24M total
 │   └── */
 │       ├── SOUL.md           Character (prose, hand-written)
 │       ├── AGENTS.md         Operations (compiled from templates)
@@ -45,15 +46,16 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 │       ├── MEMORY.md         Curated long-term
 │       └── memory/           Daily logs, session state
 ├── shared/          Common tooling — 23M
-│   ├── bin/         All scripts (on PATH via aletheia.env)
-│   ├── config/      aletheia.env, tools.yaml, letta-agents.json
+│   ├── bin/         58 scripts (on PATH via aletheia.env)
+│   ├── config/      aletheia.env, tools.yaml
 │   ├── memory/      facts.jsonl (symlinked to all nous)
 │   └── templates/   sections/*.md + agents/*.yaml → compiled workspace files
 ├── infrastructure/  Signal-cli, runtime fork — 1.2G
 │   └── runtime/     Forked OpenClaw (patched dist/, local entry point)
 ├── theke/           Obsidian vault (human-facing, symlinks to projects/, gitignored)
 ├── projects/        Backing store — 3.4GB (ardent, vehicle, a2z, etc., gitignored)
-└── archive/         Old stuff — 2.2G (crewai, migration scripts, etc., gitignored)
+└── archive/         Old stuff + archived scripts — 2.2G (gitignored)
+    └── bin/         21 archived scripts
 ```
 
 ## Key Scripts (shared/bin/)
@@ -68,6 +70,11 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 | `graph-maintain` | Daily: confidence decay, dedup, prune (cron 3am) |
 | `attention-check` | Adaptive awareness scoring (injected into prosoche prompt) |
 | `patch-runtime` | Diff/reapply patches after OpenClaw updates |
+| `nous-health` | Monitor nous ecosystem health |
+| `nous-audit` | Audit a nous workspace |
+| `bb` | Blackboard coordination between nous |
+
+CLI convention: `--nous` is our flag (e.g. `distill --nous syn`). `--agent` accepted as alias for backward compat.
 
 ## Runtime Patches (infrastructure/runtime/dist/)
 
@@ -87,23 +94,21 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 | Store | Location | Size |
 |-------|----------|------|
 | FalkorDB "aletheia" | docker:falkordb:6379 | ~400 nodes, ~530 rels |
-| facts.jsonl | shared/memory/ | 311 facts |
+| facts.jsonl | shared/memory/ | 312 facts |
 | Session state | nous/*/memory/session-state.yaml | Per-nous YAML |
 | Daily memory | nous/*/memory/YYYY-MM-DD.md | ~100 files total |
 | MEMORY.md | nous/*/MEMORY.md | Curated per-nous |
-| Letta | docker port 8283 + 5432 | 7 agent memory stores |
 
 ## Cron Jobs (crontab -l)
 
 All jobs use PATH including shared/bin/. Key jobs:
 - **3am** — `graph-maintain`, `consolidate-memory`
-- **4am** — `letta-sync`
-- **6am** — `monitoring-cron`; Sunday: `audit-all-agents`
+- **6am** — `monitoring-cron`; Sunday: `audit-all-nous`
 - **9am** — `self-audit`
 - **6pm** — `eiron-deadline-check`
 - **11pm** — `daily-facts`
 - **Every 6h** — `graph-sync`
-- **Every 5m** — `autarkia-watchdog`, `mcp-watchdog`
+- **Every 5m** — `aletheia-watchdog`, `mcp-watchdog`
 - **Every 15m** — `health-watchdog`, `metis-mount-check`
 
 OpenClaw also manages: prosoche (45m interval), memory flush, compaction.
@@ -117,6 +122,28 @@ Key vars:
 - `ALETHEIA_NOUS=$ALETHEIA_ROOT/nous`
 - `ALETHEIA_SHARED=$ALETHEIA_ROOT/shared`
 - `ALETHEIA_THEKE=$ALETHEIA_ROOT/theke`
+
+## Syncthing
+
+Two sync folders between worker-node and Metis (Fedora laptop):
+
+| Folder | Path (server) | Path (Metis) | Direction |
+|--------|---------------|--------------|-----------|
+| `aletheia` | `/mnt/ssd/aletheia` | `/home/ck/aletheia` | Server → Metis (sendonly/receiveonly) |
+| `aletheia-vault` | `/mnt/ssd/aletheia/theke` | `/home/ck/aletheia/theke` | Bidirectional (sendreceive) |
+
+`.stignore` excludes: archive/, projects/, infrastructure/, theke/ (separate folder), .git, venvs, node_modules, sync-conflict files.
+
+Metis has symlink: `/home/syn/aletheia` → `/home/ck/aletheia`. Ownership: `syn:ck` with setgid.
+
+## External Dependencies
+
+| Service | Purpose | Required? |
+|---------|---------|-----------|
+| FalkorDB (Docker) | Knowledge graph | Yes |
+| signal-cli | Signal messaging | Yes |
+| Syncthing | File sync to Metis | No (convenience) |
+| Ollama | Local embeddings | No (used by memory search) |
 
 ## Recovery Steps
 
@@ -147,15 +174,15 @@ openclaw doctor && openclaw gateway status
 ### After OpenClaw Update (npm update -g openclaw)
 ```bash
 # Our fork is independent — upstream updates don't affect us.
-# But if you want to pull upstream changes:
+# To review what changed upstream:
 diff -r /usr/lib/node_modules/openclaw/dist/ infrastructure/runtime/dist/ | head -50
-# Review diffs, cherry-pick what matters, test, restart.
+# Cherry-pick, test, restart.
 ```
 
 ### Regenerate All Compiled Files
 ```bash
 compile-context          # All AGENTS.md + PROSOCHE.md
-generate-tools-md        # All TOOLS.md (only Syn currently)
+generate-tools-md        # All TOOLS.md
 ```
 
 ### Signal Issues
@@ -168,24 +195,7 @@ generate-tools-md        # All TOOLS.md (only Syn currently)
 - Test: `aletheia-graph stats`
 - Manual: `graph-maintain`
 
-## Syncthing
-
-Bidirectional sync between worker-node and Metis (Fedora laptop).
-- **Folder:** aletheia (61K files, idle)
-- **Web UI:** http://localhost:8384
-- **.stignore:** venvs, node_modules, .git, __pycache__
-
-## External Dependencies
-
-| Service | Purpose | Status |
-|---------|---------|--------|
-| FalkorDB (Docker) | Knowledge graph | Must be running |
-| Letta (Docker) | Per-nous memory API | Optional (degraded without) |
-| signal-cli | Signal messaging | Must be running |
-| Syncthing | File sync to Metis | Optional (convenience) |
-| Ollama | Local embeddings | Used by Letta + memory search |
-
 ---
 
-*Updated: 2026-02-05 19:30 CST*
-*Commits today: 589d04b → 3dc2612 (prosoche, concept audit, cleanup, Phase 6)*
+*Updated: 2026-02-05 20:17 CST*
+*Latest commit: 7e069eb*

@@ -79,7 +79,7 @@ def generate_syn():
     
     # Agents
     lines.append("## Agent Management")
-    lines.append("- `agent-health` / `agent-contracts show X` / `audit-all-agents`")
+    lines.append("- `nous-health` / `nous-contracts show X` / `audit-all-nous`")
     lines.append("")
     
     # OpenClaw

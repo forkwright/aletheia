@@ -175,4 +175,4 @@ Convention-based paths (no mapping files needed):
 ### Coordination
 - **Blackboard:** `bb post/claim/complete/msg` — Quick coordination
 - **Task contracts:** `task-create/task-send` — Formal handoffs
-- **Agent health:** `agent-health` — Ecosystem monitoring
+- **Agent health:** `nous-health` — Ecosystem monitoring

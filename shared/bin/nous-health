@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
-# agent-health - Monitor health of 5-agent ecosystem
-# Usage: agent-health [--json] [--nous NOUS] [--full]
+# nous-health - Monitor health of 5-agent ecosystem
+# Usage: nous-health [--json] [--nous NOUS] [--full]
 
 set -euo pipefail
 
@@ -32,10 +32,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help|-h)
             cat << EOF
-agent-health - Monitor health of 5-agent ecosystem
+nous-health - Monitor health of 5-agent ecosystem
 
 USAGE:
-    agent-health [OPTIONS]
+    nous-health [OPTIONS]
 
 OPTIONS:
     --json              Output in JSON format
@@ -44,9 +44,9 @@ OPTIONS:
     --help, -h          Show this help
 
 EXAMPLES:
-    agent-health                    # Quick overview of all agents
-    agent-health --nous syn        # Check only Syn
-    agent-health --json --full      # Complete data in JSON format
+    nous-health                    # Quick overview of all agents
+    nous-health --nous syn        # Check only Syn
+    nous-health --json --full      # Complete data in JSON format
 EOF
             exit 0
             ;;
@@ -165,7 +165,7 @@ estimate_token_usage() {
 
 get_agent_status() {
     local agent="$1"
-    local status_file="$CLAWD_DIR/agent-status/$agent.md"
+    local status_file="$CLAWD_DIR/nous-status/$agent.md"
     
     if [[ -f "$status_file" ]]; then
         local last_update

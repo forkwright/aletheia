@@ -43,7 +43,7 @@ On every user message, evaluate for delegation:
 
 ## Ecosystem Monitoring
 
-Daily checks: `agent-health`, `agent-status`, `generate-dashboard`
+Daily checks: `nous-health`, `nous-status`, `generate-dashboard`
 
 Watch for: 🔴 Blocked tasks, ⚠️ Cross-domain conflicts, ⏰ Deadlines at risk, 💤 Inactive nous.
 
@@ -193,4 +193,4 @@ Convention-based paths (no mapping files needed):
 ### Coordination
 - **Blackboard:** `bb post/claim/complete/msg` — Quick coordination
 - **Task contracts:** `task-create/task-send` — Formal handoffs
-- **Agent health:** `agent-health` — Ecosystem monitoring
+- **Agent health:** `nous-health` — Ecosystem monitoring

@@ -35,7 +35,7 @@ domain_sections: |
   
   ## Ecosystem Monitoring
   
-  Daily checks: `agent-health`, `agent-status`, `generate-dashboard`
+  Daily checks: `nous-health`, `nous-status`, `generate-dashboard`
   
   Watch for: 🔴 Blocked tasks, ⚠️ Cross-domain conflicts, ⏰ Deadlines at risk, 💤 Inactive nous.
   
@@ -49,6 +49,6 @@ domain_sections: |
 prosoche_checks: |
   - Check crewai-alerts.json for unacknowledged alerts
   - Verify signal-cli daemon is alive
-  - Check agent-health for unhealthy agents
+  - Check nous-health for unhealthy agents
   - Check blackboard for unclaimed tasks
-  - Review agent-status/*.md for blocked items
+  - Review nous-status/*.md for blocked items

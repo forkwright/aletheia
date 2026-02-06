@@ -4,7 +4,7 @@ os.environ.setdefault("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
 os.environ.setdefault("ALETHEIA_SHARED", os.path.join(os.environ["ALETHEIA_ROOT"], "shared"))
 os.environ.setdefault("ALETHEIA_NOUS", os.path.join(os.environ["ALETHEIA_ROOT"], "nous"))
 """
-agent-contracts - Discover and query agent capabilities
+nous-contracts - Discover and query agent capabilities
 
 List agents, their capabilities, and how to interact with them.
 """
@@ -238,12 +238,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  agent-contracts list                    # List all agents
-  agent-contracts list -v                 # Verbose listing
-  agent-contracts show chiron             # Show Chiron's details
-  agent-contracts find "sql"              # Find agents with SQL capability
-  agent-contracts route "help with query" # Suggest agent for request
-  agent-contracts export                  # Export as markdown
+  nous-contracts list                    # List all agents
+  nous-contracts list -v                 # Verbose listing
+  nous-contracts show chiron             # Show Chiron's details
+  nous-contracts find "sql"              # Find agents with SQL capability
+  nous-contracts route "help with query" # Suggest agent for request
+  nous-contracts export                  # Export as markdown
         """
     )
     

@@ -43,7 +43,7 @@ Full reference: `shared/config/tools.yaml`. Key commands below.
 - `ssh metis "cmd"` / `metis sync|push`
 
 ## Agent Management
-- `agent-health` / `agent-contracts show X` / `audit-all-agents`
+- `nous-health` / `nous-contracts show X` / `audit-all-nous`
 
 ## OpenClaw
 - Validate: `openclaw doctor`
