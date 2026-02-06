@@ -1,6 +1,8 @@
 #!/bin/bash
 set -eo pipefail
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 
 # aletheia-watchdog — Check critical subprocess health + auto-recovery
 # Run via cron every 5 minutes

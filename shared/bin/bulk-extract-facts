@@ -1,5 +1,7 @@
 #!/bin/bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # bulk-extract-facts - Mine memory files for structured facts
 # Extracts facts from daily memory files and adds to facts.jsonl
 
