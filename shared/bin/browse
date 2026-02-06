@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""
+browse — Web automation for nous agents.
+
+Uses Browser Use library for LLM-driven browser interaction.
+Primary user: Chiron (dashboards, web data).
+
+Usage:
+    browse "Go to the Summus dashboard and screenshot the ROI page"
+    browse --url "https://example.com" "Extract the main table data"
+"""
+
+import subprocess
+import sys
+import os
+
+VENV_PYTHON = "/mnt/ssd/aletheia/infrastructure/browser-use/.venv/bin/python3"
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    
+    task = " ".join(sys.argv[1:])
+    
+    # Delegate to venv python with browser-use
+    script = f'''
+import asyncio
+from browser_use import Agent
+from langchain_anthropic import ChatAnthropic
+
+async def run():
+    llm = ChatAnthropic(model_name="claude-sonnet-4-20250514")
+    agent = Agent(task="""{task}""", llm=llm)
+    result = await agent.run()
+    print(result)
+
+asyncio.run(run())
+'''
+    
+    result = subprocess.run(
+        [VENV_PYTHON, "-c", script],
+        capture_output=False,
+        env={**os.environ, "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+    )
+    sys.exit(result.returncode)
+
+if __name__ == "__main__":
+    main()
