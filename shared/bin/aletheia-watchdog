@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
 # aletheia-watchdog - Check critical subprocess health
 # Run via cron every 5 minutes: */5 * * * * ${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/bin/aletheia-watchdog
@@ -25,7 +26,7 @@ if ! pgrep -f "signal-cli.*daemon" >/dev/null 2>&1; then
     fi
 else
     # Signal-cli is fine, check memory
-    MEM_MB=$(ps -o rss= -p $(pgrep -f "autarkia gateway" | head -1) 2>/dev/null | awk '{print int($1/1024)}')
+    MEM_MB=$(ps -o rss= -p $(pgrep -f "openclaw-gateway\|aletheia gateway" | head -1) 2>/dev/null | awk '{print int($1/1024)}')
     if [[ -n "$MEM_MB" && "$MEM_MB" -gt "$MAX_MEM_MB" ]]; then
         log "WARNING: Memory at ${MEM_MB}MB (threshold: ${MAX_MEM_MB}MB)"
         echo "Memory warning: ${MEM_MB}MB at $(date)" >> /tmp/aletheia-watchdog-alerts.txt
