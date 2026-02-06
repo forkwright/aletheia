@@ -6,7 +6,7 @@ set -euo pipefail
 # Runs linters, checks style compliance, generates report
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
-WORKSPACE="$ALETHEIA_ROOT/clawd"
+WORKSPACE="$ALETHEIA_NOUS/syn"
 REPORT_FILE="$WORKSPACE/memory/code-audit-$(date +%Y-%m-%d).md"
 
 # Initialize report with grouped redirects

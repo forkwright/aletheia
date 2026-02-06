@@ -51,7 +51,7 @@ CONTRACTS_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/co
 
 # Get agent name from workspace
 AGENT_NAME=$(basename "$WORKSPACE")
-[[ "$AGENT_NAME" == "clawd" ]] && AGENT_NAME="syn"
+# Legacy clawd→syn alias removed (pre-Aletheia naming)
 
 # Report variables
 REPORT=""
