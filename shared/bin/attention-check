@@ -215,6 +215,46 @@ def time_context():
     return hints
 
 
+def check_graph_discoveries():
+    """Surface serendipity finds from the generative graph."""
+    discoveries = []
+    try:
+        ser_path = SHARED / "memory" / "graph-serendipity.jsonl"
+        if ser_path.exists():
+            with open(ser_path) as f:
+                finds = [json.loads(l) for l in f if l.strip()]
+            # Top finds by score that haven't been surfaced yet
+            surfaced_path = SHARED / "memory" / "graph-surfaced.jsonl"
+            surfaced = set()
+            if surfaced_path.exists():
+                with open(surfaced_path) as f:
+                    for line in f:
+                        if line.strip():
+                            s = json.loads(line)
+                            surfaced.add(f"{s.get('source')}|{s.get('target')}")
+            
+            unseen = [f for f in finds 
+                      if f"{f['source']}|{f['target']}" not in surfaced
+                      and f.get("score", 0) > 0.2]
+            unseen.sort(key=lambda x: x.get("score", 0), reverse=True)
+            
+            for find in unseen[:2]:  # Max 2 per prosoche
+                discoveries.append(
+                    f"🔮 Graph connection: {find['source']} ({find['source_domain']}) "
+                    f"↔ {find['target']} ({find['target_domain']}) via {find['bridge']}"
+                )
+                # Mark as surfaced
+                with open(surfaced_path, "a") as sf:
+                    sf.write(json.dumps({
+                        "source": find["source"],
+                        "target": find["target"],
+                        "surfaced_at": datetime.now().isoformat(),
+                    }) + "\n")
+    except Exception:
+        pass
+    return discoveries
+
+
 def main():
     all_alerts = []
     
@@ -224,6 +264,7 @@ def main():
     all_alerts.extend(check_agents())
     all_alerts.extend(check_blackboard())
     all_alerts.extend(check_crewai_alerts())
+    all_alerts.extend(check_graph_discoveries())
     
     time_hints = time_context()
     
