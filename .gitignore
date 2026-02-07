@@ -70,7 +70,6 @@ nous/arbor/ZOHO-API-SETUP.md
 
 # === Config with tokens ===
 nous/*/config/
-nous/arbor/ZOHO-API-SETUP.md
 nous/arbor/A2Z_ZOHO_INTEGRATION_PLAN.md
 nous/arbor/get_zoho_complete_access.sh
 nous/demiurge/ardent-stripe-webhook/
@@ -80,7 +79,6 @@ nous/arbor/knowledge/
 # === Nested git repos ===
 nous/demiurge/writing/
 nous/demiurge/ardent-site/
-nous/arbor/a2z-tree-site/
 
 # === Python venvs ===
 **/venv/
@@ -91,7 +89,6 @@ nous/arbor/a2z-tree-site/
 # === Catch-all for venvs and python packages ===
 **/pyvenv.cfg
 **/.venv*
-**/venv/
 nous/syn/crewai/
 shared/venv/
 
@@ -122,3 +119,5 @@ shared/research/moltbook-*.md
 nous/syn/context/letta-config.md
 nous/syn/STYLE.md
 nous/syn/TASK_NAMESPACES.md
+shared/config/mcporter.json
+nous/syn/llms-full.txt
