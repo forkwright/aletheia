@@ -51,3 +51,9 @@ Confidence: Medium-High for the conceptual mapping. Low for the formal mathemati
 - [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
 - [2026-02-06 12:55] **refs**: `10.1017/s0140525x12000477` → 0 results
 - [2026-02-06 12:56] **cite**: `10.1017/s0140525x12000477` → 0 results
+- [2026-02-06 12:58] **search**: `binding problem neural synchrony gamma oscillations distributed` → 3 results
+- [2026-02-06 12:58] **search**: `distributed cognition emergence genuine multi-agent topology` → 0 results
+- [2026-02-06 12:58] **search**: `Poincare section cognitive dynamical systems attractor` → 3 results
+- [2026-02-06 12:58] **search**: `bifurcation phase transition collective behavior emergence agent` → 3 results
+- [2026-02-06 12:59] **search**: `COHUMAIN human-AI distributed cognition` → 3 results
+- [2026-02-06 12:59] **search**: `Singer Gray visual feature integration temporal correlation hypothesis` → 3 results

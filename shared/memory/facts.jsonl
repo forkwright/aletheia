@@ -312,3 +312,4 @@
 {"subject": "correction", "predicate": "noted", "object": "thinking in the concepts", "confidence": 0.9, "category": "insight", "valid_from": "2026-02-05T19:47:08.739943"}
 {"subject": "system", "predicate": "decision", "object": "to fully unwrap main dash harness, trace/remove SRS wires, inspect all wiring, re-wrap fresh with X-Fasten tape", "confidence": 0.8, "category": "decision", "valid_from": "2026-02-06T12:51:14.412621"}
 {"subject": "correction", "predicate": "noted", "object": "5A (not 10A as previously documented), but it's NOT the problem fuse", "confidence": 0.9, "category": "insight", "valid_from": "2026-02-06T12:51:14.414209"}
+{"subject": "system", "predicate": "decision", "object": "to fully unwrap main dash harness, trace SRS wires to remove, inspect everything, re-wrap fresh with X-Fasten tape", "confidence": 0.8, "category": "decision", "valid_from": "2026-02-06T14:17:00.197674"}
