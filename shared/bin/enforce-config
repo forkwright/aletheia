@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+Enforce Aletheia config on openclaw.json.
+
+The gateway overwrites disk config on startup with its in-memory state.
+This script patches the file AFTER startup to ensure all nous are registered.
+Run after every gateway start, or via cron as a safety net.
+
+Usage: enforce-config [--reload]
+"""
+import json
+import os
+import signal
+import sys
+
+CONFIG = os.path.expanduser("~/.openclaw/openclaw.json")
+NOUS_DIR = "/mnt/ssd/aletheia/nous"
+
+# Canonical nous registry — source of truth
+NOUS = {
+    "main":     {"name": "Syn",      "default": True, "workspace": f"{NOUS_DIR}/syn",
+                 "subagents": {"allowAgents": ["chiron", "eiron", "demiurge", "syl", "akron", "arbor"]},
+                 "sandbox": {"mode": "off"}},
+    "akron":    {"name": "Akron",    "workspace": f"{NOUS_DIR}/akron"},
+    "chiron":   {"name": "Chiron",   "workspace": f"{NOUS_DIR}/chiron"},
+    "eiron":    {"name": "Eiron",    "workspace": f"{NOUS_DIR}/eiron"},
+    "demiurge": {"name": "Demiurge", "workspace": f"{NOUS_DIR}/demiurge"},
+    "syl":      {"name": "Syl",      "workspace": f"{NOUS_DIR}/syl"},
+    "arbor":    {"name": "Arbor",    "workspace": f"{NOUS_DIR}/arbor"},
+}
+
+DEFAULTS_OVERRIDES = {
+    "maxConcurrent": 8,
+}
+
+def enforce():
+    with open(CONFIG) as f:
+        cfg = json.load(f)
+
+    changed = False
+
+    # Enforce agents.list
+    existing = {a["id"]: a for a in cfg["agents"]["list"]}
+    for nous_id, spec in NOUS.items():
+        entry = {"id": nous_id, **spec}
+        if nous_id not in existing:
+            cfg["agents"]["list"].append(entry)
+            print(f"  + Added {nous_id}")
+            changed = True
+        else:
+            # Ensure workspace is correct
+            if existing[nous_id].get("workspace") != spec.get("workspace"):
+                existing[nous_id]["workspace"] = spec["workspace"]
+                print(f"  ~ Fixed workspace for {nous_id}")
+                changed = True
+
+    # Enforce defaults
+    for key, val in DEFAULTS_OVERRIDES.items():
+        if cfg["agents"]["defaults"].get(key) != val:
+            cfg["agents"]["defaults"][key] = val
+            print(f"  ~ Set defaults.{key} = {val}")
+            changed = True
+
+    if changed:
+        with open(CONFIG, "w") as f:
+            json.dump(cfg, f, indent=2)
+        print(f"Config enforced: {len(NOUS)} nous registered")
+        return True
+    else:
+        print("Config already correct")
+        return False
+
+def reload_gateway():
+    import subprocess
+    result = subprocess.run(["pgrep", "-f", "openclaw-gateway"], capture_output=True, text=True)
+    pid = result.stdout.strip().split("\n")[0] if result.stdout.strip() else None
+    if pid:
+        os.kill(int(pid), signal.SIGUSR1)
+        print(f"Gateway reloaded (pid {pid})")
+    else:
+        print("Gateway not running — skipping reload")
+
+if __name__ == "__main__":
+    changed = enforce()
+    if "--reload" in sys.argv and changed:
+        import time
+        time.sleep(1)
+        reload_gateway()

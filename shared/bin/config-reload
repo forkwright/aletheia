@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Reload gateway config from disk without overwriting it.
+# Use this AFTER editing openclaw.json directly.
+# Do NOT use config.patch — it overwrites disk with stale in-memory config.
+set -euo pipefail
+GW_PID=$(pgrep -f openclaw-gateway 2>/dev/null || true)
+if [[ -z "$GW_PID" ]]; then
+  echo "ERROR: openclaw-gateway not running" >&2
+  exit 1
+fi
+echo "Sending SIGUSR1 to gateway (pid $GW_PID)..."
+python3 -c "import os, signal; os.kill($GW_PID, signal.SIGUSR1)"
+echo "Config reload triggered. Gateway will re-read from disk."
