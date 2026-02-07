@@ -100,3 +100,25 @@ nous/syn/memory/entities/
 shared/logs/
 infrastructure/runtime/node_modules/
 *sync-conflict*
+
+# === Ephemeral state ===
+**/.task/
+**/.taskrc
+**/cookies.txt
+**/crewai-storage/
+**/heartbeat-state.json
+
+# === Cache/logs (ephemeral) ===
+shared/cache/
+shared/blackboard/*.jsonl
+shared/blackboard/*.json
+shared/blackboard/*.log
+shared/blackboard/.last_dispatch
+
+# === Legacy (superseded) ===
+shared/ZOHO_SHARED_ARCHITECTURE.md
+shared/TOOLS-COMMON.md
+shared/research/moltbook-*.md
+nous/syn/context/letta-config.md
+nous/syn/STYLE.md
+nous/syn/TASK_NAMESPACES.md
