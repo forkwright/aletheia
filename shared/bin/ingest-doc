@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""
+ingest-doc — Document processing for nous agents.
+
+Uses Docling for PDF/document extraction → markdown.
+Primary user: Eiron (academic papers, course materials).
+
+Usage:
+    ingest-doc paper.pdf                    # Extract to markdown
+    ingest-doc paper.pdf --output notes/    # Specify output dir
+    ingest-doc https://arxiv.org/pdf/...    # URL input
+"""
+
+import subprocess
+import sys
+import os
+
+VENV_PYTHON = "/mnt/ssd/aletheia/infrastructure/docling/.venv/bin/python3"
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    
+    source = sys.argv[1]
+    output_dir = "."
+    
+    if "--output" in sys.argv:
+        idx = sys.argv.index("--output")
+        if idx + 1 < len(sys.argv):
+            output_dir = sys.argv[idx + 1]
+    
+    script = f'''
+from docling.document_converter import DocumentConverter
+import os
+
+converter = DocumentConverter()
+result = converter.convert("{source}")
+md = result.document.export_to_markdown()
+
+# Write output
+basename = os.path.splitext(os.path.basename("{source}"))[0]
+out_path = os.path.join("{output_dir}", f"{{basename}}.md")
+os.makedirs("{output_dir}", exist_ok=True)
+with open(out_path, "w") as f:
+    f.write(md)
+print(f"Extracted to {{out_path}} ({{len(md)}} chars)")
+'''
+    
+    result = subprocess.run(
+        [VENV_PYTHON, "-c", script],
+        capture_output=False,
+    )
+    sys.exit(result.returncode)
+
+if __name__ == "__main__":
+    main()

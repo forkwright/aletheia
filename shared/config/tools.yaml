@@ -134,3 +134,59 @@ openclaw:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"
     validate: "openclaw doctor"
+
+# === New Capabilities (2026-02-05) ===
+
+langfuse:
+  description: "Session observability and cross-nous pattern analysis"
+  url: "http://localhost:3100"
+  dashboard: "http://SERVER_IP:3100"
+  commands:
+    status: "trace-session --stats"
+  notes: "Self-hosted. Configure API keys via dashboard."
+
+browser_automation:
+  description: "LLM-driven web browser automation"
+  command: "browse"
+  venv: "/mnt/ssd/aletheia/infrastructure/browser-use/.venv"
+  primary_user: "chiron"
+  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
+
+document_processing:
+  description: "PDF and document extraction to markdown"
+  command: "ingest-doc"
+  venv: "/mnt/ssd/aletheia/infrastructure/docling/.venv"
+  primary_user: "eiron"
+  notes: "Uses Docling. Handles PDF, DOCX, HTML, images."
+
+research:
+  scholar:
+    description: "Multi-source academic search + citation graph + paper retrieval"
+    command: "scholar"
+    sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
+    examples:
+      - 'scholar "distributed cognition" -v --limit 10'
+      - 'scholar "binding problem" --since 2020 --source s2'
+      - 'scholar cite DOI  # citation graph (who cites / references)'
+      - 'scholar fetch ARXIV_ID  # download + convert to markdown'
+      - 'scholar refs DOI  # reference list'
+    notes: "S1/S2 source discovery. Deduplicates across sources. Sorted by citations."
+  wiki:
+    description: "Wikipedia lookup for concept orientation (S4 only)"
+    command: "wiki"
+    examples:
+      - 'wiki "Poincaré section"'
+      - 'wiki --search "topological dynamics"'
+      - 'wiki "feature integration" --refs  # extract cited references'
+    notes: "S4 grey literature. Use for orientation, never cite as primary source."
+  perplexity:
+    description: "Perplexity pro-search for broad research synthesis"
+    command: "pplx"
+    notes: "Best for initial survey. All claims must be verified via scholar."
+  ingest_doc:
+    description: "PDF/document extraction to markdown"
+    command: "ingest-doc"
+    examples:
+      - 'ingest-doc paper.pdf'
+      - 'ingest-doc https://arxiv.org/pdf/2408.04514'
+    notes: "Uses Docling. For papers, prefer 'scholar fetch' which auto-converts."
