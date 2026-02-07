@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # pre-compact - Enhanced context preservation before compaction
 # Called by agent before context compacts
 # Based on research-compaction.md findings

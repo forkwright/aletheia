@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 # Paths
-WORKSPACE = Path(os.environ.get("CLAWD_WORKSPACE", "${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"))
+WORKSPACE = Path(os.environ.get("ALETHEIA_NOUS", os.path.join(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"), "nous"))) / "syn"
 MEMORY_DIR = WORKSPACE / "memory"
 MEMORY_FILE = WORKSPACE / "MEMORY.md"
 FACTS_FILE = MEMORY_DIR / "facts.jsonl"

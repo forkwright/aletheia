@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 # Patch OpenClaw after updates
 # Run after: npm update -g openclaw
 #

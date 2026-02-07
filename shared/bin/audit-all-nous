@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
+set -eo pipefail
 #
 # audit-all-nous - Run agent audit on all 7 agent workspaces
 #
