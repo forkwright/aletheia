@@ -1,0 +1,123 @@
+#!/bin/bash
+# transcribe — Recording → transcript + summary in theke
+#
+# Usage:
+#   transcribe <file> [options]
+#   transcribe laptop:/home/ck/Downloads/meeting.flac
+#   transcribe /path/to/file.m4a --domain employer --model base
+#
+# Options:
+#   --domain <name>   Theke domain (employer, chrematistike, etc). Default: employer
+#   --model <size>    Whisper model: tiny (fast), base, small (accurate). Default: tiny
+#   --name <name>     Override output name (default: derived from filename)
+#   --no-summary      Skip summary generation
+#   --help            Show this help
+#
+# Outputs go to: theke/<domain>/transcripts/YYYY-MM-DD-<name>/
+#   transcript.txt    Raw whisper output
+#   summary.md        Structured meeting summary
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+THEKE="$ALETHEIA_ROOT/theke"
+DEFAULT_MODEL="tiny"
+DEFAULT_DOMAIN="employer"
+WORKDIR="/tmp/transcribe-$$"
+
+log() { echo "[transcribe] $*"; }
+die() { log "ERROR: $*" >&2; exit 1; }
+
+# Parse args
+INPUT="" MODEL="$DEFAULT_MODEL" DOMAIN="$DEFAULT_DOMAIN" NAME="" DO_SUMMARY=true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model) MODEL="$2"; shift 2 ;;
+    --domain) DOMAIN="$2"; shift 2 ;;
+    --name) NAME="$2"; shift 2 ;;
+    --no-summary) DO_SUMMARY=false; shift ;;
+    --help|-h) sed -n '2,15s/^# //p' "$0"; exit 0 ;;
+    *) INPUT="$1"; shift ;;
+  esac
+done
+
+[[ -z "$INPUT" ]] && die "No input file. Usage: transcribe <file> [--domain employer] [--model tiny]"
+
+mkdir -p "$WORKDIR"
+trap "rm -rf $WORKDIR" EXIT
+
+# --- Resolve input (local or remote) ---
+if [[ "$INPUT" == *:* ]]; then
+  REMOTE="$INPUT"
+  BASENAME=$(basename "${INPUT#*:}")
+  LOCAL_FILE="$WORKDIR/$BASENAME"
+  log "Fetching from ${INPUT%%:*}..."
+  scp "$REMOTE" "$LOCAL_FILE" || die "scp failed"
+else
+  [[ -f "$INPUT" ]] || die "File not found: $INPUT"
+  LOCAL_FILE="$INPUT"
+  BASENAME=$(basename "$INPUT")
+fi
+
+STEM="${BASENAME%.*}"
+[[ -z "$NAME" ]] && NAME="$STEM"
+DATE=$(date +%Y-%m-%d)
+
+# --- Output directory ---
+OUT_DIR="$THEKE/$DOMAIN/transcripts/$DATE-$(echo "$NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
+mkdir -p "$OUT_DIR"
+
+# --- Duration estimate ---
+DUR_SEC=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$LOCAL_FILE" 2>/dev/null || echo "")
+if [[ -z "$DUR_SEC" || "$DUR_SEC" == "N/A" ]]; then
+  DUR_LINE=$(ffmpeg -i "$LOCAL_FILE" -f null - 2>&1 | grep -oP 'time=\K[\d:.]+' | tail -1 || echo "")
+  log "Duration: ${DUR_LINE:-unknown}"
+else
+  DUR_MIN=$(echo "$DUR_SEC" | awk '{printf "%.0f", $1/60}')
+  log "Duration: ~${DUR_MIN}m"
+fi
+
+log "Model: $MODEL | Domain: $DOMAIN"
+log "Output: $OUT_DIR/"
+
+# --- Transcribe ---
+log "Transcribing..."
+whisper "$LOCAL_FILE" \
+  --model "$MODEL" \
+  --output_format txt \
+  --output_dir "$WORKDIR" \
+  --language en 2>"$WORKDIR/err.log" \
+  || die "Whisper failed. $(tail -3 "$WORKDIR/err.log")"
+
+SRC_TXT="$WORKDIR/${STEM}.txt"
+[[ -f "$SRC_TXT" ]] || die "No transcript produced"
+
+cp "$SRC_TXT" "$OUT_DIR/transcript.txt"
+LINES=$(wc -l < "$OUT_DIR/transcript.txt")
+log "Transcript: $LINES lines → $OUT_DIR/transcript.txt"
+
+# --- Summary stub ---
+if $DO_SUMMARY; then
+  cat > "$OUT_DIR/summary.md" << EOF
+# Meeting Summary — $NAME
+**Date:** $DATE
+**Source:** $BASENAME
+**Model:** whisper/$MODEL
+**Lines:** $LINES
+
+---
+
+> Summary not yet generated. Run with an agent to produce a structured summary.
+> Agent should read transcript.txt and write back to this file.
+
+---
+EOF
+  log "Summary stub: $OUT_DIR/summary.md (agent fills in)"
+fi
+
+# --- Fix permissions ---
+chmod -R g+rw "$OUT_DIR" 2>/dev/null || true
+
+log "Done."
+echo "$OUT_DIR"
