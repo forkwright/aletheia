@@ -2,7 +2,10 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { TextContent } from "@mariozechner/pi-ai";
 import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
-import { HARD_MAX_TOOL_RESULT_CHARS } from "./pi-embedded-runner/tool-result-truncation.js";
+import {
+  HARD_MAX_TOOL_RESULT_CHARS,
+  formatToolResultForContext,
+} from "./pi-embedded-runner/tool-result-truncation.js";
 import { makeMissingToolResult, sanitizeToolCallInputs } from "./session-transcript-repair.js";
 
 const GUARD_TRUNCATION_SUFFIX =
@@ -68,6 +71,27 @@ function capToolResultSize(msg: AgentMessage): AgentMessage {
     };
   });
 
+  return { ...msg, content: newContent } as AgentMessage;
+}
+
+function applyDomainFormatting(msg: AgentMessage, toolName: string): AgentMessage {
+  const content = (msg as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return msg;
+  }
+  const newContent = content.map((block: unknown) => {
+    if (!block || typeof block !== "object" || (block as { type?: string }).type !== "text") {
+      return block;
+    }
+    const textBlock = block as TextContent;
+    if (typeof textBlock.text !== "string" || textBlock.text.length <= HARD_MAX_TOOL_RESULT_CHARS) {
+      return block;
+    }
+    return {
+      ...textBlock,
+      text: formatToolResultForContext(textBlock.text, toolName, HARD_MAX_TOOL_RESULT_CHARS),
+    };
+  });
   return { ...msg, content: newContent } as AgentMessage;
 }
 
@@ -192,9 +216,12 @@ export function installSessionToolResultGuard(
       if (id) {
         pending.delete(id);
       }
-      // Apply hard size cap before persistence to prevent oversized tool results
-      // from consuming the entire context window on subsequent LLM calls.
-      const capped = capToolResultSize(persistMessage(nextMessage));
+      // Apply domain-specific formatting then hard size cap before persistence.
+      let formatted = persistMessage(nextMessage);
+      if (toolName) {
+        formatted = applyDomainFormatting(formatted, toolName);
+      }
+      const capped = capToolResultSize(formatted);
       return originalAppend(
         persistToolResult(capped, {
           toolCallId: id ?? undefined,

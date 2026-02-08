@@ -34,6 +34,107 @@ const TRUNCATION_SUFFIX =
   "offset/limit parameters to read smaller chunks.]";
 
 /**
+ * Domain-specific formatting for large tool results before generic truncation.
+ * Extracts the most useful content based on tool type and output shape.
+ */
+export function formatToolResultForContext(
+  text: string,
+  toolName: string | undefined,
+  maxChars: number,
+): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+
+  if (toolName === "exec" || toolName === "bash") {
+    if (looksLikeGitDiff(text)) {
+      return formatGitDiff(text, maxChars);
+    }
+    return formatCommandOutput(text, maxChars);
+  }
+
+  if (toolName === "read" && text.length > 10_000) {
+    return formatLargeFileRead(text, maxChars);
+  }
+
+  return text;
+}
+
+function looksLikeGitDiff(text: string): boolean {
+  const first500 = text.slice(0, 500);
+  return (
+    first500.includes("diff --git") ||
+    (first500.includes("---") && first500.includes("+++") && first500.includes("@@"))
+  );
+}
+
+function formatGitDiff(text: string, maxChars: number): string {
+  const lines = text.split("\n");
+  // Extract diffstat header (file summary lines)
+  const headerLines: string[] = [];
+  const hunkLines: string[] = [];
+  let inHeader = true;
+
+  for (const line of lines) {
+    if (inHeader && (line.startsWith("diff --git") || line.startsWith("index ") ||
+        line.startsWith("---") || line.startsWith("+++") || line.startsWith("@@"))) {
+      headerLines.push(line);
+      if (line.startsWith("@@")) {
+        inHeader = false;
+      }
+    } else {
+      inHeader = false;
+      hunkLines.push(line);
+    }
+  }
+
+  const header = headerLines.join("\n");
+  const budget = maxChars - header.length - 200;
+  if (budget <= 0) {
+    return header.slice(0, maxChars);
+  }
+
+  const kept = hunkLines.slice(0, Math.ceil(budget / 80)).join("\n");
+  const totalHunks = hunkLines.length;
+  const keptHunks = Math.ceil(budget / 80);
+  return `${header}\n${kept}\n\n[...${totalHunks - keptHunks} more lines truncated]`;
+}
+
+function formatCommandOutput(text: string, maxChars: number): string {
+  const lines = text.split("\n");
+  // Keep last 100 lines (most recent output) + grep for errors
+  const errorLines = lines.filter((l) =>
+    /\b(ERROR|FAIL|FATAL|WARN|panic|exception|traceback)/i.test(l),
+  );
+
+  const tailCount = Math.min(100, lines.length);
+  const tail = lines.slice(-tailCount);
+
+  let result = "";
+  if (errorLines.length > 0) {
+    const errorBlock = errorLines.slice(0, 20).join("\n");
+    result += `[Errors/Warnings found in output]\n${errorBlock}\n\n`;
+  }
+  result += `[Last ${tailCount} of ${lines.length} lines]\n${tail.join("\n")}`;
+
+  return result.length <= maxChars ? result : result.slice(0, maxChars);
+}
+
+function formatLargeFileRead(text: string, maxChars: number): string {
+  const lines = text.split("\n");
+  const totalLines = lines.length;
+  const headCount = 50;
+  const tailCount = 20;
+
+  const head = lines.slice(0, headCount).join("\n");
+  const tail = lines.slice(-tailCount).join("\n");
+  const middle = `\n\n[...${totalLines - headCount - tailCount} lines omitted (${text.length} chars total)...]\n\n`;
+
+  const result = head + middle + tail;
+  return result.length <= maxChars ? result : result.slice(0, maxChars);
+}
+
+/**
  * Truncate a single text string to fit within maxChars, preserving the beginning.
  */
 export function truncateToolResultText(text: string, maxChars: number): string {
