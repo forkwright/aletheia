@@ -76,7 +76,7 @@ check_service "gcal" "gcal today -c user@example.com" 15 || true
 check_service "nas-ssh" "ssh -o ConnectTimeout=5 -o BatchMode=yes NAS_IP echo ok" 10 || true
 
 # --- Gateway Health ---
-GATEWAY_PID=$(pgrep -f "openclaw-gateway\|aletheia gateway" 2>/dev/null | head -1 || true)
+GATEWAY_PID=$(pgrep -f "aletheia-gateway\|aletheia gateway" 2>/dev/null | head -1 || true)
 
 if [[ -z "$GATEWAY_PID" ]]; then
     FAILS=$(get_fails)
@@ -95,11 +95,11 @@ if [[ -z "$GATEWAY_PID" ]]; then
         fi
 
         # Restart regardless
-        if systemctl is-active --quiet autarkia; then
-            sudo systemctl restart autarkia.service 2>&1 >> "$LOG"
+        if systemctl is-active --quiet aletheia; then
+            sudo systemctl restart aletheia.service 2>&1 >> "$LOG"
             log "RECOVERY: Service restarted"
         else
-            sudo systemctl start autarkia.service 2>&1 >> "$LOG"
+            sudo systemctl start aletheia.service 2>&1 >> "$LOG"
             log "RECOVERY: Service started"
         fi
 
@@ -107,7 +107,7 @@ if [[ -z "$GATEWAY_PID" ]]; then
         echo "Gateway crashed $MAX_FAILURES times, auto-recovered $(date)" >> "$ALERT_FILE"
     else
         # Simple restart attempt
-        sudo systemctl restart autarkia.service 2>&1 >> "$LOG" || true
+        sudo systemctl restart aletheia.service 2>&1 >> "$LOG" || true
         log "Restart attempt $FAILS"
     fi
 else

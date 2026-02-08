@@ -28,7 +28,7 @@ MAX_CHECKPOINTS = 10
 
 # Files that constitute "system state"
 CRITICAL_FILES = [
-    Path.home() / ".openclaw" / "openclaw.json",
+    Path.home() / ".aletheia" / "aletheia.json",
     ALETHEIA_ROOT / "shared" / "config" / "aletheia.env",
 ]
 
@@ -66,7 +66,7 @@ def check_health() -> dict:
     # 1. Gateway process running?
     try:
         result = subprocess.run(
-            ["pgrep", "-f", "openclaw-gateway|aletheia gateway"],
+            ["pgrep", "-f", "aletheia-gateway|aletheia gateway"],
             capture_output=True, timeout=5
         )
         running = result.returncode == 0
@@ -93,7 +93,7 @@ def check_health() -> dict:
         health["healthy"] = False
 
     # 3. Config parses?
-    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    config_path = Path.home() / ".aletheia" / "aletheia.json"
     try:
         with open(config_path) as f:
             json.load(f)

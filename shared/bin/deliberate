@@ -170,10 +170,10 @@ Write this as a deliberation record — something that could be stored in the kn
 def send_to_nous(nous_id: str, message: str, timeout: int = 120) -> str:
     """Send a message to a nous via sessions_send and get the response."""
     import subprocess
-    
-    # Use the OpenClaw CLI to send to the agent session
+
+    # Use the Aletheia CLI to send to the agent session
     session_key = f"agent:{nous_id}:main"
-    
+
     # For now, write prompts to a file and return placeholder
     # In production, this would use sessions_send or sessions_spawn
     return None  # Placeholder for async implementation
