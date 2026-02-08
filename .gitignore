@@ -26,6 +26,8 @@ __pycache__/
 # === Agent session data (ephemeral) ===
 nous/*/memory/session-state.yaml
 nous/*/memory/assembled-context.md
+nous/**/AGENTS.md.pre-compile.bak
+nous/**/TOOLS.md.pre-gen.bak
 
 # === OS ===
 .DS_Store
