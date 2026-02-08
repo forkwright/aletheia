@@ -44,7 +44,7 @@ echo ""
 
 # 5. Cron job health
 echo "## Cron Jobs"
-openclaw cron list 2>/dev/null | head -10 || echo "Could not fetch cron list"
+aletheia cron list 2>/dev/null | head -10 || echo "Could not fetch cron list"
 echo ""
 
 # 6. Code audit summary (if exists)

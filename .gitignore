@@ -38,7 +38,7 @@ Thumbs.db
 .stignore
 .stversions/
 
-# === OpenClaw workspace backups ===
+# === Workspace backups ===
 *.aletheia-backup
 
 # === Embedded repos ===
@@ -81,6 +81,7 @@ nous/arbor/knowledge/
 # === Nested git repos ===
 nous/demiurge/writing/
 nous/demiurge/ardent-site/
+aletheia.git/
 
 # === Python venvs ===
 **/venv/
@@ -98,6 +99,7 @@ shared/venv/
 nous/syn/memory/entities/
 shared/logs/
 infrastructure/runtime/node_modules/
+infrastructure/runtime/package-lock.json
 *sync-conflict*
 
 # === Ephemeral state ===

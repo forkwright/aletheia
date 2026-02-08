@@ -9,7 +9,7 @@ set +a 2>/dev/null || true
 set -euo pipefail
 
 WORKSPACE="${1:-${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn}"
-CONVERSATION_FILE="$WORKSPACE/.openclaw/sessions.jsonl"
+CONVERSATION_FILE="$WORKSPACE/.aletheia/sessions.jsonl"
 DATE=$(date '+%Y-%m-%d')
 TIME=$(date '+%H:%M')
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')

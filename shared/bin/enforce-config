@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enforce Aletheia config on openclaw.json.
+Enforce Aletheia config on aletheia.json.
 
 The gateway overwrites disk config on startup with its in-memory state.
 This script patches the file AFTER startup to ensure all nous are registered.
@@ -13,7 +13,7 @@ import os
 import signal
 import sys
 
-CONFIG = os.path.expanduser("~/.openclaw/openclaw.json")
+CONFIG = os.path.expanduser("~/.aletheia/aletheia.json")
 NOUS_DIR = "/mnt/ssd/aletheia/nous"
 
 # Canonical nous registry — source of truth
@@ -72,7 +72,7 @@ def enforce():
 
 def reload_gateway():
     import subprocess
-    result = subprocess.run(["pgrep", "-f", "openclaw-gateway"], capture_output=True, text=True)
+    result = subprocess.run(["pgrep", "-f", "aletheia-gateway"], capture_output=True, text=True)
     pid = result.stdout.strip().split("\n")[0] if result.stdout.strip() else None
     if pid:
         os.kill(int(pid), signal.SIGUSR1)

@@ -1,122 +1,173 @@
 #!/usr/bin/env python3
+# aletheia-graph — Shared awareness layer via Neo4j
+
 """
-aletheia-graph — Shared awareness layer via FalkorDB.
-
-The knowledge graph is the shared substrate. All nous read/write to it.
-When one nous learns something, others can find it without being told.
-
 Usage:
   aletheia-graph add <subject> <relation> <object> [--nous AGENT] [--domain DOMAIN]
   aletheia-graph query <cypher>
-  aletheia-graph ask "natural language question"
   aletheia-graph recent [--hours 24] [--nous AGENT]
   aletheia-graph connections <entity>
   aletheia-graph stats
-  aletheia-graph propagate --from AGENT  # push cross-cutting insights to shared space
+  aletheia-graph propagate --from AGENT
 """
 
 import argparse
-import json
-import subprocess
 import sys
 from datetime import datetime
 
-GRAPH_NAME = "aletheia"  # New graph, not temporal_events
+from neo4j import GraphDatabase
 
-def graph_query(cypher):
-    """Execute a Cypher query against FalkorDB."""
+NEO4J_URI = "neo4j://localhost:7687"
+NEO4J_USER = "neo4j"
+NEO4J_PASSWORD = "aletheia-memory"
+
+
+def get_driver():
+    return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def run_query(cypher, **params):
+    driver = get_driver()
     try:
-        result = subprocess.run(
-            ["docker", "exec", "falkordb", "redis-cli",
-             "GRAPH.QUERY", GRAPH_NAME, cypher],
-            capture_output=True, text=True, timeout=10
-        )
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        return "ERROR: query timeout"
+        with driver.session() as session:
+            result = session.run(cypher, **params)
+            return [dict(record) for record in result]
     except Exception as e:
         return f"ERROR: {e}"
+    finally:
+        driver.close()
+
+
+def format_results(records):
+    if isinstance(records, str):
+        return records
+    if not records:
+        return "(no results)"
+    lines = []
+    for rec in records:
+        parts = [str(v) for v in rec.values()]
+        lines.append(" | ".join(parts))
+    return "\n".join(lines)
+
 
 def ensure_schema():
-    """Create indexes if they don't exist."""
     queries = [
-        "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.name)",
-        "CREATE INDEX IF NOT EXISTS FOR (n:Entity) ON (n.domain)",
-        "CREATE INDEX IF NOT EXISTS FOR (n:Insight) ON (n.agent)",
-        "CREATE INDEX IF NOT EXISTS FOR (n:Insight) ON (n.timestamp)",
+        "CREATE INDEX entity_name IF NOT EXISTS FOR (n:Entity) ON (n.name)",
+        "CREATE INDEX entity_domain IF NOT EXISTS FOR (n:Entity) ON (n.domain)",
     ]
-    for q in queries:
-        graph_query(q)
+    driver = get_driver()
+    try:
+        with driver.session() as session:
+            for q in queries:
+                try:
+                    session.run(q)
+                except Exception:
+                    pass
+    finally:
+        driver.close()
+
 
 def add_knowledge(subject, relation, obj, agent="unknown", domain="shared", confidence=0.8, evidence=""):
-    """Add a relationship to the graph."""
     ensure_schema()
-    
     ts = int(datetime.now().timestamp())
-    safe = lambda s: s.replace("'", "\\'").replace('"', '\\"')
-    
-    # Merge nodes (create if not exist, update if exist)
+    rel_type = relation.upper().replace(" ", "_").replace("-", "_")
+
     cypher = (
-        f"MERGE (s:Entity {{name: '{safe(subject)}'}}) "
-        f"MERGE (o:Entity {{name: '{safe(obj)}'}}) "
-        f"CREATE (s)-[r:{safe(relation.upper().replace(' ', '_'))} "
-        f"{{agent: '{safe(agent)}', domain: '{safe(domain)}', "
-        f"confidence: {confidence}, timestamp: {ts}, "
-        f"evidence: '{safe(evidence)}'}}]->(o) "
-        f"RETURN s.name, type(r), o.name"
+        "MERGE (s:Entity {name: $subject}) "
+        "ON CREATE SET s.domain = $domain "
+        "MERGE (o:Entity {name: $object}) "
+        "ON CREATE SET o.domain = $domain "
+        f"CREATE (s)-[r:{rel_type} {{"
+        "agent: $agent, domain: $domain, "
+        "confidence: $confidence, timestamp: $ts, "
+        "evidence: $evidence"
+        "}]->(o) "
+        "RETURN s.name, type(r), o.name"
     )
-    return graph_query(cypher)
+    results = run_query(cypher, subject=subject, object=obj, agent=agent,
+                        domain=domain, confidence=confidence, ts=ts, evidence=evidence)
+    return format_results(results)
+
 
 def get_connections(entity):
-    """Get all connections for an entity."""
-    safe = entity.replace("'", "\\'")
     cypher = (
-        f"MATCH (n:Entity {{name: '{safe}'}})-[r]->(m) "
-        f"RETURN n.name, type(r), m.name, r.agent, r.confidence "
-        f"UNION "
-        f"MATCH (m)-[r]->(n:Entity {{name: '{safe}'}}) "
-        f"RETURN m.name, type(r), n.name, r.agent, r.confidence"
+        "MATCH (n {name: $name})-[r]->(m) "
+        "RETURN n.name AS source, type(r) AS relation, m.name AS target, "
+        "properties(r).agent AS agent, properties(r).confidence AS confidence "
+        "UNION "
+        "MATCH (m)-[r]->(n {name: $name}) "
+        "RETURN m.name AS source, type(r) AS relation, n.name AS target, "
+        "properties(r).agent AS agent, properties(r).confidence AS confidence"
     )
-    return graph_query(cypher)
+    return format_results(run_query(cypher, name=entity))
+
 
 def get_recent(hours=24, agent=None):
-    """Get recent knowledge additions."""
     cutoff = int(datetime.now().timestamp()) - (hours * 3600)
-    agent_filter = f"AND r.agent = '{agent}'" if agent else ""
-    cypher = (
-        f"MATCH (s)-[r]->(o) "
-        f"WHERE r.timestamp > {cutoff} {agent_filter} "
-        f"RETURN s.name, type(r), o.name, r.agent, r.timestamp "
-        f"ORDER BY r.timestamp DESC LIMIT 20"
-    )
-    return graph_query(cypher)
+    if agent:
+        cypher = (
+            "MATCH (s)-[r]->(o) "
+            "WHERE r.timestamp > $cutoff AND r.agent = $agent "
+            "RETURN s.name AS source, type(r) AS relation, o.name AS target, "
+            "r.agent AS agent, r.timestamp AS ts "
+            "ORDER BY r.timestamp DESC LIMIT 20"
+        )
+        results = run_query(cypher, cutoff=cutoff, agent=agent)
+    else:
+        cypher = (
+            "MATCH (s)-[r]->(o) "
+            "WHERE r.timestamp > $cutoff "
+            "RETURN s.name AS source, type(r) AS relation, o.name AS target, "
+            "r.agent AS agent, r.timestamp AS ts "
+            "ORDER BY r.timestamp DESC LIMIT 20"
+        )
+        results = run_query(cypher, cutoff=cutoff)
+    return format_results(results)
+
 
 def get_stats():
-    """Get graph statistics."""
-    nodes = graph_query("MATCH (n) RETURN count(n) as count")
-    edges = graph_query("MATCH ()-[r]->() RETURN count(r) as count")
-    agents = graph_query("MATCH ()-[r]->() RETURN DISTINCT r.agent as agent, count(r) as count")
-    domains = graph_query("MATCH (n:Entity) RETURN DISTINCT n.domain as domain, count(n) as count")
-    
-    return f"Nodes: {nodes}\nEdges: {edges}\nBy agent: {agents}\nBy domain: {domains}"
+    nodes = run_query("MATCH (n) RETURN count(n) AS count")
+    edges = run_query("MATCH ()-[r]->() RETURN count(r) AS count")
+    agents = run_query(
+        "MATCH ()-[r]->() WHERE r.agent IS NOT NULL "
+        "RETURN r.agent AS agent, count(r) AS count ORDER BY count DESC"
+    )
+    labels = run_query(
+        "MATCH (n) UNWIND labels(n) AS label "
+        "RETURN label, count(*) AS count ORDER BY count DESC LIMIT 10"
+    )
+
+    parts = []
+    if isinstance(nodes, list) and nodes:
+        parts.append(f"Nodes: {nodes[0].get('count', '?')}")
+    if isinstance(edges, list) and edges:
+        parts.append(f"Edges: {edges[0].get('count', '?')}")
+    if isinstance(agents, list) and agents:
+        parts.append("\nBy agent:")
+        for r in agents:
+            parts.append(f"  {r.get('agent', '?')}: {r.get('count', '?')}")
+    if isinstance(labels, list) and labels:
+        parts.append("\nBy label:")
+        for r in labels:
+            parts.append(f"  {r.get('label', '?')}: {r.get('count', '?')}")
+    return "\n".join(parts)
+
 
 def propagate_from(agent):
-    """Find cross-cutting insights from an agent and mark them as shared."""
-    # Find insights that reference entities from other domains
     cypher = (
-        f"MATCH (s)-[r {{agent: '{agent}'}}]->(o) "
-        f"WHERE r.domain <> 'shared' "
-        f"AND EXISTS {{ MATCH (o)-[r2]->(x) WHERE r2.agent <> '{agent}' }} "
-        f"SET r.domain = 'shared' "
-        f"RETURN s.name, type(r), o.name"
+        "MATCH (s)-[r]->(o) "
+        "WHERE r.agent = $agent AND r.domain <> 'shared' "
+        "AND EXISTS { MATCH (o)-[r2]->(x) WHERE r2.agent <> $agent } "
+        "SET r.domain = 'shared' "
+        "RETURN s.name AS source, type(r) AS relation, o.name AS target"
     )
-    return graph_query(cypher)
+    return format_results(run_query(cypher, agent=agent))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Aletheia shared knowledge graph")
     sub = parser.add_subparsers(dest="command")
-    
-    # add
+
     add_p = sub.add_parser("add")
     add_p.add_argument("subject")
     add_p.add_argument("relation")
@@ -125,36 +176,30 @@ def main():
     add_p.add_argument("--domain", default="shared")
     add_p.add_argument("--confidence", type=float, default=0.8)
     add_p.add_argument("--evidence", default="")
-    
-    # query
+
     q_p = sub.add_parser("query")
     q_p.add_argument("cypher")
-    
-    # recent
+
     r_p = sub.add_parser("recent")
     r_p.add_argument("--hours", type=int, default=24)
     r_p.add_argument("--nous", "--agent", default=None)
-    
-    # connections
+
     c_p = sub.add_parser("connections")
     c_p.add_argument("entity")
-    
-    # stats
+
     sub.add_parser("stats")
-    
-    # propagate
+
     p_p = sub.add_parser("propagate")
     p_p.add_argument("--from", dest="from_agent", required=True)
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "add":
-        result = add_knowledge(args.subject, args.relation, args.object,
-                              agent=args.nous, domain=args.domain,
-                              confidence=args.confidence, evidence=args.evidence)
-        print(result)
+        print(add_knowledge(args.subject, args.relation, args.object,
+                            agent=args.nous, domain=args.domain,
+                            confidence=args.confidence, evidence=args.evidence))
     elif args.command == "query":
-        print(graph_query(args.cypher))
+        print(format_results(run_query(args.cypher)))
     elif args.command == "recent":
         print(get_recent(hours=args.hours, agent=args.nous))
     elif args.command == "connections":
@@ -165,6 +210,7 @@ def main():
         print(propagate_from(args.from_agent))
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

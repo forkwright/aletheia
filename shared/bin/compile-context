@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-compile-context — Generate optimized workspace files for each agent.
+compile-context — Generate optimized workspace files for each nous.
 
-OpenClaw injects these files into every prompt:
-  SOUL.md, AGENTS.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, MEMORY.md
+The runtime injects these files into every prompt:
+  SOUL.md, AGENTS.md, TOOLS.md, IDENTITY.md, USER.md, PROSOCHE.md, MEMORY.md
 
 Instead of hand-maintaining 7 copies of each, we:
-  1. Keep source-of-truth in shared/templates/ + agent-specific YAML
-  2. Compile to the filenames OpenClaw expects
+  1. Keep source-of-truth in shared/templates/ + nous-specific YAML
+  2. Compile to the filenames the runtime expects
   3. Optimize for token efficiency
 
-Run: compile-context          # All agents
-     compile-context chiron   # One agent
+Run: compile-context          # All nous
+     compile-context chiron   # One nous
      compile-context --stats  # Show token estimates
-
-This IS the system. OpenClaw is just the delivery mechanism.
 """
 
 import os

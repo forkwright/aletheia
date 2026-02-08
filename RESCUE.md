@@ -6,21 +6,21 @@
 
 ## What Is Aletheia
 
-Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system. 7 AI minds (nous, νοῦς) + 1 human in topology. Each nous embodies the operator's cognition in a different domain. OpenClaw is the runtime — we use its Signal bridge, session management, and tool framework. Everything else is ours.
+Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system. 7 AI minds (nous, νοῦς) + 1 human in topology. Each nous embodies the operator's cognition in a different domain. Built on a fork of OpenClaw — we use its Signal bridge, session management, and tool framework. Everything else is ours.
 
 **Human:** the operator (user@example.com, GitHub: forkwright)
 **Server:** server-host, SERVER_IP (LAN), TAILSCALE_SERVER (Tailscale)
-**OS:** Ubuntu 24.04, 15GB RAM
+**OS:** Fedora Server, 15GB RAM
 **Service:** `systemctl status aletheia`
-**Config:** `/home/syn/.openclaw/openclaw.json`
-**Runtime:** Local fork at `infrastructure/runtime/` (OpenClaw v2026.2.1, patched)
+**Config:** `/home/syn/.aletheia/aletheia.json`
+**Runtime:** Local fork at `infrastructure/runtime/` (patched, compiled with tsdown)
 
 ## The Nous
 
 | Nous | Greek | Domain | Binding |
 |------|-------|--------|---------|
 | **Syn** (σύννους) | thinking together | Orchestrator, primary | the operator's Signal DM |
-| **Chiron** (Χείρων) | wise centaur | Work, SQL, dashboards | the operator's Signal DM (routed) |
+| **Chiron** (Χείρων) | wise centaur | Health, scheduling | the operator's Signal DM (routed) |
 | **Eiron** (εἴρων) | discriminator | MBA, school | the operator's Signal DM (routed) |
 | **Demiurge** (Δημιουργός) | craftsman | Leather, Ardent business | the operator's Signal DM (routed) |
 | **Syl** (σύλληψις) | grasping together | Family, home | Family group chat |
@@ -62,11 +62,11 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 
 | Script | Purpose |
 |--------|---------|
-| `distill` | Pre-compaction: extract facts → JSONL + FalkorDB + session state |
+| `distill` | Pre-compaction: extract facts → JSONL + session state |
 | `assemble-context` | Session start: compile state + facts + graph + tasks + calendar |
 | `compile-context` | Generate AGENTS.md + PROSOCHE.md from templates (all or one) |
 | `generate-tools-md` | Generate TOOLS.md from tools.yaml |
-| `aletheia-graph` | Shared knowledge graph CLI (FalkorDB) |
+| `aletheia-graph` | Knowledge graph CLI (Neo4j) |
 | `graph-maintain` | Daily: confidence decay, dedup, prune (cron 3am) |
 | `attention-check` | Adaptive awareness scoring (injected into prosoche prompt) |
 | `patch-runtime` | Diff/reapply patches after OpenClaw updates |
@@ -93,8 +93,10 @@ CLI convention: `--nous` is our flag (e.g. `distill --nous syn`). `--agent` acce
 
 | Store | Location | Size |
 |-------|----------|------|
-| FalkorDB "aletheia" | docker:falkordb:6379 | ~400 nodes, ~530 rels |
-| facts.jsonl | shared/memory/ | 312 facts |
+| Mem0 (Qdrant) | docker:qdrant:6333 | Vector memories (auto-extracted) |
+| Mem0 (Neo4j) | docker:neo4j:7687 | Entity graph (auto-extracted) |
+| Mem0 sidecar | systemd:aletheia-memory:8230 | FastAPI extraction engine |
+| facts.jsonl | shared/memory/ | 384 facts (imported to Mem0) |
 | Session state | nous/*/memory/session-state.yaml | Per-nous YAML |
 | Daily memory | nous/*/memory/YYYY-MM-DD.md | ~100 files total |
 | MEMORY.md | nous/*/MEMORY.md | Curated per-nous |
@@ -111,7 +113,7 @@ All jobs use PATH including shared/bin/. Key jobs:
 - **Every 5m** — `aletheia-watchdog`, `mcp-watchdog`
 - **Every 15m** — `health-watchdog`, `laptop-mount-check`
 
-OpenClaw also manages: prosoche (45m interval), memory flush, compaction.
+The gateway also manages: prosoche (45m interval), memory flush, compaction, Mem0 extraction.
 
 ## Environment
 
@@ -140,43 +142,44 @@ Laptop has symlink: `/home/syn/aletheia` → `/home/ck/aletheia`. Ownership: `sy
 
 | Service | Purpose | Required? |
 |---------|---------|-----------|
-| FalkorDB (Docker) | Knowledge graph | Yes |
-| signal-cli | Signal messaging | Yes |
+| Qdrant (Docker) | Vector store for Mem0 | Yes |
+| Neo4j (Docker) | Graph store for Mem0 | Yes |
+| Mem0 sidecar (systemd) | Memory extraction | Yes |
+| signal-cli (Docker) | Signal messaging | Yes |
+| Ollama | Local embeddings (mxbai-embed-large) | Yes |
 | Syncthing | File sync to Laptop | No (convenience) |
-| Ollama | Local embeddings | No (used by memory search) |
+| Langfuse (Docker) | Observability | No (monitoring) |
 
 ## Recovery Steps
 
 ### Full Recovery (from scratch)
 ```bash
-# 1. Install OpenClaw
-npm install -g openclaw
-
-# 2. Clone repo
+# 1. Clone repo
 cd /mnt/ssd && git clone https://github.com/forkwright/aletheia.git
 cd aletheia
+
+# 2. Install runtime deps
+cd infrastructure/runtime && pnpm install && npx tsdown && cd ../..
 
 # 3. Source environment
 echo '. /mnt/ssd/aletheia/shared/config/aletheia.env' >> ~/.bashrc
 source shared/config/aletheia.env
 
-# 4. Point service at local fork
-# Edit aletheia.service ExecStart to use infrastructure/runtime/aletheia.mjs
-sudo systemctl daemon-reload
+# 4. Start memory infrastructure
+cd infrastructure/memory && docker compose up -d  # Qdrant + Neo4j
+cd sidecar && uv venv && source .venv/bin/activate && uv pip install -e .
+sudo cp aletheia-memory.service /etc/systemd/system/
+sudo systemctl enable --now aletheia-memory
 
-# 5. Start
+# 5. Start main service
+sudo cp aletheia.service /etc/systemd/system/  # ExecStart → infrastructure/runtime/aletheia.mjs
+sudo systemctl daemon-reload
 sudo systemctl start aletheia
 
 # 6. Verify
-openclaw doctor && openclaw gateway status
-```
-
-### After OpenClaw Update (npm update -g openclaw)
-```bash
-# Our fork is independent — upstream updates don't affect us.
-# To review what changed upstream:
-diff -r /usr/lib/node_modules/openclaw/dist/ infrastructure/runtime/dist/ | head -50
-# Cherry-pick, test, restart.
+systemctl status aletheia aletheia-memory
+curl -s http://localhost:8230/health
+curl -s http://localhost:6333/healthz
 ```
 
 ### Regenerate All Compiled Files
@@ -190,12 +193,12 @@ generate-tools-md        # All TOOLS.md
 - Daemon: `systemctl restart signal-cli`
 - Debug: `journalctl -u aletheia -f`
 
-### Graph Issues
-- FalkorDB: `docker ps | grep falkordb`
-- Test: `aletheia-graph stats`
-- Manual: `graph-maintain`
+### Memory Issues
+- Mem0 sidecar: `systemctl status aletheia-memory`
+- Qdrant: `curl -s http://localhost:6333/healthz`
+- Neo4j: `curl -s http://localhost:7474`
+- Search test: `curl -s -X POST http://localhost:8230/search -H 'Content-Type: application/json' -d '{"query":"test","user_id":"ck","limit":5}'`
 
 ---
 
-*Updated: 2026-02-05 20:17 CST*
-*Latest commit: 7e069eb*
+*Updated: 2026-02-13*

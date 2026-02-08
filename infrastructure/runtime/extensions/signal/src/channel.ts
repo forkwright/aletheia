@@ -21,14 +21,20 @@ import {
   type ChannelMessageActionAdapter,
   type ChannelPlugin,
   type ResolvedSignalAccount,
-} from "openclaw/plugin-sdk";
+} from "aletheia/plugin-sdk";
 import { getSignalRuntime } from "./runtime.js";
 
 const signalMessageActions: ChannelMessageActionAdapter = {
-  listActions: (ctx) => getSignalRuntime().channel.signal.messageActions.listActions(ctx),
-  supportsAction: (ctx) => getSignalRuntime().channel.signal.messageActions.supportsAction?.(ctx),
-  handleAction: async (ctx) =>
-    await getSignalRuntime().channel.signal.messageActions.handleAction(ctx),
+  listActions: (ctx) => getSignalRuntime().channel.signal.messageActions?.listActions?.(ctx) ?? [],
+  supportsAction: (ctx) =>
+    getSignalRuntime().channel.signal.messageActions?.supportsAction?.(ctx) ?? false,
+  handleAction: async (ctx) => {
+    const ma = getSignalRuntime().channel.signal.messageActions;
+    if (!ma?.handleAction) {
+      throw new Error("Signal message actions not available");
+    }
+    return ma.handleAction(ctx);
+  },
 };
 
 const meta = getChatChannelMeta("signal");

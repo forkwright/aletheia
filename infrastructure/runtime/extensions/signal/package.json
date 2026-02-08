@@ -1,12 +1,13 @@
 {
-  "name": "@openclaw/signal",
-  "version": "2026.2.1",
-  "description": "OpenClaw Signal channel plugin",
+  "name": "@aletheia/signal",
+  "version": "2026.2.12",
+  "private": true,
+  "description": "Aletheia Signal channel plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "aletheia": "workspace:*"
   },
-  "openclaw": {
+  "aletheia": {
     "extensions": [
       "./index.ts"
     ]

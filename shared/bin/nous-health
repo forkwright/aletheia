@@ -3,12 +3,12 @@ set -a
 source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null
 set +a 2>/dev/null || true
 # nous-health - Monitor health of Aletheia agent ecosystem
-# Reads from OpenClaw's actual session data (sessions.json + .jsonl transcripts)
+# Reads from Aletheia's actual session data (sessions.json + .jsonl transcripts)
 # Usage: nous-health [--json] [--nous NAME] [--full]
 
 set -euo pipefail
 
-AGENTS_DIR="$HOME/.openclaw/agents"
+AGENTS_DIR="$HOME/.aletheia/agents"
 NOUS_STATUS_DIR="${ALETHEIA_NOUS:-/mnt/ssd/aletheia/nous}/syn/nous-status"
 
 # Default options
@@ -54,7 +54,7 @@ import json, os, sys, time
 from pathlib import Path
 from datetime import datetime
 
-agents_dir = Path(os.environ.get("HOME", "/home/syn")) / ".openclaw" / "agents"
+agents_dir = Path(os.environ.get("HOME", "/home/syn")) / ".aletheia" / "agents"
 full_check = os.environ.get("FULL_CHECK", "false") == "true"
 target = os.environ.get("TARGET_NOUS", "")
 output_fmt = os.environ.get("OUTPUT_FORMAT", "table")

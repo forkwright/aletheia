@@ -98,40 +98,35 @@ def get_pending_tasks(agent_id):
 
 
 def get_domain_knowledge(agent_id, limit=8):
-    """Get high-confidence domain-specific knowledge from the graph."""
+    """Get high-confidence domain-specific knowledge from Neo4j graph."""
     agent_domains = {
         "syn": "cognition", "demiurge": "craft", "chiron": "work",
         "eiron": "school", "syl": "home", "arbor": "general", "akron": "vehicle",
     }
     domain = agent_domains.get(agent_id, "general")
     try:
-        result = subprocess.run(
-            ["docker", "exec", "falkordb", "redis-cli",
-             "GRAPH.QUERY", "aletheia",
-             f"MATCH (s)-[r]->(o) WHERE s.domain = '{domain}' AND "
-             f"r.confidence >= 0.7 RETURN s.name, type(r), o.name "
-             f"ORDER BY r.confidence DESC LIMIT {limit}"],
-            capture_output=True, text=True, timeout=5
+        cypher = (
+            "MATCH (s:Entity)-[r]->(o:Entity) "
+            "WHERE s.domain = '" + domain + "' AND r.confidence >= 0.7 "
+            "RETURN s.name, type(r), o.name "
+            "ORDER BY r.confidence DESC LIMIT " + str(limit)
         )
-        if result.returncode == 0:
-            lines = [l.strip() for l in result.stdout.strip().split('\n')
-                     if l.strip() and not l.startswith(('s.name', 'type(r)', 'o.name',
-                                                        'Cached', 'Query', 'internal'))]
+        result = subprocess.run(
+            ["aletheia-graph", "query", cypher],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
             knowledge = []
-            i = 0
-            while i + 2 < len(lines):
-                s, r, o = lines[i], lines[i+1], lines[i+2]
-                # Skip if any part looks like a header
-                if s in ('s.name', 'type(r)', 'o.name'):
-                    i += 3
-                    continue
-                knowledge.append(f"{s} —{r}→ {o}")
-                i += 3
+            for line in result.stdout.strip().split("\n"):
+                line = line.strip()
+                if line and line != "(no results)" and "|" in line:
+                    parts = [p.strip() for p in line.split("|")]
+                    if len(parts) >= 3:
+                        knowledge.append(f"{parts[0]} \u2014{parts[1]}\u2192 {parts[2]}")
             return knowledge
     except Exception:
         pass
     return []
-
 
 def get_graph_context(agent_id, limit=10):
     """Get recent cross-domain insights from the shared graph.
@@ -155,27 +150,7 @@ def get_graph_context(agent_id, limit=10):
                 reinforce_names.append((data[i], data[i+1], data[i+2]))
                 i += 5
 
-            # Batch reinforce: single graph query bumps all accessed facts
-            if reinforce_names:
-                try:
-                    # Build a single Cypher query that bumps all at once
-                    conditions = []
-                    for s, r, o in reinforce_names[:20]:
-                        s_esc = s.replace("'", "\\'").replace('"', '\\"')
-                        o_esc = o.replace("'", "\\'").replace('"', '\\"')
-                        conditions.append(f"(s.name = '{s_esc}' AND o.name = '{o_esc}')")
-                    where = " OR ".join(conditions)
-                    subprocess.run(
-                        ["docker", "exec", "falkordb", "redis-cli",
-                         "GRAPH.QUERY", "aletheia",
-                         f"MATCH (s)-[r]->(o) WHERE {where} "
-                         f"SET r.confidence = CASE WHEN r.confidence IS NULL THEN 0.85 "
-                         f"ELSE CASE WHEN r.confidence + 0.05 > 1.0 THEN 1.0 "
-                         f"ELSE r.confidence + 0.05 END END"],
-                        capture_output=True, timeout=5
-                    )
-                except Exception:
-                    pass
+            # Confidence reinforcement handled by Neo4j natively
             return triples[:limit]
     except Exception:
         pass
