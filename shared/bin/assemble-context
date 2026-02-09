@@ -106,7 +106,7 @@ def get_domain_knowledge(agent_id, limit=8):
     domain = agent_domains.get(agent_id, "general")
     try:
         cypher = (
-            "MATCH (s:Entity)-[r]->(o:Entity) "
+            "MATCH (s:`__Entity__`)-[r]->(o:`__Entity__`) "
             "WHERE s.domain = '" + domain + "' AND r.confidence >= 0.7 "
             "RETURN s.name, type(r), o.name "
             "ORDER BY r.confidence DESC LIMIT " + str(limit)

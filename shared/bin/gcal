@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple Google Calendar CLI for Clawdbot."""
+# Google Calendar CLI for Aletheia
 
 import argparse
 import json
@@ -18,18 +18,53 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 DEFAULT_TZ = "America/Chicago"
 
 
+def authenticate():
+    """Run OAuth flow to get fresh tokens. Works on headless servers."""
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
+    os.makedirs(CREDS_DIR, exist_ok=True)
+
+    if not os.path.exists(CREDS_FILE):
+        print(f"Missing {CREDS_FILE} — place your OAuth client credentials there first.")
+        raise SystemExit(1)
+
+    flow = InstalledAppFlow.from_client_secrets_file(CREDS_FILE, SCOPES)
+
+    # Try local server first (if browser available), fall back to console
+    try:
+        creds = flow.run_local_server(port=0, open_browser=False)
+    except Exception:
+        creds = flow.run_console()
+
+    token_data = {
+        "normal": {
+            "access_token": creds.token,
+            "refresh_token": creds.refresh_token,
+            "scope": " ".join(creds.scopes or SCOPES),
+            "token_type": "Bearer",
+        }
+    }
+    with open(TOKEN_FILE, "w") as f:
+        json.dump(token_data, f)
+    os.chmod(TOKEN_FILE, 0o600)
+    print(f"Authenticated. Token saved to {TOKEN_FILE}")
+
+
 def get_credentials():
     """Load or refresh credentials."""
+    if not os.path.exists(TOKEN_FILE):
+        print(f"No token file at {TOKEN_FILE}. Run: gcal auth")
+        raise SystemExit(1)
+
     with open(CREDS_FILE) as f:
         creds_data = json.load(f)["installed"]
-    
+
     with open(TOKEN_FILE) as f:
         token_data = json.load(f)
-    
-    # Handle nested "normal" key from MCP format
+
     if "normal" in token_data:
         token_data = token_data["normal"]
-    
+
     creds = Credentials(
         token=token_data.get("access_token"),
         refresh_token=token_data.get("refresh_token"),
@@ -38,14 +73,18 @@ def get_credentials():
         client_secret=creds_data["client_secret"],
         scopes=[token_data.get("scope", SCOPES[0])],
     )
-    
+
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        # Save refreshed token
+        try:
+            creds.refresh(Request())
+        except Exception as e:
+            print(f"Token refresh failed: {e}")
+            print("Run: gcal auth")
+            raise SystemExit(1)
         token_data["access_token"] = creds.token
         with open(TOKEN_FILE, "w") as f:
             json.dump({"normal": token_data}, f)
-    
+
     return creds
 
 
@@ -205,6 +244,7 @@ def main():
     parser = argparse.ArgumentParser(description="Google Calendar CLI")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
     
+    subparsers.add_parser("auth", help="Re-authenticate with Google (run when token expires)")
     subparsers.add_parser("calendars", help="List available calendars")
     
     events_parser = subparsers.add_parser("events", help="List upcoming events")
@@ -231,7 +271,9 @@ def main():
     
     args = parser.parse_args()
     
-    if args.command == "calendars":
+    if args.command == "auth":
+        authenticate()
+    elif args.command == "calendars":
         list_calendars()
     elif args.command == "events":
         list_events(args.calendar, args.days, show_ids=args.ids)

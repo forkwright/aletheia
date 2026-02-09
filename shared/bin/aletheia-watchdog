@@ -87,7 +87,7 @@ check_service "gcal" "gcal today -c user@example.com" 15 || true
 check_service "nas-ssh" "ssh -o ConnectTimeout=5 -o BatchMode=yes NAS_IP echo ok" 10 || true
 
 # --- Gateway Health ---
-GATEWAY_PID=$(pgrep -f "aletheia-gateway\|aletheia gateway" 2>/dev/null | head -1 || true)
+GATEWAY_PID=$(pgrep -f "aletheia-gateway|aletheia gateway" 2>/dev/null | head -1 || true)
 
 if [[ -z "$GATEWAY_PID" ]]; then
     FAILS=$(get_fails)

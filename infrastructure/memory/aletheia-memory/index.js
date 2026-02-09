@@ -212,7 +212,8 @@ module.exports = {
         });
 
         if (!result?.ok) {
-          return JSON.stringify({ results: [], error: "mem0 sidecar unavailable" });
+          const errText = JSON.stringify({ results: [], error: "mem0 sidecar unavailable" }, null, 2);
+          return { content: [{ type: "text", text: errText }] };
         }
 
         const memories = result.results?.results || result.results || [];
@@ -223,7 +224,8 @@ module.exports = {
           created_at: m.created_at || null,
         }));
 
-        return JSON.stringify({ results: formatted, count: formatted.length });
+        const payload = JSON.stringify({ results: formatted, count: formatted.length }, null, 2);
+        return { content: [{ type: "text", text: payload }] };
       },
     });
 

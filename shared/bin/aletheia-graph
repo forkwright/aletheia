@@ -52,8 +52,8 @@ def format_results(records):
 
 def ensure_schema():
     queries = [
-        "CREATE INDEX entity_name IF NOT EXISTS FOR (n:Entity) ON (n.name)",
-        "CREATE INDEX entity_domain IF NOT EXISTS FOR (n:Entity) ON (n.domain)",
+        "CREATE INDEX entity_name IF NOT EXISTS FOR (n:`__Entity__`) ON (n.name)",
+        "CREATE INDEX entity_domain IF NOT EXISTS FOR (n:`__Entity__`) ON (n.domain)",
     ]
     driver = get_driver()
     try:
@@ -73,9 +73,9 @@ def add_knowledge(subject, relation, obj, agent="unknown", domain="shared", conf
     rel_type = relation.upper().replace(" ", "_").replace("-", "_")
 
     cypher = (
-        "MERGE (s:Entity {name: $subject}) "
+        "MERGE (s:`__Entity__` {name: $subject}) "
         "ON CREATE SET s.domain = $domain "
-        "MERGE (o:Entity {name: $object}) "
+        "MERGE (o:`__Entity__` {name: $object}) "
         "ON CREATE SET o.domain = $domain "
         f"CREATE (s)-[r:{rel_type} {{"
         "agent: $agent, domain: $domain, "
