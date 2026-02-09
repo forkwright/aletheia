@@ -1,0 +1,123 @@
+# Prosoche — Adaptive attention engine for Aletheia
+# Replaces static heartbeat intervals with signal-driven directed awareness
+
+nous_root: /mnt/ssd/aletheia/nous
+shared_bin: /mnt/ssd/aletheia/shared/bin
+
+gateway:
+  token: 1ce0f5d7ebf2121598c5916ddd8e335f599946ab28d0ded9
+  url: ws://127.0.0.1:18789
+
+quiet_hours:
+  start: "23:00"
+  end: "06:00"
+  timezone: America/Chicago
+
+rhythm:
+  morning_prep: "07:45"
+  midday_check: "12:00"
+  evening_review: "17:00"
+
+budget:
+  max_wakes_per_nous_per_hour: 2
+  max_wakes_total_per_hour: 6
+  cooldown_after_wake_seconds: 300
+
+signals:
+  calendar:
+    enabled: true
+    interval_seconds: 300
+    look_ahead_minutes: 120
+    urgent_minutes: 30
+    calendar_ids:
+      personal: user@example.com
+      family: family@group.calendar.example.com
+      work: cforkwright@employer.example.com
+
+  tasks:
+    enabled: true
+    interval_seconds: 600
+    overdue_urgency: 0.9
+    due_today_urgency: 0.6
+    project_nous:
+      aletheia: syn
+      infra: syn
+      personal: syl
+      home: syl
+      work: arbor
+      arborist: arbor
+      mba: eiron
+      craft: demiurge
+      vehicle: akron
+
+  health:
+    enabled: true
+    interval_seconds: 300
+    services:
+      - aletheia
+      - aletheia-memory
+      - docker
+      - syncthing@syn
+    disk_warn_pct: 85
+    disk_critical_pct: 95
+    docker_containers:
+      - qdrant
+      - neo4j
+      - langfuse
+
+  memory:
+    enabled: true
+    interval_seconds: 900
+    sidecar_url: http://127.0.0.1:8230
+    cross_nous_threshold: 5
+
+nous:
+  syn:
+    role: orchestrator
+    weights:
+      calendar: 0.4
+      tasks: 0.4
+      health: 1.0
+      memory: 0.6
+  chiron:
+    role: health-scheduling
+    weights:
+      calendar: 1.0
+      tasks: 0.3
+      health: 0.2
+      memory: 0.3
+  eiron:
+    role: academic
+    weights:
+      calendar: 0.3
+      tasks: 0.9
+      health: 0.1
+      memory: 0.3
+  demiurge:
+    role: creative
+    weights:
+      calendar: 0.2
+      tasks: 0.4
+      health: 0.1
+      memory: 0.4
+  syl:
+    role: household
+    weights:
+      calendar: 0.8
+      tasks: 0.6
+      health: 0.2
+      memory: 0.4
+  arbor:
+    role: work
+    weights:
+      calendar: 0.4
+      tasks: 0.9
+      health: 0.1
+      memory: 0.3
+  akron:
+    role: vehicle-technical
+    weights:
+      calendar: 0.1
+      tasks: 0.5
+      health: 0.1
+      memory: 0.2
