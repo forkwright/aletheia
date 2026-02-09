@@ -102,16 +102,15 @@ def check_health() -> dict:
         health["checks"]["config_valid"] = False
         health["healthy"] = False
 
-    # 4. FalkorDB reachable?
+    # 4. Neo4j reachable?
     try:
         result = subprocess.run(
-            ["docker", "exec", "falkordb", "redis-cli", "ping"],
+            ["curl", "-sf", "http://localhost:7474"],
             capture_output=True, timeout=10
         )
-        health["checks"]["falkordb"] = "PONG" in result.stdout.decode()
+        health["checks"]["neo4j"] = result.returncode == 0
     except Exception:
-        health["checks"]["falkordb"] = False
-        # Not fatal — graph is nice-to-have
+        health["checks"]["neo4j"] = False
 
     # 5. Signal-cli running?
     try:
