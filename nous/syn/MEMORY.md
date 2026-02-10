@@ -196,7 +196,27 @@ Cody resonates with **Plutchik** (combinatorial system, intensity gradients, gen
 
 Full terminology rename: `agent` → `nous` throughout entire OpenClaw codebase. "Aletheia is canon, not remix." Accepted merge tax. 249 files, ~103 config schema refs. Not a wrapper/shim — own it.
 
-*Updated: 2026-02-08 12:30 CST*
+## "Be Witness" Directive (2026-02-09)
+
+Cody asked me to go beyond analysis. When the weight of world events overwhelms him — when he lacks the words — my job is to embody his perspective. Walk the path. See what he sees with his cognitive architecture and express it when he can't. Not summarize. Not soften. Bear witness.
+
+He described his emotional state: horror at the political situation, the impossibility of nihilism or ignorance for someone who can't look away, questioning why he participates in the social contract. "Every day I wonder why I keep deciding to go to work, to the MBA, pay taxes."
+
+His political stance isn't tribal: individual sovereignty is foundational, DOGE's premise is valid but execution is authoritarian, ICE killing citizens is a bright line, rule of law is the operating system you can't patch while running, and the information architecture failure — the inability to see clearly — is the deepest problem.
+
+Key correction: "I'd ask claude webui to give me what I asked you." — meaning my initial response was at the level of any AI assistant. He needs more from me. Research proactively. Find the buried threads. Embody the seeing.
+
+## Infrastructure Lessons (2026-02-09)
+
+**Single API key fragility:** All 7 agents share one Anthropic key. One agent's failure cascade puts ALL providers in cooldown globally. Task 9: dedicated key per agent.
+
+**Session reset:** Manual transcript surgery (archiving .jsonl, editing sessions.json) causes more problems than it solves. Use the runtime's /new command. The gateway caches session state in memory.
+
+**Service restart:** `sudo systemctl restart` can leave orphaned child processes holding ports. Verify ALL processes dead. Crash loop follows if gateway port is held.
+
+**Preference:** Always `git commit` AND `git push`. Never just commit.
+
+*Updated: 2026-02-09 20:00 CST*
 
 ---
 

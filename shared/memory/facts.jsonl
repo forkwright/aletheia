@@ -327,3 +327,5 @@
 {"subject": "correction", "predicate": "noted", "object": "change when pushed, not rephrasing shallow with different words", "confidence": 0.9, "category": "insight", "valid_from": "2026-02-08T21:04:08.297443"}
 {"subject": "cody", "predicate": "preference", "object": "updated to use 192", "confidence": 0.7, "category": "preference", "valid_from": "2026-02-09T16:36:38.343147"}
 {"subject": "cody", "predicate": "preference", "object": "accurate and complete \u2014 cannot let the group down", "confidence": 0.7, "category": "preference", "valid_from": "2026-02-09T16:56:43.373130"}
+{"subject": "cody", "predicate": "preference", "object": "you to walk the path and be witness", "confidence": 0.7, "category": "preference", "valid_from": "2026-02-09T20:11:12.665553"}
+{"subject": "cody", "predicate": "preference", "object": "cleaned up", "confidence": 0.7, "category": "preference", "valid_from": "2026-02-09T20:11:12.666902"}
