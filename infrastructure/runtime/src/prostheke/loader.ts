@@ -1,5 +1,5 @@
 // Plugin loader — discover and load plugins from configured paths
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import type { PluginDefinition, PluginManifest } from "./types.js";
@@ -38,9 +38,9 @@ export async function loadPlugins(
 async function loadPlugin(
   pluginPath: string,
 ): Promise<PluginDefinition | null> {
-  const manifestPath = join(pluginPath, "manifest.json");
-  if (!existsSync(manifestPath)) {
-    log.warn(`No manifest.json in ${pluginPath}`);
+  const manifestPath = findManifest(pluginPath);
+  if (!manifestPath) {
+    log.warn(`No manifest in ${pluginPath} (tried manifest.json, *.plugin.json)`);
     return null;
   }
 
@@ -73,6 +73,20 @@ async function loadPlugin(
   };
 
   return definition;
+}
+
+function findManifest(pluginPath: string): string | null {
+  const direct = join(pluginPath, "manifest.json");
+  if (existsSync(direct)) return direct;
+
+  // Check for *.plugin.json (e.g. aletheia.plugin.json)
+  try {
+    const files = readdirSync(pluginPath);
+    const pluginJson = files.find((f) => f.endsWith(".plugin.json"));
+    if (pluginJson) return join(pluginPath, pluginJson);
+  } catch {}
+
+  return null;
 }
 
 function findEntry(pluginPath: string): string | null {

@@ -276,13 +276,18 @@ async function handleEnvelope(
   } catch (err) {
     sendTyping(client, target, true).catch(() => {});
     log.error(`Turn failed: ${err instanceof Error ? err.message : err}`);
+    if (err instanceof Error && err.stack) log.error(err.stack);
 
-    await sendMessage(
-      client,
-      target,
-      "I encountered an error processing that message. Please try again.",
-      { markdown: false },
-    );
+    try {
+      await sendMessage(
+        client,
+        target,
+        "I encountered an error processing that message. Please try again.",
+        { markdown: false },
+      );
+    } catch (sendErr) {
+      log.error(`Failed to send error message: ${sendErr}`);
+    }
   }
 }
 

@@ -35,7 +35,15 @@ export class ProviderRouter {
     for (const entry of this.providers) {
       if (entry.models.has(model)) return entry;
     }
-    if (model.startsWith("claude-") && this.providers.length > 0) {
+    // Strip provider prefix (e.g. "anthropic/claude-opus-4-6" → "claude-opus-4-6")
+    const stripped = model.includes("/") ? model.split("/").pop()! : model;
+    if (stripped !== model) {
+      for (const entry of this.providers) {
+        if (entry.models.has(stripped)) return entry;
+      }
+    }
+    // Fallback: any claude-* model goes to first provider (Anthropic)
+    if ((model.startsWith("claude-") || stripped.startsWith("claude-")) && this.providers.length > 0) {
       return this.providers[0]!;
     }
     throw new ProviderError(`No provider found for model: ${model}`);
@@ -43,8 +51,10 @@ export class ProviderRouter {
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
     const entry = this.resolve(request.model);
-    log.debug(`Routing ${request.model} to ${entry.name}`);
-    return entry.provider.complete(request);
+    // Normalize model name — strip provider prefix for the SDK
+    const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
+    log.debug(`Routing ${request.model} to ${entry.name} (model=${model})`);
+    return entry.provider.complete({ ...request, model });
   }
 
   async completeWithFailover(
