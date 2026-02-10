@@ -98,12 +98,15 @@ export class AnthropicProvider {
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
+        log.error(`Anthropic API ${error.status}: ${error.message}`);
         throw new ProviderError(
           `Anthropic API error: ${error.status} ${error.message}`,
           error,
         );
       }
-      throw new ProviderError("Anthropic request failed", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`Anthropic request failed: ${msg}`);
+      throw new ProviderError(`Anthropic request failed: ${msg}`, error);
     }
   }
 }
