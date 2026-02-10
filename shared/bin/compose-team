@@ -21,12 +21,6 @@ ALETHEIA_ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
 
 # Domain → nous mapping with confidence weights
 DOMAIN_MAP = {
-    "chiron": {
-        "domains": ["work", "sql", "data", "dashboard", "employer", "redshift",
-                     "analytics", "roi", "pepm", "healthcare", "claims"],
-        "epistemology": "empirical",
-        "description": "Measurement and evidence. If it can be quantified, Chiron knows how.",
-    },
     "eiron": {
         "domains": ["school", "mba", "homework", "capstone", "academic",
                      "paper", "research", "analysis", "ercot", "macroeconomics"],
@@ -46,10 +40,12 @@ DOMAIN_MAP = {
         "description": "Systemic impact. How does this affect the people involved?",
     },
     "arbor": {
-        "domains": ["tree", "a2z", "adam", "arborist", "business_city",
+        "domains": ["work", "sql", "data", "dashboard", "employer", "redshift",
+                     "analytics", "roi", "pepm", "healthcare", "claims",
+                     "tree", "a2z", "adam", "arborist", "business_city",
                      "woodworking", "joinery", "growth"],
-        "epistemology": "organic",
-        "description": "Growth patterns. What's the natural development path?",
+        "epistemology": "empirical",
+        "description": "Measurement and evidence. If it can be quantified, Arbor knows how.",
     },
     "akron": {
         "domains": ["truck", "cummins", "ram", "diesel", "radio",
@@ -61,13 +57,13 @@ DOMAIN_MAP = {
 
 # Cross-cutting patterns that benefit from multiple perspectives
 MULTI_NOUS_TRIGGERS = {
-    "architecture": ["chiron", "eiron"],    # Build + critique
-    "quality": ["demiurge", "chiron"],       # Craft + measurement
+    "architecture": ["arbor", "eiron"],     # Build + critique
+    "quality": ["demiurge", "arbor"],        # Craft + measurement
     "planning": ["eiron", "akron"],          # Analysis + reliability
-    "cost": ["chiron", "demiurge"],          # Data + material reality
+    "cost": ["arbor", "demiurge"],           # Data + material reality
     "family": ["syl", "demiurge"],           # Relationships + practical
-    "decision": ["eiron", "chiron"],         # Skepticism + evidence
-    "system": ["chiron", "akron"],           # Data + reliability
+    "decision": ["eiron", "arbor"],          # Skepticism + evidence
+    "system": ["arbor", "akron"],            # Data + reliability
     "creative": ["demiurge", "arbor"],       # Making + growth
     "emergency": ["akron", "syl"],           # Reliability + impact
 }

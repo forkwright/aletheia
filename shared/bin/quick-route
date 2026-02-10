@@ -14,17 +14,17 @@ import json
 import sys
 
 ROUTES = {
-    "chiron": ["sql", "redshift", "dashboard", "data", "employer", "roi", 
-               "pepm", "claims", "analytics", "production table", "work"],
     "eiron": ["homework", "capstone", "mba", "paper", "ercot", "workstream",
               "macroeconomics", "tbc", "school", "class", "assignment"],
     "demiurge": ["leather", "belt", "buckle", "stitch", "ardent", "dye",
                  "bindery", "photography", "craft", "film"],
-    "syl": ["partner", "child", "grocery", "family", "baby", 
+    "syl": ["partner", "child", "grocery", "family", "baby",
             "pediatrician", "schedule"],
     "akron": ["truck", "cummins", "diesel", "radio", "overlanding",
               "ram ", "battery", "cb ", "ham "],
-    "arbor": ["tree", "adam", "arborist", "business_city", "a2z"],
+    "arbor": ["sql", "redshift", "dashboard", "data", "employer", "roi",
+              "pepm", "claims", "analytics", "production table", "work",
+              "tree", "adam", "arborist", "business_city", "a2z"],
 }
 
 def route(message: str) -> dict:

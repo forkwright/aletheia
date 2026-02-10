@@ -33,18 +33,20 @@ FACTS_FILE = SHARED_DIR / "memory" / "facts.jsonl"
 # Agent workspace paths
 AGENT_DIRS = {
     "syn": BASE_DIR / "syn",
-    "syl": BASE_DIR / "syl", 
-    "chiron": BASE_DIR / "chiron",
+    "syl": BASE_DIR / "syl",
     "eiron": BASE_DIR / "eiron",
     "demiurge": BASE_DIR / "demiurge",
+    "arbor": BASE_DIR / "arbor",
+    "akron": BASE_DIR / "akron",
 }
 
 # Domain keywords for auto-routing
 DOMAIN_KEYWORDS = {
     "syl": ["family", "home", "personal", "partner", "routine", "morning", "energy", "patterns"],
-    "chiron": ["work", "sql", "employer", "dashboard", "performance", "business", "project"],
     "eiron": ["mba", "school", "homework", "academic", "study", "assignment", "capstone"],
     "demiurge": ["craft", "leather", "making", "ardent", "handworks", "tools"],
+    "arbor": ["work", "sql", "employer", "dashboard", "performance", "business", "project"],
+    "akron": ["truck", "vehicle", "diesel", "radio", "preparedness"],
     "syn": ["agent", "memory", "system", "orchestration", "infrastructure"],
 }
 
@@ -617,7 +619,7 @@ def main():
         epilog="""
 Examples:
   memory-router-v2 "What are the operator's communication preferences?"
-  memory-router-v2 "SQL performance tips" --domains chiron
+  memory-router-v2 "SQL performance tips" --domains arbor
   memory-router-v2 "morning routine" --iterative --max-iter 3
   memory-router-v2 "system architecture" --no-iterative --debug
         """

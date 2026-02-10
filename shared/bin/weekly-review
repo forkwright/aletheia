@@ -21,7 +21,7 @@ echo ""
 
 # 2. Agent activity summary
 echo "## Agent Activity"
-for agent in syl chiron eiron demiurge; do
+for agent in syl eiron demiurge arbor akron; do
     status_file="$ALETHEIA_ROOT/nous/syn/nous-status/${agent}.md"
     if [[ -f "$status_file" ]]; then
         updated=$(stat -c %y "$status_file" 2>/dev/null | cut -d' ' -f1)

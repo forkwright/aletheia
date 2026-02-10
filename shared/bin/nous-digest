@@ -12,7 +12,7 @@ echo "*Generated: $(date -Iseconds)*"
 echo ""
 
 # Get session info for each agent
-for agent in syl chiron eiron demiurge; do
+for agent in syl eiron demiurge arbor akron; do
     echo "## ${agent^}"
     
     # Check status file

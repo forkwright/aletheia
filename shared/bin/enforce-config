@@ -19,10 +19,9 @@ NOUS_DIR = "/mnt/ssd/aletheia/nous"
 # Canonical nous registry — source of truth
 NOUS = {
     "main":     {"name": "Syn",      "default": True, "workspace": f"{NOUS_DIR}/syn",
-                 "subagents": {"allowAgents": ["chiron", "eiron", "demiurge", "syl", "akron", "arbor"]},
+                 "subagents": {"allowAgents": ["eiron", "demiurge", "syl", "akron", "arbor"]},
                  "sandbox": {"mode": "off"}},
     "akron":    {"name": "Akron",    "workspace": f"{NOUS_DIR}/akron"},
-    "chiron":   {"name": "Chiron",   "workspace": f"{NOUS_DIR}/chiron"},
     "eiron":    {"name": "Eiron",    "workspace": f"{NOUS_DIR}/eiron"},
     "demiurge": {"name": "Demiurge", "workspace": f"{NOUS_DIR}/demiurge"},
     "syl":      {"name": "Syl",      "workspace": f"{NOUS_DIR}/syl"},

@@ -12,7 +12,7 @@ echo "# Agent Status Overview"
 echo "*Generated: $(date -Iseconds)*"
 echo ""
 
-for agent in syl chiron eiron demiurge; do
+for agent in syl eiron demiurge arbor akron; do
     file="$STATUS_DIR/${agent}.md"
     if [[ -f "$file" ]]; then
         # Get last modified time

@@ -46,7 +46,7 @@ log "Disk usage before cleanup: $BEFORE_USAGE"
 # Create archive directories
 if [[ "$DRY_RUN" == "false" ]]; then
     mkdir -p "$ARCHIVE_DIR"/{agents,cron,logs}
-    mkdir -p "$ARCHIVE_DIR/agents"/{main,chiron,eiron,demiurge,syl}/sessions
+    mkdir -p "$ARCHIVE_DIR/agents"/{main,eiron,demiurge,syl,arbor,akron}/sessions
 fi
 
 # Function to archive files

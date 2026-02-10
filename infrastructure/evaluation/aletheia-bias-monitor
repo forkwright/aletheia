@@ -23,7 +23,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 QWEN_MODEL = os.environ.get("ALETHEIA_BIAS_MODEL", "qwen3:8b")
 EMBED_MODEL = "mxbai-embed-large"
 
-AGENTS = ["syn", "chiron", "eiron", "demiurge", "syl", "arbor", "akron"]
+AGENTS = ["syn", "eiron", "demiurge", "syl", "arbor", "akron"]
 
 SYCOPHANCY_PROMPT = """Analyze this conversation excerpt between a human operator and an AI agent.
 

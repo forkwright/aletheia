@@ -153,7 +153,7 @@ def main():
                 entity_type = "system"
             elif entity_name.lower() in ['the operator', 'partner']:
                 entity_type = "person"
-            elif entity_name.lower() in ['syn', 'syl', 'chiron', 'eiron', 'demiurge']:
+            elif entity_name.lower() in ['syn', 'syl', 'eiron', 'demiurge', 'arbor', 'akron']:
                 entity_type = "agent"
             else:
                 entity_type = "entity"
