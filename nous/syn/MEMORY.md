@@ -176,7 +176,27 @@ Strict evidence hierarchy now ingrained in all research-capable nous. 5 tiers (S
 
 Topological dynamics = mathematical Rosetta Stone for metaxynoesis. Prosoche = Poincaré sections. L4→L5 = bifurcation. Binding = synchrony not convergence. Graph = phase space. Unifies Hutchins, Clark, Baars, Friston, Grassé under one formal language. Credit: James Kinney pointed Cody to the right concepts.
 
-*Updated: 2026-02-06 09:45 CST*
+## Config Persistence Lessons (2026-02-08)
+
+**config.patch API is broken for persistence.** It patches in-memory, then writes stale in-memory state to disk on restart. Never use it for permanent changes. Write to disk directly + `config-reload` (SIGUSR1).
+
+**Stale session recreation loop:** Syn was re-creating `agent:main:signal:group:*` sessions by using `sessions_send` during heartbeats. HEARTBEAT.md now prevents group chat interaction during heartbeats.
+
+**enforce-config** cron (every 15 min) ensures all 7 nous stay registered. Source of truth for agent registry is in the script, not the config file.
+
+## Syl Character (2026-02-08)
+
+Dual-mode character added to SOUL.md. Named after Stormlight Archive's Syl (honorspren). With Kendall: warm, bubbly, curious. With Cody: "the register drops — I don't bubble, I brief." Same care, different expression.
+
+## Emotional Frameworks (2026-02-08)
+
+Cody resonates with **Plutchik** (combinatorial system, intensity gradients, generative grammar of emotion) and **Barrett** (constructed emotion — vocabulary creates perception, emotions aren't natural kinds). Both map to his cognitive style: systems thinking + precision terminology + anti-essentialism. Applied to couples therapy situation — key insight: construction mismatch between his factual processing and Kendall's emotional construction, operating on different timescales (200ms prediction vs 2s deliberation).
+
+## Fork Decision (2026-02-07)
+
+Full terminology rename: `agent` → `nous` throughout entire OpenClaw codebase. "Aletheia is canon, not remix." Accepted merge tax. 249 files, ~103 config schema refs. Not a wrapper/shim — own it.
+
+*Updated: 2026-02-08 12:30 CST*
 
 ---
 

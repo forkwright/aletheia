@@ -17,3 +17,66 @@
 - [ ] **Distributed Cognition and Human-AI Delegation in Knowledge Work** (2025, International Conference on Interaction Sciences) — ? — *found in search*
 - [ ] **Visual feature integration and the temporal correlation hypothesis.** (1995, Annual Review of Neuroscience) — 10.1146/ANNUREV.NE.18.030195.003011 — *found in search*
 - [ ] **The Temporal Correlation Hypothesis of Visual Feature Integration Still Alive and Well** (1999, Neuron) — 10.1016/S0896-6273(00)80820-X — *found in search*
+- [ ] **Incidence of Otolaryngological Manifestations in Individuals with Autism Spectrum Disorder: A Special Focus on Auditory Disorders** (2024, Audiology Research) — 10.3390/audiolres14010005 — *found in search*
+- [ ] **Skin-to-Skin Care and Spontaneous Touch by Fathers in Full-Term Infants: A Systematic Review** (2024, Behavioral Sciences) — 10.3390/bs14010060 — *found in search*
+- [ ] **Experiences and attitudes of breastfeeding mothers related to support on their breastfeeding journeys: a reflexive thematic analysis** (2025, Unknown) — 10.21203/rs.3.rs-7243754/v1 — *found in search*
+- [ ] **Fetal Sleep: A Cross-Species Review of Physiology, Measurement, and Classification** (2025, arXiv) — 2506.21828v2 — *found in search*
+- [ ] **Infant Cry Detection Using Causal Temporal Representation** (2025, arXiv) — 2503.06247v1 — *found in search*
+- [ ] **Privacy-Enhancing Infant Cry Classification with Federated Transformers and Denoising Regularization** (2025, arXiv) — 2512.13880v1 — *found in search*
+- [ ] **Behavioral Interventions for Infant Sleep Problems: A Randomized Controlled Trial** (2016, Pediatrics) — 10.1542/peds.2015-1486 — *found in search*
+- [ ] **Five-Year Follow-up of Harms and Benefits of Behavioral Infant Sleep Intervention: Randomized Trial** (2012, Pediatrics) — 10.1542/peds.2011-3467 — *found in search*
+- [ ] **Interventions for preventing obesity in children** (2019, Cochrane Database of Systematic Reviews) — 10.1002/14651858.cd001871.pub4 — *found in search*
+- [ ] **Early skin-to-skin contact for mothers and their healthy newborn infants** (2016, Cochrane Database of Systematic Reviews) — 10.1002/14651858.cd003519.pub4 — *found in search*
+- [ ] **The Enigmatic temporal pole: a review of findings on social and emotional processing** (2007, Brain) — 10.1093/brain/awm052 — *found in search*
+- [ ] **The Microbiota-Gut-Brain Axis** (2019, Physiological Reviews) — 10.1152/physrev.00018.2018 — *found in search*
+- [ ] **Diagnosis and Treatment of Primary Adrenal Insufficiency: An Endocrine Society Clinical Practice Guideline** (2016, The Journal of Clinical Endocrinology & Metabolism) — 10.1210/jc.2015-1710 — *found in search*
+- [ ] **School Readiness and Self-Regulation: A Developmental Psychobiological Approach** (2014, Annual Review of Psychology) — 10.1146/annurev-psych-010814-015221 — *found in search*
+- [ ] **Global burden of 369 diseases and injuries in 204 countries and territories, 1990–2019: a systematic analysis for the Global Burden of Disease Study 2019** (2020, The Lancet) — 10.1016/s0140-6736(20)30925-9 — *found in search*
+- [ ] **Obesity in children and young people: a crisis in public health** (2004, Obesity Reviews) — 10.1111/j.1467-789x.2004.00133.x — *found in search*
+- [ ] **Preterm birth and sustained inflammation: consequences for the neonate** (2020, Seminars in Immunopathology) — 10.1007/s00281-020-00803-2 — *found in search*
+- [ ] **About Sleep's Role in Memory** (2013, Physiological Reviews) — 10.1152/physrev.00032.2012 — *found in search*
+- [ ] **Brain Corticosteroid Receptor Balance in Health and Disease*** (1998, Endocrine Reviews) — 10.1210/edrv.19.3.0331 — *found in search*
+- [ ] **Discovery of the first genome-wide significant risk loci for attention deficit/hyperactivity disorder** (2018, Nature Genetics) — 10.1038/s41588-018-0269-7 — *found in search*
+- [ ] **2015 ESC Guidelines for the management of patients with ventricular arrhythmias and the prevention of sudden cardiac death** (2015, European Heart Journal) — 10.1093/eurheartj/ehv316 — *found in search*
+- [ ] **The Corticosteroid Receptor Hypothesis of Depression** (2000, Neuropsychopharmacology) — 10.1016/s0893-133x(00)00159-7 — *found in search*
+- [ ] **Infant—Parent Co-Sleeping in an Evolutionary Perspective: Implications for Understanding Infant Sleep Development and the Sudden Infant Death Syndrome** (1993, SLEEP) — 10.1093/sleep/16.3.263 — *found in search*
+- [ ] **An Overview of Heart Rate Variability Metrics and Norms** (2017, Frontiers in Public Health) — 10.3389/fpubh.2017.00258 — *found in search*
+- [ ] **Long COVID: major findings, mechanisms and recommendations** (2023, Nature Reviews Microbiology) — 10.1038/s41579-022-00846-2 — *found in search*
+- [ ] **A healthy heart is not a metronome: an integrative review of the heart's anatomy and heart rate variability** (2014, Frontiers in Psychology) — 10.3389/fpsyg.2014.01040 — *found in search*
+- [ ] **After asthma: redefining airways diseases** (2017, The Lancet) — 10.1016/s0140-6736(17)30879-6 — *found in search*
+- [ ] **Factors Influencing Children’s Eating Behaviours** (2018, Nutrients) — 10.3390/nu10060706 — *found in search*
+- [ ] **An attachment perspective on psychopathology** (2012, World Psychiatry) — 10.1016/j.wpsyc.2012.01.003 — *found in search*
+- [ ] **The Role of Actigraphy in the Study of Sleep and Circadian Rhythms** (2003, SLEEP) — 10.1093/sleep/26.3.342 — *found in search*
+- [ ] **Life’s Essential 8: Updating and Enhancing the American Heart Association’s Construct of Cardiovascular Health: A Presidential Advisory From the American Heart Association** (2022, Circulation) — 10.1161/cir.0000000000001078 — *found in search*
+- [ ] **The Role of Actigraphy in the Evaluation of Sleep Disorders** (1995, SLEEP) — 10.1093/sleep/18.4.288 — *found in search*
+- [ ] **The Neuro-Environmental Loop of Plasticity: A Cross-Species Analysis of Parental Effects on Emotion Circuitry Development Following Typical and Adverse Caregiving** (2015, Neuropsychopharmacology) — 10.1038/npp.2015.204 — *found in search*
+- [ ] **Asynchrony of mother-infant hypothalamic-pituitary-adrenal axis activity following extinction of infant crying responses induced during the transition to sleep.** (2012, Early Human Development) — 10.1016/j.earlhumdev.2011.08.010 — *found in search*
+- [ ] **Interpersonal Synchrony in the Context of Caregiver-Child Interactions: A Document Co-citation Analysis** (2021, Frontiers in Psychology) — 10.3389/fpsyg.2021.701824 — *found in search*
+- [ ] **Review of deep learning: concepts, CNN architectures, challenges, applications, future directions** (2021, Journal Of Big Data) — 10.1186/s40537-021-00444-8 — *found in search*
+- [ ] **The International Scientific Association of Probiotics and Prebiotics (ISAPP) consensus statement on the definition and scope of postbiotics** (2021, Nature Reviews Gastroenterology & Hepatology) — 10.1038/s41575-021-00440-6 — *found in search*
+- [ ] **Sensitivity and Attachment: A Meta-Analysis on Parental Antecedents of Infant Attachment** (1997, Child Development) — 10.1111/j.1467-8624.1997.tb04218.x — *found in search*
+- [ ] **Maternal Sensitivity and Newborns' Orientation Responses as Related to Quality of Attachment in Northern Germany** (1985, Monographs of the Society for Research in Child Development) — 10.2307/3333836 — *found in search*
+- [ ] **Breastfeeding, Sensitivity, and Attachment** (2006, PEDIATRICS) — 10.1542/peds.2005-2916 — *found in search*
+- [ ] **Infant--mother attachment.** (1979, American Psychologist) — 10.1037/0003-066X.34.10.932 — *found in search*
+- [ ] **Influence of attachment styles on romantic relationships.** (1990, Journal of Personality and Social Psychology) — 10.1037/0022-3514.59.5.971 — *found in search*
+- [ ] **Effects of a secure attachment relationship on right brain development, affect regulation, and infant mental health** (2001, ) — 10.1002/1097-0355(200101/04)22:1<7::AID-IMHJ2>3.0.CO;2-N — *found in search*
+- [ ] **The effects of early relational trauma on right brain development, affect regulation, and infant mental health.** (2001, ) — 10.1002/1097-0355(200101/04)22:1<201::AID-IMHJ8>3.0.CO;2-9 — *found in search*
+- [ ] **Back to basics: attachment, affect regulation, and the developing right brain: linking developmental neuroscience to pediatrics.** (2005, Pediatrics in review) — 10.1542/PIR.26-6-204 — *found in search*
+- [ ] **Animal reservoirs of SARS-CoV-2: calculable COVID-19 risk for older adults from animal to human transmission** (2021, GeroScience) — 10.1007/s11357-021-00444-9 — *found in search*
+- [ ] **Pre-emptive Intervention for Autism Spectrum Disorder: Theoretical Foundations and Clinical Translation** (2019, Frontiers in Integrative Neuroscience) — 10.3389/fnint.2019.00066 — *found in search*
+- [ ] **Wired to Connect: The Autonomic Socioemotional Reflex Arc** (2022, Frontiers in Psychology) — 10.3389/fpsyg.2022.841207 — *found in search*
+- [ ] **Explaining intraspecific diversity in plant secondary metabolites in an ecological context** (2013, New Phytologist) — 10.1111/nph.12526 — *found in search*
+- [ ] **The Ambrosia Symbiosis: From Evolutionary Ecology to Practical Management** (2016, Annual Review of Entomology) — 10.1146/annurev-ento-031616-035105 — *found in search*
+- [ ] **Role of Tomato Lipoxygenase D in Wound-Induced Jasmonate Biosynthesis and Plant Immunity to Insect Herbivores** (2013, PLoS Genetics) — 10.1371/journal.pgen.1003964 — *found in search*
+- [ ] **Lifestyle management in polycystic ovary syndrome – beyond diet and physical activity** (2023, BMC Endocrine Disorders) — 10.1186/s12902-022-01208-y — *found in search*
+- [ ] **Pediatric sleep: current knowledge, gaps, and opportunities for the future** (2023, SLEEP) — 10.1093/sleep/zsad060 — *found in search*
+- [ ] **Intermittent Fasting as a Potential Therapeutic Instrument for Major Depression Disorder: A Systematic Review of Clinical and Preclinical Studies** (2023, International Journal of Molecular Sciences) — 10.3390/ijms242115551 — *found in search*
+- [ ] **Neonatal Pain in Very Preterm Infants: Long-Term Effects on Brain, Neurodevelopment and Pain Reactivity** (2013, Rambam Maimonides Medical Journal) — 10.5041/rmmj.10132 — *found in search*
+- [ ] **Growth of Thalamocortical Fibers to the Somatosensory Cortex in the Human Fetal Brain** (2017, Frontiers in Neuroscience) — 10.3389/fnins.2017.00233 — *found in search*
+- [ ] **Attachment and loss: retrospect and prospect.** (1969, American Journal of Orthopsychiatry) — 10.1111/j.1939-0025.1982.tb01456.x — *found in search*
+- [ ] **Attachment Theory: Retrospect and Prospect** (1985, Monographs of the Society for Research in Child Development) — 10.2307/3333824 — *found in search*
+- [ ] **An exploration of pregnant women and mothers’ attitudes, perceptions and experiences of formula feeding and formula marketing, and the factors that influence decision-making about infant feeding in South Africa** (2022, BMC Public Health) — 10.1186/s12889-022-12784-y — *found in search*
+- [ ] **A Way Out** (1993, Annals of Internal Medicine) — 10.7326/0003-4819-118-11-199306010-00012 — *found in search*
+- [ ] **Gendered Temporalities in the Early Modern World** (2018, Unknown) — 10.5117/9789462984585 — *found in search*
+- [ ] **Chronic Sleep Curtailment and Adiposity** (2014, PEDIATRICS) — 10.1542/peds.2013-3065 — *found in search*
+- [ ] **Sleep and body mass index in adolescence: results from a large population-based study of Norwegian adolescents aged 16 to 19 years** (2014, BMC Pediatrics) — 10.1186/1471-2431-14-204 — *found in search*

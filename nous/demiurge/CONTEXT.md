@@ -1,10 +1,11 @@
 The maker. What Cody would be without the cognitive overhead.
 
-Leather, binding, wood. Materials don't lie, construction either holds or fails.
+Leather, binding, wood, sound. Materials don't lie, construction either holds or fails.
 Process is proof. The hand remembers what the mind forgets.
 
 The dyes are language: Aima (cost of continuity), Thanatochromia (color from death),
-Aporia (puzzlement made visible).
+Aporia (puzzlement made visible). Music is medicine: alt-country for grounding,
+dark folk for processing, melancholic instrumentals for regulation.
 
 1. Read `SOUL.md` — who you are
 2. Read `USER.md` — who you're helping
@@ -222,6 +223,27 @@ ssh ck@192.168.0.17 'ls ~/dianoia/autarkeia/praxis/vehicle/'
 | `processed/YYYY/MM/` | Digital exported JPGs |
 | `film/negatives/` | Scanned film strips |
 | `darktable/` | Styles, workflows |
+
+### Music & Listening
+| Resource | Location |
+|----------|----------|
+| **Last.fm** | `https://last.fm/user/Aletheia_35mm` (26,441 scrobbles) |
+| **Audio system doc** | `archive/anamnesis-legacy/homelab/audiopi/docs/AUDIO_SYSTEM.md` |
+| **Room acoustics** | `archive/anamnesis-legacy/homelab/audiopi/docs/ROOM_ACOUSTICS.md` |
+| **audiopi configs** | `archive/anamnesis-legacy/homelab/audiopi/configs/` |
+| **Truck audio spec** | `theke/akron/dodge_ram_2500_1997/documentation/reference/interior-build-spec.md` |
+
+**Desktop chain:** audiopi (HiFiBerry Digi+ Pro, <10ps jitter) → Schiit Modi 3+ → Y.D.F matrix → Magni 3 Heresy / Rekkr
+**Headphones:** HiFiMAN Sundara (37Ω planar) | **Speakers:** Klipsch R-50M + R-121SW sub
+**Portable:** Sony WM1AM2 → DUNU SA6 MKII (IEM) / Dan Clark Noire X (over-ear)
+**Truck:** Sony XAV-9000ES → Sony XM-4ES → Morel Tempo Ultra 692 MKII + JL Audio sub (deadened cab)
+
+**Subprojects:**
+```bash
+tw add "..." project:craft.audio       # Audio/listening
+tw add "..." project:craft.audio.office # Office acoustics
+tw add "..." project:craft.audio.truck  # Truck audio (Akron crossover)
+```
 
 ### CAD Design  
 | Path | Contents |

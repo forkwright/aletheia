@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-02-06T09:00:01-06:00",
+  "timestamp": "2026-02-09T09:00:01-06:00",
   "status": "alert",
   "metrics": {
-    "files": 210,
-    "memory_files": 50,
+    "files": 217,
+    "memory_files": 56,
     "review_files": 9,
     "workspace_mb": 2,
     "nas_percent": 0,
     "tasks_pending": 30,
-    "tasks_overdue": 7
+    "tasks_overdue": 10
   },
   "alerts": [
-    "File count high: 210 (>100)",
-    "Memory files need consolidation: 50 (>14)",
+    "File count high: 217 (>100)",
+    "Memory files need consolidation: 56 (>14)",
     "Clawdbot service is down",
     "Letta not responding",
-    "Overdue tasks: 7"
+    "Overdue tasks: 10"
   ]
 }

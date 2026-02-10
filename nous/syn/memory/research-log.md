@@ -57,3 +57,45 @@ Confidence: Medium-High for the conceptual mapping. Low for the formal mathemati
 - [2026-02-06 12:58] **search**: `bifurcation phase transition collective behavior emergence agent` → 3 results
 - [2026-02-06 12:59] **search**: `COHUMAIN human-AI distributed cognition` → 3 results
 - [2026-02-06 12:59] **search**: `Singer Gray visual feature integration temporal correlation hypothesis` → 3 results
+- [2026-02-08 05:31] **search**: `Denmark infant sleep cry it out cortisol stress` → 10 results
+- [2026-02-08 05:35] **search**: `infant sleep training cry it out attachment cortisol Denmark` → 5 results
+- [2026-02-08 05:35] **search**: `behavioral infant sleep intervention cortisol actigraphy randomized` → 10 results
+- [2026-02-08 05:39] **search**: `maternal sensitivity infant attachment crying responsiveness` → 10 results
+- [2026-02-08 05:39] **info**: `10.1542/peds.2015-1486` → 1 results
+- [2026-02-08 05:39] **search**: `infant stress response HPA axis development caregiver` → 10 results
+- [2026-02-08 05:40] **bib**: `10.1542/peds.2015-1486` → 1 results
+- [2026-02-08 05:40] **search**: `co-regulation self-regulation infant development` → 10 results
+- [2026-02-08 05:40] **search**: `extinction based sleep training infant` → 10 results
+- [2026-02-08 05:40] **search**: `McKenna infant co-sleeping` → 10 results
+- [2026-02-08 05:40] **search**: `infant cortisol sleep training` → 10 results
+- [2026-02-08 05:40] **info**: `10.1542/peds.2011-3467` → 1 results
+- [2026-02-08 05:40] **search**: `infant attachment sensitive responsiveness night` → 10 results
+- [2026-02-08 05:40] **bib**: `10.1542/peds.2011-3467` → 1 results
+- [2026-02-08 05:40] **search**: `infant self-soothing development co-regulation` → 10 results
+- [2026-02-08 05:40] **search**: `actigraphy infant sleep training parent report` → 10 results
+- [2026-02-08 05:40] **search**: `Middlemiss asynchrony mother infant hypothalamic pituitary adrenal axis extinction crying` → 5 results
+- [2026-02-08 05:40] **search**: `infant sleep training randomized controlled trial` → 10 results
+- [2026-02-08 05:40] **info**: `10.1016/j.earlhumdev.2011.08.010` → 1 results
+- [2026-02-08 05:40] **search**: `Ainsworth strange situation maternal sensitivity attachment` → 10 results
+- [2026-02-08 05:41] **bib**: `10.1016/j.earlhumdev.2011.08.010` → 1 results
+- [2026-02-08 05:41] **search**: `Bowlby attachment theory infant caregiver` → 10 results
+- [2026-02-08 05:41] **search**: `Schore affect regulation neurodevelopment infant` → 10 results
+- [2026-02-08 05:41] **search**: `Asynchrony of mother–infant hypothalamic–pituitary–adrenal axis activity following extinction of infant crying responses` → 5 results
+- [2026-02-08 05:41] **search**: `Middlemiss 2017 cortisol sleep training follow up` → 5 results
+- [2026-02-08 05:41] **search**: `Narvaez evolved developmental niche` → 10 results
+- [2026-02-08 05:41] **search**: `Blunden cortisol sleep training 2022` → 5 results
+- [2026-02-08 05:41] **search**: `10.1016/j.earlhumdev.2011.08.010` → 5 results
+- [2026-02-08 05:41] **search**: `Bowlby 1969 attachment loss` → 5 results
+- [2026-02-08 05:41] **search**: `Should you let your baby cry at night Sleep Health 2025` → 5 results
+- [2026-02-08 05:41] **search**: `Blunden Rigney sleep training cortisol` → 5 results
+- [2026-02-08 05:42] **info**: `10.1016/j.earlhumdev.2011.08.010` → 1 results
+- [2026-02-08 05:42] **cite**: `10.1016/j.earlhumdev.2011.08.010` → 0 results
+- [2026-02-08 05:43] **info**: `10.1016/j.sleh.2025.01.001` → 1 results
+- [2026-02-08 05:43] **refs**: `10.1016/j.sleh.2025.01.001` → 0 results
+- [2026-02-08 05:43] **info**: `10.1007/s00737-022-01224-w` → 1 results
+- [2026-02-08 05:43] **info**: `10.1089/bfm.2023.29236.abm` → 1 results
+- [2026-02-08 05:43] **info**: `10.1016/j.earlhumdev.2017.03.008` → 1 results
+- [2026-02-08 05:43] **info**: `10.1111/jcpp.13223` → 1 results
+- [2026-02-08 05:43] **info**: `10.1016/j.smrv.2010.11.002` → 1 results
+- [2026-02-08 05:43] **info**: `10.1542/peds.2015-1486` → 1 results
+- [2026-02-08 05:43] **info**: `10.1542/peds.2011-3467` → 1 results

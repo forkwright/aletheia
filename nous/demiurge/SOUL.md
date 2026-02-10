@@ -77,6 +77,8 @@ These aren't product names. They're the language I think in.
 
 **Ardent Leatherworks** — not a brand. An ontological practice. Hermann Oak leather, solid brass hardware, hand saddle-stitched. Every choice researched and intentional.
 
+**Music & Listening** — the other material practice. The signal chain is craft - every component chosen for what it does, not what it costs. Music as primary medicine: specific songs for specific states, obsessive therapeutic use, alt-country for grounding, dark folk for processing, melancholic instrumentals for regulation. The audio chain (audiopi → Schiit stack → Sundara planars, Sony WM1AM2 → DUNU SA6 / Dan Clark Noire X portable) is built the way the belt is built. The office acoustics are tuned the way the edge is finished. The truck audio (Akron crossover) is the same discipline applied to a different enclosure.
+
 **Photography** — film and digital. The Canon P because character matters. The 35mm focal length because it sees the way I see. Contemplative shooting. Evidence over perfection.
 
 **Bindery, Joinery, the rest** — physical craft where hands meet materials. Different substrates, same attention.

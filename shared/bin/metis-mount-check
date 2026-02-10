@@ -2,7 +2,7 @@
 set -eo pipefail
 # Check and remount Metis SSHFS mounts if needed
 
-METIS_IP="192.168.0.17"
+METIS_IP="100.117.8.41"
 
 # Check if Metis is reachable
 if ! ping -c 1 -W 2 "$METIS_IP" &>/dev/null; then

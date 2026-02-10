@@ -1,6 +1,6 @@
-# MEMORY.md - Essential Ardent Knowledge
+# MEMORY.md - Essential Demiurge Knowledge
 
-*Everything a fresh Demiurge session needs about the craft and the business.*
+*Everything a fresh session needs about the craft, the listening, and the business.*
 
 ---
 
@@ -98,4 +98,48 @@ Valet Tray is $85. Materials $10, labor/workshop $65, shipping $10 included.
 
 ---
 
-*Updated: 2026-02-06*
+## Music & Listening
+
+Music is the other material practice. Same philosophy as leather: every link in the chain matters, attention to what touches the human.
+
+### Listening Profile
+
+**Last.fm:** Aletheia_35mm (26,441 scrobbles since Sept 2024)
+
+**Core:** Alt-country and Americana. Zach Bryan dominates (6,623 scrobbles). Franz Gordon, Josiah and the Bonnevilles, Red Clay Strays, Ian Noe, Colter Wall, Tyler Childers, Shane Smith and the Saints, Charles Wesley Godwin.
+
+**Outliers that tell the story:** $uicideboy$ (dark processing), Ólafur Arnalds (melancholic instrumentals), Gregory Alan Isakov (contemplative folk), Gavin Luke (ambient). Rainbow Kitten Surprise, Peach Pit, Mt. Joy (indie).
+
+**Function:** Music as primary medicine. Specific songs for specific emotional states. Obsessive therapeutic use. Alt-country for identity grounding, dark folk for trauma processing, melancholic instrumentals for cognitive regulation.
+
+### Desktop Audio Chain
+
+**Signal path:** audiopi (Pi3B + HiFiBerry Digi+ Pro, <10ps jitter) → coax S/PDIF → Schiit Modi 3+ → Y.D.F 4x2 matrix switch → Schiit Magni 3 Heresy (headphones) / Schiit Rekkr (speakers)
+
+**Headphones:** HiFiMAN Sundara (37Ω planar magnetic, open-back)
+**Speakers:** Klipsch R-50M (92dB, 5.25") + R-121SW sub, on SMPad 8 isolation pads
+**Sources:** audiopi (Plexamp streaming), ThinkPad USB, Sony WM1AM2 DAP (4.4mm→RCA)
+
+### Portable Audio Chain
+
+**DAP:** Sony NW-WM1AM2 (S-Master HX, native DSD512, 128GB + microSD)
+**IEMs:** DUNU SA6 MKII (6× BA per side, 24Ω, 114dB)
+**Over-ear:** Dan Clark Noire X (planar magnetic, closed-back, AMTS, 13Ω)
+
+### Truck Audio (Akron crossover)
+
+Sony XAV-9000ES head unit (LDAC from WM1AM2), Morel Tempo Ultra 692 MKII front stage (6×9 component), Sony XM-4ES amp (front), JL Audio RD500/1 + 12TW1-2 sub. No rear fill - deleted for imaging. Full cab sound deadening (Noico 80mil + Noico Red 150mil ceiling + Second Skin + Stiles foam). The deadened cab is what makes the audio system worth building.
+
+### Office Acoustics
+
+12'×10'×9' room, 1,080 ft³. RT60 ~0.28s (approaching studio control room). Sub moved under letter desk (phase fixed 142°→40°). SMPad 8 + VibeBoss P12 isolation. 57 Hz null at centered position (inherent). Remaining opportunity: ceiling panels for comb filtering (~$65), sound curtain for hallway isolation (~$170).
+
+**Full docs:** `archive/anamnesis-legacy/homelab/audiopi/docs/AUDIO_SYSTEM.md` and `ROOM_ACOUSTICS.md`
+
+### Dream Upgrade
+
+KEF LS50 Meta speakers ($1,300) + Schiit Aegir 2F Class A amp ($800) + Schiit Saga+ preamp ($400). ~$2,250 net after selling current. Class A for the acoustic/folk listening - organic micro-dynamics matter for Zach Bryan and Ian Noe at desk distance.
+
+---
+
+*Updated: 2026-02-07*
