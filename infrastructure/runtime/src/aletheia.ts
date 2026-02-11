@@ -14,6 +14,7 @@ import { findTool } from "./organon/built-in/find.js";
 import { lsTool } from "./organon/built-in/ls.js";
 import { webFetchTool } from "./organon/built-in/web-fetch.js";
 import { webSearchTool } from "./organon/built-in/web-search.js";
+import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
@@ -71,6 +72,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Web access
   tools.register(webFetchTool);
   tools.register(webSearchTool);
+
+  // Memory
+  tools.register(mem0SearchTool);
 
   // Wired tools (config + store injected)
   tools.register(createConfigReadTool(config));
@@ -140,6 +144,14 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const daemons: DaemonHandle[] = [];
   const clients = new Map<string, SignalClient>();
 
+  // Collect bound group IDs from bindings so the listener can allow them
+  const boundGroupIds = new Set<string>();
+  for (const binding of config.bindings) {
+    if (binding.match.peer?.kind === "group" && binding.match.peer.id) {
+      boundGroupIds.add(binding.match.peer.id);
+    }
+  }
+
   if (config.channels.signal.enabled) {
     for (const [accountId, account] of Object.entries(
       config.channels.signal.accounts,
@@ -175,6 +187,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
         client,
         baseUrl: httpUrl,
         abortSignal: abortController.signal,
+        boundGroupIds,
       });
 
       log.info(`Signal account ${accountId} active at ${httpUrl}`);
