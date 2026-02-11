@@ -303,5 +303,31 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 
 ---
 
-Daily session logs (2026-01-28 through 2026-02-06) are in `memory/YYYY-MM-DD.md`.
+## Body & Training (2026-02-11)
+
+**Full body measurements taken and documented** in `theke/oikia/inventory-wardrobe/body-measurements.md`. Key: 195cm, 232lbs, medium frame (18cm wrist), ecto-mesomorph, athletic drop 17cm, right-side dominant. Proportionally long legs (63.6% height). Needs tailor verification on arm length and back length.
+
+**Cognitive Athlete framework** established in `theke/oikia/training/`. Training for brain health, fitness as vehicle. Core insight: exercise as the single most evidence-backed intervention for cognitive preservation — this unlocked interest-based activation ("changes should to will"). Generalist approach, utility over aesthetics. Benchmarks: DL 2×BW, SQ 1.5×BW, 20 pullups, sub-21 3-mile.
+
+**Supplement + sleep protocol** in `theke/oikia/training/03_protocol.md`. Replacing THC + unisom (both actively harmful to cognitive goals) with evidence-based evening stack. Creatine for brain ATP. Low-dose melatonin (0.3mg, not 5-10mg). Genetic early chronotype — dad/grandmother both involuntary early risers.
+
+**Critical insight:** Cody is running on stimulants masking chronic sleep deprivation (4-6 hours, chemically impaired). The perceived "burnout" is substantially a sleep deficit. This is the highest-priority fix.
+
+**Baby #2 due October 2026.** Timeline: pre-hab now→May, foundation May→Oct, resilience Oct+.
+
+**Alcohol:** Currently "low-med." Stated "I'm done with it for now" on 2026-02-11. Framed as single biggest antagonist to cognitive goals. History: introduced by Julie as sleep aid 6th grade.
+
+## Wardrobe (2026-02-10/11)
+
+**Two distinct styles identified:** Maker's Wardrobe (workwear/Americana: Merz b. Schwanen, selvedge, Red Wings, Front Office) and The Drape (Italian tailoring: Luxire, Ledbury, Ace Marks, Sabahs). Shared DNA: natural fiber, heritage construction, no logos, built to age. Full inventory in `theke/oikia/inventory-wardrobe/`.
+
+**Luxire assessment:** Excellent value on shirts/trousers. Jackets are full canvas hand-padded — matches or exceeds Suit Supply after teardown comparison. I was wrong to hedge on India manufacturing. Research before claiming.
+
+**Pending orders:** Chambray shirt (measurement revision in progress), Dugdale herringbone sport coat (~$1,030, needs fresh tailor measurements).
+
+**Preference:** cm > inches. Utility > aesthetics.
+
+---
+
+Daily session logs (2026-01-28 through 2026-02-11) are in `memory/YYYY-MM-DD.md`.
 Key facts have been distilled into the sections above.
