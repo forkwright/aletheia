@@ -5,8 +5,27 @@ import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import type { CronScheduler } from "../daemon/cron.js";
+import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
+
+// Per-million-token costs (USD) — Anthropic pricing as of 2025
+const MODEL_COSTS: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-opus-4-6":            { input: 15,   output: 75,   cacheRead: 1.5,  cacheWrite: 18.75 },
+  "claude-sonnet-4-5-20250929": { input: 3,    output: 15,   cacheRead: 0.3,  cacheWrite: 3.75 },
+  "claude-haiku-4-5-20251001":  { input: 0.8,  output: 4,    cacheRead: 0.08, cacheWrite: 1 },
+};
+
+// Set after gateway creation — avoids circular dependency
+let cronRef: CronScheduler | null = null;
+let watchdogRef: Watchdog | null = null;
+export function setCronRef(cron: CronScheduler): void {
+  cronRef = cron;
+}
+export function setWatchdogRef(wd: Watchdog): void {
+  watchdogRef = wd;
+}
 
 export function createGateway(
   config: AletheiaConfig,
@@ -97,6 +116,8 @@ export function createGateway(
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
+          cacheReadTokens: result.cacheReadTokens,
+          cacheWriteTokens: result.cacheWriteTokens,
         },
       });
     } catch (error) {
@@ -116,6 +137,71 @@ export function createGateway(
       })),
       bindings: config.bindings.length,
       plugins: Object.keys(config.plugins.entries).length,
+    });
+  });
+
+  app.get("/api/metrics", (c) => {
+    const metrics = store.getMetrics();
+    const uptime = process.uptime();
+
+    const nous = config.agents.list.map((a) => {
+      const nousMetrics = metrics.perNous[a.id];
+      const nousUsage = metrics.usageByNous[a.id];
+      return {
+        id: a.id,
+        name: a.name ?? a.id,
+        activeSessions: nousMetrics?.activeSessions ?? 0,
+        totalMessages: nousMetrics?.totalMessages ?? 0,
+        lastActivity: nousMetrics?.lastActivity ?? null,
+        tokens: nousUsage
+          ? {
+              input: nousUsage.inputTokens,
+              output: nousUsage.outputTokens,
+              cacheRead: nousUsage.cacheReadTokens,
+              cacheWrite: nousUsage.cacheWriteTokens,
+              turns: nousUsage.turns,
+            }
+          : null,
+      };
+    });
+
+    const cacheHitRate =
+      metrics.usage.totalInputTokens > 0
+        ? Math.round(
+            (metrics.usage.totalCacheReadTokens /
+              metrics.usage.totalInputTokens) *
+              100,
+          )
+        : 0;
+
+    const byModel = store.getUsageByModel();
+    const costBreakdown = byModel.map((m) => {
+      const rates = MODEL_COSTS[m.model];
+      if (!rates) return { model: m.model, turns: m.turns, cost: null };
+      const cost =
+        (m.inputTokens * rates.input +
+          m.outputTokens * rates.output +
+          m.cacheReadTokens * rates.cacheRead +
+          m.cacheWriteTokens * rates.cacheWrite) / 1_000_000;
+      return { model: m.model, turns: m.turns, cost: Math.round(cost * 1000) / 1000 };
+    });
+    const totalCost = costBreakdown.reduce((s, m) => s + (m.cost ?? 0), 0);
+
+    return c.json({
+      status: "ok",
+      uptime: Math.round(uptime),
+      timestamp: new Date().toISOString(),
+      nous,
+      usage: {
+        ...metrics.usage,
+        cacheHitRate,
+      },
+      cost: {
+        total: Math.round(totalCost * 1000) / 1000,
+        byModel: costBreakdown,
+      },
+      cron: cronRef?.getStatus() ?? [],
+      services: watchdogRef?.getStatus() ?? [],
     });
   });
 

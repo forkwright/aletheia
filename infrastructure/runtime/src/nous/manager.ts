@@ -33,6 +33,7 @@ export interface InboundMessage {
   peerKind?: string;
   accountId?: string;
   mediaUrls?: string[];
+  model?: string;
 }
 
 export interface TurnOutcome {
@@ -42,6 +43,8 @@ export interface TurnOutcome {
   toolCalls: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
 
 // Per-session mutex to prevent concurrent turns from corrupting context
@@ -86,7 +89,7 @@ export class NousManager {
     }
 
     const sessionKey = msg.sessionKey ?? "main";
-    const model = resolveModel(this.config, nous);
+    const model = msg.model ?? resolveModel(this.config, nous);
     const session = this.store.findOrCreateSession(
       nousId,
       sessionKey,
@@ -124,20 +127,27 @@ export class NousManager {
       ...bootstrap.dynamicBlocks,
     ];
 
-    const history = this.store.getHistoryWithBudget(
-      sessionId,
-      this.config.agents.defaults.contextTokens - bootstrap.totalTokens - 8000,
-    );
+    const toolDefs = this.tools.getDefinitions({
+      allow: nous.tools.allow.length > 0 ? nous.tools.allow : undefined,
+      deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
+    });
+
+    // Tool definitions count toward the input token budget — estimate and subtract
+    const toolDefTokens = toolDefs.length > 0
+      ? estimateTokens(JSON.stringify(toolDefs))
+      : 0;
+
+    const contextTokens = this.config.agents.defaults.contextTokens;
+    const reserveTokens = 8000; // response + overhead
+    const historyBudget = contextTokens - bootstrap.totalTokens - toolDefTokens - reserveTokens;
+
+    const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
     const seq = this.store.appendMessage(sessionId, "user", msg.text, {
       tokenEstimate: estimateTokens(msg.text),
     });
 
     const messages = this.buildMessages(history, msg.text);
-    const toolDefs = this.tools.getDefinitions({
-      allow: nous.tools.allow.length > 0 ? nous.tools.allow : undefined,
-      deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
-    });
 
     const toolContext: ToolContext = {
       nousId,
@@ -156,6 +166,8 @@ export class NousManager {
     let totalToolCalls = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let totalCacheReadTokens = 0;
+    let totalCacheWriteTokens = 0;
     let currentMessages = messages;
 
     const MAX_TOOL_LOOPS = 20;
@@ -170,6 +182,8 @@ export class NousManager {
 
       totalInputTokens += result.usage.inputTokens;
       totalOutputTokens += result.usage.outputTokens;
+      totalCacheReadTokens += result.usage.cacheReadTokens;
+      totalCacheWriteTokens += result.usage.cacheWriteTokens;
 
       this.store.recordUsage({
         sessionId,
@@ -204,7 +218,18 @@ export class NousManager {
           toolCalls: totalToolCalls,
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
+          cacheReadTokens: totalCacheReadTokens,
+          cacheWriteTokens: totalCacheWriteTokens,
         };
+
+        const cacheHitRate = totalInputTokens > 0
+          ? Math.round((totalCacheReadTokens / totalInputTokens) * 100)
+          : 0;
+        log.info(
+          `Turn complete for ${nousId}: ${totalInputTokens}in/${totalOutputTokens}out, ` +
+          `cache ${totalCacheReadTokens}r/${totalCacheWriteTokens}w (${cacheHitRate}% hit), ` +
+          `${totalToolCalls} tool calls`,
+        );
 
         if (this.plugins) {
           await this.plugins.dispatchAfterTurn({
@@ -219,13 +244,20 @@ export class NousManager {
         }
 
         // Auto-trigger distillation when context grows too large
-        const contextTokens = this.config.agents.defaults.contextTokens;
-        const threshold = Math.floor(contextTokens * 0.65);
+        const compaction = this.config.agents.defaults.compaction;
+        const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
         try {
-          if (await shouldDistill(this.store, sessionId, { threshold, minMessages: 10 })) {
-            log.info(`Distillation triggered for session ${sessionId}`);
+          if (await shouldDistill(this.store, sessionId, { threshold: distillThreshold, minMessages: 10 })) {
+            const session = this.store.findSessionById(sessionId);
+            const utilization = session
+              ? Math.round((session.tokenCountEstimate / contextTokens) * 100)
+              : 0;
+            log.info(
+              `Distillation triggered for ${nousId} session=${sessionId} ` +
+              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
+            );
             await distillSession(this.store, this.router, sessionId, nousId, {
-              triggerThreshold: threshold,
+              triggerThreshold: distillThreshold,
               minMessages: 10,
               extractionModel: "claude-haiku-4-5-20251001",
               summaryModel: "claude-haiku-4-5-20251001",
@@ -388,3 +420,4 @@ export class NousManager {
     return messages;
   }
 }
+
