@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+import os
+os.environ.setdefault("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+os.environ.setdefault("ALETHEIA_SHARED", os.path.join(os.environ["ALETHEIA_ROOT"], "shared"))
+os.environ.setdefault("ALETHEIA_NOUS", os.path.join(os.environ["ALETHEIA_ROOT"], "nous"))
 """Extract facts from today's memory file automatically."""
 
 import json

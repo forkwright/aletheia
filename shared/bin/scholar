@@ -1,0 +1,664 @@
+#!/usr/bin/env python3
+"""
+scholar — Academic research tool for Aletheia.
+
+Multi-source search, citation graphs, paper retrieval, BibTeX, auto-logging.
+Sources: OpenAlex (250M+), arXiv, Semantic Scholar, CrossRef.
+
+Search:
+    scholar "query"                           # Search all sources
+    scholar "query" -v --limit 10 --since 2022
+    scholar "query" --source s2               # Single source
+
+Citations:
+    scholar cite DOI                          # Who cites + what it cites
+    scholar refs DOI                          # Just references
+
+Papers:
+    scholar fetch ARXIV_ID|DOI               # Download + convert to markdown
+    scholar read ARXIV_ID|DOI                # Fetch + display
+
+Metadata:
+    scholar bib DOI                          # BibTeX entry
+    scholar info DOI                         # Full metadata via CrossRef
+
+Tracking:
+    scholar log                              # Show research log
+    scholar reading                          # Papers to read
+
+All searches auto-logged to memory/research-log.md.
+"""
+
+import json
+import sys
+import os
+import urllib.request
+import urllib.parse
+import subprocess
+import re
+from datetime import datetime
+from pathlib import Path
+import time
+
+_last_s2_call = 0.0
+
+def _s2_throttle():
+    """Enforce 1 req/sec rate limit for Semantic Scholar."""
+    global _last_s2_call
+    elapsed = time.time() - _last_s2_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    _last_s2_call = time.time()
+
+
+OPENALEX_BASE = "https://api.openalex.org"
+ARXIV_BASE = "http://export.arxiv.org/api/query"
+S2_BASE = "https://api.semanticscholar.org/graph/v1"
+CROSSREF_BASE = "https://api.crossref.org"
+S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+NOUS_DIR = os.environ.get("ALETHEIA_NOUS", os.path.join(ALETHEIA_ROOT, "nous"))
+
+def _http_get(url, headers=None, timeout=15):
+    hdrs = {"User-Agent": "Aletheia/1.0 (research; mailto:user@university.example.com)"}
+    if headers:
+        hdrs.update(headers)
+    try:
+        req = urllib.request.Request(url, headers=hdrs)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            return None
+        raise
+    except Exception:
+        return None
+
+def _log_research(action, query_or_id, results_count=0, nous=None):
+    """Auto-log every research action."""
+    if not nous:
+        nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    log_dir = os.path.join(NOUS_DIR, nous, "memory")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "research-log.md")
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = f"- [{ts}] **{action}**: `{query_or_id}` → {results_count} results\n"
+
+    # Append or create
+    if os.path.exists(log_path):
+        with open(log_path, "a") as f:
+            f.write(entry)
+    else:
+        with open(log_path, "w") as f:
+            f.write("# Research Log\n\n*Auto-populated by scholar tool*\n\n")
+            f.write(entry)
+
+def _reading_list_add(title, doi_or_id, year, venue, reason="found in search"):
+    """Add to reading list."""
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    rl_path = os.path.join(NOUS_DIR, nous, "memory", "reading-list.md")
+    os.makedirs(os.path.dirname(rl_path), exist_ok=True)
+
+    entry = f"- [ ] **{title}** ({year}, {venue}) — {doi_or_id} — *{reason}*\n"
+
+    if os.path.exists(rl_path):
+        with open(rl_path) as f:
+            content = f.read()
+        if doi_or_id in content:
+            return  # already tracked
+        with open(rl_path, "a") as f:
+            f.write(entry)
+    else:
+        with open(rl_path, "w") as f:
+            f.write("# Reading List\n\n*Auto-populated by scholar. Check off when read.*\n\n")
+            f.write(entry)
+
+
+# ── OpenAlex ──────────────────────────────────────────
+
+def search_openalex(query, limit=5, since=None):
+    params = {
+        "search": query,
+        "per_page": min(limit, 25),
+        "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,doi,type",
+        "sort": "relevance_score:desc",
+        "mailto": "user@university.example.com",
+    }
+    if since:
+        params["filter"] = f"publication_year:>{since-1}"
+
+    data = _http_get(f"{OPENALEX_BASE}/works?{urllib.parse.urlencode(params)}")
+    if not data:
+        return []
+
+    results = []
+    for work in json.loads(data).get("results", []):
+        abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
+        loc = work.get("primary_location") or {}
+        source = loc.get("source") or {}
+        authors = _extract_authors(work.get("authorships", []))
+
+        results.append({
+            "title": work.get("title", "?"),
+            "year": work.get("publication_year"),
+            "citations": work.get("cited_by_count", 0),
+            "venue": source.get("display_name", "Unknown"),
+            "authors": authors,
+            "doi": (work.get("doi") or "").replace("https://doi.org/", ""),
+            "abstract": abstract[:600] if abstract else None,
+            "type": work.get("type", "?"),
+            "source": "openalex",
+        })
+    return results
+
+
+# ── arXiv ──────────────────────────────────────────────
+
+def search_arxiv(query, limit=5):
+    params = {
+        "search_query": f"all:{query}",
+        "start": 0,
+        "max_results": limit,
+        "sortBy": "relevance",
+    }
+    data = _http_get(f"{ARXIV_BASE}?{urllib.parse.urlencode(params)}")
+    if not data:
+        return []
+
+    text = data.decode("utf-8")
+    results = []
+    entries = text.split("<entry>")[1:]
+
+    for entry in entries:
+        title = _xml_extract(entry, "title").replace("\n", " ").strip()
+        abstract = _xml_extract(entry, "summary").replace("\n", " ").strip()
+        published = _xml_extract(entry, "published")[:4]
+        arxiv_id = _xml_extract(entry, "id").split("/abs/")[-1]
+
+        authors = []
+        for author_block in entry.split("<author>")[1:]:
+            name = _xml_extract(author_block, "name")
+            if name:
+                authors.append(name)
+
+        results.append({
+            "title": title,
+            "year": int(published) if published.isdigit() else None,
+            "citations": None,
+            "venue": "arXiv",
+            "authors": ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else ""),
+            "doi": "",
+            "arxiv_id": arxiv_id,
+            "abstract": abstract[:600] if abstract else None,
+            "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
+            "source": "arxiv",
+        })
+    return results
+
+
+# ── Semantic Scholar ────────────────────────────────────
+
+def search_s2(query, limit=5):
+    _s2_throttle()
+    params = {
+        "query": query,
+        "limit": min(limit, 20),
+        "fields": "title,year,citationCount,venue,authors,abstract,externalIds,influentialCitationCount",
+    }
+    headers = {}
+    if S2_KEY:
+        headers["x-api-key"] = S2_KEY
+
+    data = _http_get(f"{S2_BASE}/paper/search?{urllib.parse.urlencode(params)}", headers=headers)
+    if not data:
+        return []
+
+    results = []
+    for paper in json.loads(data).get("data", []):
+        ext = paper.get("externalIds") or {}
+        authors = ", ".join([a.get("name", "?") for a in (paper.get("authors") or [])[:3]])
+        if len(paper.get("authors", [])) > 3:
+            authors += " et al."
+
+        results.append({
+            "title": paper.get("title", "?"),
+            "year": paper.get("year"),
+            "citations": paper.get("citationCount", 0),
+            "influential_citations": paper.get("influentialCitationCount", 0),
+            "venue": paper.get("venue", "Unknown"),
+            "authors": authors,
+            "doi": ext.get("DOI", ""),
+            "arxiv_id": ext.get("ArXiv"),
+            "abstract": (paper.get("abstract") or "")[:600] or None,
+            "s2_id": paper.get("paperId"),
+            "source": "s2",
+        })
+    return results
+
+
+def get_citations(paper_id, direction="citations", limit=10):
+    _s2_throttle()
+    headers = {}
+    if S2_KEY:
+        headers["x-api-key"] = S2_KEY
+
+    if paper_id.startswith("http"):
+        paper_id = paper_id.rstrip("/")
+    elif re.match(r"^10\.", paper_id):
+        paper_id = f"DOI:{paper_id}"
+
+    fields = "title,year,citationCount,venue,authors,externalIds"
+    data = _http_get(
+        f"{S2_BASE}/paper/{urllib.parse.quote(paper_id, safe='')}/{direction}?fields={fields}&limit={limit}",
+        headers=headers
+    )
+    if not data:
+        return []
+    parsed = json.loads(data)
+    items = parsed.get("data") or []
+    results = []
+    for item in items:
+        paper = item.get("citingPaper" if direction == "citations" else "citedPaper", {})
+        if not paper.get("title"):
+            continue
+        authors = ", ".join([a.get("name", "?") for a in (paper.get("authors") or [])[:2]])
+        ext = paper.get("externalIds") or {}
+        results.append({
+            "title": paper.get("title"),
+            "year": paper.get("year"),
+            "citations": paper.get("citationCount", 0),
+            "venue": paper.get("venue", ""),
+            "authors": authors,
+            "doi": ext.get("DOI", ""),
+        })
+    return results
+
+
+# ── CrossRef ────────────────────────────────────────────
+
+def crossref_info(doi):
+    """Get full metadata from CrossRef (free, no key)."""
+    data = _http_get(f"{CROSSREF_BASE}/works/{urllib.parse.quote(doi, safe='')}")
+    if not data:
+        return None
+    return json.loads(data).get("message", {})
+
+def crossref_bibtex(doi):
+    """Get BibTeX citation from CrossRef."""
+    hdrs = {
+        "User-Agent": "Aletheia/1.0 (mailto:user@university.example.com)",
+        "Accept": "application/x-bibtex",
+    }
+    data = _http_get(f"https://doi.org/{doi}", headers=hdrs, timeout=10)
+    return data.decode("utf-8") if data else None
+
+
+# ── Paper retrieval ─────────────────────────────────────
+
+def fetch_paper(identifier, output_dir="."):
+    pdf_url = None
+    basename = identifier
+
+    if "arxiv.org" in identifier or re.match(r"\d{4}\.\d+", identifier):
+        arxiv_id = identifier.split("/")[-1].replace(".pdf", "")
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+        basename = arxiv_id.replace("/", "_")
+    elif re.match(r"^10\.", identifier) or identifier.startswith("doi:"):
+        doi = identifier.replace("doi:", "")
+        data = _http_get(f"https://api.unpaywall.org/v2/{doi}?email=user@university.example.com")
+        if data:
+            info = json.loads(data)
+            oa = info.get("best_oa_location") or {}
+            pdf_url = oa.get("url_for_pdf") or oa.get("url")
+            basename = doi.replace("/", "_")
+
+    if not pdf_url:
+        print(f"No open access PDF found for: {identifier}")
+        print("Try: web_fetch on the paper URL, or check your institution's access")
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    pdf_path = os.path.join(output_dir, f"{basename}.pdf")
+    md_path = os.path.join(output_dir, f"{basename}.md")
+
+    print(f"Downloading: {pdf_url}")
+    data = _http_get(pdf_url, timeout=60)
+    if not data:
+        print("Download failed")
+        return None
+
+    with open(pdf_path, "wb") as f:
+        f.write(data)
+    print(f"Saved: {pdf_path} ({len(data)//1024}KB)")
+
+    ingest = os.path.join(ALETHEIA_ROOT, "shared", "bin", "ingest-doc")
+    if os.path.exists(ingest):
+        try:
+            result = subprocess.run([ingest, pdf_path, "--output", output_dir],
+                                   timeout=120, capture_output=True, text=True)
+            if os.path.exists(md_path):
+                print(f"Converted: {md_path}")
+                _log_research("fetch", identifier, 1)
+                return md_path
+        except subprocess.TimeoutExpired:
+            print("PDF conversion timed out (120s). PDF saved, use ingest-doc manually.")
+        except Exception as e:
+            print(f"Conversion note: {e}")
+
+    if "arxiv.org" in (pdf_url or ""):
+        html_url = pdf_url.replace("/pdf/", "/html/")
+        print(f"Try HTML version: web_fetch {html_url}")
+
+    _log_research("fetch", identifier, 1)
+    return pdf_path
+
+
+# ── Helpers ─────────────────────────────────────────────
+
+def _reconstruct_abstract(inverted_index):
+    if not inverted_index:
+        return ""
+    words = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            words[pos] = word
+    return " ".join(words[i] for i in sorted(words.keys()))
+
+def _extract_authors(authorships, max_n=3):
+    authors = []
+    for a in (authorships or [])[:max_n]:
+        name = (a.get("author") or {}).get("display_name", "?")
+        authors.append(name)
+    if len(authorships or []) > max_n:
+        authors.append("et al.")
+    return ", ".join(authors)
+
+def _xml_extract(text, tag):
+    pattern = f"<{tag}[^>]*>(.*?)</{tag}>"
+    match = re.search(pattern, text, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+# ── Display ──────────────────────────────────────────────
+
+def format_results(results, verbose=False):
+    for i, r in enumerate(results, 1):
+        src_tag = {"openalex": "OA", "arxiv": "AX", "s2": "S2"}.get(r.get("source", ""), "??")
+        cite_str = f"{r['citations']} cites" if r.get('citations') is not None else "? cites"
+        influential = f" ({r['influential_citations']} influential)" if r.get('influential_citations') else ""
+        doi_str = r.get("doi") or r.get("arxiv_id") or "N/A"
+
+        print(f"\n[{src_tag}:{i}] {r['title']}")
+        print(f"    {r['authors']} ({r.get('year', '?')}) — {r.get('venue', '?')}")
+        print(f"    {cite_str}{influential} | {doi_str}")
+        if verbose and r.get("abstract"):
+            abstract = r["abstract"]
+            if len(abstract) > 400:
+                cut = abstract[:400].rfind(". ")
+                abstract = abstract[:cut+1] if cut > 200 else abstract[:400] + "..."
+            print(f"    {abstract}")
+
+
+def show_reading_list():
+    """Display the reading list."""
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    rl_path = os.path.join(NOUS_DIR, nous, "memory", "reading-list.md")
+    if os.path.exists(rl_path):
+        with open(rl_path) as f:
+            print(f.read())
+    else:
+        print("No reading list yet. Papers found via search are auto-tracked.")
+
+
+def show_log():
+    """Display the research log."""
+    nous = os.environ.get("AGENT_ID", os.environ.get("NOUS_ID", "syn"))
+    log_path = os.path.join(NOUS_DIR, nous, "memory", "research-log.md")
+    if os.path.exists(log_path):
+        with open(log_path) as f:
+            lines = f.readlines()
+        # Show last 30 entries
+        print("".join(lines[:3]))  # header
+        print("".join(lines[-30:]))
+    else:
+        print("No research log yet. All scholar searches are auto-logged.")
+
+
+# ── Main ─────────────────────────────────────────────────
+
+def main():
+    args = sys.argv[1:]
+
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return
+
+    # Detect subcommands
+    command = args[0] if args and args[0] in ("cite", "fetch", "refs", "read", "bib", "info", "log", "reading") else "search"
+
+    if command != "search":
+        args = args[1:]
+
+    import argparse
+
+    if command == "search":
+        parser = argparse.ArgumentParser(prog="scholar")
+        parser.add_argument("query", nargs="+")
+        parser.add_argument("--limit", "-n", type=int, default=5)
+        parser.add_argument("--since", type=int)
+        parser.add_argument("--verbose", "-v", action="store_true")
+        parser.add_argument("--source", choices=["all", "openalex", "arxiv", "s2"], default="all")
+        parser.add_argument("--json", action="store_true")
+        parser.add_argument("--track", action="store_true", help="Add top results to reading list")
+        args = parser.parse_args(args)
+    elif command == "cite":
+        parser = argparse.ArgumentParser(prog="scholar cite")
+        parser.add_argument("paper_id")
+        parser.add_argument("--direction", choices=["citations", "references", "both"], default="both")
+        parser.add_argument("--limit", "-n", type=int, default=10)
+        args = parser.parse_args(args)
+    elif command == "fetch":
+        parser = argparse.ArgumentParser(prog="scholar fetch")
+        parser.add_argument("identifier")
+        parser.add_argument("--output", "-o", default=".")
+        args = parser.parse_args(args)
+    elif command == "refs":
+        parser = argparse.ArgumentParser(prog="scholar refs")
+        parser.add_argument("paper_id")
+        parser.add_argument("--limit", "-n", type=int, default=20)
+        args = parser.parse_args(args)
+    elif command == "read":
+        parser = argparse.ArgumentParser(prog="scholar read")
+        parser.add_argument("identifier")
+        args = parser.parse_args(args)
+    elif command == "bib":
+        parser = argparse.ArgumentParser(prog="scholar bib")
+        parser.add_argument("doi")
+        args = parser.parse_args(args)
+    elif command == "info":
+        parser = argparse.ArgumentParser(prog="scholar info")
+        parser.add_argument("doi")
+        args = parser.parse_args(args)
+    elif command in ("log", "reading"):
+        args = type('Args', (), {'command': command})()
+
+    args.command = command
+
+    # ── Execute ──
+
+    if args.command == "log":
+        show_log()
+        return
+
+    if args.command == "reading":
+        show_reading_list()
+        return
+
+    if args.command == "bib":
+        bib = crossref_bibtex(args.doi)
+        if bib:
+            print(bib)
+            _log_research("bib", args.doi, 1)
+        else:
+            print(f"No BibTeX found for: {args.doi}")
+        return
+
+    if args.command == "info":
+        info = crossref_info(args.doi)
+        if info:
+            title = info.get("title", ["?"])[0]
+            authors = ", ".join([f"{a.get('given','')} {a.get('family','')}" for a in info.get("author", [])[:5]])
+            journal = (info.get("container-title") or ["?"])[0]
+            year = (info.get("published", {}).get("date-parts") or [[None]])[0][0]
+            refs = len(info.get("reference", []))
+            cites = info.get("is-referenced-by-count", "?")
+            print(f"Title: {title}")
+            print(f"Authors: {authors}")
+            print(f"Journal: {journal} ({year})")
+            print(f"Cited by: {cites}")
+            print(f"References: {refs} papers")
+            print(f"DOI: {args.doi}")
+            _log_research("info", args.doi, 1)
+        else:
+            print(f"No CrossRef data for: {args.doi}")
+        return
+
+    if args.command == "cite":
+        _log_research("cite", args.paper_id)
+        if args.direction in ("citations", "both"):
+            print("=== Papers citing this work ===")
+            cites = get_citations(args.paper_id, "citations", args.limit)
+            if cites:
+                for i, c in enumerate(cites, 1):
+                    print(f"  [{i}] {c['title']} ({c.get('year','?')}) — {c['citations']} cites")
+                    if c.get('doi'):
+                        print(f"      DOI: {c['doi']}")
+            else:
+                print("  (no results — S2 may be rate-limited without API key)")
+        if args.direction in ("references", "both"):
+            print(f"\n=== References (this paper cites) ===")
+            refs = get_citations(args.paper_id, "references", args.limit)
+            if refs:
+                for i, r in enumerate(refs, 1):
+                    print(f"  [{i}] {r['title']} ({r.get('year','?')}) — {r['citations']} cites")
+                    if r.get('doi'):
+                        print(f"      DOI: {r['doi']}")
+            else:
+                # Fallback to CrossRef for references
+                print("  (S2 references elided, using CrossRef...)")
+                doi = args.paper_id.replace("DOI:", "")
+                info = crossref_info(doi)
+                if info:
+                    for i, ref in enumerate(info.get("reference", [])[:args.limit], 1):
+                        title = ref.get("article-title") or ref.get("volume-title") or ref.get("unstructured", "?")[:80]
+                        author = ref.get("author", "")
+                        year = ref.get("year", "?")
+                        desc = f"{title}"
+                        if author:
+                            desc = f"{author}: {desc}"
+                        print(f"  [{i}] {desc} ({year})")
+        return
+
+    if args.command == "fetch":
+        fetch_paper(args.identifier, args.output)
+        return
+
+    if args.command == "refs":
+        _log_research("refs", args.paper_id)
+        refs = get_citations(args.paper_id, "references", args.limit)
+        if refs:
+            for i, r in enumerate(refs, 1):
+                print(f"[{i}] {r['title']} ({r.get('year','?')}) — {r.get('venue','')} — {r['citations']} cites")
+        else:
+            # CrossRef fallback (better metadata)
+            doi = args.paper_id.replace("DOI:", "")
+            info = crossref_info(doi)
+            if info:
+                for i, ref in enumerate(info.get("reference", [])[:args.limit], 1):
+                    title = ref.get("article-title") or ref.get("volume-title") or ""
+                    author = ref.get("author", "")
+                    year = ref.get("year", "?")
+                    doi_ref = ref.get("DOI", "")
+                    journal = ref.get("journal-title", "")
+                    unstructured = ref.get("unstructured", "")
+                    
+                    if title:
+                        line = f"[{i}] {title}"
+                        if author:
+                            line += f" — {author}"
+                        line += f" ({year})"
+                        if journal:
+                            line += f" — {journal}"
+                    elif unstructured:
+                        line = f"[{i}] {unstructured[:100]}"
+                    else:
+                        line = f"[{i}] Unknown reference ({year})"
+                    if doi_ref:
+                        line += f" | {doi_ref}"
+                    print(line)
+        return
+
+    if args.command == "read":
+        path = fetch_paper(args.identifier, "/tmp/scholar-read")
+        if path and path.endswith(".md"):
+            with open(path) as f:
+                print(f.read())
+        elif path:
+            print(f"Downloaded to {path} (PDF — use ingest-doc to convert)")
+        return
+
+    # ── Default: search ──
+    query = " ".join(args.query)
+    all_results = []
+
+    if args.source in ("all", "openalex"):
+        all_results.extend(search_openalex(query, args.limit, args.since))
+
+    if args.source in ("all", "arxiv"):
+        all_results.extend(search_arxiv(query, min(args.limit, 5)))
+
+    if args.source in ("all", "s2"):
+        s2_results = search_s2(query, args.limit)
+        all_results.extend(s2_results)
+
+    # Deduplicate by title similarity
+    seen_titles = set()
+    deduped = []
+    for r in all_results:
+        title_key = re.sub(r'[^a-z0-9]', '', r["title"].lower())[:50]
+        if title_key not in seen_titles:
+            seen_titles.add(title_key)
+            deduped.append(r)
+
+    # Sort by citations
+    deduped.sort(key=lambda x: (x.get("citations") or 0, x.get("year") or 0), reverse=True)
+    deduped = deduped[:args.limit]
+
+    # Auto-log
+    _log_research("search", query, len(deduped))
+
+    # Auto-track top results to reading list
+    if args.track or len(deduped) > 0:
+        for r in deduped[:3]:  # track top 3
+            _reading_list_add(
+                r["title"],
+                r.get("doi") or r.get("arxiv_id") or "?",
+                r.get("year", "?"),
+                r.get("venue", "?"),
+            )
+
+    if args.json:
+        print(json.dumps(deduped, indent=2))
+    else:
+        sources_used = set(r["source"] for r in deduped)
+        src_names = {"openalex": "OpenAlex", "arxiv": "arXiv", "s2": "Semantic Scholar"}
+        print(f"Sources: {', '.join(src_names.get(s,s) for s in sorted(sources_used))}")
+        print(f"Query: {query}")
+        print("=" * 70)
+        format_results(deduped, args.verbose)
+        print(f"\n{len(deduped)} results. -v for abstracts, -n N for more, --track to add to reading list.")
+        print("scholar cite DOI → citation graph | scholar bib DOI → BibTeX")
+
+if __name__ == "__main__":
+    main()

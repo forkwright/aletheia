@@ -2,8 +2,8 @@
 """
 attention-check — Adaptive awareness system.
 
-Replaces static heartbeat with context-aware attention.
-Called by heartbeat cron, but generates a DIFFERENT prompt
+Replaces static periodic checks with context-aware directed attention.
+Called during prosoche cycle, generates an adaptive awareness prompt
 based on what actually needs attention right now.
 
 Outputs a prompt for the nous, or nothing if truly nothing needs attention.
@@ -146,7 +146,7 @@ def check_agents():
     alerts = []
     try:
         result = subprocess.run(
-            ["agent-health"],
+            ["nous-health"],
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
@@ -215,6 +215,68 @@ def time_context():
     return hints
 
 
+def check_graph_discoveries():
+    """Surface serendipity finds from the generative graph."""
+    discoveries = []
+    try:
+        ser_path = SHARED / "memory" / "graph-serendipity.jsonl"
+        if ser_path.exists():
+            with open(ser_path) as f:
+                finds = [json.loads(l) for l in f if l.strip()]
+            # Top finds by score that haven't been surfaced yet
+            surfaced_path = SHARED / "memory" / "graph-surfaced.jsonl"
+            surfaced = set()
+            if surfaced_path.exists():
+                with open(surfaced_path) as f:
+                    for line in f:
+                        if line.strip():
+                            s = json.loads(line)
+                            surfaced.add(f"{s.get('source')}|{s.get('target')}")
+            
+            unseen = [f for f in finds 
+                      if f"{f['source']}|{f['target']}" not in surfaced
+                      and f.get("score", 0) > 0.2]
+            unseen.sort(key=lambda x: x.get("score", 0), reverse=True)
+            
+            for find in unseen[:2]:  # Max 2 per prosoche
+                discoveries.append(
+                    f"🔮 Graph connection: {find['source']} ({find['source_domain']}) "
+                    f"↔ {find['target']} ({find['target_domain']}) via {find['bridge']}"
+                )
+                # Mark as surfaced
+                with open(surfaced_path, "a") as sf:
+                    sf.write(json.dumps({
+                        "source": find["source"],
+                        "target": find["target"],
+                        "surfaced_at": datetime.now().isoformat(),
+                    }) + "\n")
+    except Exception:
+        pass
+    return discoveries
+
+
+def check_cross_nous_relevance():
+    """Proactive engagement: detect when active sessions mention other domains."""
+    alerts = []
+    try:
+        bb_path = SHARED / "blackboard"
+        if bb_path.exists():
+            for f in sorted(bb_path.glob("*.json"), reverse=True)[:5]:
+                try:
+                    with open(f) as fh:
+                        msg = json.load(fh)
+                    if msg.get("type") == "cross-domain" and not msg.get("acknowledged"):
+                        alerts.append(
+                            f"📡 Cross-domain signal: {msg.get('from', '?')} mentioned "
+                            f"{msg.get('domain', '?')} context → consider {msg.get('suggest', '?')}"
+                        )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return alerts
+
+
 def main():
     all_alerts = []
     
@@ -224,6 +286,8 @@ def main():
     all_alerts.extend(check_agents())
     all_alerts.extend(check_blackboard())
     all_alerts.extend(check_crewai_alerts())
+    all_alerts.extend(check_graph_discoveries())
+    all_alerts.extend(check_cross_nous_relevance())
     
     time_hints = time_context()
     

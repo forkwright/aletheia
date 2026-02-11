@@ -1,5 +1,7 @@
 #!/bin/bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # extract-facts - Extract atomic facts from session memory files
 #
 # Usage:

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 # Google Drive wrapper for Syn
 # Usage: gdrive [personal|school] <rclone command> <path>
 

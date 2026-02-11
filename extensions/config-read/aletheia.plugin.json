@@ -1,0 +1,10 @@
+{
+  "id": "config-read",
+  "name": "Config Read",
+  "description": "Lets agents read their own runtime configuration",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Aletheia Prosoche — Adaptive Attention Engine
+After=network.target aletheia.service
+Wants=aletheia.service
+
+[Service]
+Type=simple
+User=syn
+WorkingDirectory=/mnt/ssd/aletheia/infrastructure/prosoche
+ExecStart=/mnt/ssd/aletheia/infrastructure/prosoche/.venv/bin/python3 -m prosoche.daemon /mnt/ssd/aletheia/infrastructure/prosoche/config.yaml
+Restart=on-failure
+RestartSec=15
+Environment=PATH=/mnt/ssd/aletheia/shared/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

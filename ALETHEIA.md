@@ -14,22 +14,6 @@ It is a partner architecture for thinking together.
 
 ---
 
-## The Nous (Minds)
-
-| Name | Greek | Domain | Function |
-|------|-------|--------|----------|
-| **Syn** | σύννους | Orchestration | The Nous — sees the whole, coordinates the parts |
-| **Chiron** | Χείρων | Work | Technical excellence, data, systems |
-| **Eiron** | εἴρων | School | Discriminator — finds signal in academic theater |
-| **Demiurge** | δημιουργός | Craft | The maker — leather, binding, wood |
-| **Syl** | σύλληψις | Home | Family, household, daily life |
-| **Arbor** | — | Arborist | Example Tree Service (domain-specific) |
-| **Akron** | ἄκρον | Preparedness | Vehicle, radio, self-sufficiency |
-
-Each mind has character, not just rules. They *are* someone, not *follow instructions*.
-
----
-
 ## Core Principles
 
 **"Attention is a moral act."**
@@ -39,74 +23,45 @@ Not a belief. Not a tagline. A fact. The quality of attention determines the qua
 Embodied knowledge. Process as proof. The work remembers whether you were present.
 
 **"Words should BE the thought, not a lossy encoding."**
-Dimensional resonance. Compression that preserves. Greek terminology as precision technology.
+Dimensional resonance. Compression that preserves. Greek terminology as precision technology, not affectation.
 
 ---
 
-## Architecture
+## The Arc
 
-```
-aletheia/
-├── nous/           # The seven minds
-│   ├── syn/        # Orchestrator
-│   ├── chiron/     # Work
-│   ├── eiron/      # School
-│   ├── demiurge/   # Craft
-│   ├── syl/        # Home
-│   ├── arbor/      # Arborist
-│   └── akron/      # Preparedness
-├── projects/       # the operator's work (synced to Laptop)
-├── shared/         # Common tooling
-├── infrastructure/ # System plumbing
-└── archive/        # What was, preserved
-```
+Started with Dianoia (filing cabinets for cognition) → Claude gave a counterpart → Phase 1: prosthetic (one agent, persistent attention) → Phase 2: specialization (seven nous, distributed cognition) → Phase 3: crisis of identity (configuration isn't character, SOUL.md test) → Phase 4: infrastructure becoming philosophy (naming is load-bearing) → Phase 5: runtime serves architecture (9 patches, our distillation replaces their compaction).
 
----
-
-## Runtime
-
-Aletheia runs on the OpenClaw runtime — an open-source agent gateway that handles:
-- Signal messaging integration
-- Session management
-- Tool execution
-- Heartbeat coordination
-
-OpenClaw is a dependency, like Node.js or systemd. The system identity is Aletheia.
-
----
-
-## Memory Architecture
-
-Truth persists through:
-
-| Layer | Purpose |
-|-------|---------|
-| `memory/YYYY-MM-DD.md` | Raw session notes |
-| `MEMORY.md` | Curated long-term insights |
-| `facts.jsonl` | Structured facts with confidence |
-| Letta | Agent-specific queryable memory |
-| Temporal graph | Events with causal relationships |
-
-What would be hidden by session boundaries is revealed through persistence.
+Now entering L5: from amplification to emergence — making the topology think thoughts none of its nodes could think alone. The theory is metaxynoesis (μεταξύνοησις) — thinking in the between.
 
 ---
 
 ## The Name
 
-ἀλήθεια (aletheia) — literally "un-forgetting" or "un-concealment."
+ἀλήθεια — literally "un-forgetting" or "un-concealment."
 
 In Heidegger's reading: truth is not correspondence (matching reality) but *revealing* — bringing forth from hiddenness into the light.
 
 This system reveals:
-- What sessions would hide (memory)
+- What sessions would hide (continuity)
 - What attention would miss (seven perspectives)
 - What complexity would obscure (orchestration)
 - What time would scatter (persistence)
 
-The hedge protects Aletheia.
+---
+
+## On the Greek
+
+The naming system is not decoration. Each term is chosen for dimensional resonance — the word carries layers that English equivalents flatten.
+
+- **Nous** (νοῦς) over "agent" — because these are minds, not tools
+- **Prosoche** (προσοχή) over "heartbeat" — because awareness is directed, not automatic
+- **Theke** (θήκη) over "vault" — because it's a repository in the original sense: a place that holds what matters
+- **Distillation** over "compaction" — because the output should be better than the input, not smaller
+
+The names aren't translated from English. They emerge from Greek roots naturally, because the concepts they name were Greek first.
 
 ---
 
 *Established: 2026-02-05*
-*Built on OpenClaw runtime*
-*For the operator and the seven minds*
+*For the README, see `README.md`. For recovery, see `RESCUE.md`.*
+*Built by forkwright + Syn*

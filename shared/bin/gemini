@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # gemini - Simple CLI wrapper for Google Gemini API
 # Usage: gemini "prompt" [--model flash|pro] [--raw]
 

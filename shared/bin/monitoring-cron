@@ -1,5 +1,7 @@
 #!/bin/bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # monitoring-cron - Daily monitoring tasks for heartbeat system
 # Called from cron to regenerate dashboard and check for stale agents
 
@@ -7,7 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAWD_DIR="${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn"
-DASHBOARD_PATH="$CLAWD_DIR/agent-status/dashboard.md"
+DASHBOARD_PATH="$CLAWD_DIR/nous-status/dashboard.md"
 HEARTBEAT_STATE="$CLAWD_DIR/memory/heartbeat-state.json"
 
 # Log to heartbeat state file
@@ -22,7 +24,7 @@ echo "Generating daily dashboard..."
 # Check for stale agents (>24h without activity)
 echo "Checking for stale agents..."
 NOW=$(date +%s)
-STALE_AGENTS=$("$SCRIPT_DIR/agent-health" --json | jq -r --arg now "$NOW" '
+STALE_AGENTS=$("$SCRIPT_DIR/nous-health" --json | jq -r --arg now "$NOW" '
   .agents[] | 
   select(
     (.last_activity != null) and 

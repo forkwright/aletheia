@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null || true
+set -a
+source /mnt/ssd/aletheia/shared/config/aletheia.env
+set +a 2>/dev/null || true
 # bb-dispatcher - Watches blackboard and notifies agents of pending tasks
 # Triggered by systemd path unit when tasks.jsonl changes
 
@@ -35,9 +37,10 @@ get_session_for_agent() {
   local agent="$1"
   case "$agent" in
     syl) echo "agent:syl:main" ;;
-    chiron) echo "agent:chiron:main" ;;
     eiron) echo "agent:eiron:main" ;;
     demiurge) echo "agent:demiurge:main" ;;
+    arbor) echo "agent:arbor:main" ;;
+    akron) echo "agent:akron:main" ;;
     syn|any|*) echo "agent:main:main" ;;
   esac
 }
@@ -59,12 +62,12 @@ Task: $title
 Claim with: \`bb claim ${task_id:0:8}\`"
 
   log "Notifying $agent ($session) about task ${task_id:0:8}"
-  
-  # Use openclaw API to send to session
+
+  # Use aletheia API to send to session
   # If agent doesn't have active session, this queues for next wakeup
   curl -s -X POST "http://localhost:18789/api/sessions/send" \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $(cat /home/syn/.openclaw/gateway-token 2>/dev/null || echo '')" \
+    -H "Authorization: Bearer $(cat /home/syn/.aletheia/gateway-token 2>/dev/null || echo '')" \
     -d "{
       \"sessionKey\": \"$session\",
       \"message\": $(echo "$message" | jq -Rs .)
