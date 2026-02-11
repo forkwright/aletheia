@@ -57,10 +57,14 @@ export interface ListenerOpts {
   baseUrl: string;
   abortSignal?: AbortSignal;
   boundGroupIds?: Set<string>;
+  onStatusRequest?: (target: SendTarget) => Promise<void>;
 }
 
+const MAX_CONCURRENT_TURNS = 3;
+const activeTurns = new Map<string, number>();
+
 export async function startListener(opts: ListenerOpts): Promise<void> {
-  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds } = opts;
+  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds, onStatusRequest } = opts;
   const accountPhone = account.account ?? accountId;
 
   log.info(`Starting SSE listener for account ${accountId}`);
@@ -72,7 +76,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
       await consumeEventStream(
         baseUrl,
         accountPhone,
-        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds),
+        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest),
         abortSignal,
       );
       backoff.current = backoff.min;
@@ -96,7 +100,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
 async function consumeEventStream(
   baseUrl: string,
   account: string,
-  onEnvelope: (envelope: SignalEnvelope) => Promise<void>,
+  onEnvelope: (envelope: SignalEnvelope) => void,
   abortSignal?: AbortSignal,
 ): Promise<void> {
   const url = `${baseUrl}/api/v1/events?account=${encodeURIComponent(account)}`;
@@ -142,7 +146,7 @@ async function consumeEventStream(
               const payload = JSON.parse(currentEvent.data);
               const envelope = payload?.envelope as SignalEnvelope | undefined;
               if (envelope) {
-                await onEnvelope(envelope);
+                onEnvelope(envelope);
               }
             } catch (parseErr) {
               log.warn(
@@ -164,23 +168,39 @@ async function consumeEventStream(
         }
       }
     }
+
+    // Flush any remaining event that wasn't terminated by a blank line
+    if (currentEvent.data && (!currentEvent.event || currentEvent.event === "receive")) {
+      try {
+        const payload = JSON.parse(currentEvent.data);
+        const envelope = payload?.envelope as SignalEnvelope | undefined;
+        if (envelope) {
+          onEnvelope(envelope);
+        }
+      } catch (parseErr) {
+        log.warn(
+          `Failed to parse final SSE data: ${parseErr instanceof Error ? parseErr.message : parseErr}`,
+        );
+      }
+    }
   } finally {
     reader.releaseLock();
   }
 }
 
-async function handleEnvelope(
+function handleEnvelope(
   envelope: SignalEnvelope,
   accountId: string,
   account: SignalAccount,
   manager: NousManager,
   client: SignalClient,
   boundGroupIds?: Set<string>,
-): Promise<void> {
+  onStatusRequest?: (target: SendTarget) => Promise<void>,
+): void {
   if (envelope.syncMessage) return;
+  if (envelope.editMessage) return;
 
-  const dataMessage =
-    envelope.editMessage?.dataMessage ?? envelope.dataMessage;
+  const dataMessage = envelope.dataMessage;
   if (!dataMessage) return;
 
   // Accept messages with text, quoted text, or attachments
@@ -224,8 +244,8 @@ async function handleEnvelope(
   // Append attachment info so the agent is aware
   if (dataMessage.attachments?.length) {
     for (const att of dataMessage.attachments) {
-      const name = att.filename ?? "unnamed";
-      const type = att.contentType ?? "unknown";
+      const name = sanitizeAttachmentField(att.filename ?? "unnamed");
+      const type = sanitizeAttachmentField(att.contentType ?? "unknown");
       const size = att.size ? `${Math.round(att.size / 1024)}KB` : "unknown size";
       text += `\n[Attachment: ${name} (${type}, ${size})${att.id ? ` id=${att.id}` : ""}]`;
     }
@@ -240,6 +260,15 @@ async function handleEnvelope(
     recipient: isGroup ? undefined : sender,
     groupId: isGroup ? groupId : undefined,
   };
+
+  // Status command — bypass agent turn pipeline
+  if (onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
+    log.info("Status command received, handling directly");
+    onStatusRequest(target).catch((err) =>
+      log.warn(`Status command failed: ${err instanceof Error ? err.message : err}`),
+    );
+    return;
+  }
 
   if (account.sendReadReceipts && !isGroup && envelope.timestamp) {
     sendReadReceipt(client, target, envelope.timestamp).catch((err) =>
@@ -265,6 +294,34 @@ async function handleEnvelope(
     sessionKey,
   };
 
+  // Concurrency guard — reject if at limit to protect API and SQLite
+  const accountTurns = activeTurns.get(accountId) ?? 0;
+  if (accountTurns >= MAX_CONCURRENT_TURNS) {
+    log.warn(`Concurrency limit reached for ${accountId} (${accountTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
+    sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false })
+      .catch((err) => log.warn(`Failed to send busy message: ${err}`));
+    return;
+  }
+
+  // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
+  // while different nous/sessions process concurrently
+  activeTurns.set(accountId, accountTurns + 1);
+  processTurn(manager, msg, client, target).finally(() => {
+    const current = activeTurns.get(accountId) ?? 1;
+    if (current <= 1) {
+      activeTurns.delete(accountId);
+    } else {
+      activeTurns.set(accountId, current - 1);
+    }
+  });
+}
+
+async function processTurn(
+  manager: NousManager,
+  msg: InboundMessage,
+  client: SignalClient,
+  target: SendTarget,
+): Promise<void> {
   try {
     const outcome = await manager.handleMessage(msg);
 
@@ -378,12 +435,20 @@ function hydrateMentions(
   return result.trim();
 }
 
+function sanitizeAttachmentField(value: string): string {
+  return value.replace(/[\n\r\0\[\]]/g, "");
+}
+
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    abortSignal?.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      abortSignal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
   });
 }

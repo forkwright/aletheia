@@ -1,6 +1,8 @@
 # PROSOCHE.md writer — dynamic attention items prepended above static domain checks
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from loguru import logger
@@ -35,7 +37,18 @@ def update_prosoche(nous_id: str, score: NousScore, nous_root: Path) -> bool:
     if content.strip() == current.strip():
         return False
 
-    prosoche_path.write_text(content)
+    fd, tmp_path = tempfile.mkstemp(dir=prosoche_path.parent, suffix=".tmp")
+    try:
+        os.write(fd, content.encode())
+        os.close(fd)
+        fd = -1
+        os.rename(tmp_path, prosoche_path)
+    except BaseException:
+        if fd >= 0:
+            os.close(fd)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
     logger.info(f"Updated PROSOCHE.md for {nous_id} ({len(score.top_signals)} items)")
     return True
 

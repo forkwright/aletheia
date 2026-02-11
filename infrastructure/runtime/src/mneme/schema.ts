@@ -104,6 +104,11 @@ CREATE TABLE IF NOT EXISTS schema_version (
 // Incremental migrations — each entry upgrades from (version-1) to version.
 // Add new migrations here when schema changes. DDL above is always the v1 baseline.
 export const MIGRATIONS: Array<{ version: number; sql: string }> = [
-  // Example for future v2:
-  // { version: 2, sql: "ALTER TABLE sessions ADD COLUMN tags TEXT DEFAULT '[]';" },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE cross_agent_messages ADD COLUMN source_nous_id TEXT;
+      ALTER TABLE cross_agent_messages ADD COLUMN surfaced_in_session TEXT;
+    `,
+  },
 ];

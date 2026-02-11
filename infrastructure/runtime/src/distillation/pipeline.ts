@@ -75,9 +75,18 @@ export async function distillSession(
     });
   }
 
+  // Include tool_result messages — they contain factual output (file reads, command results, API data)
+  // that would otherwise be permanently lost during distillation.
+  // Assistant messages with JSON tool_use blocks are kept as-is (the extraction LLM handles them).
   const simpleMessages = undistilled
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({ role: m.role, content: m.content }));
+    .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool_result")
+    .map((m) => {
+      if (m.role === "tool_result") {
+        const label = m.toolName ? `[tool:${m.toolName}]` : "[tool_result]";
+        return { role: "user" as const, content: `${label} ${m.content}` };
+      }
+      return { role: m.role, content: m.content };
+    });
 
   log.info(`Extraction pass: ${simpleMessages.length} messages`);
   const extraction = await extractFromMessages(
@@ -104,9 +113,11 @@ export async function distillSession(
 
   const summaryTokens = estimateTokens(summary);
 
+  // The summary replaces the old messages and must remain visible in future history.
+  // isDistilled=false (default) keeps it in getHistoryWithBudget; markMessagesDistilled
+  // only marks the OLD messages, not this one.
   store.appendMessage(sessionId, "assistant", summary, {
     tokenEstimate: summaryTokens,
-    isDistilled: true,
   });
 
   store.markMessagesDistilled(sessionId, undistilled.map((m) => m.seq));

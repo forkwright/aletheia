@@ -12,7 +12,7 @@ Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system
 **Server:** server-host, SERVER_IP (LAN), TAILSCALE_SERVER (Tailscale)
 **OS:** Fedora Server, 15GB RAM
 **Service:** `systemctl status aletheia`
-**Config:** `/home/syn/.openclaw/aletheia.json`
+**Config:** `/home/syn/.aletheia/aletheia.json`
 **Runtime:** Clean-room at `infrastructure/runtime/` (compiled with tsdown)
 
 ## The Nous

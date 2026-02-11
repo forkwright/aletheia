@@ -33,19 +33,22 @@ export const execTool: ToolHandler = {
     const timeout = (input.timeout as number) ?? 30000;
 
     try {
-      const { stdout } = await execAsync(command, {
+      const { stdout, stderr } = await execAsync(command, {
         cwd: context.workspace,
         timeout,
         maxBuffer: 1024 * 1024,
         env: { ...process.env, ALETHEIA_NOUS: context.nousId },
       });
-      const trimmed = stdout.trim();
+      let trimmed = stdout.trim();
       if (trimmed.length > 50000) {
-        return (
+        trimmed =
           trimmed.slice(0, 25000) +
           "\n\n... [truncated] ...\n\n" +
-          trimmed.slice(-25000)
-        );
+          trimmed.slice(-25000);
+      }
+      const stderrTrimmed = stderr?.trim();
+      if (stderrTrimmed) {
+        return (trimmed || "(no output)") + `\n[stderr]\n${stderrTrimmed}`;
       }
       return trimmed || "(no output)";
     } catch (error) {

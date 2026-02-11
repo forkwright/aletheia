@@ -47,10 +47,10 @@ if [[ -n "$STALE_AGENTS" && "$STALE_AGENTS" != " " ]]; then
       }]
     ' "$HEARTBEAT_STATE" > /tmp/hb-state.json && mv /tmp/hb-state.json "$HEARTBEAT_STATE"
     
-    # Notify via autarkia if running
-    if systemctl is-active --quiet autarkia 2>/dev/null; then
+    # Notify via aletheia if running
+    if systemctl is-active --quiet aletheia 2>/dev/null; then
         echo "Sending stale agent alert to main session..."
-        autarkia msg "⚠️ **Stale Agent Alert**: $STALE_AGENTS have been inactive for >24h. Check agent health and session activity." || true
+        aletheia msg "⚠️ **Stale Agent Alert**: $STALE_AGENTS have been inactive for >24h. Check agent health and session activity." || true
     fi
 else
     echo "No stale agents detected"

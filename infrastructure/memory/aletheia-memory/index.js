@@ -4,6 +4,7 @@
 const SIDECAR_URL = process.env.ALETHEIA_MEMORY_URL || "http://127.0.0.1:8230";
 const USER_ID = process.env.ALETHEIA_MEMORY_USER || "ck";
 const ADD_TIMEOUT_MS = 60000;
+const activeExtractions = new Set();
 
 async function mem0Fetch(path, body, timeoutMs = ADD_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -30,10 +31,14 @@ module.exports = {
       if (!result.nousId || !result.responseText) return;
       if (result.responseText.length < 100) return;
 
-      const transcript = `assistant: ${result.responseText.slice(0, 50000)}`;
+      const parts = [];
+      if (result.messageText) {
+        parts.push(`user: ${result.messageText.slice(0, 2000)}`);
+      }
+      parts.push(`assistant: ${result.responseText.slice(0, 10000)}`);
+      const transcript = parts.join("\n");
 
-      // Fire and forget
-      mem0Fetch("/add", {
+      const p = mem0Fetch("/add", {
         text: transcript,
         user_id: USER_ID,
         agent_id: result.nousId,
@@ -42,7 +47,15 @@ module.exports = {
           sessionId: result.sessionId,
           timestamp: Date.now(),
         },
-      }).catch(() => {});
+      }).finally(() => activeExtractions.delete(p));
+      activeExtractions.add(p);
+    },
+
+    async onShutdown(api) {
+      if (activeExtractions.size > 0) {
+        api.log("info", `[aletheia-memory] Waiting for ${activeExtractions.size} active extractions`);
+        await Promise.allSettled([...activeExtractions]);
+      }
     },
 
     async onStart(api) {

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-CONTRACTS_DIR = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/contracts")
+CONTRACTS_DIR = Path(os.environ.get("ALETHEIA_SHARED", os.path.join(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"), "shared"))) / "contracts"
 
 
 def load_contracts() -> Dict[str, dict]:

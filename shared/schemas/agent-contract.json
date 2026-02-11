@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Agent Contract",
-  "description": "Formal interface definition for a Clawdbot agent",
+  "description": "Formal interface definition for an Aletheia nous",
   "type": "object",
   "required": ["agent_id", "name", "domain", "capabilities", "interfaces"],
   "properties": {

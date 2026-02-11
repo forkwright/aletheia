@@ -9,6 +9,6 @@
 ### Config Changes
 **ALWAYS** validate before restart:
 ```bash
-openclaw doctor        # Validate runtime config
-openclaw gateway restart  # Only after doctor passes
+aletheia doctor           # Validate runtime config
+systemctl restart aletheia  # Only after doctor passes
 ```

@@ -1,5 +1,8 @@
 // Pass 1: Extract structured facts, decisions, and open items from conversation
+import { createLogger } from "../koina/logger.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
+
+const log = createLogger("distillation.extract");
 
 export interface ExtractionResult {
   facts: string[];
@@ -42,10 +45,12 @@ export async function extractFromMessages(
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      log.warn(`Extraction returned no JSON object. Raw response: ${text.slice(0, 200)}`);
       return { facts: [], decisions: [], openItems: [], keyEntities: [] };
     }
     return JSON.parse(jsonMatch[0]) as ExtractionResult;
-  } catch {
+  } catch (err) {
+    log.warn(`Extraction JSON parse failed: ${err instanceof Error ? err.message : err}. Raw: ${text.slice(0, 200)}`);
     return { facts: [], decisions: [], openItems: [], keyEntities: [] };
   }
 }

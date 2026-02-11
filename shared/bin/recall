@@ -17,7 +17,7 @@ import json
 import subprocess
 from pathlib import Path
 
-WORKSPACE = Path('${ALETHEIA_NOUS:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/nous}/syn')
+WORKSPACE = Path(os.environ.get("ALETHEIA_NOUS", os.path.join(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"), "nous"))) / "syn"
 
 
 def search_facts(query: str, limit: int = 5):

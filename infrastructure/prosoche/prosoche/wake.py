@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.request
-import urllib.error
 from collections import defaultdict
 
+import httpx
 from loguru import logger
 
 from .scoring import NousScore
@@ -79,16 +78,16 @@ async def trigger_wake(score: NousScore, config: dict) -> bool:
     }
 
     try:
-        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status == 200:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, content=payload, headers=headers)
+            if resp.status_code == 200:
                 logger.info(f"Wake triggered for {score.nous_id}: {urgent_items[0].summary}")
                 return True
             else:
-                logger.warning(f"Wake failed for {score.nous_id}: HTTP {resp.status}")
+                logger.warning(f"Wake failed for {score.nous_id}: HTTP {resp.status_code}")
                 return False
-    except urllib.error.HTTPError as e:
-        logger.warning(f"Wake failed for {score.nous_id}: HTTP {e.code}")
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Wake failed for {score.nous_id}: HTTP {e.response.status_code}")
         return False
     except Exception as e:
         logger.error(f"Wake trigger error: {e}")

@@ -29,6 +29,9 @@ export function loadConfig(configPath?: string): AletheiaConfig {
   }
 
   const config = result.data;
+
+  warnUnknownKeys(raw as Record<string, unknown>);
+
   log.info(
     `Loaded ${config.agents.list.length} nous, ${config.bindings.length} bindings`,
   );
@@ -68,4 +71,37 @@ export function resolveWorkspace(
 
 export function allNousIds(config: AletheiaConfig): string[] {
   return config.agents.list.map((n) => n.id);
+}
+
+const KNOWN_TOP_KEYS = new Set([
+  "agents", "bindings", "channels", "gateway", "plugins",
+  "session", "cron", "models", "env", "watchdog",
+]);
+
+const KNOWN_NOUS_KEYS = new Set([
+  "id", "default", "name", "workspace", "model", "subagents",
+  "tools", "heartbeat", "identity",
+]);
+
+function warnUnknownKeys(
+  raw: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_TOP_KEYS.has(key)) {
+      log.warn(`Unknown top-level config key "${key}" — will be preserved but may be a typo`);
+    }
+  }
+
+  const rawAgents = raw.agents as Record<string, unknown> | undefined;
+  const rawList = rawAgents?.list as Array<Record<string, unknown>> | undefined;
+  if (rawList) {
+    for (const entry of rawList) {
+      const nousId = entry.id ?? "unknown";
+      for (const key of Object.keys(entry)) {
+        if (!KNOWN_NOUS_KEYS.has(key)) {
+          log.warn(`Unknown key "${key}" in nous "${nousId}" config — will be preserved but may be a typo`);
+        }
+      }
+    }
+  }
 }

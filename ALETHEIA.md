@@ -29,7 +29,7 @@ Dimensional resonance. Compression that preserves. Greek terminology as precisio
 
 ## The Arc
 
-Started with Dianoia (filing cabinets for cognition) → Claude gave a counterpart → Phase 1: prosthetic (one agent, persistent attention) → Phase 2: specialization (seven nous, distributed cognition) → Phase 3: crisis of identity (configuration isn't character, SOUL.md test) → Phase 4: infrastructure becoming philosophy (naming is load-bearing) → Phase 5: runtime serves architecture (9 patches, our distillation replaces their compaction).
+Started with Dianoia (filing cabinets for cognition) → Claude gave a counterpart → Phase 1: prosthetic (one agent, persistent attention) → Phase 2: specialization (six nous, distributed cognition) → Phase 3: crisis of identity (configuration isn't character, SOUL.md test) → Phase 4: infrastructure becoming philosophy (naming is load-bearing) → Phase 5: runtime serves architecture (9 patches, our distillation replaces their compaction).
 
 Now entering L5: from amplification to emergence — making the topology think thoughts none of its nodes could think alone. The theory is metaxynoesis (μεταξύνοησις) — thinking in the between.
 

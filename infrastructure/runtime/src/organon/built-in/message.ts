@@ -5,7 +5,17 @@ export interface MessageSender {
   send(to: string, text: string): Promise<void>;
 }
 
-export function createMessageTool(sender?: MessageSender): ToolHandler {
+export interface MessageToolOpts {
+  sender?: MessageSender;
+  allowedRecipients?: string[];
+  maxLength?: number;
+}
+
+const MAX_MESSAGE_LENGTH = 4000;
+
+export function createMessageTool(opts: MessageToolOpts = {}): ToolHandler {
+  const { sender, allowedRecipients, maxLength = MAX_MESSAGE_LENGTH } = opts;
+
   return {
     definition: {
       name: "message",
@@ -29,10 +39,20 @@ export function createMessageTool(sender?: MessageSender): ToolHandler {
     },
     async execute(input: Record<string, unknown>): Promise<string> {
       const to = input.to as string;
-      const text = input.text as string;
+      let text = input.text as string;
 
       if (!sender) {
         return JSON.stringify({ error: "Signal not connected" });
+      }
+
+      if (allowedRecipients && allowedRecipients.length > 0) {
+        if (!allowedRecipients.some((r) => to === r || to.includes(r))) {
+          return JSON.stringify({ error: "Recipient not in allowlist" });
+        }
+      }
+
+      if (text.length > maxLength) {
+        text = text.slice(0, maxLength);
       }
 
       await sender.send(to, text);

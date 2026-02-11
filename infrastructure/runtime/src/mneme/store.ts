@@ -143,10 +143,11 @@ export class SessionStore {
     nousId: string,
     sessionKey: string,
     model?: string,
+    parentSessionId?: string,
   ): Session {
     return (
       this.findSession(nousId, sessionKey) ??
-      this.createSession(nousId, sessionKey, undefined, model)
+      this.createSession(nousId, sessionKey, parentSessionId, model)
     );
   }
 
@@ -280,14 +281,44 @@ export class SessionStore {
 
   markMessagesDistilled(sessionId: string, seqs: number[]): void {
     if (seqs.length === 0) return;
+
     const placeholders = seqs.map(() => "?").join(",");
-    this.db
-      .prepare(
-        `UPDATE messages SET is_distilled = 1
-         WHERE session_id = ? AND seq IN (${placeholders})`,
-      )
-      .run(sessionId, ...seqs);
-    log.debug(`Marked ${seqs.length} messages as distilled in session ${sessionId}`);
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE messages SET is_distilled = 1
+           WHERE session_id = ? AND seq IN (${placeholders})`,
+        )
+        .run(sessionId, ...seqs);
+
+      // Recalculate token estimate from undistilled messages only
+      const row = this.db
+        .prepare(
+          `SELECT COALESCE(SUM(token_estimate), 0) AS total,
+                  COUNT(*) AS msg_count
+           FROM messages
+           WHERE session_id = ? AND is_distilled = 0`,
+        )
+        .get(sessionId) as Record<string, number>;
+
+      this.db
+        .prepare(
+          `UPDATE sessions
+           SET token_count_estimate = ?,
+               message_count = ?,
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE id = ?`,
+        )
+        .run(row.total, row.msg_count, sessionId);
+
+      return row;
+    });
+
+    const row = tx();
+    log.info(
+      `Distilled ${seqs.length} messages in session ${sessionId}, ` +
+      `token estimate recalculated: ${row.total} tokens, ${row.msg_count} messages`,
+    );
   }
 
   recordDistillation(record: {
@@ -323,6 +354,114 @@ export class SessionStore {
     this.db
       .prepare("UPDATE sessions SET status = 'archived' WHERE id = ?")
       .run(sessionId);
+  }
+
+  recordCrossAgentCall(record: {
+    sourceSessionId: string;
+    sourceNousId?: string;
+    targetNousId: string;
+    targetSessionId?: string;
+    kind: "send" | "ask" | "spawn";
+    content: string;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+      )
+      .run(
+        record.sourceSessionId,
+        record.sourceNousId ?? null,
+        record.targetNousId,
+        record.targetSessionId ?? null,
+        record.kind,
+        record.content,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  getUnsurfacedMessages(nousId: string): Array<{
+    id: number;
+    sourceNousId: string | null;
+    content: string;
+    response: string | null;
+    kind: string;
+    createdAt: string;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT id, source_nous_id, content, response, kind, created_at
+         FROM cross_agent_messages
+         WHERE target_nous_id = ? AND surfaced_in_session IS NULL
+           AND status IN ('delivered', 'responded')
+         ORDER BY created_at ASC`,
+      )
+      .all(nousId)
+      .map((row: Record<string, unknown>) => ({
+        id: row.id as number,
+        sourceNousId: row.source_nous_id as string | null,
+        content: row.content as string,
+        response: row.response as string | null,
+        kind: row.kind as string,
+        createdAt: row.created_at as string,
+      }));
+  }
+
+  markMessagesSurfaced(ids: number[], sessionId: string): void {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => "?").join(",");
+    this.db
+      .prepare(
+        `UPDATE cross_agent_messages SET surfaced_in_session = ?
+         WHERE id IN (${placeholders})`,
+      )
+      .run(sessionId, ...ids);
+  }
+
+  updateCrossAgentCall(
+    id: number,
+    update: {
+      targetSessionId?: string;
+      status: "delivered" | "responded" | "timeout" | "error";
+      response?: string;
+    },
+  ): void {
+    const parts: string[] = ["status = ?"];
+    const params: (string | number | null)[] = [update.status];
+
+    if (update.targetSessionId) {
+      parts.push("target_session_id = ?");
+      params.push(update.targetSessionId);
+    }
+    if (update.response) {
+      parts.push("response = ?");
+      params.push(update.response.slice(0, 2000));
+    }
+    if (update.status === "responded") {
+      parts.push("responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    }
+
+    params.push(id);
+    this.db
+      .prepare(`UPDATE cross_agent_messages SET ${parts.join(", ")} WHERE id = ?`)
+      .run(...params);
+  }
+
+  archiveStaleSpawnSessions(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const result = this.db
+      .prepare(
+        `UPDATE sessions SET status = 'archived'
+         WHERE status = 'active'
+           AND session_key LIKE 'spawn:%'
+           AND updated_at < ?`,
+      )
+      .run(cutoff);
+    const count = result.changes;
+    if (count > 0) {
+      log.info(`Archived ${count} stale spawn sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
+    }
+    return count;
   }
 
   rebuildRoutingCache(
@@ -379,6 +518,113 @@ export class SessionStore {
         accountId ?? null,
       ) as { nous_id: string } | undefined;
     return row?.nous_id ?? null;
+  }
+
+  getMetrics(): {
+    perNous: Record<string, {
+      activeSessions: number;
+      totalMessages: number;
+      totalTokens: number;
+      lastActivity: string | null;
+    }>;
+    usage: {
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCacheReadTokens: number;
+      totalCacheWriteTokens: number;
+      turnCount: number;
+    };
+    usageByNous: Record<string, {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      turns: number;
+    }>;
+  } {
+    const perNous: Record<string, {
+      activeSessions: number;
+      totalMessages: number;
+      totalTokens: number;
+      lastActivity: string | null;
+    }> = {};
+
+    const sessionRows = this.db
+      .prepare(
+        `SELECT nous_id,
+                COUNT(*) AS active_sessions,
+                SUM(message_count) AS total_messages,
+                SUM(token_count_estimate) AS total_tokens,
+                MAX(updated_at) AS last_activity
+         FROM sessions
+         WHERE status = 'active'
+         GROUP BY nous_id`,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    for (const row of sessionRows) {
+      perNous[row.nous_id as string] = {
+        activeSessions: row.active_sessions as number,
+        totalMessages: row.total_messages as number,
+        totalTokens: row.total_tokens as number,
+        lastActivity: row.last_activity as string | null,
+      };
+    }
+
+    const usageRow = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(input_tokens), 0) AS input,
+                COALESCE(SUM(output_tokens), 0) AS output,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write,
+                COUNT(*) AS turns
+         FROM usage`,
+      )
+      .get() as Record<string, number>;
+
+    const usageByNous: Record<string, {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      turns: number;
+    }> = {};
+
+    const nousUsageRows = this.db
+      .prepare(
+        `SELECT s.nous_id,
+                COALESCE(SUM(u.input_tokens), 0) AS input,
+                COALESCE(SUM(u.output_tokens), 0) AS output,
+                COALESCE(SUM(u.cache_read_tokens), 0) AS cache_read,
+                COALESCE(SUM(u.cache_write_tokens), 0) AS cache_write,
+                COUNT(*) AS turns
+         FROM usage u
+         JOIN sessions s ON u.session_id = s.id
+         GROUP BY s.nous_id`,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    for (const row of nousUsageRows) {
+      usageByNous[row.nous_id as string] = {
+        inputTokens: row.input as number,
+        outputTokens: row.output as number,
+        cacheReadTokens: row.cache_read as number,
+        cacheWriteTokens: row.cache_write as number,
+        turns: row.turns as number,
+      };
+    }
+
+    return {
+      perNous,
+      usage: {
+        totalInputTokens: usageRow.input,
+        totalOutputTokens: usageRow.output,
+        totalCacheReadTokens: usageRow.cache_read,
+        totalCacheWriteTokens: usageRow.cache_write,
+        turnCount: usageRow.turns,
+      },
+      usageByNous,
+    };
   }
 
   close(): void {

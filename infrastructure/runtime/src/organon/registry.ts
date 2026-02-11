@@ -19,14 +19,19 @@ export interface ToolContext {
   nousId: string;
   sessionId: string;
   workspace: string;
+  depth?: number;
 }
 
 export class ToolRegistry {
   private tools = new Map<string, ToolHandler>();
 
   register(handler: ToolHandler): void {
-    this.tools.set(handler.definition.name, handler);
-    log.debug(`Registered tool: ${handler.definition.name}`);
+    const name = handler.definition.name;
+    if (this.tools.has(name)) {
+      log.warn(`Tool name collision: "${name}" is being overwritten`);
+    }
+    this.tools.set(name, handler);
+    log.debug(`Registered tool: ${name}`);
   }
 
   get(name: string): ToolHandler | undefined {

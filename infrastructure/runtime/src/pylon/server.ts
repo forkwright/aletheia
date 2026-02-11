@@ -1,12 +1,32 @@
 // Hono HTTP gateway
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import type { CronScheduler } from "../daemon/cron.js";
+import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+// Set after gateway creation — avoids circular dependency
+let cronRef: CronScheduler | null = null;
+let watchdogRef: Watchdog | null = null;
+export function setCronRef(cron: CronScheduler): void {
+  cronRef = cron;
+}
+export function setWatchdogRef(wd: Watchdog): void {
+  watchdogRef = wd;
+}
 
 export function createGateway(
   config: AletheiaConfig,
@@ -28,7 +48,7 @@ export function createGateway(
         ? header.slice(7)
         : c.req.query("token");
 
-      if (token !== authToken) {
+      if (!safeCompare(token ?? "", authToken)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
     } else if (authMode === "password" && authToken) {
@@ -39,12 +59,18 @@ export function createGateway(
       }
       const decoded = Buffer.from(header.slice(6), "base64").toString();
       const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-      if (password !== authToken) {
+      if (!safeCompare(password, authToken)) {
         return c.json({ error: "Invalid credentials" }, 401);
       }
     }
 
     return next();
+  });
+
+  // Global error handler — log details server-side, return generic message to client
+  app.onError((err, c) => {
+    log.error(`Unhandled error on ${c.req.method} ${c.req.path}: ${err.message}`);
+    return c.json({ error: "Internal server error" }, 500);
   });
 
   app.get("/health", (c) =>
@@ -73,7 +99,13 @@ export function createGateway(
   });
 
   app.post("/api/sessions/send", async (c) => {
-    const body = await c.req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
     const { agentId, message, sessionKey } = body as {
       agentId: string;
       message: string;
@@ -97,13 +129,15 @@ export function createGateway(
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
+          cacheReadTokens: result.cacheReadTokens,
+          cacheWriteTokens: result.cacheWriteTokens,
         },
       });
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : String(error);
       log.error(`Session send failed: ${msg}`);
-      return c.json({ error: msg }, 500);
+      return c.json({ error: "Internal error processing message" }, 500);
     }
   });
 
@@ -116,6 +150,54 @@ export function createGateway(
       })),
       bindings: config.bindings.length,
       plugins: Object.keys(config.plugins.entries).length,
+    });
+  });
+
+  app.get("/api/metrics", (c) => {
+    const metrics = store.getMetrics();
+    const uptime = process.uptime();
+
+    const nous = config.agents.list.map((a) => {
+      const nousMetrics = metrics.perNous[a.id];
+      const nousUsage = metrics.usageByNous[a.id];
+      return {
+        id: a.id,
+        name: a.name ?? a.id,
+        activeSessions: nousMetrics?.activeSessions ?? 0,
+        totalMessages: nousMetrics?.totalMessages ?? 0,
+        lastActivity: nousMetrics?.lastActivity ?? null,
+        tokens: nousUsage
+          ? {
+              input: nousUsage.inputTokens,
+              output: nousUsage.outputTokens,
+              cacheRead: nousUsage.cacheReadTokens,
+              cacheWrite: nousUsage.cacheWriteTokens,
+              turns: nousUsage.turns,
+            }
+          : null,
+      };
+    });
+
+    const cacheHitRate =
+      metrics.usage.totalInputTokens > 0
+        ? Math.round(
+            (metrics.usage.totalCacheReadTokens /
+              metrics.usage.totalInputTokens) *
+              100,
+          )
+        : 0;
+
+    return c.json({
+      status: "ok",
+      uptime: Math.round(uptime),
+      timestamp: new Date().toISOString(),
+      nous,
+      usage: {
+        ...metrics.usage,
+        cacheHitRate,
+      },
+      cron: cronRef?.getStatus() ?? [],
+      services: watchdogRef?.getStatus() ?? [],
     });
   });
 

@@ -16,32 +16,20 @@ import os
 
 VENV_PYTHON = "/mnt/ssd/aletheia/infrastructure/browser-use/.venv/bin/python3"
 
+RUNNER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "infrastructure", "browser-use", "run_task.py")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
-    
+
     task = " ".join(sys.argv[1:])
-    
-    # Delegate to venv python with browser-use
-    script = f'''
-import asyncio
-from browser_use import Agent
-from langchain_anthropic import ChatAnthropic
 
-async def run():
-    llm = ChatAnthropic(model_name="claude-sonnet-4-20250514")
-    agent = Agent(task="""{task}""", llm=llm)
-    result = await agent.run()
-    print(result)
-
-asyncio.run(run())
-'''
-    
     result = subprocess.run(
-        [VENV_PYTHON, "-c", script],
+        [VENV_PYTHON, RUNNER_SCRIPT],
         capture_output=False,
-        env={**os.environ, "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+        env={**os.environ, "BROWSE_TASK": task},
     )
     sys.exit(result.returncode)
 
