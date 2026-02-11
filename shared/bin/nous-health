@@ -1,179 +1,146 @@
-#!/usr/bin/env bash
-set -a
-source /mnt/ssd/aletheia/shared/config/aletheia.env 2>/dev/null
-set +a 2>/dev/null || true
-# nous-health - Monitor health of Aletheia agent ecosystem
-# Reads from Aletheia's actual session data (sessions.json + .jsonl transcripts)
-# Usage: nous-health [--json] [--nous NAME] [--full]
+#!/usr/bin/env python3
+# nous-health — agent ecosystem health via Aletheia gateway API
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
 
-set -euo pipefail
+GATEWAY_URL = os.environ.get("ALETHEIA_GATEWAY_URL", "http://127.0.0.1:18789")
+GATEWAY_TOKEN = os.environ.get("ALETHEIA_GATEWAY_TOKEN", "1ce0f5d7ebf2121598c5916ddd8e335f599946ab28d0ded9")
 
-AGENTS_DIR="$HOME/.aletheia/agents"
-NOUS_STATUS_DIR="${ALETHEIA_NOUS:-/mnt/ssd/aletheia/nous}/syn/nous-status"
+ID_NAMES = {"main": "syn"}
 
-# Default options
-OUTPUT_FORMAT="table"
-TARGET_NOUS=""
-FULL_CHECK=false
+output_fmt = "table"
+target = ""
+full_check = False
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --json) OUTPUT_FORMAT="json"; shift ;;
-        --nous|--agent) TARGET_NOUS="$2"; shift 2 ;;
-        --full) FULL_CHECK=true; shift ;;
-        --help|-h)
-            echo "nous-health - Monitor Aletheia agent ecosystem health"
-            echo ""
-            echo "Usage: nous-health [--json] [--nous NAME] [--full]"
-            echo ""
-            echo "Options:"
-            echo "  --nous NAME   Check specific nous only"
-            echo "  --json        Output JSON"
-            echo "  --full        Include transcript sizes and error scanning"
-            exit 0 ;;
-        *) echo "Unknown: $1" >&2; exit 1 ;;
-    esac
-done
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    if args[i] == "--json":
+        output_fmt = "json"
+    elif args[i] in ("--nous", "--agent") and i + 1 < len(args):
+        target = args[i + 1]
+        i += 1
+    elif args[i] == "--full":
+        full_check = True
+    elif args[i] in ("--help", "-h"):
+        print("nous-health — Monitor Aletheia agent ecosystem health")
+        print()
+        print("Usage: nous-health [--json] [--nous NAME] [--full]")
+        print()
+        print("Options:")
+        print("  --nous NAME   Check specific nous only")
+        print("  --json        Output JSON")
+        print("  --full        Include token estimates and message counts")
+        sys.exit(0)
+    else:
+        print(f"Unknown: {args[i]}", file=sys.stderr)
+        sys.exit(1)
+    i += 1
 
-# Build agent list from what actually exists in agents dir
-if [[ -n "$TARGET_NOUS" ]]; then
-    AGENTS=("$TARGET_NOUS")
-else
-    AGENTS=()
-    for d in "$AGENTS_DIR"/*/; do
-        name=$(basename "$d")
-        [[ "$name" == "main" ]] && continue  # main is Syn's session, handled separately
-        AGENTS+=("$name")
-    done
-fi
 
-# Collect data per agent using Python for reliable JSON parsing
-collect_data() {
-    python3 << 'PYEOF'
-import json, os, sys, time
-from pathlib import Path
-from datetime import datetime
+def api_get(path):
+    url = f"{GATEWAY_URL}{path}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {GATEWAY_TOKEN}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        print(f"Error: gateway unreachable at {GATEWAY_URL} ({e})", file=sys.stderr)
+        sys.exit(1)
 
-agents_dir = Path(os.environ.get("HOME", "/home/syn")) / ".aletheia" / "agents"
-full_check = os.environ.get("FULL_CHECK", "false") == "true"
-target = os.environ.get("TARGET_NOUS", "")
-output_fmt = os.environ.get("OUTPUT_FORMAT", "table")
 
-now = time.time()
+status_data = api_get("/api/status")
+sessions_data = api_get("/api/sessions")
+
+agent_ids = status_data.get("agents", [])
+sessions = sessions_data.get("sessions", [])
+now = datetime.now(timezone.utc)
 results = {}
 
-# Scan all agent directories
-for agent_dir in sorted(agents_dir.iterdir()):
-    if not agent_dir.is_dir():
+for agent_id in agent_ids:
+    display_name = ID_NAMES.get(agent_id, agent_id)
+    if target and display_name != target and agent_id != target:
         continue
-    name = agent_dir.name
-    if target and name != target:
-        continue
-    
-    sessions_file = agent_dir / "sessions" / "sessions.json"
-    
-    entry = {
-        "name": name,
-        "sessions": 0,
-        "active_transcripts": 0,
-        "last_activity": 0,
-        "last_activity_human": "never",
-        "total_bytes": 0,
-        "status": "unknown",
-    }
-    
-    if sessions_file.exists():
-        try:
-            data = json.loads(sessions_file.read_text())
-            entry["sessions"] = len(data)
-            
-            # Find latest updatedAt
-            latest = 0
-            for key, val in data.items():
-                ts = val.get("updatedAt", 0)
-                if ts > latest:
-                    latest = ts
-            
-            if latest > 0:
-                entry["last_activity"] = latest / 1000  # ms to s
-                age = now - entry["last_activity"]
-                if age < 60:
-                    entry["last_activity_human"] = f"{int(age)}s ago"
-                elif age < 3600:
-                    entry["last_activity_human"] = f"{int(age/60)}m ago"
-                elif age < 86400:
-                    entry["last_activity_human"] = f"{int(age/3600)}h ago"
-                else:
-                    entry["last_activity_human"] = f"{int(age/86400)}d ago"
-                
-                # Status based on age
-                if age < 1800:       # 30 min
-                    entry["status"] = "active"
-                elif age < 86400:    # 24h
-                    entry["status"] = "idle"
-                else:
-                    entry["status"] = "stale"
-        except (json.JSONDecodeError, KeyError):
-            entry["status"] = "error"
-    
-    # Count active transcripts and sizes
-    sessions_dir = agent_dir / "sessions"
-    if sessions_dir.exists():
-        for f in sessions_dir.iterdir():
-            if f.suffix == ".jsonl" and ".deleted" not in f.name:
-                entry["active_transcripts"] += 1
-                if full_check:
-                    entry["total_bytes"] += f.stat().st_size
-    
-    results[name] = entry
 
-# Output
+    agent_sessions = [s for s in sessions if s["nousId"] == agent_id]
+    total_tokens = sum(s.get("tokenCountEstimate", 0) for s in agent_sessions)
+    total_messages = sum(s.get("messageCount", 0) for s in agent_sessions)
+
+    latest_ts = None
+    for s in agent_sessions:
+        updated = s.get("updatedAt")
+        if updated:
+            ts = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+            if latest_ts is None or ts > latest_ts:
+                latest_ts = ts
+
+    if latest_ts:
+        age = (now - latest_ts).total_seconds()
+        if age < 60:
+            age_str = f"{int(age)}s ago"
+        elif age < 3600:
+            age_str = f"{int(age / 60)}m ago"
+        elif age < 86400:
+            age_str = f"{int(age / 3600)}h ago"
+        else:
+            age_str = f"{int(age / 86400)}d ago"
+
+        if age < 1800:
+            status = "active"
+        elif age < 86400:
+            status = "idle"
+        else:
+            status = "stale"
+    else:
+        age_str = "never"
+        status = "dormant"
+
+    results[display_name] = {
+        "name": display_name,
+        "agent_id": agent_id,
+        "status": status,
+        "last_activity": age_str,
+        "sessions": len(agent_sessions),
+        "messages": total_messages,
+        "tokens": total_tokens,
+    }
+
 if output_fmt == "json":
-    print(json.dumps({"timestamp": int(now), "agents": results}, indent=2))
+    print(json.dumps({"timestamp": now.isoformat(), "agents": results}, indent=2))
 else:
-    # Table format
     print(f"Agent Health — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 72)
     print()
-    
-    hdr = f"{'Nous':<12} {'Status':<8} {'Last Activity':<16} {'Sessions':>8} {'Transcripts':>12}"
+
+    hdr = f"{'Nous':<12} {'Status':<8} {'Last Activity':<16} {'Sessions':>8}"
     if full_check:
-        hdr += f" {'Size':>10}"
+        hdr += f" {'Messages':>9} {'Tokens':>10}"
     print(hdr)
-    
-    sep = f"{'---':<12} {'---':<8} {'---':<16} {'---':>8} {'---':>12}"
+
+    sep = f"{'---':<12} {'---':<8} {'---':<16} {'---':>8}"
     if full_check:
-        sep += f" {'---':>10}"
+        sep += f" {'---':>9} {'---':>10}"
     print(sep)
-    
-    status_icons = {"active": "🟢", "idle": "🟡", "stale": "🔴", "unknown": "⚪", "error": "❌"}
-    
+
+    icons = {"active": "\U0001f7e2", "idle": "\U0001f7e1", "stale": "\U0001f534", "dormant": "\u26aa"}
+
     for name in sorted(results):
         r = results[name]
-        icon = status_icons.get(r["status"], "?")
-        line = f"{r['name']:<12} {icon} {r['status']:<5} {r['last_activity_human']:<16} {r['sessions']:>8} {r['active_transcripts']:>12}"
+        icon = icons.get(r["status"], "?")
+        line = f"{r['name']:<12} {icon} {r['status']:<5} {r['last_activity']:<16} {r['sessions']:>8}"
         if full_check:
-            if r["total_bytes"] > 1048576:
-                size_str = f"{r['total_bytes']/1048576:.1f}MB"
-            elif r["total_bytes"] > 1024:
-                size_str = f"{r['total_bytes']/1024:.0f}KB"
-            else:
-                size_str = f"{r['total_bytes']}B"
-            line += f" {size_str:>10}"
+            tok_str = f"{r['tokens'] // 1000}k" if r["tokens"] >= 1000 else str(r["tokens"])
+            line += f" {r['messages']:>9} {tok_str:>10}"
         print(line)
-    
+
     print()
-    
-    # Summary
     active = sum(1 for r in results.values() if r["status"] == "active")
     idle = sum(1 for r in results.values() if r["status"] == "idle")
-    stale = sum(1 for r in results.values() if r["status"] == "stale")
-    print(f"Summary: {active} active, {idle} idle, {stale} stale")
-    
+    dormant = sum(1 for r in results.values() if r["status"] == "dormant")
+    print(f"Summary: {active} active, {idle} idle, {dormant} dormant")
     if not full_check:
-        print("💡 Use --full for transcript sizes")
-
-PYEOF
-}
-
-FULL_CHECK=$FULL_CHECK TARGET_NOUS=$TARGET_NOUS OUTPUT_FORMAT=$OUTPUT_FORMAT collect_data
+        print("Use --full for token/message counts")

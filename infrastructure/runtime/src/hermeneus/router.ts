@@ -1,4 +1,6 @@
 // Provider router — model string to provider, failover
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { ProviderError } from "../koina/errors.js";
 import {
@@ -81,7 +83,20 @@ export class ProviderRouter {
 
 export function createDefaultRouter(): ProviderRouter {
   const router = new ProviderRouter();
-  const anthropic = new AnthropicProvider();
+
+  // Load OAuth token from credentials if ANTHROPIC_AUTH_TOKEN not in env
+  let authToken: string | undefined;
+  if (!process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
+    try {
+      const home = process.env.HOME ?? "/home/syn";
+      const credPath = join(home, ".openclaw", "credentials", "anthropic.json");
+      const creds = JSON.parse(readFileSync(credPath, "utf-8"));
+      authToken = creds.token;
+      if (authToken) log.info("Loaded OAuth token from credentials");
+    } catch {}
+  }
+
+  const anthropic = new AnthropicProvider(authToken ? { authToken } : undefined);
   router.registerProvider("anthropic", anthropic, [
     "claude-opus-4-6",
     "claude-sonnet-4-5-20250929",
