@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, OLLAMA_BASE_URL, QDRANT_HOST, QDRANT_PORT
+from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -37,6 +38,9 @@ class ImportRequest(BaseModel):
     user_id: str = "ck"
 
 
+DEDUP_THRESHOLD = 0.92
+
+
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request):
     mem = request.app.state.memory
@@ -47,6 +51,19 @@ async def add_memory(req: AddRequest, request: Request):
         kwargs["metadata"] = req.metadata
 
     try:
+        # Cross-agent dedup: search globally (no agent_id) before adding
+        existing = await asyncio.to_thread(mem.search, req.text, user_id=req.user_id, limit=1)
+        results = existing.get("results", []) if isinstance(existing, dict) else existing
+        if results and isinstance(results, list) and len(results) > 0:
+            top = results[0]
+            score = top.get("score", 0)
+            if score > DEDUP_THRESHOLD:
+                logger.info(
+                    f"Dedup: skipped (score={score:.3f}, existing={top.get('id', '?')}, "
+                    f"agent={req.agent_id or 'global'})"
+                )
+                return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
+
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
         return {"ok": True, "result": result}
     except Exception as e:
@@ -166,10 +183,17 @@ async def health_check():
             checks["qdrant"] = f"error: {e}"
 
         try:
-            r = await client.get(OLLAMA_BASE_URL.rstrip("/") + "/api/tags")
-            checks["ollama"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
+            r = await client.post(
+                "https://api.voyageai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {os.environ.get('VOYAGE_API_KEY', '')}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": "voyage-3-large", "input": ["health check"]},
+            )
+            checks["voyage"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
         except Exception as e:
-            checks["ollama"] = f"error: {e}"
+            checks["voyage"] = f"error: {e}"
 
     try:
         from neo4j import GraphDatabase
@@ -182,6 +206,40 @@ async def health_check():
 
     all_ok = all(v == "ok" for v in checks.values())
     return {"ok": all_ok, "checks": checks}
+
+
+@router.get("/graph_stats")
+async def graph_stats():
+    from neo4j import GraphDatabase
+
+    try:
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            node_count = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
+            rel_count = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
+            rel_types = session.run(
+                "MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC LIMIT 30"
+            ).data()
+            top_nodes = session.run(
+                "MATCH (n)-[r]-() RETURN n.name AS name, labels(n) AS labels, count(r) AS rels "
+                "ORDER BY rels DESC LIMIT 10"
+            ).data()
+            singleton_types = session.run(
+                "MATCH ()-[r]->() WITH type(r) AS t, count(*) AS c WHERE c = 1 RETURN count(t) AS c"
+            ).single()["c"]
+        driver.close()
+
+        return {
+            "ok": True,
+            "nodes": node_count,
+            "relationships": rel_count,
+            "singleton_rel_types": singleton_types,
+            "top_relationship_types": rel_types,
+            "top_connected_nodes": top_nodes,
+        }
+    except Exception as e:
+        logger.exception("graph_stats failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/import_file")

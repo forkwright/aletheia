@@ -16,7 +16,7 @@ export const paths = {
   configDir(): string {
     return (
       process.env.ALETHEIA_CONFIG_DIR ??
-      join(homedir(), ".openclaw")
+      join(homedir(), ".aletheia")
     );
   },
 

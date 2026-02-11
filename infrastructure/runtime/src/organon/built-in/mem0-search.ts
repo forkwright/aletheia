@@ -37,33 +37,60 @@ export const mem0SearchTool: ToolHandler = {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
 
-      const res = await fetch(`${SIDECAR_URL}/search`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Search both agent-scoped and user-level (unscoped) memories in parallel
+      const searchBody = (agentId?: string) =>
+        JSON.stringify({
           query,
           user_id: USER_ID,
-          agent_id: context.nousId,
+          ...(agentId ? { agent_id: agentId } : {}),
           limit,
+        });
+
+      const [agentRes, globalRes] = await Promise.all([
+        fetch(`${SIDECAR_URL}/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: searchBody(context.nousId),
+          signal: controller.signal,
         }),
-        signal: controller.signal,
-      });
+        fetch(`${SIDECAR_URL}/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: searchBody(),
+          signal: controller.signal,
+        }),
+      ]);
 
       clearTimeout(timer);
 
-      if (!res.ok) {
-        return JSON.stringify({ results: [], error: `mem0 returned ${res.status}` });
+      const extract = async (res: Response) => {
+        if (!res.ok) return [];
+        const data = (await res.json()) as Record<string, unknown>;
+        const results = (data.results as unknown[]) ?? [];
+        return Array.isArray(results) ? results : [];
+      };
+
+      const agentResults = await extract(agentRes);
+      const globalResults = await extract(globalRes);
+
+      // Merge and deduplicate by memory id, preferring agent-scoped
+      const seen = new Set<string>();
+      const merged: Record<string, unknown>[] = [];
+      for (const m of [...agentResults, ...globalResults] as Record<string, unknown>[]) {
+        const id = String(m.id ?? m.memory ?? "");
+        if (!seen.has(id)) {
+          seen.add(id);
+          merged.push(m);
+        }
       }
 
-      const data = (await res.json()) as Record<string, unknown>;
-      const results = (data.results as unknown[]) ?? [];
-      const memories = (Array.isArray(results) ? results : []).map(
-        (m: Record<string, unknown>) => ({
-          memory: m.memory ?? m.text ?? "",
-          score: m.score ?? null,
-          agent_id: m.agent_id ?? null,
-        }),
-      );
+      // Sort by score descending, take top `limit`
+      merged.sort((a, b) => ((b.score as number) ?? 0) - ((a.score as number) ?? 0));
+      const memories = merged.slice(0, limit).map((m) => ({
+        memory: m.memory ?? m.text ?? "",
+        score: m.score ?? null,
+        agent_id: m.agent_id ?? null,
+      }));
 
       return JSON.stringify({ results: memories, count: memories.length });
     } catch (err) {

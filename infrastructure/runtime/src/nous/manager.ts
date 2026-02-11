@@ -27,6 +27,7 @@ export interface InboundMessage {
   text: string;
   nousId?: string;
   sessionKey?: string;
+  parentSessionId?: string;
   channel?: string;
   peerId?: string;
   peerKind?: string;
@@ -90,6 +91,7 @@ export class NousManager {
       nousId,
       sessionKey,
       model,
+      msg.parentSessionId,
     );
 
     // Serialize concurrent turns on the same session
@@ -209,6 +211,7 @@ export class NousManager {
             nousId,
             sessionId,
             responseText: text,
+            messageText: msg.text,
             toolCalls: totalToolCalls,
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,

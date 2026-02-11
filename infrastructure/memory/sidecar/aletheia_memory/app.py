@@ -78,6 +78,24 @@ def _patch_anthropic_params():
     anthropic_llm.AnthropicLLM.generate_response = _patched_generate
 
 
+def _patch_openai_embedder_for_voyage():
+    """Voyage API doesn't support the `dimensions` parameter.
+    Mem0's OpenAI embedder always sends it. Strip it."""
+    from mem0.embeddings import openai as openai_emb
+
+    _orig_embed = openai_emb.OpenAIEmbedding.embed
+
+    def _patched_embed(self, text, memory_action=None):
+        text = text.replace("\n", " ")
+        return (
+            self.client.embeddings.create(input=[text], model=self.config.model)
+            .data[0]
+            .embedding
+        )
+
+    openai_emb.OpenAIEmbedding.embed = _patched_embed
+
+
 memory: Memory | None = None
 
 
@@ -85,6 +103,7 @@ memory: Memory | None = None
 async def lifespan(app: FastAPI):
     global memory
     _patch_anthropic_params()
+    _patch_openai_embedder_for_voyage()
     memory = Memory.from_config(MEM0_CONFIG)
     app.state.memory = memory
     yield

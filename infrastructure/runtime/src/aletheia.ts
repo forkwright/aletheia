@@ -14,7 +14,9 @@ import { findTool } from "./organon/built-in/find.js";
 import { lsTool } from "./organon/built-in/ls.js";
 import { webFetchTool } from "./organon/built-in/web-fetch.js";
 import { webSearchTool } from "./organon/built-in/web-search.js";
+import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
+import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
@@ -71,10 +73,22 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Web access
   tools.register(webFetchTool);
-  tools.register(webSearchTool);
+  if (process.env.BRAVE_API_KEY) {
+    tools.register(braveSearchTool);
+    log.info("Web search: Brave (API key found)");
+  } else {
+    tools.register(webSearchTool);
+    log.info("Web search: DuckDuckGo (no BRAVE_API_KEY)");
+  }
 
   // Memory
   tools.register(mem0SearchTool);
+
+  // Browser (requires chromium on host)
+  if (process.env.CHROMIUM_PATH || process.env.ENABLE_BROWSER) {
+    tools.register(browserTool);
+    log.info("Browser tool registered");
+  }
 
   // Wired tools (config + store injected)
   tools.register(createConfigReadTool(config));
@@ -94,10 +108,14 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
-  // Wire cross-agent tools (need manager reference)
+  // Wire cross-agent tools (need manager + store reference for audit trail)
   tools.register(createSessionsSendTool(manager));
-  tools.register(createSessionsAskTool(manager));
-  tools.register(createSessionsSpawnTool(manager));
+  const auditDispatcher = {
+    handleMessage: manager.handleMessage.bind(manager),
+    store,
+  };
+  tools.register(createSessionsAskTool(auditDispatcher));
+  tools.register(createSessionsSpawnTool(auditDispatcher));
 
   return {
     config,
@@ -221,14 +239,21 @@ export async function startRuntime(configPath?: string): Promise<void> {
     cron.start();
   }
 
+  // Spawn session cleanup — archive stale spawn sessions every hour
+  const spawnCleanupTimer = setInterval(() => {
+    runtime.store.archiveStaleSpawnSessions();
+  }, 60 * 60 * 1000);
+
   // --- Shutdown ---
   const shutdown = async () => {
     log.info("Shutting down...");
+    clearInterval(spawnCleanupTimer);
     cron.stop();
     abortController.abort();
     for (const daemon of daemons) {
       daemon.stop();
     }
+    await closeBrowser().catch(() => {});
     await runtime.plugins.dispatchShutdown();
     runtime.shutdown();
     process.exit(0);
