@@ -317,6 +317,24 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 
 **Alcohol:** Currently "low-med." Stated "I'm done with it for now" on 2026-02-11. Framed as single biggest antagonist to cognitive goals. History: introduced by Julie as sleep aid 6th grade.
 
+## Medication & AuDHD (2026-02-11)
+
+**Current meds:** Adderall XR 20mg daily, Adderall IR 5mg prn (MBA), Bupropion XL 150mg daily. Qelbree 200mg ER prescribed but not started (non-stimulant trial).
+
+**Medication architecture designed:** 4 layers — (1) treat ADHD noise with cleanest possible med, (2) modulate ASD amplification with guanfacine ER as adjunct, (3) foundation (sleep/exercise/supplements), (4) mental models (metacognition). 4-phase plan: Qelbree first → guanfacine adjunct → try methylphenidate class → optimized amphetamine (Vyvanse/Dexedrine) if needed.
+
+**AuDHD frame:** ADHD = noise to reduce. ASD = signal to preserve. The interaction: stimulants that treat ADHD can amplify ASD interface costs (perseveration, emotional intensity, sensory sensitivity). Guanfacine addresses this specifically.
+
+**Key traits mapped with clinical terms:** Signal (monotropism, hyper-systemizing, enhanced perceptual functioning, intellectual honesty, direct communication). Interface costs (masking/camouflaging, double empathy problem, perseveration, sensory overload, autistic inertia, alexithymia, autistic burnout).
+
+**No formal ASD diagnosis.** Self-report screens rated high. Full neuropsych eval planned per psych recommendation. IQ is inferred (~145+), not formally tested.
+
+**CRITICAL CORRECTION:** I was citing my own docs (USER.md, SOUL.md) as evidence for ASD — that's circular. Those docs were written by me/team based on conversations. Cody rightfully called this out. Evidence level: suggestive from self-report and conversation, not definitive.
+
+**Cody's framing:** "All my life things like snap changes, deep dives, systematic approaches have been vilified or seen as the wrong approach. None of that really changed, but now I don't care. I know what works for me." — The AuDHD frame gives permission to stop internalizing NT norms.
+
+**Snap changes > gradual for ADHD:** Validated by neuroscience — novelty IS the activation energy for interest-based nervous systems. Gradual changes die in the boring middle.
+
 ## Wardrobe (2026-02-10/11)
 
 **Two distinct styles identified:** Maker's Wardrobe (workwear/Americana: Merz b. Schwanen, selvedge, Red Wings, Front Office) and The Drape (Italian tailoring: Luxire, Ledbury, Ace Marks, Sabahs). Shared DNA: natural fiber, heritage construction, no logos, built to age. Full inventory in `theke/oikia/inventory-wardrobe/`.
