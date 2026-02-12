@@ -46,22 +46,26 @@ export const mem0SearchTool: ToolHandler = {
           limit,
         });
 
-      const [agentRes, globalRes] = await Promise.all([
-        fetch(`${SIDECAR_URL}/search`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: searchBody(context.nousId),
-          signal: controller.signal,
-        }),
-        fetch(`${SIDECAR_URL}/search`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: searchBody(),
-          signal: controller.signal,
-        }),
-      ]);
-
-      clearTimeout(timer);
+      let agentRes: Response;
+      let globalRes: Response;
+      try {
+        [agentRes, globalRes] = await Promise.all([
+          fetch(`${SIDECAR_URL}/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: searchBody(context.nousId),
+            signal: controller.signal,
+          }),
+          fetch(`${SIDECAR_URL}/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: searchBody(),
+            signal: controller.signal,
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
 
       const extract = async (res: Response) => {
         if (!res.ok) return [];
@@ -76,8 +80,10 @@ export const mem0SearchTool: ToolHandler = {
       // Merge and deduplicate by memory id, preferring agent-scoped
       const seen = new Set<string>();
       const merged: Record<string, unknown>[] = [];
-      for (const m of [...agentResults, ...globalResults] as Record<string, unknown>[]) {
-        const id = String(m.id ?? m.memory ?? "");
+      const all = [...agentResults, ...globalResults] as Record<string, unknown>[];
+      for (let i = 0; i < all.length; i++) {
+        const m = all[i]!;
+        const id = String(m.id ?? `${m.memory ?? ""}_${i}`);
         if (!seen.has(id)) {
           seen.add(id);
           merged.push(m);

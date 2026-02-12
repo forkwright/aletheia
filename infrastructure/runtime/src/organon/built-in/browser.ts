@@ -1,7 +1,9 @@
 // Browser tool — navigate, screenshot, extract via headless Chromium
 import type { ToolHandler } from "../registry.js";
+import { validateUrl } from "./ssrf-guard.js";
 
 let browserPromise: Promise<Browser> | null = null;
+let browserInstance: Browser | null = null;
 let pageCount = 0;
 const MAX_PAGES = 3;
 const PAGE_TIMEOUT = 30000;
@@ -13,7 +15,7 @@ async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = (async () => {
       const { chromium } = await import("playwright-core");
-      return chromium.launch({
+      const browser = await chromium.launch({
         executablePath:
           process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
         args: [
@@ -23,6 +25,8 @@ async function getBrowser(): Promise<Browser> {
           "--disable-gpu",
         ],
       });
+      browserInstance = browser;
+      return browser;
     })();
   }
   return browserPromise;
@@ -37,18 +41,22 @@ async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   const page = await browser.newPage();
   pageCount++;
 
-  const timer = setTimeout(() => {
-    page.close().catch(() => {});
-    pageCount--;
-  }, PAGE_TIMEOUT);
+  let cleaned = false;
+  const cleanup = () => {
+    if (!cleaned) {
+      cleaned = true;
+      pageCount--;
+      page.close().catch(() => {});
+    }
+  };
+
+  const timer = setTimeout(cleanup, PAGE_TIMEOUT);
 
   try {
-    const result = await fn(page);
-    return result;
+    return await fn(page);
   } finally {
     clearTimeout(timer);
-    await page.close().catch(() => {});
-    pageCount--;
+    cleanup();
   }
 }
 
@@ -94,6 +102,8 @@ export const browserTool: ToolHandler = {
     const timeout = (input.timeout as number) ?? 15000;
 
     try {
+      await validateUrl(url);
+
       return await withPage(async (page) => {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout });
 
@@ -151,5 +161,20 @@ export async function closeBrowser(): Promise<void> {
     const browser = await browserPromise;
     await browser.close();
     browserPromise = null;
+    browserInstance = null;
   }
 }
+
+// Safety net: kill Chromium if still alive on unexpected exit.
+// process.on("exit") is synchronous — can't await, so we use the cached
+// browserInstance ref and send SIGKILL directly to the child process.
+// Primary cleanup happens in daemon shutdown (closeBrowser()).
+process.on("exit", () => {
+  if (browserInstance) {
+    try {
+      browserInstance.process()?.kill("SIGKILL");
+    } catch {
+      // Best-effort — process may already be gone
+    }
+  }
+});

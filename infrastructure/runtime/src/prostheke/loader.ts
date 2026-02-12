@@ -45,7 +45,12 @@ async function loadPlugin(
   }
 
   const { readJson } = await import("../koina/fs.js");
-  const manifest = (await readJson(manifestPath)) as PluginManifest;
+  const manifest = (await readJson(manifestPath)) as PluginManifest | null;
+
+  if (!manifest) {
+    log.warn(`Failed to parse manifest at ${manifestPath}`);
+    return null;
+  }
 
   if (!manifest.id || !manifest.name || !manifest.version) {
     log.warn(`Invalid manifest in ${pluginPath}: missing required fields`);

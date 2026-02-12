@@ -1,6 +1,7 @@
 // Hono HTTP gateway
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
@@ -10,12 +11,12 @@ import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
 
-// Per-million-token costs (USD) — Anthropic pricing as of 2025
-const MODEL_COSTS: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
-  "claude-opus-4-6":            { input: 15,   output: 75,   cacheRead: 1.5,  cacheWrite: 18.75 },
-  "claude-sonnet-4-5-20250929": { input: 3,    output: 15,   cacheRead: 0.3,  cacheWrite: 3.75 },
-  "claude-haiku-4-5-20251001":  { input: 0.8,  output: 4,    cacheRead: 0.08, cacheWrite: 1 },
-};
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 // Set after gateway creation — avoids circular dependency
 let cronRef: CronScheduler | null = null;
@@ -47,7 +48,7 @@ export function createGateway(
         ? header.slice(7)
         : c.req.query("token");
 
-      if (token !== authToken) {
+      if (!safeCompare(token ?? "", authToken)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
     } else if (authMode === "password" && authToken) {
@@ -58,12 +59,18 @@ export function createGateway(
       }
       const decoded = Buffer.from(header.slice(6), "base64").toString();
       const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-      if (password !== authToken) {
+      if (!safeCompare(password, authToken)) {
         return c.json({ error: "Invalid credentials" }, 401);
       }
     }
 
     return next();
+  });
+
+  // Global error handler — log details server-side, return generic message to client
+  app.onError((err, c) => {
+    log.error(`Unhandled error on ${c.req.method} ${c.req.path}: ${err.message}`);
+    return c.json({ error: "Internal server error" }, 500);
   });
 
   app.get("/health", (c) =>
@@ -92,7 +99,13 @@ export function createGateway(
   });
 
   app.post("/api/sessions/send", async (c) => {
-    const body = await c.req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
     const { agentId, message, sessionKey } = body as {
       agentId: string;
       message: string;
@@ -124,7 +137,7 @@ export function createGateway(
       const msg =
         error instanceof Error ? error.message : String(error);
       log.error(`Session send failed: ${msg}`);
-      return c.json({ error: msg }, 500);
+      return c.json({ error: "Internal error processing message" }, 500);
     }
   });
 
@@ -174,19 +187,6 @@ export function createGateway(
           )
         : 0;
 
-    const byModel = store.getUsageByModel();
-    const costBreakdown = byModel.map((m) => {
-      const rates = MODEL_COSTS[m.model];
-      if (!rates) return { model: m.model, turns: m.turns, cost: null };
-      const cost =
-        (m.inputTokens * rates.input +
-          m.outputTokens * rates.output +
-          m.cacheReadTokens * rates.cacheRead +
-          m.cacheWriteTokens * rates.cacheWrite) / 1_000_000;
-      return { model: m.model, turns: m.turns, cost: Math.round(cost * 1000) / 1000 };
-    });
-    const totalCost = costBreakdown.reduce((s, m) => s + (m.cost ?? 0), 0);
-
     return c.json({
       status: "ok",
       uptime: Math.round(uptime),
@@ -195,10 +195,6 @@ export function createGateway(
       usage: {
         ...metrics.usage,
         cacheHitRate,
-      },
-      cost: {
-        total: Math.round(totalCost * 1000) / 1000,
-        byModel: costBreakdown,
       },
       cron: cronRef?.getStatus() ?? [],
       services: watchdogRef?.getStatus() ?? [],

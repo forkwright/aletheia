@@ -21,12 +21,13 @@ interface BootstrapFile {
 // Group 3 (dynamic): changes every turn — never cached
 const WORKSPACE_FILES: Omit<BootstrapFile, "path">[] = [
   { name: "SOUL.md", priority: 1, cacheGroup: "static" },
-  { name: "AGENTS.md", priority: 2, cacheGroup: "static" },
-  { name: "IDENTITY.md", priority: 3, cacheGroup: "static" },
-  { name: "TOOLS.md", priority: 4, cacheGroup: "semi-static" },
-  { name: "MEMORY.md", priority: 5, cacheGroup: "semi-static" },
-  { name: "PROSOCHE.md", priority: 6, cacheGroup: "dynamic" },
-  { name: "CONTEXT.md", priority: 7, cacheGroup: "dynamic" },
+  { name: "USER.md", priority: 2, cacheGroup: "static" },
+  { name: "AGENTS.md", priority: 3, cacheGroup: "static" },
+  { name: "IDENTITY.md", priority: 4, cacheGroup: "static" },
+  { name: "TOOLS.md", priority: 5, cacheGroup: "semi-static" },
+  { name: "MEMORY.md", priority: 6, cacheGroup: "semi-static" },
+  { name: "PROSOCHE.md", priority: 7, cacheGroup: "dynamic" },
+  { name: "CONTEXT.md", priority: 8, cacheGroup: "dynamic" },
 ];
 
 type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -95,6 +96,14 @@ export function assembleBootstrap(
           tokens: estimateTokens(truncated),
         });
         totalTokens += estimateTokens(truncated);
+        log.warn(`Truncated ${file.name} (${file.tokens} → ${estimateTokens(truncated)} tokens)`);
+      } else {
+        log.warn(`Dropped ${file.name} (${file.tokens} tokens) — budget exhausted`);
+      }
+      // Log remaining dropped files
+      const idx = loaded.indexOf(file);
+      for (let i = idx + 1; i < loaded.length; i++) {
+        log.warn(`Dropped ${loaded[i]!.name} (${loaded[i]!.tokens} tokens) — budget exhausted`);
       }
       break;
     }

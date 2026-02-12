@@ -15,15 +15,20 @@ export interface WatchdogOpts {
   alertFn: (message: string) => Promise<void>;
 }
 
+const MAX_CONSECUTIVE_FAILURES = 100;
+const RE_ALERT_INTERVAL_MS = 43200_000; // 12 hours
+
 interface ServiceState {
   healthy: boolean;
   lastChange: number;
   consecutiveFailures: number;
+  lastAlertedAt: number;
 }
 
 export class Watchdog {
   private states = new Map<string, ServiceState>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private running = false;
   private opts: WatchdogOpts;
 
   constructor(opts: WatchdogOpts) {
@@ -33,24 +38,35 @@ export class Watchdog {
         healthy: true,
         lastChange: Date.now(),
         consecutiveFailures: 0,
+        lastAlertedAt: 0,
       });
     }
   }
 
   start(): void {
-    if (this.timer) return;
+    if (this.running) return;
+    this.running = true;
     log.info(`Watchdog started: ${this.opts.services.length} services, ${this.opts.intervalMs / 1000}s interval`);
-    this.timer = setInterval(() => this.check(), this.opts.intervalMs);
-    // Run first check after a brief delay (let services stabilize on boot)
-    setTimeout(() => this.check(), 15000);
+    this.timer = setTimeout(() => this.run(), 15000);
   }
 
   stop(): void {
+    this.running = false;
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
     log.info("Watchdog stopped");
+  }
+
+  private async run(): Promise<void> {
+    try {
+      await this.check();
+    } finally {
+      if (this.running) {
+        this.timer = setTimeout(() => this.run(), this.opts.intervalMs);
+      }
+    }
   }
 
   getStatus(): Array<{ name: string; healthy: boolean; since: string }> {
@@ -62,29 +78,41 @@ export class Watchdog {
   }
 
   private async check(): Promise<void> {
+    const now = Date.now();
     const alerts: string[] = [];
 
-    for (const svc of this.opts.services) {
-      const healthy = await probeService(svc);
+    const probeResults = await Promise.allSettled(
+      this.opts.services.map((svc) => probeService(svc).then((healthy) => ({ svc, healthy }))),
+    );
+
+    for (const result of probeResults) {
+      if (result.status === "rejected") continue;
+      const { svc, healthy } = result.value;
       const state = this.states.get(svc.name)!;
 
       if (healthy && !state.healthy) {
         state.healthy = true;
-        state.lastChange = Date.now();
+        state.lastChange = now;
         state.consecutiveFailures = 0;
+        state.lastAlertedAt = now;
         alerts.push(`[recovered] ${svc.name} is back up`);
         log.info(`${svc.name} recovered`);
       } else if (!healthy && state.healthy) {
-        state.consecutiveFailures++;
-        // Alert after 2 consecutive failures to avoid transient blips
+        state.consecutiveFailures = Math.min(state.consecutiveFailures + 1, MAX_CONSECUTIVE_FAILURES);
         if (state.consecutiveFailures >= 2) {
           state.healthy = false;
-          state.lastChange = Date.now();
+          state.lastChange = now;
+          state.lastAlertedAt = now;
           alerts.push(`[down] ${svc.name} is unreachable (${svc.url})`);
           log.warn(`${svc.name} is DOWN`);
         }
       } else if (!healthy) {
-        state.consecutiveFailures++;
+        state.consecutiveFailures = Math.min(state.consecutiveFailures + 1, MAX_CONSECUTIVE_FAILURES);
+        if (now - state.lastAlertedAt >= RE_ALERT_INTERVAL_MS) {
+          state.lastAlertedAt = now;
+          alerts.push(`[still down] ${svc.name} unreachable for ${Math.round((now - state.lastChange) / 60000)}m (${svc.url})`);
+          log.warn(`${svc.name} still DOWN, re-alerting`);
+        }
       } else {
         state.consecutiveFailures = 0;
       }
@@ -107,7 +135,7 @@ async function probeService(svc: ServiceProbe): Promise<boolean> {
     const res = await fetch(svc.url, {
       signal: AbortSignal.timeout(timeout),
     });
-    return res.ok || res.status < 500;
+    return res.ok;
   } catch {
     return false;
   }

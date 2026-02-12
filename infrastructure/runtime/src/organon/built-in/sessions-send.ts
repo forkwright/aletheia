@@ -1,9 +1,16 @@
 // Cross-agent fire-and-forget messaging
-import type { ToolHandler } from "../registry.js";
+import { createLogger } from "../../koina/logger.js";
+import type { ToolHandler, ToolContext } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
+import type { SessionStore } from "../../mneme/store.js";
+
+const log = createLogger("organon:sessions-send");
+const MAX_PENDING_SENDS = 5;
+let pendingSends = 0;
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
+  store?: SessionStore;
 }
 
 export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandler {
@@ -31,7 +38,10 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
         required: ["agentId", "message"],
       },
     },
-    async execute(input: Record<string, unknown>): Promise<string> {
+    async execute(
+      input: Record<string, unknown>,
+      context: ToolContext,
+    ): Promise<string> {
       const agentId = input.agentId as string;
       const message = input.message as string;
       const sessionKey = (input.sessionKey as string) ?? "main";
@@ -40,6 +50,24 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
         return JSON.stringify({ error: "Agent dispatch not available" });
       }
 
+      if (agentId === context.nousId) {
+        return JSON.stringify({ error: "Cannot send to yourself" });
+      }
+
+      if (pendingSends >= MAX_PENDING_SENDS) {
+        return JSON.stringify({ error: "Too many pending sends — try again later" });
+      }
+
+      // Audit trail
+      const auditId = dispatcher.store?.recordCrossAgentCall({
+        sourceSessionId: context.sessionId,
+        sourceNousId: context.nousId,
+        targetNousId: agentId,
+        kind: "send",
+        content: message.slice(0, 2000),
+      });
+
+      pendingSends++;
       dispatcher
         .handleMessage({
           text: message,
@@ -47,8 +75,28 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
           sessionKey,
           channel: "internal",
           peerKind: "agent",
+          peerId: context.nousId,
+          depth: (context.depth ?? 0) + 1,
         })
-        .catch(() => {});
+        .then((outcome) => {
+          if (auditId && dispatcher.store) {
+            dispatcher.store.updateCrossAgentCall(auditId, {
+              targetSessionId: outcome.sessionId,
+              status: "delivered",
+              response: outcome.text,
+            });
+          }
+        })
+        .catch((err) => {
+          log.warn(`sessions_send to ${agentId} failed: ${err instanceof Error ? err.message : err}`);
+          if (auditId && dispatcher.store) {
+            dispatcher.store.updateCrossAgentCall(auditId, {
+              status: "error",
+              response: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })
+        .finally(() => { pendingSends--; });
 
       return JSON.stringify({ sent: true, agentId, sessionKey });
     },

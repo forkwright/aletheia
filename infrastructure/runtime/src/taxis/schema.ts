@@ -30,6 +30,7 @@ const CompactionConfig = z
     mode: z.enum(["default", "safeguard"]).default("default"),
     reserveTokensFloor: z.number().default(8000),
     maxHistoryShare: z.number().default(0.7),
+    distillationModel: z.string().default("claude-haiku-4-5-20251001"),
     memoryFlush: z
       .object({
         enabled: z.boolean().default(true),
@@ -75,26 +76,39 @@ const NousDefinition = z.object({
     .optional(),
 }).passthrough();
 
+const AgentDefaults = z.preprocess(
+  (val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const obj = val as Record<string, unknown>;
+      // Backwards compat: bootstrapMaxChars → bootstrapMaxTokens
+      if ("bootstrapMaxChars" in obj && !("bootstrapMaxTokens" in obj)) {
+        obj.bootstrapMaxTokens = obj.bootstrapMaxChars;
+        delete obj.bootstrapMaxChars;
+      }
+    }
+    return val;
+  },
+  z.object({
+    model: z
+      .object({
+        primary: z.string().default("claude-opus-4-6"),
+        fallbacks: z.array(z.string()).default([]),
+      })
+      .default({}),
+    workspace: z.string().optional(),
+    bootstrapMaxTokens: z.number().default(40000),
+    userTimezone: z.string().default("America/Chicago"),
+    contextTokens: z.number().default(200000),
+    maxOutputTokens: z.number().default(16384),
+    compaction: CompactionConfig.default({}),
+    heartbeat: HeartbeatConfig.optional(),
+    tools: ToolsConfig.default({}),
+    timeoutSeconds: z.number().default(300),
+  }).passthrough(),
+).default({});
+
 const AgentsConfig = z.object({
-  defaults: z
-    .object({
-      model: z
-        .object({
-          primary: z.string().default("claude-opus-4-6"),
-          fallbacks: z.array(z.string()).default([]),
-        })
-        .default({}),
-      workspace: z.string().optional(),
-      bootstrapMaxChars: z.number().default(40000),
-      userTimezone: z.string().default("America/Chicago"),
-      contextTokens: z.number().default(200000),
-      compaction: CompactionConfig.default({}),
-      heartbeat: HeartbeatConfig.optional(),
-      tools: ToolsConfig.default({}),
-      timeoutSeconds: z.number().default(300),
-    })
-    .passthrough()
-    .default({}),
+  defaults: AgentDefaults,
   list: z.array(NousDefinition).default([]),
 });
 
@@ -245,12 +259,6 @@ const ProviderModel = z.object({
   name: z.string(),
   reasoning: z.boolean().default(false),
   input: z.array(z.enum(["text", "image"])).default(["text"]),
-  cost: z.object({
-    input: z.number(),
-    output: z.number(),
-    cacheRead: z.number().default(0),
-    cacheWrite: z.number().default(0),
-  }),
   contextWindow: z.number(),
   maxTokens: z.number(),
 });

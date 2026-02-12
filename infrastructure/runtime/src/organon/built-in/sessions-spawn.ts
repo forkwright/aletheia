@@ -59,6 +59,7 @@ export function createSessionsSpawnTool(
       // Audit trail
       const auditId = dispatcher.store?.recordCrossAgentCall({
         sourceSessionId: context.sessionId,
+        sourceNousId: context.nousId,
         targetNousId: agentId,
         kind: "spawn",
         content: task.slice(0, 2000),
@@ -82,6 +83,7 @@ export function createSessionsSpawnTool(
             channel: "spawn",
             peerKind: "agent",
             peerId: context.nousId,
+            depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
         ]);

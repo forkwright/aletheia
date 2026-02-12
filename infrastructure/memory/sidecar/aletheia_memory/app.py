@@ -1,9 +1,10 @@
 # Aletheia Memory Sidecar
 
-import json
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from mem0 import Memory
 
 from .config import MEM0_CONFIG
@@ -111,4 +112,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Aletheia Memory", version="1.0.0", lifespan=lifespan)
+
+AUTH_TOKEN = os.environ.get("ALETHEIA_MEMORY_TOKEN", "")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if AUTH_TOKEN and request.url.path != "/health":
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer ") or auth[7:] != AUTH_TOKEN:
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return await call_next(request)
+
+
 app.include_router(router)

@@ -57,7 +57,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   const config = loadConfig(configPath);
   const store = new SessionStore(paths.sessionsDb());
-  const router = createDefaultRouter();
+  const router = createDefaultRouter(config.models);
 
   const tools = new ToolRegistry();
 
@@ -110,11 +110,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const plugins = new PluginRegistry(config);
 
   // Wire cross-agent tools (need manager + store reference for audit trail)
-  tools.register(createSessionsSendTool(manager));
   const auditDispatcher = {
     handleMessage: manager.handleMessage.bind(manager),
     store,
   };
+  tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
   tools.register(createSessionsSpawnTool(auditDispatcher));
 
@@ -225,9 +225,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
       const defaultAccount = firstAccount.account ?? firstAccountId;
 
       const messageTool = createMessageTool({
-        send: async (to: string, text: string) => {
-          const target = parseTarget(to, defaultAccount);
-          await sendMessage(firstClient, target, text);
+        sender: {
+          send: async (to: string, text: string) => {
+            const target = parseTarget(to, defaultAccount);
+            await sendMessage(firstClient, target, text);
+          },
         },
       });
       runtime.tools.register(messageTool);
@@ -283,11 +285,26 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }, 60 * 60 * 1000);
 
   // --- Shutdown ---
+  let draining = false;
+  runtime.manager.isDraining = () => draining;
+
   const shutdown = async () => {
-    log.info("Shutting down...");
+    if (draining) return;
+    draining = true;
+    log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
     watchdog?.stop();
     cron.stop();
+
+    // Wait up to 10s for active turns to finish
+    const deadline = Date.now() + 10_000;
+    while (runtime.manager.activeTurns > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (runtime.manager.activeTurns > 0) {
+      log.warn(`Forcing shutdown with ${runtime.manager.activeTurns} active turns`);
+    }
+
     abortController.abort();
     for (const daemon of daemons) {
       daemon.stop();

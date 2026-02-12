@@ -30,9 +30,9 @@ MEMORY_COUNT=$(find "$WORKSPACE/memory/" -maxdepth 1 -name "*.md" 2>/dev/null | 
 REVIEW_COUNT=$(find "$WORKSPACE/reviews/" -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)
 [ "$REVIEW_COUNT" -gt 20 ] && alert "Review files need archiving: $REVIEW_COUNT (>20)"
 
-# 4. Clawdbot service
-if ! systemctl is-active --quiet autarkia; then
-    alert "Clawdbot service is down"
+# 4. Aletheia service
+if ! systemctl is-active --quiet aletheia; then
+    alert "Aletheia service is down"
 fi
 
 # 5. Letta (check if port responds)
