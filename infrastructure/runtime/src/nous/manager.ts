@@ -2,10 +2,12 @@
 import { createLogger } from "../koina/logger.js";
 import { SessionStore, type Message } from "../mneme/store.js";
 import { ProviderRouter } from "../hermeneus/router.js";
-import { estimateTokens } from "../hermeneus/token-counter.js";
+import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
 import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
+import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
 import { shouldDistill, distillSession } from "../distillation/pipeline.js";
+import { scoreComplexity, selectModel, type ComplexityTier } from "../hermeneus/complexity.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -15,13 +17,21 @@ import {
 } from "../taxis/loader.js";
 import type {
   ContentBlock,
+  ImageBlock,
   MessageParam,
   ToolUseBlock,
   UserContentBlock,
 } from "../hermeneus/anthropic.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
+import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("nous");
+
+export interface MediaAttachment {
+  contentType: string;
+  data: string;
+  filename?: string;
+}
 
 export interface InboundMessage {
   text: string;
@@ -32,7 +42,7 @@ export interface InboundMessage {
   peerId?: string;
   peerKind?: string;
   accountId?: string;
-  mediaUrls?: string[];
+  media?: MediaAttachment[];
   model?: string;
   depth?: number;
 }
@@ -66,6 +76,8 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
 
 export class NousManager {
   private plugins?: PluginRegistry;
+  private watchdog?: Watchdog;
+  private skillsSection?: string;
   activeTurns = 0;
   isDraining: () => boolean = () => false;
 
@@ -82,6 +94,14 @@ export class NousManager {
 
   setPlugins(plugins: PluginRegistry): void {
     this.plugins = plugins;
+  }
+
+  setWatchdog(watchdog: Watchdog): void {
+    this.watchdog = watchdog;
+  }
+
+  setSkillsSection(section: string): void {
+    this.skillsSection = section || undefined;
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
@@ -101,7 +121,24 @@ export class NousManager {
     }
 
     const sessionKey = msg.sessionKey ?? "main";
-    const model = msg.model ?? resolveModel(this.config, nous);
+    let model = msg.model ?? resolveModel(this.config, nous);
+
+    // Adaptive inference routing — select model tier based on message complexity
+    const routing = this.config.agents.defaults.routing;
+    if (routing.enabled && !msg.model) {
+      const session = this.store.findSession(nousId, sessionKey);
+      const complexity = scoreComplexity({
+        messageText: msg.text,
+        messageCount: session?.messageCount ?? 0,
+        depth: msg.depth ?? 0,
+        agentOverride: routing.agentOverrides[nousId] as ComplexityTier | undefined,
+      });
+      model = selectModel(complexity.tier, routing.tiers);
+      log.info(
+        `Routing ${nousId}: ${complexity.tier} (score=${complexity.score}, ${complexity.reason}) → ${model}`,
+      );
+    }
+
     const session = this.store.findOrCreateSession(
       nousId,
       sessionKey,
@@ -135,9 +172,29 @@ export class NousManager {
     );
 
     const workspace = resolveWorkspace(this.config, nous);
+
+    // Check watchdog for degraded services — inject into bootstrap
+    const degradedServices: string[] = [];
+    if (this.watchdog) {
+      for (const svc of this.watchdog.getStatus()) {
+        if (!svc.healthy) degradedServices.push(svc.name);
+      }
+    }
+
     const bootstrap = assembleBootstrap(workspace, {
       maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
+      skillsSection: this.skillsSection,
+      degradedServices: degradedServices.length > 0 ? degradedServices : undefined,
     });
+
+    // Store composite hash and detect file-level diffs
+    this.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
+    const diff = detectBootstrapDiff(nousId, bootstrap.fileHashes, workspace);
+    if (diff) logBootstrapDiff(diff, workspace);
+
+    if (bootstrap.droppedFiles.length > 0) {
+      log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
+    }
 
     const systemPrompt = [
       ...bootstrap.staticBlocks,
@@ -149,10 +206,8 @@ export class NousManager {
       deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
     });
 
-    // Tool definitions count toward the input token budget — estimate and subtract
-    const toolDefTokens = toolDefs.length > 0
-      ? estimateTokens(JSON.stringify(toolDefs))
-      : 0;
+    // Tool definitions count toward the input token budget — estimate with safety margin
+    const toolDefTokens = estimateToolDefTokens(toolDefs);
 
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
@@ -194,7 +249,7 @@ export class NousManager {
     const currentText = crossAgentNotice
       ? crossAgentNotice + "\n\n" + msg.text
       : msg.text;
-    const messages = this.buildMessages(history, currentText);
+    const messages = this.buildMessages(history, currentText, msg.media);
 
     const toolContext: ToolContext = {
       nousId,
@@ -208,6 +263,7 @@ export class NousManager {
         nousId,
         sessionId,
         messageText: msg.text,
+        media: msg.media,
       });
     }
 
@@ -279,6 +335,9 @@ export class NousManager {
           `${totalToolCalls} tool calls`,
         );
 
+        // Store actual API-reported context consumption for accurate distillation triggering
+        this.store.updateSessionActualTokens(sessionId, totalInputTokens);
+
         if (this.plugins) {
           await this.plugins.dispatchAfterTurn({
             nousId,
@@ -291,18 +350,19 @@ export class NousManager {
           });
         }
 
-        // Auto-trigger distillation when context grows too large
+        // Auto-trigger distillation using actual API-reported input tokens (most accurate)
+        // Falls back to heuristic estimate if actual tokens aren't available
         const compaction = this.config.agents.defaults.compaction;
         const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
         try {
-          if (await shouldDistill(this.store, sessionId, { threshold: distillThreshold, minMessages: 10 })) {
-            const session = this.store.findSessionById(sessionId);
-            const utilization = session
-              ? Math.round((session.tokenCountEstimate / contextTokens) * 100)
-              : 0;
+          const session = this.store.findSessionById(sessionId);
+          const actualContext = session?.lastInputTokens ?? session?.tokenCountEstimate ?? 0;
+          if (session && session.messageCount >= 10 && actualContext >= distillThreshold) {
+            const utilization = Math.round((actualContext / contextTokens) * 100);
             log.info(
               `Distillation triggered for ${nousId} session=${sessionId} ` +
-              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
+              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%, ` +
+              `actual=${actualContext} tokens)`,
             );
             const distillModel = compaction.distillationModel;
             await distillSession(this.store, this.router, sessionId, nousId, {
@@ -401,6 +461,7 @@ export class NousManager {
   private buildMessages(
     history: Message[],
     currentText: string,
+    media?: MediaAttachment[],
   ): MessageParam[] {
     const messages: MessageParam[] = [];
 
@@ -461,10 +522,32 @@ export class NousManager {
       }
     }
 
-    messages.push({
-      role: "user",
-      content: currentText,
-    });
+    // Current message — multimodal if images present
+    const imageMedia = media?.filter((m) =>
+      /^image\/(jpeg|png|gif|webp)$/i.test(m.contentType),
+    );
+    if (imageMedia && imageMedia.length > 0) {
+      const blocks: UserContentBlock[] = [];
+      for (const img of imageMedia) {
+        // Strip data URI prefix if present
+        let data = img.data;
+        const dataUriMatch = data.match(/^data:[^;]+;base64,(.+)$/);
+        if (dataUriMatch) data = dataUriMatch[1]!;
+
+        blocks.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: img.contentType,
+            data,
+          },
+        } as ImageBlock);
+      }
+      blocks.push({ type: "text", text: currentText });
+      messages.push({ role: "user", content: blocks });
+    } else {
+      messages.push({ role: "user", content: currentText });
+    }
 
     // Merge consecutive user messages to prevent Anthropic 400 errors
     const merged: MessageParam[] = [];
@@ -484,6 +567,25 @@ export class NousManager {
     }
 
     return merged;
+  }
+
+  async triggerDistillation(sessionId: string): Promise<void> {
+    const compaction = this.config.agents.defaults.compaction;
+    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
+    const distillModel = compaction.distillationModel;
+
+    const session = this.store.findSessionById(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    log.info(`Manual distillation triggered for session ${sessionId}`);
+    await distillSession(this.store, this.router, sessionId, session.nousId, {
+      triggerThreshold: distillThreshold,
+      minMessages: 4,
+      extractionModel: distillModel,
+      summaryModel: distillModel,
+      plugins: this.plugins,
+    });
   }
 }
 

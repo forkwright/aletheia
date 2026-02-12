@@ -1,8 +1,8 @@
 // Mem0 memory search tool — query long-term extracted memories
 import type { ToolHandler, ToolContext } from "../registry.js";
 
-const SIDECAR_URL = process.env.ALETHEIA_MEMORY_URL || "http://127.0.0.1:8230";
-const USER_ID = process.env.ALETHEIA_MEMORY_USER || "ck";
+const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "ck";
 
 export const mem0SearchTool: ToolHandler = {
   definition: {
@@ -30,8 +30,8 @@ export const mem0SearchTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const query = String(input.query ?? "");
-    const limit = Math.min((input.limit as number) ?? 10, 20);
+    const query = String(input["query"] ?? "");
+    const limit = Math.min((input["limit"] as number) ?? 10, 20);
 
     try {
       const controller = new AbortController();
@@ -70,7 +70,7 @@ export const mem0SearchTool: ToolHandler = {
       const extract = async (res: Response) => {
         if (!res.ok) return [];
         const data = (await res.json()) as Record<string, unknown>;
-        const results = (data.results as unknown[]) ?? [];
+        const results = (data["results"] as unknown[]) ?? [];
         return Array.isArray(results) ? results : [];
       };
 
@@ -83,7 +83,7 @@ export const mem0SearchTool: ToolHandler = {
       const all = [...agentResults, ...globalResults] as Record<string, unknown>[];
       for (let i = 0; i < all.length; i++) {
         const m = all[i]!;
-        const id = String(m.id ?? `${m.memory ?? ""}_${i}`);
+        const id = String(m["id"] ?? `${m["memory"] ?? ""}_${i}`);
         if (!seen.has(id)) {
           seen.add(id);
           merged.push(m);
@@ -91,11 +91,11 @@ export const mem0SearchTool: ToolHandler = {
       }
 
       // Sort by score descending, take top `limit`
-      merged.sort((a, b) => ((b.score as number) ?? 0) - ((a.score as number) ?? 0));
+      merged.sort((a, b) => ((b["score"] as number) ?? 0) - ((a["score"] as number) ?? 0));
       const memories = merged.slice(0, limit).map((m) => ({
-        memory: m.memory ?? m.text ?? "",
-        score: m.score ?? null,
-        agent_id: m.agent_id ?? null,
+        memory: m["memory"] ?? m["text"] ?? "",
+        score: m["score"] ?? null,
+        agent_id: m["agent_id"] ?? null,
       }));
 
       return JSON.stringify({ results: memories, count: memories.length });

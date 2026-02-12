@@ -43,13 +43,13 @@ export const grepTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const pattern = input.pattern as string;
-    const searchPath = input.path
-      ? safePath(context.workspace, input.path as string)
+    const pattern = input["pattern"] as string;
+    const searchPath = input["path"]
+      ? safePath(context.workspace, input["path"] as string)
       : context.workspace;
-    const glob = input.glob as string | undefined;
-    const maxResults = (input.maxResults as number) ?? 50;
-    const caseSensitive = (input.caseSensitive as boolean) ?? true;
+    const glob = input["glob"] as string | undefined;
+    const maxResults = (input["maxResults"] as number) ?? 50;
+    const caseSensitive = (input["caseSensitive"] as boolean) ?? true;
 
     const args = ["--line-number", "--no-heading", "--color=never"];
 

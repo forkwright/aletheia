@@ -27,10 +27,10 @@ export const lsTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const dirPath = input.path
-      ? safePath(context.workspace, input.path as string)
+    const dirPath = input["path"]
+      ? safePath(context.workspace, input["path"] as string)
       : context.workspace;
-    const showAll = (input.all as boolean) ?? false;
+    const showAll = (input["all"] as boolean) ?? false;
 
     try {
       const entries = readdirSync(dirPath, { withFileTypes: true });

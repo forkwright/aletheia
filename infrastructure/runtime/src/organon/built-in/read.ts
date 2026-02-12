@@ -43,8 +43,8 @@ export const readTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const filePath = input.path as string;
-    const maxLines = input.maxLines as number | undefined;
+    const filePath = input["path"] as string;
+    const maxLines = input["maxLines"] as number | undefined;
     const resolved = safePath(context.workspace, filePath);
 
     try {

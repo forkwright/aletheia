@@ -25,6 +25,22 @@ const HeartbeatConfig = z
   })
   .default({});
 
+const RoutingConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    tiers: z
+      .object({
+        routine: z.string().default("claude-haiku-4-5-20251001"),
+        standard: z.string().default("claude-sonnet-4-5-20250929"),
+        complex: z.string().default("claude-sonnet-4-5-20250929"),
+      })
+      .default({}),
+    agentOverrides: z
+      .record(z.string(), z.enum(["routine", "standard", "complex"]))
+      .default({}),
+  })
+  .default({});
+
 const CompactionConfig = z
   .object({
     mode: z.enum(["default", "safeguard"]).default("default"),
@@ -82,8 +98,8 @@ const AgentDefaults = z.preprocess(
       const obj = val as Record<string, unknown>;
       // Backwards compat: bootstrapMaxChars → bootstrapMaxTokens
       if ("bootstrapMaxChars" in obj && !("bootstrapMaxTokens" in obj)) {
-        obj.bootstrapMaxTokens = obj.bootstrapMaxChars;
-        delete obj.bootstrapMaxChars;
+        obj["bootstrapMaxTokens"] = obj["bootstrapMaxChars"];
+        delete obj["bootstrapMaxChars"];
       }
     }
     return val;
@@ -101,6 +117,7 @@ const AgentDefaults = z.preprocess(
     contextTokens: z.number().default(200000),
     maxOutputTokens: z.number().default(16384),
     compaction: CompactionConfig.default({}),
+    routing: RoutingConfig.default({}),
     heartbeat: HeartbeatConfig.optional(),
     tools: ToolsConfig.default({}),
     timeoutSeconds: z.number().default(300),

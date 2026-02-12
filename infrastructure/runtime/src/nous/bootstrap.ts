@@ -1,6 +1,7 @@
 // Token-aware context assembly with cache boundary optimization
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 
@@ -13,6 +14,7 @@ interface BootstrapFile {
   cacheGroup: "static" | "semi-static" | "dynamic";
   content?: string;
   tokens?: number;
+  hash?: string;
 }
 
 // Cache groups for Anthropic prefix caching:
@@ -32,11 +34,22 @@ const WORKSPACE_FILES: Omit<BootstrapFile, "path">[] = [
 
 type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 
+// Degradation guidance per service — injected when services are down
+const DEGRADATION_GUIDANCE: Record<string, string> = {
+  "mem0-sidecar": "Long-term memory unavailable. Rely on workspace files and session history only. Do not attempt memory searches.",
+  "neo4j": "Graph-based memory retrieval unavailable. Vector search may still work via Mem0.",
+  "qdrant": "All vector memory retrieval unavailable. Rely on workspace files only.",
+  "signal-cli": "Signal messaging unavailable. You can process but not respond.",
+};
+
 export interface BootstrapResult {
   staticBlocks: SystemBlock[];
   dynamicBlocks: SystemBlock[];
   totalTokens: number;
   fileCount: number;
+  contentHash: string;
+  fileHashes: Record<string, string>;
+  droppedFiles: string[];
 }
 
 export function assembleBootstrap(
@@ -44,6 +57,8 @@ export function assembleBootstrap(
   opts?: {
     maxTokens?: number;
     extraFiles?: string[];
+    skillsSection?: string;
+    degradedServices?: string[];
   },
 ): BootstrapResult {
   const maxTokens = opts?.maxTokens ?? 40000;
@@ -71,6 +86,7 @@ export function assembleBootstrap(
       file.content = readFileSync(file.path, "utf-8").trim();
       if (!file.content) continue;
       file.tokens = estimateTokens(file.content);
+      file.hash = createHash("sha256").update(file.content).digest("hex").slice(0, 16);
       loaded.push(file);
     } catch {
       log.warn(`Failed to read ${file.path}`);
@@ -81,6 +97,7 @@ export function assembleBootstrap(
 
   // Assemble with token budgeting, dropping lowest-priority files first
   const included: BootstrapFile[] = [];
+  const droppedFiles: string[] = [];
   let totalTokens = 0;
 
   for (const file of loaded) {
@@ -90,20 +107,24 @@ export function assembleBootstrap(
       const remaining = maxTokens - totalTokens;
       if (remaining > 500) {
         const truncated = truncateSectionAware(file.content, remaining);
+        const truncTokens = estimateTokens(truncated);
         included.push({
           ...file,
           content: truncated,
-          tokens: estimateTokens(truncated),
+          tokens: truncTokens,
+          hash: createHash("sha256").update(truncated).digest("hex").slice(0, 16),
         });
-        totalTokens += estimateTokens(truncated);
-        log.warn(`Truncated ${file.name} (${file.tokens} → ${estimateTokens(truncated)} tokens)`);
+        totalTokens += truncTokens;
+        log.warn(`Truncated ${file.name} (${file.tokens} → ${truncTokens} tokens)`);
       } else {
         log.warn(`Dropped ${file.name} (${file.tokens} tokens) — budget exhausted`);
+        droppedFiles.push(file.name);
       }
       // Log remaining dropped files
       const idx = loaded.indexOf(file);
       for (let i = idx + 1; i < loaded.length; i++) {
         log.warn(`Dropped ${loaded[i]!.name} (${loaded[i]!.tokens} tokens) — budget exhausted`);
+        droppedFiles.push(loaded[i]!.name);
       }
       break;
     }
@@ -111,6 +132,17 @@ export function assembleBootstrap(
     included.push(file);
     totalTokens += file.tokens;
   }
+
+  // Build per-file hash map and content hash
+  const fileHashes: Record<string, string> = {};
+  const hashParts: string[] = [];
+  for (const f of included) {
+    if (f.hash) {
+      fileHashes[f.name] = f.hash;
+      hashParts.push(`${f.name}:${f.hash}`);
+    }
+  }
+  const contentHash = createHash("sha256").update(hashParts.join("|")).digest("hex").slice(0, 32);
 
   // Build system blocks with exactly 2 cache breakpoints:
   // Breakpoint 1: after static group (SOUL, AGENTS, IDENTITY)
@@ -136,14 +168,28 @@ export function assembleBootstrap(
   }
 
   // Semi-static group — combine into one block with cache breakpoint
-  if (semiStaticFiles.length > 0) {
-    const text = semiStaticFiles
-      .map((f) => `## ${f.name}\n\n${f.content}`)
-      .join("\n\n---\n\n");
+  if (semiStaticFiles.length > 0 || opts?.skillsSection) {
+    const parts = semiStaticFiles.map((f) => `## ${f.name}\n\n${f.content}`);
+    if (opts?.skillsSection) {
+      parts.push(opts.skillsSection);
+    }
+    const text = parts.join("\n\n---\n\n");
     staticBlocks.push({
       type: "text",
       text,
       cache_control: { type: "ephemeral" },
+    });
+  }
+
+  // Degraded-mode injection — prepend service status to dynamic blocks
+  if (opts?.degradedServices && opts.degradedServices.length > 0) {
+    const notices = opts.degradedServices.map((svc) => {
+      const guidance = DEGRADATION_GUIDANCE[svc] ?? `${svc} is unavailable.`;
+      return `- ${svc}: ${guidance}`;
+    });
+    dynamicBlocks.push({
+      type: "text",
+      text: `## Infrastructure Status\n\n**The following services are currently DOWN:**\n${notices.join("\n")}\n\nAdjust your behavior accordingly. Do not attempt to use tools that depend on unavailable services.`,
     });
   }
 
@@ -155,9 +201,14 @@ export function assembleBootstrap(
     });
   }
 
+  if (droppedFiles.length > 0) {
+    log.warn(`Bootstrap dropped ${droppedFiles.length} files: ${droppedFiles.join(", ")}`);
+  }
+
   log.info(
     `Bootstrap: ${included.length} files, ${totalTokens} tokens ` +
-    `(${staticBlocks.length} cached blocks, ${dynamicBlocks.length} dynamic)`,
+    `(${staticBlocks.length} cached blocks, ${dynamicBlocks.length} dynamic), ` +
+    `hash=${contentHash.slice(0, 8)}`,
   );
 
   return {
@@ -165,10 +216,36 @@ export function assembleBootstrap(
     dynamicBlocks,
     totalTokens,
     fileCount: included.length,
+    contentHash,
+    fileHashes,
+    droppedFiles,
   };
 }
 
 function truncateSectionAware(content: string, maxTokens: number): string {
+  // Try to preserve complete markdown sections by splitting on ## headers
+  const sections = content.split(/(?=^## )/m);
+  const result: string[] = [];
+  let tokens = 0;
+
+  for (const section of sections) {
+    const sectionTokens = estimateTokens(section);
+    if (tokens + sectionTokens > maxTokens) {
+      // If this is the first section and it doesn't fit, fall back to line-by-line
+      if (result.length === 0) {
+        return truncateByLines(section, maxTokens);
+      }
+      result.push("\n... [truncated for token budget] ...");
+      break;
+    }
+    result.push(section);
+    tokens += sectionTokens;
+  }
+
+  return result.join("");
+}
+
+function truncateByLines(content: string, maxTokens: number): string {
   const lines = content.split("\n");
   const result: string[] = [];
   let tokens = 0;

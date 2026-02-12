@@ -23,8 +23,8 @@ export const webFetchTool: ToolHandler = {
     },
   },
   async execute(input: Record<string, unknown>): Promise<string> {
-    const url = input.url as string;
-    const maxLength = (input.maxLength as number) ?? 50000;
+    const url = input["url"] as string;
+    const maxLength = (input["maxLength"] as number) ?? 50000;
 
     try {
       await validateUrl(url);

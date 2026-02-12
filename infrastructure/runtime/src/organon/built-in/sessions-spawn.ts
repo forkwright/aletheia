@@ -45,11 +45,11 @@ export function createSessionsSpawnTool(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
-      const task = input.task as string;
-      const agentId = (input.agentId as string) ?? context.nousId;
-      const timeoutSeconds = (input.timeoutSeconds as number) ?? 180;
+      const task = input["task"] as string;
+      const agentId = (input["agentId"] as string) ?? context.nousId;
+      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
       const sessionKey =
-        (input.sessionKey as string) ??
+        (input["sessionKey"] as string) ??
         `spawn:${context.nousId}:${Date.now().toString(36)}`;
 
       if (!dispatcher) {

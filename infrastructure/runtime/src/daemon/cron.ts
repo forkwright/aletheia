@@ -7,13 +7,13 @@ const log = createLogger("daemon:cron");
 
 interface CronEntry {
   id: string;
-  agentId?: string;
-  sessionKey?: string;
-  model?: string;
-  messageTemplate?: string;
+  agentId?: string | undefined;
+  sessionKey?: string | undefined;
+  model?: string | undefined;
+  messageTemplate?: string | undefined;
   schedule: string;
   timeoutSeconds: number;
-  lastRun?: number;
+  lastRun?: number | undefined;
   nextRun: number;
 }
 
@@ -66,7 +66,7 @@ export class CronScheduler {
 
   getStatus(): Array<{
     id: string;
-    agentId?: string;
+    agentId?: string | undefined;
     schedule: string;
     lastRun: string | null;
     nextRun: string;
@@ -118,11 +118,11 @@ export class CronScheduler {
         return Promise.race([
           this.manager.handleMessage({
             text: message,
-            nousId: entry.agentId,
             sessionKey: entry.sessionKey ?? `cron:${entry.id}`,
             channel: "cron",
             peerKind: "system",
-            model: entry.model,
+            ...(entry.agentId !== undefined && { nousId: entry.agentId }),
+            ...(entry.model !== undefined && { model: entry.model }),
           }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)), timeoutMs),
@@ -133,9 +133,11 @@ export class CronScheduler {
 
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      if (result.status === "rejected") {
+      const entry = dueEntries[i];
+      if (result && entry && result.status === "rejected") {
+        const reason = (result as PromiseRejectedResult).reason;
         log.error(
-          `Cron job ${dueEntries[i].id} failed: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
+          `Cron job ${entry.id} failed: ${reason instanceof Error ? reason.message : reason}`,
         );
       }
     }
@@ -147,8 +149,8 @@ function computeNextRun(schedule: string, from?: number): number {
 
   const intervalMatch = schedule.match(/^every\s+(\d+)\s*(m|h|min|hour|s|sec)/i);
   if (intervalMatch) {
-    const value = parseInt(intervalMatch[1], 10);
-    const unit = intervalMatch[2].toLowerCase();
+    const value = parseInt(intervalMatch[1]!, 10);
+    const unit = intervalMatch[2]!.toLowerCase();
 
     let ms: number;
     if (unit.startsWith("h")) ms = value * 60 * 60 * 1000;
@@ -160,8 +162,8 @@ function computeNextRun(schedule: string, from?: number): number {
 
   const timeMatch = schedule.match(/^at\s+(\d{1,2}):(\d{2})/i);
   if (timeMatch) {
-    const hour = parseInt(timeMatch[1], 10);
-    const minute = parseInt(timeMatch[2], 10);
+    const hour = parseInt(timeMatch[1]!, 10);
+    const minute = parseInt(timeMatch[2]!, 10);
     const date = new Date(now);
     date.setHours(hour, minute, 0, 0);
     if (date.getTime() <= now) {
@@ -185,15 +187,15 @@ function parseCronField(field: string, min: number, max: number): Set<number> | 
   for (const part of field.split(",")) {
     const stepMatch = part.match(/^(\d+|\*)\/(\d+)$/);
     if (stepMatch) {
-      const start = stepMatch[1] === "*" ? min : parseInt(stepMatch[1], 10);
-      const step = parseInt(stepMatch[2], 10);
+      const start = stepMatch[1] === "*" ? min : parseInt(stepMatch[1]!, 10);
+      const step = parseInt(stepMatch[2]!, 10);
       for (let i = start; i <= max; i += step) values.add(i);
       continue;
     }
     const rangeMatch = part.match(/^(\d+)-(\d+)$/);
     if (rangeMatch) {
-      const lo = parseInt(rangeMatch[1], 10);
-      const hi = parseInt(rangeMatch[2], 10);
+      const lo = parseInt(rangeMatch[1]!, 10);
+      const hi = parseInt(rangeMatch[2]!, 10);
       for (let i = lo; i <= hi; i++) values.add(i);
       continue;
     }
@@ -208,11 +210,11 @@ function fieldMatches(field: Set<number> | null, value: number): boolean {
 
 function computeFromCronExpr(parts: string[], from: number): number {
   const [minStr, hourStr, domStr, monStr, dowStr] = parts;
-  const minutes = parseCronField(minStr, 0, 59);
-  const hours = parseCronField(hourStr, 0, 23);
-  const doms = parseCronField(domStr, 1, 31);
-  const months = parseCronField(monStr, 1, 12);
-  const dows = parseCronField(dowStr, 0, 7); // 0=Sun, 7=Sun
+  const minutes = parseCronField(minStr!, 0, 59);
+  const hours = parseCronField(hourStr!, 0, 23);
+  const doms = parseCronField(domStr!, 1, 31);
+  const months = parseCronField(monStr!, 1, 12);
+  const dows = parseCronField(dowStr!, 0, 7); // 0=Sun, 7=Sun
 
   const candidate = new Date(from);
   candidate.setSeconds(0, 0);

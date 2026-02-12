@@ -22,8 +22,8 @@ export const webSearchTool: ToolHandler = {
     },
   },
   async execute(input: Record<string, unknown>): Promise<string> {
-    const query = input.query as string;
-    const maxResults = (input.maxResults as number) ?? 5;
+    const query = input["query"] as string;
+    const maxResults = (input["maxResults"] as number) ?? 5;
 
     try {
       const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -75,17 +75,18 @@ function parseDdgResults(html: string, max: number): SearchResult[] {
   for (let i = 0; i < Math.min(titles.length, max); i++) {
     const titleMatch = titles[i];
     const snippetMatch = snippets[i];
+    if (!titleMatch) continue;
 
-    let url = titleMatch[1];
+    let url = titleMatch[1] ?? "";
     if (url.startsWith("//duckduckgo.com/l/?uddg=")) {
       const decoded = decodeURIComponent(url.split("uddg=")[1]?.split("&")[0] ?? "");
       if (decoded) url = decoded;
     }
 
     results.push({
-      title: stripTags(titleMatch[2]),
+      title: stripTags(titleMatch[2] ?? ""),
       url,
-      snippet: snippetMatch ? stripTags(snippetMatch[1]) : "",
+      snippet: snippetMatch ? stripTags(snippetMatch[1] ?? "") : "",
     });
   }
 

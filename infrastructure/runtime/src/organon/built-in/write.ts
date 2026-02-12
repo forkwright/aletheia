@@ -31,9 +31,9 @@ export const writeTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const filePath = input.path as string;
-    const content = input.content as string;
-    const append = (input.append as boolean) ?? false;
+    const filePath = input["path"] as string;
+    const content = input["content"] as string;
+    const append = (input["append"] as boolean) ?? false;
     const resolved = safePath(context.workspace, filePath);
 
     try {

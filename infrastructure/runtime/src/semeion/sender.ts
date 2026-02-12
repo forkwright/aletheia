@@ -28,9 +28,11 @@ export async function sendMessage(
   const chunks = splitMessage(text, 2000);
 
   for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunk == null) continue;
     const isLast = i === chunks.length - 1;
 
-    let message = chunks[i];
+    let message = chunk;
     let textStyle: string[] | undefined;
 
     if (useMarkdown) {
@@ -41,15 +43,17 @@ export async function sendMessage(
       }
     }
 
-    await client.send({
+    const sendParams: Parameters<SignalClient["send"]>[0] = {
       message,
-      recipient: target.recipient,
-      groupId: target.groupId,
-      username: target.username,
       account: target.account,
-      attachments: isLast ? opts?.attachments : undefined,
-      textStyle,
-    });
+    };
+    if (target.recipient) sendParams.recipient = target.recipient;
+    if (target.groupId) sendParams.groupId = target.groupId;
+    if (target.username) sendParams.username = target.username;
+    if (isLast && opts?.attachments) sendParams.attachments = opts.attachments;
+    if (textStyle) sendParams.textStyle = textStyle;
+
+    await client.send(sendParams);
   }
 
   log.debug(
@@ -62,12 +66,14 @@ export async function sendTyping(
   target: SendTarget,
   stop = false,
 ): Promise<void> {
-  await client.sendTyping({
-    recipient: target.recipient,
-    groupId: target.groupId,
+  const typingParams: Parameters<SignalClient["sendTyping"]>[0] = {
     account: target.account,
     stop,
-  });
+  };
+  if (target.recipient) typingParams.recipient = target.recipient;
+  if (target.groupId) typingParams.groupId = target.groupId;
+
+  await client.sendTyping(typingParams);
 }
 
 export async function sendReadReceipt(
@@ -90,14 +96,16 @@ export async function sendReaction(
   targetTimestamp: number,
   targetAuthor: string,
 ): Promise<void> {
-  await client.sendReaction({
+  const reactionParams: Parameters<SignalClient["sendReaction"]>[0] = {
     emoji,
     targetTimestamp,
     targetAuthor,
-    recipient: target.recipient,
-    groupId: target.groupId,
     account: target.account,
-  });
+  };
+  if (target.recipient) reactionParams.recipient = target.recipient;
+  if (target.groupId) reactionParams.groupId = target.groupId;
+
+  await client.sendReaction(reactionParams);
 }
 
 function splitMessage(text: string, maxLen: number): string[] {
