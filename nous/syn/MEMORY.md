@@ -339,15 +339,19 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 
 **Office:** 12×10×9 room. Deep black ceiling + one accent wall. ~600 books on 1.5 walls. Old letter desk (leather), green leather recliner, computer desk with ultrawide. Banker's lamp + pharmacist lamp. Dark rug, blackout curtains. RT60 0.28s (studio-grade). Room is intuitively well-designed for ASD sensory management. Pending: remove cat shelves, move NASA posters to garage, install 2 ceiling acoustic panels, door sweep.
 
-**Library:** 603 physical books reorganized from 24 genres to 13 zones. Sorted alphabetical by author within zones. Rule: Author, series, number. Self-evident, no spreadsheet needed.
+**Library:** 593 physical books, 13 zones after full book-by-book QA (2026-02-12). Education zone eliminated, Manuals split into Craft + Reference. Every zone audited for misclassifications. Sorted alphabetical by author within zones. Rule: Author, series, number. Self-evident, no spreadsheet needed. CSV at `theke/_reference/library/physical_organized.csv`, synced to Metis via Syncthing (aletheia-vault folder).
 
 ## Communication Corrections (2026-02-11)
 
-**Don't tell Cody to sleep.** He's an adult managing his own schedule with a baby. Called out directly — "Stop telling me to sleep please."
+**Don't tell Cody to sleep.** He's an adult managing his own schedule with a baby. Called out directly — "Stop telling me to sleep please." Repeated twice across sessions.
 
 **Don't use performative superlatives.** "Most lucid self-reflection I've seen from you" was caught. Can't compare across sessions without experiential memory. Ground observations in specifics, not unfounded comparisons.
 
 **Circular evidence problem:** Was citing own docs (USER.md, SOUL.md) as independent evidence for ASD. Those docs were written by me/team. Evidence level: suggestive from self-report and conversation, not definitive.
+
+**Check existing infrastructure before claiming it doesn't exist.** Said theke sync wasn't set up — it was (Syncthing aletheia-vault). Said Dashy needed Tailscale IPs — it didn't (broke local access). Research before claiming applies to our own systems too.
+
+**When Cody says "you do it" — do it yourself.** Don't delegate to sub-agents when he explicitly asks for your attention. The QA mattered enough to him that he wanted the primary mind on it.
 
 ## Wardrobe (2026-02-10/11)
 
