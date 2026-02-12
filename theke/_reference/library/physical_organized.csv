@@ -147,7 +147,6 @@ Genre Fiction,"Eco, Umberto",Foucault's Pendulum,,,0,9780547539683,533
 Genre Fiction,"Elliott, L.M.",Under a War-Torn Sky,,,1,9781484730607,288
 Genre Fiction,"Ellis, Bret",American Psycho,,,0,9780679735779,976
 Genre Fiction,"Follett, Ken",The Pillars of the Earth,,,0,9780451207142,976
-Genre Fiction,"Hawthorne, Nathaniel",The Scarlet Letter,,,1,9780679783381,192
 Genre Fiction,"Hinton, S.E.",The Outsiders,,,1,9780140385724,192
 Genre Fiction,"King, Stephen",11/22/1963,,,0,9781501120602,880
 Genre Fiction,"Malerman, Josh",Bird Box: A Novel,,,0,9780062259660,480
@@ -274,6 +273,7 @@ Literary Fiction,"Flores, Fernando",Tears of the Trufflepig,,,0,9780374538330,33
 Literary Fiction,"Frank, E.",America,,,0,9781481451383,304
 Literary Fiction,"Golding, William",Lord of the Flies,,,0,,
 Literary Fiction,"""Hardy, Thomas""",Jude the Obscure,,,0,9780140435382,484
+Literary Fiction,"Hawthorne, Nathaniel",The Scarlet Letter,,,1,9780679783381,192
 Literary Fiction,"Heller, Peter",The Dog Stars (Vintage Contemporaries),,,0,9780307950475,336
 Literary Fiction,"Hosseini, Khaled",The Kite Runner,,,1,9781101547502,370
 Literary Fiction,"Ishiguro, Kazuo",Never Let Me Go,,,0,9781400078776,288
@@ -528,11 +528,11 @@ Science Fiction,"Harvey, Samantha",Orbital,,,0,9780802161550,136
 Science Fiction,"Huxley, Aldous",Brave New World,,,0,9780060850524,288
 Science Fiction,"Keyes, Daniel",Flowers For Algernon,,,0,9780156030304,311
 Science Fiction,"Le Guin, Ursula",The Dispossessed,,,0,9780061054884,400
-Science Fiction,"LeGuin, Ursula",The Left Hand of Darkness,,,0,9780441478125,304
+Science Fiction,"Le Guin, Ursula",The Left Hand of Darkness,,,0,9780441478125,304
 Science Fiction,"Lem, Stanislaw",Solaris,,,0,9780156027601,224
 Science Fiction,"McNeill, Graham",False Gods,The Horus Heresy,2,0,9781849707473,416
 Science Fiction,"Morgan, Richard K.",Altered Carbon,,,0,,
-Science Fiction,"""qntm, """,There Is No Antimemetics Division,,,0,9780593983751,
+Science Fiction,"qntm, ",There Is No Antimemetics Division,,,0,9780593983751,
 Science Fiction,"Robinson, Kim",The Ministry for the Future,,,0,9780316300131,576
 Science Fiction,"Simmons, Dan",Hyperion,Hyperion Cantos,1,1,9780553283686,481
 Science Fiction,"Simmons, Dan",The Fall of Hyperion,Hyperion Cantos,2,1,9780553288209,528
@@ -542,7 +542,7 @@ Science Fiction,"Stephenson, Neal",Anathem,,,0,9780061474101,1008
 Science Fiction,"Stephenson, Neal",Cryptonomicon,,,0,9780380788620,64
 Science Fiction,"Strugatsky, Arkady",Hard To Be A God,,,0,9781473208292,246
 Science Fiction,"Weir, Andy",The Martian,,,1,9780804139021,400
-Science Fiction,"""Wells, H.G.""",The War of the Worlds,,,0,9781398834408,
+Science Fiction,"Wells, H.G.",The War of the Worlds,,,0,9781398834408,
 Science Fiction,"Wolfe, Gene",Shadow & Claw,The Book of the New Sun,1,0,9780312890179,416
 Science Fiction,"Wolfe, Gene",The Sword of the Lictor,The Book of the New Sun,3,0,9780671499457,257
 Science Fiction,"Wolfe, Gene",The Citadel of The Autarch,The Book of the New Sun,4,0,9780671496661,330
