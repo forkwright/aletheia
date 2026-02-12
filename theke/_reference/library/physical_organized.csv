@@ -259,6 +259,7 @@ Literary Fiction,"Beckett, Samuel",Nohow On,,,0,9780802134264,116
 Literary Fiction,"Bernhard, Thomas",Correction,,,0,9780099442547,256
 Literary Fiction,"Bernhard, Thomas",The Loser,,,0,9780394572390,189
 Literary Fiction,"Borges, Jorge",Labyrinths,,,0,9780140029819,288
+Literary Fiction,"Camus, Albert",The Stranger,,,1,9780679720201,123
 Literary Fiction,"Canetti, Elias",Auto Da Fe,,,0,9780330255561,428
 Literary Fiction,"Carpenter, Don",Hard Rain Falling,,,0,9781590173244,336
 Literary Fiction,"Coetzee, J.M.",Waiting for the Barbarians,,,0,9780140061109,192
@@ -339,7 +340,6 @@ Philosophy,"Beauvoir, Simone de",The Ethics Of Ambiguity,,,0,9781504054218,162
 Philosophy,"Becker, Ernest",The Denial of Death,,,0,9780684832401,336
 Philosophy,"Blanchot, Maurice",The Writing of the Disaster,,,0,9780803261204,153
 Philosophy,"Camus, Albert",The Myth of Sisyphus,,,0,9780141182001,160
-Philosophy,"Camus, Albert",The Stranger,,,1,9780679720201,123
 Philosophy,"Carse, James",Finite and Infinite Games,,,0,9781476731711,160
 Philosophy,"Cassirer, Ernst",An Essay on Man,,,0,9780300254075,162
 Philosophy,"Cioran, E.M.",The Trouble with Being Born,,,0,9781611457407,224
@@ -376,11 +376,10 @@ Philosophy,"Marx, Karl",Capital Vol-1,,,0,9780141920603,1152
 Philosophy,"Mello, Anthony",Awareness,,,0,9780385249379,184
 Philosophy,"Miłosz, Czesław",The Captive Mind,,,0,9780578186801,114
 Philosophy,"Mumford, Lewis",Technics and Civilization,,,0,9780141920603,1152
-Philosophy,"Nicole, Piemonte",Death and Dying (The MIT Press Essential Knowledge series),,,0,9780262542425,248
 Philosophy,"Nietzsche, Friedrich",Beyond Good and Evil,,,0,9780857088482,272
 Philosophy,"Ord, Toby",The Precipice,,,0,,
 Philosophy,"Paul, Richard",The Thinker's Guide to The Art of Socratic Questioning,,,0,9781538133811,96
-Philosophy,"Pinker, Steven",The Blank Slate,,,0,9780142003343,528
+Philosophy,"""Piemonte, Nicole""",Death and Dying (The MIT Press Essential Knowledge series),,,0,9780262542425,248
 Philosophy,"Pirsig, Robert",Zen and the Art of Motorcycle Maintenance,,,0,9780099786405,448
 Philosophy,"Plato,",Apology,,,0,9781775451457,36
 Philosophy,"Plato,",The Republic,,,0,9780199535767,320
@@ -433,6 +432,7 @@ Psychology,"Merkel, Jim",Radical Simplicity,,,0,9781550923360,288
 Psychology,"Miller, Rory",Meditations on Violence,,,0,9781594399770,202
 Psychology,"Moore, Robert","King, Warrior, Magician, Lover",,,0,9780062506061,192
 Psychology,"Pink, Daniel",Drive,,,0,9781101524381,288
+Psychology,"Pinker, Steven",The Blank Slate,,,0,9780142003343,528
 Psychology,"Postman, Neil",Amusing Ourselves to Death,,,0,9780143036531,208
 Psychology,"Reeves, Richard",Of Boys and Men,,,0,9780815740667,288
 Psychology,"Rosenberg, Marshall",Nonviolent Communication,,,0,9781892005540,264
@@ -565,7 +565,7 @@ Word,"Fish, Stanley Eugene",How to Write a Sentence,,,0,9780062006851,176
 Word,"Forsyth, Mark",The Elements of Eloquence,,,0,9780425276181,256
 Word,"Franzen, Jonathan",How to Be Alone,,,0,9780374707644,320
 Word,"""Gay, Ross""",The Book of Delights,,,0,9781616207922,288
-Word,"Getty, Barbara",Book Write Now By B. Getty &amp; I. Dubay,,,0,9780982776223,
+Word,"Getty, Barbara",Book Write Now By B. Getty & I. Dubay,,,0,9780982776223,
 Word,"Homer,",The Iliad,,,0,,
 Word,"Homer,",The Odyssey,,,0,9781398845860,
 Word,"Jabès, Edmond",The Book of Questions,,,0,9780819560438,175
@@ -579,16 +579,16 @@ Word,"Morris, William",Selected Writings and Designs,,,0,,
 Word,"Nelson, Maggie",Bluets,,,0,9781933517407,112
 Word,"Pessoa, Fernando",The Book of Disquiet,,,0,9781847652379,544
 Word,"Pinker, Steven",The Sense of Style,,,0,9780670025855,368
-Word,"Poe, Edgar",Edgar Allan Poe: Complete Stories and Poems (Fall River Classics),,,0,9781435144583,
+Word,"""Poe, Edgar Allan""",Edgar Allan Poe: Complete Stories and Poems (Fall River Classics),,,0,9781435144583,
 Word,"Poe, Edgar Allan",The Raven,,,0,9781443441216,54
 Word,"Rilke, Rainer",Letters to a Young Poet (Classic Wisdom Collection),,,0,9780931432941,112
 Word,"Roman, Kenneth",Writing That Works,,,0,9780062031525,193
 Word,"Schutz, Samantha",You Are Not Here,,,0,9780545169110,
 Word,"Shakespeare, William",The Complete Works of William Shakespeare,,,0,9781630000000,1392
 Word,"Sophocles,",Three Tragedies: Oedipus the King / Oedipus at Colonus / Antigone,,,0,,
-Word,"Steadman, Geoffrey",Plato's Republic I,Wheelock Latin Series,1,0,9780984306541,120
+Word,"Steadman, Geoffrey",Plato's Republic I,,,0,9780984306541,120
 Word,"Sullivan, Louis",Kindergarten Chats and Other Writings,,,0,9781614275855,256
 Word,"Virgil,",The Aeneid,,,0,,
 Word,"Wheelock, Frederic M.","Wheelock's Latin, 7th Edition",Wheelock Latin Series,1,0,9780061997228,608
-Word,"Xenophon, Xenophon","The Sea, The Sea (Penguin Epics)",,,0,9780141026312,96
+Word,"""Xenophon, ""","The Sea, The Sea (Penguin Epics)",,,0,9780141026312,96
 Word,"Zinsser, William",On Writing Well,,,0,9780060891541,336
