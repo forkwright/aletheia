@@ -162,7 +162,6 @@ Genre Fiction,"Rio, M.L.",If We Were Villains,,,0,9781250095299,368
 Genre Fiction,"Stoker, Bram",Dracula,,,0,9780141439846,368
 Genre Fiction,"Thurston, Carol",The Eye of Horus,,,0,9780380976966,400
 Genre Fiction,"Zusak, Markus",The Book Thief,,,0,9780375842207,608
-History,"Akkad, Omar","One Day, Everyone Will Have Always Been Against This",,,0,9780593804148,208
 History,"Bevins, Vincent",The Jakarta Method,,,0,9781541724006,320
 History,"Bray, Mark",Antifa: The Anti-Fascist Handbook,,,0,9781612197036,
 History,"Brown, Dee",Bury My Heart at Wounded Knee: An Indian History of the American West,,,0,9780805017304,487
@@ -178,6 +177,7 @@ History,"Gaddis, John Lewis",On Grand Strategy,,,0,9780143132516,384
 History,"Goldsworthy, Adrian",Caesar,,,0,9780300126891,608
 History,"Golembesky, Michael",Level Zero Heroes,,,1,9781250030405,320
 History,"Goodwin, Doris",Leadership,,,0,9781476795928,496
+History,"Graham, Katharine",Personal History,,,0,9780394585857,642
 History,"Greenwald, Glenn","No Place to Hide: Edward Snowden, the NSA, and the U.S. Surveillance State",,,0,9781627790734,128
 History,"Hanson, Victor Davis",Carnage and Culture,,,0,,
 History,"Harari, Yuval N.",Sapiens,,,0,9780062316110,578
@@ -195,12 +195,9 @@ History,"Parenti, Michael",Blackshirts and Reds,,,0,9780872863293,165
 History,"Plutarch,",Selected Lives,,,0,9784805311981,288
 History,"Scott, James",Seeing Like a State,,,0,9780300246759,354
 History,"Sunkara, Bhaskar",The Socialist Manifesto,,,0,9781541647107,
-History,"Thucydides, Thucydides",History of the Peloponnesian War,,,0,9780140440393,648
-History,"Tsunetomo, Yamamoto",Hagakure,,,0,9784805311981,288
+History,"""Thucydides, """,History of the Peloponnesian War,,,0,9780140440393,648
 History,"Tuchman, Barbara W.",A Distant Mirror,,,0,9781600000000,182
 History,"Tuchman, Barbara W.",The Guns of August,,,0,9780345476098,640
-History,"Tzu, Sun",The Art of War,,,0,9780465013272,232
-History,"U.S. DoD,",The Armed Forces Officer,,,0,9781600000000,182
 Life,"Ahrens, Sönke",How to Take Smart Notes,,,0,9783982438818,188
 Life,"Albom, Mitch",Tuesdays with Morrie,,,1,9780767905923,192
 Life,"Altmann, Tanya Remer",What to Feed Your Baby,,,0,9780062404947,336
@@ -213,15 +210,12 @@ Life,"Brodsky, Andrew",Ping,,,0,9781668055267,336
 Life,"Brott, Armin",The Expectant Father,,,0,9780789212139,336
 Life,"Brown, Brene",Dare to Lead,,,0,9780399592546,320
 Life,"Carnegie, Dale",How to Win Friends & Influence People,,,1,9789773772598,320
-Life,"Clinic, Mayo",Mayo Clinic Guide to a Healthy Pregnancy,,,0,9780795351693,512
 Life,"Covey, Stephen",The 7 Habits of Highly Effective People,,,0,9780743272452,464
 Life,"Coyle, Daniel",The Culture Code,,,0,9780804176989,304
 Life,"Davies, Simone",The Montessori Baby,,,0,9781523512409,368
 Life,"Davies, Simone",The Montessori Toddler: A Parent's Guide to Raising a Curious and Responsible Human Being,,,0,9781523506897,208
-Life,"Didion, Joan",The Year of Magical Thinking,,,1,9781400043149,240
 Life,"Elgin, Suzette",The Gentle Art of Verbal Self-Defense,,,0,9780880290302,310
 Life,"Ezzo, Gary","On Becoming Baby Wise, Book Two",,,0,9780971453210,150
-Life,"Graham, Katharine",Personal History,,,0,9780394585857,642
 Life,"Greene, Robert",Mastery,,,0,9780143124177,368
 Life,"Greene, Robert",The Concise 33 Strategies of War,,,0,9780670034574,208
 Life,"Greene, Robert",The Concise 48 Laws of Power,,,0,9781847651358,208
@@ -235,6 +229,7 @@ Life,"Institute, Arbinger",Leadership and Self Deception,,,0,9781576759776,322
 Life,"Kishimi, Ichiro",The Courage to Be Disliked,,,0,9781982100391,272
 Life,"Lencioni, Patrick",The Five Dysfunctions of a Team,,,0,9780787960759,229
 Life,"Marquet, L. David",Turn the Ship Around!,,,0,9781101623695,272
+Life,"""Mayo Clinic, """,Mayo Clinic Guide to a Healthy Pregnancy,,,0,9780795351693,512
 Life,"McConaughey, Matthew",Greenlights,,,0,9780593139134,
 Life,"Mccoy, Bryan",The Passion of Command,,,0,9780940000000,82
 Life,"McKeown, Greg",Essentialism,,,0,9780804137409,288
@@ -258,6 +253,7 @@ Life,"Toogood, Granville",The New Articulate Executive,,,0,9780070653382,240
 Life,"Voss, Chris",Never Split the Difference,,,0,9780062407818,288
 Life,"Walsh, Bill",The Score Takes Care of Itself,,,0,9781101109014,288
 Life,"Willink, Jocko",Leadership Strategy and Tactics,,,0,9781250334800,320
+Literary Fiction,"Akkad, Omar","One Day, Everyone Will Have Always Been Against This",,,0,9780593804148,208
 Literary Fiction,"Albom, Mitch",The Five People You Meet in Heaven,,,0,9781401308582,196
 Literary Fiction,"Beckett, Samuel",Nohow On,,,0,9780802134264,116
 Literary Fiction,"Bernhard, Thomas",Correction,,,0,9780099442547,256
@@ -267,6 +263,7 @@ Literary Fiction,"Canetti, Elias",Auto Da Fe,,,0,9780330255561,428
 Literary Fiction,"Carpenter, Don",Hard Rain Falling,,,0,9781590173244,336
 Literary Fiction,"Coetzee, J.M.",Waiting for the Barbarians,,,0,9780140061109,192
 Literary Fiction,"Dazai, Osamu",No Longer Human,,,0,9780811220071,177
+Literary Fiction,"Didion, Joan",The Year of Magical Thinking,,,1,9781400043149,240
 Literary Fiction,"Dostoyevsky, Fyodor",Demons (Penguin Classics),,,0,9780141441412,842
 Literary Fiction,"Dostoyevsky, Fyodor",Notes From Underground,,,0,9780679734529,139
 Literary Fiction,"Dostoyevsky, Fyodor",The Brothers Karamazov,,,0,9780451530608,928
@@ -400,6 +397,8 @@ Philosophy,"Taleb, Nassim Nicholas",Antifragile,,,0,9780679645276,544
 Philosophy,"Tarski, Alfred",Introduction to Logic and to the Methodology of Deductive Sciences,,,0,9781614275404,258
 Philosophy,"Thacker, Eugene",In the Dust of This Planet,,,0,9781846946769,179
 Philosophy,"Thoreau, Henry David",Walden & Civil Disobedience,,,0,9781504013772,320
+Philosophy,"Tsunetomo, Yamamoto",Hagakure,,,0,9784805311981,288
+Philosophy,"Tzu, Sun",The Art of War,,,0,9780465013272,232
 Philosophy,"Weil, Simone",Gravity and Grace,,,0,9780415290012,224
 Philosophy,"Weston, Anthony",A Rulebook for Arguments,,,0,9780872209541,104
 Philosophy,"Whitehead, Alfred",Process and Reality,,,0,9780029345702,413
@@ -455,6 +454,7 @@ Reference,"Nemeth, Evi",UNIX and Linux System Administration Handbook (5th Editi
 Reference,"Oxford University Press,",Compact Oxford English Dictionary,Dictionaries,2,0,9780199561742,1253
 Reference,"Scout, N.",The Guerrilla's Guide to the Baofeng Radio,,,0,9798366525107,
 Reference,"Tilton, Buck",Wilderness First Responder,,,0,9780762754564,320
+Reference,"U.S. DoD,",The Armed Forces Officer,,,0,9781600000000,182
 Reference,"USMC,",Marine Corps Doctrinal Publication MCDP 1,USMC Doctrine,24,1,9781790686674,112
 Reference,"USMC,",Marine Corps Doctrinal Publication MCRP 3-11.1A,USMC Doctrine,25,0,,128
 Reference,"USMC,",Marine Corps Doctrinal Publication McDp 1-6,USMC Doctrine,26,0,9781790000000,733
