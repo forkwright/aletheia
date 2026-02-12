@@ -30,7 +30,7 @@ export function estimateMessageTokens(
 }
 
 export function estimateToolDefTokens(
-  toolDefs: Array<Record<string, unknown>>,
+  toolDefs: unknown[],
 ): number {
   if (toolDefs.length === 0) return 0;
   const jsonTokens = estimateTokens(JSON.stringify(toolDefs));

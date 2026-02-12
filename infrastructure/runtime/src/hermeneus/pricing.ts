@@ -28,15 +28,16 @@ const PRICING: Record<string, ModelPricing> = {
 };
 
 function resolvePricing(model: string | null): ModelPricing {
-  if (model && PRICING[model]) return PRICING[model];
-  // Fuzzy match: check if model name contains a known key
   if (model) {
-    if (model.includes("opus")) return PRICING["claude-opus-4-6"];
-    if (model.includes("sonnet")) return PRICING["claude-sonnet-4-5-20250929"];
-    if (model.includes("haiku")) return PRICING["claude-haiku-4-5-20251001"];
+    const exact = PRICING[model];
+    if (exact) return exact;
+    // Fuzzy match: check if model name contains a known key
+    if (model.includes("opus")) return PRICING["claude-opus-4-6"]!;
+    if (model.includes("sonnet")) return PRICING["claude-sonnet-4-5-20250929"]!;
+    if (model.includes("haiku")) return PRICING["claude-haiku-4-5-20251001"]!;
   }
   // Default to Sonnet pricing for unknown models
-  return PRICING["claude-sonnet-4-5-20250929"];
+  return PRICING["claude-sonnet-4-5-20250929"]!;
 }
 
 export function calculateTurnCost(usage: {

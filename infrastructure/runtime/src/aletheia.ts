@@ -24,8 +24,10 @@ import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
+import { createPlanTools } from "./organon/built-in/plan.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
+import { createMcpRoutes } from "./pylon/mcp.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -98,6 +100,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(createConfigReadTool(config));
   tools.register(createSessionStatusTool(store));
 
+  // Planning tools
+  for (const planTool of createPlanTools()) {
+    tools.register(planTool);
+  }
+
   log.info(`Registered ${tools.size} tools`);
 
   const bindings = config.bindings.map((b) => {
@@ -161,6 +168,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Gateway ---
   const port = config.gateway.port;
   const app = createGateway(config, runtime.manager, runtime.store);
+
+  // Mount MCP server routes
+  const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
+  app.route("/mcp", mcpRoutes);
+
   startGateway(app, port);
   log.info(`Aletheia gateway listening on port ${port}`);
 

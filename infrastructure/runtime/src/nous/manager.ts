@@ -6,7 +6,7 @@ import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counte
 import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
-import { shouldDistill, distillSession } from "../distillation/pipeline.js";
+import { distillSession } from "../distillation/pipeline.js";
 import { scoreComplexity, selectModel, type ComplexityTier } from "../hermeneus/complexity.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
@@ -24,6 +24,7 @@ import type {
 } from "../hermeneus/anthropic.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
+import { TraceBuilder } from "./trace.js";
 
 const log = createLogger("nous");
 
@@ -77,7 +78,7 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
 export class NousManager {
   private plugins?: PluginRegistry;
   private watchdog?: Watchdog;
-  private skillsSection?: string;
+  private skillsSection?: string | undefined;
   activeTurns = 0;
   isDraining: () => boolean = () => false;
 
@@ -100,8 +101,8 @@ export class NousManager {
     this.watchdog = watchdog;
   }
 
-  setSkillsSection(section: string): void {
-    this.skillsSection = section || undefined;
+  setSkillsSection(section: string | undefined): void {
+    this.skillsSection = section;
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
@@ -127,11 +128,12 @@ export class NousManager {
     const routing = this.config.agents.defaults.routing;
     if (routing.enabled && !msg.model) {
       const session = this.store.findSession(nousId, sessionKey);
+      const override = routing.agentOverrides[nousId] as ComplexityTier | undefined;
       const complexity = scoreComplexity({
         messageText: msg.text,
         messageCount: session?.messageCount ?? 0,
         depth: msg.depth ?? 0,
-        agentOverride: routing.agentOverrides[nousId] as ComplexityTier | undefined,
+        ...(override ? { agentOverride: override } : {}),
       });
       model = selectModel(complexity.tier, routing.tiers);
       log.info(
@@ -183,8 +185,8 @@ export class NousManager {
 
     const bootstrap = assembleBootstrap(workspace, {
       maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
-      skillsSection: this.skillsSection,
-      degradedServices: degradedServices.length > 0 ? degradedServices : undefined,
+      ...(this.skillsSection ? { skillsSection: this.skillsSection } : {}),
+      ...(degradedServices.length > 0 ? { degradedServices } : {}),
     });
 
     // Store composite hash and detect file-level diffs
@@ -196,14 +198,24 @@ export class NousManager {
       log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
     }
 
+    // Initialize causal trace for this turn
+    const trace = new TraceBuilder(sessionId, nousId, 0, model);
+    trace.setBootstrap(
+      Object.keys(bootstrap.fileHashes),
+      bootstrap.totalTokens,
+    );
+    if (degradedServices.length > 0) {
+      trace.setDegradedServices(degradedServices);
+    }
+
     const systemPrompt = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
 
     const toolDefs = this.tools.getDefinitions({
-      allow: nous.tools.allow.length > 0 ? nous.tools.allow : undefined,
-      deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
+      ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
+      ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
     });
 
     // Tool definitions count toward the input token budget — estimate with safety margin
@@ -263,7 +275,7 @@ export class NousManager {
         nousId,
         sessionId,
         messageText: msg.text,
-        media: msg.media,
+        ...(msg.media ? { media: msg.media } : {}),
       });
     }
 
@@ -280,7 +292,7 @@ export class NousManager {
         model,
         system: systemPrompt,
         messages: currentMessages,
-        tools: toolDefs.length > 0 ? toolDefs : undefined,
+        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
         maxTokens: this.config.agents.defaults.maxOutputTokens,
       });
 
@@ -326,6 +338,13 @@ export class NousManager {
           cacheWriteTokens: totalCacheWriteTokens,
         };
 
+        // Finalize and persist causal trace
+        trace.setUsage(totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens);
+        trace.setResponseLength(text.length);
+        trace.setToolLoops(loop + 1);
+        const finalTrace = trace.finalize();
+        (await import("./trace.js")).persistTrace(finalTrace, workspace);
+
         const cacheHitRate = totalInputTokens > 0
           ? Math.round((totalCacheReadTokens / totalInputTokens) * 100)
           : 0;
@@ -370,7 +389,7 @@ export class NousManager {
               minMessages: 10,
               extractionModel: distillModel,
               summaryModel: distillModel,
-              plugins: this.plugins,
+              ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
         } catch (err) {
@@ -403,6 +422,7 @@ export class NousManager {
 
         let toolResult: string;
         let isError = false;
+        const toolStart = Date.now();
         try {
           toolResult = await this.tools.execute(
             toolUse.name,
@@ -414,12 +434,21 @@ export class NousManager {
           toolResult = err instanceof Error ? err.message : String(err);
           log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
         }
+        const toolDuration = Date.now() - toolStart;
+
+        trace.addToolCall({
+          name: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: toolResult.slice(0, 500),
+          durationMs: toolDuration,
+          isError,
+        });
 
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUse.id,
           content: toolResult,
-          is_error: isError || undefined,
+          ...(isError ? { is_error: true } : {}),
         });
 
         this.store.appendMessage(sessionId, "tool_result", toolResult, {
@@ -584,7 +613,7 @@ export class NousManager {
       minMessages: 4,
       extractionModel: distillModel,
       summaryModel: distillModel,
-      plugins: this.plugins,
+      ...(this.plugins ? { plugins: this.plugins } : {}),
     });
   }
 }
