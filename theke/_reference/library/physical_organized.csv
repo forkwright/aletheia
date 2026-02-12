@@ -22,6 +22,7 @@ Business,"Kotler, Philip",Marketing Management 16th Edition Paperback,,,0,978013
 Business,"Liker, Jeffrey","The Toyota Way, Second Edition",,,0,9781260468526,448
 Business,"Michalowicz, Mike",Profit First,,,0,9780735214163,224
 Business,"Miller, Donald",Building a StoryBrand 2.0,,,0,9781400248889,240
+Business,"Murphy, John",Technical Analysis of the Financial Markets,,,0,9780735200661,576
 Business,"Nooyi, Indra",My Life in Full,,,0,9780593421321,320
 Business,"Prachi , Ashita",Marketing Management Indian Cases,,,0,9789360000000,
 Business,"Rasiel, Ethan",The McKinsey Way,,,0,9780070534483,208
@@ -45,11 +46,13 @@ Craft,"Gingery, David",The Metal Lathe (Build Your Own Metal Working Shop from S
 Craft,"Gingery, David",The Metal Shaper,,,0,9781878087027,
 Craft,"Hamelman, Jeffrey",Bread,,,0,9781118132715,464
 Craft,"Hasluck, Paul",Bookbinding The Traditional Way,,,0,9781643890586,164
+Craft,"Huang, Andrew",The Hardware Hacker,,,0,9781593277581,416
 Craft,"Kingry, Judi",Ball Complete Book of Home Preserving,,,0,9780778801313,448
 Craft,"Kjellström, Björn",Be Expert with Map and Compass,,,0,9780020292654,242
 Craft,"Liles, J.N.",The Art and Craft of Natural Dyeing,,,0,9780870496707,254
 Craft,"Michael, Valerie",The Leatherworking Handbook,,,0,9780304341764,128
 Craft,"Palmer, Willard",Alfred's Basic Adult All-in-One Course,,,0,9780739082423,159
+Craft,"Platt, Charles",Make: Electronics (Learning by Discovery),,,0,9780596153748,336
 Craft,"Pleasant, Barbara",The Complete Compost Gardening Guide,,,0,9781580177023,1253
 Craft,"Rea, Andrew",Binging with Babish,,,0,9781982167530,96
 Craft,"Rea, Andrew",Eat What You Watch,,,0,9780998739953,132
@@ -300,7 +303,7 @@ Literary Fiction,"Miller, Madeline",The Song of Achilles,,,0,9781408826133,416
 Literary Fiction,"Mitchell, David",Cloud Atlas,,,0,9780375507250,509
 Literary Fiction,"Morselli, Guido",Dissipatio H.G.,,,0,9781681374765,144
 Literary Fiction,"Musil, Robert","The Man Without Qualities, Volume I",,,0,9780399501524,365
-Literary Fiction,"""Orwell, George""",1984,,,1,9781783190614,96
+Literary Fiction,"Orwell, George",1984,,,1,9781783190614,96
 Literary Fiction,"Orwell, George",Animal Farm,,,0,9780791085837,136
 Literary Fiction,"Powers, Richard",The Overstory,,,0,9781785151637,512
 Literary Fiction,"Proust, Marcel",In Search of Lost Time Volume IV Sodom and Gomorrah,,,0,9780375753107,784
@@ -444,14 +447,20 @@ Psychology,"Waitzkin, Josh",The Art of Learning,,,0,9780743277464,288
 Psychology,"Weber, Max",The Protestant Ethic and the Spirit of Capitalism,,,0,9780415254069,320
 Psychology,"Zuboff, Shoshana",The Age of Surveillance Capitalism,,,0,9781781256855,691
 Reference,"Dickson, Murray",Where There Is No Dentist,,,0,9780942364057,283
+Reference,"Donahue, Gary",Network Warrior: Everything you need to know that wasn't on the CCNA exam,,,0,9780596101510,487
 Reference,"Estes, Kenneth","Marine Officer's Guide, 7th Edition",,,0,9781590000000,616
+Reference,"Geron, Aurelien",Hands-On Machine Learning,,,0,9781492032595,848
+Reference,"Hastie, Trevor",The Elements of Statistical Learning,,,0,9780387216065,552
+Reference,"Kurose, James",Computer Networking,,,0,9789356061316,820
 Reference,"Lawall, Gilbert",Athenaze: Workbook I,Athenaze,3,0,9780190607692,172
 Reference,"Lawall, Gilbert",Athenaze: Workbook II,Athenaze,4,0,9780195149575,226
 Reference,Liddell & Scott,An Intermediate Greek-English Lexicon,Greek Reference,3,0,9780282484729,918
+Reference,"McKinney, Wes",Python for Data Analysis,,,0,9781491957615,466
 Reference,"Merriam-Webster,","Merriam-Webster's Collegiate Dictionary, 11th Edition",Dictionaries,1,0,9780877798095,1664
 Reference,"Messing, Gordon",Greek Grammar,Greek Reference,1,0,9780670000000,784
 Reference,"Nemeth, Evi",UNIX and Linux System Administration Handbook (5th Edition),,,0,9780134277554,1232
 Reference,"Oxford University Press,",Compact Oxford English Dictionary,Dictionaries,2,0,9780199561742,1253
+Reference,"Rankin, Kyle",Linux Hardening in Hostile Networks,,,0,9780134173269,272
 Reference,"Scout, N.",The Guerrilla's Guide to the Baofeng Radio,,,0,9798366525107,
 Reference,"Tilton, Buck",Wilderness First Responder,,,0,9780762754564,320
 Reference,"U.S. DoD,",The Armed Forces Officer,,,0,9781600000000,182
@@ -472,30 +481,20 @@ Science & Systems,"Costandi, Moheb",Neuroplasticity,,,0,9780262337076,192
 Science & Systems,"Damasio, Antonio",The Feeling of What Happens,,,0,9780156010757,386
 Science & Systems,"Darwin, Charles",The Origin of Species,,,0,9781304737878,576
 Science & Systems,"Deutsch, David",The Beginning of Infinity,,,0,9781101549827,487
-Science & Systems,"Donahue, Gary",Network Warrior: Everything you need to know that wasn't on the CCNA exam,,,0,9780596101510,487
 Science & Systems,"Epstein, Richard",The Theory of Gambling and Statistical Logic,,,0,9780122407611,450
-Science & Systems,"Geron, Aurelien",Hands-On Machine Learning,,,0,9781492032595,848
-Science & Systems,"Hastie, Trevor",The Elements of Statistical Learning,,,0,9780387216065,552
 Science & Systems,"Hawking, Stephen",A Brief History of Time,,,0,9780553380163,212
 Science & Systems,"Hofstadter, Douglas","Gödel, Escher, Bach",,,0,9780465026562,824
 Science & Systems,"Hofstadter, Douglas",I Am a Strange Loop,,,0,9780465030798,436
-Science & Systems,"Huang, Andrew",The Hardware Hacker,,,0,9781593277581,416
 Science & Systems,"Kauffman, Stuart",At Home in the Universe,,,0,9780195095999,336
 Science & Systems,"Kelleher, John",Data Science,,,0,9780262347037,280
-Science & Systems,"Kurose, James",Computer Networking,,,0,9789356061316,820
 Science & Systems,"Maturana, Humberto",The Tree of Knowledge,,,0,9780877736424,272
 Science & Systems,"Mcgilchrist, Iain",The Master and His Emissary,,,0,9780300245929,616
-Science & Systems,"McKinney, Wes",Python for Data Analysis,,,0,9781491957615,466
 Science & Systems,"Meadows, Donella",Thinking in Systems,,,0,9781603581486,240
 Science & Systems,"Mlodinow, Leonard",The Drunkard's Walk,,,0,9780307377548,272
 Science & Systems,"Mukherjee, Siddhartha",The Emperor of All Maladies,,,0,9781439170915,592
-Science & Systems,"Murphy, John",Technical Analysis of the Financial Markets,,,0,9780735200661,576
 Science & Systems,"Neufeld, Michael",Spaceflight,,,0,9780262536332,248
-Science & Systems,"Norbert, Wiener",Cybernetics,,,0,9780262536332,212
 Science & Systems,"Parthasarathy, Raghuveer",So Simple a Beginning,,,0,9780691258676,336
-Science & Systems,"Platt, Charles",Make: Electronics (Learning by Discovery),,,0,9780596153748,336
 Science & Systems,"Pomerantz, Jeffery",Metadata,,,0,9780262331197,254
-Science & Systems,"Rankin, Kyle",Linux Hardening in Hostile Networks,,,0,9780134173269,272
 Science & Systems,"Roach, Mary",Packing for Mars,,,0,9780393079104,336
 Science & Systems,"Rosenbaum, Paul R.",Causal Inference,,,0,9780262545198,224
 Science & Systems,"Sagan, Carl",Cosmos,,,0,9780345539434,432
@@ -509,6 +508,7 @@ Science & Systems,"Tyson, Neil deGrasse",Astrophysics for People in a Hurry,,,0,
 Science & Systems,"Von Neumann, John",The Computer and the Brain,,,0,9780300181111,136
 Science & Systems,"Walker, Matthew",Why We Sleep,,,0,9781501144318,368
 Science & Systems,"Wheelan, Charles",Naked Statistics,,,0,9780393089820,304
+Science & Systems,"""Wiener, Norbert""",Cybernetics,,,0,9780262536332,212
 Science & Systems,"Wolfram, Stephen",A New Kind of Science,,,0,9781579550080,1192
 Science Fiction,"Abnett, Dan",Horus Rising,The Horus Heresy,1,0,9781789992175,416
 Science Fiction,"Asimov, Isaac",Foundation,Foundation,1,1,9780553293357,314
