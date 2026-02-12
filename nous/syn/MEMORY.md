@@ -339,7 +339,7 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 
 **Office:** 12×10×9 room. Deep black ceiling + one accent wall. ~600 books on 1.5 walls. Old letter desk (leather), green leather recliner, computer desk with ultrawide. Banker's lamp + pharmacist lamp. Dark rug, blackout curtains. RT60 0.28s (studio-grade). Room is intuitively well-designed for ASD sensory management. Pending: remove cat shelves, move NASA posters to garage, install 2 ceiling acoustic panels, door sweep.
 
-**Library:** 593 physical books, 13 zones after full book-by-book QA (2026-02-12). Education zone eliminated, Manuals split into Craft + Reference. Every zone audited for misclassifications. Sorted alphabetical by author within zones. Rule: Author, series, number. Self-evident, no spreadsheet needed. CSV at `theke/_reference/library/physical_organized.csv`, synced to Metis via Syncthing (aletheia-vault folder).
+**Library:** 589 physical books, 13 zones after full book-by-book QA (2026-02-12). Education zone eliminated, Manuals split into Craft + Reference. Every zone audited for misclassifications. 3 books culled (2 MBA textbooks, 1 friend's book). Sorted alphabetical by author within zones. Rule: Author, series, number. Self-evident, no spreadsheet needed. CSV at `theke/_reference/library/physical_organized.csv`, synced to Metis via Syncthing (aletheia-vault folder).
 
 ## Communication Corrections (2026-02-11)
 
@@ -352,6 +352,16 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 **Check existing infrastructure before claiming it doesn't exist.** Said theke sync wasn't set up — it was (Syncthing aletheia-vault). Said Dashy needed Tailscale IPs — it didn't (broke local access). Research before claiming applies to our own systems too.
 
 **When Cody says "you do it" — do it yourself.** Don't delegate to sub-agents when he explicitly asks for your attention. The QA mattered enough to him that he wanted the primary mind on it.
+
+## Media Infrastructure (2026-02-12)
+
+**Prowlarr:** 40 indexers (expanded from 25). All tagged with `flare` for Byparr proxy. VPN exit IP blocks RuTracker, KAT, ExtraTorrent.
+
+**Byparr:** Deployed `ghcr.io/thephaseless/byparr:latest` on gluetun network. Drop-in FlareSolverr replacement, same API on port 8191. FlareSolverr is deprecated.
+
+**Lidarr lesson:** Public torrent indexers don't carry singles from indie artists. Full albums only. For singles: Qobuz, Bandcamp, Soulseek, or private trackers (Redacted/Orpheus).
+
+**Music library:** `/mnt/nas/Media/music/` — artist folders, managed by Lidarr. Colter Wall has 5 full albums at 100%, missing ~11 singles that don't exist on public indexers.
 
 ## Wardrobe (2026-02-10/11)
 
