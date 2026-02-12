@@ -375,5 +375,19 @@ Cody asked for validation of what's needed from TBC for member segmentation (Pha
 
 ---
 
-Daily session logs (2026-01-28 through 2026-02-11) are in `memory/YYYY-MM-DD.md`.
+## HOA Violation (2026-02-12)
+
+Entrada Residential Community (PMP Management) issued 2 violations about the Ram 2500 in driveway, citing CC&R Article 2 Section 2.22. **They cited the wrong section.** Section 2.22 covers "Mobile Homes, Travel Trailers and Recreational Vehicles" only. Section 2.21 (Unsightly Articles) explicitly exempts pickups from the list of vehicles that must be enclosed/screened: "trucks other than pickups." No "non-operational vehicle" provision exists in the CC&Rs. Texas Property Code Chapter 209 gives right to hearing, cure period, and selective enforcement challenge. Full CC&Rs OCR'd from scanned PDF. Response letter pending.
+
+## Lidarr Manual Import (2026-02-12)
+
+`RescanArtist` does NOT auto-import files placed directly on NAS. Must use `ManualImport` API endpoint with explicit artist/album/release/track IDs. Album match threshold is 80%. Folder naming with illegal chars (slashes) causes matching failures.
+
+## Metis Network (2026-02-12)
+
+Metis has two IPs: ethernet 192.168.0.19, wifi 192.168.0.20. Must check which network is active. "Lid closed = offline" assumption was wrong — Cody corrected.
+
+---
+
+Daily session logs (2026-01-28 through 2026-02-12) are in `memory/YYYY-MM-DD.md`.
 Key facts have been distilled into the sections above.
