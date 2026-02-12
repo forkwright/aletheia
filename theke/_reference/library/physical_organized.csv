@@ -31,23 +31,20 @@ Business,"Welch, Jack",Jack,,,0,9780759509214,496
 Business,"Wheelan, Charles",Naked Economics,,,0,9780393356946,400
 Business,"Wheelan, Charles",Naked Money,,,0,9780393292893,368
 Business,"Wood, Ellen",The Origin of Capitalism,,,0,9781859843925,213
-Craft,"Balme, Maurice",Athenaze: Book I,Athenaze,1,0,9780195149562,359
-Craft,"Balme, Maurice",Athenaze: Book II,Athenaze,1,0,9780195056228,312
 Craft,"Burgess, Rebecca",Harvesting Color,,,0,9781579654252,192
 Craft,"Dean, Jenny",Wild Color,,,0,9780823058792,144
 Craft,"Ellul, Matthew",How to Read Music in 30 Days,,,0,9781977904874,171
-Craft,"Gingery, David",Designing and Building the Sheet Metal Brake,,,0,9781878087065,551
-Craft,"Gingery, David",Milling Machine (Build Your Own Metalworking Shop from Scrap Series),,,0,9781878087034,
-Craft,"Gingery, David","The Charcoal Foundry (Build Your Own Metal Working Shop from Scrap, Vol. 1)",,,0,9781878087003,
-Craft,"Gingery, David",The Dividing Head and Deluxe Accessories,,,0,9781878087058,
-Craft,"Gingery, David",The Drill Press,,,0,9781878087041,
-Craft,"Gingery, David",The Metal Lathe (Build Your Own Metal Working Shop from Scrap),,,0,9781878087010,
-Craft,"Gingery, David",The Metal Shaper,,,0,9781878087027,
+Craft,"Gingery, David",The Charcoal Foundry,Build Your Own Metal Working Shop from Scrap,1,0,9781878087003,
+Craft,"Gingery, David",The Metal Lathe,Build Your Own Metal Working Shop from Scrap,2,0,9781878087010,
+Craft,"Gingery, David",The Drill Press,Build Your Own Metal Working Shop from Scrap,3,0,9781878087041,
+Craft,"Gingery, David",Milling Machine,Build Your Own Metal Working Shop from Scrap,4,0,9781878087034,
+Craft,"Gingery, David",The Metal Shaper,Build Your Own Metal Working Shop from Scrap,5,0,9781878087027,
+Craft,"Gingery, David",The Dividing Head and Deluxe Accessories,Build Your Own Metal Working Shop from Scrap,6,0,9781878087058,
+Craft,"Gingery, David",Designing and Building the Sheet Metal Brake,Build Your Own Metal Working Shop from Scrap,7,0,9781878087065,551
 Craft,"Hamelman, Jeffrey",Bread,,,0,9781118132715,464
 Craft,"Hasluck, Paul",Bookbinding The Traditional Way,,,0,9781643890586,164
 Craft,"Huang, Andrew",The Hardware Hacker,,,0,9781593277581,416
 Craft,"Kingry, Judi",Ball Complete Book of Home Preserving,,,0,9780778801313,448
-Craft,"Kjellström, Björn",Be Expert with Map and Compass,,,0,9780020292654,242
 Craft,"Liles, J.N.",The Art and Craft of Natural Dyeing,,,0,9780870496707,254
 Craft,"Michael, Valerie",The Leatherworking Handbook,,,0,9780304341764,128
 Craft,"Palmer, Willard",Alfred's Basic Adult All-in-One Course,,,0,9780739082423,159
@@ -450,9 +447,8 @@ Reference,"Donahue, Gary",Network Warrior: Everything you need to know that wasn
 Reference,"Estes, Kenneth","Marine Officer's Guide, 7th Edition",,,0,9781590000000,616
 Reference,"Geron, Aurelien",Hands-On Machine Learning,,,0,9781492032595,848
 Reference,"Hastie, Trevor",The Elements of Statistical Learning,,,0,9780387216065,552
+Reference,"Kjellström, Björn",Be Expert with Map and Compass,,,0,9780020292654,242
 Reference,"Kurose, James",Computer Networking,,,0,9789356061316,820
-Reference,"Lawall, Gilbert",Athenaze: Workbook I,Athenaze,3,0,9780190607692,172
-Reference,"Lawall, Gilbert",Athenaze: Workbook II,Athenaze,4,0,9780195149575,226
 Reference,Liddell & Scott,An Intermediate Greek-English Lexicon,Greek Reference,3,0,9780282484729,918
 Reference,"McKinney, Wes",Python for Data Analysis,,,0,9781491957615,466
 Reference,"Merriam-Webster,","Merriam-Webster's Collegiate Dictionary, 11th Edition",Dictionaries,1,0,9780877798095,1664
@@ -551,6 +547,8 @@ Science Fiction,"Wolfe, Gene",Shadow & Claw,The Book of the New Sun,1,0,97803128
 Science Fiction,"Wolfe, Gene",The Sword of the Lictor,The Book of the New Sun,3,0,9780671499457,257
 Science Fiction,"Wolfe, Gene",The Citadel of The Autarch,The Book of the New Sun,4,0,9780671496661,330
 Word,"Alighieri, Dante",The Inferno,,,1,9780812967210,320
+Word,"Balme, Maurice",Athenaze: Book I,Athenaze,1,0,9780195149562,359
+Word,"Balme, Maurice",Athenaze: Book II,Athenaze,2,0,9780195056228,312
 Word,"Baudelaire, Charles",The Flowers of Evil,,,0,9780192835451,70
 Word,"Bayles, David",Art & Fear,,,0,,
 Word,"Booth, Wayne C.",The Craft of Research,,,0,,
@@ -569,6 +567,8 @@ Word,"Homer,",The Iliad,,,0,,
 Word,"Homer,",The Odyssey,,,0,9781398845860,
 Word,"Jabès, Edmond",The Book of Questions,,,0,9780819560438,175
 Word,"Kipling, Rudyard",Rudyard Kipling's Verse: Definitive Edition,,,0,,
+Word,"Lawall, Gilbert",Athenaze: Workbook I,Athenaze,3,0,9780190607692,172
+Word,"Lawall, Gilbert",Athenaze: Workbook II,Athenaze,4,0,9780195149575,226
 Word,"Leopold, Aldo",A Sand County Almanac,,,0,,
 Word,"Lopez, Barry",Arctic Dreams,,,0,,
 Word,"Manguso, Sarah",Ongoingness,,,0,9781555977658,104
