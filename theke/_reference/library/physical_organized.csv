@@ -3,7 +3,7 @@ Business,"Calkins, Tim",Breakthrough Marketing Plans,,,0,9781137107619,255
 Business,"Caplan, Bryan",The Myth of the Rational Voter,,,0,9780691138732,296
 Business,"Christensen, Clayton",The Innovator's Dilemma,,,0,9781422196021,256
 Business,"Collins, Jim",Built to Last,,,0,9780062119087,368
-Business,"""Collins, Jim""",Good to Great,,,1,9780066620992,400
+Business,"Collins, Jim",Good to Great,,,1,9780066620992,400
 Business,"Davenport, Thomas",Competing on Analytics,,,0,9781633693739,320
 Business,"Dillehay, James",Sell Your Crafts Online,,,0,9781965258019,122
 Business,"Drucker, Peter",Management Rev Ed,,,0,9780061252662,608
@@ -90,7 +90,7 @@ Craft,"Time-Life Books,",Outdoor Recreation Areas,Home Repair and Improvement,28
 Fantasy,"Abercrombie, Joe",The Blade Itself,First Law,1,0,9780575079793,536
 Fantasy,"Abercrombie, Joe",Before They Are Hanged ,First Law,2,0,9780316387354,560
 Fantasy,"Abercrombie, Joe",Last Argument of Kings,First Law,3,0,9780316387408,70
-Fantasy,"Abercrombie, Joe",The Heroes,The First Law,5,0,9780575083851,560
+Fantasy,"Abercrombie, Joe",The Heroes,First Law,5,0,9780575083851,560
 Fantasy,"Catling, B.",The Vorrh (The Vorrh Trilogy),The Vorrh Trilogy,1,0,9781101873786,512
 Fantasy,"Clarke, Susanna",Jonathan Strange & Mr Norrell,,,0,9781608190867,864
 Fantasy,"Clarke, Susanna",Piranesi,,,0,9781635575637,272
@@ -101,7 +101,7 @@ Fantasy,"Feist, Raymond",Queen of Storms,The Firemane Saga,2,0,9780062315939,464
 Fantasy,"Feist, Raymond",Master of Furies,The Firemane Saga,3,0,9780063305403,496
 Fantasy,"Gaiman, Neil",Good Omens,,,0,9780441008612,354
 Fantasy,"Gemmell, David",Troy,Troy Trilogy,1,0,9780345494573,496
-Fantasy,"Gwynne, John",Malice,,,0,9780316399739,656
+Fantasy,"Gwynne, John",Malice,The Faithful and the Fallen,1,0,9780316399739,656
 Fantasy,"Islington, James",The Will of the Many,Hierarchy,1,0,9781668093290,720
 Fantasy,"Jordan, Robert",The Eye of the World,Wheel of Time,1,0,9781250251466,864
 Fantasy,"Jordan, Robert",The Great Hunt,Wheel of Time,2,0,9781250251480,736
@@ -110,9 +110,9 @@ Fantasy,"Jordan, Robert",Lord of Chaos,Wheel of Time,6,0,9781250251978,
 Fantasy,"Jordan, Robert",Knife of Dreams,Wheel of Time,11,0,9781250252593,
 Fantasy,"Jordan, Robert",The Gathering Storm,Wheel of Time,12,0,9781250252609,
 Fantasy,"Jordan, Robert",A Memory of Light,Wheel of Time,14,0,9781250252623,560
-Fantasy,"Kuang, R.F.",Babel,Gentleman Bastards,1,0,9780063021440,560
+Fantasy,"Kuang, R.F.",Babel,,,0,9780063021440,560
 Fantasy,"Lynch, Scott",The Lies of Locke Lamora (Gentleman Bastards),Gentleman Bastards,1,0,9780553588941,736
-Fantasy,"Martin, George R.R.",Fire & Blood,A Song of Ice and Fire,,0,9781524796303,736
+Fantasy,"Martin, George R.R.",Fire & Blood,A Song of Ice and Fire,0,0,9781524796303,736
 Fantasy,"Martin, George R.R.",A Game Of Thrones,A Song of Ice and Fire,1,1,9780553103540,835
 Fantasy,"Martin, George R.R.",A Clash Of Kings,A Song of Ice and Fire,2,0,9780553108033,1040
 Fantasy,"Martin, George R.R.",A Storm Of Swords,A Song of Ice and Fire,3,0,9780553381702,1177
