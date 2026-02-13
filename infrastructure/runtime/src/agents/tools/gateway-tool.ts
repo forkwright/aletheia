@@ -13,6 +13,8 @@ import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 import { callGatewayTool } from "./gateway.js";
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 20 * 60_000;
+const COMPACT_RATE_LIMIT_MS = 10 * 60_000;
+const compactTimestamps = new Map<string, number>();
 
 function resolveBaseHashFromSnapshot(snapshot: unknown): string | undefined {
   if (!snapshot || typeof snapshot !== "object") {
@@ -34,6 +36,7 @@ const GATEWAY_ACTIONS = [
   "config.apply",
   "config.patch",
   "update.run",
+  "compact",
 ] as const;
 
 // NOTE: Using a flattened object schema instead of Type.Union([Type.Object(...), ...])
@@ -51,10 +54,12 @@ const GatewayToolSchema = Type.Object({
   // config.apply, config.patch
   raw: Type.Optional(Type.String()),
   baseHash: Type.Optional(Type.String()),
-  // config.apply, config.patch, update.run
+  // config.apply, config.patch, update.run, compact
   sessionKey: Type.Optional(Type.String()),
   note: Type.Optional(Type.String()),
   restartDelayMs: Type.Optional(Type.Number()),
+  // compact
+  instructions: Type.Optional(Type.String()),
 });
 // NOTE: We intentionally avoid top-level `allOf`/`anyOf`/`oneOf` conditionals here:
 // - OpenAI rejects tool schemas that include these keywords at the *top-level*.
@@ -69,7 +74,7 @@ export function createGatewayTool(opts?: {
     label: "Gateway",
     name: "gateway",
     description:
-      "Restart, apply config, or update the gateway in-place (SIGUSR1). Use config.patch for safe partial config updates (merges with existing). Use config.apply only when replacing entire config. Both trigger restart after writing.",
+      "Restart, apply config, compact session, or update the gateway in-place (SIGUSR1). Use config.patch for safe partial config updates (merges with existing). Use config.apply only when replacing entire config. Use compact to request session compaction (rate limited to 1 per 10 min).",
     parameters: GatewayToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -244,6 +249,36 @@ export function createGatewayTool(opts?: {
           note,
           restartDelayMs,
           timeoutMs: timeoutMs ?? DEFAULT_UPDATE_TIMEOUT_MS,
+        });
+        return jsonResult({ ok: true, result });
+      }
+
+      if (action === "compact") {
+        const sessionKey =
+          typeof params.sessionKey === "string" && params.sessionKey.trim()
+            ? params.sessionKey.trim()
+            : opts?.agentSessionKey?.trim() || undefined;
+        if (!sessionKey) {
+          throw new Error("compact requires a sessionKey");
+        }
+        const instructions =
+          typeof params.instructions === "string" && params.instructions.trim()
+            ? params.instructions.trim()
+            : undefined;
+        // Rate limit: max 1 compact per 10 minutes per session
+        const now = Date.now();
+        const lastCompact = compactTimestamps.get(sessionKey) ?? 0;
+        if (now - lastCompact < COMPACT_RATE_LIMIT_MS) {
+          const waitSec = Math.ceil((COMPACT_RATE_LIMIT_MS - (now - lastCompact)) / 1000);
+          return jsonResult({
+            ok: false,
+            error: `Rate limited. Try again in ${waitSec}s.`,
+          });
+        }
+        compactTimestamps.set(sessionKey, now);
+        const result = await callGatewayTool("compact", gatewayOpts, {
+          sessionKey,
+          instructions,
         });
         return jsonResult({ ok: true, result });
       }
