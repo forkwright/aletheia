@@ -1,6 +1,12 @@
 {
-  "last_synced_fact_line": 190,
-  "last_synced_timestamp": null,
-  "synced_memory_files": {},
+  "last_synced_fact_line": 384,
+  "last_synced_timestamp": "2026-02-13T15:35:32.030627+00:00",
+  "synced_memory_files": {
+    "/mnt/ssd/aletheia/nous/chiron/MEMORY.md": 1770996237.5413346,
+    "/mnt/ssd/aletheia/nous/eiron/MEMORY.md": 1770676629.7510993,
+    "/mnt/ssd/aletheia/nous/syl/MEMORY.md": 1769741242.8040416,
+    "/mnt/ssd/aletheia/nous/arbor/MEMORY.md": 1769914842.5052445,
+    "/mnt/ssd/aletheia/nous/syn/MEMORY.md": 1770995944.8043137
+  },
   "archive_id": "archive-9c539a73-0495-4f5a-b837-b95522246cdb"
 }
