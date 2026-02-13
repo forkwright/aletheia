@@ -1,0 +1,17 @@
+{
+  "letta": {
+    "status": "healthy",
+    "last_checked": "2026-02-13T09:29:05-06:00",
+    "error_message": ""
+  },
+  "gcal": {
+    "status": "unhealthy",
+    "last_checked": "2026-02-13T09:29:07-06:00",
+    "error_message": "google.auth.exceptions.RefreshError: ('invalid_grant: Token has been expired or revoked.', {'error': 'invalid_grant', 'error_description': 'Token has been expired or revoked.'})\nCommand failed or timed out"
+  },
+  "nas-ssh": {
+    "status": "unhealthy",
+    "last_checked": "2026-02-13T09:29:07-06:00",
+    "error_message": "Permission denied, please try again.\nCommand failed or timed out"
+  }
+}

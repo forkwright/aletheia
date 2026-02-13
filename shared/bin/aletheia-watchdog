@@ -10,13 +10,70 @@ set +a 2>/dev/null || true
 LOG="/tmp/aletheia-watchdog.log"
 ALERT_FILE="/tmp/aletheia-watchdog-alerts.txt"
 FAIL_COUNT_FILE="/tmp/aletheia-watchdog-fails"
+STATUS_FILE="/mnt/ssd/aletheia/shared/status/services.json"
 MAX_FAILURES=3  # Consecutive failures before attempting checkpoint restore
 MAX_MEM_MB=3500
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"; }
 
+# Initialize status file if it doesn't exist
+if [[ ! -f "$STATUS_FILE" ]]; then
+    mkdir -p "$(dirname "$STATUS_FILE")"
+    echo '{}' > "$STATUS_FILE"
+fi
+
+# Update service status in JSON file
+update_service_status() {
+    local service="$1"
+    local status="$2"
+    local error_msg="$3"
+    local timestamp=$(date -Iseconds)
+    
+    # Use jq to update the JSON file atomically
+    jq --arg service "$service" \
+       --arg status "$status" \
+       --arg timestamp "$timestamp" \
+       --arg error "$error_msg" \
+       '.[$service] = {
+           "status": $status,
+           "last_checked": $timestamp,
+           "error_message": ($error // null)
+       }' "$STATUS_FILE" > "${STATUS_FILE}.tmp" && mv "${STATUS_FILE}.tmp" "$STATUS_FILE"
+}
+
+# Check service health with timeout
+check_service() {
+    local service_name="$1"
+    local check_command="$2"
+    local timeout_seconds="${3:-10}"
+    
+    log "Checking $service_name..."
+    
+    if timeout "$timeout_seconds" bash -c "$check_command" >/dev/null 2>&1; then
+        update_service_status "$service_name" "healthy" ""
+        log "$service_name: OK"
+        return 0
+    else
+        local error_msg=$(timeout "$timeout_seconds" bash -c "$check_command" 2>&1 | tail -1 || echo "Command failed or timed out")
+        update_service_status "$service_name" "unhealthy" "$error_msg"
+        log "$service_name: FAIL - $error_msg"
+        return 1
+    fi
+}
+
 get_fails() { cat "$FAIL_COUNT_FILE" 2>/dev/null || echo 0; }
 set_fails() { echo "$1" > "$FAIL_COUNT_FILE"; }
+
+# --- Service Health Checks ---
+
+# Check Letta service
+check_service "letta" "curl -sf http://localhost:8283/v1/health" 10 || true
+
+# Check gcal CLI
+check_service "gcal" "gcal today -c cody.kickertz@gmail.com" 15 || true
+
+# Check NAS SSH connectivity
+check_service "nas-ssh" "ssh -o ConnectTimeout=5 -o BatchMode=yes 192.168.0.120 echo ok" 10 || true
 
 # --- Gateway Health ---
 GATEWAY_PID=$(pgrep -f "openclaw-gateway\|aletheia gateway" 2>/dev/null | head -1 || true)
