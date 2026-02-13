@@ -389,7 +389,7 @@ def classify_node_label(name: str, edges: list) -> str:
 
     # Tools/software
     if any(w in nl for w in ("docker", "falkordb", "redis", "syncthing", "signal",
-                              "openclaw", "ollama", "taskwarrior", "git",
+                              "aletheia", "ollama", "taskwarrior", "git",
                               "fish", "tmux", "rg", "fd", "bat")):
         return "Tool"
 
@@ -440,7 +440,7 @@ def classify_domain(name: str) -> str:
                     "temba", "utexas", "workstream", "derek", "aaron"],
         "home": ["kendall", "cooper", "luna", "stella", "phoebe", "syl",
                   "pflugerville", "family", "baby"],
-        "infrastructure": ["openclaw", "falkordb", "syncthing", "signal",
+        "infrastructure": ["aletheia", "falkordb", "syncthing", "signal",
                             "docker", "nas", "metis", "worker", "tailscale",
                             "cron", "systemd", "nginx", "mullvad", "redis"],
         "cognition": ["nous", "metaxy", "dianoia", "distill", "compaction",

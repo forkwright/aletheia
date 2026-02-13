@@ -43,9 +43,9 @@
     {
       "id": "infrastructure",
       "name": "Infrastructure Management",
-      "description": "Manage Clawdbot config, tools, shared resources",
+      "description": "Manage Aletheia config, tools, shared resources",
       "examples": [
-        "Update Clawdbot",
+        "Update Aletheia",
         "Add a new cron job"
       ]
     }

@@ -1,15 +1,16 @@
 {
-  "name": "@openclaw/memory-core",
-  "version": "2026.2.1",
-  "description": "OpenClaw core memory search plugin",
+  "name": "@aletheia/memory-core",
+  "version": "2026.2.12",
+  "private": true,
+  "description": "Aletheia core memory search plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "aletheia": "workspace:*"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.26"
+    "aletheia": ">=2026.1.26"
   },
-  "openclaw": {
+  "aletheia": {
     "extensions": [
       "./index.ts"
     ]
