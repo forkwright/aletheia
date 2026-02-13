@@ -143,7 +143,7 @@ DOMAIN_PATTERNS = {
         "home_city", "family", "house", "baby",
     ],
     "infrastructure": [
-        "openclaw", "aletheia", "falkordb", "syncthing", "signal",
+        "aletheia", "falkordb", "syncthing", "signal",
         "docker", "nas", "laptop", "server-host", "tailscale",
         "cron", "systemd", "nginx", "caddy", "mullvad",
     ],

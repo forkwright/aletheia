@@ -82,10 +82,10 @@ def generate_syn():
     lines.append("- `nous-health` / `nous-contracts show X` / `audit-all-nous`")
     lines.append("")
     
-    # OpenClaw
-    lines.append("## OpenClaw")
-    lines.append("- Validate: `openclaw doctor`")
-    lines.append("- Patch after update: `patch-openclaw`")
+    # Aletheia
+    lines.append("## Aletheia")
+    lines.append("- Validate: `aletheia doctor`")
+    lines.append("- Patch after update: `patch-runtime`")
     lines.append("- Config: bindings use `channel` not `provider`; model IDs need date suffix (pre-4.6)")
     lines.append("")
     

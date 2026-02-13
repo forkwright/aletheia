@@ -1,19 +1,19 @@
 #!/bin/bash
 set -eo pipefail
-# Patch OpenClaw after updates
-# Run after: npm update -g openclaw
+# Patch Aletheia runtime after updates
+# Run after: npm update -g aletheia
 #
 # Tracked bugs we're patching around:
 # 1. Signal group ID case sensitivity (still present in 2026.2.1)
-#    - File: /usr/lib/node_modules/openclaw/dist/channels/plugins/normalize/signal.js
+#    - File: /usr/lib/node_modules/aletheia/dist/channels/plugins/normalize/signal.js
 #    - Bug: .toLowerCase() on base64 group IDs breaks matching
 #    - Fix: Remove .toLowerCase() call
 
 set -e
 
-SIGNAL_NORMALIZE="/usr/lib/node_modules/openclaw/dist/channels/plugins/normalize/signal.js"
+SIGNAL_NORMALIZE="/usr/lib/node_modules/aletheia/dist/channels/plugins/normalize/signal.js"
 
-echo "Applying OpenClaw patches..."
+echo "Applying Aletheia patches..."
 
 # Patch 1: Signal group ID case sensitivity
 if grep -q '`group:\${id}`\.toLowerCase()' "$SIGNAL_NORMALIZE" 2>/dev/null; then
@@ -27,7 +27,7 @@ fi
 
 # Patch 2: Aletheia dynamic context injection
 # If CONTEXT.md exists in workspace, load only SOUL.md + CONTEXT.md + MEMORY.md
-WORKSPACE_JS="/usr/lib/node_modules/openclaw/dist/agents/workspace.js"
+WORKSPACE_JS="/usr/lib/node_modules/aletheia/dist/agents/workspace.js"
 if grep -q "ALETHEIA PATCH" "$WORKSPACE_JS" 2>/dev/null; then
     echo "○ Already patched: Dynamic context injection"
 else
@@ -35,4 +35,4 @@ else
     echo "✓ Patched: Dynamic context injection"
 fi
 
-echo "Done. Restart openclaw if it was running."
+echo "Done. Restart aletheia if it was running."
