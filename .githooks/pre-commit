@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Pre-commit: fast typecheck only — full lint+test runs in CI
+cd "$(git rev-parse --show-toplevel)/infrastructure/runtime" || exit 0
+npm run typecheck

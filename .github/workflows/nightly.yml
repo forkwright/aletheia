@@ -1,0 +1,72 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # 02:00 CST
+  workflow_dispatch:
+
+jobs:
+  full-coverage-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
+      - run: cd infrastructure/runtime && npm run test:coverage
+      - run: |
+          node -e "
+            const cov = require('./infrastructure/runtime/coverage/coverage-summary.json');
+            const total = cov.total;
+            const checks = {
+              statements: { actual: total.statements.pct, min: 60 },
+              branches: { actual: total.branches.pct, min: 50 },
+              functions: { actual: total.functions.pct, min: 60 },
+              lines: { actual: total.lines.pct, min: 60 },
+            };
+            let failed = false;
+            for (const [name, check] of Object.entries(checks)) {
+              if (check.actual < check.min) {
+                console.error(name + ': ' + check.actual + '% < ' + check.min + '%');
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          "
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
+      - run: cd infrastructure/runtime && npm audit --json > audit-results.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit
+          path: infrastructure/runtime/audit-results.json
+          retention-days: 30
+
+  dead-code-detection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
+      - run: cd infrastructure/runtime && npx knip --reporter json > dead-code.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dead-code
+          path: infrastructure/runtime/dead-code.json
+          retention-days: 30

@@ -4,7 +4,7 @@ import { validateUrl } from "../organon/built-in/ssrf-guard.js";
 
 const log = createLogger("semeion:preprocess");
 
-const URL_REGEX = /https?:\/\/[^\s<>\[\]()'"]+/g;
+const URL_REGEX = /https?:\/\/[^\s<>[\]()'"]+/g;
 const MAX_URLS = 3;
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_PREVIEW_CHARS = 1500;

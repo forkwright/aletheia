@@ -1,0 +1,54 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 10 * * 1" # Monday 04:00 CST
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
+      - name: Audit production dependencies
+        run: cd infrastructure/runtime && npm audit --omit=dev --audit-level=high
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install pip-audit
+      - name: Audit memory sidecar
+        working-directory: infrastructure/memory/sidecar
+        run: pip-audit . 2>&1 || true
+      - name: Audit prosoche
+        working-directory: infrastructure/prosoche
+        run: pip-audit . 2>&1 || true
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified

@@ -96,8 +96,8 @@ program
         console.log("Agents:");
         for (const n of nous) {
           const tokens = n["tokens"] as Record<string, number> | null;
-          const tokenInput = tokens?.["input"];
-          const inp = tokenInput != null ? `${Math.round(tokenInput / 1000)}k in` : "0k";
+          const tokenInput = tokens?.["input"] as number | undefined;
+          const inp = tokenInput !== null && tokenInput !== undefined ? `${Math.round(tokenInput / 1000)}k in` : "0k";
           console.log(`  ${n["name"]}: ${n["activeSessions"]} sessions, ${n["totalMessages"]} msgs, ${inp}`);
         }
         console.log();
