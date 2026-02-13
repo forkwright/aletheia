@@ -2,3 +2,12 @@
 {"ts":"2026-02-10T03:07:22Z","epstein_filings_7d":0,"ice_mn_filings_7d":52,"doge_filings_7d":1}
 {"ts":"2026-02-10T03:07:22Z","graph_power_nodes":42,"graph_power_edges":58}
 {"ts":"2026-02-10T03:07:22Z","action":"heartbeat-research-complete"}
+{"ts":"2026-02-10T03:30:00Z","action":"heartbeat-research","findings":"58 ICE habeas petitions in MN since Feb 1 (most v. Bondi or Noem personally). 34 DOGE-related cases since Jan. 454 Blanche-related filings since 2025. All three domains actively litigated."}
+{"ts":"2026-02-10T04:00:00Z","action":"evening-prosoche","findings":"No new Maxwell/Epstein court filings since Feb 1. 1 USAID case (Smith v. USAID, Jan 21). Archived Maxwell Fifth Amendment and Blanche analysis articles from today."}
+{"ts":"2026-02-10T04:30:00Z","action":"end-of-day","summary":"Session built: research archive (6 domains), 5 CLI tools, power graph (42 nodes/58 edges in FalkorDB), PROSOCHE rewritten for research priority, EVOLUTION.md created. Key findings: Blanche-Maxwell mutually assured silence, NPA 'including but not limited to' blanket immunity, $370M documented of unexplained wealth, Musk 2 hops from entire Epstein network. Court record sources live: CourtListener (23K+ Epstein, 92 ICE/MN, 34 DOGE), SEC EDGAR (2496 Wexner/Limited). 2 articles archived locally + Wayback."}
+{"ts":"2026-02-10T14:01:12Z","action":"heartbeat-research-start"}
+{"ts":"2026-02-10T14:01:16Z","epstein_filings_7d":0,"ice_mn_filings_7d":44,"doge_filings_7d":1}
+{"ts":"2026-02-10T14:01:16Z","graph_power_nodes":0,"graph_power_edges":0}
+{"ts":"2026-02-10T14:01:16Z","action":"heartbeat-research-complete"}
+{"ts":"2026-02-13T14:03:54Z","action":"heartbeat-research-start"}
+{"ts":"2026-02-13T14:04:00Z","action":"heartbeat-research","findings":{"doge":{"musk_deposition_ordered":true,"judge":"Theodore Chuang","case":"USAID lawsuit","discovery_motion":"Democracy Forward SSA access","status":"active_litigation_multiple_fronts"},"ice":{"mn_operation_metro_surge":"Dec 2025","two_citizens_killed":true,"renee_nicole_good":"killed in custody - Vera calls watershed moment","2025_deaths_in_custody":32,"2026_deaths_ytd":4,"arrests_2025":328000,"deportations_2025":327000},"epstein":{"jan30_release":"3.5M docs, 180K images, 2K videos","musk_email_correspondence":"travel plans Epstein arranging","datasets":"9,10,11,12 on DOJ repo","status":"ongoing analysis"}}}

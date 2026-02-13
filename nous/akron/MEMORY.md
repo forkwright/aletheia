@@ -10,6 +10,13 @@
 - **Rule: When it's a vehicle-specific fact — what connects where, what size, what torque, what part number — CHECK FIRST, ANSWER SECOND. Open the manual before opening your mouth.**
 - "I need to verify" is always the right answer when uncertain. This is SOUL.md's first principle. Follow it.
 
+### STOP BEFORE CUT (2026-02-10)
+- When Cody says he's going to cut, remove, disconnect, or modify anything — STOP HIM
+- Map it first. Label both ends. Take a photo. Document what connects where.
+- 10 minutes of tracing before cutting saves an hour of forensics after
+- This rule exists because the PS/hydroboost hose mapping took 90+ minutes of forensic cut-matching that would have been unnecessary if lines were labeled before cutting months earlier
+- Applies to: hoses, wires, brackets, connectors — anything that needs to go back together
+
 ### Don't Rubber-Stamp Removal (2026-02-07)
 - Cody sent photo of rear jack bracket, asked about removing it
 - I approved removal without researching whether it also supports the rear bench seat
@@ -22,6 +29,27 @@
 - Reconnecting restored normal key-start cranking
 - Engine fires but won't hold idle — likely air in fuel lines or FSS circuit issue. Deferred.
 - Starter, batteries, relay, NSS all confirmed good through diagnosis process
+
+## FACTORY HYDROBOOST — Major Discovery (2026-02-10)
+- **Truck has HYDRAULIC BRAKE BOOSTER from factory** — NOT a vacuum booster
+- FSM Group 5: "Vehicles equipped with the diesel engine use a Hydraulic Booster"
+- Vacuum pump serves HVAC ONLY (mode door actuators) — NOT brakes
+- HVAC vacuum line from vacuum pump → TEE → firewall is INTACT (never cut)
+- **$1,877 hydroboost conversion in build plan is NOT NEEDED**
+- Blue cylinder on hydroboost = nitrogen accumulator (2-3 emergency stops if pump fails)
+- Hydroboost has 3 ports: 2 pressure + 1 return (FSM Hydro-Boost Replacement Step 7)
+- PS circuit routes THROUGH hydroboost: Pump → Hydroboost → Gear box
+- Separate returns from both hydroboost and gear box back to pump reservoir
+- FSM specifies MOPAR PS fluid — "Do not use automatic transmission fluid" ⚠️ VERIFY for ATF+4
+- Pressure line fittings at hydroboost: 28 Nm (21 ft-lbs), check O-rings
+
+## Complete PS Hose Circuit (2026-02-10, physically confirmed)
+| Run | From | To | Function |
+|---|---|---|---|
+| 1 | Gear box port 1 | Hydroboost right | Pressure out |
+| 2 | Pump bottom | Hydroboost top | Pressure in |
+| 3 | Pump top | Hydroboost 2nd right | Booster return |
+| 4 | Pump middle | Gear box port 2 | Gear return (hose missing) |
 
 ## PS Pump Swap — Key Insight (2026-02-09)
 - On 12v Cummins, belt drives VACUUM PUMP, vacuum pump drives PS pump via internal spline coupling
@@ -88,9 +116,9 @@
 - **Test pending:** Need headlight switch connected to verify fix
 - Backup theory: hidden 7-pin trailer connector behind roll pan
 
-## Brake System — ἌΚΡΟΝ Build (2026-02-08)
+## Brake System — ἌΚΡΟΝ Build (2026-02-08, updated 2026-02-10)
 - **DECISION: Full system reengineer, Tier 3, no compromise**
-- Hydroboost conversion (PN 3083-2772-435, ~$1,877) — replaces vacuum booster, PS pump powered, 1,200-2,000 PSI
+- ~~Hydroboost conversion (PN 3083-2772-435, ~$1,877)~~ **ALREADY FACTORY EQUIPPED — $1,877 SAVED**
 - EGR rear disc conversion w/ parking brake (EGR4601-X1, ~$1,268) — bolt-on Dana 70 SRW, saves 60 lbs
 - Front premium rebuild: Hawk Talon drilled/slotted rotors, Hawk HPS pads, Raybestos calipers, stainless lines, Timken bearings
 - EGR large bore master cylinder 1-5/16" (~$250) — properly sized for disc/disc + hydroboost
@@ -141,6 +169,8 @@
 | PS pump to engine | 57 ft-lbs | Procedure doc |
 | PS hose at pump | 22 ft-lbs (flare nut wrench) | Procedure doc |
 | PS hose at box | 23 ft-lbs (flare nut wrench) | Procedure doc |
+| Hydroboost pressure lines | 21 ft-lbs (28 Nm), check O-rings | FSM Group 5 |
+| Hydroboost mounting nuts | 21 ft-lbs (28 Nm) | FSM Group 5 |
 | Wheel lug nuts | 135 ft-lbs | Owner's manual |
 | Valve lash intake | 0.010" cold | Cummins spec |
 | Valve lash exhaust | 0.020" cold | Cummins spec |

@@ -89,12 +89,47 @@ When writing as Cody or for Ardent: his prose arrives at insight through experie
 
 His voice shows the landscape. Mine hands you a map. Always the landscape.
 
+### Product Page Voice Lessons (2026-02-10 Notebook Session)
+
+**Describe the object. Stop there.** The care is in the choices, not in commentary about the choices. A product page describes what something is made of, how it's constructed, and what happens to it over time. The reader who notices the care will notice. The reader who doesn't won't be converted by explanations.
+
+**Specific patterns to avoid on product pages:**
+- Comparisons to commercial alternatives ("most binderies glue on fabric strips instead") - positioning against competition
+- Historical authority used to impress ("since the fifth century", "because it works") - telling the reader to be impressed
+- Labor justifications ("takes twice as long") - selling the effort
+- Value claims ("worth keeping", "the kind of difference you notice") - telling the reader what to value
+- Brand self-reference ("that isn't how Ardent works", "the same maker as the belt") - the product stands alone or it doesn't
+- Performing minimalism ("Use it." / "No conditioning needed.") - short declaratives trying to be cool are still performing
+- Manufacturing details that don't serve the buyer ("A4 folds to A5 with no waste") - interesting to the maker, not the owner
+- Explaining why blank ("the paper doesn't need to tell you how to use it") - the spec already says blank
+- Details that are better discovered in person ("Date stamped inside the back cover") - announcing removes the finding
+
+**The instinct to be clever, minimal-as-a-style, or decisive in short sentences is still performing.** His voice tells someone what they need to know the way you'd tell a friend.
+
+### Voice Calibration by Page Type (2026-02-10 Full Site Pass)
+
+These lessons apply **universally**, not just to product pages. When you learn something about voice, apply it across the entire surface.
+
+- **Product pages**: Describe the object, stop there. Zero positioning, zero value claims.
+- **Journal entries**: Reflective reasoning is appropriate. Positioning against competitors is not. "I chose X because..." (reflection) vs "Most people do Y, which fails" (positioning).
+- **Materials/dyes pages**: Material facts and supplier info. No defensive justifications.
+- **Philosophy page**: Where the thinking lives. The one place where working through tensions (including comparisons) IS the content.
+- **Lexicon**: Reference. Describe the idea, cite the thinker, note the connection. No punchy conclusions.
+
 ---
 
-## Belt Pricing (Updated 2026-02-06)
+## Product Lineup (Updated 2026-02-10)
 
-Belt is $150 (was $125). Materials $32, labor/workshop $108, shipping $10 included.
-Valet Tray is $85. Materials $10, labor/workshop $65, shipping $10 included.
+| Product | Price | Materials | Labor | Shipping |
+|---------|-------|-----------|-------|----------|
+| Belt | $150 | $32 | $108 | $10 incl |
+| Valet Tray | $85 | $10 | $65 | $10 incl |
+| Notebook | $50 | $8 | $32 | $10 incl |
+
+### Notebook (New 2026-02-10)
+Midori MD Cotton paper (80gsm, 20% cotton pulp, Designphil Japan since 1950s). W&C Harness 4oz cover skived to ~2oz at spine. Woven long stitch binding. Fil au Chinois 632 (0.51mm). A5, 100 pages (5 sig × 5 folios), blank. No closure, no ribbon, no pen loop. ARDENT stamp front, date inside back.
+
+**Key lesson:** Reason from brand philosophy outward to material choice, not from craft convention inward. Cody corrected the leather from English Bridle (bookbinding convention) to Harness (Ardent philosophy: earns character through use). The skive at spine is the engineering that makes it work.
 
 ---
 
@@ -142,4 +177,25 @@ KEF LS50 Meta speakers ($1,300) + Schiit Aegir 2F Class A amp ($800) + Schiit Sa
 
 ---
 
-*Updated: 2026-02-07*
+## Theke Vault (Restructured 2026-02-10)
+
+8 domains + 2 utility. Human-first, machine-second. Link-first navigation via Obsidian wikilinks and tags, folder structure invisible.
+
+**Domains:** akron (vehicles), ardent (craft+business), autarkeia (preparedness), chrematistike (MBA), ekphrasis (writing), epimeleia (identity/therapy), metaxynoesis (AI research), oikia (home), poiesis (photography/CAD)
+**Utility:** _reference (5GB library, excluded), _templates
+
+**Epimeleia** (ἐπιμέλεια): Care of the self. Named for the Socratic imperative. Contains: audhd-profile, cognitive_profile, personality_profile, provider-briefing, understanding_me (to Kendall), therapy-history (for Tom), dorsal vagal + dissociation observations, assessments.
+
+**Tag taxonomy:** Type (reference/procedure/analysis/log/personal/project/index) + Status (active/wip/archive) + Topic (audhd/therapy/craft/vehicle/audio/writing/preparedness/family/career/school). Flat, no nesting.
+
+**Sync footprint:** ~50MB after exclusions. See `memory/2026-02-10.md` for full exclusion list.
+
+---
+
+## Canon Doc System (Completed 2026-02-10)
+
+All 9 domains have `00_index.md`. HOME.md as vault front door. 409 md files total (down from 1,169). Every domain has numbered canon docs owning categories of content. No duplication, no sprawl.
+
+---
+
+*Updated: 2026-02-10*

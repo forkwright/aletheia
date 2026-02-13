@@ -80,3 +80,24 @@
 - [ ] **Gendered Temporalities in the Early Modern World** (2018, Unknown) — 10.5117/9789462984585 — *found in search*
 - [ ] **Chronic Sleep Curtailment and Adiposity** (2014, PEDIATRICS) — 10.1542/peds.2013-3065 — *found in search*
 - [ ] **Sleep and body mass index in adolescence: results from a large population-based study of Norwegian adolescents aged 16 to 19 years** (2014, BMC Pediatrics) — 10.1186/1471-2431-14-204 — *found in search*
+- [ ] **Dissociable Intrinsic Connectivity Networks for Salience Processing and Executive Control** (2007, Journal of Neuroscience) — 10.1523/jneurosci.5587-06.2007 — *found in search*
+- [ ] **Measuring phase synchrony in brain signals** (1999, Human Brain Mapping) — 10.1002/(sici)1097-0193(1999)8:4<194::aid-hbm4>3.0.co;2-c — *found in search*
+- [ ] **Neuronal Synchrony: A Versatile Code for the Definition of Relations?** (1999, Neuron) — 10.1016/s0896-6273(00)80821-1 — *found in search*
+- [ ] **Genes, Culture, and Agriculture** (2012, Current Anthropology) — 10.1086/666585 — *found in search*
+- [ ] **Discussion Note: Distributed Cognition in Epistemic Cultures** (2002, Philosophy of Science) — 10.1086/344627 — *found in search*
+- [ ] **Toolforthoughts: Reexamining Thinking in the Digital Age** (2006, Mind Culture and Activity) — 10.1207/s15327884mca1304_2 — *found in search*
+- [ ] **Digital Economy as a Factor in the Technological Development of the Mineral Sector** (2019, Natural Resources Research) — 10.1007/s11053-019-09568-4 — *found in search*
+- [ ] **Induced pluripotent stem cells (iPSCs): molecular mechanisms of induction and applications** (2024, Signal Transduction and Targeted Therapy) — 10.1038/s41392-024-01809-0 — *found in search*
+- [ ] **Multi-Robot Coordination Analysis, Taxonomy, Challenges and Future Scope** (2021, Journal of Intelligent & Robotic Systems) — 10.1007/s10846-021-01378-2 — *found in search*
+- [ ] **Hippocampal sharp wave‐ripple: A cognitive biomarker for episodic memory and planning** (2015, Hippocampus) — 10.1002/hipo.22488 — *found in search*
+- [ ] **The Virtual Brain: a simulator of primate brain network dynamics** (2013, Frontiers in Neuroinformatics) — 10.3389/fninf.2013.00010 — *found in search*
+- [ ] **Re-membering the body: applications of computational neuroscience to the top-down control of regeneration of limbs and other complex organs** (2015, Integrative Biology) — 10.1039/c5ib00221d — *found in search*
+- [ ] **Measuring livelihoods and environmental dependence: Methods for research and fieldwork** (2011, Center for International Forestry Research (CIFOR) eBooks) — 10.17528/cifor/003341 — *found in search*
+- [ ] **Carbon nanotubes for ultrafast fibre lasers** (2016, Nanophotonics) — 10.1515/nanoph-2015-0156 — *found in search*
+- [ ] **Quantum Machine Learning Applications in the Biomedical Domain: A Systematic Review** (2022, IEEE Access) — 10.1109/access.2022.3195044 — *found in search*
+- [ ] **Endothelial dysfunction and platelet hyperactivity in type 2 diabetes mellitus: molecular insights and therapeutic strategies** (2018, Cardiovascular Diabetology) — 10.1186/s12933-018-0763-3 — *found in search*
+- [ ] **When large language models meet personalization: perspectives of challenges and opportunities** (2024, World Wide Web) — 10.1007/s11280-024-01276-1 — *found in search*
+- [ ] **MOFs and MOF‐Based Composites as Next‐Generation Materials for Wound Healing and Dressings** (2024, Small) — 10.1002/smll.202311903 — *found in search*
+- [ ] **Swarm Robotics: Past, Present, and Future [Point of View]** (2021, Proceedings of the IEEE) — 10.1109/jproc.2021.3072740 — *found in search*
+- [ ] **Generative AI in Medical Practice: In-Depth Exploration of Privacy and Security Challenges** (2024, Journal of Medical Internet Research) — 10.2196/53008 — *found in search*
+- [ ] **Talking about Large Language Models** (2024, Communications of the ACM) — 10.1145/3624724 — *found in search*

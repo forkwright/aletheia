@@ -99,3 +99,15 @@ Confidence: Medium-High for the conceptual mapping. Low for the formal mathemati
 - [2026-02-08 05:43] **info**: `10.1016/j.smrv.2010.11.002` → 1 results
 - [2026-02-08 05:43] **info**: `10.1542/peds.2015-1486` → 1 results
 - [2026-02-08 05:43] **info**: `10.1542/peds.2011-3467` → 1 results
+- [2026-02-13 08:33] **search**: `Singer Gray visual feature integration temporal correlation 1995` → 3 results
+- [2026-02-13 08:33] **search**: `Visual feature integration temporal correlation hypothesis Singer Gray 1995` → 0 results
+- [2026-02-13 08:33] **info**: `10.1146/ANNUREV.NE.18.030195.003011` → 1 results
+- [2026-02-13 08:34] **fetch**: `2408.04514` → 1 results
+- [2026-02-13 08:34] **bib**: `10.1146/ANNUREV.NE.18.030195.003011` → 1 results
+- [2026-02-13 08:34] **search**: `Hutchins distributed cognition 1995` → 3 results
+- [2026-02-13 08:34] **cite**: `10.1146/ANNUREV.NE.18.030195.003011` → 0 results
+- [2026-02-13 08:36] **search**: `multi-agent emergence topology distributed cognition 2024` → 10 results
+- [2026-02-13 08:36] **search**: `agentic cognitive mesh emergence multi-agent lateral topology` → 5 results
+- [2026-02-13 08:36] **search**: `Poincare section multi-agent AI system attractor` → 5 results
+- [2026-02-13 08:36] **search**: `Riedl multi-agent emergence 2024` → 5 results
+- [2026-02-13 08:36] **search**: `emergence safety multi-agent 2024 arxiv` → 3 results
