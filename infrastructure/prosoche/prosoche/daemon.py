@@ -11,6 +11,7 @@ import anyio
 from loguru import logger
 
 from .config import get_nous_ids, get_signal_interval, is_quiet_hours, load_config
+from .prediction import ActivityModel, get_predictive_signals
 from .rhythm import get_rhythm_signals
 from .scoring import score_nous
 from .signals import SignalBundle
@@ -47,6 +48,9 @@ class ProsocheDaemon:
             max_total_per_hour=budget_cfg.get("max_wakes_total_per_hour", 6),
             cooldown_seconds=budget_cfg.get("cooldown_after_wake_seconds", 300),
         )
+
+        data_dir = Path(self.config.get("data_dir", "/mnt/ssd/aletheia/shared/prosoche"))
+        self.activity_model = ActivityModel(data_dir)
 
     async def run(self) -> None:
         logger.info(f"Prosoche starting — {len(self.nous_ids)} nous, {len(COLLECTORS)} signals")
@@ -100,6 +104,9 @@ class ProsocheDaemon:
         rhythm_signals = get_rhythm_signals(self.config)
         new_signals.extend(rhythm_signals)
 
+        predictive_signals = get_predictive_signals(self.activity_model, self.config)
+        new_signals.extend(predictive_signals)
+
         if new_signals:
             self.bundle = SignalBundle(signals=new_signals, collected_at=now)
 
@@ -122,6 +129,12 @@ class ProsocheDaemon:
                 woke = await trigger_wake(score, self.config)
                 if woke:
                     self.budget.record_wake(nous_id)
+                    # Record activity for predictive model
+                    import zoneinfo
+                    from datetime import datetime
+                    tz_name = self.config.get("quiet_hours", {}).get("timezone", "America/Chicago")
+                    tz = zoneinfo.ZoneInfo(tz_name)
+                    self.activity_model.record_activity(nous_id, datetime.now(tz))
 
     def stop(self) -> None:
         self.running = False

@@ -20,15 +20,20 @@ import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
+import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
+import { cleanupTtsFiles } from "./semeion/tts.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
+import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
+import { createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -44,6 +49,8 @@ import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { CompetenceModel } from "./nous/competence.js";
+import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
 
 const log = createLogger("aletheia");
@@ -91,6 +98,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register(factRetractTool);
+  tools.register(traceLookupTool);
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
@@ -106,6 +114,14 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   for (const planTool of createPlanTools()) {
     tools.register(planTool);
   }
+
+  // Self-authoring tools — agents can create custom tools at runtime
+  const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
+  for (const authorTool of createSelfAuthorTools(defaultWorkspace, tools)) {
+    tools.register(authorTool);
+  }
+  const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
+  if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
 
   log.info(`Registered ${tools.size} tools`);
 
@@ -124,6 +140,14 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Competence model + uncertainty tracker — wired into manager for runtime use
+  const sharedRoot = paths.root;
+  const competence = new CompetenceModel(sharedRoot);
+  const uncertainty = new UncertaintyTracker(sharedRoot);
+  manager.setCompetence(competence);
+  manager.setUncertainty(uncertainty);
+  log.info("Competence model and uncertainty tracker initialized");
+
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {
     handleMessage: manager.handleMessage.bind(manager),
@@ -131,7 +155,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
-  tools.register(createSessionsSpawnTool(auditDispatcher));
+  tools.register(createSessionsSpawnTool(auditDispatcher, sharedRoot));
 
   return {
     config,
@@ -174,6 +198,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Mount MCP server routes
   const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
   app.route("/mcp", mcpRoutes);
+
+  // Mount Web UI
+  const uiRoutes = createUiRoutes(config, runtime.manager, runtime.store);
+  app.route("/", uiRoutes);
 
   startGateway(app, port);
   log.info(`Aletheia gateway listening on port ${port}`);
@@ -271,6 +299,15 @@ export async function startRuntime(configPath?: string): Promise<void> {
       });
       runtime.tools.register(messageTool);
       log.info("Message tool registered with Signal sender");
+
+      const voiceTool = createVoiceReplyTool({
+        send: async (to: string, text: string, attachments: string[]) => {
+          const target = parseTarget(to, defaultAccount);
+          await sendMessage(firstClient, target, text, { attachments });
+        },
+      });
+      runtime.tools.register(voiceTool);
+      log.info("Voice reply tool registered");
     } else {
       runtime.tools.register(createMessageTool());
     }
@@ -318,8 +355,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
+  // TTS file cleanup — remove stale audio files
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    cleanupTtsFiles();
   }, 60 * 60 * 1000);
 
   // --- Shutdown ---

@@ -11,6 +11,8 @@ export interface ToolCallTrace {
   output: string;
   durationMs: number;
   isError: boolean;
+  reversibility?: string;
+  simulationRequired?: boolean;
 }
 
 export interface CrossAgentTrace {
