@@ -1,1 +1,0 @@
-../../../theke/oikia/local-resources.md

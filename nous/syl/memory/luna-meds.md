@@ -1,1 +1,0 @@
-../../../theke/oikia/luna-meds.md

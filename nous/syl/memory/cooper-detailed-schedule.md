@@ -1,1 +1,0 @@
-../../../theke/oikia/cooper-detailed-schedule.md

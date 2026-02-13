@@ -1,1 +1,0 @@
-../../../theke/oikia/amazon-buy-list.md

@@ -1,1 +1,0 @@
-../../../theke/oikia/household-basics.md
