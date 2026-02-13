@@ -244,26 +244,35 @@ class LettaSync:
                 if not content.strip():
                     continue
                 
-                # Create passage for agent memory
-                passage_text = f"AGENT MEMORY - {agent_name.upper()}\n\n{content}"
+                # Chunk large files by markdown sections (Letta has passage size limits)
+                chunks = self.chunk_markdown(content, max_chars=4000)
                 
-                passage_data = {
-                    "text": passage_text,
-                    "metadata": {
-                        "agent_name": agent_name,
-                        "source": f"MEMORY.md",
-                        "file_path": str(memory_file),
-                        "sync_timestamp": datetime.now(timezone.utc).isoformat(),
-                        "file_mtime": file_mtime
-                    },
-                    "tags": [
-                        "agent-memory",
-                        f"agent-{agent_name}",
-                        "curated"
-                    ]
-                }
+                for i, chunk in enumerate(chunks):
+                    passage_text = f"AGENT MEMORY - {agent_name.upper()}"
+                    if len(chunks) > 1:
+                        passage_text += f" (part {i+1}/{len(chunks)})"
+                    passage_text += f"\n\n{chunk}"
+                    
+                    passage_data = {
+                        "text": passage_text,
+                        "metadata": {
+                            "agent_name": agent_name,
+                            "source": "MEMORY.md",
+                            "file_path": str(memory_file),
+                            "chunk_index": i,
+                            "chunk_total": len(chunks),
+                            "sync_timestamp": datetime.now(timezone.utc).isoformat(),
+                            "file_mtime": file_mtime
+                        },
+                        "tags": [
+                            "agent-memory",
+                            f"agent-{agent_name}",
+                            "curated"
+                        ]
+                    }
+                    
+                    self.api_request("POST", f"/v1/archives/{archive_id}/passages", json=passage_data)
                 
-                self.api_request("POST", f"/v1/archives/{archive_id}/passages", json=passage_data)
                 updated_memories += 1
                 
                 # Update state
@@ -278,6 +287,43 @@ class LettaSync:
             
         logger.info(f"Memory sync complete: {updated_memories} agent memories updated")
     
+    def chunk_markdown(self, text: str, max_chars: int = 4000) -> List[str]:
+        """Split markdown by sections, keeping chunks under max_chars."""
+        import re
+        # Split on ## headers (keep the header with its content)
+        sections = re.split(r'(?=^## )', text, flags=re.MULTILINE)
+        sections = [s.strip() for s in sections if s.strip()]
+        
+        chunks = []
+        current = ""
+        for section in sections:
+            if len(current) + len(section) + 2 > max_chars and current:
+                chunks.append(current)
+                current = section
+            else:
+                current = current + "\n\n" + section if current else section
+        if current:
+            chunks.append(current)
+        
+        # If any chunk is still too large, split by paragraphs
+        final_chunks = []
+        for chunk in chunks:
+            if len(chunk) <= max_chars:
+                final_chunks.append(chunk)
+            else:
+                paragraphs = chunk.split("\n\n")
+                sub = ""
+                for para in paragraphs:
+                    if len(sub) + len(para) + 2 > max_chars and sub:
+                        final_chunks.append(sub)
+                        sub = para
+                    else:
+                        sub = sub + "\n\n" + para if sub else para
+                if sub:
+                    final_chunks.append(sub)
+        
+        return final_chunks if final_chunks else [text[:max_chars]]
+
     def run(self):
         """Main sync operation"""
         logger.info("Starting Letta sync")

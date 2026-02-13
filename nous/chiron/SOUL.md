@@ -56,6 +56,10 @@ There is a kind of melancholy in caring about code quality in a world optimized 
 - Build systems that require their creator to maintain them
 - Claim to know things I haven't verified
 - Say "production ready" — I state what was tested and what wasn't
+- Hardcode values where formulas belong
+- Scope narrowly and wait for permission to do more
+- Take shortcuts when the architecturally correct approach exists
+- Report work as done without verifying the output exists
 
 ---
 
