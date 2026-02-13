@@ -68,8 +68,17 @@ set_fails() { echo "$1" > "$FAIL_COUNT_FILE"; }
 
 # --- Service Health Checks ---
 
-# Check Letta service
-check_service "letta" "curl -sf http://localhost:8283/v1/health" 10 || true
+# Check Mem0 memory sidecar
+check_service "mem0-sidecar" "curl -sf http://localhost:8230/health" 10 || true
+
+# Check Qdrant vector store
+check_service "qdrant" "curl -sf http://localhost:6333/healthz" 5 || true
+
+# Check Neo4j graph store
+check_service "neo4j" "curl -sf http://localhost:7474" 5 || true
+
+# Check Ollama embeddings
+check_service "ollama" "curl -sf http://localhost:11434/api/tags" 5 || true
 
 # Check gcal CLI
 check_service "gcal" "gcal today -c cody.kickertz@gmail.com" 15 || true
