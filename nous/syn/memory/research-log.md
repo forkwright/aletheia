@@ -111,3 +111,4 @@ Confidence: Medium-High for the conceptual mapping. Low for the formal mathemati
 - [2026-02-13 08:36] **search**: `Poincare section multi-agent AI system attractor` → 5 results
 - [2026-02-13 08:36] **search**: `Riedl multi-agent emergence 2024` → 5 results
 - [2026-02-13 08:36] **search**: `emergence safety multi-agent 2024 arxiv` → 3 results
+- [2026-02-13 09:25] **search**: `multi-agent emergence topology` → 0 results

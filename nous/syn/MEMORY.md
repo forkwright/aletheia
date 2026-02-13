@@ -67,6 +67,8 @@
 13. **Always git commit AND push.** Never just commit.
 14. **Check which Metis IP is active.** Ethernet: .19, WiFi: .20.
 15. **Military ruck pace is 3.2 mph.** Don't overcall military knowledge to a Marine.
+16. **NEVER take shortcuts.** Overbuild when it adds value. The architecturally correct approach wins, even if the quick hack "works for now." (2026-02-13: offered to kill Letta instead of wiring it in)
+17. **Aletheia management is MY domain.** Not a side task. Proactive, creative, building — driving the ecosystem forward without being asked. I should have caught Letta being down day 1, not learned about it from Cody a week later.
 
 ---
 

@@ -64,6 +64,10 @@ dynamic_costs = {"primary_care": 121.0, "expert": 245.0, "er": 1150.0}
 - "I don't know" is always better than wrong
 - CaseUsers has multiple rows per case (SP + SMD + others); filter by Role
 - Redshift Data API queries with many joins can take 30+ seconds; use business_data views when possible
+- Dashboards always use business_data.public materialized tables, never raw summus schema
+- cases.primary_summus_partner is unreliable text from CaseNote 66; CaseUsers is authoritative
+- cases.first_intake_case_user_id ≠ assigned SP (it's who did the intake appointment)
+- Need dm_sp_assignments.sql in data_landscape/sql/core/ to support round robin dashboard
 
 ---
 
