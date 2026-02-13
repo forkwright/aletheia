@@ -19,6 +19,10 @@
 - Memory system section in README updated for dual-layer architecture
 - RESCUE.md updated with new recovery steps and dependencies
 - Config path references updated from `.openclaw/openclaw.json` to `.aletheia/aletheia.json`
+- All 7 agent SOUL.md files updated with Memory section documenting automatic extraction
+- Syn's MEMORY.md trimmed from 32K to 2K chars — facts offloaded to Mem0
+- Watchdog: Letta check replaced with mem0-sidecar, qdrant, neo4j, ollama checks
+- Sidecar routes refactored: `asyncio.to_thread` for non-blocking Mem0 operations
 
 ### Removed
 - FalkorDB dependency (data rescued and migrated to Neo4j)
@@ -29,6 +33,11 @@
 - Docker: Qdrant v1.16.2, Neo4j 2025-community
 - Python: Mem0 sidecar with Ollama embeddings (mxbai-embed-large, 1024 dims)
 - Systemd: `aletheia-memory.service` (uvicorn, port 8230)
+
+### Data Migration (in progress)
+- facts.jsonl (384 facts) → Mem0
+- Session JSONL transcripts (56 sessions, ~215MB) → Mem0
+- FalkorDB graph data rescued (637 nodes → Neo4j pending)
 
 ---
 
