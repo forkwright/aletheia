@@ -9,6 +9,9 @@ export type SubscribeEmbeddedPiSessionParams = {
   session: AgentSession;
   runId: string;
   hookRunner?: HookRunner;
+  agentId?: string;
+  sessionKey?: string;
+  workspaceDir?: string;
   verboseLevel?: VerboseLevel;
   reasoningMode?: ReasoningLevel;
   toolResultFormat?: ToolResultFormat;
