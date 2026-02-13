@@ -10,6 +10,50 @@ import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 
+const MEM0_SIDECAR_URL = process.env.ALETHEIA_MEMORY_URL || "http://127.0.0.1:8230";
+const MEM0_USER_ID = process.env.ALETHEIA_MEMORY_USER || "ck";
+const MEM0_SEARCH_TIMEOUT_MS = 8000;
+
+async function searchMem0(
+  query: string,
+  agentId: string,
+  limit: number,
+): Promise<MemorySearchResult[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MEM0_SEARCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${MEM0_SIDECAR_URL}/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        user_id: MEM0_USER_ID,
+        agent_id: agentId,
+        limit,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { ok?: boolean; results?: Array<{ memory?: string; score?: number; id?: string }> };
+    const results = data?.results ?? [];
+    return results
+      .filter((r) => r.memory)
+      .map((r) => ({
+        path: "mem0://long-term",
+        startLine: 0,
+        endLine: 0,
+        score: r.score ?? 0.5,
+        snippet: r.memory!,
+        source: "memory" as const,
+        citation: r.id ? `mem0:${r.id}` : undefined,
+      }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const MemorySearchSchema = Type.Object({
   query: Type.String(),
   maxResults: Type.Optional(Type.Number()),
@@ -60,13 +104,20 @@ export function createMemorySearchTool(options: {
           mode: citationsMode,
           sessionKey: options.agentSessionKey,
         });
-        const rawResults = await manager.search(query, {
-          maxResults,
-          minScore,
-          sessionKey: options.agentSessionKey,
-        });
+        const effectiveMax = maxResults ?? 10;
+        const [rawResults, mem0Results] = await Promise.all([
+          manager.search(query, {
+            maxResults: effectiveMax,
+            minScore,
+            sessionKey: options.agentSessionKey,
+          }),
+          searchMem0(query, agentId, Math.min(effectiveMax, 5)).catch(() => []),
+        ]);
+        const merged = deduplicateMemoryResults([...rawResults, ...mem0Results])
+          .sort((a, b) => b.score - a.score)
+          .slice(0, effectiveMax);
         const status = manager.status();
-        const decorated = decorateCitations(rawResults, includeCitations);
+        const decorated = decorateCitations(merged, includeCitations);
         const resolved = resolveMemoryBackendConfig({ cfg, agentId });
         const results =
           status.backend === "qmd"
@@ -78,6 +129,7 @@ export function createMemorySearchTool(options: {
           model: status.model,
           fallback: status.fallback,
           citations: citationsMode,
+          mem0: mem0Results.length > 0,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -215,4 +267,16 @@ function deriveChatTypeFromSessionKey(sessionKey?: string): "direct" | "group" |
     return "group";
   }
   return "direct";
+}
+
+function deduplicateMemoryResults(results: MemorySearchResult[]): MemorySearchResult[] {
+  const seen = new Set<string>();
+  const deduped: MemorySearchResult[] = [];
+  for (const entry of results) {
+    const key = entry.snippet.trim().slice(0, 200);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(entry);
+  }
+  return deduped;
 }
