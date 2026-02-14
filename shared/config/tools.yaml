@@ -154,7 +154,7 @@ browser_automation:
   description: "LLM-driven web browser automation"
   command: "browse"
   venv: "/mnt/ssd/aletheia/infrastructure/browser-use/.venv"
-  primary_user: "chiron"
+  primary_user: "arbor"
   notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
 
 document_processing:

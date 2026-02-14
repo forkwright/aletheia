@@ -2,7 +2,7 @@
 
 ## Overview
 
-All domain agents (Syl, Chiron, Eiron) report status to Syn via standardized files.
+All domain agents (Syl, Eiron) report status to Syn via standardized files.
 Syn checks these during heartbeats and alerts Cody when needed.
 
 ## Status File Format
@@ -37,7 +37,6 @@ Each agent writes to: `/mnt/ssd/aletheia/nous/syn/nous-status/{nous-id}.md`
 | Agent | When to Update |
 |-------|----------------|
 | Syl | After significant household events, weekly minimum |
-| Chiron | After work sessions, when projects change status |
 | Eiron | After class sessions, when assignments complete/change |
 
 ## Alert Conditions (Syn → Cody)

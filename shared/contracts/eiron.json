@@ -83,8 +83,7 @@
   "relationships": {
     "reports_to": "syn",
     "collaborates_with": [
-      "syn",
-      "chiron"
+      "syn"
     ],
     "delegates_to": []
   },

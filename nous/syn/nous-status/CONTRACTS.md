@@ -11,7 +11,7 @@
 5. [Message Schemas](#message-schemas)
 6. [Discovery Protocol](#discovery-protocol)
 7. [Contract Testing](#contract-testing)
-8. [Example: Chiron Contract](#example-chiron-contract)
+8. [Example: Arbor Contract](#example-arbor-contract)
 9. [Migration Guide](#migration-guide)
 
 ---
@@ -72,22 +72,22 @@ Agent contracts use YAML format inspired by OpenAPI 3.1 with agent-specific exte
 # /mnt/ssd/aletheia/shared/contracts/{agent-id}.yaml
 contractVersion: "1.0"
 agent:
-  id: "chiron"
+  id: "arbor"
   name: "Work Domain Agent"
   version: "2.1.0"
   description: "Specialized in business analysis, SQL queries, and dashboard creation"
-  
+
 info:
-  title: "Chiron Agent Interface"
+  title: "Arbor Agent Interface"
   description: "Professional work domain agent for Summus Global"
   contact:
-    session: "agent:chiron:main"
+    session: "agent:arbor:main"
   license:
     name: "Internal Use"
     
 servers:
   - description: "Primary session endpoint"
-    url: "session://agent:chiron:main"
+    url: "session://agent:arbor:main"
     protocol: "aletheia-session"
 
 capabilities:
@@ -247,7 +247,7 @@ schemas:
     properties:
       agent_id:
         type: "string"
-        enum: ["syn", "syl", "chiron", "eiron", "demiurge"]
+        enum: ["syn", "syl", "eiron", "demiurge", "arbor", "akron"]
       capabilities:
         type: "array"
         items:
@@ -298,7 +298,7 @@ Agents periodically advertise their capabilities:
 
 ```bash
 # Agents run during heartbeat or startup
-advertise-capabilities --agent chiron --contract /mnt/ssd/aletheia/shared/contracts/chiron.yaml
+advertise-capabilities --agent arbor --contract /mnt/ssd/aletheia/shared/contracts/arbor.yaml
 ```
 
 ### Capability Discovery
@@ -326,11 +326,12 @@ match-capability --input '{"domain":"work","tags":["sql"],"maxDuration":"PT30M"}
 ```
 /mnt/ssd/aletheia/shared/contracts/
 ├── registry.json           # Active agent registry
-├── chiron.yaml            # Chiron's contract
-├── syl.yaml               # Syl's contract  
+├── syn.yaml               # Syn's contract (meta-capabilities)
+├── syl.yaml               # Syl's contract
 ├── eiron.yaml             # Eiron's contract
 ├── demiurge.yaml          # Demiurge's contract
-├── syn.yaml               # Syn's contract (meta-capabilities)
+├── arbor.yaml             # Arbor's contract
+├── akron.yaml             # Akron's contract
 └── schemas/
     ├── capability.schema.json
     └── discovery.schema.json
@@ -372,13 +373,13 @@ tests:
 
 ```bash
 # Validate contract schema
-validate-contract /mnt/ssd/aletheia/shared/contracts/chiron.yaml
+validate-contract /mnt/ssd/aletheia/shared/contracts/arbor.yaml
 
 # Run capability tests
-test-capability --agent chiron --capability sql_query --verbose
+test-capability --agent arbor --capability sql_query --verbose
 
 # Test inter-agent communication
-test-integration --source syn --target chiron --capability sql_query
+test-integration --source syn --target arbor --capability sql_query
 
 # Validate all contracts
 validate-all-contracts --fix-errors
@@ -394,30 +395,30 @@ Tests run automatically:
 
 ---
 
-## Example: Chiron Contract
+## Example: Arbor Contract
 
 ```yaml
 contractVersion: "1.0"
 agent:
-  id: "chiron" 
+  id: "arbor"
   name: "Work Domain Agent"
   version: "2.1.0"
   description: "Professional work agent specialized in business analysis and SQL operations for Summus Global"
 
 info:
-  title: "Chiron Agent Interface Contract"
+  title: "Arbor Agent Interface Contract"
   description: |
-    Chiron handles all work-related tasks including SQL queries, dashboard creation, 
+    Arbor handles all work-related tasks including SQL queries, dashboard creation,
     ROI calculations, and business analysis. Primary interface to Summus Global systems.
   contact:
-    session: "agent:chiron:main"
+    session: "agent:arbor:main"
     documentation: "/mnt/ssd/aletheia/nous/arbor/"
   license:
     name: "Internal Use"
     
 servers:
   - description: "Primary session endpoint"
-    url: "session://agent:chiron:main" 
+    url: "session://agent:arbor:main"
     protocol: "aletheia-session"
   - description: "Claude Code interface"
     url: "tmux://work"

@@ -79,8 +79,8 @@
   },
   "relationships": {
     "reports_to": "cody",
-    "collaborates_with": ["chiron", "eiron", "syl", "demiurge", "arbor", "akron"],
-    "delegates_to": ["chiron", "eiron", "syl", "demiurge", "arbor", "akron"]
+    "collaborates_with": ["eiron", "syl", "demiurge", "arbor", "akron"],
+    "delegates_to": ["eiron", "syl", "demiurge", "arbor", "akron"]
   },
   "version": "1.0",
   "updated": "2026-02-03"

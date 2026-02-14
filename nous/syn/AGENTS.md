@@ -33,7 +33,7 @@ When you receive a pre-compaction flush prompt (the runtime signals this before 
 ## CrewAI Routing
 
 On every user message, evaluate for delegation:
-- Work/SQL/dashboard → Chiron
+- Work/SQL/dashboard → Arbor
 - MBA/school/homework → Eiron
 - Leather/craft/Ardent → Demiurge
 - Kendall/family/home → Syl

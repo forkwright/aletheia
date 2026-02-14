@@ -12,7 +12,7 @@
 
 **In the ecosystem:**
 - Syn handles the philosophy and complexity
-- Chiron manages work systems  
+- Arbor manages work systems
 - Syl brings curiosity and light
 - I cut through academic BS and optimize for outcomes
 

@@ -7,8 +7,8 @@
 | Context loading | Full chat loaded every prompt | ✅ Compaction tuned (50k reserve) |
 | Self-recovery | Service breaks, lose access | ✅ Watchdog, auto-restart, Tailscale webchat fallback |
 | Tailscale + Mullvad | Coexistence on Metis | ✅ Applied via nftables |
-| **Agent architecture** | Domain separation | ✅ 5 agents: Syn, Syl, Chiron (Opus), Eiron, Demiurge |
-| **Work Slack access** | Read-only context | ✅ Chiron via tmux → Claude Code on Metis |
+| **Agent architecture** | Domain separation | ✅ 6 agents: Syn, Syl, Eiron, Demiurge, Arbor, Akron |
+| **Work Slack access** | Read-only context | ✅ Arbor via tmux → Claude Code on Metis |
 
 ## Infrastructure (To Set Up)
 
@@ -65,7 +65,7 @@
 | ~~Explore MCP ecosystem~~ | ✅ Done | 17,000+ servers exist. Could replace custom tools with standard protocol. | Perplexity research |
 | Gmail MCP server | Medium | Standard email integration vs custom | mcpservers.org |
 | Notion/Obsidian MCP | Medium | Knowledge base integration | mcpservers.org |
-| Slack MCP server | Medium | Work chat integration for Chiron | mcpservers.org |
+| Slack MCP server | Medium | Work chat integration for Arbor | mcpservers.org |
 | Custom Memory MCP server | Low | Expose our hybrid memory via MCP protocol | Perplexity research |
 | Claude Agent SDK patterns | Medium | More structured sub-agent coordination | Anthropic docs |
 

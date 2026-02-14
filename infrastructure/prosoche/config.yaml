@@ -79,13 +79,6 @@ nous:
       tasks: 0.4
       health: 1.0
       memory: 0.6
-  chiron:
-    role: health-scheduling
-    weights:
-      calendar: 1.0
-      tasks: 0.3
-      health: 0.2
-      memory: 0.3
   eiron:
     role: academic
     weights:

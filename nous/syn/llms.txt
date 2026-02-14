@@ -15,7 +15,7 @@ The system runs on Clawdbot (AI agent framework) with custom multi-agent coordin
 
 ## Architecture
 - **Syn** (this workspace) - Orchestrator, meta-cognition, routing
-- **Chiron** (/mnt/ssd/moltbot/chiron) - Work domain (Summus, SQL, dashboards)
+- **Arbor** (/mnt/ssd/aletheia/nous/arbor) - Work domain (Summus, SQL, dashboards)
 - **Eiron** (/mnt/ssd/moltbot/eiron) - School domain (MBA, academics)
 - **Syl** (/mnt/ssd/moltbot/syl) - Home domain (family, routines)
 - **Demiurge** (/mnt/ssd/moltbot/demiurge) - Craft domain (leatherwork)
