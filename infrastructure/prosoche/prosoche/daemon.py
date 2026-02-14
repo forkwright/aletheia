@@ -54,21 +54,28 @@ class ProsocheDaemon:
         async with anyio.create_task_group() as tg:
             tg.start_soon(self._main_loop)
 
+    async def _sleep_interruptible(self, seconds: float) -> None:
+        """Sleep in 5-second increments so SIGTERM isn't blocked."""
+        remaining = seconds
+        while remaining > 0 and self.running:
+            await anyio.sleep(min(5.0, remaining))
+            remaining -= 5.0
+
     async def _main_loop(self) -> None:
         while self.running:
             try:
                 if is_quiet_hours(self.config):
                     logger.debug("Quiet hours — sleeping 15 min")
-                    await anyio.sleep(900)
+                    await self._sleep_interruptible(900)
                     continue
 
                 await self._collect_signals()
                 await self._evaluate_and_act()
-                await anyio.sleep(60)
+                await self._sleep_interruptible(60)
 
             except Exception as e:
                 logger.error(f"Main loop error: {e}")
-                await anyio.sleep(30)
+                await self._sleep_interruptible(30)
 
     async def _collect_signals(self) -> None:
         now = time.monotonic()
