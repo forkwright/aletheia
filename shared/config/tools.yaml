@@ -78,7 +78,7 @@ todoist:
     quick_add: "mcporter call todoist.todoist_task_quick_add --args '{\"text\":\"...\"}'"
 
 memory:
-  memory_router: "memory-router \"query\""
+  memory_search: "memory_search tool (agents use via plugin — searches sqlite-vec + Mem0)"
   knowledge_graph:
     db: neo4j
     commands:
@@ -131,14 +131,14 @@ agents:
   audit: "audit-all-nous"
   route: "nous-contracts route \"request\""
 
-openclaw:
+runtime:
   patches:
     signal_group_id: {file: "normalize/signal.js", bug: ".toLowerCase() breaks base64 group IDs"}
     apply: "patch-runtime (in shared/bin/)"
   config:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"
-    validate: "openclaw doctor"
+    validate: "aletheia doctor"
 
 # === New Capabilities (2026-02-05) ===
 
