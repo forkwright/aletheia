@@ -10,6 +10,19 @@ NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "aletheia-memory")
 
+GRAPH_EXTRACTION_PROMPT = (
+    "Use ONLY the following relationship types: "
+    "KNOWS, LIVES_IN, WORKS_AT, OWNS, USES, PREFERS, "
+    "STUDIES, MANAGES, MEMBER_OF, INTERESTED_IN, SKILLED_IN, "
+    "CREATED, MAINTAINS, DEPENDS_ON, LOCATED_IN, PART_OF, "
+    "SCHEDULED_FOR, DIAGNOSED_WITH, PRESCRIBED, TREATS, "
+    "VEHICLE_IS, INSTALLED_ON, COMPATIBLE_WITH, CONNECTED_TO, "
+    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES, "
+    "RELATES_TO. "
+    "Do NOT invent new relationship types outside this list. "
+    "Use RELATES_TO as fallback when no specific type fits."
+)
+
 MEM0_CONFIG = {
     "llm": {
         "provider": "anthropic",
@@ -42,7 +55,9 @@ MEM0_CONFIG = {
             "url": NEO4J_URL,
             "username": NEO4J_USER,
             "password": NEO4J_PASSWORD,
+            "base_label": True,
         },
+        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
     },
     "version": "v1.1",
 }
