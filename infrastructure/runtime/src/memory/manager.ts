@@ -294,7 +294,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       : [];
 
     const queryVec = await this.embedQueryWithTimeout(cleaned);
-    const hasVector = queryVec.some((v) => v !== 0);
+    const hasVector = queryVec?.some((v) => v !== 0) ?? false;
     const vectorResults = hasVector
       ? await this.searchVector(queryVec, candidates).catch(() => [])
       : [];

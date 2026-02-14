@@ -34,8 +34,9 @@ async function searchMem0(
       signal: controller.signal,
     });
     if (!res.ok) return [];
-    const data = await res.json() as { ok?: boolean; results?: Array<{ memory?: string; score?: number; id?: string }> };
-    const results = data?.results ?? [];
+    const data = await res.json() as Record<string, unknown>;
+    const rawResults = data?.results;
+    const results = (Array.isArray(rawResults) ? rawResults : (rawResults as Record<string, unknown>)?.results ?? []) as Array<{ memory?: string; score?: number; id?: string }>;
     return results
       .filter((r) => r.memory)
       .map((r) => ({
