@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+# aletheia-eval — Objective metrics for the Aletheia evaluation framework
+
+import argparse
+import json
+import os
+import random
+import re
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from difflib import SequenceMatcher
+from pathlib import Path
+
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+SHARED = ROOT / "shared"
+FACTS_FILE = SHARED / "memory" / "facts.jsonl"
+NOUS = ROOT / "nous"
+SERVICES_JSON = SHARED / "status" / "services.json"
+EVAL_DIR = ROOT / "infrastructure" / "evaluation"
+TRIGGERS_FILE = EVAL_DIR / "triggers.json"
+SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
+
+NEO4J_URI = "neo4j://localhost:7687"
+NEO4J_USER = "neo4j"
+NEO4J_PASSWORD = "aletheia-memory"
+
+AGENTS = ["syn", "chiron", "eiron", "demiurge", "syl", "arbor", "akron"]
+
+
+def load_triggers(path=None):
+    p = Path(path) if path else TRIGGERS_FILE
+    if not p.exists():
+        return {}
+    with open(p) as f:
+        return json.load(f)
+
+
+def load_facts():
+    if not FACTS_FILE.exists():
+        return []
+    facts = []
+    with open(FACTS_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                facts.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return facts
+
+
+def sidecar_search(query, limit=10):
+    data = json.dumps({"query": query, "user_id": "ck", "limit": limit}).encode()
+    req = urllib.request.Request(
+        f"{SIDECAR_URL}/search",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read())
+            raw = result.get("results", [])
+            return raw if isinstance(raw, list) else raw.get("results", [])
+    except Exception as e:
+        print(f"  sidecar error: {e}", file=sys.stderr)
+        return []
+
+
+def fuzzy_match(query_text, memory_text, threshold=0.5):
+    q = query_text.lower().strip()
+    m = memory_text.lower().strip()
+    if q in m or m in q:
+        return True
+    return SequenceMatcher(None, q[:200], m[:200]).ratio() > threshold
+
+
+# ── recall@k ─────────────────────────────────────────────────────────────────
+
+def cmd_recall(args):
+    facts = load_facts()
+    triggers = load_triggers(args.triggers)
+    if not facts:
+        return {"error": "No facts found", "recall": {}}
+
+    sample_size = min(args.sample, len(facts))
+    sample = random.sample(facts, sample_size)
+    k_values = [1, 5, 10]
+    hits = {k: 0 for k in k_values}
+
+    for fact in sample:
+        query = f"{fact.get('subject', '')} {fact.get('predicate', '')} {fact.get('object', '')}"
+        results = sidecar_search(query, limit=max(k_values))
+        for k in k_values:
+            top_k = results[:k]
+            for r in top_k:
+                mem = r.get("memory", "")
+                if fuzzy_match(fact.get("object", ""), mem):
+                    hits[k] += 1
+                    break
+
+    recall = {f"recall@{k}": round(hits[k] / sample_size, 3) for k in k_values}
+
+    min_recall_5 = triggers.get("thresholds", {}).get("recall", {}).get("min_recall_at_5", 0.6)
+    alerts = []
+    if recall.get("recall@5", 1.0) < min_recall_5:
+        alerts.append(f"recall@5 ({recall['recall@5']}) below threshold ({min_recall_5})")
+
+    return {"sample_size": sample_size, "total_facts": len(facts), **recall, "alerts": alerts}
+
+
+# ── facts health ─────────────────────────────────────────────────────────────
+
+def cmd_facts(args):
+    facts = load_facts()
+    triggers = load_triggers(args.triggers)
+    if not facts:
+        return {"error": "No facts found"}
+
+    # Exact duplicates
+    seen = Counter()
+    for f in facts:
+        key = (f.get("subject", ""), f.get("predicate", ""), f.get("object", ""))
+        seen[key] += 1
+    exact_dupes = {str(k): v for k, v in seen.items() if v > 1}
+
+    # Contradictions: same subject+predicate, different object
+    by_sp = defaultdict(list)
+    for f in facts:
+        sp = (f.get("subject", ""), f.get("predicate", ""))
+        by_sp[sp].append(f.get("object", ""))
+    contradictions = []
+    for sp, objects in by_sp.items():
+        if len(set(objects)) > 1:
+            contradictions.append({"subject": sp[0], "predicate": sp[1], "objects": list(set(objects))})
+
+    # Age distribution
+    now = datetime.now(timezone.utc)
+    age_buckets = {"<7d": 0, "7-30d": 0, "30-90d": 0, ">90d": 0, "no_date": 0}
+    stale_threshold = triggers.get("thresholds", {}).get("fact_age_review", {}).get("stale_days", 90)
+    stale_facts = []
+    for f in facts:
+        vf = f.get("valid_from")
+        if not vf:
+            age_buckets["no_date"] += 1
+            continue
+        try:
+            dt = datetime.fromisoformat(vf.replace("Z", "+00:00"))
+            days = (now - dt).days
+            if days < 7:
+                age_buckets["<7d"] += 1
+            elif days < 30:
+                age_buckets["7-30d"] += 1
+            elif days < 90:
+                age_buckets["30-90d"] += 1
+            else:
+                age_buckets[">90d"] += 1
+            if days > stale_threshold:
+                stale_facts.append({"id": f.get("id", "?"), "subject": f.get("subject", ""), "days": days})
+        except (ValueError, TypeError):
+            age_buckets["no_date"] += 1
+
+    # Category distribution
+    categories = Counter(f.get("category", "uncategorized") for f in facts)
+
+    return {
+        "total": len(facts),
+        "exact_duplicates": len(exact_dupes),
+        "duplicate_details": exact_dupes,
+        "contradictions": contradictions[:20],
+        "contradiction_count": len(contradictions),
+        "age_distribution": age_buckets,
+        "stale_facts": len(stale_facts),
+        "categories": dict(categories.most_common()),
+    }
+
+
+# ── graph health ─────────────────────────────────────────────────────────────
+
+def cmd_graph(args):
+    triggers = load_triggers(args.triggers)
+    try:
+        from neo4j import GraphDatabase
+    except ImportError:
+        return {"error": "neo4j driver not installed"}
+
+    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+    def query(cypher):
+        with driver.session() as s:
+            return [dict(r) for r in s.run(cypher)]
+
+    try:
+        nodes = query("MATCH (n) RETURN count(n) AS c")[0]["c"]
+        rels = query("MATCH ()-[r]->() RETURN count(r) AS c")[0]["c"]
+        orphans = query("MATCH (n) WHERE NOT (n)--() RETURN count(n) AS c")[0]["c"]
+
+        rel_types = query("MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC")
+        rel_dist = {r["t"]: r["c"] for r in rel_types}
+
+        vocab = set(triggers.get("controlled_vocabulary", []))
+        vocab_lower = {v.lower() for v in vocab}
+        unknown_rels = {t: c for t, c in rel_dist.items() if t.lower() not in vocab_lower}
+
+        # Entity dedup check
+        names = query("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name")
+        name_list = [r["name"] for r in names]
+        dedup_candidates = []
+        for i, a in enumerate(name_list):
+            for b in name_list[i + 1:]:
+                ratio = SequenceMatcher(None, a.lower(), b.lower()).ratio()
+                if ratio > 0.8 and a != b:
+                    dedup_candidates.append({"a": a, "b": b, "similarity": round(ratio, 3)})
+
+        gh = triggers.get("thresholds", {}).get("graph_health", {})
+        alerts = []
+        if nodes > 0 and orphans / nodes > gh.get("max_orphan_ratio", 0.1):
+            alerts.append(f"Orphan ratio {orphans}/{nodes} exceeds threshold")
+        if unknown_rels and gh.get("max_unknown_relations", 0) == 0:
+            alerts.append(f"{len(unknown_rels)} relation types outside controlled vocabulary: {list(unknown_rels.keys())}")
+
+        return {
+            "nodes": nodes,
+            "relationships": rels,
+            "orphan_nodes": orphans,
+            "relationship_types": rel_dist,
+            "unknown_relations": unknown_rels,
+            "dedup_candidates": dedup_candidates[:20],
+            "alerts": alerts,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        driver.close()
+
+
+# ── uptime ───────────────────────────────────────────────────────────────────
+
+def cmd_uptime(args):
+    result = {}
+
+    # Current service status
+    if SERVICES_JSON.exists():
+        try:
+            with open(SERVICES_JSON) as f:
+                result["services"] = json.load(f)
+        except Exception:
+            result["services"] = "failed to parse"
+    else:
+        result["services"] = "services.json not found"
+
+    # Restart count from journalctl (last 7 days)
+    try:
+        out = subprocess.run(
+            ["journalctl", "-u", "aletheia", "--since", "7 days ago",
+             "--grep", "Started|Stopped|Failed", "--no-pager", "-q", "--output", "short"],
+            capture_output=True, text=True, timeout=10,
+        )
+        lines = [l for l in out.stdout.strip().split("\n") if l.strip()]
+        started = sum(1 for l in lines if "Started" in l)
+        stopped = sum(1 for l in lines if "Stopped" in l)
+        failed = sum(1 for l in lines if "Failed" in l or "failed" in l.lower())
+        result["restarts_7d"] = {"started": started, "stopped": stopped, "failed": failed}
+    except Exception as e:
+        result["restarts_7d"] = {"error": str(e)}
+
+    return result
+
+
+# ── self-grades ──────────────────────────────────────────────────────────────
+
+def cmd_self_grades(args):
+    grades = {}
+    pattern = re.compile(
+        r"- (task_completion|pushback_opportunities|pushback_taken|"
+        r"corrections_received|confidence_calibration|knowledge_gaps_identified):\s*(.+)"
+    )
+
+    for agent in AGENTS:
+        mem_dir = NOUS / agent / "memory"
+        if not mem_dir.exists():
+            continue
+        agent_grades = []
+        for md_file in sorted(mem_dir.glob("2*.md"), reverse=True)[:7]:
+            content = md_file.read_text()
+            if "## Self-Assessment" not in content:
+                continue
+            metrics = {}
+            for match in pattern.finditer(content):
+                key, val = match.group(1), match.group(2).strip()
+                try:
+                    metrics[key] = float(val)
+                except ValueError:
+                    metrics[key] = val
+            if metrics:
+                agent_grades.append({"date": md_file.stem, "metrics": metrics})
+        if agent_grades:
+            grades[agent] = agent_grades
+
+    return {"agents_with_grades": len(grades), "grades": grades}
+
+
+# ── full ─────────────────────────────────────────────────────────────────────
+
+def cmd_full(args):
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "recall": cmd_recall(args),
+        "facts": cmd_facts(args),
+        "graph": cmd_graph(args),
+        "uptime": cmd_uptime(args),
+        "self_grades": cmd_self_grades(args),
+    }
+
+
+# ── output formatting ────────────────────────────────────────────────────────
+
+def format_markdown(data, title="Evaluation Report"):
+    lines = [f"# {title}", f"*{datetime.now().strftime('%Y-%m-%d %H:%M')}*", ""]
+
+    def section(key, label):
+        if key not in data:
+            return
+        lines.append(f"## {label}")
+        d = data[key]
+        if isinstance(d, dict):
+            alerts = d.pop("alerts", [])
+            for k, v in d.items():
+                if isinstance(v, (dict, list)):
+                    lines.append(f"**{k}:** `{json.dumps(v, default=str)}`")
+                else:
+                    lines.append(f"**{k}:** {v}")
+            if alerts:
+                lines.append("")
+                for a in alerts:
+                    lines.append(f"- ALERT: {a}")
+        else:
+            lines.append(str(d))
+        lines.append("")
+
+    section("recall", "Memory Recall")
+    section("facts", "Fact Store Health")
+    section("graph", "Graph Health")
+    section("uptime", "Service Uptime")
+    section("self_grades", "Agent Self-Grades")
+    return "\n".join(lines)
+
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="Aletheia objective evaluation metrics")
+    parser.add_argument("--json", action="store_true", help="JSON output")
+    parser.add_argument("--output", "-o", help="Write to file")
+    parser.add_argument("--triggers", help="Path to triggers.json")
+    parser.add_argument("--sample", type=int, default=20, help="Facts to sample for recall")
+    sub = parser.add_subparsers(dest="command")
+
+    common = {"--json": dict(action="store_true", help="JSON output"),
+              "--triggers": dict(help="Path to triggers.json"),
+              "--output": dict(help="Write to file")}
+
+    for name, hlp in [("facts", "Fact store health"),
+                       ("graph", "Graph health check"),
+                       ("uptime", "Service uptime metrics"),
+                       ("self-grades", "Agent self-assessment aggregation"),
+                       ("full", "Run all checks")]:
+        p = sub.add_parser(name, help=hlp)
+        for flag, kw in common.items():
+            p.add_argument(flag, **kw)
+
+    recall_p = sub.add_parser("recall", help="Memory retrieval precision")
+    recall_p.add_argument("--sample", type=int, default=20, help="Facts to sample")
+    for flag, kw in common.items():
+        recall_p.add_argument(flag, **kw)
+
+    args = parser.parse_args()
+
+    commands = {
+        "recall": cmd_recall,
+        "facts": cmd_facts,
+        "graph": cmd_graph,
+        "uptime": cmd_uptime,
+        "self-grades": cmd_self_grades,
+        "full": cmd_full,
+        None: cmd_full,
+    }
+
+    func = commands.get(args.command, cmd_full)
+    result = func(args)
+
+    if args.json:
+        output = json.dumps(result, indent=2, default=str)
+    else:
+        if args.command and args.command != "full":
+            output = json.dumps(result, indent=2, default=str)
+        else:
+            output = format_markdown(result)
+
+    if args.output:
+        Path(args.output).write_text(output)
+        print(f"Written to {args.output}")
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()
