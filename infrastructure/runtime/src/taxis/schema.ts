@@ -16,7 +16,7 @@ const HeartbeatConfig = z
       .object({
         start: z.string().default("08:00"),
         end: z.string().default("23:00"),
-        timezone: z.string().default("America/Chicago"),
+        timezone: z.string().default("UTC"),
       })
       .default({}),
     model: z.string().optional(),
@@ -113,7 +113,7 @@ const AgentDefaults = z.preprocess(
       .default({}),
     workspace: z.string().optional(),
     bootstrapMaxTokens: z.number().default(40000),
-    userTimezone: z.string().default("America/Chicago"),
+    userTimezone: z.string().default("UTC"),
     contextTokens: z.number().default(200000),
     maxOutputTokens: z.number().default(16384),
     compaction: CompactionConfig.default({}),

@@ -2,8 +2,7 @@
 """
 ingest-doc — Document processing for nous agents.
 
-Uses Docling for PDF/document extraction → markdown.
-Primary user: Eiron (academic papers, course materials).
+Uses Docling for PDF/document extraction to markdown.
 
 Usage:
     ingest-doc paper.pdf                    # Extract to markdown
@@ -15,7 +14,8 @@ import subprocess
 import sys
 import os
 
-VENV_PYTHON = "/mnt/ssd/aletheia/infrastructure/docling/.venv/bin/python3"
+ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+VENV_PYTHON = os.path.join(ALETHEIA_ROOT, "infrastructure/docling/.venv/bin/python3")
 
 def main():
     if len(sys.argv) < 2:

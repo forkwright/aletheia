@@ -2,7 +2,7 @@
 // Compatible with clean-room runtime plugin interface (exports hooks object)
 
 const SIDECAR_URL = process.env.ALETHEIA_MEMORY_URL || "http://127.0.0.1:8230";
-const USER_ID = process.env.ALETHEIA_MEMORY_USER || "ck";
+const USER_ID = process.env.ALETHEIA_MEMORY_USER || "default";
 const ADD_TIMEOUT_MS = 60000;
 const activeExtractions = new Set();
 

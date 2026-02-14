@@ -66,13 +66,18 @@ describe("session CRUD", () => {
     expect(synOnly[0]!.nousId).toBe("syn");
   });
 
-  it("archiveSession changes status", () => {
+  it("archiveSession changes status and frees session_key", () => {
     const session = store.createSession("syn", "main");
     store.archiveSession(session.id);
     const archived = store.findSessionById(session.id);
     expect(archived!.status).toBe("archived");
+    expect(archived!.sessionKey).toContain(":archived:");
     // Archived sessions not returned by findSession (active only)
     expect(store.findSession("syn", "main")).toBeNull();
+    // New session can reuse the same key
+    const fresh = store.createSession("syn", "main");
+    expect(fresh.id).not.toBe(session.id);
+    expect(fresh.sessionKey).toBe("main");
   });
 
   it("createSession with parent and model", () => {

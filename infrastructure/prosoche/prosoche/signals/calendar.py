@@ -115,7 +115,7 @@ def _minutes_until(event: dict) -> int | None:
                 dt = datetime.fromisoformat(start)
             if dt.tzinfo is None:
                 import zoneinfo
-                dt = dt.replace(tzinfo=zoneinfo.ZoneInfo("America/Chicago"))
+                dt = dt.replace(tzinfo=zoneinfo.ZoneInfo("UTC"))
             now = datetime.now(timezone.utc)
             return int((dt - now).total_seconds() / 60)
     except Exception:

@@ -23,21 +23,21 @@ router = APIRouter()
 
 class AddRequest(BaseModel):
     text: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     metadata: dict[str, Any] | None = None
 
 
 class SearchRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
 
 
 class ImportRequest(BaseModel):
     facts: list[dict[str, Any]]
-    user_id: str = "ck"
+    user_id: str = "default"
 
 
 DEDUP_THRESHOLD = 0.85
@@ -147,7 +147,7 @@ async def import_facts(req: ImportRequest, request: Request):
 @router.get("/memories")
 async def list_memories(
     request: Request,
-    user_id: str = "ck",
+    user_id: str = "default",
     agent_id: str | None = None,
     limit: int = 50,
 ):
@@ -253,7 +253,7 @@ async def graph_stats():
 
 class GraphEnhancedSearchRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
     graph_weight: float = Field(default=0.3, ge=0.0, le=1.0)
@@ -368,14 +368,14 @@ MERGE_THRESHOLD = 0.90
 class ConsolidateRequest(BaseModel):
     dry_run: bool = False
     threshold: float = Field(default=MERGE_THRESHOLD, ge=0.5, le=1.0)
-    user_id: str = "ck"
+    user_id: str = "default"
     limit: int = Field(default=100, ge=10, le=500)
 
 
 class MergeRequest(BaseModel):
     source_id: str
     target_id: str
-    user_id: str = "ck"
+    user_id: str = "default"
 
 
 @router.post("/consolidate")
@@ -455,7 +455,7 @@ async def merge_memories(req: MergeRequest, request: Request):
 
 
 @router.get("/fact_stats")
-async def fact_stats(request: Request, user_id: str = "ck"):
+async def fact_stats(request: Request, user_id: str = "default"):
     """Memory corpus statistics."""
     mem = request.app.state.memory
 
@@ -498,7 +498,7 @@ RETRACTION_LOG = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia")) / "s
 
 class RetractRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     cascade: bool = False
     dry_run: bool = False
     reason: str = ""

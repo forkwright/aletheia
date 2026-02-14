@@ -56,7 +56,7 @@ def load_facts():
 
 
 def sidecar_search(query, limit=10):
-    data = json.dumps({"query": query, "user_id": "ck", "limit": limit}).encode()
+    data = json.dumps({"query": query, "user_id": "default", "limit": limit}).encode()
     req = urllib.request.Request(
         f"{SIDECAR_URL}/search",
         data=data,

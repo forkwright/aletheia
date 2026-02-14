@@ -100,7 +100,7 @@ class ActivityModel:
                 peaks.append(hour)
         return peaks
 
-    def get_forecast(self, nous_id: str, tz_name: str = "America/Chicago") -> dict:
+    def get_forecast(self, nous_id: str, tz_name: str = "UTC") -> dict:
         """Generate a daily forecast for a nous."""
         tz = zoneinfo.ZoneInfo(tz_name)
         now = datetime.now(tz)
@@ -129,7 +129,7 @@ class ActivityModel:
 
 def get_predictive_signals(model: ActivityModel, config: dict) -> list[Signal]:
     """Generate signals from learned activity patterns."""
-    tz_name = config.get("quiet_hours", {}).get("timezone", "America/Chicago")
+    tz_name = config.get("quiet_hours", {}).get("timezone", "UTC")
     tz = zoneinfo.ZoneInfo(tz_name)
     now = datetime.now(tz)
 

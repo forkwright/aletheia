@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # One-time Neo4j graph cleanup — normalize relationship types and merge duplicate entities
 
+import os
 import sys
 from collections import defaultdict
 
@@ -8,7 +9,7 @@ from neo4j import GraphDatabase
 
 NEO4J_URI = "neo4j://localhost:7687"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "aletheia-memory"
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 
 CONTROLLED_VOCAB = {
     "KNOWS", "LIVES_IN", "WORKS_AT", "OWNS", "USES", "PREFERS",

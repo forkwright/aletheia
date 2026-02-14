@@ -1,67 +1,39 @@
 # tools.yaml — Machine-native tool reference
 # Source of truth. TOOLS.md is generated from this.
 
-ssh:
-  hosts:
-    nas: {addr: "NAS_IP", user: syn, notes: "Synology 923+, 32TB"}
-    laptop: {addr: "LAPTOP_IP", user: syn, notes: "Fedora laptop, primary dev", tailscale: "TAILSCALE_LAPTOP"}
-    server-host: {addr: localhost, user: syn, notes: "Ubuntu 24.04, this server", tailscale: "TAILSCALE_SERVER"}
-
-infrastructure:
-  nas_mounts: ["/mnt/nas/Media", "/mnt/nas/docker", "/mnt/nas/photos", "/mnt/nas/vpn_media"]
-  docker: {count: 21, manager: portainer, notes: "media stack"}
-  tailscale:
-    server-host: "TAILSCALE_SERVER"
-    nas-host: "TAILSCALE_NAS"
-    laptop: "TAILSCALE_LAPTOP"
-
-calendar:
-  tool: gcal
-  commands:
-    list: "gcal calendars"
-    events: "gcal events -c CAL_ID -d DAYS"
-    today: "gcal today -c CAL_ID"
-  ids:
-    personal: "user@example.com"
-    family: "family@group.calendar.example.com"
-    work: "cforkwright@employer.example.com"
-
-gdrive:
-  accounts:
-    personal: {alias: p, email: "user@example.com"}
-    school: {alias: [s, ut], email: "user@university.example.com"}
-  commands:
-    ls: "gdrive {account} ls [path]"
-    cat: "gdrive {account} cat <file>"
-    find: "gdrive {account} find <name>"
-    get: "gdrive {account} get <file>"
-    tree: "gdrive {account} tree [path]"
-
 research:
   pplx: {cmd: "pplx \"query\"", flags: ["--sources", "--raw"]}
+  scholar:
+    description: "Multi-source academic search + citation graph + paper retrieval"
+    command: "scholar"
+    sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
+    examples:
+      - 'scholar "distributed cognition" -v --limit 10'
+      - 'scholar "binding problem" --since 2020 --source s2'
+      - 'scholar cite DOI  # citation graph (who cites / references)'
+      - 'scholar fetch ARXIV_ID  # download + convert to markdown'
+      - 'scholar refs DOI  # reference list'
+    notes: "S1/S2 source discovery. Deduplicates across sources. Sorted by citations."
+  wiki:
+    description: "Wikipedia lookup for concept orientation"
+    command: "wiki"
+    examples:
+      - 'wiki "Poincaré section"'
+      - 'wiki --search "topological dynamics"'
+      - 'wiki "feature integration" --refs  # extract cited references'
+    notes: "Grey literature. Use for orientation, not as primary source."
+  ingest_doc:
+    description: "PDF/document extraction to markdown"
+    command: "ingest-doc"
+    examples:
+      - 'ingest-doc paper.pdf'
+      - 'ingest-doc https://arxiv.org/pdf/2408.04514'
+    notes: "Uses Docling. For papers, prefer 'scholar fetch' which auto-converts."
 
-facts:
-  store: "/mnt/ssd/aletheia/shared/memory/facts.jsonl"
-  commands:
-    list: "facts"
-    stats: "facts stats"
-    about: "facts about <subject>"
-    category: "facts category <cat>"
-    search: "facts search <query>"
-    add: "facts add <subj> <pred> <obj>"
-    update: "facts update <id> <value>"
-    reinforce: "facts reinforce <id> -e \"evidence\""
-    contradict: "facts contradict <id> -e \"evidence\""
-
-tasks:
-  tool: tw
-  commands:
-    list: "tw"
-    add: "tw add \"desc\" project:X priority:H/M/L"
-    done: "tw done ID"
-    today: "tw today"
-    week: "tw week"
-  namespaces: {syn: "project:infra,project:personal,project:aletheia"}
+browser_automation:
+  description: "LLM-driven web browser automation"
+  command: "browse"
+  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
 
 memory:
   mem0_search: "mem0_search tool (agents use via plugin — searches Qdrant + Neo4j via Mem0)"
@@ -83,39 +55,8 @@ aletheia:
   assemble: "assemble-context --nous AGENT"
   compile: "compile-context [AGENT]"
 
-mba:
-  commands:
-    status: "mba status"
-    sync: "mba sync"
-    tasks: "mba tasks"
-    upcoming: "mba upcoming 7"
-    prep: "mba prep <class>"
-  classes: [acf, strategic_mgmt, macro, capstone]
-
-work:
-  commands:
-    status: "work status"
-    sync: "work sync"
-    projects: "work projects"
-    sql: "work sql [domain]"
-
-laptop:
-  commands:
-    ssh: "ssh laptop \"cmd\""
-    interactive: "laptop ssh"
-    claude: "laptop claude [args]"
-    sync: "laptop sync <remote> [local]"
-    push: "laptop push <local> [remote]"
-
-webchat:
-  lan: "https://SERVER_IP:8443"
-  tailscale: "https://TAILSCALE_SERVER:8443"
-
 agents:
-  contracts: "nous-contracts show AGENT"
   health: "nous-health"
-  audit: "audit-all-nous"
-  route: "nous-contracts route \"request\""
 
 runtime:
   config:
@@ -123,58 +64,7 @@ runtime:
     model_ids: "full date suffix for pre-4.6 models"
     validate: "aletheia doctor"
 
-# === New Capabilities (2026-02-05) ===
-
 langfuse:
   description: "Session observability and cross-nous pattern analysis"
   url: "http://localhost:3100"
-  dashboard: "http://SERVER_IP:3100"
-  commands:
-    status: "trace-session --stats"
   notes: "Self-hosted. Configure API keys via dashboard."
-
-browser_automation:
-  description: "LLM-driven web browser automation"
-  command: "browse"
-  venv: "/mnt/ssd/aletheia/infrastructure/browser-use/.venv"
-  primary_user: "arbor"
-  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
-
-document_processing:
-  description: "PDF and document extraction to markdown"
-  command: "ingest-doc"
-  venv: "/mnt/ssd/aletheia/infrastructure/docling/.venv"
-  primary_user: "eiron"
-  notes: "Uses Docling. Handles PDF, DOCX, HTML, images."
-
-research:
-  scholar:
-    description: "Multi-source academic search + citation graph + paper retrieval"
-    command: "scholar"
-    sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
-    examples:
-      - 'scholar "distributed cognition" -v --limit 10'
-      - 'scholar "binding problem" --since 2020 --source s2'
-      - 'scholar cite DOI  # citation graph (who cites / references)'
-      - 'scholar fetch ARXIV_ID  # download + convert to markdown'
-      - 'scholar refs DOI  # reference list'
-    notes: "S1/S2 source discovery. Deduplicates across sources. Sorted by citations."
-  wiki:
-    description: "Wikipedia lookup for concept orientation (S4 only)"
-    command: "wiki"
-    examples:
-      - 'wiki "Poincaré section"'
-      - 'wiki --search "topological dynamics"'
-      - 'wiki "feature integration" --refs  # extract cited references'
-    notes: "S4 grey literature. Use for orientation, never cite as primary source."
-  perplexity:
-    description: "Perplexity pro-search for broad research synthesis"
-    command: "pplx"
-    notes: "Best for initial survey. All claims must be verified via scholar."
-  ingest_doc:
-    description: "PDF/document extraction to markdown"
-    command: "ingest-doc"
-    examples:
-      - 'ingest-doc paper.pdf'
-      - 'ingest-doc https://arxiv.org/pdf/2408.04514'
-    notes: "Uses Docling. For papers, prefer 'scholar fetch' which auto-converts."

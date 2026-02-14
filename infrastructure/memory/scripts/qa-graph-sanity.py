@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # QA audit: Neo4j graph sanity check
 
+import os
 import sys
 
 from neo4j import GraphDatabase
 
 NEO4J_URI = "neo4j://localhost:7687"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "aletheia-memory"
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 
 
 def run_query(session, cypher, **params):

@@ -34,7 +34,7 @@ def get_rhythm_signals(config: dict) -> list[Signal]:
     if not rhythm_config:
         return []
 
-    tz_name = config.get("quiet_hours", {}).get("timezone", "America/Chicago")
+    tz_name = config.get("quiet_hours", {}).get("timezone", "UTC")
     tz = zoneinfo.ZoneInfo(tz_name)
     now = datetime.now(tz)
     current_minutes = now.hour * 60 + now.minute

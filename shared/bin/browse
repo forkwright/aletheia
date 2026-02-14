@@ -3,10 +3,9 @@
 browse — Web automation for nous agents.
 
 Uses Browser Use library for LLM-driven browser interaction.
-Primary user: Arbor (dashboards, web data).
 
 Usage:
-    browse "Go to the Summus dashboard and screenshot the ROI page"
+    browse "Go to example.com and extract the pricing table"
     browse --url "https://example.com" "Extract the main table data"
 """
 
@@ -14,7 +13,8 @@ import subprocess
 import sys
 import os
 
-VENV_PYTHON = "/mnt/ssd/aletheia/infrastructure/browser-use/.venv/bin/python3"
+ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+VENV_PYTHON = os.path.join(ALETHEIA_ROOT, "infrastructure/browser-use/.venv/bin/python3")
 
 RUNNER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "infrastructure", "browser-use", "run_task.py")
 

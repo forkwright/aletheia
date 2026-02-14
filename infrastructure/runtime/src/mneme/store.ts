@@ -408,7 +408,9 @@ export class SessionStore {
 
   archiveSession(sessionId: string): void {
     this.db
-      .prepare("UPDATE sessions SET status = 'archived' WHERE id = ?")
+      .prepare(
+        "UPDATE sessions SET status = 'archived', session_key = session_key || ':archived:' || id WHERE id = ? AND status = 'active'",
+      )
       .run(sessionId);
   }
 
