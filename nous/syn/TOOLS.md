@@ -23,7 +23,7 @@ Full reference: `shared/config/tools.yaml`. Key commands below.
 
 ## Memory/Knowledge
 - `facts [stats|about|search|add]` — Structured facts store
-- `memory-router "query"` — Federated memory search
+- `memory_search` — Federated memory search (local files + long-term extracted memories)
 - `aletheia-graph stats|query|add` — Shared knowledge graph
 
 ## Aletheia

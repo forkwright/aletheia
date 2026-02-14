@@ -1,6 +1,6 @@
 # TOOLS.md - Eiron's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, memory_search, pplx, facts, mcporter).
 
 
 ## Memory System
@@ -96,26 +96,6 @@ tw project:school due.before:1w
 
 **Tags:** +assignment, +exam, +team, +reading, +blocked, +review
 
-## Letta Memory
+## Memory
 
-Agent: eiron-memory (agent-40014ebe-121d-4d0b-8ad4-7fecc528375d)
-
-```bash
-# Check status (auto-detects agent from workspace)
-letta status
-
-# Store a fact
-letta remember "important fact here"
-
-# Query memory
-letta ask "what do you know about X?"
-
-# Search archival memory
-letta recall "topic"
-
-# View memory blocks
-letta blocks
-
-# Use explicit agent
-letta --agent eiron status
-```
+Use the `memory_search` tool for semantic recall across local workspace files and long-term extracted memories (shared + domain-specific). Facts are automatically extracted from conversations.

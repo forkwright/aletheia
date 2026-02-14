@@ -1,6 +1,6 @@
 # TOOLS.md - Syl's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, letta, pplx, facts, mcporter).
+> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, memory_search, pplx, facts, mcporter).
 
 
 ## Google Calendar
@@ -111,26 +111,6 @@ tw project:home +urgent
 
 **Tags:** +errand, +appointment, +kendall, +family, +blocked, +review
 
-## Letta Memory
+## Memory
 
-Agent: syl-memory (agent-9aa39693-3bbe-44ae-afb6-041d37ac45a2)
-
-```bash
-# Check status (auto-detects agent from workspace)
-letta status
-
-# Store a fact
-letta remember "important fact here"
-
-# Query memory
-letta ask "what do you know about X?"
-
-# Search archival memory
-letta recall "topic"
-
-# View memory blocks
-letta blocks
-
-# Use explicit agent
-letta --agent syl status
-```
+Use the `memory_search` tool for semantic recall across local workspace files and long-term extracted memories (shared + domain-specific). Facts are automatically extracted from conversations.
