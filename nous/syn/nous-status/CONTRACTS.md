@@ -411,7 +411,7 @@ info:
     ROI calculations, and business analysis. Primary interface to Summus Global systems.
   contact:
     session: "agent:chiron:main"
-    documentation: "/mnt/ssd/aletheia/clawd/work/"
+    documentation: "/mnt/ssd/aletheia/nous/arbor/"
   license:
     name: "Internal Use"
     
