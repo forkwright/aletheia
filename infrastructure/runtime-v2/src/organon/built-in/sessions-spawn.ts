@@ -54,12 +54,13 @@ export function createSessionsSpawnTool(
         return JSON.stringify({ error: "Agent dispatch not available" });
       }
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
+      let timer: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(
           () => reject(new Error(`Spawn timeout after ${timeoutSeconds}s`)),
           timeoutSeconds * 1000,
-        ),
-      );
+        );
+      });
 
       try {
         const outcome = await Promise.race([
@@ -73,6 +74,7 @@ export function createSessionsSpawnTool(
           }),
           timeoutPromise,
         ]);
+        clearTimeout(timer!);
 
         return JSON.stringify({
           agentId,
@@ -85,6 +87,7 @@ export function createSessionsSpawnTool(
           },
         });
       } catch (err) {
+        clearTimeout(timer!);
         return JSON.stringify({
           agentId,
           sessionKey,

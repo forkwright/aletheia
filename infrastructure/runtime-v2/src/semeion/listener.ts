@@ -128,9 +128,15 @@ async function consumeEventStream(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      for (const line of lines) {
+      for (const rawLine of lines) {
+        // Strip trailing \r (SSE spec allows \r\n line endings)
+        const line = rawLine.replace(/\r$/, "");
+
+        // Skip SSE comments
+        if (line.startsWith(":")) continue;
+
         if (line === "") {
-          if (currentEvent.data) {
+          if (currentEvent.data && (!currentEvent.event || currentEvent.event === "receive")) {
             try {
               const payload = JSON.parse(currentEvent.data);
               const envelope = payload?.envelope as SignalEnvelope | undefined;
@@ -147,7 +153,8 @@ async function consumeEventStream(
         } else if (line.startsWith("event:")) {
           currentEvent.event = line.slice(6).trim();
         } else if (line.startsWith("data:")) {
-          const data = line.slice(5);
+          // SSE spec: strip one leading space after colon if present
+          const data = line.startsWith("data: ") ? line.slice(6) : line.slice(5);
           currentEvent.data = currentEvent.data
             ? currentEvent.data + "\n" + data
             : data;
@@ -172,7 +179,13 @@ async function handleEnvelope(
 
   const dataMessage =
     envelope.editMessage?.dataMessage ?? envelope.dataMessage;
-  if (!dataMessage?.message) return;
+  if (!dataMessage) return;
+
+  // Accept messages with text, quoted text, or attachments
+  const messageText = dataMessage.message
+    ?? dataMessage.quote?.text
+    ?? (dataMessage.attachments?.length ? "<attachment>" : null);
+  if (!messageText) return;
 
   const sender = envelope.sourceNumber ?? envelope.sourceUuid;
   if (!sender) return;
@@ -183,15 +196,15 @@ async function handleEnvelope(
   const isGroup = !!dataMessage.groupInfo?.groupId;
   const groupId = dataMessage.groupInfo?.groupId;
 
-  if (!checkAccess(sender, isGroup, account)) {
+  if (!checkAccess(sender, isGroup, groupId, account)) {
     log.debug(`Blocked message from ${sender} (policy)`);
     return;
   }
 
-  let text = dataMessage.message;
+  let text = messageText;
 
-  if (dataMessage.mentions?.length) {
-    text = hydrateMentions(text, dataMessage.mentions);
+  if (dataMessage.message && dataMessage.mentions?.length) {
+    text = hydrateMentions(dataMessage.message, dataMessage.mentions);
   }
 
   log.info(
@@ -255,12 +268,14 @@ async function handleEnvelope(
 function checkAccess(
   sender: string,
   isGroup: boolean,
+  groupId: string | undefined,
   account: SignalAccount,
 ): boolean {
   if (isGroup) {
     if (account.groupPolicy === "disabled") return false;
     if (account.groupPolicy === "open") return true;
-    return isInAllowlist(sender, account.groupAllowFrom);
+    // Check group ID against group allowlist, not sender phone
+    return groupId ? isInAllowlist(groupId, account.groupAllowFrom) : false;
   }
 
   if (account.dmPolicy === "disabled") return false;

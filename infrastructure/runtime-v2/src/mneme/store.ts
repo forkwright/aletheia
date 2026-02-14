@@ -151,39 +151,45 @@ export class SessionStore {
       isDistilled?: boolean;
     },
   ): number {
-    const nextSeq = this.db
-      .prepare(
-        "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM messages WHERE session_id = ?",
-      )
-      .get(sessionId) as { next: number };
+    // Atomic: SELECT + INSERT + UPDATE in a single transaction
+    const tokenEstimate = opts?.tokenEstimate ?? 0;
+    const appendTx = this.db.transaction(() => {
+      const nextSeq = this.db
+        .prepare(
+          "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM messages WHERE session_id = ?",
+        )
+        .get(sessionId) as { next: number };
 
-    this.db
-      .prepare(
-        `INSERT INTO messages (session_id, seq, role, content, tool_call_id, tool_name, token_estimate, is_distilled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        sessionId,
-        nextSeq.next,
-        role,
-        content,
-        opts?.toolCallId ?? null,
-        opts?.toolName ?? null,
-        opts?.tokenEstimate ?? 0,
-        opts?.isDistilled ? 1 : 0,
-      );
+      this.db
+        .prepare(
+          `INSERT INTO messages (session_id, seq, role, content, tool_call_id, tool_name, token_estimate, is_distilled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          sessionId,
+          nextSeq.next,
+          role,
+          content,
+          opts?.toolCallId ?? null,
+          opts?.toolName ?? null,
+          tokenEstimate,
+          opts?.isDistilled ? 1 : 0,
+        );
 
-    this.db
-      .prepare(
-        `UPDATE sessions
-         SET message_count = message_count + 1,
-             token_count_estimate = token_count_estimate + ?,
-             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-         WHERE id = ?`,
-      )
-      .run(opts?.tokenEstimate ?? 0, sessionId);
+      this.db
+        .prepare(
+          `UPDATE sessions
+           SET message_count = message_count + 1,
+               token_count_estimate = token_count_estimate + ?,
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE id = ?`,
+        )
+        .run(tokenEstimate, sessionId);
 
-    return nextSeq.next;
+      return nextSeq.next;
+    });
+
+    return appendTx();
   }
 
   getHistory(
@@ -191,11 +197,16 @@ export class SessionStore {
     opts?: { limit?: number; excludeDistilled?: boolean },
   ): Message[] {
     let query = "SELECT * FROM messages WHERE session_id = ?";
+    const params: (string | number)[] = [sessionId];
+
     if (opts?.excludeDistilled) query += " AND is_distilled = 0";
     query += " ORDER BY seq ASC";
-    if (opts?.limit) query += ` LIMIT ${opts.limit}`;
+    if (opts?.limit && opts.limit > 0) {
+      query += " LIMIT ?";
+      params.push(opts.limit);
+    }
 
-    const rows = this.db.prepare(query).all(sessionId) as Record<
+    const rows = this.db.prepare(query).all(...params) as Record<
       string,
       unknown
     >[];
@@ -206,7 +217,8 @@ export class SessionStore {
     sessionId: string,
     maxTokens: number,
   ): Message[] {
-    const all = this.getHistory(sessionId);
+    // Exclude messages that have been distilled (summarized) — the summary replaces them
+    const all = this.getHistory(sessionId, { excludeDistilled: true });
     let total = 0;
     const result: Message[] = [];
     for (let i = all.length - 1; i >= 0; i--) {

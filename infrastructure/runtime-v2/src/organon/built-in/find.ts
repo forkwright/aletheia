@@ -1,5 +1,5 @@
 // File search tool — find files by name pattern
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { ToolHandler, ToolContext } from "../registry.js";
 
@@ -47,7 +47,7 @@ export const findTool: ToolHandler = {
     const maxDepth = input.maxDepth as number | undefined;
     const maxResults = (input.maxResults as number) ?? 100;
 
-    const args = ["fd", "--color=never"];
+    const args = ["--color=never"];
 
     if (type === "f") args.push("--type", "f");
     else if (type === "d") args.push("--type", "d");
@@ -56,7 +56,7 @@ export const findTool: ToolHandler = {
     args.push(pattern, searchPath);
 
     try {
-      const output = execSync(args.join(" "), {
+      const output = execFileSync("fd", args, {
         timeout: 10000,
         maxBuffer: 512 * 1024,
         encoding: "utf-8",

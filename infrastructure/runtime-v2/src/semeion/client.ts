@@ -57,9 +57,9 @@ export class SignalClient {
     const rpcParams: Record<string, unknown> = {};
 
     if (params.message != null) rpcParams.message = params.message;
-    if (params.recipient) rpcParams.recipient = params.recipient;
+    if (params.recipient) rpcParams.recipient = [params.recipient];
     if (params.groupId) rpcParams.groupId = params.groupId;
-    if (params.username) rpcParams.username = params.username;
+    if (params.username) rpcParams.username = [params.username];
     if (params.account) rpcParams.account = params.account;
     if (params.attachments?.length) rpcParams.attachments = params.attachments;
     if (params.textStyle?.length) rpcParams["text-style"] = params.textStyle;
