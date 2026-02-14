@@ -1,4 +1,4 @@
-// Markdown to Signal text style ranges
+// Markdown to Signal text style ranges — single-pass to avoid offset drift
 export type SignalTextStyle =
   | "BOLD"
   | "ITALIC"
@@ -17,106 +17,108 @@ export interface FormattedText {
   styles: StyleRange[];
 }
 
-export function formatForSignal(markdown: string): FormattedText {
-  const styles: StyleRange[] = [];
-  let text = markdown;
-
-  text = applyInlineStyle(text, styles, /\*\*\*(.+?)\*\*\*/g, ["BOLD", "ITALIC"]);
-  text = applyInlineStyle(text, styles, /\*\*(.+?)\*\*/g, ["BOLD"]);
-  text = applyInlineStyle(text, styles, /\*(.+?)\*/g, ["ITALIC"]);
-  text = applyInlineStyle(text, styles, /_(.+?)_/g, ["ITALIC"]);
-  text = applyInlineStyle(text, styles, /~~(.+?)~~/g, ["STRIKETHROUGH"]);
-  text = applyInlineStyle(text, styles, /\|\|(.+?)\|\|/g, ["SPOILER"]);
-
-  text = applyCodeBlocks(text, styles);
-  text = applyInlineCode(text, styles);
-
-  text = applyLinks(text);
-
-  return { text, styles };
+interface Segment {
+  start: number;
+  end: number;
+  inner: string;
+  styles: SignalTextStyle[];
 }
 
-function applyInlineStyle(
-  text: string,
-  styles: StyleRange[],
-  pattern: RegExp,
-  styleNames: SignalTextStyle[],
-): string {
-  let result = text;
-  let offset = 0;
+export function formatForSignal(markdown: string): FormattedText {
+  const segments = collectSegments(markdown);
 
-  for (const match of text.matchAll(pattern)) {
-    const fullMatch = match[0];
-    const inner = match[1];
-    const originalIdx = match.index!;
-    const adjustedIdx = originalIdx - offset;
+  segments.sort((a, b) => a.start - b.start);
 
-    result =
-      result.slice(0, adjustedIdx) +
-      inner +
-      result.slice(adjustedIdx + fullMatch.length);
+  // Remove overlapping segments (earlier/longer wins)
+  const filtered: Segment[] = [];
+  let lastEnd = 0;
+  for (const seg of segments) {
+    if (seg.start >= lastEnd) {
+      filtered.push(seg);
+      lastEnd = seg.end;
+    }
+  }
 
-    for (const style of styleNames) {
-      styles.push({ start: adjustedIdx, length: inner.length, style });
+  // Build output in one pass — positions are always correct
+  const styles: StyleRange[] = [];
+  let output = "";
+  let pos = 0;
+
+  for (const seg of filtered) {
+    output += markdown.slice(pos, seg.start);
+    const styleStart = output.length;
+    output += seg.inner;
+
+    for (const style of seg.styles) {
+      styles.push({ start: styleStart, length: seg.inner.length, style });
     }
 
-    offset += fullMatch.length - inner.length;
+    pos = seg.end;
   }
 
-  return result;
+  output += markdown.slice(pos);
+
+  return { text: output, styles };
 }
 
-function applyCodeBlocks(text: string, styles: StyleRange[]): string {
-  let result = text;
-  const blockPattern = /```(?:\w+)?\n([\s\S]*?)```/g;
-  let offset = 0;
+function collectSegments(text: string): Segment[] {
+  const segments: Segment[] = [];
 
-  for (const match of text.matchAll(blockPattern)) {
-    const fullMatch = match[0];
-    const inner = match[1].replace(/\n$/, "");
-    const originalIdx = match.index!;
-    const adjustedIdx = originalIdx - offset;
-
-    result =
-      result.slice(0, adjustedIdx) +
-      inner +
-      result.slice(adjustedIdx + fullMatch.length);
-
-    styles.push({ start: adjustedIdx, length: inner.length, style: "MONOSPACE" });
-    offset += fullMatch.length - inner.length;
+  // Code blocks (highest priority — suppress inner markdown)
+  for (const match of text.matchAll(/```(?:\w+)?\n([\s\S]*?)```/g)) {
+    segments.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      inner: match[1].replace(/\n$/, ""),
+      styles: ["MONOSPACE"],
+    });
   }
 
-  return result;
-}
-
-function applyInlineCode(text: string, styles: StyleRange[]): string {
-  let result = text;
-  const codePattern = /`([^`]+)`/g;
-  let offset = 0;
-
-  for (const match of text.matchAll(codePattern)) {
-    const fullMatch = match[0];
-    const inner = match[1];
-    const originalIdx = match.index!;
-    const adjustedIdx = originalIdx - offset;
-
-    result =
-      result.slice(0, adjustedIdx) +
-      inner +
-      result.slice(adjustedIdx + fullMatch.length);
-
-    styles.push({ start: adjustedIdx, length: inner.length, style: "MONOSPACE" });
-    offset += fullMatch.length - inner.length;
+  // Inline code (next priority)
+  for (const match of text.matchAll(/`([^`]+)`/g)) {
+    const start = match.index!;
+    const end = start + match[0].length;
+    if (overlaps(start, end, segments)) continue;
+    segments.push({ start, end, inner: match[1], styles: ["MONOSPACE"] });
   }
 
-  return result;
+  // Inline formatting (only outside code regions)
+  const patterns: Array<{ regex: RegExp; styles: SignalTextStyle[] }> = [
+    { regex: /\*\*\*(.+?)\*\*\*/g, styles: ["BOLD", "ITALIC"] },
+    { regex: /\*\*(.+?)\*\*/g, styles: ["BOLD"] },
+    { regex: /\*(.+?)\*/g, styles: ["ITALIC"] },
+    { regex: /_(.+?)_/g, styles: ["ITALIC"] },
+    { regex: /~~(.+?)~~/g, styles: ["STRIKETHROUGH"] },
+    { regex: /\|\|(.+?)\|\|/g, styles: ["SPOILER"] },
+  ];
+
+  for (const { regex, styles } of patterns) {
+    for (const match of text.matchAll(regex)) {
+      const start = match.index!;
+      const end = start + match[0].length;
+      if (overlaps(start, end, segments)) continue;
+      segments.push({ start, end, inner: match[1], styles });
+    }
+  }
+
+  // Links: [label](url) → "label (url)" or just "label"
+  for (const match of text.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
+    const start = match.index!;
+    const end = start + match[0].length;
+    if (overlaps(start, end, segments)) continue;
+
+    const label = match[1];
+    const url = match[2];
+    const inner =
+      label === url || url.startsWith("mailto:") ? label : `${label} (${url})`;
+    segments.push({ start, end, inner, styles: [] });
+  }
+
+  return segments;
 }
 
-function applyLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
-    if (label === url || url.startsWith("mailto:")) return label;
-    return `${label} (${url})`;
-  });
+function overlaps(start: number, end: number, segments: Segment[]): boolean {
+  return segments.some((s) => start < s.end && end > s.start);
 }
 
 export function stylesToSignalParam(styles: StyleRange[]): string[] {

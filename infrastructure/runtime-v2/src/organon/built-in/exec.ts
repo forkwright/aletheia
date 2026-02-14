@@ -1,6 +1,9 @@
 // Shell execution tool
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import type { ToolHandler, ToolContext } from "../registry.js";
+
+const execAsync = promisify(exec);
 
 export const execTool: ToolHandler = {
   definition: {
@@ -30,14 +33,13 @@ export const execTool: ToolHandler = {
     const timeout = (input.timeout as number) ?? 30000;
 
     try {
-      const output = execSync(command, {
+      const { stdout } = await execAsync(command, {
         cwd: context.workspace,
         timeout,
         maxBuffer: 1024 * 1024,
-        encoding: "utf-8",
         env: { ...process.env, ALETHEIA_NOUS: context.nousId },
       });
-      const trimmed = output.trim();
+      const trimmed = stdout.trim();
       if (trimmed.length > 50000) {
         return (
           trimmed.slice(0, 25000) +
@@ -47,9 +49,14 @@ export const execTool: ToolHandler = {
       }
       return trimmed || "(no output)";
     } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : String(error);
-      return `Error: ${msg}`;
+      const execErr = error as {
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+      };
+      const output =
+        execErr.stdout?.trim() || execErr.stderr?.trim() || execErr.message;
+      return `Error: ${output}`;
     }
   },
 };

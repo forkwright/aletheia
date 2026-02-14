@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { SessionError } from "../koina/errors.js";
 import { generateId, generateSessionKey } from "../koina/crypto.js";
-import { DDL, SCHEMA_VERSION } from "./schema.js";
+import { DDL, SCHEMA_VERSION, MIGRATIONS } from "./schema.js";
 
 const log = createLogger("mneme");
 
@@ -57,15 +57,44 @@ export class SessionStore {
 
   private init(): void {
     const version = this.getSchemaVersion();
-    if (version < SCHEMA_VERSION) {
-      log.info(`Initializing schema v${SCHEMA_VERSION} (was v${version})`);
+
+    if (version === 0) {
+      log.info(`Initializing schema v${SCHEMA_VERSION} (fresh database)`);
       this.db.exec(DDL);
       this.db
         .prepare(
           "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
         )
         .run(SCHEMA_VERSION);
+
+      // Apply any migrations beyond the base DDL version
+      for (const m of MIGRATIONS) {
+        if (m.version > SCHEMA_VERSION) {
+          this.applyMigration(m.version, m.sql);
+        }
+      }
+    } else {
+      // Incremental migrations for existing databases
+      const pending = MIGRATIONS.filter((m) => m.version > version).sort(
+        (a, b) => a.version - b.version,
+      );
+      for (const m of pending) {
+        this.applyMigration(m.version, m.sql);
+      }
     }
+  }
+
+  private applyMigration(version: number, sql: string): void {
+    log.info(`Applying migration v${version}`);
+    const migrate = this.db.transaction(() => {
+      this.db.exec(sql);
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+        )
+        .run(version);
+    });
+    migrate();
   }
 
   private getSchemaVersion(): number {

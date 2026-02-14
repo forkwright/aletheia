@@ -201,10 +201,31 @@ async function handleEnvelope(
     return;
   }
 
+  // Mention gating for groups — only respond when mentioned
+  if (isGroup && account.requireMention !== false) {
+    const isMentioned = dataMessage.mentions?.some(
+      (m) => m.number === accountPhone || normalizePhone(m.number ?? "") === normalizePhone(accountPhone),
+    );
+    if (!isMentioned) {
+      log.debug(`Skipping group message — not mentioned`);
+      return;
+    }
+  }
+
   let text = messageText;
 
   if (dataMessage.message && dataMessage.mentions?.length) {
-    text = hydrateMentions(dataMessage.message, dataMessage.mentions);
+    text = hydrateMentions(dataMessage.message, dataMessage.mentions, accountPhone);
+  }
+
+  // Append attachment info so the agent is aware
+  if (dataMessage.attachments?.length) {
+    for (const att of dataMessage.attachments) {
+      const name = att.filename ?? "unnamed";
+      const type = att.contentType ?? "unknown";
+      const size = att.size ? `${Math.round(att.size / 1024)}KB` : "unknown size";
+      text += `\n[Attachment: ${name} (${type}, ${size})${att.id ? ` id=${att.id}` : ""}]`;
+    }
   }
 
   log.info(
@@ -280,7 +301,18 @@ function checkAccess(
 
   if (account.dmPolicy === "disabled") return false;
   if (account.dmPolicy === "open") return true;
+  if (account.dmPolicy === "pairing") {
+    log.warn(`DM policy "pairing" not implemented — treating as "allowlist"`);
+    return isInAllowlist(sender, account.allowFrom);
+  }
   return isInAllowlist(sender, account.allowFrom);
+}
+
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  // US numbers: 10 digits → prepend country code
+  if (digits.length === 10) return "1" + digits;
+  return digits;
 }
 
 function isInAllowlist(
@@ -288,12 +320,13 @@ function isInAllowlist(
   allowlist: Array<string | number>,
 ): boolean {
   if (!allowlist.length) return false;
+  const senderNorm = normalizePhone(sender);
 
   for (const entry of allowlist) {
     const normalized = String(entry);
     if (normalized === "*") return true;
     if (sender === normalized) return true;
-    if (sender.replace(/\D/g, "") === normalized.replace(/\D/g, "")) return true;
+    if (senderNorm === normalizePhone(normalized)) return true;
   }
 
   return false;
@@ -302,6 +335,7 @@ function isInAllowlist(
 function hydrateMentions(
   text: string,
   mentions: Array<{ name?: string; number?: string; uuid?: string; start?: number; length?: number }>,
+  selfAccount?: string,
 ): string {
   let result = text;
 
@@ -309,6 +343,19 @@ function hydrateMentions(
 
   for (const mention of sorted) {
     if (mention.start == null || mention.length == null) continue;
+
+    // Strip self-mentions (the bot's own mention placeholder)
+    const isSelf =
+      selfAccount &&
+      (mention.number === selfAccount ||
+        normalizePhone(mention.number ?? "") === normalizePhone(selfAccount));
+    if (isSelf) {
+      result =
+        result.slice(0, mention.start) +
+        result.slice(mention.start + mention.length);
+      continue;
+    }
+
     const id = mention.uuid ?? mention.number ?? mention.name ?? "unknown";
     result =
       result.slice(0, mention.start) +
@@ -316,7 +363,7 @@ function hydrateMentions(
       result.slice(mention.start + mention.length);
   }
 
-  return result;
+  return result.trim();
 }
 
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {

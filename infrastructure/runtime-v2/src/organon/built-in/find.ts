@@ -1,7 +1,10 @@
 // File search tool — find files by name pattern
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { resolve } from "node:path";
 import type { ToolHandler, ToolContext } from "../registry.js";
+
+const execFileAsync = promisify(execFile);
 
 export const findTool: ToolHandler = {
   definition: {
@@ -56,17 +59,15 @@ export const findTool: ToolHandler = {
     args.push(pattern, searchPath);
 
     try {
-      const output = execFileSync("fd", args, {
+      const { stdout } = await execFileAsync("fd", args, {
         timeout: 10000,
         maxBuffer: 512 * 1024,
-        encoding: "utf-8",
       });
-      const trimmed = output.trim();
+      const trimmed = stdout.trim();
       return trimmed || "No files found";
     } catch (error) {
-      if (error && typeof error === "object" && "status" in error && (error as { status: number }).status === 1) {
-        return "No files found";
-      }
+      const err = error as { code?: number | string };
+      if (err.code === 1) return "No files found";
       const msg = error instanceof Error ? error.message : String(error);
       return `Error: ${msg}`;
     }

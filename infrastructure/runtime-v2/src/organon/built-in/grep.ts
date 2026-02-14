@@ -1,7 +1,10 @@
 // Content search tool — grep through files
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { resolve } from "node:path";
 import type { ToolHandler, ToolContext } from "../registry.js";
+
+const execFileAsync = promisify(execFile);
 
 export const grepTool: ToolHandler = {
   definition: {
@@ -55,23 +58,24 @@ export const grepTool: ToolHandler = {
     args.push("--", pattern, searchPath);
 
     try {
-      const output = execFileSync("rg", args, {
+      const { stdout } = await execFileAsync("rg", args, {
         timeout: 10000,
         maxBuffer: 512 * 1024,
-        encoding: "utf-8",
       });
-      const trimmed = output.trim();
+      const trimmed = stdout.trim();
       if (!trimmed) return "No matches found";
 
       const lines = trimmed.split("\n");
       if (lines.length > maxResults) {
-        return lines.slice(0, maxResults).join("\n") + `\n... (${lines.length - maxResults} more)`;
+        return (
+          lines.slice(0, maxResults).join("\n") +
+          `\n... (${lines.length - maxResults} more)`
+        );
       }
       return trimmed;
     } catch (error) {
-      if (error && typeof error === "object" && "status" in error && (error as { status: number }).status === 1) {
-        return "No matches found";
-      }
+      const err = error as { code?: number | string };
+      if (err.code === 1) return "No matches found";
       const msg = error instanceof Error ? error.message : String(error);
       return `Error: ${msg}`;
     }
