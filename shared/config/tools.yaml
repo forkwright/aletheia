@@ -80,12 +80,17 @@ todoist:
 memory:
   memory_router: "memory-router \"query\""
   knowledge_graph:
-    db: falkordb
-    graph: aletheia
+    db: neo4j
     commands:
       stats: "aletheia-graph stats"
       query: "aletheia-graph query CYPHER"
       add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
+      connections: "aletheia-graph connections ENTITY"
+      recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
+  mem0:
+    description: "Long-term extracted memories (cross-agent, cross-session)"
+    sidecar: "http://localhost:8230"
+    tool: "mem0_search (available to agents via plugin)"
 
 aletheia:
   distill: "distill --nous AGENT --text \"SUMMARY\""

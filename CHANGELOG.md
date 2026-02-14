@@ -23,9 +23,16 @@
 - Syn's MEMORY.md trimmed from 32K to 2K chars — facts offloaded to Mem0
 - Watchdog: Letta check replaced with mem0-sidecar, qdrant, neo4j, ollama checks
 - Sidecar routes refactored: `asyncio.to_thread` for non-blocking Mem0 operations
+- `aletheia-graph` rewritten from FalkorDB (docker exec redis-cli) to Neo4j (bolt driver)
+- `assemble-context` domain knowledge queries now use Neo4j via `aletheia-graph`
+- `checkpoint` health check: FalkorDB ping replaced with Neo4j HTTP check
+- `tools.yaml`: knowledge_graph db reference updated from falkordb to neo4j, added mem0 section
+- `mem0_search` tool registered via memory plugin — agents can explicitly search long-term memories
 
 ### Removed
-- FalkorDB dependency (data rescued and migrated to Neo4j)
+- FalkorDB container retired (data migrated to Neo4j, ~39MB RAM freed)
+- FalkorDB-only scripts archived: `graph-genesis`, `graph-rewrite`, `graph-maintain`
+- FalkorDB confidence reinforcement in `assemble-context` (handled natively by Neo4j)
 - Old npm global openclaw install (`/usr/bin/openclaw`, `/usr/lib/node_modules/openclaw/`)
 - `clawdbot.service.disabled` legacy systemd file
 
@@ -34,10 +41,11 @@
 - Python: Mem0 sidecar with Ollama embeddings (mxbai-embed-large, 1024 dims)
 - Systemd: `aletheia-memory.service` (uvicorn, port 8230)
 
-### Data Migration (in progress)
-- facts.jsonl (384 facts) → Mem0
-- Session JSONL transcripts (56 sessions, ~215MB) → Mem0
-- FalkorDB graph data rescued (637 nodes → Neo4j pending)
+### Data Migration
+- facts.jsonl: 377/384 facts imported to Mem0
+- mcp-memory.json: 24/24 entities imported to Mem0
+- FalkorDB: 276 edges migrated directly to Neo4j (3 graphs: aletheia, knowledge, temporal_events)
+- Session JSONL transcripts: blocked by Anthropic API credit exhaustion (~51 chunks of akron imported before credits ran out; remaining 7+ agents pending credits)
 
 ---
 
