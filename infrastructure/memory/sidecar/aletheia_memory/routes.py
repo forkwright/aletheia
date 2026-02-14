@@ -67,6 +67,11 @@ async def add_memory(req: AddRequest, request: Request):
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
+
+        # Autonomous link generation (A-Mem pattern) — fire and forget
+        if LINK_GENERATION_ENABLED:
+            asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+
         return {"ok": True, "result": result}
     except Exception as e:
         logger.exception("add_memory failed")
@@ -598,5 +603,247 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     with open(RETRACTION_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
     logger.info(f"Retraction logged: {len(retracted)} memories, reason={req.reason or 'none'}")
+
+
+# --- Phase C1: Foresight Signals ---
+
+
+class ForesightAddRequest(BaseModel):
+    entity: str
+    signal: str
+    activation: str  # ISO datetime
+    expiry: str | None = None
+    weight: float = Field(default=1.0, ge=0.0, le=10.0)
+
+
+foresight_router = APIRouter(prefix="/foresight")
+
+
+@foresight_router.post("/add")
+async def add_foresight(req: ForesightAddRequest):
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            session.run(
+                """
+                MERGE (e {name: $entity})
+                ON CREATE SET e:Entity
+                CREATE (f:ForesightSignal {
+                    signal: $signal,
+                    activation: $activation,
+                    expiry: $expiry,
+                    weight: $weight,
+                    created_at: datetime()
+                })
+                CREATE (e)-[:HAS_FORESIGHT]->(f)
+                """,
+                entity=req.entity,
+                signal=req.signal,
+                activation=req.activation,
+                expiry=req.expiry,
+                weight=req.weight,
+            )
+        driver.close()
+        return {"ok": True, "entity": req.entity, "signal": req.signal}
+    except Exception as e:
+        logger.exception("add_foresight failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@foresight_router.get("/active")
+async def active_foresight():
+    if not NEO4J_PASSWORD:
+        return {"ok": True, "signals": []}
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        now = datetime.now(timezone.utc).isoformat()
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (e)-[:HAS_FORESIGHT]->(f:ForesightSignal)
+                WHERE f.activation <= $now AND (f.expiry IS NULL OR f.expiry >= $now)
+                RETURN e.name AS entity, f.signal AS signal, f.activation AS activation,
+                       f.expiry AS expiry, f.weight AS weight
+                ORDER BY f.weight DESC
+                LIMIT 50
+                """,
+                now=now,
+            )
+            signals = [
+                {
+                    "entity": r["entity"],
+                    "signal": r["signal"],
+                    "activation": str(r["activation"]),
+                    "expiry": str(r["expiry"]) if r["expiry"] else None,
+                    "weight": r["weight"],
+                }
+                for r in result
+            ]
+        driver.close()
+        return {"ok": True, "signals": signals}
+    except Exception as e:
+        logger.exception("active_foresight failed")
+        return {"ok": True, "signals": [], "error": str(e)}
+
+
+@foresight_router.post("/decay")
+async def decay_foresight():
+    if not NEO4J_PASSWORD:
+        return {"ok": True, "decayed": 0, "deleted": 0}
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        now = datetime.now(timezone.utc).isoformat()
+        with driver.session() as session:
+            # Decay expired signals
+            decay_result = session.run(
+                """
+                MATCH (f:ForesightSignal)
+                WHERE f.expiry IS NOT NULL AND f.expiry < $now AND f.weight > 0
+                SET f.weight = f.weight - 0.1
+                RETURN count(f) AS decayed
+                """,
+                now=now,
+            )
+            decayed = decay_result.single()["decayed"]
+
+            # Delete fully decayed signals
+            delete_result = session.run(
+                """
+                MATCH (e)-[r:HAS_FORESIGHT]->(f:ForesightSignal)
+                WHERE f.weight <= 0
+                DELETE r, f
+                RETURN count(f) AS deleted
+                """
+            )
+            deleted = delete_result.single()["deleted"]
+        driver.close()
+        return {"ok": True, "decayed": decayed, "deleted": deleted}
+    except Exception as e:
+        logger.exception("decay_foresight failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
+
+
+LINK_GENERATION_ENABLED = os.environ.get("LINK_GENERATION_ENABLED", "false").lower() == "true"
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LINK_SCORE_THRESHOLD = 0.6
+LINK_MAX_NEIGHBORS = 3
+
+
+async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[str, Any]]:
+    """Generate LLM-described links between a new memory and its nearest neighbors."""
+    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not NEO4J_PASSWORD:
+        return []
+
+    # Find nearest neighbors
+    try:
+        raw = await asyncio.to_thread(mem.search, new_text, user_id=user_id, limit=LINK_MAX_NEIGHBORS + 1)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+    except Exception:
+        return []
+
+    if not isinstance(results, list):
+        return []
+
+    # Filter to high-similarity neighbors (skip self)
+    neighbors = [
+        r for r in results
+        if r.get("score", 0) > LINK_SCORE_THRESHOLD
+        and r.get("memory", "") != new_text
+    ][:LINK_MAX_NEIGHBORS]
+
+    if not neighbors:
+        return []
+
+    links: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for neighbor in neighbors:
+            neighbor_text = neighbor.get("memory", "")
+            if not neighbor_text:
+                continue
+
+            try:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 64,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": (
+                                    f'Memory A: "{new_text[:200]}"\n'
+                                    f'Memory B: "{neighbor_text[:200]}"\n'
+                                    "Describe the relationship between A and B in 10 words or less."
+                                ),
+                            }
+                        ],
+                    },
+                )
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+                description = data.get("content", [{}])[0].get("text", "").strip()
+                if not description or len(description) > 100:
+                    continue
+
+                links.append({
+                    "neighbor_id": neighbor.get("id", ""),
+                    "neighbor_text": neighbor_text[:200],
+                    "description": description,
+                    "score": neighbor.get("score", 0),
+                })
+            except Exception:
+                continue
+
+    # Store links in Neo4j
+    if links:
+        try:
+            from neo4j import GraphDatabase
+
+            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                for link in links:
+                    session.run(
+                        """
+                        MERGE (a:Memory {text_preview: $new_text})
+                        MERGE (b:Memory {text_preview: $neighbor_text})
+                        CREATE (a)-[:LINKED {
+                            description: $description,
+                            score: $score,
+                            generated_at: datetime()
+                        }]->(b)
+                        """,
+                        new_text=new_text[:200],
+                        neighbor_text=link["neighbor_text"],
+                        description=link["description"],
+                        score=link["score"],
+                    )
+            driver.close()
+            logger.info(f"Generated {len(links)} memory links for new memory")
+        except Exception:
+            logger.warning("Failed to store memory links in Neo4j")
+
+    return links
 
 

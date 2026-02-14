@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from mem0 import Memory
 
 from .config import MEM0_CONFIG
-from .routes import router
+from .routes import router, foresight_router
 
 
 def _patch_anthropic_params():
@@ -126,3 +126,4 @@ async def auth_middleware(request: Request, call_next):
 
 
 app.include_router(router)
+app.include_router(foresight_router)

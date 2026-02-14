@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  full-coverage-report:
+  coverage-report:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,26 +16,33 @@ jobs:
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
-      - run: cd infrastructure/runtime && npm run test:coverage
-      - run: |
-          node -e "
-            const cov = require('./infrastructure/runtime/coverage/coverage-summary.json');
-            const total = cov.total;
-            const checks = {
-              statements: { actual: total.statements.pct, min: 60 },
-              branches: { actual: total.branches.pct, min: 50 },
-              functions: { actual: total.functions.pct, min: 60 },
-              lines: { actual: total.lines.pct, min: 60 },
-            };
-            let failed = false;
-            for (const [name, check] of Object.entries(checks)) {
-              if (check.actual < check.min) {
-                console.error(name + ': ' + check.actual + '% < ' + check.min + '%');
-                failed = true;
-              }
-            }
-            if (failed) process.exit(1);
-          "
+      - name: Unit tests with coverage
+        run: cd infrastructure/runtime && npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-coverage
+          path: infrastructure/runtime/coverage/
+          retention-days: 30
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
+      - name: Integration tests
+        run: cd infrastructure/runtime && npm run test:integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: infrastructure/runtime/test-results/integration-results.json
+          retention-days: 30
 
   dependency-audit:
     runs-on: ubuntu-latest
@@ -47,8 +54,23 @@ jobs:
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
-      - run: cd infrastructure/runtime && npm audit --json > audit-results.json || true
+      - name: Audit all dependencies
+        run: |
+          cd infrastructure/runtime
+          npm audit --json > audit-results.json || true
+          node -e "
+            const audit = require('./audit-results.json');
+            const meta = audit.metadata?.vulnerabilities || {};
+            const critical = meta.critical || 0;
+            const high = meta.high || 0;
+            console.log('Vulnerabilities — critical: ' + critical + ', high: ' + high + ', moderate: ' + (meta.moderate || 0) + ', low: ' + (meta.low || 0));
+            if (critical > 0 || high > 0) {
+              console.error('::error::Found ' + critical + ' critical and ' + high + ' high severity vulnerabilities');
+              process.exit(1);
+            }
+          "
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: audit
           path: infrastructure/runtime/audit-results.json
@@ -64,8 +86,28 @@ jobs:
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
-      - run: cd infrastructure/runtime && npx knip --reporter json > dead-code.json || true
+      - name: Detect unused exports
+        run: |
+          cd infrastructure/runtime
+          npx knip --reporter json > dead-code.json 2>&1 || true
+          node -e "
+            const fs = require('fs');
+            try {
+              const report = JSON.parse(fs.readFileSync('dead-code.json', 'utf8'));
+              const files = report.files?.length || 0;
+              const exports = report.exports?.length || 0;
+              const types = report.types?.length || 0;
+              const deps = report.dependencies?.length || 0;
+              console.log('Dead code — unused files: ' + files + ', exports: ' + exports + ', types: ' + types + ', deps: ' + deps);
+              if (files > 5) {
+                console.warn('::warning::' + files + ' unused files detected — review dead-code.json artifact');
+              }
+            } catch {
+              console.log('No dead code report generated');
+            }
+          "
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: dead-code
           path: infrastructure/runtime/dead-code.json

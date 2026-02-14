@@ -22,7 +22,7 @@ export default defineConfig({
     outputFile: {
       json: "../test-results/results.json",
     },
-    passWithNoTests: true,
+    passWithNoTests: false,
     testTimeout: 10000,
     hookTimeout: 10000,
     pool: "forks",

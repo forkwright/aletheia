@@ -40,6 +40,8 @@ function makeStore() {
     updateSessionActualTokens: vi.fn(),
     getMetrics: vi.fn().mockReturnValue({ usage: {}, perNous: {}, usageByNous: {} }),
     listSessions: vi.fn().mockReturnValue([]),
+    recordSignal: vi.fn(),
+    getSignalHistory: vi.fn().mockReturnValue([]),
   } as never;
 }
 
@@ -58,6 +60,8 @@ function makeTools() {
   return {
     getDefinitions: vi.fn().mockReturnValue([]),
     execute: vi.fn().mockResolvedValue("tool result"),
+    recordToolUse: vi.fn(),
+    expireUnusedTools: vi.fn().mockReturnValue([]),
   } as never;
 }
 

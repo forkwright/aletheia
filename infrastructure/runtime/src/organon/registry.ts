@@ -1,4 +1,4 @@
-// Tool registry — register, resolve, filter by policy
+// Tool registry — register, resolve, filter by policy, dynamic loading with expiry
 import { createLogger } from "../koina/logger.js";
 import { truncateToolResult } from "./truncate.js";
 import type { ToolDefinition } from "../hermeneus/anthropic.js";
@@ -6,6 +6,7 @@ import type { ToolDefinition } from "../hermeneus/anthropic.js";
 const log = createLogger("organon");
 
 const DEFAULT_MAX_RESULT_TOKENS = 8000;
+const EXPIRY_TURNS = 5;
 
 export interface ToolHandler {
   definition: ToolDefinition;
@@ -13,6 +14,7 @@ export interface ToolHandler {
     input: Record<string, unknown>,
     context: ToolContext,
   ) => Promise<string>;
+  category?: "essential" | "available";
 }
 
 export interface ToolContext {
@@ -22,8 +24,14 @@ export interface ToolContext {
   depth?: number;
 }
 
+interface ActiveToolEntry {
+  sessionId: string;
+  lastUsedTurn: number;
+}
+
 export class ToolRegistry {
   private tools = new Map<string, ToolHandler>();
+  private activeTools = new Map<string, ActiveToolEntry>();
 
   register(handler: ToolHandler): void {
     const name = handler.definition.name;
@@ -41,8 +49,19 @@ export class ToolRegistry {
   getDefinitions(opts?: {
     allow?: string[];
     deny?: string[];
+    sessionId?: string;
   }): ToolDefinition[] {
     let tools = Array.from(this.tools.values());
+
+    // Dynamic loading: filter by category if sessionId provided
+    if (opts?.sessionId) {
+      tools = tools.filter((t) => {
+        if (!t.category || t.category === "essential") return true;
+        // Available tools only shown if activated for this session
+        const key = `${opts.sessionId}:${t.definition.name}`;
+        return this.activeTools.has(key);
+      });
+    }
 
     if (opts?.allow?.length) {
       const allowed = new Set(opts.allow);
@@ -55,6 +74,46 @@ export class ToolRegistry {
     }
 
     return tools.map((t) => t.definition);
+  }
+
+  enableTool(name: string, sessionId: string, turnSeq: number): boolean {
+    const handler = this.tools.get(name);
+    if (!handler) return false;
+    if (!handler.category || handler.category === "essential") return true; // Already available
+
+    const key = `${sessionId}:${name}`;
+    this.activeTools.set(key, { sessionId, lastUsedTurn: turnSeq });
+    log.info(`Tool ${name} enabled for session ${sessionId}`);
+    return true;
+  }
+
+  recordToolUse(name: string, sessionId: string, turnSeq: number): void {
+    const key = `${sessionId}:${name}`;
+    const entry = this.activeTools.get(key);
+    if (entry) {
+      entry.lastUsedTurn = turnSeq;
+    }
+  }
+
+  expireUnusedTools(sessionId: string, currentTurn: number): string[] {
+    const expired: string[] = [];
+    for (const [key, entry] of this.activeTools) {
+      if (entry.sessionId !== sessionId) continue;
+      if (currentTurn - entry.lastUsedTurn >= EXPIRY_TURNS) {
+        expired.push(key.split(":").slice(1).join(":"));
+        this.activeTools.delete(key);
+      }
+    }
+    if (expired.length > 0) {
+      log.info(`Expired tools for session ${sessionId}: ${expired.join(", ")}`);
+    }
+    return expired;
+  }
+
+  getAvailableToolNames(): string[] {
+    return Array.from(this.tools.values())
+      .filter((t) => t.category === "available")
+      .map((t) => t.definition.name);
   }
 
   async execute(

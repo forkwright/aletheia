@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { ToolHandler, ToolContext } from "../registry.js";
 import { safePath } from "./safe-path.js";
+import { commitWorkspaceChange } from "../workspace-git.js";
 
 export const editTool: ToolHandler = {
   definition: {
@@ -55,6 +56,7 @@ export const editTool: ToolHandler = {
       const updated = content.slice(0, idx) + newText + content.slice(idx + oldText.length);
       writeFileSync(resolved, updated, "utf-8");
 
+      try { commitWorkspaceChange(context.workspace, resolved, "edit"); } catch {}
       return `Edited ${filePath}: replaced ${oldText.length} chars with ${newText.length} chars`;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

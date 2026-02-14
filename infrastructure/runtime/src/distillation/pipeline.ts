@@ -7,7 +7,9 @@ import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
+import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
+import { eventBus } from "../koina/event-bus.js";
 
 const log = createLogger("distillation");
 
@@ -80,6 +82,7 @@ async function runDistillation(
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
   const distillationNumber = store.incrementDistillationCount(sessionId);
+  eventBus.emit("distill:before", { sessionId, nousId, distillationNumber });
   log.info(
     `Starting distillation #${distillationNumber} for session ${sessionId}`,
   );
@@ -128,7 +131,11 @@ async function runDistillation(
     });
 
   // Sanitize tool results — truncate verbose payloads before LLM-facing operations
-  const simpleMessages = sanitizeToolResults(rawMessages);
+  const sanitized = sanitizeToolResults(rawMessages);
+
+  // Prune low-information segments using word-overlap similarity
+  const { prunedMessages: simpleMessages, removedCount: pruneCount } = pruneBySimilarity(sanitized);
+  if (pruneCount > 0) log.info(`Pruned ${pruneCount} low-information messages before distillation`);
 
   // Pass 1: Extraction
   log.info(`Extraction pass: ${simpleMessages.length} messages`);
@@ -242,6 +249,8 @@ async function runDistillation(
       tokensAfter: result.tokensAfter,
     });
   }
+
+  eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });
 
   log.info(
     `Distillation #${distillationNumber} complete: ${result.tokensBefore} → ${result.tokensAfter} tokens ` +

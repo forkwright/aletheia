@@ -1,4 +1,5 @@
 // Nous manager — lifecycle, routing, agent turn execution
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { SessionStore, type Message } from "../mneme/store.js";
 import { ProviderRouter } from "../hermeneus/router.js";
@@ -29,6 +30,9 @@ import { checkInputCircuitBreakers, checkResponseQuality } from "./circuit-break
 import { getReversibility, requiresSimulation } from "../organon/reversibility.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
+import { eventBus } from "../koina/event-bus.js";
+import { classifyInteraction } from "./interaction-signals.js";
+import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
 
 const log = createLogger("nous");
 
@@ -77,6 +81,26 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
     }
   }).catch(() => {});
   return current;
+}
+
+// Ephemeral timestamp formatting — absolute times in operator timezone (America/Chicago)
+// Injected at API-call time only, never stored. Uses absolute format because
+// relative time ("yesterday") becomes inaccurate as conversations age.
+function formatEphemeralTimestamp(isoString: string): string | null {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString("en-US", {
+      timeZone: "America/Chicago",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export class NousManager {
@@ -206,6 +230,8 @@ export class NousManager {
       };
     }
 
+    eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
+
     log.info(
       `Processing message for ${nousId}:${sessionKey} (session ${sessionId})`,
     );
@@ -251,6 +277,7 @@ export class NousManager {
     ];
 
     const toolDefs = this.tools.getDefinitions({
+      sessionId,
       ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
       ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
     });
@@ -322,6 +349,7 @@ export class NousManager {
     let totalCacheReadTokens = 0;
     let totalCacheWriteTokens = 0;
     let currentMessages = messages;
+    const turnToolCalls: ToolCallRecord[] = [];
 
     const MAX_TOOL_LOOPS = 20;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
@@ -419,11 +447,35 @@ export class NousManager {
           });
         }
 
+        eventBus.emit("turn:after", { nousId, sessionId, toolCalls: totalToolCalls, inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
+
+        // Classify interaction signal and record
+        const signal = classifyInteraction(msg.text, text);
+        this.store.recordSignal({ sessionId, nousId, turnSeq: seq, signal: signal.signal, confidence: signal.confidence });
+        if (signal.signal === "correction" && this.competence) {
+          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+          this.competence.recordCorrection(nousId, domain);
+        }
+
         // Record competence success for the agent's domain (session key as proxy)
         if (this.competence && totalToolCalls > 0) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
           this.competence.recordSuccess(nousId, domain);
         }
+
+        // Skill learning — extract reusable patterns from successful multi-tool turns
+        if (turnToolCalls.length >= 3) {
+          const skillModel = this.config.agents.defaults.compaction.distillationModel;
+          const skillsDir = join(resolveWorkspace(this.config, nous)!, "..", "..", "shared", "skills");
+          extractSkillCandidate(this.router, turnToolCalls, skillModel, sessionId, seq, nousId)
+            .then((candidate) => {
+              if (candidate) saveLearnedSkill(candidate, skillsDir);
+            })
+            .catch(() => {}); // Fire-and-forget
+        }
+
+        // Expire unused dynamic tools
+        this.tools.expireUnusedTools(sessionId, seq + loop);
 
         // Auto-trigger distillation using actual API-reported input tokens (most accurate)
         // Falls back to heuristic estimate if actual tokens aren't available
@@ -503,6 +555,13 @@ export class NousManager {
         }
         const toolDuration = Date.now() - toolStart;
 
+        if (!isError) turnToolCalls.push({ name: toolUse.name, input: toolUse.input as Record<string, unknown>, output: toolResult.slice(0, 500) });
+        this.tools.recordToolUse(toolUse.name, sessionId, seq + loop);
+        eventBus.emit(isError ? "tool:failed" : "tool:called", {
+          nousId, sessionId, tool: toolUse.name, durationMs: toolDuration,
+          ...(isError ? { error: toolResult.slice(0, 200) } : {}),
+        });
+
         trace.addToolCall({
           name: toolUse.name,
           input: toolUse.input as Record<string, unknown>,
@@ -567,7 +626,11 @@ export class NousManager {
       const msg = history[i]!;
 
       if (msg.role === "user") {
-        messages.push({ role: "user", content: msg.content });
+        // Ephemeral timestamps — inject absolute time for temporal awareness
+        // These exist only in the API call, never stored
+        const ts = formatEphemeralTimestamp(msg.createdAt);
+        const content = ts ? `[${ts}] ${msg.content}` : msg.content;
+        messages.push({ role: "user", content });
       } else if (msg.role === "assistant") {
         // Try parsing as JSON content blocks (tool_use responses stored as JSON)
         try {

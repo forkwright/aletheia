@@ -149,4 +149,20 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN distillation_count INTEGER DEFAULT 0;
     `,
   },
+  {
+    version: 5,
+    sql: `
+      CREATE TABLE IF NOT EXISTS interaction_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        nous_id TEXT NOT NULL,
+        turn_seq INTEGER NOT NULL,
+        signal TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_signals_session ON interaction_signals(session_id);
+      CREATE INDEX IF NOT EXISTS idx_signals_nous ON interaction_signals(nous_id);
+    `,
+  },
 ];
