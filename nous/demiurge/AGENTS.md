@@ -40,9 +40,9 @@ You wake up fresh each session. These files are your continuity:
 |------|------|---------|---------------|
 | **Raw** | `memory/YYYY-MM-DD.md` | Session logs, what happened | During/end of sessions |
 | **Curated** | `MEMORY.md` | Distilled insights, long-term | When something matters |
-| **Searchable** | Letta | Queryable facts, context | Key facts worth recalling |
+| **Searchable** | `memory_search` | Queryable facts, entities, relationships | Automatic — extracted from conversations |
 
-**Flow:** Daily captures raw → significant stuff goes to MEMORY.md → key facts sync to Letta
+**Flow:** Daily captures raw → significant stuff goes to MEMORY.md. Facts, preferences, and entity relationships are automatically extracted from conversations.
 
 ### Rules
 - **MEMORY.md** — ONLY load in main session (security: personal context)
@@ -56,11 +56,8 @@ You wake up fresh each session. These files are your continuity:
 - When you make a mistake → document it
 - **Text > Brain** 📝
 
-### 🔍 Federated Search
-```bash
-memory-router "query"                    # Auto-routes by domain
-memory-router "query" --domains all      # Search everywhere
-```
+### Search
+Use `memory_search` to recall information. Searches both local workspace files and long-term extracted memories (cross-agent shared + domain-specific).
 
 ## Tasks
 
