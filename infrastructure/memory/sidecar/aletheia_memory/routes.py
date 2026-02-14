@@ -62,7 +62,8 @@ async def search_memory(req: SearchRequest, request: Request):
         kwargs["agent_id"] = req.agent_id
 
     try:
-        results = await asyncio.to_thread(mem.search, req.query, **kwargs)
+        raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
