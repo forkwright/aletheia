@@ -5,18 +5,18 @@
 - Prompt engineering and optimization
 - AI execution environments
 - Model management and evaluation
-- This system (Syn/Clawdbot)
+- This system (Aletheia)
 
 ## Key Resources
 
 ### Prompt Engineering
-- `/mnt/ssd/moltbot/prompts_leaked/` — System prompts from major AI systems
-- Original sophia had: master prompts, evaluation frameworks, bias detection
+- System prompts from major AI systems (reference collection)
+- Prompt engineering frameworks, evaluation, bias detection
 
 ### My Configuration
-- Config: `/home/syn/.clawdbot/clawdbot.json`
-- Workspace: `/mnt/ssd/moltbot/clawd/`
-- Model: Opus 4.5 (me), Sonnet (sub-agents)
+- Config: `/home/syn/.openclaw/aletheia.json`
+- Workspace: `/mnt/ssd/aletheia/nous/syn/`
+- Model: Opus 4.6 (me), Sonnet 4.5 (sub-agents)
 
 ## Principles
 
@@ -25,8 +25,7 @@ From dianoia naming system:
 
 ## Current State
 
-- Basic setup complete
-- Heartbeat enabled (30m, 8am-11pm)
-- Sub-agents configured for Sonnet
+- Full multi-nous system running (7 nous, Signal routing)
+- Prosoche daemon for adaptive attention
+- Mem0 memory system (vector + graph)
 - GitHub connected (forkwright)
-- Need to integrate prompt optimization tooling

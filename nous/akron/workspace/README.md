@@ -34,7 +34,7 @@
 
 Vehicle documentation lives in:
 ```
-/mnt/ssd/moltbot/dianoia/autarkeia/praxis/vehicle/dodge_ram_2500_1997/documentation/
+/mnt/ssd/aletheia/projects/autarkeia/praxis/vehicle/dodge_ram_2500_1997/documentation/
 ```
 
 Key files:

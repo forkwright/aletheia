@@ -2,9 +2,9 @@
 
 ## Git Workflow (CRITICAL)
 
-1. **Check if repo exists locally:** `/mnt/ssd/moltbot/repos/{repo-name}`
-2. **If not exists:** `gh repo clone forkwright/{repo-name} /mnt/ssd/moltbot/repos/{repo-name}`
-3. **If exists:** `cd /mnt/ssd/moltbot/repos/{repo-name} && git fetch origin && git checkout develop && git pull`
+1. **Check if repo exists locally:** `/mnt/ssd/aletheia/infrastructure/repos/{repo-name}`
+2. **If not exists:** `gh repo clone forkwright/{repo-name} /mnt/ssd/aletheia/infrastructure/repos/{repo-name}`
+3. **If exists:** `cd /mnt/ssd/aletheia/infrastructure/repos/{repo-name} && git fetch origin && git checkout develop && git pull`
 4. **Create feature branch:** `git checkout -b feature/{issue-number}-{short-desc}`
 5. **Make ONLY targeted changes** — do NOT commit unrelated files
 6. **Stage only your changes:** `git add {specific-files}` — NEVER `git add .` or `git add -A`

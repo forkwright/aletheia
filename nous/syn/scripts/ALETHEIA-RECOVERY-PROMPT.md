@@ -1,90 +1,6 @@
 # Aletheia Recovery Prompt
 
-If Syn doesn't come back after the service transition, use this with Claude Code.
-
----
-
-## Context
-
-The moltbot system was renamed to Aletheia:
-- `/mnt/ssd/moltbot` → `/mnt/ssd/aletheia`
-- `agents/` → `nous/`
-- Service: `autarkia` → `aletheia`
-- Config paths updated
-
----
-
-## Current State
-
-**Filesystem:** ✓ Complete
-- `/mnt/ssd/aletheia/` exists
-- `/mnt/ssd/aletheia/nous/` contains all 7 minds
-- Syncthing syncing to Metis `/home/ck/aletheia/`
-
-**Service:** Pending
-- New service file: `/etc/systemd/system/aletheia.service`
-- Old service still running: `autarkia`
-
-**Config:** Pending  
-- Config patch ready at: `/mnt/ssd/aletheia/nous/syn/scripts/aletheia-config-patch.json`
-- Needs to be applied to: `~/.openclaw/openclaw.json`
-
----
-
-## Recovery Steps
-
-### 1. SSH to server
-```bash
-ssh syn@192.168.0.29
-# or: ssh syn@100.87.6.45  (Tailscale)
-```
-
-### 2. Check what's running
-```bash
-systemctl status autarkia
-systemctl status aletheia
-```
-
-### 3. If autarkia is still running and broken
-
-Stop it and switch to aletheia:
-```bash
-sudo systemctl stop autarkia
-sudo systemctl disable autarkia
-sudo systemctl enable aletheia
-sudo systemctl start aletheia
-```
-
-### 4. If config is the problem
-
-The config needs paths updated. Apply the patch:
-```bash
-# Read current config
-cat ~/.openclaw/openclaw.json | jq '.agents.list[].workspace'
-
-# Should show /mnt/ssd/aletheia/nous/X paths
-# If still showing /mnt/ssd/moltbot or /agents/, fix manually:
-
-# Option A: Use openclaw CLI
-openclaw gateway config.patch --raw "$(cat /mnt/ssd/aletheia/nous/syn/scripts/aletheia-config-patch.json)"
-
-# Option B: Edit directly
-nano ~/.openclaw/openclaw.json
-# Change all:
-#   /mnt/ssd/moltbot → /mnt/ssd/aletheia
-#   /agents/ → /nous/
-```
-
-### 5. Validate and restart
-```bash
-openclaw doctor
-sudo systemctl restart aletheia
-systemctl status aletheia
-journalctl -u aletheia -f
-```
-
-### 6. Verify Signal works
-Send a test message. Check logs for delivery.
+If the gateway won't start, use this with Claude Code or manually.
 
 ---
 
@@ -93,60 +9,78 @@ Send a test message. Check logs for delivery.
 | What | Path |
 |------|------|
 | Root | `/mnt/ssd/aletheia/` |
-| Syn workspace | `/mnt/ssd/aletheia/nous/syn/` |
-| Config | `~/.openclaw/openclaw.json` |
-| Config link | `~/.aletheia/config.json` (symlink) |
+| Nous workspaces | `/mnt/ssd/aletheia/nous/{syn,chiron,eiron,demiurge,syl,arbor,akron}` |
+| Runtime config | `/home/syn/.openclaw/aletheia.json` |
 | Service | `/etc/systemd/system/aletheia.service` |
-| Old service | `/etc/systemd/system/autarkia.service` |
-| Config patch | `/mnt/ssd/aletheia/nous/syn/scripts/aletheia-config-patch.json` |
+| Gateway binary | `/usr/local/bin/aletheia` → `/mnt/ssd/aletheia/infrastructure/runtime/aletheia.mjs` |
+| Logs | `/tmp/aletheia/aletheia-YYYY-MM-DD.log` |
 
 ---
 
-## Full Config Patch
+## Recovery Steps
 
-If needed, here are the key changes for `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "env": {
-    "PATH": "/mnt/ssd/aletheia/shared/bin:/usr/local/bin:/usr/bin:/bin"
-  },
-  "agents": {
-    "defaults": {
-      "workspace": "/mnt/ssd/aletheia/nous/syn"
-    },
-    "list": [
-      {"id": "main", "workspace": "/mnt/ssd/aletheia/nous/syn", ...},
-      {"id": "syl", "workspace": "/mnt/ssd/aletheia/nous/syl", ...},
-      {"id": "chiron", "workspace": "/mnt/ssd/aletheia/nous/chiron", ...},
-      {"id": "eiron", "workspace": "/mnt/ssd/aletheia/nous/eiron", ...},
-      {"id": "demiurge", "workspace": "/mnt/ssd/aletheia/nous/demiurge", ...},
-      {"id": "akron", "workspace": "/mnt/ssd/aletheia/nous/akron", ...},
-      {"id": "arbor", "workspace": "/mnt/ssd/aletheia/nous/arbor", ...}
-    ]
-  }
-}
-```
-
----
-
-## Rollback
-
-If everything is broken:
-
+### 1. SSH to server
 ```bash
-# Rename back
-sudo mv /mnt/ssd/aletheia /mnt/ssd/moltbot
-sudo mv /mnt/ssd/moltbot/nous /mnt/ssd/moltbot/agents
-
-# Fix config (change aletheia→moltbot, nous→agents)
-nano ~/.openclaw/openclaw.json
-
-# Use old service
-sudo systemctl stop aletheia
-sudo systemctl start autarkia
+ssh server   # or: ssh codykickertz@192.168.0.29
 ```
+
+### 2. Check service status
+```bash
+sudo systemctl status aletheia
+sudo journalctl -u aletheia -n 50 --no-pager
+```
+
+### 3. Common issues
+
+**Zombie gateway blocking port:**
+```bash
+# Check if old gateway still holds port 18789
+ss -tlnp | grep 18789
+# Kill it if needed
+sudo kill <PID>
+sudo systemctl restart aletheia
+```
+
+**Config syntax error:**
+```bash
+# Validate JSON
+python3 -c "import json; json.load(open('/home/syn/.openclaw/aletheia.json'))"
+```
+
+**ACL permissions on shared/bin:**
+```bash
+# If agents get EACCES on tools:
+sudo setfacl -m u:syn:rwx /mnt/ssd/aletheia/shared/bin/*
+```
+
+**Signal-cli not responding:**
+```bash
+curl -s http://127.0.0.1:8080/v1/about
+# If dead, restart aletheia (it spawns signal-cli as child)
+sudo systemctl restart aletheia
+```
+
+### 4. Validate and restart
+```bash
+aletheia doctor
+sudo systemctl restart aletheia
+journalctl -u aletheia -f
+```
+
+### 5. Verify Signal works
+Send a test message to any group. Check logs for delivery.
 
 ---
 
-*Created: 2026-02-05*
+## Supporting Services
+
+| Service | Command | Port |
+|---------|---------|------|
+| aletheia | `systemctl status aletheia` | 18789 |
+| aletheia-memory | `systemctl status aletheia-memory` | 8230 |
+| aletheia-prosoche | `systemctl status aletheia-prosoche` | — |
+| docker (qdrant, neo4j, langfuse) | `docker ps` | 6333, 7687, 3100 |
+
+---
+
+*Updated: 2026-02-14*

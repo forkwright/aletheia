@@ -7,7 +7,7 @@ Syn checks these during heartbeats and alerts Cody when needed.
 
 ## Status File Format
 
-Each agent writes to: `/mnt/ssd/moltbot/clawd/nous-status/{agent-id}.md`
+Each agent writes to: `/mnt/ssd/aletheia/nous/syn/nous-status/{nous-id}.md`
 
 ```markdown
 # {Agent} Status

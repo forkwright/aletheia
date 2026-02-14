@@ -1,5 +1,5 @@
 # Agent Interface Contracts
-*Formal specifications for agent communication in the Moltbot ecosystem*
+*Formal specifications for nous communication in the Aletheia ecosystem*
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Overview
 
-The Agent Interface Contract (AIC) system provides formal specifications for agent communication, capability discovery, and contract validation in the Moltbot ecosystem. It builds upon existing infrastructure (blackboard, task contracts, status files) while adding formal interface definitions inspired by OpenAPI and ACNBP protocols.
+The Agent Interface Contract (AIC) system provides formal specifications for agent communication, capability discovery, and contract validation in the Aletheia ecosystem. It builds upon existing infrastructure (blackboard, task contracts, status files) while adding formal interface definitions inspired by OpenAPI and ACNBP protocols.
 
 ### Key Features
 - **OpenAPI-inspired** interface definitions
@@ -47,7 +47,7 @@ The Agent Interface Contract (AIC) system provides formal specifications for age
 ├─────────────────────────────────────────────────────────────┤
 │           Existing Infrastructure (Enhanced)                │
 ├─────────────────────────────────────────────────────────────┤
-│  Blackboard   │  Task Contracts  │  Status Files  │  Letta │
+│  Blackboard   │  Task Contracts  │  Status Files  │  Memory │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@ The Agent Interface Contract (AIC) system provides formal specifications for age
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
-| **Contract Registry** | Stores agent interface definitions | `/mnt/ssd/moltbot/shared/contracts/` |
+| **Contract Registry** | Stores agent interface definitions | `/mnt/ssd/aletheia/shared/contracts/` |
 | **Discovery Service** | Capability advertisement and lookup | `discover-agents` command |
 | **Contract Validator** | Schema validation and testing | `validate-contract` command |
 | **Capability Matcher** | Find agents for specific tasks | `match-capability` command |
@@ -69,7 +69,7 @@ Agent contracts use YAML format inspired by OpenAPI 3.1 with agent-specific exte
 ### Core Structure
 
 ```yaml
-# /mnt/ssd/moltbot/shared/contracts/{agent-id}.yaml
+# /mnt/ssd/aletheia/shared/contracts/{agent-id}.yaml
 contractVersion: "1.0"
 agent:
   id: "chiron"
@@ -88,7 +88,7 @@ info:
 servers:
   - description: "Primary session endpoint"
     url: "session://agent:chiron:main"
-    protocol: "clawdbot-session"
+    protocol: "aletheia-session"
 
 capabilities:
   # Capability definitions...
@@ -298,7 +298,7 @@ Agents periodically advertise their capabilities:
 
 ```bash
 # Agents run during heartbeat or startup
-advertise-capabilities --agent chiron --contract /mnt/ssd/moltbot/shared/contracts/chiron.yaml
+advertise-capabilities --agent chiron --contract /mnt/ssd/aletheia/shared/contracts/chiron.yaml
 ```
 
 ### Capability Discovery
@@ -324,7 +324,7 @@ match-capability --input '{"domain":"work","tags":["sql"],"maxDuration":"PT30M"}
 ### Registry Structure
 
 ```
-/mnt/ssd/moltbot/shared/contracts/
+/mnt/ssd/aletheia/shared/contracts/
 ├── registry.json           # Active agent registry
 ├── chiron.yaml            # Chiron's contract
 ├── syl.yaml               # Syl's contract  
@@ -372,7 +372,7 @@ tests:
 
 ```bash
 # Validate contract schema
-validate-contract /mnt/ssd/moltbot/shared/contracts/chiron.yaml
+validate-contract /mnt/ssd/aletheia/shared/contracts/chiron.yaml
 
 # Run capability tests
 test-capability --agent chiron --capability sql_query --verbose
@@ -411,14 +411,14 @@ info:
     ROI calculations, and business analysis. Primary interface to Summus Global systems.
   contact:
     session: "agent:chiron:main"
-    documentation: "/mnt/ssd/moltbot/clawd/work/"
+    documentation: "/mnt/ssd/aletheia/clawd/work/"
   license:
     name: "Internal Use"
     
 servers:
   - description: "Primary session endpoint"
     url: "session://agent:chiron:main" 
-    protocol: "clawdbot-session"
+    protocol: "aletheia-session"
   - description: "Claude Code interface"
     url: "tmux://work"
     protocol: "claude-code"
@@ -789,7 +789,7 @@ metadata:
   version: "2.1.0"
   last_updated: "2026-02-03T20:30:00Z"
   contract_maintainer: "syn"
-  supported_protocols: ["clawdbot-session", "claude-code", "blackboard", "task-contract"]
+  supported_protocols: ["aletheia-session", "claude-code", "blackboard", "task-contract"]
   reliability_sla: 0.95
   
   # Integration mappings
@@ -862,12 +862,12 @@ monitor-capability-performance
 ### File Locations
 
 ```
-/mnt/ssd/moltbot/shared/contracts/
+/mnt/ssd/aletheia/shared/contracts/
 ├── registry.json              # Active capability registry
 ├── {agent}.yaml              # Agent interface contracts
 └── schemas/                  # JSON schemas for validation
 
-/mnt/ssd/moltbot/shared/bin/
+/mnt/ssd/aletheia/shared/bin/
 ├── advertise-capabilities    # Capability advertisement
 ├── discover-agents           # Agent discovery
 ├── match-capability          # Capability matching
@@ -883,7 +883,7 @@ monitor-capability-performance
 | **Blackboard** | Enhanced with capability routing |
 | **Task Contracts** | Capability version requirements |
 | **Agent Status** | Capability health monitoring |
-| **Letta Memory** | Capability usage history |
+| **Memory Memory** | Capability usage history |
 | **Facts.jsonl** | Capability performance metrics |
 
 ### Security Considerations

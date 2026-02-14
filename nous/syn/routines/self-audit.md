@@ -6,7 +6,7 @@
 
 ### 1. File Count
 ```bash
-find /mnt/ssd/moltbot/clawd -type f | wc -l
+find /mnt/ssd/aletheia/nous/syn -type f | wc -l
 ```
 Alert if >100 files. Investigate growth.
 
@@ -38,7 +38,7 @@ Should only contain active reference docs. If something's internalized → delet
 **Monthly:**
 1. Review MEMORY.md for stale info
 2. Review TOOLS.md for outdated notes
-3. Check Letta for contradictions with current state
+3. Run memory_search for contradictions with current state
 4. Delete anything redundant
 
 ## Red Flags

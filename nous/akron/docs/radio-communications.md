@@ -1,6 +1,6 @@
 # Complete Radio and Communications System Summary
 **Date:** January 2025
-**Source:** `/mnt/ssd/moltbot/dianoia/autarkeia/praxis/radio/`
+**Source:** `/mnt/ssd/aletheia/projects/autarkeia/praxis/radio/`
 
 ## Executive Overview
 

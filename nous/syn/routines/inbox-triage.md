@@ -12,8 +12,8 @@
 
 ### 1. Read inbox items
 ```bash
-ls -la /mnt/ssd/moltbot/dianoia/inbox/
-cat /mnt/ssd/moltbot/dianoia/inbox/*.md
+ls -la /mnt/ssd/aletheia/dianoia/inbox/
+cat /mnt/ssd/aletheia/dianoia/inbox/*.md
 ```
 
 ### 2. Classify each item
@@ -38,8 +38,8 @@ cat /mnt/ssd/moltbot/dianoia/inbox/*.md
 ### 4. Archive processed items
 ```bash
 # Move to dated archive
-mv /mnt/ssd/moltbot/dianoia/inbox/item.md \
-   /mnt/ssd/moltbot/dianoia/inbox/archive/2026-01-28/
+mv /mnt/ssd/aletheia/dianoia/inbox/item.md \
+   /mnt/ssd/aletheia/dianoia/inbox/archive/2026-01-28/
 ```
 
 ## Natural Capture Triggers
