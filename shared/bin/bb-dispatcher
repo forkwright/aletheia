@@ -37,9 +37,10 @@ get_session_for_agent() {
   local agent="$1"
   case "$agent" in
     syl) echo "agent:syl:main" ;;
-    chiron) echo "agent:chiron:main" ;;
     eiron) echo "agent:eiron:main" ;;
     demiurge) echo "agent:demiurge:main" ;;
+    arbor) echo "agent:arbor:main" ;;
+    akron) echo "agent:akron:main" ;;
     syn|any|*) echo "agent:main:main" ;;
   esac
 }

@@ -33,8 +33,8 @@ Usage: $0 [OPTIONS]
 Create a new task contract for inter-agent coordination.
 
 OPTIONS:
-    -s, --source AGENT       Source agent (syn|chiron|eiron|syl|demiurge)
-    -t, --target AGENT       Target agent (syn|chiron|eiron|syl|demiurge)  
+    -s, --source AGENT       Source agent (syn|eiron|demiurge|syl|arbor|akron)
+    -t, --target AGENT       Target agent (syn|eiron|demiurge|syl|arbor|akron)
     -T, --type TYPE          Task type (query|analysis|synthesis|coordination|execution|monitoring|escalation)
     -d, --description TEXT   Task description
     -p, --priority LEVEL     Priority (high|medium|low) [default: medium]
@@ -47,7 +47,7 @@ OPTIONS:
 
 EXAMPLES:
     # Basic task creation
-    $0 -s syn -t chiron -T analysis -d "Analyze Q4 performance data"
+    $0 -s syn -t arbor -T analysis -d "Analyze Q4 performance data"
     
     # With deadline and callback
     $0 -s syn -t eiron -T query -d "Research MBA application deadlines" \\
@@ -123,12 +123,12 @@ if [[ "$INTERACTIVE" == "true" ]]; then
     echo
     
     if [[ -z "$SOURCE_AGENT" ]]; then
-        echo "Source agent (syn|chiron|eiron|syl|demiurge):"
+        echo "Source agent (syn|eiron|demiurge|syl|arbor|akron):"
         read -r SOURCE_AGENT
     fi
     
     if [[ -z "$TARGET_AGENT" ]]; then
-        echo "Target agent (syn|chiron|eiron|syl|demiurge):"
+        echo "Target agent (syn|eiron|demiurge|syl|arbor|akron):"
         read -r TARGET_AGENT
     fi
     
@@ -171,7 +171,7 @@ if [[ -z "$SOURCE_AGENT" || -z "$TARGET_AGENT" || -z "$TASK_TYPE" || -z "$DESCRI
 fi
 
 # Validate agent names
-valid_agents="syn chiron eiron syl demiurge"
+valid_agents="syn eiron demiurge syl arbor akron"
 if [[ ! $valid_agents =~ $SOURCE_AGENT ]]; then
     echo "Error: Invalid source agent: $SOURCE_AGENT" >&2
     exit 1

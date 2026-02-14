@@ -17,7 +17,7 @@ Usage:
     coding-agent list                      List known sessions
 
 Sessions:
-    work     - Chiron's work Claude Code on Laptop
+    work     - Arbor's work Claude Code on Laptop
     personal - Local personal Claude Code
 
 Examples:
@@ -129,7 +129,7 @@ case "${1:-help}" in
         
     list)
         echo "Known coding agent sessions:"
-        echo "  work     - Chiron's work Claude Code on Laptop (tmux: work-claude)"
+        echo "  work     - Arbor's work Claude Code on Laptop (tmux: work-claude)"
         echo "  personal - Local personal Claude Code (not yet configured)"
         ;;
         

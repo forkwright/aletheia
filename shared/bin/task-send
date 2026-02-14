@@ -136,7 +136,7 @@ if [[ "$FORCE" != "true" ]]; then
     echo "Checking target agent availability..."
 
     # Validate that target agent exists in aletheia config
-    VALID_AGENTS=("syn" "syl" "chiron" "eiron" "demiurge")
+    VALID_AGENTS=("syn" "syl" "eiron" "demiurge" "arbor" "akron")
     TARGET_VALID=false
     for agent in "${VALID_AGENTS[@]}"; do
         if [[ "$TARGET_AGENT" == "$agent" ]]; then

@@ -108,7 +108,7 @@ def _minutes_until(event: dict) -> int | None:
 def _map_calendar_to_nous(cal_name: str, event: dict, config: dict) -> list[str]:
     mapping = {
         "work": ["arbor", "syn"],
-        "family": ["syl", "chiron", "syn"],
-        "personal": ["syn", "chiron", "syl"],
+        "family": ["syl", "syn"],
+        "personal": ["syn", "syl"],
     }
     return mapping.get(cal_name, ["syn"])

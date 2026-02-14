@@ -11,7 +11,7 @@ Instead of hand-maintaining 7 copies of each, we:
   3. Optimize for token efficiency
 
 Run: compile-context          # All nous
-     compile-context chiron   # One nous
+     compile-context arbor    # One nous
      compile-context --stats  # Show token estimates
 """
 

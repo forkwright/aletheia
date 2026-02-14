@@ -3,7 +3,7 @@
 browse — Web automation for nous agents.
 
 Uses Browser Use library for LLM-driven browser interaction.
-Primary user: Chiron (dashboards, web data).
+Primary user: Arbor (dashboards, web data).
 
 Usage:
     browse "Go to the Summus dashboard and screenshot the ROI page"

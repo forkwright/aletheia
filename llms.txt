@@ -1,8 +1,8 @@
 # Aletheia
 
-> Multi-agent AI system coordinating 7 specialized agents through Signal messaging.
+> Multi-agent AI system coordinating 6 specialized agents through Signal messaging.
 
-Built on a fork of OpenClaw. Self-hosted, privacy-first. 7 nous (agents) + 1 human in distributed cognition topology. Dual-layer memory system with automatic fact extraction.
+Self-hosted, privacy-first. 6 nous (agents) + 1 human in distributed cognition topology. Dual-layer memory system with automatic fact extraction.
 
 ## Documentation
 - [README.md](README.md): Architecture, directory structure, agents, deployment, configuration
@@ -27,7 +27,6 @@ Built on a fork of OpenClaw. Self-hosted, privacy-first. 7 nous (agents) + 1 hum
 
 ## Agents
 - **Syn**: Orchestrator, primary interface (Signal DM default)
-- **Chiron**: Health, scheduling, calendar
 - **Eiron**: MBA coursework, academic
 - **Demiurge**: Creative, craft, leatherwork
 - **Syl**: General assistant, family (family group chat)

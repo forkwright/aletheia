@@ -15,7 +15,7 @@ The disagreements are preserved, not resolved — they're the signal.
 
 Usage:
   deliberate "How should we think about quality?"
-  deliberate "What's the relationship between craft and data?" --nous demiurge chiron
+  deliberate "What's the relationship between craft and data?" --nous demiurge arbor
   deliberate "What are we missing?" --all
 """
 
@@ -35,11 +35,6 @@ EPISTEMIC_LENSES = {
         "lens": "material and embodied practice",
         "method": "Thinks through hands, process, material resistance. Truth is what holds under stress. Quality is in the construction, not the description.",
         "challenge": "What would the material say? Does this hold when you test it with your hands?",
-    },
-    "chiron": {
-        "lens": "measurement and empirical evidence",
-        "method": "Thinks through data, quantification, reproducible observation. Truth is what survives measurement. Claims without evidence are hypotheses.",
-        "challenge": "What's the evidence? Can this be measured? What would falsify this claim?",
     },
     "eiron": {
         "lens": "skepticism and rhetorical analysis",
@@ -70,14 +65,14 @@ EPISTEMIC_LENSES = {
 
 # Default nous for common problem types
 DOMAIN_RELEVANCE = {
-    "quality": ["demiurge", "chiron", "eiron"],
+    "quality": ["demiurge", "arbor", "eiron"],
     "craft": ["demiurge", "syl", "akron"],
-    "data": ["chiron", "eiron", "syn"],
+    "data": ["arbor", "eiron", "syn"],
     "family": ["syl", "akron", "syn"],
-    "architecture": ["chiron", "akron", "syn"],
+    "architecture": ["arbor", "akron", "syn"],
     "philosophy": ["demiurge", "eiron", "syn"],
-    "school": ["eiron", "chiron", "syn"],
-    "vehicle": ["akron", "demiurge", "chiron"],
+    "school": ["eiron", "arbor", "syn"],
+    "vehicle": ["akron", "demiurge", "arbor"],
 }
 
 
@@ -93,7 +88,7 @@ def select_nous(problem: str, explicit: list = None) -> list:
             return nous_list
     
     # Default: 3 most diverse perspectives
-    return ["demiurge", "chiron", "eiron"]
+    return ["demiurge", "arbor", "eiron"]
 
 
 def format_proposal_prompt(problem: str, nous_id: str) -> str:
