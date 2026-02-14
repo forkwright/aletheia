@@ -63,7 +63,7 @@ signals:
     docker_containers:
       - qdrant
       - neo4j
-      - langfuse-server
+      - langfuse
 
   memory:
     enabled: true
