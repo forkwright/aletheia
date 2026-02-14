@@ -42,7 +42,7 @@
     }
   },
 
-  "agents": ["syn", "chiron", "eiron", "demiurge", "syl", "arbor", "akron"],
+  "agents": ["syn", "eiron", "demiurge", "syl", "arbor", "akron"],
 
   "controlled_vocabulary": [
     "KNOWS", "LIVES_IN", "WORKS_AT", "OWNS", "USES", "PREFERS",
