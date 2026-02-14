@@ -109,8 +109,8 @@ memory-router "query" --domains all      # Search everywhere
 ### Config Changes
 **ALWAYS** validate before restart:
 ```bash
-openclaw doctor        # Validate runtime config
-openclaw gateway restart  # Only after doctor passes
+aletheia doctor        # Validate runtime config
+aletheia gateway restart  # Only after doctor passes
 ```
 
 ## External vs Internal

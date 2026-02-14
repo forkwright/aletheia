@@ -45,9 +45,9 @@ Full reference: `shared/config/tools.yaml`. Key commands below.
 ## Agent Management
 - `nous-health` / `nous-contracts show X` / `audit-all-nous`
 
-## OpenClaw
-- Validate: `openclaw doctor`
-- Patch after update: `patch-openclaw`
+## Runtime
+- Validate: `aletheia doctor`
+- Patch after update: `patch-runtime`
 - Config: bindings use `channel` not `provider`; model IDs need date suffix (pre-4.6)
 
 ---
