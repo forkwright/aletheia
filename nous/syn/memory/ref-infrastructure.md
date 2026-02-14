@@ -1,88 +1,117 @@
 # Infrastructure Lessons & Architecture
 
-*Reference file — details extracted from MEMORY.md*
+*Reference file — details extracted from MEMORY.md. Updated 2026-02-14.*
 
-## Aletheia Architecture (2026-02-05)
+## Aletheia Architecture
 
 **What Aletheia IS:** A distributed cognition system. 7 nous + 1 human in topology. Each nous is Cody in different context — embodies his cognition, not serves it.
 
 **Core concepts (Aletheia-native):**
 - Continuity (not memory) — being continuous across session gaps
-- Attention (not heartbeats) — adaptive awareness
+- Attention (not heartbeats) — adaptive awareness via prosoche daemon
 - Distillation (not compaction) — extracting essence, output better than input
-- Shared awareness (not message passing) — lateral connections via knowledge graph
+- Shared awareness (not message passing) — lateral connections via Neo4j knowledge graph
 - Character (not config) — who each mind IS
 
-**Infrastructure built:**
-- distill, assemble-context, compile-context, generate-tools-md, aletheia-graph, graph-maintain, attention-check
-- FalkorDB "aletheia" graph: 396 nodes, 531 relationships
-- Template inheritance: shared sections + per-agent YAML → compiled workspace files
-- Token reduction: ~80% on static context injection
-- Daily graph maintenance cron (3am): decay, dedup, prune
+**We own the runtime.** Forked OpenClaw 2026.2.12 as Aletheia runtime (2026-02-13). Full TypeScript source in `infrastructure/runtime/src/`. Can patch behavior directly instead of working around compiled dist files.
 
-**Design principle:** Nothing in code is sacred except APIs and models. OpenClaw is runtime dependency only.
+## Memory Stack (Current)
 
-## 6-Phase Build Plan Complete (2026-02-05)
+**Mem0** (replaced Letta 2026-02-14):
+- **Qdrant** (port 6333) — vector store for semantic search, collection `aletheia_memories`
+- **Neo4j** (port 7474/7687) — knowledge graph, community 2025.12.1, 58 nodes, 216 edges
+- **Mem0 sidecar** (port 8230) — `aletheia-memory.service`, bridges Qdrant + Neo4j + Ollama embeddings
+- **Embeddings**: `mxbai-embed-large` via Ollama (localhost:11434)
+- Docker compose: `infrastructure/memory/docker-compose.yml`
+- Migration/QA scripts: `infrastructure/memory/scripts/`
 
-All six phases shipped in a single day:
-1. Distillation (structured extraction replaces lossy compaction)
-2. Context Compilation (assemble-context, compile-context, generate-tools-md)
-3. Shared Awareness (FalkorDB graph, ~400 nodes)
-4. Attention System (attention-check, adaptive prosoche)
-5. OpenClaw Patches (8 patches in local fork)
-6. Character Refinement (SOUL.md audit — character separated from operations)
+**Three-tier memory:**
+| Tier | Store | Purpose |
+|------|-------|---------|
+| Raw | `memory/YYYY-MM-DD.md` | Daily session logs |
+| Curated | `MEMORY.md` | Operational context, critical lessons |
+| Searchable | Mem0 (Qdrant + Neo4j) | Semantic search across all agents |
 
-## Concept Audit (2026-02-05 evening)
+**Tools:**
+- `mem0_search` — gateway plugin, searches Mem0 sidecar
+- `facts` — structured facts in `shared/memory/facts.jsonl` (384 facts)
+- `aletheia-graph` — Neo4j graph queries/mutations
+- `distill` — extract structured insights, update graph + state
+- `assemble-context` — compile session context from workspace files + graph
 
-62 files updated: moltbot→aletheia, clawd→nous/syn, clawdbot→openclaw. All shared/bin scripts, all agent templates, letta config, tools.yaml. Crontab fully migrated. 3 obsolete scripts removed. CrewAI archived (5.4G). nous/ now 24M total.
+## Prosoche Daemon (2026-02-14)
 
-## System Audit Results (2026-02-05 evening)
+Replaced static heartbeat timers. Signal-driven adaptive attention.
+- Service: `aletheia-prosoche.service`
+- Config: `infrastructure/prosoche/config.yaml`
+- **Daemon owns PROSOCHE.md** — agents should NOT manually edit it (overwritten every 60s)
+- Signals: calendar, tasks, health, memory cross-references
+- Per-agent weighted urgency (Syn gets health:1.0, Eiron gets tasks:0.9, etc.)
+- Quiet hours: 23:00–06:00 CST
+- Budget: max 2 wakes/nous/hour, 6 total/hour, 300s cooldown
 
-- `checkpoint` tool — save/restore/verify system state. Watchdog auto-reverts after 3 failures. Daily auto-checkpoints.
-- `assemble-context` 2500ms → 1050ms. Calendar parallelized, graph batched.
-- `compose-team` analyzes tasks, recommends optimal nous team. `quick-route` for fast routing.
-- `memory-promote` automates raw → structured → curated promotion. Cron'd 3:30am.
-- Graph ontology: 215 → 24 canonical relation types. 397 → 254 nodes.
-- `deliberate` tool with 7 epistemic lenses. All 6 agents available for live multi-nous reasoning.
-- Critical fix: Two systemd services (autarkia + aletheia) both running, causing port conflicts. Consolidated.
+## Gateway & Runtime
 
-## Config & Agent Lessons
+- **Service:** `aletheia.service` (systemd). Parent spawns `aletheia-gateway` child process.
+- **Port:** 18789
+- **Config:** `~/.aletheia/aletheia.json` (primary). Legacy fallback: `openclaw.json`.
+- **State dir:** `~/.aletheia/` (symlinked from `~/.openclaw/` for backwards compat)
+- **Binary:** `/usr/local/bin/aletheia` (v2026.2.12)
+- **Config reload:** `config-reload` sends SIGUSR1. Do NOT use `config.patch` API (broken for persistence).
+- **enforce-config** cron (every 15 min) ensures all 7 nous stay registered. Writes to `~/.aletheia/aletheia.json`.
+- **Quirk:** `systemctl restart` can leave orphan gateway child holding port 18789.
 
-**`agents.list` is required for identity.** Setting workspace in `agents.overrides` alone doesn't work — agents must be in `agents.list` with workspace paths. Without this, all agents respond as Syn. (2026-02-06)
+## Agent Config
 
-**Model ID format:** Newer models: `anthropic/claude-sonnet-4-5` (no date suffix). Older: `anthropic/claude-sonnet-4-20250514`.
+- **Default model:** `anthropic/claude-opus-4-6` (all agents)
+- **Sub-agent model:** `anthropic/claude-sonnet-4-20250514` (for spawned utility workers)
+- **Prompt caching:** `cacheRetention: "long"` (1hr)
+- **Compaction:** safeguard mode, 50K token reserve floor, memory flush at 8K tokens
+- **Heartbeat:** 45m intervals, 08:00–23:00 (now supplemented by prosoche daemon)
+- **`agents.list` is required for identity.** Without workspace paths in the list, all agents respond as Syn.
+- **ACL permissions:** Scripts need `setfacl -m u:syn:rwx <file>`. ACL overrides POSIX for named users.
 
-**config.patch API is broken for persistence.** Patches in-memory, writes stale state on restart. Write to disk + SIGUSR1 instead. (2026-02-08)
+## Sub-Agent Architecture (2026-02-14)
 
-**enforce-config** cron (every 15 min) ensures all 7 nous stay registered. Source of truth is in the script.
+**Real team** (via `sessions_send`): For domain tasks that benefit from accumulated context. The persistent agent in their Signal session has corrections, lessons, preferences. Use them.
 
-**Single API key fragility:** All 7 agents share one Anthropic key. One agent's failure cascade puts ALL providers in cooldown. (2026-02-09)
+**Utility sub-agents** (via `sessions_spawn`): Throwaway Sonnet workers for generic tasks — code review, research, data transformation. No domain identity needed.
 
-**Session reset:** Use runtime's /new command. Manual transcript surgery causes more problems.
+Don't spawn mini-Akron when you need Akron's judgment. Message the real one.
 
-**Service restart:** `sudo systemctl restart` can leave orphaned child processes holding ports.
+## Services
 
-**ACL permissions (2026-02-13):** Scripts need `setfacl -m u:syn:rwx <file>` not just `chmod +x`. ACL entries override POSIX permissions for named users. Root cause of distill/assemble-context failures and context overflow cascades.
+| Service | Status | Notes |
+|---------|--------|-------|
+| Gateway | 🟢 | aletheia.service |
+| Mem0 sidecar | 🟢 | aletheia-memory.service, port 8230 |
+| Qdrant | 🟢 | Docker, port 6333 |
+| Neo4j | 🟢 | Docker, port 7687 |
+| Prosoche | 🟢 | aletheia-prosoche.service |
+| Langfuse | 🟢 | Docker, observability |
+| Ollama | 🟢 | Port 11434, mxbai-embed-large |
+| gcal | 🟢 | Re-authed 2026-02-14 |
+| NAS SSH | 🔴 | Pubkey placed, sshd needs restart on NAS |
+| Signal-CLI | 🟢 | Managed by gateway |
 
-## Fork Decision (2026-02-07)
+## Network
 
-Full terminology rename: `agent` → `nous` throughout entire OpenClaw codebase. "Aletheia is canon, not remix." 249 files, ~103 config schema refs.
+- **Worker-node:** localhost / 100.87.6.45 (Tailscale)
+- **NAS:** 192.168.0.120 (Synology 923+, 32TB)
+- **Metis:** Ethernet 192.168.0.19, WiFi 192.168.0.20. Check which is active.
 
-## Stale Session Bug (2026-02-08)
+## Media Infrastructure
 
-Old `agent:main:signal:group:*` sessions kept re-appearing. Root cause: Syn re-creating them during heartbeats via `sessions_send`. Shadow sessions removed 2026-02-13, gateway restart pending.
+- Prowlarr: 40 indexers, all tagged `flare` for Byparr proxy
+- Byparr: FlareSolverr replacement on gluetun network, port 8191
+- Lidarr: Use `ManualImport` API, not `RescanArtist`
+- Public indexers don't carry indie singles. Use Qobuz/Bandcamp/Soulseek.
 
-## Media Infrastructure (2026-02-12)
+## Key Fixes & Lessons
 
-- Prowlarr: 40 indexers (from 25). All tagged `flare` for Byparr proxy.
-- Byparr: `ghcr.io/thephaseless/byparr:latest` on gluetun network, port 8191. Drop-in FlareSolverr replacement.
-- Lidarr: `RescanArtist` doesn't auto-import. Use `ManualImport` API with explicit IDs.
-- Public indexers don't carry singles from indie artists. Use Qobuz/Bandcamp/Soulseek.
-
-## Metis Network
-
-Ethernet: 192.168.0.19, WiFi: 192.168.0.20. Check which is active. "Lid closed = offline" assumption was wrong.
-
-## Transcribe Tool (2026-02-13)
-
-`transcribe <file>` in shared/bin/. Handles whisper transcription. Outputs to theke/summus/transcripts/YYYY-MM-DD-name/. Accepts remote paths: `metis:/home/ck/Downloads/file.flac`. Defaults to tiny model.
+- **config.patch API broken** — write to disk + SIGUSR1 instead (2026-02-08)
+- **Session reset** — use /new command, never manual transcript surgery (2026-02-09)
+- **Single API key fragility** — all 7 agents share one Anthropic key (2026-02-09)
+- **Stale session bug** — Syn re-creating sessions during heartbeats via sessions_send (2026-02-08, fixed 2026-02-13)
+- **Watchdog pgrep patterns** — must match actual process names after rename (2026-02-14)
+- **Don't edit sshd_config remotely without a fallback plan** (2026-02-14)

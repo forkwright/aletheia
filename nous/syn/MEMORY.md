@@ -35,13 +35,15 @@
 
 ## Architecture
 
-Aletheia: distributed cognition. 7 nous + 1 human. Each nous embodies cognition in a different context.
+Aletheia: distributed cognition. 7 nous + 1 human. We own the runtime (forked OpenClaw 2026.2.12).
 
-Core concepts: continuity, attention, distillation, shared awareness, character.
+Memory: Mem0 (Qdrant vectors + Neo4j graph + Ollama embeddings via sidecar on port 8230).
 
-Tools: distill, assemble-context, compile-context, transcribe, aletheia-graph, deliberate, compose-team.
+Attention: Prosoche daemon (signal-driven, weighted urgency, replaces static heartbeats). Daemon owns PROSOCHE.md.
 
-Mem0 (Qdrant + Neo4j), template inheritance, enforce-config cron, memory-promote cron.
+Tools: distill, assemble-context, compile-context, aletheia-graph, mem0_search, config_read.
+
+Sub-agents: Use sessions_send for real team (accumulated context matters). Use sessions_spawn for utility workers (Sonnet, no domain identity).
 
 Full details: `memory/ref-infrastructure.md`
 
@@ -56,4 +58,4 @@ Full details: `memory/ref-infrastructure.md`
 
 ---
 
-*Updated: 2026-02-13*
+*Updated: 2026-02-14*
