@@ -22,9 +22,10 @@ touch "$TASKS_FILE" "$MESSAGES_FILE"
 detect_agent() {
   case "$PWD" in
     */syl*) echo "syl" ;;
-    */chiron*) echo "chiron" ;;
     */eiron*) echo "eiron" ;;
     */demiurge*) echo "demiurge" ;;
+    */arbor*) echo "arbor" ;;
+    */akron*) echo "akron" ;;
     *) echo "syn" ;;
   esac
 }
@@ -65,9 +66,10 @@ cmd_post() {
   if [[ -z "$domain" ]]; then
     case "$to" in
       syl) domain="home" ;;
-      chiron) domain="work" ;;
       eiron) domain="school" ;;
       demiurge) domain="craft" ;;
+      arbor) domain="work" ;;
+      akron) domain="vehicle" ;;
       *) domain="meta" ;;
     esac
   fi
@@ -386,7 +388,7 @@ MESSAGES:
 STATUS:
   bb status
 
-AGENTS: syn, syl, chiron, eiron, demiurge
+AGENTS: syn, syl, eiron, demiurge, arbor, akron
 PRIORITIES: low, medium, high, urgent
 DOMAINS: home, work, school, craft, meta
 EOF

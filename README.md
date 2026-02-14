@@ -1,8 +1,8 @@
 # Aletheia
 
-*Multi-agent AI system coordinating 7 specialized agents through Signal messaging.*
+*Multi-agent AI system coordinating 6 specialized agents through Signal messaging.*
 
-Built on a fork of [OpenClaw](https://github.com/openclaw/openclaw) (multi-channel AI gateway). Self-hosted, privacy-first. Runs on a home server as a systemd service.
+Self-hosted, privacy-first. Runs on a home server as a systemd service.
 
 ---
 
@@ -21,9 +21,9 @@ Built on a fork of [OpenClaw](https://github.com/openclaw/openclaw) (multi-chann
                    /    |    |   \
               Bindings (per-agent group routing)
                 /       |    |      \
-         +-----+  +-------+ +------+ +------+
-         | Syn |  |Chiron | | Syl  | | ...  |   7 agents, each with:
-         +-----+  +-------+ +------+ +------+   - SOUL.md (character)
+         +-----+  +------+ +------+ +------+
+         | Syn |  | Syl  | |Arbor | | ...  |   6 agents, each with:
+         +-----+  +------+ +------+ +------+   - SOUL.md (character)
             |         |         |        |       - AGENTS.md (operations)
             v         v         v        v       - MEMORY.md (continuity)
          Claude     Claude    Claude   Claude
@@ -46,7 +46,7 @@ Built on a fork of [OpenClaw](https://github.com/openclaw/openclaw) (multi-chann
 
 ```
 /mnt/ssd/aletheia/
-├── nous/                   Agent workspaces (7 agents)
+├── nous/                   Agent workspaces (6 agents)
 │   └── {agent}/
 │       ├── SOUL.md             Character definition (prose)
 │       ├── AGENTS.md           Operations (compiled from templates)
@@ -97,8 +97,7 @@ Each agent has a dedicated workspace under `nous/` with character (`SOUL.md`), o
 
 | Agent | Greek | Domain | Binding |
 |-------|-------|--------|---------|
-| **Syn** | synnous -- thinking together | Orchestrator, primary interface | Signal DM (default) |
-| **Chiron** | Cheiron -- wise centaur | Health, scheduling, calendar | Signal DM (routed) |
+| **Syn** | synnous -- thinking together | Orchestrator, primary | Signal DM (default) |
 | **Eiron** | eiron -- discriminator | MBA coursework, academic | Signal DM (routed) |
 | **Demiurge** | demiourgos -- craftsman | Creative, craft, leatherwork | Signal DM (routed) |
 | **Syl** | syllepsis -- grasping together | General assistant, family, home | Family group chat |

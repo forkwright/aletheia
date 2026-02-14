@@ -100,8 +100,8 @@ def get_pending_tasks(agent_id):
 def get_domain_knowledge(agent_id, limit=8):
     """Get high-confidence domain-specific knowledge from Neo4j graph."""
     agent_domains = {
-        "syn": "cognition", "demiurge": "craft", "chiron": "work",
-        "eiron": "school", "syl": "home", "arbor": "general", "akron": "vehicle",
+        "syn": "cognition", "demiurge": "craft",
+        "eiron": "school", "syl": "home", "arbor": "work", "akron": "vehicle",
     }
     domain = agent_domains.get(agent_id, "general")
     try:
@@ -165,10 +165,9 @@ def get_graph_discoveries(agent_id, limit=5):
     agent_domains = {
         "syn": ["cognition", "infrastructure", "general"],
         "demiurge": ["craft"],
-        "chiron": ["work"],
         "eiron": ["school"],
         "syl": ["home"],
-        "arbor": ["general"],
+        "arbor": ["work"],
         "akron": ["vehicle"],
     }
     domains = agent_domains.get(agent_id, ["general"])

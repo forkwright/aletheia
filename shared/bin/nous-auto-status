@@ -53,7 +53,7 @@ EOF
 mkdir -p "$STATUS_DIR"
 
 if [[ "$AGENT" == "all" ]]; then
-    for a in syl chiron eiron demiurge; do
+    for a in syl eiron demiurge arbor akron; do
         generate_status "$a"
     done
 else

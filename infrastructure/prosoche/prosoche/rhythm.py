@@ -9,7 +9,7 @@ from .signals import Signal
 RHYTHMS = {
     "morning_prep": {
         "signals": [
-            Signal(source="rhythm", summary="Morning: review calendar and tasks for today", urgency=0.5, relevant_nous=["syn", "chiron", "syl"]),
+            Signal(source="rhythm", summary="Morning: review calendar and tasks for today", urgency=0.5, relevant_nous=["syn", "syl"]),
             Signal(source="rhythm", summary="Morning: check overnight alerts and system health", urgency=0.4, relevant_nous=["syn"]),
         ],
         "window_minutes": 30,

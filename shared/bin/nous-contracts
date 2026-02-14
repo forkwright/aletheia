@@ -240,7 +240,7 @@ def main():
 Examples:
   nous-contracts list                    # List all agents
   nous-contracts list -v                 # Verbose listing
-  nous-contracts show chiron             # Show Chiron's details
+  nous-contracts show arbor              # Show Arbor's details
   nous-contracts find "sql"              # Find agents with SQL capability
   nous-contracts route "help with query" # Suggest agent for request
   nous-contracts export                  # Export as markdown

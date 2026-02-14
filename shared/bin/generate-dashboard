@@ -51,7 +51,7 @@ cat << EOF
 EOF
 
 # Add agent rows
-for agent in syn syl chiron eiron demiurge; do
+for agent in syn syl eiron demiurge arbor akron; do
     AGENT_DATA=$(echo "$HEALTH_JSON" | jq -r ".agents.$agent")
     
     if [[ "$AGENT_DATA" != "null" ]]; then

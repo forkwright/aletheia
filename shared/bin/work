@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage: work <command> [args]
 
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}}"
-WORK_DIR="$ALETHEIA_ROOT/nous/chiron/work"
+WORK_DIR="$ALETHEIA_ROOT/nous/arbor/work"
 METIS_DIR="ck@192.168.0.17:~/dianoia/summus"
 
 case "${1:-status}" in

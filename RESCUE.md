@@ -6,7 +6,7 @@
 
 ## What Is Aletheia
 
-Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system. 7 AI minds (nous, νοῦς) + 1 human in topology. Each nous embodies Cody's cognition in a different domain. Built on a fork of OpenClaw — we use its Signal bridge, session management, and tool framework. Everything else is ours.
+Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system. 6 AI minds (nous, νοῦς) + 1 human in topology. Each nous embodies Cody's cognition in a different domain.
 
 **Human:** Cody (cody.kickertz@gmail.com, GitHub: forkwright)
 **Server:** worker-node, 192.168.0.29 (LAN), 100.87.6.45 (Tailscale)
@@ -20,7 +20,6 @@ Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system
 | Nous | Greek | Domain | Binding |
 |------|-------|--------|---------|
 | **Syn** (σύννους) | thinking together | Orchestrator, primary | Cody's Signal DM |
-| **Chiron** (Χείρων) | wise centaur | Health, scheduling | Cody's Signal DM (routed) |
 | **Eiron** (εἴρων) | discriminator | MBA, school | Cody's Signal DM (routed) |
 | **Demiurge** (Δημιουργός) | craftsman | Leather, Ardent business | Cody's Signal DM (routed) |
 | **Syl** (σύλληψις) | grasping together | Family, home | Family group chat |
@@ -36,7 +35,7 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 ├── .git/            forkwright/aletheia (private repo, recovery mechanism)
 ├── RESCUE.md        This file
 ├── README.md        Repo overview
-├── nous/            7 nous workspaces — 24M total
+├── nous/            6 nous workspaces
 │   └── */
 │       ├── SOUL.md           Character (prose, hand-written)
 │       ├── AGENTS.md         Operations (compiled from templates)

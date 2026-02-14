@@ -7,7 +7,7 @@ set -eo pipefail
 # audit-all-nous - Run agent audit on all 7 agent workspaces
 #
 
-AGENTS=(syn syl chiron eiron demiurge arbor akron)
+AGENTS=(syn syl eiron demiurge arbor akron)
 LOG_DIR="${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}/logs/nous-audits"
 TIMESTAMP=$(date '+%Y-%m-%d_%H%M')
 
