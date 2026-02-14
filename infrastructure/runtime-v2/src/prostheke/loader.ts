@@ -1,0 +1,92 @@
+// Plugin loader — discover and load plugins from configured paths
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createLogger } from "../koina/logger.js";
+import type { PluginDefinition, PluginManifest } from "./types.js";
+
+const log = createLogger("prostheke:loader");
+
+export async function loadPlugins(
+  paths: string[],
+): Promise<PluginDefinition[]> {
+  const plugins: PluginDefinition[] = [];
+
+  for (const pluginPath of paths) {
+    const resolved = resolve(pluginPath);
+
+    if (!existsSync(resolved)) {
+      log.warn(`Plugin path not found: ${resolved}`);
+      continue;
+    }
+
+    try {
+      const plugin = await loadPlugin(resolved);
+      if (plugin) {
+        plugins.push(plugin);
+        log.info(`Loaded plugin: ${plugin.manifest.id} v${plugin.manifest.version}`);
+      }
+    } catch (err) {
+      log.error(
+        `Failed to load plugin from ${resolved}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  return plugins;
+}
+
+async function loadPlugin(
+  pluginPath: string,
+): Promise<PluginDefinition | null> {
+  const manifestPath = join(pluginPath, "manifest.json");
+  if (!existsSync(manifestPath)) {
+    log.warn(`No manifest.json in ${pluginPath}`);
+    return null;
+  }
+
+  const { readJson } = await import("../koina/fs.js");
+  const manifest = (await readJson(manifestPath)) as PluginManifest;
+
+  if (!manifest.id || !manifest.name || !manifest.version) {
+    log.warn(`Invalid manifest in ${pluginPath}: missing required fields`);
+    return null;
+  }
+
+  const dirName = pluginPath.split("/").pop();
+  if (dirName !== manifest.id) {
+    log.warn(
+      `Plugin directory name '${dirName}' doesn't match manifest id '${manifest.id}'`,
+    );
+  }
+
+  const entryPath = findEntry(pluginPath);
+  if (!entryPath) {
+    log.info(`Plugin ${manifest.id} has no code entry — manifest-only plugin`);
+    return { manifest };
+  }
+
+  const mod = await import(entryPath);
+  const definition: PluginDefinition = {
+    manifest,
+    tools: mod.tools ?? mod.default?.tools,
+    hooks: mod.hooks ?? mod.default?.hooks,
+  };
+
+  return definition;
+}
+
+function findEntry(pluginPath: string): string | null {
+  const candidates = [
+    "index.js",
+    "index.mjs",
+    "dist/index.js",
+    "dist/index.mjs",
+  ];
+
+  for (const candidate of candidates) {
+    const fullPath = join(pluginPath, candidate);
+    if (existsSync(fullPath)) return fullPath;
+  }
+
+  return null;
+}

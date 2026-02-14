@@ -1,0 +1,102 @@
+// SQLite DDL — embedded as string constants for migrations
+export const SCHEMA_VERSION = 1;
+
+export const DDL = `
+-- Sessions table
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  nous_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  parent_session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived', 'distilled')),
+  model TEXT,
+  token_count_estimate INTEGER DEFAULT 0,
+  message_count INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(nous_id, session_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_nous ON sessions(nous_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(nous_id, session_key);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+
+-- Messages table
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  seq INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool_result')),
+  content TEXT NOT NULL,
+  tool_call_id TEXT,
+  tool_name TEXT,
+  token_estimate INTEGER DEFAULT 0,
+  is_distilled INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(session_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
+
+-- Usage tracking per turn
+CREATE TABLE IF NOT EXISTS usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  turn_seq INTEGER NOT NULL,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  cache_read_tokens INTEGER DEFAULT 0,
+  cache_write_tokens INTEGER DEFAULT 0,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
+
+-- Distillation audit trail
+CREATE TABLE IF NOT EXISTS distillations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  messages_before INTEGER NOT NULL,
+  messages_after INTEGER NOT NULL,
+  tokens_before INTEGER NOT NULL,
+  tokens_after INTEGER NOT NULL,
+  facts_extracted INTEGER DEFAULT 0,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Cross-agent message tracking
+CREATE TABLE IF NOT EXISTS cross_agent_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_session_id TEXT NOT NULL,
+  target_nous_id TEXT NOT NULL,
+  target_session_id TEXT,
+  kind TEXT NOT NULL CHECK(kind IN ('send', 'ask', 'spawn')),
+  content TEXT NOT NULL,
+  response TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'responded', 'timeout', 'error')),
+  timeout_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  responded_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cam_target ON cross_agent_messages(target_nous_id, status);
+
+-- Routing cache (rebuilt from config on startup)
+CREATE TABLE IF NOT EXISTS routing_cache (
+  channel TEXT NOT NULL,
+  peer_kind TEXT,
+  peer_id TEXT,
+  account_id TEXT,
+  nous_id TEXT NOT NULL,
+  priority INTEGER DEFAULT 0,
+  UNIQUE(channel, peer_kind, peer_id, account_id)
+);
+
+-- Schema version tracking
+CREATE TABLE IF NOT EXISTS schema_version (
+  version INTEGER PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+`;
