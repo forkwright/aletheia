@@ -1,46 +1,96 @@
 #!/bin/bash
 set -eo pipefail
-# Health watchdog - checks if Syn is responsive
-# Run via cron every 15 minutes
-# If unhealthy, attempts recovery and alerts
+# Health watchdog for Aletheia — checks all critical services
 
-set -e
-
-LOG="/tmp/syn-watchdog.log"
+LOG="/tmp/aletheia-watchdog.log"
 CODY_UUID="9711115e-8531-462f-87d2-6c152077616d"
+FAILURES=0
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"
 }
 
 send_alert() {
-    # Send via signal-cli directly (bypasses autarkia)
     signal-cli -a +15124288605 send -m "$1" "uuid:$CODY_UUID" 2>/dev/null || true
     log "ALERT: $1"
 }
 
-# Check 1: Is autarkia service running?
-if ! systemctl is-active --quiet autarkia; then
-    log "Service down, attempting restart..."
-    sudo systemctl restart autarkia
-    sleep 10
-    
-    if systemctl is-active --quiet autarkia; then
-        log "Service recovered"
-        send_alert "⚠️ Syn watchdog: Service was down, auto-recovered."
+check_service() {
+    local name="$1"
+    if ! systemctl is-active --quiet "$name"; then
+        log "FAIL: $name service is not active"
+        FAILURES=$((FAILURES + 1))
+        return 1
+    fi
+    return 0
+}
+
+check_http() {
+    local name="$1" url="$2"
+    if ! curl -sf --max-time 5 "$url" > /dev/null 2>&1; then
+        log "FAIL: $name not responding at $url"
+        FAILURES=$((FAILURES + 1))
+        return 1
+    fi
+    return 0
+}
+
+check_container() {
+    local name="$1"
+    local running
+    running=$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo "false")
+    if [ "$running" != "true" ]; then
+        log "FAIL: container $name is not running"
+        FAILURES=$((FAILURES + 1))
+        return 1
+    fi
+    return 0
+}
+
+# Core services
+check_service aletheia
+check_service aletheia-memory
+check_service aletheia-prosoche
+
+# Gateway
+check_http "gateway" "http://localhost:18789/health"
+
+# Mem0 sidecar
+check_http "mem0-sidecar" "http://localhost:8230/health"
+
+# Docker containers
+check_container qdrant
+check_container neo4j
+
+# Qdrant health
+check_http "qdrant" "http://localhost:6333/healthz"
+
+# Neo4j health
+check_http "neo4j" "http://localhost:7474"
+
+# Disk usage
+DISK_PCT=$(df /mnt/ssd --output=pcent | tail -1 | tr -d ' %')
+if [ "$DISK_PCT" -gt 90 ]; then
+    log "WARN: /mnt/ssd at ${DISK_PCT}%"
+    FAILURES=$((FAILURES + 1))
+fi
+
+# Results
+if [ "$FAILURES" -gt 0 ]; then
+    log "Watchdog: $FAILURES failures detected"
+
+    if ! check_service aletheia 2>/dev/null; then
+        log "Attempting aletheia restart..."
+        sudo systemctl restart aletheia
+        sleep 10
+        if systemctl is-active --quiet aletheia; then
+            send_alert "Aletheia watchdog: gateway was down, auto-recovered."
+        else
+            send_alert "Aletheia watchdog: gateway down, restart failed. Manual intervention needed."
+        fi
     else
-        send_alert "🚨 Syn watchdog: Service down, restart failed. Manual intervention needed."
-        exit 1
+        send_alert "Aletheia watchdog: $FAILURES check(s) failed. Run: ssh server 'cat $LOG' for details."
     fi
 else
-    log "Service healthy"
+    log "Watchdog: all checks passed"
 fi
-
-# Check 2: Is gateway responding?
-if ! curl -sf "http://localhost:18789/health" > /dev/null 2>&1; then
-    log "Gateway not responding"
-    # Don't restart immediately - might just be slow
-    # But note it in case of pattern
-fi
-
-log "Watchdog check complete"
