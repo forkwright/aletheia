@@ -18,6 +18,8 @@ export interface DaemonOpts {
   httpPort?: number;
   receiveMode?: string;
   sendReadReceipts?: boolean;
+  ignoreAttachments?: boolean;
+  ignoreStories?: boolean;
 }
 
 export function spawnDaemon(opts: DaemonOpts): DaemonHandle {
@@ -39,6 +41,12 @@ export function spawnDaemon(opts: DaemonOpts): DaemonHandle {
   }
   if (opts.sendReadReceipts) {
     args.push("--send-read-receipts");
+  }
+  if (opts.ignoreAttachments) {
+    args.push("--ignore-attachments");
+  }
+  if (opts.ignoreStories) {
+    args.push("--ignore-stories");
   }
 
   log.info(`Spawning signal-cli daemon: ${cliPath} ${args.join(" ")}`);
@@ -68,11 +76,19 @@ export function spawnDaemon(opts: DaemonOpts): DaemonHandle {
     log.info(`signal-cli daemon exited: code=${code} signal=${signal}`);
   });
 
+  child.on("error", (err) => {
+    log.error(`signal-cli daemon spawn error: ${err.message}`);
+  });
+
+  if (!child.pid) {
+    throw new Error("Failed to spawn signal-cli daemon — no PID");
+  }
+
   const baseUrl = `http://${host}:${port}`;
   log.info(`Daemon spawned pid=${child.pid} at ${baseUrl}`);
 
   return {
-    pid: child.pid!,
+    pid: child.pid,
     baseUrl,
     stop: () => {
       log.info(`Stopping signal-cli daemon pid=${child.pid}`);

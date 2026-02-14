@@ -42,6 +42,21 @@ export interface TurnOutcome {
   outputTokens: number;
 }
 
+// Per-session mutex to prevent concurrent turns from corrupting context
+const sessionLocks = new Map<string, Promise<unknown>>();
+
+function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = sessionLocks.get(sessionId) ?? Promise.resolve();
+  const current = previous.then(fn, fn);
+  sessionLocks.set(sessionId, current);
+  current.finally(() => {
+    if (sessionLocks.get(sessionId) === current) {
+      sessionLocks.delete(sessionId);
+    }
+  });
+  return current;
+}
+
 export class NousManager {
   private plugins?: PluginRegistry;
 
@@ -75,8 +90,24 @@ export class NousManager {
       model,
     );
 
+    // Serialize concurrent turns on the same session
+    return withSessionLock(session.id, () =>
+      this.executeTurn(nousId, session.id, sessionKey, model, msg, nous),
+    );
+  }
+
+  private async executeTurn(
+    nousId: string,
+    sessionId: string,
+    sessionKey: string,
+    model: string,
+    msg: InboundMessage,
+    nous: ReturnType<typeof resolveNous>,
+  ): Promise<TurnOutcome> {
+    if (!nous) throw new Error(`Unknown nous: ${nousId}`);
+
     log.info(
-      `Processing message for ${nousId}:${sessionKey} (session ${session.id})`,
+      `Processing message for ${nousId}:${sessionKey} (session ${sessionId})`,
     );
 
     const workspace = resolveWorkspace(this.config, nous);
@@ -90,11 +121,11 @@ export class NousManager {
     ];
 
     const history = this.store.getHistoryWithBudget(
-      session.id,
+      sessionId,
       this.config.agents.defaults.contextTokens - bootstrap.totalTokens - 8000,
     );
 
-    const seq = this.store.appendMessage(session.id, "user", msg.text, {
+    const seq = this.store.appendMessage(sessionId, "user", msg.text, {
       tokenEstimate: estimateTokens(msg.text),
     });
 
@@ -106,14 +137,14 @@ export class NousManager {
 
     const toolContext: ToolContext = {
       nousId,
-      sessionId: session.id,
+      sessionId,
       workspace,
     };
 
     if (this.plugins) {
       await this.plugins.dispatchBeforeTurn({
         nousId,
-        sessionId: session.id,
+        sessionId,
         messageText: msg.text,
       });
     }
@@ -137,7 +168,7 @@ export class NousManager {
       totalOutputTokens += result.usage.outputTokens;
 
       this.store.recordUsage({
-        sessionId: session.id,
+        sessionId,
         turnSeq: seq + loop,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
@@ -150,20 +181,22 @@ export class NousManager {
         (b): b is ToolUseBlock => b.type === "tool_use",
       );
 
-      if (toolUses.length === 0 || result.stopReason === "end_turn") {
+      // Only exit when there are no tool calls — don't check stopReason
+      // (Anthropic can return end_turn with tool_use blocks in the same response)
+      if (toolUses.length === 0) {
         const text = result.content
           .filter((b): b is { type: "text"; text: string } => b.type === "text")
           .map((b) => b.text)
           .join("\n");
 
-        this.store.appendMessage(session.id, "assistant", text, {
+        this.store.appendMessage(sessionId, "assistant", text, {
           tokenEstimate: estimateTokens(text),
         });
 
         const outcome: TurnOutcome = {
           text,
           nousId,
-          sessionId: session.id,
+          sessionId,
           toolCalls: totalToolCalls,
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
@@ -172,7 +205,7 @@ export class NousManager {
         if (this.plugins) {
           await this.plugins.dispatchAfterTurn({
             nousId,
-            sessionId: session.id,
+            sessionId,
             responseText: text,
             toolCalls: totalToolCalls,
             inputTokens: totalInputTokens,
@@ -217,7 +250,7 @@ export class NousManager {
           is_error: isError || undefined,
         });
 
-        this.store.appendMessage(session.id, "tool_result", toolResult, {
+        this.store.appendMessage(sessionId, "tool_result", toolResult, {
           toolCallId: toolUse.id,
           toolName: toolUse.name,
           tokenEstimate: estimateTokens(toolResult),

@@ -34,6 +34,8 @@ const CompactionConfig = z
       .object({
         enabled: z.boolean().default(true),
         softThresholdTokens: z.number().default(8000),
+        prompt: z.string().optional(),
+        systemPrompt: z.string().optional(),
       })
       .default({}),
   })
@@ -134,14 +136,30 @@ const SignalAccountConfig = z.object({
   mediaMaxMb: z.number().default(25),
 });
 
+// Signal config supports both flat format (v1 compat) and accounts map (v2).
+// Flat: { enabled, account, cliPath, dmPolicy, ... }
+// Nested: { enabled, accounts: { "default": { account, cliPath, dmPolicy, ... } } }
+const SignalConfig = z.preprocess(
+  (val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const obj = val as Record<string, unknown>;
+      // If 'account' exists at top level but 'accounts' doesn't, lift flat format
+      if ("account" in obj && !("accounts" in obj)) {
+        const { enabled, ...rest } = obj;
+        return { enabled: enabled ?? true, accounts: { default: rest } };
+      }
+    }
+    return val;
+  },
+  z.object({
+    enabled: z.boolean().default(true),
+    accounts: z.record(z.string(), SignalAccountConfig).default({}),
+  }),
+).default({ enabled: true, accounts: {} });
+
 const ChannelsConfig = z
   .object({
-    signal: z
-      .object({
-        enabled: z.boolean().default(true),
-        accounts: z.record(z.string(), SignalAccountConfig).default({}),
-      })
-      .default({}),
+    signal: SignalConfig,
   })
   .default({});
 
@@ -262,6 +280,8 @@ const EnvConfig = z
   })
   .default({});
 
+// passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
+// so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
   agents: AgentsConfig.default({}),
   bindings: z.array(Binding).default([]),
@@ -272,7 +292,7 @@ export const AletheiaConfigSchema = z.object({
   cron: CronConfig.default({}),
   models: ModelsConfig.default({}),
   env: EnvConfig.default({}),
-});
+}).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
 export type NousConfig = z.infer<typeof NousDefinition>;

@@ -62,17 +62,11 @@ export class ToolRegistry {
       return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
 
-    try {
-      const result = await handler.execute(input, context);
-      return truncateToolResult(result, {
-        maxTokens: DEFAULT_MAX_RESULT_TOKENS,
-      });
-    } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : String(error);
-      log.error(`Tool ${name} failed: ${msg}`);
-      return JSON.stringify({ error: msg });
-    }
+    // Let errors propagate — manager.ts catches them and sets isError on tool_result
+    const result = await handler.execute(input, context);
+    return truncateToolResult(result, {
+      maxTokens: DEFAULT_MAX_RESULT_TOKENS,
+    });
   }
 
   get size(): number {

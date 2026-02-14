@@ -25,7 +25,7 @@ export function createSessionStatusTool(store?: SessionStore): ToolHandler {
         });
       }
 
-      const session = store.findSession(context.nousId, "main");
+      const session = store.findSessionById(context.sessionId);
       if (!session) {
         return JSON.stringify({
           nousId: context.nousId,

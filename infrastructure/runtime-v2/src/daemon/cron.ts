@@ -19,8 +19,9 @@ interface CronEntry {
 
 export class CronScheduler {
   private entries: CronEntry[] = [];
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private ticking = false;
 
   constructor(
     private config: AletheiaConfig,
@@ -51,17 +52,33 @@ export class CronScheduler {
     log.info(`Cron scheduler started with ${this.entries.length} jobs`);
 
     this.running = true;
-    this.timer = setInterval(() => this.tick(), 30000);
-    this.tick();
+    this.scheduleTick();
   }
 
   stop(): void {
     this.running = false;
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
     log.info("Cron scheduler stopped");
+  }
+
+  private scheduleTick(): void {
+    if (!this.running) return;
+    this.timer = setTimeout(async () => {
+      if (this.ticking) {
+        this.scheduleTick();
+        return;
+      }
+      this.ticking = true;
+      try {
+        await this.tick();
+      } finally {
+        this.ticking = false;
+        this.scheduleTick();
+      }
+    }, 30000);
   }
 
   private async tick(): Promise<void> {

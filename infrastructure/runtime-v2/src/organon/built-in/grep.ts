@@ -1,5 +1,5 @@
 // Content search tool — grep through files
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { ToolHandler, ToolContext } from "../registry.js";
 
@@ -47,7 +47,7 @@ export const grepTool: ToolHandler = {
     const maxResults = (input.maxResults as number) ?? 50;
     const caseSensitive = (input.caseSensitive as boolean) ?? true;
 
-    const args = ["rg", "--line-number", "--no-heading", "--color=never"];
+    const args = ["--line-number", "--no-heading", "--color=never"];
 
     if (!caseSensitive) args.push("-i");
     if (glob) args.push("--glob", glob);
@@ -55,7 +55,7 @@ export const grepTool: ToolHandler = {
     args.push("--", pattern, searchPath);
 
     try {
-      const output = execSync(args.join(" "), {
+      const output = execFileSync("rg", args, {
         timeout: 10000,
         maxBuffer: 512 * 1024,
         encoding: "utf-8",

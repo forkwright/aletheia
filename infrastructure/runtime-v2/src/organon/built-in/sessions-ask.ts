@@ -53,12 +53,13 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
         return JSON.stringify({ error: "Cannot ask yourself" });
       }
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
+      let timer: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(
           () => reject(new Error(`Timeout after ${timeoutSeconds}s`)),
           timeoutSeconds * 1000,
-        ),
-      );
+        );
+      });
 
       try {
         const outcome = await Promise.race([
@@ -72,6 +73,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
           }),
           timeoutPromise,
         ]);
+        clearTimeout(timer!);
 
         return JSON.stringify({
           agentId,
@@ -83,6 +85,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
           },
         });
       } catch (err) {
+        clearTimeout(timer!);
         return JSON.stringify({
           agentId,
           error: err instanceof Error ? err.message : String(err),
