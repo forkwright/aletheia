@@ -57,7 +57,7 @@ async def collect(config: dict) -> list[Signal]:
 
 async def _fetch_events(calendar_id: str, days: int = 1) -> list[dict[str, Any]]:
     proc = await asyncio.create_subprocess_exec(
-        GCAL_BIN, "events", "-c", calendar_id, "-d", str(days), "--json",
+        GCAL_BIN, "events", "-c", calendar_id, "-d", str(days),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
