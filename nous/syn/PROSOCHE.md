@@ -1,3 +1,9 @@
+## Attention
+- [URGENT] OVERDUE: UCSF data pull: add Transfer to COE field for Darcie
+- [URGENT] OVERDUE: Review round robin doc for Avery/Admin team
+- [INFO] High priority: Set up coding-agent skill for Metis control
+- [INFO] High priority: Mouseion #90 - Test coverage expansion (95% untested)
+
 ## Domain Checks
 - **First: Check ALERTS.md** — if it exists, address those alerts before anything else
 - Check crewai-alerts.json for unacknowledged alerts

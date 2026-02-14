@@ -5,13 +5,33 @@
     "error_message": ""
   },
   "gcal": {
-    "status": "unhealthy",
-    "last_checked": "2026-02-13T09:35:04-06:00",
-    "error_message": "google.auth.exceptions.RefreshError: ('invalid_grant: Token has been expired or revoked.', {'error': 'invalid_grant', 'error_description': 'Token has been expired or revoked.'})\nCommand failed or timed out"
+    "status": "healthy",
+    "last_checked": "2026-02-14T09:45:03-06:00",
+    "error_message": ""
   },
   "nas-ssh": {
     "status": "unhealthy",
-    "last_checked": "2026-02-13T09:35:04-06:00",
-    "error_message": "Permission denied, please try again.\nCommand failed or timed out"
+    "last_checked": "2026-02-14T09:45:03-06:00",
+    "error_message": "ssh: connect to host 192.168.0.120 port 22: Connection refused\r\nCommand failed or timed out"
+  },
+  "mem0-sidecar": {
+    "status": "healthy",
+    "last_checked": "2026-02-14T09:45:01-06:00",
+    "error_message": ""
+  },
+  "qdrant": {
+    "status": "healthy",
+    "last_checked": "2026-02-14T09:45:01-06:00",
+    "error_message": ""
+  },
+  "neo4j": {
+    "status": "healthy",
+    "last_checked": "2026-02-14T09:45:01-06:00",
+    "error_message": ""
+  },
+  "ollama": {
+    "status": "healthy",
+    "last_checked": "2026-02-14T09:45:01-06:00",
+    "error_message": ""
   }
 }

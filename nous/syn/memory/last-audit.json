@@ -1,1 +1,20 @@
-/bin/sh: 1: self-audit: Permission denied
+{
+  "timestamp": "2026-02-14T09:00:01-06:00",
+  "status": "alert",
+  "metrics": {
+    "files": 247,
+    "memory_files": 65,
+    "review_files": 9,
+    "workspace_mb": 2,
+    "nas_percent": 0,
+    "tasks_pending": 30,
+    "tasks_overdue": 10
+  },
+  "alerts": [
+    "File count high: 247 (>100)",
+    "Memory files need consolidation: 65 (>14)",
+    "Clawdbot service is down",
+    "Letta not responding",
+    "Overdue tasks: 10"
+  ]
+}
