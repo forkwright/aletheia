@@ -12,11 +12,12 @@ NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "aletheia-memory")
 
 MEM0_CONFIG = {
     "llm": {
-        "provider": "ollama",
+        "provider": "anthropic",
         "config": {
-            "model": "gemma3:4b",
+            "model": "claude-haiku-4-5-20251001",
             "temperature": 0.1,
-            "ollama_base_url": OLLAMA_BASE_URL,
+            "max_tokens": 2000,
+            "api_key": ANTHROPIC_API_KEY,
         },
     },
     "embedder": {
