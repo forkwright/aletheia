@@ -175,6 +175,58 @@ module.exports = {
       { priority: 3 },
     );
 
+    api.registerTool({
+      name: "mem0_search",
+      label: "Long-term Memory Search",
+      description:
+        "Search long-term extracted memories from past conversations. " +
+        "Returns facts, preferences, and entity relationships that were " +
+        "automatically captured. Use for cross-session recall, especially " +
+        "when memory_search (local files) doesn't have what you need.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Semantic search query",
+          },
+          limit: {
+            type: "number",
+            description: "Max results (default 10)",
+          },
+        },
+        required: ["query"],
+      },
+      execute: async (_toolCallId, params, ctx) => {
+        const query =
+          typeof params.query === "string" ? params.query : String(params.query || "");
+        const limit =
+          typeof params.limit === "number" ? params.limit : 10;
+        const agentId = ctx?.agentId || null;
+
+        const result = await mem0Fetch("/search", {
+          query,
+          user_id: USER_ID,
+          agent_id: agentId,
+          limit: Math.min(limit, 20),
+        });
+
+        if (!result?.ok) {
+          return JSON.stringify({ results: [], error: "mem0 sidecar unavailable" });
+        }
+
+        const memories = result.results?.results || result.results || [];
+        const formatted = memories.map((m) => ({
+          memory: m.memory || m.text || "",
+          score: m.score || null,
+          agent_id: m.agent_id || null,
+          created_at: m.created_at || null,
+        }));
+
+        return JSON.stringify({ results: formatted, count: formatted.length });
+      },
+    });
+
     api.registerHttpRoute({
       path: "/memory/status",
       handler: async (_req, res) => {
