@@ -134,6 +134,7 @@ const SignalAccountConfig = z.object({
   groupAllowFrom: z.array(z.union([z.string(), z.number()])).default([]),
   textChunkLimit: z.number().default(2000),
   mediaMaxMb: z.number().default(25),
+  requireMention: z.boolean().default(true),
 });
 
 // Signal config supports both flat format (v1 compat) and accounts map (v2).

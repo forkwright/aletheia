@@ -15,6 +15,38 @@ export function createGateway(
 ): Hono {
   const app = new Hono();
 
+  // Auth middleware — skip /health
+  const authMode = config.gateway.auth.mode;
+  const authToken = config.gateway.auth.token;
+
+  app.use("*", async (c, next) => {
+    if (c.req.path === "/health") return next();
+
+    if (authMode === "token" && authToken) {
+      const header = c.req.header("Authorization");
+      const token = header?.startsWith("Bearer ")
+        ? header.slice(7)
+        : c.req.query("token");
+
+      if (token !== authToken) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+    } else if (authMode === "password" && authToken) {
+      const header = c.req.header("Authorization");
+      if (!header?.startsWith("Basic ")) {
+        c.header("WWW-Authenticate", 'Basic realm="Aletheia"');
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      const decoded = Buffer.from(header.slice(6), "base64").toString();
+      const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
+      if (password !== authToken) {
+        return c.json({ error: "Invalid credentials" }, 401);
+      }
+    }
+
+    return next();
+  });
+
   app.get("/health", (c) =>
     c.json({ status: "ok", timestamp: new Date().toISOString() }),
   );

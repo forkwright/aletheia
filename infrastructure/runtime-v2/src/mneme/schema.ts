@@ -100,3 +100,10 @@ CREATE TABLE IF NOT EXISTS schema_version (
   applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 `;
+
+// Incremental migrations — each entry upgrades from (version-1) to version.
+// Add new migrations here when schema changes. DDL above is always the v1 baseline.
+export const MIGRATIONS: Array<{ version: number; sql: string }> = [
+  // Example for future v2:
+  // { version: 2, sql: "ALTER TABLE sessions ADD COLUMN tags TEXT DEFAULT '[]';" },
+];
