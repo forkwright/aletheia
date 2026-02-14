@@ -65,6 +65,7 @@ export interface CompletionRequest {
   messages: MessageParam[];
   tools?: ToolDefinition[];
   maxTokens?: number;
+  temperature?: number;
 }
 
 export class AnthropicProvider {
@@ -92,7 +93,7 @@ export class AnthropicProvider {
   }
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
-    const { model, system, messages, tools, maxTokens } = request;
+    const { model, system, messages, tools, maxTokens, temperature } = request;
 
     try {
       const response = await this.client.messages.create({
@@ -103,6 +104,7 @@ export class AnthropicProvider {
           : system as Anthropic.Messages.TextBlockParam[],
         messages: messages as Anthropic.Messages.MessageParam[],
         ...(tools ? { tools: tools as Anthropic.Messages.Tool[] } : {}),
+        ...(temperature !== undefined ? { temperature } : {}),
       });
 
       const usage = response.usage;

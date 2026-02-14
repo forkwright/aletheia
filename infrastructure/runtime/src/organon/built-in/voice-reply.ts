@@ -14,8 +14,19 @@ export function createVoiceReplyTool(sender?: VoiceReplySender): ToolHandler {
     definition: {
       name: "voice_reply",
       description:
-        "Convert text to speech and send as a voice message via Signal. " +
-        "Use for accessibility, emphasis, or when audio is more appropriate than text.",
+        "Convert text to speech and send as a voice message via Signal.\n\n" +
+        "USE WHEN:\n" +
+        "- User prefers audio responses\n" +
+        "- Content benefits from spoken delivery (stories, explanations)\n" +
+        "- Accessibility needs require audio output\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- Text response is sufficient — voice uses more bandwidth\n" +
+        "- Content has code, URLs, or structured data that doesn't work as audio\n\n" +
+        "TIPS:\n" +
+        "- Max 4096 chars of text\n" +
+        "- Voices: alloy, echo, fable, onyx, nova, shimmer\n" +
+        "- Speed adjustable 0.25x to 4.0x\n" +
+        "- Add a caption for context alongside the audio",
       input_schema: {
         type: "object",
         properties: {

@@ -13,6 +13,12 @@ const PRICING: Record<string, ModelPricing> = {
     cacheReadPerMTok: 1.5,
     cacheWritePerMTok: 18.75,
   },
+  "claude-sonnet-4-6": {
+    inputPerMTok: 3,
+    outputPerMTok: 15,
+    cacheReadPerMTok: 0.3,
+    cacheWritePerMTok: 3.75,
+  },
   "claude-sonnet-4-5-20250929": {
     inputPerMTok: 3,
     outputPerMTok: 15,
@@ -33,11 +39,11 @@ function resolvePricing(model: string | null): ModelPricing {
     if (exact) return exact;
     // Fuzzy match: check if model name contains a known key
     if (model.includes("opus")) return PRICING["claude-opus-4-6"]!;
-    if (model.includes("sonnet")) return PRICING["claude-sonnet-4-5-20250929"]!;
+    if (model.includes("sonnet")) return PRICING["claude-sonnet-4-6"]!;
     if (model.includes("haiku")) return PRICING["claude-haiku-4-5-20251001"]!;
   }
   // Default to Sonnet pricing for unknown models
-  return PRICING["claude-sonnet-4-5-20250929"]!;
+  return PRICING["claude-sonnet-4-6"]!;
 }
 
 export function calculateTurnCost(usage: {

@@ -5,7 +5,16 @@ export const webSearchTool: ToolHandler = {
   definition: {
     name: "web_search",
     description:
-      "Search the web and return results. Returns titles, URLs, and snippets.",
+      "Search the web via DuckDuckGo (no API key needed).\n\n" +
+      "USE WHEN:\n" +
+      "- Web search when Brave API key is not available\n" +
+      "- Quick lookups that don't need API-quality results\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Brave Search is available — it returns richer results\n" +
+      "- The answer is in your memory or workspace files\n\n" +
+      "TIPS:\n" +
+      "- Parses DuckDuckGo HTML — may break if DDG changes format\n" +
+      "- Follow up with web_fetch to read full page content",
     input_schema: {
       type: "object",
       properties: {

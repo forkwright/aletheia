@@ -133,6 +133,10 @@ export class ToolRegistry {
     });
   }
 
+  hasTools(): boolean {
+    return this.tools.size > 0;
+  }
+
   get size(): number {
     return this.tools.size;
   }

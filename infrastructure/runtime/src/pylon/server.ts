@@ -41,7 +41,64 @@ export function createGateway(
 ): Hono {
   const app = new Hono();
 
-  // Auth middleware — skip /health
+  // Security headers
+  app.use("*", async (c, next) => {
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("X-Frame-Options", "DENY");
+    c.header("Referrer-Policy", "no-referrer");
+    c.header("X-XSS-Protection", "0");
+    return next();
+  });
+
+  // CORS
+  const allowedOrigins = config.gateway.cors?.allowOrigins ?? [];
+  if (allowedOrigins.length > 0) {
+    app.use("*", async (c, next) => {
+      const origin = c.req.header("Origin");
+      if (origin && allowedOrigins.includes(origin)) {
+        c.header("Access-Control-Allow-Origin", origin);
+        c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        c.header("Access-Control-Max-Age", "3600");
+      }
+      if (c.req.method === "OPTIONS") return c.body(null, 204);
+      return next();
+    });
+  }
+
+  // Rate limiting — sliding window per IP
+  const rateLimit = config.gateway.rateLimit?.requestsPerMinute ?? 60;
+  const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+  app.use("/mcp/*", async (c, next) => {
+    const ip = c.req.header("X-Forwarded-For")?.split(",")[0]?.trim()
+      ?? c.req.header("X-Real-IP")
+      ?? "unknown";
+    const now = Date.now();
+    const bucket = rateBuckets.get(ip);
+
+    if (bucket && bucket.resetAt > now) {
+      if (bucket.count >= rateLimit) {
+        c.header("Retry-After", String(Math.ceil((bucket.resetAt - now) / 1000)));
+        return c.json({ error: "Rate limit exceeded" }, 429);
+      }
+      bucket.count++;
+    } else {
+      rateBuckets.set(ip, { count: 1, resetAt: now + 60_000 });
+    }
+
+    return next();
+  });
+
+  // Periodic cleanup of expired rate limit buckets
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, bucket] of rateBuckets) {
+      if (bucket.resetAt <= now) rateBuckets.delete(ip);
+    }
+  }, 60_000);
+
+  // Auth middleware — skip /health and /ui
   const authMode = config.gateway.auth.mode;
   const authToken = config.gateway.auth.token;
 

@@ -8,7 +8,18 @@ export const lsTool: ToolHandler = {
   definition: {
     name: "ls",
     description:
-      "List files and directories with details (size, modification time).",
+      "List directory contents with size and modification time.\n\n" +
+      "USE WHEN:\n" +
+      "- Checking what files exist in a directory\n" +
+      "- Verifying file sizes or last-modified times\n" +
+      "- Getting a quick overview of project structure\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Searching for files by name across directories — use find instead\n" +
+      "- Looking at file contents — use read instead\n\n" +
+      "TIPS:\n" +
+      "- Hidden files excluded by default — set all=true to include\n" +
+      "- Directories shown with trailing /\n" +
+      "- Path defaults to workspace root",
     input_schema: {
       type: "object",
       properties: {

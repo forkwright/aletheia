@@ -57,8 +57,19 @@ export function createPlanTools(): ToolHandler[] {
     definition: {
       name: "plan_create",
       description:
-        "Create a structured plan with steps, dependencies, and acceptance criteria. " +
-        "Use for multi-step tasks that benefit from explicit decomposition and tracking.",
+        "Create a structured plan with steps, dependencies, and acceptance criteria.\n\n" +
+        "USE WHEN:\n" +
+        "- Task has 3+ steps that benefit from explicit tracking\n" +
+        "- Steps have dependencies that determine execution order\n" +
+        "- You want to track progress and verify acceptance criteria\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- Task is simple and linear — just do it\n" +
+        "- You're brainstorming, not executing\n\n" +
+        "TIPS:\n" +
+        "- Steps can have dependsOn arrays for dependency ordering\n" +
+        "- Use plan_status to check progress and find actionable steps\n" +
+        "- Use plan_step_complete/plan_step_fail to update progress\n" +
+        "- Failed steps cascade-skip dependent steps automatically",
       input_schema: {
         type: "object",
         properties: {
@@ -144,7 +155,11 @@ export function createPlanTools(): ToolHandler[] {
   const planStatus: ToolHandler = {
     definition: {
       name: "plan_status",
-      description: "Get the current status of a plan and its steps. Shows which steps are actionable next.",
+      description:
+        "Get the current status of a plan — progress, blocked steps, and what's actionable next.\n\n" +
+        "TIPS:\n" +
+        "- Shows which steps are immediately actionable (all deps met)\n" +
+        "- Shows blocked steps and what they're waiting on",
       input_schema: {
         type: "object",
         properties: {
@@ -204,7 +219,7 @@ export function createPlanTools(): ToolHandler[] {
   const planStepComplete: ToolHandler = {
     definition: {
       name: "plan_step_complete",
-      description: "Mark a plan step as completed with an optional result summary.",
+      description: "Mark a plan step as completed. Returns newly actionable steps that were waiting on this one.",
       input_schema: {
         type: "object",
         properties: {
@@ -267,7 +282,7 @@ export function createPlanTools(): ToolHandler[] {
   const planStepFail: ToolHandler = {
     definition: {
       name: "plan_step_fail",
-      description: "Mark a plan step as failed with a reason. The plan continues — other non-dependent steps can proceed.",
+      description: "Mark a plan step as failed. Dependent steps are auto-skipped. Set abandon=true to cancel the entire plan.",
       input_schema: {
         type: "object",
         properties: {

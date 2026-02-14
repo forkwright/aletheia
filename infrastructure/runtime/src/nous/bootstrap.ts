@@ -29,6 +29,7 @@ const WORKSPACE_FILES: Omit<BootstrapFile, "path">[] = [
   { name: "GOALS.md", priority: 4.5, cacheGroup: "semi-static" },
   { name: "TOOLS.md", priority: 5, cacheGroup: "semi-static" },
   { name: "MEMORY.md", priority: 6, cacheGroup: "semi-static" },
+  { name: "EVAL_FEEDBACK.md", priority: 6.5, cacheGroup: "semi-static" },
   { name: "PROSOCHE.md", priority: 7, cacheGroup: "dynamic" },
   { name: "CONTEXT.md", priority: 8, cacheGroup: "dynamic" },
 ];

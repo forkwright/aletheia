@@ -1,6 +1,6 @@
 // Complexity scoring tests
 import { describe, it, expect } from "vitest";
-import { scoreComplexity, selectModel } from "./complexity.js";
+import { scoreComplexity, selectModel, selectTemperature } from "./complexity.js";
 
 const base = { messageText: "Hello", messageCount: 5, depth: 0 };
 
@@ -119,5 +119,25 @@ describe("selectModel", () => {
 
   it("maps complex to complex model", () => {
     expect(selectModel("complex", tiers)).toBe("opus");
+  });
+});
+
+describe("selectTemperature", () => {
+  it("returns 0.3 when tools are present regardless of tier", () => {
+    expect(selectTemperature("routine", true)).toBe(0.3);
+    expect(selectTemperature("standard", true)).toBe(0.3);
+    expect(selectTemperature("complex", true)).toBe(0.3);
+  });
+
+  it("returns 0.3 for routine without tools", () => {
+    expect(selectTemperature("routine", false)).toBe(0.3);
+  });
+
+  it("returns 0.5 for standard without tools", () => {
+    expect(selectTemperature("standard", false)).toBe(0.5);
+  });
+
+  it("returns 0.7 for complex without tools", () => {
+    expect(selectTemperature("complex", false)).toBe(0.7);
   });
 });

@@ -1,6 +1,7 @@
 // MCP (Model Context Protocol) server — exposes Aletheia agents as MCP tools
 import { Hono } from "hono";
 import { readFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { NousManager } from "../nous/manager.js";
@@ -9,6 +10,7 @@ import type { SessionStore } from "../mneme/store.js";
 const log = createLogger("pylon.mcp");
 
 const MCP_VERSION = "2024-11-05";
+const MAX_MESSAGE_BYTES = 102_400; // 100KB per message field
 
 interface McpToken {
   token: string;
@@ -30,7 +32,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-function loadMcpTokens(credPath: string): McpToken[] {
+export function loadMcpTokens(credPath: string): McpToken[] {
   const tokensPath = `${credPath}/mcp-tokens.json`;
   if (!existsSync(tokensPath)) return [];
   try {
@@ -42,11 +44,30 @@ function loadMcpTokens(credPath: string): McpToken[] {
   }
 }
 
-function validateMcpToken(tokens: McpToken[], authHeader: string | undefined): McpToken | null {
-  if (tokens.length === 0) return { token: "", name: "default", scopes: ["*"] };
+export function validateMcpToken(
+  tokens: McpToken[],
+  authHeader: string | undefined,
+  requireAuth: boolean,
+): McpToken | null {
+  if (tokens.length === 0) {
+    if (!requireAuth) return { token: "", name: "anonymous", scopes: ["*"] };
+    return null;
+  }
   if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
+  if (!token) return null;
   return tokens.find((t) => t.token === token) ?? null;
+}
+
+function hasScope(client: McpToken, required: string): boolean {
+  if (client.scopes.includes("*")) return true;
+  if (client.scopes.includes(required)) return true;
+  const [category] = required.split(":");
+  return client.scopes.includes(`${category}:*`);
+}
+
+function generateSessionId(): string {
+  return `mcp_${randomBytes(16).toString("hex")}`;
 }
 
 export function createMcpRoutes(
@@ -59,19 +80,20 @@ export function createMcpRoutes(
     ? `${process.env["ALETHEIA_HOME"]}/credentials`
     : `${process.env["HOME"]}/.aletheia/credentials`;
   const tokens = loadMcpTokens(credPath);
+  const requireAuth = config.gateway.mcp?.requireAuth ?? true;
+  const maxBody = config.gateway.maxBodyBytes ?? 1_048_576;
 
   // SSE endpoint for MCP transport
   app.get("/sse", async (c) => {
-    const client = validateMcpToken(tokens, c.req.header("Authorization"));
+    const client = validateMcpToken(tokens, c.req.header("Authorization"), requireAuth);
     if (!client) return c.json({ error: "Unauthorized" }, 401);
 
-    const sessionId = `mcp_${Date.now().toString(36)}`;
+    const sessionId = generateSessionId();
 
     c.header("Content-Type", "text/event-stream");
     c.header("Cache-Control", "no-cache");
     c.header("Connection", "keep-alive");
 
-    // Send the endpoint URL for the client to POST JSON-RPC messages
     const postUrl = `/mcp/messages?sessionId=${sessionId}`;
 
     return c.body(
@@ -82,10 +104,8 @@ export function createMcpRoutes(
             controller.enqueue(encoder.encode(`event: ${event}\ndata: ${data}\n\n`));
           };
 
-          // Send endpoint event per MCP spec
           send("endpoint", postUrl);
 
-          // Keep-alive ping every 30s
           const keepAlive = setInterval(() => {
             try {
               controller.enqueue(encoder.encode(": ping\n\n"));
@@ -94,8 +114,7 @@ export function createMcpRoutes(
             }
           }, 30000);
 
-          // Store the controller for sending responses back
-          mcpSessions.set(sessionId, { send, controller, keepAlive });
+          mcpSessions.set(sessionId, { send, controller, keepAlive, client });
         },
         cancel() {
           const session = mcpSessions.get(sessionId);
@@ -110,22 +129,31 @@ export function createMcpRoutes(
 
   // JSON-RPC message endpoint
   app.post("/messages", async (c) => {
-    const client = validateMcpToken(tokens, c.req.header("Authorization"));
+    const client = validateMcpToken(tokens, c.req.header("Authorization"), requireAuth);
     if (!client) return c.json({ error: "Unauthorized" }, 401);
+
+    // Body size check
+    const contentLength = parseInt(c.req.header("Content-Length") ?? "0", 10);
+    if (contentLength > maxBody) {
+      return c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Request too large" } }, 413);
+    }
 
     const sessionId = c.req.query("sessionId");
     const session = sessionId ? mcpSessions.get(sessionId) : null;
 
     let request: JsonRpcRequest;
     try {
-      request = (await c.req.json()) as JsonRpcRequest;
+      const raw = await c.req.text();
+      if (raw.length > maxBody) {
+        return c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Request too large" } }, 413);
+      }
+      request = JSON.parse(raw) as JsonRpcRequest;
     } catch {
       return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
     }
 
     const response = await handleJsonRpc(request, config, manager, store, client);
 
-    // If SSE session exists, send response via SSE
     if (session) {
       session.send("message", JSON.stringify(response));
     }
@@ -133,7 +161,7 @@ export function createMcpRoutes(
     return c.json(response);
   });
 
-  log.info(`MCP routes registered (${tokens.length} tokens loaded)`);
+  log.info(`MCP routes registered (${tokens.length} tokens loaded, auth ${requireAuth ? "required" : "open"})`);
   return app;
 }
 
@@ -141,6 +169,7 @@ const mcpSessions = new Map<string, {
   send: (event: string, data: string) => void;
   controller: ReadableStreamDefaultController;
   keepAlive: ReturnType<typeof setInterval>;
+  client: McpToken;
 }>();
 
 async function handleJsonRpc(
@@ -184,6 +213,17 @@ async function handleJsonRpc(
     case "tools/call": {
       const toolName = (params?.["name"] ?? "") as string;
       const toolArgs = (params?.["arguments"] ?? {}) as Record<string, unknown>;
+
+      // Scope check for tool execution
+      const requiredScope = getToolScope(toolName);
+      if (requiredScope && !hasScope(client, requiredScope)) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32600, message: `Insufficient scope for ${toolName}. Required: ${requiredScope}` },
+        };
+      }
+
       const result = await executeMcpTool(toolName, toolArgs, config, manager, store);
       return {
         jsonrpc: "2.0",
@@ -206,6 +246,17 @@ async function handleJsonRpc(
   }
 }
 
+function getToolScope(toolName: string): string | null {
+  if (toolName.startsWith("aletheia_ask_")) {
+    const agentId = toolName.slice("aletheia_ask_".length);
+    return `agent:${agentId}`;
+  }
+  if (toolName === "aletheia_status") return "system:status";
+  if (toolName === "aletheia_memory_search") return "system:memory";
+  if (toolName === "aletheia_sessions") return "system:sessions";
+  return null;
+}
+
 function buildMcpToolList(config: AletheiaConfig, client: McpToken): Array<{
   name: string;
   description: string;
@@ -213,9 +264,9 @@ function buildMcpToolList(config: AletheiaConfig, client: McpToken): Array<{
 }> {
   const tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> = [];
 
-  // Per-agent ask tools
+  // Per-agent ask tools — scope filtered
   for (const agent of config.agents.list) {
-    if (client.scopes[0] !== "*" && !client.scopes.includes(`agent:${agent.id}`)) continue;
+    if (!hasScope(client, `agent:${agent.id}`)) continue;
 
     tools.push({
       name: `aletheia_ask_${agent.id}`,
@@ -231,37 +282,43 @@ function buildMcpToolList(config: AletheiaConfig, client: McpToken): Array<{
     });
   }
 
-  // System tools
-  tools.push({
-    name: "aletheia_status",
-    description: "Get Aletheia system status including agents, services, and usage.",
-    inputSchema: { type: "object", properties: {} },
-  });
+  // System tools — scope filtered
+  if (hasScope(client, "system:status")) {
+    tools.push({
+      name: "aletheia_status",
+      description: "Get Aletheia system status including agents, services, and usage.",
+      inputSchema: { type: "object", properties: {} },
+    });
+  }
 
-  tools.push({
-    name: "aletheia_memory_search",
-    description: "Search Aletheia's memory system for facts and knowledge.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Search query" },
-        agentId: { type: "string", description: "Filter by agent ID" },
-        limit: { type: "number", description: "Max results (default: 10)" },
+  if (hasScope(client, "system:memory")) {
+    tools.push({
+      name: "aletheia_memory_search",
+      description: "Search Aletheia's memory system for facts and knowledge.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+          agentId: { type: "string", description: "Filter by agent ID" },
+          limit: { type: "number", description: "Max results (default: 10)" },
+        },
+        required: ["query"],
       },
-      required: ["query"],
-    },
-  });
+    });
+  }
 
-  tools.push({
-    name: "aletheia_sessions",
-    description: "List active sessions, optionally filtered by agent.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        agentId: { type: "string", description: "Filter by agent ID" },
+  if (hasScope(client, "system:sessions")) {
+    tools.push({
+      name: "aletheia_sessions",
+      description: "List active sessions, optionally filtered by agent.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agentId: { type: "string", description: "Filter by agent ID" },
+        },
       },
-    },
-  });
+    });
+  }
 
   return tools;
 }
@@ -281,6 +338,9 @@ async function executeMcpTool(
     const sessionKey = (args["sessionKey"] as string) ?? "mcp";
 
     if (!message) return { error: "message is required" };
+    if (typeof message !== "string" || message.length > MAX_MESSAGE_BYTES) {
+      return { error: `message must be a string under ${MAX_MESSAGE_BYTES} bytes` };
+    }
 
     const agent = config.agents.list.find((a) => a.id === agentId);
     if (!agent) return { error: `Unknown agent: ${agentId}` };
@@ -322,8 +382,11 @@ async function executeMcpTool(
   // Memory search (proxied to sidecar)
   if (toolName === "aletheia_memory_search") {
     const query = args["query"] as string;
+    if (!query || typeof query !== "string") return { error: "query is required" };
+    if (query.length > 2000) return { error: "query too long (max 2000 chars)" };
+
     const agentId = args["agentId"] as string | undefined;
-    const limit = (args["limit"] as number) ?? 10;
+    const limit = Math.min(Math.max(Number(args["limit"]) || 10, 1), 50);
 
     try {
       const body: Record<string, unknown> = { query, limit };

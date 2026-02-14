@@ -10,7 +10,19 @@ export const findTool: ToolHandler = {
   definition: {
     name: "find",
     description:
-      "Find files by name pattern. Uses fd for fast file searching.",
+      "Find files and directories by name pattern using fd.\n\n" +
+      "USE WHEN:\n" +
+      "- Looking for files by name or extension\n" +
+      "- Discovering project structure\n" +
+      "- Finding configuration files or assets\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Searching inside file contents — use grep instead\n" +
+      "- Listing a specific directory — use ls instead\n\n" +
+      "TIPS:\n" +
+      "- Supports glob patterns ('*.json') and regex\n" +
+      "- Use type='f' for files only, type='d' for directories\n" +
+      "- Set maxDepth to avoid deep recursive searches\n" +
+      "- Default max 100 results",
     input_schema: {
       type: "object",
       properties: {

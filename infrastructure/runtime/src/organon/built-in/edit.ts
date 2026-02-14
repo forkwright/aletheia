@@ -8,7 +8,19 @@ export const editTool: ToolHandler = {
   definition: {
     name: "edit",
     description:
-      "Edit a file by replacing exact text. Provide the old text to find and new text to replace it with.",
+      "Replace exact text in a file with new text. Requires a unique match.\n\n" +
+      "USE WHEN:\n" +
+      "- Modifying specific sections of an existing file\n" +
+      "- Updating configuration values, function bodies, or specific lines\n" +
+      "- Making targeted changes without rewriting the entire file\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Creating new files (use write instead)\n" +
+      "- The old_text appears more than once — include surrounding context to make it unique\n\n" +
+      "TIPS:\n" +
+      "- old_text must match EXACTLY including whitespace and newlines\n" +
+      "- If match is ambiguous, include more surrounding lines\n" +
+      "- Read the file first to get exact text to match\n" +
+      "- Changes are tracked in workspace git",
     input_schema: {
       type: "object",
       properties: {

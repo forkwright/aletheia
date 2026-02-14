@@ -31,8 +31,8 @@ const RoutingConfig = z
     tiers: z
       .object({
         routine: z.string().default("claude-haiku-4-5-20251001"),
-        standard: z.string().default("claude-sonnet-4-5-20250929"),
-        complex: z.string().default("claude-sonnet-4-5-20250929"),
+        standard: z.string().default("claude-sonnet-4-6"),
+        complex: z.string().default("claude-sonnet-4-6"),
       })
       .default({}),
     agentOverrides: z
@@ -214,6 +214,22 @@ const GatewayConfig = z
         allowInsecureAuth: z.boolean().default(false),
       })
       .default({}),
+    mcp: z
+      .object({
+        requireAuth: z.boolean().default(true),
+      })
+      .default({}),
+    rateLimit: z
+      .object({
+        requestsPerMinute: z.number().default(60),
+      })
+      .default({}),
+    cors: z
+      .object({
+        allowOrigins: z.array(z.string()).default([]),
+      })
+      .default({}),
+    maxBodyBytes: z.number().default(1_048_576),
   })
   .passthrough()
   .default({});

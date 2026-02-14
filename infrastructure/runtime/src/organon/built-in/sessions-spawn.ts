@@ -25,10 +25,21 @@ export function createSessionsSpawnTool(
     definition: {
       name: "sessions_spawn",
       description:
-        "Spawn a sub-agent to handle a scoped task. Runs the task to completion and returns the result. " +
-        "Good for parallel work, research, or isolating complex operations. " +
-        "Set ephemeral=true to create a temporary specialist with a custom SOUL — " +
-        "bounded by maxTurns and maxDurationSeconds, automatically torn down after.",
+        "Spawn a sub-agent to handle an isolated task, returning the result.\n\n" +
+        "USE WHEN:\n" +
+        "- Running research or analysis in parallel with your main work\n" +
+        "- Isolating complex operations that might fail\n" +
+        "- Creating temporary specialists with custom identities (ephemeral=true)\n" +
+        "- Delegating a task to a different agent's workspace and toolset\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- Simple question for another agent — use sessions_ask instead\n" +
+        "- Fire-and-forget notification — use sessions_send instead\n" +
+        "- The task is trivial and doesn't need isolation\n\n" +
+        "TIPS:\n" +
+        "- Ephemeral mode creates a temporary specialist with a custom SOUL.md\n" +
+        "- Ephemeral agents auto-teardown after maxTurns or maxDurationSeconds\n" +
+        "- Use a specific sessionKey for continuity across repeated spawns\n" +
+        "- Default timeout 180s — increase for complex tasks",
       input_schema: {
         type: "object",
         properties: {

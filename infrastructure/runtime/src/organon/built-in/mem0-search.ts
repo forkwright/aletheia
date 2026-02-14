@@ -8,9 +8,20 @@ export const mem0SearchTool: ToolHandler = {
   definition: {
     name: "mem0_search",
     description:
-      "Search long-term extracted memories from past conversations. " +
-      "Returns facts, preferences, and entity relationships that were " +
-      "automatically captured. Use for cross-session recall.",
+      "Search long-term memory for facts, preferences, and relationships from past conversations.\n\n" +
+      "USE WHEN:\n" +
+      "- Recalling user preferences, past decisions, or established facts\n" +
+      "- Checking what you already know before asking the user\n" +
+      "- Finding context from previous sessions or other agents' interactions\n" +
+      "- Understanding entity relationships (people, projects, tools)\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Looking for information in the current session — it's already in context\n" +
+      "- Searching for files or code — use grep or find instead\n\n" +
+      "TIPS:\n" +
+      "- Uses semantic search — phrase queries naturally, not as keywords\n" +
+      "- Tries graph-enhanced search first (entity relationships), falls back to vector\n" +
+      "- Results include score — higher is more relevant\n" +
+      "- Searches both agent-scoped and global memories, deduplicates",
     input_schema: {
       type: "object",
       properties: {
