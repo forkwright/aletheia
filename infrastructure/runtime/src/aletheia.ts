@@ -140,6 +140,14 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const daemons: DaemonHandle[] = [];
   const clients = new Map<string, SignalClient>();
 
+  // Collect bound group IDs from bindings so the listener can allow them
+  const boundGroupIds = new Set<string>();
+  for (const binding of config.bindings) {
+    if (binding.match.peer?.kind === "group" && binding.match.peer.id) {
+      boundGroupIds.add(binding.match.peer.id);
+    }
+  }
+
   if (config.channels.signal.enabled) {
     for (const [accountId, account] of Object.entries(
       config.channels.signal.accounts,
@@ -175,6 +183,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
         client,
         baseUrl: httpUrl,
         abortSignal: abortController.signal,
+        boundGroupIds,
       });
 
       log.info(`Signal account ${accountId} active at ${httpUrl}`);
