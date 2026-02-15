@@ -14,6 +14,7 @@ import { findTool } from "./organon/built-in/find.js";
 import { lsTool } from "./organon/built-in/ls.js";
 import { webFetchTool } from "./organon/built-in/web-fetch.js";
 import { webSearchTool } from "./organon/built-in/web-search.js";
+import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
@@ -71,6 +72,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Web access
   tools.register(webFetchTool);
   tools.register(webSearchTool);
+
+  // Memory
+  tools.register(mem0SearchTool);
 
   // Wired tools (config + store injected)
   tools.register(createConfigReadTool(config));
