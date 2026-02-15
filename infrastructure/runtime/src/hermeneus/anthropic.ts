@@ -61,11 +61,19 @@ export interface CompletionRequest {
 export class AnthropicProvider {
   private client: Anthropic;
 
-  constructor(apiKey?: string) {
-    this.client = new Anthropic({
-      apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY,
-    });
-    log.info("Anthropic provider initialized");
+  constructor(opts?: { apiKey?: string; authToken?: string }) {
+    // Support both API key (x-api-key) and OAuth token (Bearer auth)
+    // OAuth is used for Max/Pro plan routing
+    const authToken = opts?.authToken ?? process.env.ANTHROPIC_AUTH_TOKEN;
+    const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
+
+    if (authToken) {
+      this.client = new Anthropic({ apiKey: null, authToken });
+      log.info("Anthropic provider initialized (OAuth)");
+    } else {
+      this.client = new Anthropic({ apiKey: apiKey ?? null });
+      log.info("Anthropic provider initialized (API key)");
+    }
   }
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
