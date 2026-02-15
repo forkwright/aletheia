@@ -24,7 +24,7 @@ import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { NousManager } from "./nous/manager.js";
-import { createGateway, startGateway } from "./pylon/server.js";
+import { createGateway, startGateway, setCronRef } from "./pylon/server.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -235,6 +235,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Cron ---
   const cron = new CronScheduler(config, runtime.manager);
+  setCronRef(cron);
   if (config.cron.enabled) {
     cron.start();
   }

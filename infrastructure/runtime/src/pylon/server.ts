@@ -5,8 +5,15 @@ import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import type { CronScheduler } from "../daemon/cron.js";
 
 const log = createLogger("pylon");
+
+// Set after gateway creation — avoids circular dependency
+let cronRef: CronScheduler | null = null;
+export function setCronRef(cron: CronScheduler): void {
+  cronRef = cron;
+}
 
 export function createGateway(
   config: AletheiaConfig,
@@ -97,6 +104,8 @@ export function createGateway(
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
+          cacheReadTokens: result.cacheReadTokens,
+          cacheWriteTokens: result.cacheWriteTokens,
         },
       });
     } catch (error) {
@@ -116,6 +125,53 @@ export function createGateway(
       })),
       bindings: config.bindings.length,
       plugins: Object.keys(config.plugins.entries).length,
+    });
+  });
+
+  app.get("/api/metrics", (c) => {
+    const metrics = store.getMetrics();
+    const uptime = process.uptime();
+
+    const nous = config.agents.list.map((a) => {
+      const nousMetrics = metrics.perNous[a.id];
+      const nousUsage = metrics.usageByNous[a.id];
+      return {
+        id: a.id,
+        name: a.name ?? a.id,
+        activeSessions: nousMetrics?.activeSessions ?? 0,
+        totalMessages: nousMetrics?.totalMessages ?? 0,
+        lastActivity: nousMetrics?.lastActivity ?? null,
+        tokens: nousUsage
+          ? {
+              input: nousUsage.inputTokens,
+              output: nousUsage.outputTokens,
+              cacheRead: nousUsage.cacheReadTokens,
+              cacheWrite: nousUsage.cacheWriteTokens,
+              turns: nousUsage.turns,
+            }
+          : null,
+      };
+    });
+
+    const cacheHitRate =
+      metrics.usage.totalInputTokens > 0
+        ? Math.round(
+            (metrics.usage.totalCacheReadTokens /
+              metrics.usage.totalInputTokens) *
+              100,
+          )
+        : 0;
+
+    return c.json({
+      status: "ok",
+      uptime: Math.round(uptime),
+      timestamp: new Date().toISOString(),
+      nous,
+      usage: {
+        ...metrics.usage,
+        cacheHitRate,
+      },
+      cron: cronRef?.getStatus() ?? [],
     });
   });
 
