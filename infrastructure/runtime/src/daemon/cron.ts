@@ -64,6 +64,22 @@ export class CronScheduler {
     log.info("Cron scheduler stopped");
   }
 
+  getStatus(): Array<{
+    id: string;
+    agentId?: string;
+    schedule: string;
+    lastRun: string | null;
+    nextRun: string;
+  }> {
+    return this.entries.map((e) => ({
+      id: e.id,
+      agentId: e.agentId,
+      schedule: e.schedule,
+      lastRun: e.lastRun ? new Date(e.lastRun).toISOString() : null,
+      nextRun: new Date(e.nextRun).toISOString(),
+    }));
+  }
+
   private scheduleTick(): void {
     if (!this.running) return;
     this.timer = setTimeout(async () => {

@@ -450,6 +450,113 @@ export class SessionStore {
     return row?.nous_id ?? null;
   }
 
+  getMetrics(): {
+    perNous: Record<string, {
+      activeSessions: number;
+      totalMessages: number;
+      totalTokens: number;
+      lastActivity: string | null;
+    }>;
+    usage: {
+      totalInputTokens: number;
+      totalOutputTokens: number;
+      totalCacheReadTokens: number;
+      totalCacheWriteTokens: number;
+      turnCount: number;
+    };
+    usageByNous: Record<string, {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      turns: number;
+    }>;
+  } {
+    const perNous: Record<string, {
+      activeSessions: number;
+      totalMessages: number;
+      totalTokens: number;
+      lastActivity: string | null;
+    }> = {};
+
+    const sessionRows = this.db
+      .prepare(
+        `SELECT nous_id,
+                COUNT(*) AS active_sessions,
+                SUM(message_count) AS total_messages,
+                SUM(token_count_estimate) AS total_tokens,
+                MAX(updated_at) AS last_activity
+         FROM sessions
+         WHERE status = 'active'
+         GROUP BY nous_id`,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    for (const row of sessionRows) {
+      perNous[row.nous_id as string] = {
+        activeSessions: row.active_sessions as number,
+        totalMessages: row.total_messages as number,
+        totalTokens: row.total_tokens as number,
+        lastActivity: row.last_activity as string | null,
+      };
+    }
+
+    const usageRow = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(input_tokens), 0) AS input,
+                COALESCE(SUM(output_tokens), 0) AS output,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write,
+                COUNT(*) AS turns
+         FROM usage`,
+      )
+      .get() as Record<string, number>;
+
+    const usageByNous: Record<string, {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      turns: number;
+    }> = {};
+
+    const nousUsageRows = this.db
+      .prepare(
+        `SELECT s.nous_id,
+                COALESCE(SUM(u.input_tokens), 0) AS input,
+                COALESCE(SUM(u.output_tokens), 0) AS output,
+                COALESCE(SUM(u.cache_read_tokens), 0) AS cache_read,
+                COALESCE(SUM(u.cache_write_tokens), 0) AS cache_write,
+                COUNT(*) AS turns
+         FROM usage u
+         JOIN sessions s ON u.session_id = s.id
+         GROUP BY s.nous_id`,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    for (const row of nousUsageRows) {
+      usageByNous[row.nous_id as string] = {
+        inputTokens: row.input as number,
+        outputTokens: row.output as number,
+        cacheReadTokens: row.cache_read as number,
+        cacheWriteTokens: row.cache_write as number,
+        turns: row.turns as number,
+      };
+    }
+
+    return {
+      perNous,
+      usage: {
+        totalInputTokens: usageRow.input,
+        totalOutputTokens: usageRow.output,
+        totalCacheReadTokens: usageRow.cache_read,
+        totalCacheWriteTokens: usageRow.cache_write,
+        turnCount: usageRow.turns,
+      },
+      usageByNous,
+    };
+  }
+
   close(): void {
     this.db.close();
     log.info("Session store closed");
