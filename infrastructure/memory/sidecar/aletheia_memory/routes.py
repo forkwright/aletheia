@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, OLLAMA_BASE_URL, QDRANT_HOST, QDRANT_PORT
+from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -166,10 +167,10 @@ async def health_check():
             checks["qdrant"] = f"error: {e}"
 
         try:
-            r = await client.get(OLLAMA_BASE_URL.rstrip("/") + "/api/tags")
-            checks["ollama"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
+            r = await client.get("https://api.voyageai.com/v1/models", headers={"Authorization": f"Bearer {os.environ.get('VOYAGE_API_KEY', '')}"})
+            checks["voyage"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
         except Exception as e:
-            checks["ollama"] = f"error: {e}"
+            checks["voyage"] = f"error: {e}"
 
     try:
         from neo4j import GraphDatabase

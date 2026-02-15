@@ -3,6 +3,7 @@
 import os
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
@@ -34,10 +35,11 @@ MEM0_CONFIG = {
         },
     },
     "embedder": {
-        "provider": "ollama",
+        "provider": "openai",
         "config": {
-            "model": "mxbai-embed-large",
-            "ollama_base_url": OLLAMA_BASE_URL,
+            "model": "voyage-3-large",
+            "api_key": VOYAGE_API_KEY,
+            "openai_base_url": "https://api.voyageai.com/v1",
         },
     },
     "vector_store": {
