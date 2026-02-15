@@ -203,8 +203,9 @@ async function handleEnvelope(
     return;
   }
 
-  // Mention gating for groups — only respond when mentioned
-  if (isGroup && account.requireMention !== false) {
+  // Mention gating for groups — skip for bound groups (dedicated agent channels)
+  const isBoundGroup = isGroup && groupId && boundGroupIds?.has(groupId);
+  if (isGroup && !isBoundGroup && account.requireMention !== false) {
     const isMentioned = dataMessage.mentions?.some(
       (m) => m.number === accountPhone || normalizePhone(m.number ?? "") === normalizePhone(accountPhone),
     );
