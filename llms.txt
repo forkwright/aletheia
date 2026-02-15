@@ -16,13 +16,13 @@ Self-hosted, privacy-first. 6 nous (agents) + 1 human in distributed cognition t
 - [shared/templates/](shared/templates/): Template compilation for workspace files
 - [shared/config/](shared/config/): Environment, tools, provider failover
 - [shared/contracts/](shared/contracts/): Agent capability contracts (JSON)
-- [infrastructure/runtime/](infrastructure/runtime/): Aletheia gateway (TypeScript, forked OpenClaw)
+- [infrastructure/runtime/](infrastructure/runtime/): Aletheia gateway (TypeScript, clean-room)
 - [infrastructure/memory/](infrastructure/memory/): Mem0 sidecar + Qdrant + Neo4j
 
 ## Memory System
 - [infrastructure/memory/sidecar/](infrastructure/memory/sidecar/): Mem0 FastAPI extraction service
 - [infrastructure/memory/plugin/](infrastructure/memory/plugin/): Aletheia memory plugin (lifecycle hooks)
-- [infrastructure/runtime/src/agents/tools/memory-tool.ts](infrastructure/runtime/src/agents/tools/memory-tool.ts): Federated memory search tool
+- [infrastructure/runtime/src/organon/built-in/](infrastructure/runtime/src/organon/built-in/): Built-in tools (exec, grep, message, memory search)
 - [shared/memory/facts.jsonl](shared/memory/facts.jsonl): Structured fact store
 
 ## Agents
