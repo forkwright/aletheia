@@ -42,6 +42,8 @@ export interface TurnOutcome {
   toolCalls: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
 
 // Per-session mutex to prevent concurrent turns from corrupting context
@@ -156,6 +158,8 @@ export class NousManager {
     let totalToolCalls = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let totalCacheReadTokens = 0;
+    let totalCacheWriteTokens = 0;
     let currentMessages = messages;
 
     const MAX_TOOL_LOOPS = 20;
@@ -170,6 +174,8 @@ export class NousManager {
 
       totalInputTokens += result.usage.inputTokens;
       totalOutputTokens += result.usage.outputTokens;
+      totalCacheReadTokens += result.usage.cacheReadTokens;
+      totalCacheWriteTokens += result.usage.cacheWriteTokens;
 
       this.store.recordUsage({
         sessionId,
@@ -204,7 +210,18 @@ export class NousManager {
           toolCalls: totalToolCalls,
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
+          cacheReadTokens: totalCacheReadTokens,
+          cacheWriteTokens: totalCacheWriteTokens,
         };
+
+        const cacheHitRate = totalInputTokens > 0
+          ? Math.round((totalCacheReadTokens / totalInputTokens) * 100)
+          : 0;
+        log.info(
+          `Turn complete for ${nousId}: ${totalInputTokens}in/${totalOutputTokens}out, ` +
+          `cache ${totalCacheReadTokens}r/${totalCacheWriteTokens}w (${cacheHitRate}% hit), ` +
+          `${totalToolCalls} tool calls`,
+        );
 
         if (this.plugins) {
           await this.plugins.dispatchAfterTurn({
