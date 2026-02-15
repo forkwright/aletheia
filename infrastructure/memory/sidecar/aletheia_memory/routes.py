@@ -183,7 +183,14 @@ async def health_check():
             checks["qdrant"] = f"error: {e}"
 
         try:
-            r = await client.get("https://api.voyageai.com/v1/models", headers={"Authorization": f"Bearer {os.environ.get('VOYAGE_API_KEY', '')}"})
+            r = await client.post(
+                "https://api.voyageai.com/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {os.environ.get('VOYAGE_API_KEY', '')}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": "voyage-3-large", "input": ["health check"]},
+            )
             checks["voyage"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
         except Exception as e:
             checks["voyage"] = f"error: {e}"
