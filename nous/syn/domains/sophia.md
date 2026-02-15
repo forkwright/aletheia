@@ -14,7 +14,7 @@
 - Prompt engineering frameworks, evaluation, bias detection
 
 ### My Configuration
-- Config: `/home/syn/.openclaw/aletheia.json`
+- Config: `/home/syn/.aletheia/aletheia.json`
 - Workspace: `/mnt/ssd/aletheia/nous/syn/`
 - Model: Opus 4.6 (me), Sonnet 4.5 (sub-agents)
 

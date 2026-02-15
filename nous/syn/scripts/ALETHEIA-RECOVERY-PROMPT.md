@@ -9,8 +9,8 @@ If the gateway won't start, use this with Claude Code or manually.
 | What | Path |
 |------|------|
 | Root | `/mnt/ssd/aletheia/` |
-| Nous workspaces | `/mnt/ssd/aletheia/nous/{syn,chiron,eiron,demiurge,syl,arbor,akron}` |
-| Runtime config | `/home/syn/.openclaw/aletheia.json` |
+| Nous workspaces | `/mnt/ssd/aletheia/nous/{syn,eiron,demiurge,syl,arbor,akron}` |
+| Runtime config | `/home/syn/.aletheia/aletheia.json` |
 | Service | `/etc/systemd/system/aletheia.service` |
 | Gateway binary | `/usr/local/bin/aletheia` → `/mnt/ssd/aletheia/infrastructure/runtime/aletheia.mjs` |
 | Logs | `/tmp/aletheia/aletheia-YYYY-MM-DD.log` |
@@ -44,7 +44,7 @@ sudo systemctl restart aletheia
 **Config syntax error:**
 ```bash
 # Validate JSON
-python3 -c "import json; json.load(open('/home/syn/.openclaw/aletheia.json'))"
+python3 -c "import json; json.load(open('/home/syn/.aletheia/aletheia.json'))"
 ```
 
 **ACL permissions on shared/bin:**

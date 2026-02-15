@@ -89,7 +89,7 @@ export function createDefaultRouter(): ProviderRouter {
   if (!process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
     try {
       const home = process.env.HOME ?? "/home/syn";
-      const credPath = join(home, ".openclaw", "credentials", "anthropic.json");
+      const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
       const creds = JSON.parse(readFileSync(credPath, "utf-8"));
       authToken = creds.token;
       if (authToken) log.info("Loaded OAuth token from credentials");
