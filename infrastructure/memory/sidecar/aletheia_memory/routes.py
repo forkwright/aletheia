@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
+from .temporal import _neo4j_driver, _extract_entities_for_episode
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -71,6 +73,10 @@ async def add_memory(req: AddRequest, request: Request):
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
             asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+
+        # Episode tracking — record this interaction as a temporal episode
+        if NEO4J_PASSWORD and req.agent_id:
+            asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
 
         return {"ok": True, "result": result}
     except Exception as e:
@@ -603,6 +609,50 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     with open(RETRACTION_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
     logger.info(f"Retraction logged: {len(retracted)} memories, reason={req.reason or 'none'}")
+
+
+# --- Episode recording (linked from /add) ---
+
+
+async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | None) -> None:
+    """Fire-and-forget: create an Episode node for temporal tracking."""
+    try:
+        episode_id = f"ep_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        session_id = (metadata or {}).get("sessionId", "")
+        entities = _extract_entities_for_episode(text)
+
+        driver = _neo4j_driver()
+        with driver.session() as session:
+            session.run(
+                """
+                CREATE (e:Episode {
+                    id: $id,
+                    content_preview: $preview,
+                    agent_id: $agent_id,
+                    session_id: $session_id,
+                    source: 'after_turn',
+                    occurred_at: $now,
+                    recorded_at: $now
+                })
+                """,
+                id=episode_id, preview=text[:500], agent_id=agent_id,
+                session_id=str(session_id), now=now,
+            )
+            for entity_name in entities[:15]:
+                session.run(
+                    """
+                    MERGE (ent:Entity {name: $name})
+                    WITH ent
+                    MATCH (ep:Episode {id: $ep_id})
+                    CREATE (ep)-[:MENTIONS {occurred_at: $now}]->(ent)
+                    """,
+                    name=entity_name, ep_id=episode_id, now=now,
+                )
+        driver.close()
+        logger.debug(f"Episode {episode_id}: {len(entities)} entities linked")
+    except Exception:
+        logger.warning("Episode recording failed (non-fatal)", exc_info=True)
 
 
 # --- Phase C1: Foresight Signals ---

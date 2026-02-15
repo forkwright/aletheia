@@ -42,6 +42,7 @@ function makeStore() {
     listSessions: vi.fn().mockReturnValue([]),
     recordSignal: vi.fn(),
     getSignalHistory: vi.fn().mockReturnValue([]),
+    blackboardReadPrefix: vi.fn().mockReturnValue([]),
   } as never;
 }
 

@@ -279,6 +279,19 @@ export class NousManager {
       ...bootstrap.dynamicBlocks,
     ];
 
+    // Broadcast injection — prosoche and agents can post attention-worthy items via blackboard
+    const broadcasts = this.store.blackboardReadPrefix("broadcast:");
+    if (broadcasts.length > 0) {
+      const broadcastLines = broadcasts
+        .slice(0, 5)
+        .map((b) => `- **[${b.key.replace("broadcast:", "")}]** ${b.value.slice(0, 300)}`)
+        .join("\n");
+      systemPrompt.push({
+        type: "text",
+        text: `## Broadcasts\n\n${broadcastLines}`,
+      });
+    }
+
     // Mid-session working state injection — every 8 turns, give the agent a lightweight status pulse
     const currentSession = this.store.findSessionById(sessionId);
     const msgCount = currentSession?.messageCount ?? 0;
