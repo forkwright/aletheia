@@ -59,6 +59,9 @@ export interface ListenerOpts {
   boundGroupIds?: Set<string>;
 }
 
+const MAX_CONCURRENT_TURNS = 3;
+let activeTurns = 0;
+
 export async function startListener(opts: ListenerOpts): Promise<void> {
   const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds } = opts;
   const accountPhone = account.account ?? accountId;
@@ -96,7 +99,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
 async function consumeEventStream(
   baseUrl: string,
   account: string,
-  onEnvelope: (envelope: SignalEnvelope) => Promise<void>,
+  onEnvelope: (envelope: SignalEnvelope) => void,
   abortSignal?: AbortSignal,
 ): Promise<void> {
   const url = `${baseUrl}/api/v1/events?account=${encodeURIComponent(account)}`;
@@ -142,7 +145,7 @@ async function consumeEventStream(
               const payload = JSON.parse(currentEvent.data);
               const envelope = payload?.envelope as SignalEnvelope | undefined;
               if (envelope) {
-                await onEnvelope(envelope);
+                onEnvelope(envelope);
               }
             } catch (parseErr) {
               log.warn(
@@ -169,14 +172,14 @@ async function consumeEventStream(
   }
 }
 
-async function handleEnvelope(
+function handleEnvelope(
   envelope: SignalEnvelope,
   accountId: string,
   account: SignalAccount,
   manager: NousManager,
   client: SignalClient,
   boundGroupIds?: Set<string>,
-): Promise<void> {
+): void {
   if (envelope.syncMessage) return;
 
   const dataMessage =
@@ -265,6 +268,25 @@ async function handleEnvelope(
     sessionKey,
   };
 
+  // Concurrency guard — don't block the SSE stream
+  if (activeTurns >= MAX_CONCURRENT_TURNS) {
+    log.warn(`Concurrency limit reached (${activeTurns}/${MAX_CONCURRENT_TURNS}), queuing message`);
+  }
+
+  // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
+  // while different nous/sessions process concurrently
+  activeTurns++;
+  processTurn(manager, msg, client, target).finally(() => {
+    activeTurns--;
+  });
+}
+
+async function processTurn(
+  manager: NousManager,
+  msg: InboundMessage,
+  client: SignalClient,
+  target: SendTarget,
+): Promise<void> {
   try {
     const outcome = await manager.handleMessage(msg);
 
