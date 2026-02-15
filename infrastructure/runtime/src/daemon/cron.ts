@@ -1,4 +1,5 @@
-// Cron scheduler — dispatch timed messages to agents
+// Cron scheduler — dispatch timed messages to agents or run shell commands
+import { execSync } from "node:child_process";
 import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
@@ -11,6 +12,7 @@ interface CronEntry {
   sessionKey?: string | undefined;
   model?: string | undefined;
   messageTemplate?: string | undefined;
+  command?: string | undefined;
   schedule: string;
   timeoutSeconds: number;
   lastRun?: number | undefined;
@@ -39,6 +41,7 @@ export class CronScheduler {
         sessionKey: j.sessionKey,
         model: j.model,
         messageTemplate: j.messageTemplate,
+        command: j.command,
         schedule: j.schedule,
         timeoutSeconds: j.timeoutSeconds,
         nextRun: computeNextRun(j.schedule),
@@ -111,9 +114,28 @@ export class CronScheduler {
     const results = await Promise.allSettled(
       dueEntries.map((entry) => {
         log.info(`Cron job ${entry.id} firing`);
+        const timeoutMs = (entry.timeoutSeconds || 300) * 1000;
+
+        // Command-type jobs run a shell command instead of dispatching to an agent
+        if (entry.command) {
+          return new Promise<{ type: "command"; stdout: string }>((resolve, reject) => {
+            try {
+              const stdout = execSync(entry.command!, {
+                timeout: timeoutMs,
+                encoding: "utf-8",
+                stdio: ["ignore", "pipe", "pipe"],
+              });
+              log.info(`Cron command ${entry.id} completed: ${stdout.slice(0, 200)}`);
+              resolve({ type: "command", stdout: stdout.slice(0, 2000) });
+            } catch (err) {
+              reject(err instanceof Error ? err : new Error(String(err)));
+            }
+          });
+        }
+
+        // Message-type jobs dispatch to an agent
         const message =
           entry.messageTemplate ?? `[cron:${entry.id}] Scheduled trigger`;
-        const timeoutMs = (entry.timeoutSeconds || 300) * 1000;
 
         return Promise.race([
           this.manager.handleMessage({

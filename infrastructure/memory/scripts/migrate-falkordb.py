@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # Migrate FalkorDB graph data directly to Neo4j (no Mem0/Haiku needed)
 
+import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
 
 NEO4J_URI = "neo4j://localhost:7687"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "aletheia-memory"
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 RESCUE_DIR = Path("/mnt/ssd/aletheia/data/falkordb-rescue")
 
 

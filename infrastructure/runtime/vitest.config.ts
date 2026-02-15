@@ -10,10 +10,10 @@ export default defineConfig({
       reporter: ["text", "json", "lcov"],
       reportsDirectory: "../coverage",
       thresholds: {
-        statements: 60,
-        branches: 50,
-        functions: 60,
-        lines: 60,
+        statements: 80,
+        branches: 78,
+        functions: 90,
+        lines: 80,
       },
       include: ["**/*.ts"],
       exclude: ["**/*.test.ts", "**/*.integration.test.ts", "entry.ts"],
@@ -22,7 +22,7 @@ export default defineConfig({
     outputFile: {
       json: "../test-results/results.json",
     },
-    passWithNoTests: true,
+    passWithNoTests: false,
     testTimeout: 10000,
     hookTimeout: 10000,
     pool: "forks",

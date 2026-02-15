@@ -9,6 +9,7 @@ import type { CommandRegistry, CommandContext } from "./commands.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
 import { preprocessLinks } from "./preprocess.js";
+import { transcribeAudio } from "./transcribe.js";
 
 const log = createLogger("semeion:listen");
 
@@ -380,7 +381,7 @@ async function preprocessAndProcess(
   accountPhone?: string,
   mediaMaxMb?: number,
 ): Promise<void> {
-  // Fetch image attachments for vision
+  // Fetch attachments — images for vision, audio for transcription
   if (attachments?.length) {
     const media: MediaAttachment[] = [];
     const maxBytes = (mediaMaxMb ?? 25) * 1024 * 1024;
@@ -388,7 +389,6 @@ async function preprocessAndProcess(
     for (const att of attachments) {
       if (!att.id) continue;
       const ct = att.contentType ?? "";
-      if (!ct.startsWith("image/")) continue;
       if (att.size && att.size > maxBytes) {
         log.debug(`Skipping oversized attachment ${att.filename ?? att.id} (${att.size} bytes)`);
         continue;
@@ -397,15 +397,29 @@ async function preprocessAndProcess(
       try {
         const attParams: { id: string; account?: string } = { id: att.id };
         if (accountPhone) attParams.account = accountPhone;
-        const result = await client.getAttachment(attParams);
-        if (typeof result === "string") {
-          const attachment: MediaAttachment = {
-            contentType: ct,
-            data: result,
-          };
-          if (att.filename) attachment.filename = att.filename;
-          media.push(attachment);
-          log.debug(`Fetched image attachment: ${att.filename ?? att.id} (${ct})`);
+
+        if (ct.startsWith("image/")) {
+          const result = await client.getAttachment(attParams);
+          if (typeof result === "string") {
+            const attachment: MediaAttachment = {
+              contentType: ct,
+              data: result,
+            };
+            if (att.filename) attachment.filename = att.filename;
+            media.push(attachment);
+            log.debug(`Fetched image attachment: ${att.filename ?? att.id} (${ct})`);
+          }
+        } else if (ct.startsWith("audio/")) {
+          const result = await client.getAttachment(attParams);
+          if (typeof result === "string") {
+            const transcript = await transcribeAudio(result, ct);
+            if (transcript) {
+              msg.text = `[Voice message transcription]: ${transcript}\n\n${msg.text}`;
+              log.info(`Transcribed voice message: ${transcript.length} chars`);
+            } else {
+              msg.text = `[Voice message — transcription unavailable]\n\n${msg.text}`;
+            }
+          }
         }
       } catch (err) {
         log.warn(`Failed to fetch attachment ${att.id}: ${err instanceof Error ? err.message : err}`);

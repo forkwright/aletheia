@@ -20,15 +20,28 @@ import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
+import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
+import { cleanupTtsFiles } from "./semeion/tts.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
+import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
+import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
+import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
+import { createBlackboardTool } from "./organon/built-in/blackboard.js";
+import { createContextCheckTool } from "./organon/built-in/context-check.js";
+import { createStatusReportTool } from "./organon/built-in/status-report.js";
+import { createResearchTool } from "./organon/built-in/research.js";
+import { createDeliberateTool } from "./organon/built-in/deliberate.js";
+import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
+import { createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -44,7 +57,10 @@ import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { CompetenceModel } from "./nous/competence.js";
+import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
+import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
 
@@ -59,6 +75,7 @@ export interface AletheiaRuntime {
 }
 
 export function createRuntime(configPath?: string): AletheiaRuntime {
+  eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
 
   const config = loadConfig(configPath);
@@ -78,34 +95,73 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(findTool);
   tools.register(lsTool);
 
-  // Web access
-  tools.register(webFetchTool);
+  // Web access (available on-demand)
+  tools.register({ ...webFetchTool, category: "available" as const });
   if (process.env["BRAVE_API_KEY"]) {
-    tools.register(braveSearchTool);
+    tools.register({ ...braveSearchTool, category: "available" as const });
     log.info("Web search: Brave (API key found)");
   } else {
-    tools.register(webSearchTool);
+    tools.register({ ...webSearchTool, category: "available" as const });
     log.info("Web search: DuckDuckGo (no BRAVE_API_KEY)");
   }
 
   // Memory
   tools.register(mem0SearchTool);
-  tools.register(factRetractTool);
+  tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
-    tools.register(browserTool);
+    tools.register({ ...browserTool, category: "available" as const });
     log.info("Browser tool registered");
   }
 
-  // Wired tools (config + store injected)
-  tools.register(createConfigReadTool(config));
-  tools.register(createSessionStatusTool(store));
+  // Wired tools (config + store injected — available on-demand)
+  const configReadTool = createConfigReadTool(config);
+  configReadTool.category = "available";
+  tools.register(configReadTool);
+  const sessionStatusTool = createSessionStatusTool(store);
+  sessionStatusTool.category = "available";
+  tools.register(sessionStatusTool);
 
-  // Planning tools
+  // Planning tools (available on-demand)
   for (const planTool of createPlanTools()) {
+    planTool.category = "available";
     tools.register(planTool);
   }
+
+  // Self-authoring tools (available on-demand)
+  const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
+  for (const authorTool of createSelfAuthorTools(defaultWorkspace, tools)) {
+    authorTool.category = "available";
+    tools.register(authorTool);
+  }
+  const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
+  if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
+
+  // enable_tool meta-tool — lets agents activate available tools on demand
+  const enableToolHandler: import("./organon/registry.js").ToolHandler = {
+    definition: {
+      name: "enable_tool",
+      description:
+        "Activate an available tool for this session. Tools auto-expire after 5 unused turns. " +
+        "Available tools: " + tools.getAvailableToolNames().join(", "),
+      input_schema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Tool name to enable" },
+        },
+        required: ["name"],
+      },
+    },
+    async execute(input: Record<string, unknown>, context: import("./organon/registry.js").ToolContext): Promise<string> {
+      const name = input["name"] as string;
+      const ok = tools.enableTool(name, context.sessionId, 0);
+      if (ok) return JSON.stringify({ enabled: true, tool: name });
+      return JSON.stringify({ enabled: false, error: `Tool "${name}" not found` });
+    },
+  };
+  tools.register(enableToolHandler);
 
   log.info(`Registered ${tools.size} tools`);
 
@@ -124,6 +180,39 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Competence model + uncertainty tracker — wired into manager for runtime use
+  const sharedRoot = paths.root;
+  const competence = new CompetenceModel(sharedRoot);
+  const uncertainty = new UncertaintyTracker(sharedRoot);
+  manager.setCompetence(competence);
+  manager.setUncertainty(uncertainty);
+  log.info("Competence model and uncertainty tracker initialized");
+
+  // Self-observation tools — query competence model, calibration, and interaction signals
+  const calibrationTool = createCheckCalibrationTool(competence, uncertainty);
+  calibrationTool.category = "available";
+  tools.register(calibrationTool);
+  const knowTool = createWhatDoIKnowTool(competence, store);
+  knowTool.category = "available";
+  tools.register(knowTool);
+  const correctionsTool = createRecentCorrectionsTool(store);
+  correctionsTool.category = "available";
+  tools.register(correctionsTool);
+
+  // Cross-agent blackboard — persistent shared state with auto-expiry
+  tools.register(createBlackboardTool(store));
+
+  // Meta-tools — composed pipelines
+  const ctxCheckTool = createContextCheckTool(tools);
+  ctxCheckTool.category = "available";
+  tools.register(ctxCheckTool);
+  const statusTool = createStatusReportTool(store, competence);
+  statusTool.category = "available";
+  tools.register(statusTool);
+  const researchTool = createResearchTool(tools);
+  researchTool.category = "available";
+  tools.register(researchTool);
+
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {
     handleMessage: manager.handleMessage.bind(manager),
@@ -131,7 +220,10 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
-  tools.register(createSessionsSpawnTool(auditDispatcher));
+  const spawnTool = createSessionsSpawnTool(auditDispatcher, sharedRoot);
+  spawnTool.category = "available";
+  tools.register(spawnTool);
+  tools.register(createDeliberateTool(auditDispatcher));
 
   return {
     config,
@@ -175,7 +267,12 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
   app.route("/mcp", mcpRoutes);
 
+  // Mount Web UI
+  const uiRoutes = createUiRoutes(config, runtime.manager, runtime.store);
+  app.route("/", uiRoutes);
+
   startGateway(app, port);
+  eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);
 
   // --- Skills ---
@@ -271,6 +368,15 @@ export async function startRuntime(configPath?: string): Promise<void> {
       });
       runtime.tools.register(messageTool);
       log.info("Message tool registered with Signal sender");
+
+      const voiceTool = createVoiceReplyTool({
+        send: async (to: string, text: string, attachments: string[]) => {
+          const target = parseTarget(to, defaultAccount);
+          await sendMessage(firstClient, target, text, { attachments });
+        },
+      });
+      runtime.tools.register(voiceTool);
+      log.info("Voice reply tool registered");
     } else {
       runtime.tools.register(createMessageTool());
     }
@@ -318,8 +424,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
+  // TTS file cleanup — remove stale audio files
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    cleanupTtsFiles();
+    runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);
 
   // --- Shutdown ---

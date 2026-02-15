@@ -1,0 +1,2 @@
+name: Atlas
+emoji: 🗺️

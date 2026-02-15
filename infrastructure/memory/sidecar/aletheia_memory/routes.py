@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
+from .temporal import _neo4j_driver, _extract_entities_for_episode
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -23,21 +25,21 @@ router = APIRouter()
 
 class AddRequest(BaseModel):
     text: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     metadata: dict[str, Any] | None = None
 
 
 class SearchRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
 
 
 class ImportRequest(BaseModel):
     facts: list[dict[str, Any]]
-    user_id: str = "ck"
+    user_id: str = "default"
 
 
 DEDUP_THRESHOLD = 0.85
@@ -67,6 +69,15 @@ async def add_memory(req: AddRequest, request: Request):
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
+
+        # Autonomous link generation (A-Mem pattern) — fire and forget
+        if LINK_GENERATION_ENABLED:
+            asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+
+        # Episode tracking — record this interaction as a temporal episode
+        if NEO4J_PASSWORD and req.agent_id:
+            asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
+
         return {"ok": True, "result": result}
     except Exception as e:
         logger.exception("add_memory failed")
@@ -142,7 +153,7 @@ async def import_facts(req: ImportRequest, request: Request):
 @router.get("/memories")
 async def list_memories(
     request: Request,
-    user_id: str = "ck",
+    user_id: str = "default",
     agent_id: str | None = None,
     limit: int = 50,
 ):
@@ -248,7 +259,7 @@ async def graph_stats():
 
 class GraphEnhancedSearchRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
     graph_weight: float = Field(default=0.3, ge=0.0, le=1.0)
@@ -363,14 +374,14 @@ MERGE_THRESHOLD = 0.90
 class ConsolidateRequest(BaseModel):
     dry_run: bool = False
     threshold: float = Field(default=MERGE_THRESHOLD, ge=0.5, le=1.0)
-    user_id: str = "ck"
+    user_id: str = "default"
     limit: int = Field(default=100, ge=10, le=500)
 
 
 class MergeRequest(BaseModel):
     source_id: str
     target_id: str
-    user_id: str = "ck"
+    user_id: str = "default"
 
 
 @router.post("/consolidate")
@@ -450,7 +461,7 @@ async def merge_memories(req: MergeRequest, request: Request):
 
 
 @router.get("/fact_stats")
-async def fact_stats(request: Request, user_id: str = "ck"):
+async def fact_stats(request: Request, user_id: str = "default"):
     """Memory corpus statistics."""
     mem = request.app.state.memory
 
@@ -493,7 +504,7 @@ RETRACTION_LOG = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia")) / "s
 
 class RetractRequest(BaseModel):
     query: str
-    user_id: str = "ck"
+    user_id: str = "default"
     cascade: bool = False
     dry_run: bool = False
     reason: str = ""
@@ -598,5 +609,559 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     with open(RETRACTION_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
     logger.info(f"Retraction logged: {len(retracted)} memories, reason={req.reason or 'none'}")
+
+
+# --- Episode recording (linked from /add) ---
+
+
+async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | None) -> None:
+    """Fire-and-forget: create an Episode node for temporal tracking."""
+    try:
+        episode_id = f"ep_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        session_id = (metadata or {}).get("sessionId", "")
+        entities = _extract_entities_for_episode(text)
+
+        driver = _neo4j_driver()
+        with driver.session() as session:
+            session.run(
+                """
+                CREATE (e:Episode {
+                    id: $id,
+                    content_preview: $preview,
+                    agent_id: $agent_id,
+                    session_id: $session_id,
+                    source: 'after_turn',
+                    occurred_at: $now,
+                    recorded_at: $now
+                })
+                """,
+                id=episode_id, preview=text[:500], agent_id=agent_id,
+                session_id=str(session_id), now=now,
+            )
+            for entity_name in entities[:15]:
+                session.run(
+                    """
+                    MERGE (ent:Entity {name: $name})
+                    WITH ent
+                    MATCH (ep:Episode {id: $ep_id})
+                    CREATE (ep)-[:MENTIONS {occurred_at: $now}]->(ent)
+                    """,
+                    name=entity_name, ep_id=episode_id, now=now,
+                )
+        driver.close()
+        logger.debug(f"Episode {episode_id}: {len(entities)} entities linked")
+    except Exception:
+        logger.warning("Episode recording failed (non-fatal)", exc_info=True)
+
+
+# --- Phase C1: Foresight Signals ---
+
+
+class ForesightAddRequest(BaseModel):
+    entity: str
+    signal: str
+    activation: str  # ISO datetime
+    expiry: str | None = None
+    weight: float = Field(default=1.0, ge=0.0, le=10.0)
+
+
+foresight_router = APIRouter(prefix="/foresight")
+
+
+@foresight_router.post("/add")
+async def add_foresight(req: ForesightAddRequest):
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            session.run(
+                """
+                MERGE (e {name: $entity})
+                ON CREATE SET e:Entity
+                CREATE (f:ForesightSignal {
+                    signal: $signal,
+                    activation: $activation,
+                    expiry: $expiry,
+                    weight: $weight,
+                    created_at: datetime()
+                })
+                CREATE (e)-[:HAS_FORESIGHT]->(f)
+                """,
+                entity=req.entity,
+                signal=req.signal,
+                activation=req.activation,
+                expiry=req.expiry,
+                weight=req.weight,
+            )
+        driver.close()
+        return {"ok": True, "entity": req.entity, "signal": req.signal}
+    except Exception as e:
+        logger.exception("add_foresight failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@foresight_router.get("/active")
+async def active_foresight():
+    if not NEO4J_PASSWORD:
+        return {"ok": True, "signals": []}
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        now = datetime.now(timezone.utc).isoformat()
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (e)-[:HAS_FORESIGHT]->(f:ForesightSignal)
+                WHERE f.activation <= $now AND (f.expiry IS NULL OR f.expiry >= $now)
+                RETURN e.name AS entity, f.signal AS signal, f.activation AS activation,
+                       f.expiry AS expiry, f.weight AS weight
+                ORDER BY f.weight DESC
+                LIMIT 50
+                """,
+                now=now,
+            )
+            signals = [
+                {
+                    "entity": r["entity"],
+                    "signal": r["signal"],
+                    "activation": str(r["activation"]),
+                    "expiry": str(r["expiry"]) if r["expiry"] else None,
+                    "weight": r["weight"],
+                }
+                for r in result
+            ]
+        driver.close()
+        return {"ok": True, "signals": signals}
+    except Exception as e:
+        logger.exception("active_foresight failed")
+        return {"ok": True, "signals": [], "error": str(e)}
+
+
+@foresight_router.post("/decay")
+async def decay_foresight():
+    if not NEO4J_PASSWORD:
+        return {"ok": True, "decayed": 0, "deleted": 0}
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        now = datetime.now(timezone.utc).isoformat()
+        with driver.session() as session:
+            # Decay expired signals
+            decay_result = session.run(
+                """
+                MATCH (f:ForesightSignal)
+                WHERE f.expiry IS NOT NULL AND f.expiry < $now AND f.weight > 0
+                SET f.weight = f.weight - 0.1
+                RETURN count(f) AS decayed
+                """,
+                now=now,
+            )
+            decayed = decay_result.single()["decayed"]
+
+            # Delete fully decayed signals
+            delete_result = session.run(
+                """
+                MATCH (e)-[r:HAS_FORESIGHT]->(f:ForesightSignal)
+                WHERE f.weight <= 0
+                DELETE r, f
+                RETURN count(f) AS deleted
+                """
+            )
+            deleted = delete_result.single()["deleted"]
+        driver.close()
+        return {"ok": True, "decayed": decayed, "deleted": deleted}
+    except Exception as e:
+        logger.exception("decay_foresight failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
+
+
+LINK_GENERATION_ENABLED = os.environ.get("LINK_GENERATION_ENABLED", "false").lower() == "true"
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LINK_SCORE_THRESHOLD = 0.6
+LINK_MAX_NEIGHBORS = 3
+
+
+async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[str, Any]]:
+    """Generate LLM-described links between a new memory and its nearest neighbors."""
+    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not NEO4J_PASSWORD:
+        return []
+
+    # Find nearest neighbors
+    try:
+        raw = await asyncio.to_thread(mem.search, new_text, user_id=user_id, limit=LINK_MAX_NEIGHBORS + 1)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+    except Exception:
+        return []
+
+    if not isinstance(results, list):
+        return []
+
+    # Filter to high-similarity neighbors (skip self)
+    neighbors = [
+        r for r in results
+        if r.get("score", 0) > LINK_SCORE_THRESHOLD
+        and r.get("memory", "") != new_text
+    ][:LINK_MAX_NEIGHBORS]
+
+    if not neighbors:
+        return []
+
+    links: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for neighbor in neighbors:
+            neighbor_text = neighbor.get("memory", "")
+            if not neighbor_text:
+                continue
+
+            try:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 64,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": (
+                                    f'Memory A: "{new_text[:200]}"\n'
+                                    f'Memory B: "{neighbor_text[:200]}"\n'
+                                    "Describe the relationship between A and B in 10 words or less."
+                                ),
+                            }
+                        ],
+                    },
+                )
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+                description = data.get("content", [{}])[0].get("text", "").strip()
+                if not description or len(description) > 100:
+                    continue
+
+                links.append({
+                    "neighbor_id": neighbor.get("id", ""),
+                    "neighbor_text": neighbor_text[:200],
+                    "description": description,
+                    "score": neighbor.get("score", 0),
+                })
+            except Exception:
+                continue
+
+    # Store links in Neo4j
+    if links:
+        try:
+            from neo4j import GraphDatabase
+
+            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                for link in links:
+                    session.run(
+                        """
+                        MERGE (a:Memory {text_preview: $new_text})
+                        MERGE (b:Memory {text_preview: $neighbor_text})
+                        CREATE (a)-[:LINKED {
+                            description: $description,
+                            score: $score,
+                            generated_at: datetime()
+                        }]->(b)
+                        """,
+                        new_text=new_text[:200],
+                        neighbor_text=link["neighbor_text"],
+                        description=link["description"],
+                        score=link["score"],
+                    )
+            driver.close()
+            logger.info(f"Generated {len(links)} memory links for new memory")
+        except Exception:
+            logger.warning("Failed to store memory links in Neo4j")
+
+    return links
+
+
+# --- Graph Analytics (networkx, since Community Neo4j lacks GDS) ---
+
+
+class GraphAnalyzeRequest(BaseModel):
+    top_k: int = Field(default=20, ge=5, le=100)
+    store_scores: bool = True
+
+
+@router.post("/graph/analyze")
+async def analyze_graph(req: GraphAnalyzeRequest):
+    """Run PageRank + community detection on the Neo4j graph via networkx.
+
+    Scores are optionally written back as node properties for retrieval weighting.
+    Intended to be called from the nightly consolidation cron.
+    """
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        import networkx as nx
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+        # Export graph to networkx
+        G = nx.DiGraph()
+        with driver.session() as session:
+            nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
+            for record in nodes:
+                G.add_node(record["name"], labels=record["labels"])
+
+            rels = session.run(
+                "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
+                "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
+            )
+            for record in rels:
+                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+
+        if G.number_of_nodes() == 0:
+            driver.close()
+            return {"ok": True, "nodes": 0, "message": "Empty graph"}
+
+        # PageRank
+        pagerank = nx.pagerank(G, alpha=0.85, max_iter=100)
+        top_pagerank = sorted(pagerank.items(), key=lambda x: -x[1])[:req.top_k]
+
+        # Community detection (Louvain on undirected projection)
+        G_undirected = G.to_undirected()
+        try:
+            communities = nx.community.louvain_communities(G_undirected, seed=42)
+            community_map: dict[str, int] = {}
+            for idx, community in enumerate(communities):
+                for node in community:
+                    community_map[node] = idx
+            num_communities = len(communities)
+            largest_communities = sorted(communities, key=len, reverse=True)[:5]
+            community_summaries = [
+                {"id": idx, "size": len(c), "sample": sorted(c)[:5]}
+                for idx, c in enumerate(largest_communities)
+            ]
+        except Exception:
+            community_map = {}
+            num_communities = 0
+            community_summaries = []
+
+        # Node similarity — find dedup candidates (nodes with >0.8 Jaccard on neighbors)
+        dedup_candidates: list[dict[str, Any]] = []
+        nodes_list = list(G_undirected.nodes())
+        for i in range(min(len(nodes_list), 200)):
+            n1 = nodes_list[i]
+            neighbors1 = set(G_undirected.neighbors(n1))
+            if not neighbors1:
+                continue
+            for j in range(i + 1, min(len(nodes_list), 200)):
+                n2 = nodes_list[j]
+                neighbors2 = set(G_undirected.neighbors(n2))
+                if not neighbors2:
+                    continue
+                jaccard = len(neighbors1 & neighbors2) / len(neighbors1 | neighbors2)
+                if jaccard > 0.8:
+                    dedup_candidates.append({
+                        "node_a": n1,
+                        "node_b": n2,
+                        "jaccard": round(jaccard, 3),
+                        "shared_neighbors": len(neighbors1 & neighbors2),
+                    })
+        dedup_candidates.sort(key=lambda x: -x["jaccard"])
+
+        # Store scores back to Neo4j
+        scores_stored = 0
+        if req.store_scores:
+            with driver.session() as session:
+                for name, score in top_pagerank:
+                    community_id = community_map.get(name, -1)
+                    session.run(
+                        "MATCH (n {name: $name}) "
+                        "SET n.pagerank = $score, n.community = $community",
+                        name=name, score=round(score, 6), community=community_id,
+                    )
+                    scores_stored += 1
+
+        driver.close()
+
+        return {
+            "ok": True,
+            "nodes": G.number_of_nodes(),
+            "edges": G.number_of_edges(),
+            "pagerank_top": [{"name": n, "score": round(s, 6)} for n, s in top_pagerank],
+            "communities": num_communities,
+            "community_summaries": community_summaries,
+            "dedup_candidates": dedup_candidates[:10],
+            "scores_stored": scores_stored,
+        }
+    except ImportError:
+        raise HTTPException(status_code=500, detail="networkx not installed")
+    except Exception as e:
+        logger.exception("graph/analyze failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Enhanced Search with Query Rewriting ---
+
+
+class EnhancedSearchRequest(BaseModel):
+    query: str
+    user_id: str = "default"
+    agent_id: str | None = None
+    limit: int = Field(default=10, ge=1, le=50)
+    rewrite: bool = True
+
+
+@router.post("/search_enhanced")
+async def search_enhanced(req: EnhancedSearchRequest, request: Request):
+    """Search with entity alias resolution and LLM-generated query variants.
+
+    Pipeline:
+    1. Extract entities from query
+    2. Resolve aliases via Neo4j (find canonical names)
+    3. Generate 2-3 alternate phrasings via Haiku
+    4. Run parallel vector searches on all variants
+    5. Merge and deduplicate results
+    """
+    mem = request.app.state.memory
+
+    # Skip rewriting for very short or very long queries
+    if not req.rewrite or len(req.query) < 10 or len(req.query) > 500:
+        return await _simple_search(mem, req)
+
+    # Step 1: Extract entities
+    entities = _extract_entities(req.query)
+
+    # Step 2: Resolve aliases via Neo4j
+    canonical_names: dict[str, str] = {}
+    if entities and NEO4J_PASSWORD:
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                for entity in entities[:5]:
+                    result = session.run(
+                        "MATCH (n) WHERE toLower(n.name) CONTAINS toLower($name) "
+                        "RETURN n.name AS canonical ORDER BY size(n.name) LIMIT 1",
+                        name=entity,
+                    )
+                    record = result.single()
+                    if record and record["canonical"] != entity:
+                        canonical_names[entity] = record["canonical"]
+            driver.close()
+        except Exception:
+            logger.warning("search_enhanced: Neo4j alias resolution failed")
+
+    # Build alias-resolved query
+    resolved_query = req.query
+    for original, canonical in canonical_names.items():
+        resolved_query = resolved_query.replace(original, canonical)
+
+    # Step 3: Generate alternate phrasings via Haiku
+    query_variants = [req.query]
+    if resolved_query != req.query:
+        query_variants.append(resolved_query)
+
+    if ANTHROPIC_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 128,
+                        "messages": [{
+                            "role": "user",
+                            "content": (
+                                f'Rewrite this search query 2 different ways to find the same information. '
+                                f'Return ONLY the 2 variants, one per line, no numbering.\n\n'
+                                f'Query: "{req.query}"'
+                            ),
+                        }],
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data.get("content", [{}])[0].get("text", "")
+                    for line in text.strip().split("\n"):
+                        line = line.strip().strip('"').strip("- ")
+                        if line and len(line) > 5 and line != req.query:
+                            query_variants.append(line)
+        except Exception:
+            logger.warning("search_enhanced: query rewriting failed")
+
+    # Step 4: Parallel vector searches
+    search_kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
+    if req.agent_id:
+        search_kwargs["agent_id"] = req.agent_id
+
+    async def do_search(query: str) -> list[dict[str, Any]]:
+        try:
+            raw = await asyncio.to_thread(mem.search, query, **search_kwargs)
+            results = raw.get("results", raw) if isinstance(raw, dict) else raw
+            return results if isinstance(results, list) else []
+        except Exception:
+            return []
+
+    all_results = await asyncio.gather(*[do_search(q) for q in query_variants[:4]])
+
+    # Step 5: Merge and deduplicate
+    seen_ids: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for variant_results in all_results:
+        for r in variant_results:
+            rid = r.get("id", r.get("hash", str(r.get("memory", ""))))
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                merged.append(r)
+
+    merged.sort(key=lambda r: r.get("score", 0), reverse=True)
+
+    return {
+        "ok": True,
+        "results": merged[:req.limit],
+        "query_variants": query_variants[:4],
+        "aliases_resolved": canonical_names,
+        "total_candidates": len(merged),
+    }
+
+
+async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
+    if req.agent_id:
+        kwargs["agent_id"] = req.agent_id
+    try:
+        raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        return {
+            "ok": True,
+            "results": results if isinstance(results, list) else [],
+            "query_variants": [req.query],
+            "aliases_resolved": {},
+            "total_candidates": len(results) if isinstance(results, list) else 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 

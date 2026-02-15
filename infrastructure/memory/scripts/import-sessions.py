@@ -2,6 +2,7 @@
 # Import agent session JSONL transcripts into Mem0 (Tier 2 optimized)
 
 import json
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,8 +11,8 @@ from pathlib import Path
 import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
-USER_ID = "ck"
-SESSIONS_ROOT = Path("/home/syn/.aletheia/agents")
+USER_ID = "default"
+SESSIONS_ROOT = Path(os.environ.get("SESSIONS_ROOT", "/var/lib/aletheia/agents"))
 CHUNK_SIZE = 12000
 TIMEOUT = 300.0
 WORKERS = 12

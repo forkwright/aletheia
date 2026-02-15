@@ -1,6 +1,9 @@
-// Browser tool — navigate, screenshot, extract via headless Chromium
+// Browser tool — navigate, screenshot, extract via headless Chromium + LLM-driven browsing
 import type { ToolHandler } from "../registry.js";
 import { validateUrl } from "./ssrf-guard.js";
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 let browserPromise: Promise<Browser> | null = null;
 let browserInstance: Browser | null = null;
@@ -64,7 +67,20 @@ export const browserTool: ToolHandler = {
   definition: {
     name: "browser",
     description:
-      "Browse a URL with a headless browser. Renders JavaScript, can take screenshots, and extract content via CSS selectors. Use for pages that require JS rendering.",
+      "Browse a URL with headless Chromium — renders JavaScript, takes screenshots, extracts via CSS selectors.\n\n" +
+      "USE WHEN:\n" +
+      "- Pages that require JavaScript to render content (SPAs, dynamic sites)\n" +
+      "- Taking screenshots for visual verification\n" +
+      "- Extracting structured data via CSS selectors\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Static pages or APIs — use web_fetch instead (faster, lighter)\n" +
+      "- Simple web searches — use web_search instead\n\n" +
+      "TIPS:\n" +
+      "- Actions: navigate (get text), screenshot (base64 PNG), extract (CSS selector), browser_use (LLM-driven)\n" +
+      "- Use waitFor to wait for dynamic content before extracting\n" +
+      "- Max 3 concurrent pages for navigate/screenshot/extract\n" +
+      "- browser_use: LLM-driven multi-step browsing (e.g. 'fill form, click submit, get result')\n" +
+      "- Requires Chromium — set CHROMIUM_PATH if not at default location",
     input_schema: {
       type: "object",
       properties: {
@@ -74,9 +90,13 @@ export const browserTool: ToolHandler = {
         },
         action: {
           type: "string",
-          enum: ["navigate", "screenshot", "extract"],
+          enum: ["navigate", "screenshot", "extract", "browser_use"],
           description:
-            "Action: navigate (get page text), screenshot (base64 PNG), extract (CSS selector)",
+            "Action: navigate (get text), screenshot (PNG), extract (CSS), browser_use (LLM multi-step)",
+        },
+        task: {
+          type: "string",
+          description: "Task description for browser_use action (e.g. 'go to site, fill form, get result')",
         },
         selector: {
           type: "string",
@@ -100,6 +120,14 @@ export const browserTool: ToolHandler = {
     const selector = input["selector"] as string | undefined;
     const waitFor = input["waitFor"] as string | undefined;
     const timeout = (input["timeout"] as number) ?? 15000;
+    const task = input["task"] as string | undefined;
+
+    // browser_use: LLM-driven multi-step browsing (doesn't need url)
+    if (action === "browser_use") {
+      const taskDesc = task ?? url;
+      if (!taskDesc) return "Error: task or url required for browser_use action";
+      return runBrowserUseTask(taskDesc);
+    }
 
     try {
       await validateUrl(url);
@@ -155,6 +183,41 @@ export const browserTool: ToolHandler = {
     }
   },
 };
+
+const BROWSER_USE_SCRIPT = join(
+  process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia",
+  "infrastructure/browser-use/run_task.py",
+);
+
+async function runBrowserUseTask(task: string): Promise<string> {
+  if (!existsSync(BROWSER_USE_SCRIPT)) {
+    return "Error: browser-use not installed (run_task.py not found)";
+  }
+
+  return new Promise((resolve) => {
+    const env = { ...process.env, BROWSE_TASK: task, BROWSE_TIMEOUT: "120" };
+    execFile(
+      "python3",
+      [BROWSER_USE_SCRIPT],
+      { timeout: 150_000, maxBuffer: 5 * 1024 * 1024, env },
+      (err, stdout, stderr) => {
+        if (err) {
+          // Try to parse JSON output even on error (script outputs JSON before exit)
+          if (stdout.trim()) {
+            try {
+              const parsed = JSON.parse(stdout.trim());
+              resolve(JSON.stringify(parsed));
+              return;
+            } catch { /* fall through */ }
+          }
+          resolve(`Error: browser_use failed — ${stderr || err.message}`.slice(0, 2000));
+        } else {
+          resolve(stdout.trim().slice(0, 10000));
+        }
+      },
+    );
+  });
+}
 
 export async function closeBrowser(): Promise<void> {
   if (browserPromise) {

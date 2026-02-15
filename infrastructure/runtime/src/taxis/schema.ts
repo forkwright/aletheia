@@ -16,7 +16,7 @@ const HeartbeatConfig = z
       .object({
         start: z.string().default("08:00"),
         end: z.string().default("23:00"),
-        timezone: z.string().default("America/Chicago"),
+        timezone: z.string().default("UTC"),
       })
       .default({}),
     model: z.string().optional(),
@@ -31,8 +31,8 @@ const RoutingConfig = z
     tiers: z
       .object({
         routine: z.string().default("claude-haiku-4-5-20251001"),
-        standard: z.string().default("claude-sonnet-4-5-20250929"),
-        complex: z.string().default("claude-sonnet-4-5-20250929"),
+        standard: z.string().default("claude-sonnet-4-6"),
+        complex: z.string().default("claude-sonnet-4-6"),
       })
       .default({}),
     agentOverrides: z
@@ -113,7 +113,7 @@ const AgentDefaults = z.preprocess(
       .default({}),
     workspace: z.string().optional(),
     bootstrapMaxTokens: z.number().default(40000),
-    userTimezone: z.string().default("America/Chicago"),
+    userTimezone: z.string().default("UTC"),
     contextTokens: z.number().default(200000),
     maxOutputTokens: z.number().default(16384),
     compaction: CompactionConfig.default({}),
@@ -214,6 +214,22 @@ const GatewayConfig = z
         allowInsecureAuth: z.boolean().default(false),
       })
       .default({}),
+    mcp: z
+      .object({
+        requireAuth: z.boolean().default(true),
+      })
+      .default({}),
+    rateLimit: z
+      .object({
+        requestsPerMinute: z.number().default(60),
+      })
+      .default({}),
+    cors: z
+      .object({
+        allowOrigins: z.array(z.string()).default([]),
+      })
+      .default({}),
+    maxBodyBytes: z.number().default(1_048_576),
   })
   .passthrough()
   .default({});
@@ -261,6 +277,7 @@ const CronJob = z.object({
   sessionKey: z.string().optional(),
   model: z.string().optional(),
   messageTemplate: z.string().optional(),
+  command: z.string().optional(), // Shell command to run instead of agent message
   timeoutSeconds: z.number().default(300),
 });
 

@@ -1,0 +1,34 @@
+# Example agent template — used by compile-context to generate AGENTS.md and PROSOCHE.md
+# Copy this file and rename to match your agent ID (e.g., atlas.yaml)
+
+agent: example
+role: general-purpose assistant
+
+# Sections from shared/templates/sections/ to include in AGENTS.md
+include_sections:
+  - session_start
+  - memory
+  - tasks
+  - research_protocol
+  - safety
+  - self_evolution
+
+# Agent-specific operations (injected into AGENTS.md)
+operations: |
+  ## Session Start
+  1. Read MEMORY.md for continuity
+  2. Run `assemble-context --nous example` — compiled state + recent context
+  3. Check active tasks: `tw`
+
+  ## Pre-Compaction
+  Before session context compresses, extract key information:
+  1. Summarize decisions made
+  2. Note any unresolved questions
+  3. Update MEMORY.md with important findings
+
+# Prosoche (directed awareness) configuration
+prosoche:
+  focus_areas:
+    - Monitor active tasks and deadlines
+    - Check for cross-agent coordination needs
+  check_interval: "45m"

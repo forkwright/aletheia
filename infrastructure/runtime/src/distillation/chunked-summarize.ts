@@ -131,9 +131,9 @@ export async function summarizeInStages(
   const mergeResult = await router.complete({
     model,
     system:
-      "Merge these partial conversation summaries into a single cohesive summary. " +
+      "Merge these partial summaries of your own conversation into a single cohesive summary. " +
       "Preserve all decisions, open items, technical details, and specific facts. " +
-      "Remove redundancies. Write in second person. Keep under 500 words.",
+      "Remove redundancies. Write in first person (\"I\"). Keep under 500 words.",
     messages: [{ role: "user", content: mergeContent }],
     maxTokens: 2048,
   });

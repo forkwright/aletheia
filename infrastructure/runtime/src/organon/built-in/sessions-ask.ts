@@ -16,7 +16,20 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
     definition: {
       name: "sessions_ask",
       description:
-        "Ask another nous (agent) a question and wait for their response. Synchronous — blocks until the target responds or times out.",
+        "Ask another agent a question and wait for their response (synchronous).\n\n" +
+        "USE WHEN:\n" +
+        "- You need expertise from another agent's domain\n" +
+        "- Cross-checking your understanding with a specialist\n" +
+        "- Getting a second opinion before acting\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- You don't need the response — use sessions_send instead\n" +
+        "- You need a long-running sub-task — use sessions_spawn instead\n" +
+        "- The other agent is the same as you\n\n" +
+        "TIPS:\n" +
+        "- Blocks until response or timeout (default 120s)\n" +
+        "- Detects disagreement in responses automatically\n" +
+        "- Returns both the response text and token usage\n" +
+        "- Cross-agent calls are audited and tracked",
       input_schema: {
         type: "object",
         properties: {

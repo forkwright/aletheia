@@ -7,7 +7,18 @@ export const braveSearchTool: ToolHandler = {
   definition: {
     name: "web_search",
     description:
-      "Search the web using Brave Search. Returns titles, URLs, descriptions, and age.",
+      "Search the web using Brave Search API.\n\n" +
+      "USE WHEN:\n" +
+      "- Looking up current information, documentation, or news\n" +
+      "- Researching topics beyond your training data\n" +
+      "- Finding URLs for web_fetch to retrieve\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- The answer is in your memory or workspace files\n" +
+      "- BRAVE_API_KEY is not configured\n\n" +
+      "TIPS:\n" +
+      "- Returns titles, URLs, descriptions, and result age\n" +
+      "- Max 20 results per query\n" +
+      "- Follow up with web_fetch to read full page content",
     input_schema: {
       type: "object",
       properties: {

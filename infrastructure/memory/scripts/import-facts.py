@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
-USER_ID = "ck"
+USER_ID = "default"
 FACTS_FILE = Path("/mnt/ssd/aletheia/shared/memory/facts.jsonl")
 TIMEOUT = 300.0
 DELAY = 3.0

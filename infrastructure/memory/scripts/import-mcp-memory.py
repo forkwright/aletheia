@@ -8,7 +8,7 @@ import time
 import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
-USER_ID = "ck"
+USER_ID = "default"
 MCP_FILE = "/mnt/ssd/aletheia/shared/memory/mcp-memory.json"
 TIMEOUT = 300.0
 DELAY = 3.0

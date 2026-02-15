@@ -57,6 +57,11 @@ export class SkillRegistry {
     return [...this.skills.values()];
   }
 
+  addSkill(id: string, definition: SkillDefinition): void {
+    this.skills.set(id, definition);
+    log.info(`Added skill: ${id} — ${definition.name}`);
+  }
+
   get size(): number {
     return this.skills.size;
   }

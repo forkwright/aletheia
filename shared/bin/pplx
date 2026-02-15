@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-PPLX_KEY="${PERPLEXITY_API_KEY:-YOUR_PERPLEXITY_API_KEY}"
+PPLX_KEY="${PERPLEXITY_API_KEY:?Set PERPLEXITY_API_KEY}"
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: pplx \"query\" [--raw|--sources]"

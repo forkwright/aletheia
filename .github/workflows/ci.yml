@@ -63,10 +63,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          find shared/bin -type f -executable 2>/dev/null | while read script; do
-            head -1 "$script" | grep -q "bash\|sh" && bash -n "$script" || true
-          done
+      - name: Lint shell scripts with shellcheck
+        run: |
+          failed=0
+          while IFS= read -r script; do
+            if head -1 "$script" | grep -qE '(bash|sh)'; then
+              echo "::group::$script"
+              shellcheck -S warning "$script" || failed=1
+              echo "::endgroup::"
+            fi
+          done < <(find shared/bin -type f -executable 2>/dev/null)
+          exit $failed
 
   build:
     runs-on: ubuntu-latest

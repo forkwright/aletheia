@@ -23,7 +23,18 @@ function isBinaryFile(filePath: string): boolean {
 export const readTool: ToolHandler = {
   definition: {
     name: "read",
-    description: "Read the contents of a file.",
+    description:
+      "Read a file's contents as text.\n\n" +
+      "USE WHEN:\n" +
+      "- You need to see what's in a file before editing\n" +
+      "- Checking configuration, logs, or data files\n" +
+      "- Verifying the result of a write or edit\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- File is binary (images, executables) — returns error\n" +
+      "- File is > 5MB — use exec with head/tail instead\n\n" +
+      "TIPS:\n" +
+      "- Paths can be absolute or relative to workspace\n" +
+      "- Use maxLines to preview large files without loading everything",
     input_schema: {
       type: "object",
       properties: {

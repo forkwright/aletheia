@@ -6,7 +6,19 @@ export const webFetchTool: ToolHandler = {
   definition: {
     name: "web_fetch",
     description:
-      "Fetch content from a URL. Returns the page text content, HTML stripped.",
+      "Fetch a URL and return its text content (HTML stripped).\n\n" +
+      "USE WHEN:\n" +
+      "- Reading documentation, articles, or API responses\n" +
+      "- Following up on web_search results\n" +
+      "- Fetching JSON data from APIs\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- The page requires JavaScript rendering — use browser instead\n" +
+      "- Fetching internal/private network resources (SSRF-protected)\n\n" +
+      "TIPS:\n" +
+      "- HTML is stripped to plain text automatically\n" +
+      "- Default max 50K chars — set maxLength for more or less\n" +
+      "- 15s timeout — will fail on very slow pages\n" +
+      "- Follows redirects automatically",
     input_schema: {
       type: "object",
       properties: {

@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
-USER_ID = "ck"
+USER_ID = "default"
 NOUS_DIR = Path("/mnt/ssd/aletheia/nous")
 AGENTS = ["syn", "chiron", "eiron", "demiurge", "syl", "arbor", "akron"]
 TIMEOUT = 120.0

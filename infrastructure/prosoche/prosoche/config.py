@@ -32,7 +32,7 @@ def is_quiet_hours(config: dict) -> bool:
     if not qh.get("start") or not qh.get("end"):
         return False
 
-    tz = zoneinfo.ZoneInfo(qh.get("timezone", "America/Chicago"))
+    tz = zoneinfo.ZoneInfo(qh.get("timezone", "UTC"))
     now = datetime.now(tz)
     current = now.hour * 60 + now.minute
 

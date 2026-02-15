@@ -58,9 +58,10 @@ CROSSREF_BASE = "https://api.crossref.org"
 S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
 ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
 NOUS_DIR = os.environ.get("ALETHEIA_NOUS", os.path.join(ALETHEIA_ROOT, "nous"))
+RESEARCH_EMAIL = os.environ.get("RESEARCH_EMAIL", "research@example.org")
 
 def _http_get(url, headers=None, timeout=15):
-    hdrs = {"User-Agent": "Aletheia/1.0 (research; mailto:user@university.example.com)"}
+    hdrs = {"User-Agent": f"Aletheia/1.0 (research; mailto:{RESEARCH_EMAIL})"}
     if headers:
         hdrs.update(headers)
     try:
@@ -123,7 +124,7 @@ def search_openalex(query, limit=5, since=None):
         "per_page": min(limit, 25),
         "select": "id,title,publication_year,cited_by_count,primary_location,authorships,abstract_inverted_index,doi,type",
         "sort": "relevance_score:desc",
-        "mailto": "user@university.example.com",
+        "mailto": RESEARCH_EMAIL,
     }
     if since:
         params["filter"] = f"publication_year:>{since-1}"
@@ -287,7 +288,7 @@ def crossref_info(doi):
 def crossref_bibtex(doi):
     """Get BibTeX citation from CrossRef."""
     hdrs = {
-        "User-Agent": "Aletheia/1.0 (mailto:user@university.example.com)",
+        "User-Agent": f"Aletheia/1.0 (mailto:{RESEARCH_EMAIL})",
         "Accept": "application/x-bibtex",
     }
     data = _http_get(f"https://doi.org/{doi}", headers=hdrs, timeout=10)
@@ -306,7 +307,7 @@ def fetch_paper(identifier, output_dir="."):
         basename = arxiv_id.replace("/", "_")
     elif re.match(r"^10\.", identifier) or identifier.startswith("doi:"):
         doi = identifier.replace("doi:", "")
-        data = _http_get(f"https://api.unpaywall.org/v2/{doi}?email=user@university.example.com")
+        data = _http_get(f"https://api.unpaywall.org/v2/{doi}?email={RESEARCH_EMAIL}")
         if data:
             info = json.loads(data)
             oa = info.get("best_oa_location") or {}

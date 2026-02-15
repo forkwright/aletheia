@@ -96,7 +96,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   const envApiKey = process.env["ANTHROPIC_API_KEY"];
 
   if (!envAuthToken && !envApiKey) {
-    const home = process.env["HOME"] ?? "/home/syn";
+    const home = process.env["HOME"] ?? "/tmp";
     const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
     try {
       const raw = readFileSync(credPath, "utf-8");

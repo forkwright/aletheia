@@ -9,7 +9,20 @@ export const execTool: ToolHandler = {
   definition: {
     name: "exec",
     description:
-      "Execute a shell command and return its output. Use for system operations, file management, and running scripts.",
+      "Execute a shell command in your workspace and return stdout/stderr.\n\n" +
+      "USE WHEN:\n" +
+      "- Running scripts, builds, tests, or system commands\n" +
+      "- Installing packages or managing services\n" +
+      "- Any operation not covered by dedicated file tools\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Reading files (use read instead)\n" +
+      "- Writing files (use write instead)\n" +
+      "- Searching files (use grep or find instead)\n\n" +
+      "TIPS:\n" +
+      "- Working directory is your workspace\n" +
+      "- ALETHEIA_NOUS env var is set to your agent ID\n" +
+      "- Output truncated at 50KB; use head/tail for large outputs\n" +
+      "- Default timeout 30s — increase for long-running commands",
     input_schema: {
       type: "object",
       properties: {

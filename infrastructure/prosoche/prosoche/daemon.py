@@ -8,9 +8,11 @@ import time
 from pathlib import Path
 
 import anyio
+import httpx
 from loguru import logger
 
 from .config import get_nous_ids, get_signal_interval, is_quiet_hours, load_config
+from .prediction import ActivityModel, get_predictive_signals
 from .rhythm import get_rhythm_signals
 from .scoring import score_nous
 from .signals import SignalBundle
@@ -47,6 +49,9 @@ class ProsocheDaemon:
             max_total_per_hour=budget_cfg.get("max_wakes_total_per_hour", 6),
             cooldown_seconds=budget_cfg.get("cooldown_after_wake_seconds", 300),
         )
+
+        data_dir = Path(self.config.get("data_dir", "/mnt/ssd/aletheia/shared/prosoche"))
+        self.activity_model = ActivityModel(data_dir)
 
     async def run(self) -> None:
         logger.info(f"Prosoche starting — {len(self.nous_ids)} nous, {len(COLLECTORS)} signals")
@@ -100,6 +105,9 @@ class ProsocheDaemon:
         rhythm_signals = get_rhythm_signals(self.config)
         new_signals.extend(rhythm_signals)
 
+        predictive_signals = get_predictive_signals(self.activity_model, self.config)
+        new_signals.extend(predictive_signals)
+
         if new_signals:
             self.bundle = SignalBundle(signals=new_signals, collected_at=now)
 
@@ -118,10 +126,39 @@ class ProsocheDaemon:
                 if updated:
                     logger.info(f"{nous_id}: score={score.score:.2f}, {len(score.top_signals)} items")
 
+                # Broadcast high-urgency signals to the runtime blackboard
+                urgent = [s for s in score.top_signals if s.urgency >= 0.7]
+                if urgent:
+                    await self._post_broadcasts(nous_id, urgent)
+
             if score.should_wake and self.budget.can_wake(nous_id):
                 woke = await trigger_wake(score, self.config)
                 if woke:
                     self.budget.record_wake(nous_id)
+                    # Record activity for predictive model
+                    import zoneinfo
+                    from datetime import datetime
+                    tz_name = self.config.get("quiet_hours", {}).get("timezone", "UTC")
+                    tz = zoneinfo.ZoneInfo(tz_name)
+                    self.activity_model.record_activity(nous_id, datetime.now(tz))
+
+    async def _post_broadcasts(self, nous_id: str, signals: list) -> None:
+        gateway_url = self.config.get("gateway_url", "http://127.0.0.1:18789")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                for signal in signals[:3]:
+                    await client.post(
+                        f"{gateway_url}/api/blackboard",
+                        json={
+                            "key": f"broadcast:{signal.source}:{nous_id}",
+                            "value": signal.summary,
+                            "author": "prosoche",
+                            "ttl_seconds": 1800,
+                        },
+                    )
+            logger.debug(f"Posted {min(len(signals), 3)} broadcasts for {nous_id}")
+        except Exception as e:
+            logger.debug(f"Broadcast post failed (non-critical): {e}")
 
     def stop(self) -> None:
         self.running = False

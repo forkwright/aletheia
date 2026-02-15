@@ -1,8 +1,8 @@
 # Prosoche — Adaptive attention engine for Aletheia
 # Replaces static heartbeat intervals with signal-driven directed awareness
 
-nous_root: /mnt/ssd/aletheia/nous
-shared_bin: /mnt/ssd/aletheia/shared/bin
+nous_root: ${ALETHEIA_ROOT}/nous
+shared_bin: ${ALETHEIA_ROOT}/shared/bin
 
 gateway:
   token: ${PROSOCHE_GATEWAY_TOKEN}
@@ -11,7 +11,7 @@ gateway:
 quiet_hours:
   start: "23:00"
   end: "06:00"
-  timezone: America/Chicago
+  timezone: UTC
 
 rhythm:
   morning_prep: "07:45"
@@ -30,25 +30,18 @@ signals:
     look_ahead_minutes: 120
     urgent_minutes: 30
     calendar_ids:
-      personal: user@example.com
-      family: family@group.calendar.example.com
-      work: cforkwright@employer.example.com
+      # Configure your Google Calendar IDs here
+      personal: ${PROSOCHE_CALENDAR_PERSONAL}
+      family: ${PROSOCHE_CALENDAR_FAMILY}
+      work: ${PROSOCHE_CALENDAR_WORK}
 
   tasks:
     enabled: true
     interval_seconds: 600
     overdue_urgency: 0.9
     due_today_urgency: 0.6
-    project_nous:
-      aletheia: syn
-      infra: syn
-      personal: syl
-      home: syl
-      work: arbor
-      arborist: arbor
-      mba: eiron
-      craft: demiurge
-      vehicle: akron
+    # Map task projects to agent names
+    project_nous: {}
 
   health:
     enabled: true
@@ -57,7 +50,6 @@ signals:
       - aletheia
       - aletheia-memory
       - docker
-      - syncthing@syn
     disk_warn_pct: 85
     disk_critical_pct: 95
     docker_containers:
@@ -71,46 +63,13 @@ signals:
     sidecar_url: http://127.0.0.1:8230
     cross_nous_threshold: 5
 
+# Define per-agent attention weights
+# Each agent gets a role and signal weights (0.0 - 1.0)
 nous:
-  syn:
-    role: orchestrator
+  example:
+    role: general
     weights:
-      calendar: 0.4
-      tasks: 0.4
-      health: 1.0
-      memory: 0.6
-  eiron:
-    role: academic
-    weights:
-      calendar: 0.3
-      tasks: 0.9
-      health: 0.1
-      memory: 0.3
-  demiurge:
-    role: creative
-    weights:
-      calendar: 0.2
-      tasks: 0.4
-      health: 0.1
-      memory: 0.4
-  syl:
-    role: household
-    weights:
-      calendar: 0.8
-      tasks: 0.6
-      health: 0.2
-      memory: 0.4
-  arbor:
-    role: work
-    weights:
-      calendar: 0.4
-      tasks: 0.9
-      health: 0.1
-      memory: 0.3
-  akron:
-    role: vehicle-technical
-    weights:
-      calendar: 0.1
+      calendar: 0.5
       tasks: 0.5
-      health: 0.1
-      memory: 0.2
+      health: 0.5
+      memory: 0.5

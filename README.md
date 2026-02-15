@@ -1,6 +1,6 @@
 # Aletheia
 
-*Multi-agent AI system coordinating 6 specialized agents through Signal messaging.*
+*Multi-agent AI system coordinating specialized agents through Signal messaging.*
 
 Self-hosted, privacy-first. Runs on a home server as a systemd service.
 
@@ -22,17 +22,16 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
               Bindings (per-agent group routing)
                 /       |    |      \
          +-----+  +------+ +------+ +------+
-         | Syn |  | Syl  | |Arbor | | ...  |   6 agents, each with:
+         | Syn |  | ...  | | ...  | | ...  |   N agents, each with:
          +-----+  +------+ +------+ +------+   - SOUL.md (character)
             |         |         |        |       - AGENTS.md (operations)
             v         v         v        v       - MEMORY.md (continuity)
          Claude     Claude    Claude   Claude
-        Opus 4.6  Opus 4.6  Opus 4.6  Opus 4.6
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown, Express gateway on port 18789
+**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~293KB bundle), Hono gateway on port 18789
 
-**Communication**: Signal messenger via signal-cli (JSON-RPC mode, Docker container on port 8080). Each agent binds to specific Signal groups or DM routing patterns.
+**Communication**: Signal messenger via signal-cli (JSON-RPC mode on port 8080). 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
 **Models**: Claude Opus 4.6 (primary), Claude Sonnet 4 (fallback), Gemini Flash (fallback). Provider failover across Anthropic, OpenRouter, OpenAI, and Azure.
 
@@ -45,66 +44,69 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
 ## Directory Structure
 
 ```
-/mnt/ssd/aletheia/
-├── nous/                   Agent workspaces (6 agents)
+aletheia/
+├── nous/                   Agent workspaces
+│   ├── _example/           Template workspace (start here)
 │   └── {agent}/
 │       ├── SOUL.md             Character definition (prose)
-│       ├── AGENTS.md           Operations (compiled from templates)
+│       ├── USER.md             Human operator context
+│       ├── AGENTS.md           Operations guide
 │       ├── MEMORY.md           Curated long-term memory
+│       ├── GOALS.md            Goal hierarchy
+│       ├── IDENTITY.md         Name, emoji, metadata
 │       ├── PROSOCHE.md         Directed awareness config
 │       ├── TOOLS.md            Tool reference (generated)
-│       ├── memory/             Daily logs, session state
-│       └── docs/               Agent-specific documentation
+│       ├── CONTEXT.md          Session-scoped dynamic context
+│       └── memory/             Daily logs, session state
 │
 ├── shared/                 Common infrastructure
-│   ├── bin/                ~70 scripts (on PATH for all agents)
+│   ├── bin/                Shared scripts (on PATH for all agents)
 │   ├── templates/          Shared sections + per-agent YAML → compiled files
 │   ├── config/             aletheia.env, tools.yaml, provider-failover.json
-│   ├── contracts/          Agent capability contracts (JSON)
-│   ├── memory/             facts.jsonl, knowledge graph data
 │   ├── schemas/            JSON schemas (agent-contract, task-contract)
-│   ├── skills/             Shared agent skills
-│   ├── status/             Service status tracking
-│   └── checkpoints/        System state snapshots
+│   └── skills/             Shared agent skills
 │
 ├── infrastructure/
-│   ├── runtime/            Aletheia gateway (forked OpenClaw, patched)
+│   ├── runtime/            Gateway (TypeScript/tsdown)
 │   │   ├── src/                TypeScript source
+│   │   │   ├── taxis/              Config loading + validation (Zod)
+│   │   │   ├── mneme/              Session store (better-sqlite3)
+│   │   │   ├── hermeneus/          Anthropic SDK + provider router
+│   │   │   ├── organon/            Tool registry + built-in tools + skills
+│   │   │   ├── semeion/            Signal client, listener, commands, preprocessing
+│   │   │   ├── pylon/              Hono HTTP gateway (17 endpoints)
+│   │   │   ├── prostheke/          Plugin system (lifecycle hooks)
+│   │   │   ├── nous/               Agent bootstrap + turn execution
+│   │   │   ├── distillation/       Context summarization pipeline
+│   │   │   ├── daemon/             Cron scheduler + watchdog
+│   │   │   └── koina/              Shared utilities (logger, token counter)
 │   │   ├── dist/               Compiled output
-│   │   ├── extensions/signal/  Signal channel plugin
-│   │   ├── skills/             Runtime skills
 │   │   └── aletheia.mjs        Entry point
 │   ├── memory/             Mem0 sidecar + docker-compose (Qdrant, Neo4j)
 │   │   ├── sidecar/            FastAPI Mem0 wrapper (Python/uvicorn)
-│   │   ├── plugin/             Aletheia memory plugin (lifecycle hooks)
+│   │   ├── aletheia-memory/    Memory plugin (lifecycle hooks + mem0_search tool)
 │   │   └── docker-compose.yml  Qdrant + Neo4j containers
 │   ├── langfuse/           Self-hosted observability (Docker)
-│   └── patches/            Runtime patches (workspace, dynamic context)
+│   └── prosoche/           Adaptive attention daemon
 │
-├── theke/                  Obsidian vault (human-facing, gitignored)
-├── projects/               Project backing store (gitignored)
-├── archive/                Historical files (gitignored)
+├── config/                 Example configuration
+│   └── aletheia.example.json
 ├── ALETHEIA.md             System manifesto
-├── RESCUE.md               Full restoration guide
-└── docker-compose.yml      Legacy signal-cli container
+├── RESCUE.md               Recovery guide
+└── docker-compose.yml      signal-cli container
 ```
 
 ---
 
 ## Agents
 
-Each agent has a dedicated workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and long-term memory (`MEMORY.md`).
+Each agent has a dedicated workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and long-term memory (`MEMORY.md`). See `nous/_example/` for a complete template.
 
-| Agent | Greek | Domain | Binding |
-|-------|-------|--------|---------|
-| **Syn** | synnous -- thinking together | Orchestrator, primary | Signal DM (default) |
-| **Eiron** | eiron -- discriminator | MBA coursework, academic | Signal DM (routed) |
-| **Demiurge** | demiourgos -- craftsman | Creative, craft, leatherwork | Signal DM (routed) |
-| **Syl** | syllepsis -- grasping together | General assistant, family, home | Family group chat |
-| **Arbor** | rooted | Work (Acme healthcare) | Arbor group chat |
-| **Akron** | akron -- summit | Vehicle, preparedness, technical | Signal DM (routed) |
-
-**Routing**: Syn is the default agent for direct messages. Other agents are routed via Signal group bindings or explicit routing rules. Agent contracts in `shared/contracts/` define capabilities, interfaces, and session keys.
+Agents are defined in the gateway config (`aletheia.json`). Each agent has:
+- A unique ID and model configuration with fallback chains
+- Signal bindings (DM routing, group chat assignment)
+- Workspace directory with bootstrap files
+- Optional cron jobs and skills
 
 ---
 
@@ -118,7 +120,7 @@ AI-powered memory extraction and retrieval. Every conversation is automatically 
 - **Pre-session recall**: `before_agent_start` hook searches Mem0 for relevant memories and injects them into context
 - **Cross-agent**: Shared `user_id` scope allows any agent to recall facts learned by other agents
 - **Agent-scoped**: Domain-specific memories scoped to individual agents via `agent_id`
-- **Graph search**: Entity relationship traversal via Neo4j (e.g., "what do I know about X?")
+- **Graph search**: Entity relationship traversal via Neo4j
 
 Services: Mem0 sidecar (:8230), Qdrant (:6333), Neo4j (:7474/:7687)
 
@@ -126,52 +128,73 @@ Services: Mem0 sidecar (:8230), Qdrant (:6333), Neo4j (:7474/:7687)
 
 Built into the gateway runtime. Per-agent vector search over workspace files (MEMORY.md, daily logs). Federated with Mem0 — the `memory_search` tool queries both backends in parallel and merges results.
 
-### Fact Store (JSONL)
-
-Structured facts with confidence scores at `shared/memory/facts.jsonl`. Managed via `facts` CLI. Imported into Mem0 for unified search.
-
 ### Context Assembly
 
-At session start, `assemble-context` compiles: agent workspace files + recent facts + task state. Pre-compaction, `distill` extracts structured insights before context compression. Post-compaction, the memory plugin extracts session summaries into Mem0.
+At session start, bootstrap assembles: agent workspace files + recalled memories + task state. During context pressure, the distillation pipeline extracts structured insights before compression. Post-session, the memory plugin extracts summaries into Mem0.
 
 ---
 
-## Tooling
+## Interfaces
 
-### Research
+### Signal Commands
 
 | Command | Purpose |
 |---------|---------|
-| `pplx "query"` | Perplexity pro-search (broad synthesis) |
-| `scholar "topic"` | OpenAlex + arXiv + Semantic Scholar search |
-| `scholar cite DOI` | Citation graph traversal |
-| `scholar fetch ARXIV_ID` | Download + convert to markdown |
-| `wiki "concept"` | Wikipedia lookup (orientation only) |
-| `browse "url"` | LLM-driven web automation |
+| `!status` | System status (uptime, services, per-nous metrics) |
+| `!help` | List all available commands |
+| `!ping` | Liveness check |
+| `!sessions` | List active sessions for this sender |
+| `!reset` | Archive current session, start fresh |
+| `!agent` | Show which agent handles this conversation |
+| `!skills` | List available skills |
+| `!approve <code>` | Approve pending contact request (admin) |
+| `!deny <code>` | Deny pending contact request (admin) |
+| `!contacts` | List pending contact requests (admin) |
+
+### CLI
+
+| Command | Purpose |
+|---------|---------|
+| `aletheia gateway` | Start the runtime (default) |
+| `aletheia status` | System status via `/api/metrics` |
+| `aletheia send -a <agent> -m "..."` | Send message to agent |
+| `aletheia sessions [-a <agent>]` | List sessions |
+| `aletheia cron list` | List cron jobs |
+| `aletheia cron trigger <id>` | Trigger a cron job |
+| `aletheia doctor` | Connectivity checks |
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health check (no auth) |
+| GET | `/api/status` | Agent list + timestamp |
+| GET | `/api/metrics` | Full metrics (per-nous, tokens, cache, cron, services) |
+| GET | `/api/agents` | All agents with model info |
+| GET | `/api/agents/:id` | Single agent + recent sessions + usage |
+| GET | `/api/sessions` | Session list (optional `?nousId=`) |
+| GET | `/api/sessions/:id/history` | Message history |
+| POST | `/api/sessions/send` | Send message to agent |
+| POST | `/api/sessions/:id/archive` | Archive session |
+| POST | `/api/sessions/:id/distill` | Trigger distillation |
+| GET | `/api/cron` | Cron job list |
+| POST | `/api/cron/:id/trigger` | Manual cron trigger |
+| GET | `/api/skills` | Skills directory |
+| GET | `/api/contacts/pending` | Pending contact requests |
+| POST | `/api/contacts/:code/approve` | Approve contact |
+| POST | `/api/contacts/:code/deny` | Deny contact |
+| GET | `/api/config` | Config summary |
+
+### Shared Scripts (`shared/bin/`)
+
+| Command | Purpose |
+|---------|---------|
+| `pplx "query"` | Perplexity pro-search |
+| `scholar "topic"` | Academic search (OpenAlex + arXiv + Semantic Scholar) |
+| `browse "task"` | LLM-driven web automation |
 | `ingest-doc file.pdf` | PDF/DOCX extraction to markdown |
-
-### System
-
-| Command | Purpose |
-|---------|---------|
-| `assemble-context --nous X` | Compile session context for agent |
-| `compile-context` | Regenerate workspace files from templates |
-| `distill --nous X --text "..."` | Extract structured insights |
-| `aletheia-graph query "..."` | Knowledge graph CLI |
-| `attention-check --nous X` | Adaptive awareness scoring |
-| `deliberate "question"` | Cross-agent PROPOSE/CRITIQUE/SYNTHESIZE |
-| `compose-team "task"` | Dynamic agent composition |
-| `checkpoint save/restore/list` | System state management |
-
-### Agent Management
-
-| Command | Purpose |
-|---------|---------|
-| `nous-health` | Agent health check |
-| `nous-contracts show AGENT` | Display agent contract |
-| `nous-contracts route "request"` | Route request to appropriate agent |
-| `audit-all-nous` | Full audit across all agents |
-| `trace-session --stats` | Langfuse session statistics |
+| `aletheia-graph query "..."` | Knowledge graph CLI (Neo4j) |
+| `nous-health` | Monitor nous ecosystem health |
 
 ---
 
@@ -180,56 +203,52 @@ At session start, `assemble-context` compiles: agent workspace files + recent fa
 ### Prerequisites
 
 - Node.js >=22.12
-- pnpm 10.x
-- Docker (for signal-cli, Langfuse)
-- signal-cli configured with a registered phone number
+- signal-cli (native install or container)
+- Docker (for Qdrant, Neo4j, Langfuse)
+
+### Building
+
+```bash
+cd infrastructure/runtime
+npm install
+npx tsdown            # Single entry point → dist/entry.js
+```
+
+### Running
+
+```bash
+# Start memory infrastructure
+cd infrastructure/memory && docker compose up -d
+
+# Start the gateway
+aletheia gateway
+# or: node infrastructure/runtime/aletheia.mjs gateway
+```
 
 ### Systemd Service
 
-The gateway runs as `aletheia.service` under the `syn` service account.
+The gateway runs as a systemd service under a dedicated service account.
 
 ```bash
-# Service management
 sudo systemctl status aletheia
 sudo systemctl restart aletheia
 journalctl -u aletheia -f
-
-# Config location
-/home/syn/.aletheia/aletheia.json
 ```
 
-**Known issue**: `systemctl restart` can leave an orphan gateway process holding port 18789. If the service fails to bind on restart, check for and kill the orphan process.
+### Services
 
-### Docker Services
-
-**signal-cli** (main docker-compose.yml):
-```bash
-docker compose up -d signal-cli
-```
-- JSON-RPC mode on port 8080 (localhost only)
-- Data volume: `/mnt/ssd/aletheia/signal-cli/`
-
-**Memory stack** (infrastructure/memory/docker-compose.yml):
-```bash
-cd infrastructure/memory && docker compose up -d
-```
-- Qdrant: vector store on port 6333
-- Neo4j: graph store on port 7474 (browser) / 7687 (bolt)
-- Mem0 sidecar: `aletheia-memory.service` on port 8230
-
-**Langfuse** (infrastructure/langfuse/docker-compose.yml):
-```bash
-cd infrastructure/langfuse && docker compose up -d
-```
-- Web UI on port 3100
-- PostgreSQL backend (Alpine, mem-limited 256MB)
-- Telemetry disabled
+| Service | Port | Notes |
+|---------|------|-------|
+| aletheia | 18789 | Gateway + Signal listener |
+| signal-cli | 8080 | JSON-RPC (localhost only) |
+| aletheia-memory | 8230 | Mem0 sidecar (FastAPI/uvicorn) |
+| qdrant | 6333 | Vector store (127.0.0.1) |
+| neo4j | 7474/7687 | Graph store (127.0.0.1) |
+| langfuse | 3100 | Observability |
 
 ### Environment
 
-Environment variables are injected via the `ALETHEIA PATCH` in `server.impl.js`. The `aletheia.env` file uses `export` syntax (not compatible with systemd `EnvironmentFile`).
-
-Key env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ALETHEIA_*` namespace.
+Copy `.env.example` to `shared/config/aletheia.env` and fill in values. Must be systemd `EnvironmentFile` compatible (no `export`, no variable refs).
 
 ---
 
@@ -237,55 +256,40 @@ Key env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ALET
 
 | File | Purpose |
 |------|---------|
-| `/home/syn/.aletheia/aletheia.json` | Gateway config (agents, bindings, routing, sessions) |
-| `shared/config/tools.yaml` | Tool definitions (source of truth for TOOLS.md) |
-| `shared/config/provider-failover.json` | Multi-provider LLM failover rules |
+| `~/.aletheia/aletheia.json` | Gateway config (agents, bindings, routing, sessions, cron, watchdog) |
+| `~/.aletheia/credentials/` | API credentials |
+| `config/aletheia.example.json` | Example gateway config |
 | `infrastructure/memory/sidecar/aletheia_memory/config.py` | Mem0 backend configuration |
-| `shared/contracts/*.json` | Per-agent capability contracts |
 | `shared/templates/` | Template sections + per-agent YAML for compiled workspace files |
+| `shared/skills/*/SKILL.md` | Agent skills (loaded into bootstrap) |
 
-**Config reload**: Bindings, agents, routing, and session configs are `kind: "none"` -- SIGUSR1 will not reload them. Changes require a full `systemctl restart aletheia`.
+**Config reload**: Changes require `systemctl restart aletheia`.
 
 ---
 
 ## Development
 
-### Building the Runtime
+### Module Architecture
 
-```bash
-cd infrastructure/runtime
-pnpm install
-pnpm build          # tsdown compile + plugin SDK + build info
 ```
-
-### Testing
-
-```bash
-pnpm test           # Parallel test runner
-pnpm test:fast      # Unit tests only (vitest)
-pnpm test:e2e       # End-to-end tests
-pnpm test:live      # Live model tests (requires API keys)
+src/entry.ts          CLI entry point (Commander)
+src/aletheia.ts       Main orchestration — wires all modules
+src/taxis/            Config loading + Zod validation
+src/mneme/            Session store (better-sqlite3, 3 migrations)
+src/hermeneus/        Anthropic SDK, provider router, token counting
+src/organon/          Tool registry, 13 built-in tools, skills directory
+src/semeion/          Signal client, SSE listener, commands, link preprocessing
+src/pylon/            Hono HTTP gateway (17 endpoints)
+src/prostheke/        Plugin system (lifecycle hooks)
+src/nous/             Bootstrap assembly, agent turn execution (NousManager)
+src/distillation/     Context summarization pipeline
+src/daemon/           Cron scheduler, watchdog health probes
+src/koina/            Shared utilities (logger, token counter)
 ```
-
-### Runtime Patches
-
-The runtime is a fork of OpenClaw with local patches:
-
-| Patch | Purpose |
-|-------|---------|
-| Structured distillation | Pre-compaction extracts facts to JSONL + graph |
-| Context assembly | Session start compiles state + facts + graph + tasks |
-| Adaptive awareness | Prosoche replaces static heartbeats |
-| Environment injection | `ALETHEIA_*` vars available to all scripts |
-| Post-compaction hooks | Fire-and-forget distillation after context compression |
-| Workspace dynamic context | Dynamic context injection per agent workspace |
-| Mem0 memory integration | Federated search (sqlite-vec + Mem0), compaction context passthrough |
-
-Patches live in `infrastructure/patches/` and are applied via `patch-runtime` (in `shared/bin/`).
 
 ### Template Compilation
 
-Agent workspace files (`AGENTS.md`, `PROSOCHE.md`, `TOOLS.md`) are compiled from shared templates + per-agent YAML configs:
+Agent workspace files (`AGENTS.md`, `PROSOCHE.md`, `TOOLS.md`) can be compiled from shared templates + per-agent YAML configs:
 
 ```bash
 compile-context         # Regenerate all workspace files
@@ -298,8 +302,12 @@ Source: `shared/templates/sections/*.md` + `shared/templates/agents/*.yaml`
 
 ## Recovery
 
-See `RESCUE.md` for full restoration from scratch (requires only this repo + a server).
+See `RESCUE.md` for full restoration from scratch.
 
 ---
+
+## License
+
+AGPL-3.0 (runtime) + Apache-2.0 (SDK/client)
 
 *Built by forkwright, 2026*

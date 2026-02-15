@@ -276,6 +276,15 @@ export class SessionStore {
     return result;
   }
 
+  getRecentToolCalls(sessionId: string, limit = 10): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT DISTINCT tool_name FROM messages WHERE session_id = ? AND tool_name IS NOT NULL AND is_distilled = 0 ORDER BY seq DESC LIMIT ?",
+      )
+      .all(sessionId, limit) as Array<{ tool_name: string }>;
+    return rows.map((r) => r.tool_name);
+  }
+
   recordUsage(record: UsageRecord): void {
     this.db
       .prepare(
@@ -408,7 +417,9 @@ export class SessionStore {
 
   archiveSession(sessionId: string): void {
     this.db
-      .prepare("UPDATE sessions SET status = 'archived' WHERE id = ?")
+      .prepare(
+        "UPDATE sessions SET status = 'archived', session_key = session_key || ':archived:' || id WHERE id = ? AND status = 'active'",
+      )
       .run(sessionId);
   }
 
@@ -779,6 +790,51 @@ export class SessionStore {
     };
   }
 
+  // --- Interaction Signals ---
+
+  recordSignal(signal: {
+    sessionId: string;
+    nousId: string;
+    turnSeq: number;
+    signal: string;
+    confidence: number;
+  }): void {
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
+    } catch {
+      // Table may not exist yet if migration hasn't run — don't fail the turn
+    }
+  }
+
+  getSignalHistory(nousId: string, limit = 50): Array<{
+    sessionId: string;
+    turnSeq: number;
+    signal: string;
+    confidence: number;
+    createdAt: string;
+  }> {
+    try {
+      const rows = this.db
+        .prepare(
+          "SELECT session_id, turn_seq, signal, confidence, created_at FROM interaction_signals WHERE nous_id = ? ORDER BY created_at DESC LIMIT ?",
+        )
+        .all(nousId, limit) as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        sessionId: r["session_id"] as string,
+        turnSeq: r["turn_seq"] as number,
+        signal: r["signal"] as string,
+        confidence: r["confidence"] as number,
+        createdAt: r["created_at"] as string,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   // --- Contact Management ---
 
   isApprovedContact(sender: string, channel: string, accountId?: string): boolean {
@@ -859,5 +915,92 @@ export class SessionStore {
       code: r['challenge_code'] as string,
       createdAt: r['created_at'] as string,
     }));
+  }
+
+  // --- Blackboard (cross-agent shared state) ---
+
+  blackboardWrite(key: string, value: string, authorNousId: string, ttlSeconds = 3600): string {
+    const id = generateId();
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
+    // Upsert by key + author — each agent can update their own entries
+    this.db
+      .prepare(
+        `INSERT INTO blackboard (id, key, value, author_nous_id, ttl_seconds, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO NOTHING`,
+      )
+      .run(id, key, value, authorNousId, ttlSeconds, expiresAt);
+
+    // Also delete any stale entries for same key by same author
+    this.db
+      .prepare(
+        "DELETE FROM blackboard WHERE key = ? AND author_nous_id = ? AND id != ?",
+      )
+      .run(key, authorNousId, id);
+
+    return id;
+  }
+
+  blackboardRead(key: string): Array<{ id: string; key: string; value: string; author: string; createdAt: string; expiresAt: string | null }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT id, key, value, author_nous_id, created_at, expires_at FROM blackboard WHERE key = ? ORDER BY created_at DESC",
+      )
+      .all(key) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r["id"] as string,
+      key: r["key"] as string,
+      value: r["value"] as string,
+      author: r["author_nous_id"] as string,
+      createdAt: r["created_at"] as string,
+      expiresAt: r["expires_at"] as string | null,
+    }));
+  }
+
+  blackboardReadPrefix(prefix: string): Array<{ id: string; key: string; value: string; author: string; createdAt: string; expiresAt: string | null }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT id, key, value, author_nous_id, created_at, expires_at FROM blackboard WHERE key LIKE ? ORDER BY created_at DESC LIMIT 10",
+      )
+      .all(`${prefix}%`) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r["id"] as string,
+      key: r["key"] as string,
+      value: r["value"] as string,
+      author: r["author_nous_id"] as string,
+      createdAt: r["created_at"] as string,
+      expiresAt: r["expires_at"] as string | null,
+    }));
+  }
+
+  blackboardList(): Array<{ key: string; count: number; authors: string[] }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT key, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT author_nous_id) as authors FROM blackboard GROUP BY key ORDER BY key",
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      key: r["key"] as string,
+      count: r["cnt"] as number,
+      authors: (r["authors"] as string).split(","),
+    }));
+  }
+
+  blackboardDelete(key: string, authorNousId: string): number {
+    const result = this.db
+      .prepare("DELETE FROM blackboard WHERE key = ? AND author_nous_id = ?")
+      .run(key, authorNousId);
+    return result.changes;
+  }
+
+  blackboardExpire(): number {
+    const result = this.db
+      .prepare("DELETE FROM blackboard WHERE expires_at IS NOT NULL AND expires_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+      .run();
+    return result.changes;
   }
 }

@@ -20,7 +20,19 @@ export function createMessageTool(opts: MessageToolOpts = {}): ToolHandler {
     definition: {
       name: "message",
       description:
-        "Send a message to a user or group via Signal. Use for proactive communication.",
+        "Send a message to a user or group via Signal.\n\n" +
+        "USE WHEN:\n" +
+        "- Proactively notifying users about completed tasks or important events\n" +
+        "- Forwarding information to a different recipient than the current conversation\n" +
+        "- Sending alerts or scheduled notifications\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- Replying to the current conversation — your response IS the reply\n" +
+        "- Communicating with other agents — use sessions_send or sessions_ask\n\n" +
+        "TIPS:\n" +
+        "- Markdown supported in message text\n" +
+        "- Groups use 'group:ID' format\n" +
+        "- Messages capped at 4000 chars\n" +
+        "- Recipient must be in allowlist if configured",
       input_schema: {
         type: "object",
         properties: {

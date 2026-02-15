@@ -10,7 +10,19 @@ export const grepTool: ToolHandler = {
   definition: {
     name: "grep",
     description:
-      "Search file contents using ripgrep. Returns matching lines with file paths and line numbers.",
+      "Search file contents using ripgrep. Returns matching lines with paths and line numbers.\n\n" +
+      "USE WHEN:\n" +
+      "- Finding where a function, variable, or string is used\n" +
+      "- Searching for patterns across multiple files\n" +
+      "- Locating error messages or configuration values\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- You know the exact file — use read instead\n" +
+      "- Searching by filename — use find instead\n\n" +
+      "TIPS:\n" +
+      "- Supports regex patterns\n" +
+      "- Use glob to narrow to specific file types (e.g., '*.ts')\n" +
+      "- Case-sensitive by default — set caseSensitive=false for broad searches\n" +
+      "- Max 50 results per file by default",
     input_schema: {
       type: "object",
       properties: {
