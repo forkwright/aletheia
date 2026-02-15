@@ -68,7 +68,13 @@ export class AnthropicProvider {
     const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
 
     if (authToken) {
-      this.client = new Anthropic({ apiKey: null, authToken });
+      this.client = new Anthropic({
+        apiKey: null,
+        authToken,
+        defaultHeaders: {
+          "anthropic-beta": "oauth-2025-04-20",
+        },
+      });
       log.info("Anthropic provider initialized (OAuth)");
     } else {
       this.client = new Anthropic({ apiKey: apiKey ?? null });
