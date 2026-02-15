@@ -118,6 +118,7 @@ export class CronScheduler {
           sessionKey: entry.sessionKey ?? `cron:${entry.id}`,
           channel: "cron",
           peerKind: "system",
+          model: entry.model,
         });
       } catch (err) {
         log.error(

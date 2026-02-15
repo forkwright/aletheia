@@ -24,7 +24,7 @@ import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { NousManager } from "./nous/manager.js";
-import { createGateway, startGateway, setCronRef } from "./pylon/server.js";
+import { createGateway, startGateway, setCronRef, setWatchdogRef } from "./pylon/server.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -37,6 +37,7 @@ import { sendMessage, parseTarget } from "./semeion/sender.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
 
 const log = createLogger("aletheia");
@@ -240,6 +241,38 @@ export async function startRuntime(configPath?: string): Promise<void> {
     cron.start();
   }
 
+  // --- Watchdog ---
+  let watchdog: Watchdog | null = null;
+  const wdConfig = config.watchdog;
+  if (wdConfig.enabled && wdConfig.alertRecipient && clients.size > 0) {
+    const alertClient = clients.values().next().value!;
+    const alertAccountId = clients.keys().next().value!;
+    const alertAccount = config.channels.signal.accounts[alertAccountId]!;
+    const alertAccountPhone = alertAccount.account ?? alertAccountId;
+
+    const services: ServiceProbe[] = wdConfig.services.length > 0
+      ? wdConfig.services
+      : [
+          { name: "qdrant", url: "http://127.0.0.1:6333/healthz" },
+          { name: "neo4j", url: "http://127.0.0.1:7474" },
+          { name: "mem0-sidecar", url: "http://127.0.0.1:8230/health" },
+          { name: "ollama", url: "http://127.0.0.1:11434/api/tags" },
+        ];
+
+    watchdog = new Watchdog({
+      services,
+      intervalMs: wdConfig.intervalMs,
+      alertFn: async (message) => {
+        await sendMessage(alertClient, {
+          account: alertAccountPhone,
+          recipient: wdConfig.alertRecipient!,
+        }, message, { markdown: false });
+      },
+    });
+    watchdog.start();
+    setWatchdogRef(watchdog);
+  }
+
   // Spawn session cleanup — archive stale spawn sessions every hour
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
@@ -249,6 +282,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const shutdown = async () => {
     log.info("Shutting down...");
     clearInterval(spawnCleanupTimer);
+    watchdog?.stop();
     cron.stop();
     abortController.abort();
     for (const daemon of daemons) {
