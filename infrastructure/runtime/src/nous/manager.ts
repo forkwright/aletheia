@@ -33,6 +33,7 @@ export interface InboundMessage {
   peerKind?: string;
   accountId?: string;
   mediaUrls?: string[];
+  model?: string;
 }
 
 export interface TurnOutcome {
@@ -88,7 +89,7 @@ export class NousManager {
     }
 
     const sessionKey = msg.sessionKey ?? "main";
-    const model = resolveModel(this.config, nous);
+    const model = msg.model ?? resolveModel(this.config, nous);
     const session = this.store.findOrCreateSession(
       nousId,
       sessionKey,
@@ -237,12 +238,20 @@ export class NousManager {
 
         // Auto-trigger distillation when context grows too large
         const contextTokens = this.config.agents.defaults.contextTokens;
-        const threshold = Math.floor(contextTokens * 0.65);
+        const compaction = this.config.agents.defaults.compaction;
+        const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
         try {
-          if (await shouldDistill(this.store, sessionId, { threshold, minMessages: 10 })) {
-            log.info(`Distillation triggered for session ${sessionId}`);
+          if (await shouldDistill(this.store, sessionId, { threshold: distillThreshold, minMessages: 10 })) {
+            const session = this.store.findSessionById(sessionId);
+            const utilization = session
+              ? Math.round((session.tokenCountEstimate / contextTokens) * 100)
+              : 0;
+            log.info(
+              `Distillation triggered for ${nousId} session=${sessionId} ` +
+              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
+            );
             await distillSession(this.store, this.router, sessionId, nousId, {
-              triggerThreshold: threshold,
+              triggerThreshold: distillThreshold,
               minMessages: 10,
               extractionModel: "claude-haiku-4-5-20251001",
               summaryModel: "claude-haiku-4-5-20251001",

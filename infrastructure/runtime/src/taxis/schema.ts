@@ -293,6 +293,21 @@ const EnvConfig = z.preprocess(
   }),
 ).default({ vars: {} });
 
+const WatchdogService = z.object({
+  name: z.string(),
+  url: z.string(),
+  timeoutMs: z.number().default(3000),
+});
+
+const WatchdogConfig = z
+  .object({
+    enabled: z.boolean().default(true),
+    intervalMs: z.number().default(5 * 60 * 1000),
+    alertRecipient: z.string().optional(),
+    services: z.array(WatchdogService).default([]),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -305,6 +320,7 @@ export const AletheiaConfigSchema = z.object({
   cron: CronConfig.default({}),
   models: ModelsConfig.default({}),
   env: EnvConfig.default({}),
+  watchdog: WatchdogConfig.default({}),
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;

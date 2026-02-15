@@ -6,13 +6,18 @@ import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { CronScheduler } from "../daemon/cron.js";
+import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
 
 // Set after gateway creation — avoids circular dependency
 let cronRef: CronScheduler | null = null;
+let watchdogRef: Watchdog | null = null;
 export function setCronRef(cron: CronScheduler): void {
   cronRef = cron;
+}
+export function setWatchdogRef(wd: Watchdog): void {
+  watchdogRef = wd;
 }
 
 export function createGateway(
@@ -172,6 +177,7 @@ export function createGateway(
         cacheHitRate,
       },
       cron: cronRef?.getStatus() ?? [],
+      services: watchdogRef?.getStatus() ?? [],
     });
   });
 
