@@ -56,10 +56,11 @@ export interface ListenerOpts {
   client: SignalClient;
   baseUrl: string;
   abortSignal?: AbortSignal;
+  boundGroupIds?: Set<string>;
 }
 
 export async function startListener(opts: ListenerOpts): Promise<void> {
-  const { accountId, account, manager, client, baseUrl, abortSignal } = opts;
+  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds } = opts;
   const accountPhone = account.account ?? accountId;
 
   log.info(`Starting SSE listener for account ${accountId}`);
@@ -71,7 +72,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
       await consumeEventStream(
         baseUrl,
         accountPhone,
-        (envelope) => handleEnvelope(envelope, accountId, account, manager, client),
+        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds),
         abortSignal,
       );
       backoff.current = backoff.min;
@@ -174,6 +175,7 @@ async function handleEnvelope(
   account: SignalAccount,
   manager: NousManager,
   client: SignalClient,
+  boundGroupIds?: Set<string>,
 ): Promise<void> {
   if (envelope.syncMessage) return;
 
@@ -196,7 +198,7 @@ async function handleEnvelope(
   const isGroup = !!dataMessage.groupInfo?.groupId;
   const groupId = dataMessage.groupInfo?.groupId;
 
-  if (!checkAccess(sender, isGroup, groupId, account)) {
+  if (!checkAccess(sender, isGroup, groupId, account, boundGroupIds)) {
     log.debug(`Blocked message from ${sender} (policy)`);
     return;
   }
@@ -296,12 +298,15 @@ function checkAccess(
   isGroup: boolean,
   groupId: string | undefined,
   account: SignalAccount,
+  boundGroupIds?: Set<string>,
 ): boolean {
   if (isGroup) {
     if (account.groupPolicy === "disabled") return false;
     if (account.groupPolicy === "open") return true;
-    // Check group ID against group allowlist, not sender phone
-    return groupId ? isInAllowlist(groupId, account.groupAllowFrom) : false;
+    // Allowlist mode: check explicit groupAllowFrom, then fall back to bindings
+    if (groupId && isInAllowlist(groupId, account.groupAllowFrom)) return true;
+    if (groupId && boundGroupIds?.has(groupId)) return true;
+    return false;
   }
 
   if (account.dmPolicy === "disabled") return false;
