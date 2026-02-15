@@ -5,6 +5,7 @@ import { ProviderRouter } from "../hermeneus/router.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
+import { shouldDistill, distillSession } from "../distillation/pipeline.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -214,8 +215,34 @@ export class NousManager {
           });
         }
 
+        // Auto-trigger distillation when context grows too large
+        const contextTokens = this.config.agents.defaults.contextTokens;
+        const threshold = Math.floor(contextTokens * 0.65);
+        try {
+          if (await shouldDistill(this.store, sessionId, { threshold, minMessages: 10 })) {
+            log.info(`Distillation triggered for session ${sessionId}`);
+            await distillSession(this.store, this.router, sessionId, nousId, {
+              triggerThreshold: threshold,
+              minMessages: 10,
+              extractionModel: "claude-haiku-4-5-20251001",
+              summaryModel: "claude-haiku-4-5-20251001",
+              plugins: this.plugins,
+            });
+          }
+        } catch (err) {
+          log.warn(`Distillation failed: ${err instanceof Error ? err.message : err}`);
+        }
+
         return outcome;
       }
+
+      // Store the assistant's tool_use response as JSON for history replay
+      this.store.appendMessage(
+        sessionId,
+        "assistant",
+        JSON.stringify(result.content),
+        { tokenEstimate: estimateTokens(JSON.stringify(result.content)) },
+      );
 
       currentMessages = [
         ...currentMessages,
@@ -293,12 +320,40 @@ export class NousManager {
   ): MessageParam[] {
     const messages: MessageParam[] = [];
 
-    for (const msg of history) {
-      if (msg.role === "user" || msg.role === "assistant") {
-        messages.push({
-          role: msg.role,
-          content: msg.content,
-        });
+    for (let i = 0; i < history.length; i++) {
+      const msg = history[i]!;
+
+      if (msg.role === "user") {
+        messages.push({ role: "user", content: msg.content });
+      } else if (msg.role === "assistant") {
+        // Try parsing as JSON content blocks (tool_use responses stored as JSON)
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
+            messages.push({
+              role: "assistant",
+              content: parsed as ContentBlock[],
+            });
+            continue;
+          }
+        } catch {
+          // Not JSON — plain text assistant message
+        }
+        messages.push({ role: "assistant", content: msg.content });
+      } else if (msg.role === "tool_result") {
+        // Group consecutive tool_results into a single user message
+        const toolResults: UserContentBlock[] = [];
+        while (i < history.length && history[i]!.role === "tool_result") {
+          const tr = history[i]!;
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: tr.toolCallId ?? "",
+            content: tr.content,
+          });
+          i++;
+        }
+        i--; // Back up — for loop will increment
+        messages.push({ role: "user", content: toolResults });
       }
     }
 

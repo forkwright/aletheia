@@ -251,7 +251,8 @@ async function handleEnvelope(
     log.warn(`Typing indicator failed: ${err}`),
   );
 
-  const peerId = isGroup ? groupId! : sender;
+  // For DMs, prefer UUID for routing (bindings use UUIDs)
+  const peerId = isGroup ? groupId! : (envelope.sourceUuid ?? sender);
   const peerKind = isGroup ? "group" : "dm";
   const sessionKey = `signal:${peerId}`;
 
