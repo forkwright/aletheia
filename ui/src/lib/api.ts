@@ -1,0 +1,81 @@
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary } from "./types";
+
+const TOKEN_KEY = "aletheia_token";
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+function headers(): Record<string, string> {
+  const token = getToken();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "Content-Type": "application/json",
+  };
+}
+
+async function fetchJson<T>(path: string, opts?: RequestInit): Promise<T> {
+  const base = import.meta.env.DEV ? "" : window.location.origin;
+  const res = await fetch(`${base}${path}`, {
+    ...opts,
+    headers: { ...headers(), ...opts?.headers },
+  });
+  if (res.status === 401) {
+    throw new Error("Unauthorized — check your token");
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API error ${res.status}: ${body}`);
+  }
+  return res.json();
+}
+
+export async function fetchAgents(): Promise<Agent[]> {
+  const data = await fetchJson<{ agents: Agent[] }>("/api/agents");
+  return data.agents;
+}
+
+export async function fetchAgentIdentity(id: string): Promise<{ name: string; emoji: string | null }> {
+  return fetchJson(`/api/agents/${id}/identity`);
+}
+
+export async function fetchSessions(nousId?: string): Promise<Session[]> {
+  const query = nousId ? `?nousId=${nousId}` : "";
+  const data = await fetchJson<{ sessions: Session[] }>(`/api/sessions${query}`);
+  return data.sessions;
+}
+
+export async function fetchHistory(sessionId: string, limit = 100): Promise<HistoryMessage[]> {
+  const data = await fetchJson<{ messages: HistoryMessage[] }>(
+    `/api/sessions/${sessionId}/history?limit=${limit}`,
+  );
+  return data.messages;
+}
+
+export async function archiveSession(sessionId: string): Promise<void> {
+  await fetchJson(`/api/sessions/${sessionId}/archive`, { method: "POST" });
+}
+
+export async function distillSession(sessionId: string): Promise<void> {
+  await fetchJson(`/api/sessions/${sessionId}/distill`, { method: "POST" });
+}
+
+export async function fetchMetrics(): Promise<MetricsData> {
+  return fetchJson("/api/metrics");
+}
+
+export async function fetchCostSummary(): Promise<CostSummary> {
+  return fetchJson("/api/costs/summary");
+}
+
+export async function fetchSessionCosts(sessionId: string): Promise<unknown> {
+  return fetchJson(`/api/costs/session/${sessionId}`);
+}

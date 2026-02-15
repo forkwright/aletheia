@@ -41,7 +41,7 @@ import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
-import { createUiRoutes } from "./pylon/ui.js";
+import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -270,6 +270,14 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Mount Web UI
   const uiRoutes = createUiRoutes(config, runtime.manager, runtime.store);
   app.route("/", uiRoutes);
+
+  // Wire event bus → SSE push for real-time UI updates
+  for (const eventName of [
+    "turn:before", "turn:after", "tool:called", "tool:failed",
+    "session:created", "session:archived",
+  ] as const) {
+    eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
+  }
 
   startGateway(app, port);
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });

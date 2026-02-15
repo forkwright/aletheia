@@ -1,5 +1,5 @@
 // Bootstrap diff detection — file-level change tracking across sessions
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
@@ -31,15 +31,13 @@ export function detectBootstrapDiff(
     const statusDir = resolveSharedStatusDir(workspace);
     const hashFile = join(statusDir, "bootstrap-hashes.json");
     try {
-      if (existsSync(hashFile)) {
-        const data = JSON.parse(readFileSync(hashFile, "utf-8")) as Record<
-          string,
-          Record<string, string>
-        >;
-        if (data[nousId]) previous = data[nousId];
-      }
+      const data = JSON.parse(readFileSync(hashFile, "utf-8")) as Record<
+        string,
+        Record<string, string>
+      >;
+      if (data[nousId]) previous = data[nousId];
     } catch {
-      /* ignore corrupt file */
+      /* ignore missing or corrupt file */
     }
   }
 
@@ -50,12 +48,15 @@ export function detectBootstrapDiff(
   try {
     mkdirSync(statusDir, { recursive: true });
     const hashFile = join(statusDir, "bootstrap-hashes.json");
-    const existing = existsSync(hashFile)
-      ? (JSON.parse(readFileSync(hashFile, "utf-8")) as Record<
-          string,
-          Record<string, string>
-        >)
-      : {};
+    let existing: Record<string, Record<string, string>> = {};
+    try {
+      existing = JSON.parse(readFileSync(hashFile, "utf-8")) as Record<
+        string,
+        Record<string, string>
+      >;
+    } catch {
+      /* missing or corrupt — start fresh */
+    }
     existing[nousId] = currentHashes;
     writeFileSync(hashFile, JSON.stringify(existing, null, 2));
   } catch (err) {

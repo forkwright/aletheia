@@ -103,13 +103,19 @@ function parseDdgResults(html: string, max: number): SearchResult[] {
 }
 
 function stripTags(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .trim();
+  const entities: Record<string, string> = {
+    "&amp;": "&", "&lt;": "<", "&gt;": ">",
+    "&quot;": '"', "&#39;": "'", "&nbsp;": " ",
+    "&#x27;": "'", "&#x2F;": "/", "&#x60;": "`",
+  };
+  // Decode entities then strip dangerous tags to catch double-encoded XSS
+  let text = html.replace(/&(?:#x?[0-9a-f]+|[a-z]+);/gi, (match) => entities[match] ?? match);
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  let prev = "";
+  while (prev !== text) {
+    prev = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  return text.trim();
 }

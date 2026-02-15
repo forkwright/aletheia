@@ -55,30 +55,27 @@ describe("createUiRoutes", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-cache");
   });
 
-  it("dashboard HTML contains agent data as JSON", async () => {
+  it("fallback dashboard contains agent names", async () => {
     const app = createUiRoutes(makeConfig(), null, makeStore());
     const res = await app.request("/ui");
     const html = await res.text();
-    // The agents array is serialized into the HTML
-    expect(html).toContain('"id":"syn"');
-    expect(html).toContain('"id":"eiron"');
+    expect(html).toContain("Syn");
+    expect(html).toContain("Eiron");
   });
 
-  it("dashboard HTML includes CSS styles", async () => {
+  it("fallback dashboard includes CSS styles", async () => {
     const app = createUiRoutes(makeConfig(), null, makeStore());
     const res = await app.request("/ui");
     const html = await res.text();
     expect(html).toContain("<style>");
     expect(html).toContain("--bg:");
-    expect(html).toContain("--accent:");
   });
 
-  it("dashboard HTML includes Preact script", async () => {
+  it("fallback dashboard shows build instructions", async () => {
     const app = createUiRoutes(makeConfig(), null, makeStore());
     const res = await app.request("/ui");
     const html = await res.text();
-    expect(html).toContain("preact");
-    expect(html).toContain("htm");
+    expect(html).toContain("npm run build");
   });
 });
 

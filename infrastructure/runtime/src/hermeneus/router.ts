@@ -7,6 +7,7 @@ import {
   AnthropicProvider,
   type CompletionRequest,
   type TurnResult,
+  type StreamingEvent,
 } from "./anthropic.js";
 
 const log = createLogger("hermeneus.router");
@@ -59,6 +60,13 @@ export class ProviderRouter {
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
     log.debug(`Routing ${request.model} to ${entry.name} (model=${model})`);
     return entry.provider.complete({ ...request, model });
+  }
+
+  async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
+    const entry = this.resolve(request.model);
+    const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
+    log.debug(`Streaming ${request.model} via ${entry.name} (model=${model})`);
+    yield* entry.provider.completeStreaming({ ...request, model });
   }
 
   async completeWithFailover(

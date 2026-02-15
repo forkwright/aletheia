@@ -62,9 +62,10 @@ async def add_memory(req: AddRequest, request: Request):
             top = candidate
             score = top.get("score", 0)
             if score > DEDUP_THRESHOLD:
+                safe_agent = (req.agent_id or "global").replace("\n", "").replace("\r", "")[:50]
                 logger.info(
                     f"Dedup: skipped (score={score:.3f}, existing={top.get('id', '?')}, "
-                    f"agent={req.agent_id or 'global'})"
+                    f"agent={safe_agent})"
                 )
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
 
@@ -81,7 +82,7 @@ async def add_memory(req: AddRequest, request: Request):
         return {"ok": True, "result": result}
     except Exception as e:
         logger.exception("add_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/search")
@@ -97,7 +98,7 @@ async def search_memory(req: SearchRequest, request: Request):
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/graph_search")
@@ -113,7 +114,7 @@ async def graph_search(req: SearchRequest, request: Request):
         return {"ok": True, "results": graph_results}
     except Exception as e:
         logger.exception("graph_search failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/import")
@@ -169,7 +170,7 @@ async def list_memories(
         return {"ok": True, "memories": entries}
     except Exception as e:
         logger.exception("list_memories failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/memories/{memory_id}")
@@ -180,7 +181,7 @@ async def delete_memory(memory_id: str, request: Request):
         return {"ok": True}
     except Exception as e:
         logger.exception("delete_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/health")
@@ -251,7 +252,7 @@ async def graph_stats():
         }
     except Exception as e:
         logger.exception("graph_stats failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
@@ -393,7 +394,7 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch memories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch memories")
 
     if not isinstance(entries, list):
         return {"ok": True, "candidates": [], "message": "No memories found"}
@@ -457,7 +458,7 @@ async def merge_memories(req: MergeRequest, request: Request):
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/fact_stats")
@@ -469,7 +470,7 @@ async def fact_stats(request: Request, user_id: str = "default"):
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     if not isinstance(entries, list):
         return {"ok": True, "total": 0}
@@ -524,7 +525,7 @@ async def retract_memory(req: RetractRequest, request: Request):
         raw = await asyncio.to_thread(mem.search, req.query, user_id=req.user_id, limit=20)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
 
     if not isinstance(results, list) or not results:
         return {"ok": True, "retracted": 0, "message": "No matching memories found"}
@@ -702,7 +703,7 @@ async def add_foresight(req: ForesightAddRequest):
         return {"ok": True, "entity": req.entity, "signal": req.signal}
     except Exception as e:
         logger.exception("add_foresight failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @foresight_router.get("/active")
@@ -781,7 +782,7 @@ async def decay_foresight():
         return {"ok": True, "decayed": decayed, "deleted": deleted}
     except Exception as e:
         logger.exception("decay_foresight failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
@@ -1014,7 +1015,7 @@ async def analyze_graph(req: GraphAnalyzeRequest):
         raise HTTPException(status_code=500, detail="networkx not installed")
     except Exception as e:
         logger.exception("graph/analyze failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Enhanced Search with Query Rewriting ---
@@ -1162,6 +1163,6 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
             "total_candidates": len(results) if isinstance(results, list) else 0,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 

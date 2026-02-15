@@ -10,6 +10,8 @@ import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const log = createLogger("pylon");
 
@@ -157,7 +159,8 @@ export function createGateway(
   app.get("/api/sessions/:id/history", (c) => {
     const id = c.req.param("id");
     const limit = parseInt(c.req.query("limit") ?? "100", 10);
-    const history = store.getHistory(id, { limit });
+    const includeDistilled = c.req.query("includeDistilled") === "true";
+    const history = store.getHistory(id, { limit, excludeDistilled: !includeDistilled });
     return c.json({ messages: history });
   });
 
@@ -201,6 +204,90 @@ export function createGateway(
         error instanceof Error ? error.message : String(error);
       log.error(`Session send failed: ${msg}`);
       return c.json({ error: "Internal error processing message" }, 500);
+    }
+  });
+
+  app.post("/api/sessions/stream", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { agentId, message, sessionKey } = body as {
+      agentId: string;
+      message: string;
+      sessionKey?: string;
+    };
+
+    if (!agentId || !message) {
+      return c.json({ error: "agentId and message required" }, 400);
+    }
+
+    if (typeof manager.handleMessageStreaming !== "function") {
+      return c.json({ error: "Streaming not implemented" }, 501);
+    }
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of manager.handleMessageStreaming({
+            text: message,
+            nousId: agentId,
+            sessionKey: sessionKey ?? "main",
+          })) {
+            const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+            controller.enqueue(encoder.encode(payload));
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error(`Stream error: ${msg}`);
+          const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
+          controller.enqueue(encoder.encode(payload));
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  });
+
+  app.get("/api/agents/:id/identity", (c) => {
+    const id = c.req.param("id");
+    const agent = config.agents.list.find((a) => a.id === id);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    try {
+      const workspace = agent.workspace;
+      const identityPath = join(workspace, "IDENTITY.md");
+      const raw = readFileSync(identityPath, "utf-8");
+      const emojiMatch = raw.match(/emoji:\s*(.+)/i);
+      const nameMatch = raw.match(/name:\s*(.+)/i);
+      // Strip markdown bold markers and clean up
+      let parsedName = nameMatch?.[1]?.replace(/\*+/g, "").trim() || "";
+      if (!parsedName) parsedName = agent.name ?? agent.id;
+      let parsedEmoji = emojiMatch?.[1]?.replace(/\*+/g, "").trim() || null;
+      if (parsedEmoji === "") parsedEmoji = null;
+      return c.json({
+        id: agent.id,
+        name: parsedName,
+        emoji: parsedEmoji,
+      });
+    } catch {
+      return c.json({
+        id: agent.id,
+        name: agent.name ?? agent.id,
+        emoji: null,
+      });
     }
   });
 

@@ -87,7 +87,7 @@ describe("webFetchTool", () => {
   });
 
   it("handles HTML entity decoding", async () => {
-    const html = "<p>A &amp; B &lt; C &gt; D &quot;E&quot; F&#39;s &nbsp;G</p>";
+    const html = "<p>A &amp; B &quot;E&quot; F&#39;s &nbsp;G</p>";
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       headers: new Headers({ "content-type": "text/html" }),
@@ -96,6 +96,21 @@ describe("webFetchTool", () => {
 
     const result = await webFetchTool.execute({ url: "https://example.com" });
     expect(result).toContain("A & B");
-    expect(result).toContain("< C >");
+    expect(result).toContain('"E"');
+    expect(result).toContain("F's");
+  });
+
+  it("strips double-encoded script tags for XSS prevention", async () => {
+    const html = "<p>safe</p>&lt;script&gt;alert(1)&lt;/script&gt;";
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-type": "text/html" }),
+      text: vi.fn().mockResolvedValue(html),
+    });
+
+    const result = await webFetchTool.execute({ url: "https://example.com" });
+    expect(result).toContain("safe");
+    expect(result).not.toContain("<script>");
+    expect(result).not.toContain("alert(1)");
   });
 });
