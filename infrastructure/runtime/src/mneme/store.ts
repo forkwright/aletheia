@@ -143,10 +143,11 @@ export class SessionStore {
     nousId: string,
     sessionKey: string,
     model?: string,
+    parentSessionId?: string,
   ): Session {
     return (
       this.findSession(nousId, sessionKey) ??
-      this.createSession(nousId, sessionKey, undefined, model)
+      this.createSession(nousId, sessionKey, parentSessionId, model)
     );
   }
 
@@ -323,6 +324,74 @@ export class SessionStore {
     this.db
       .prepare("UPDATE sessions SET status = 'archived' WHERE id = ?")
       .run(sessionId);
+  }
+
+  recordCrossAgentCall(record: {
+    sourceSessionId: string;
+    targetNousId: string;
+    targetSessionId?: string;
+    kind: "send" | "ask" | "spawn";
+    content: string;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO cross_agent_messages (source_session_id, target_nous_id, target_session_id, kind, content, status)
+         VALUES (?, ?, ?, ?, ?, 'pending')`,
+      )
+      .run(
+        record.sourceSessionId,
+        record.targetNousId,
+        record.targetSessionId ?? null,
+        record.kind,
+        record.content,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  updateCrossAgentCall(
+    id: number,
+    update: {
+      targetSessionId?: string;
+      status: "delivered" | "responded" | "timeout" | "error";
+      response?: string;
+    },
+  ): void {
+    const parts: string[] = ["status = ?"];
+    const params: (string | number | null)[] = [update.status];
+
+    if (update.targetSessionId) {
+      parts.push("target_session_id = ?");
+      params.push(update.targetSessionId);
+    }
+    if (update.response) {
+      parts.push("response = ?");
+      params.push(update.response.slice(0, 2000));
+    }
+    if (update.status === "responded") {
+      parts.push("responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    }
+
+    params.push(id);
+    this.db
+      .prepare(`UPDATE cross_agent_messages SET ${parts.join(", ")} WHERE id = ?`)
+      .run(...params);
+  }
+
+  archiveStaleSpawnSessions(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const result = this.db
+      .prepare(
+        `UPDATE sessions SET status = 'archived'
+         WHERE status = 'active'
+           AND session_key LIKE 'spawn:%'
+           AND updated_at < ?`,
+      )
+      .run(cutoff);
+    const count = result.changes;
+    if (count > 0) {
+      log.info(`Archived ${count} stale spawn sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
+    }
+    return count;
   }
 
   rebuildRoutingCache(

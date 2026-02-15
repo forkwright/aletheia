@@ -1,9 +1,11 @@
 // Synchronous cross-agent messaging — waits for response
 import type { ToolHandler } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
+import type { SessionStore } from "../../mneme/store.js";
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
+  store?: SessionStore;
 }
 
 export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler {
@@ -53,6 +55,14 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
         return JSON.stringify({ error: "Cannot ask yourself" });
       }
 
+      // Audit trail
+      const auditId = dispatcher.store?.recordCrossAgentCall({
+        sourceSessionId: context.sessionId,
+        targetNousId: agentId,
+        kind: "ask",
+        content: message.slice(0, 2000),
+      });
+
       let timer: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(
@@ -67,6 +77,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
             text: message,
             nousId: agentId,
             sessionKey,
+            parentSessionId: context.sessionId,
             channel: "internal",
             peerKind: "agent",
             peerId: context.nousId,
@@ -74,6 +85,14 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
           timeoutPromise,
         ]);
         clearTimeout(timer!);
+
+        if (auditId && dispatcher.store) {
+          dispatcher.store.updateCrossAgentCall(auditId, {
+            targetSessionId: outcome.sessionId,
+            status: "responded",
+            response: outcome.text,
+          });
+        }
 
         return JSON.stringify({
           agentId,
@@ -86,6 +105,15 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
         });
       } catch (err) {
         clearTimeout(timer!);
+
+        if (auditId && dispatcher.store) {
+          const isTimeout = err instanceof Error && err.message.includes("Timeout");
+          dispatcher.store.updateCrossAgentCall(auditId, {
+            status: isTimeout ? "timeout" : "error",
+            response: err instanceof Error ? err.message : String(err),
+          });
+        }
+
         return JSON.stringify({
           agentId,
           error: err instanceof Error ? err.message : String(err),
