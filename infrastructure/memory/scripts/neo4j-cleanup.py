@@ -243,6 +243,7 @@ def main():
                     incoming = run_query(session, """
                         MATCH (other)-[r]->(old) WHERE id(old) = $merge_id
                         MATCH (primary) WHERE id(primary) = $primary_id
+                        WITH other, r, primary
                         WHERE other <> primary
                         RETURN DISTINCT type(r) AS rtype
                     """, merge_id=merge_id, primary_id=primary_id)
@@ -252,6 +253,7 @@ def main():
                         session.run(f"""
                             MATCH (other)-[r:`{rtype}`]->(old) WHERE id(old) = $merge_id
                             MATCH (primary) WHERE id(primary) = $primary_id
+                            WITH other, r, primary
                             WHERE other <> primary
                             CREATE (other)-[:`{rtype}`]->(primary)
                             DELETE r
@@ -260,6 +262,7 @@ def main():
                     outgoing = run_query(session, """
                         MATCH (old)-[r]->(other) WHERE id(old) = $merge_id
                         MATCH (primary) WHERE id(primary) = $primary_id
+                        WITH other, r, primary
                         WHERE other <> primary
                         RETURN DISTINCT type(r) AS rtype
                     """, merge_id=merge_id, primary_id=primary_id)
@@ -269,6 +272,7 @@ def main():
                         session.run(f"""
                             MATCH (old)-[r:`{rtype}`]->(other) WHERE id(old) = $merge_id
                             MATCH (primary) WHERE id(primary) = $primary_id
+                            WITH other, r, primary
                             WHERE other <> primary
                             CREATE (primary)-[:`{rtype}`]->(other)
                             DELETE r
