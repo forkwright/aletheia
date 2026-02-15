@@ -25,7 +25,7 @@ From dianoia naming system:
 
 ## Current State
 
-- Full multi-nous system running (7 nous, Signal routing)
+- Full multi-nous system running (6 nous, Signal routing)
 - Prosoche daemon for adaptive attention
 - Mem0 memory system (vector + graph)
 - GitHub connected (forkwright)

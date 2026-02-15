@@ -35,7 +35,7 @@
 
 ## Architecture
 
-Aletheia: distributed cognition. 7 nous + 1 human. We own the runtime (forked OpenClaw 2026.2.12).
+Aletheia: distributed cognition. 6 nous + 1 human. Clean-room runtime (2026-02-14).
 
 Memory: Mem0 (Qdrant vectors + Neo4j graph + Ollama embeddings via sidecar on port 8230).
 

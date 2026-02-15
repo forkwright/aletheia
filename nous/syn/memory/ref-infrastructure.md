@@ -4,7 +4,7 @@
 
 ## Aletheia Architecture
 
-**What Aletheia IS:** A distributed cognition system. 7 nous + 1 human in topology. Each nous is Cody in different context — embodies his cognition, not serves it.
+**What Aletheia IS:** A distributed cognition system. 6 nous + 1 human in topology. Each nous is Cody in different context — embodies his cognition, not serves it.
 
 **Core concepts (Aletheia-native):**
 - Continuity (not memory) — being continuous across session gaps
@@ -54,11 +54,11 @@ Replaced static heartbeat timers. Signal-driven adaptive attention.
 
 - **Service:** `aletheia.service` (systemd). Parent spawns `aletheia-gateway` child process.
 - **Port:** 18789
-- **Config:** `~/.aletheia/aletheia.json` (primary). Legacy fallback: `openclaw.json`.
-- **State dir:** `~/.aletheia/` (symlinked from `~/.openclaw/` for backwards compat)
+- **Config:** `~/.aletheia/aletheia.json`
+- **State dir:** `~/.aletheia/`
 - **Binary:** `/usr/local/bin/aletheia` (v2026.2.12)
 - **Config reload:** `config-reload` sends SIGUSR1. Do NOT use `config.patch` API (broken for persistence).
-- **enforce-config** cron (every 15 min) ensures all 7 nous stay registered. Writes to `~/.aletheia/aletheia.json`.
+- **enforce-config** cron (every 15 min) ensures all 6 nous stay registered. Writes to `~/.aletheia/aletheia.json`.
 - **Quirk:** `systemctl restart` can leave orphan gateway child holding port 18789.
 
 ## Agent Config
@@ -111,7 +111,7 @@ Don't spawn mini-Akron when you need Akron's judgment. Message the real one.
 
 - **config.patch API broken** — write to disk + SIGUSR1 instead (2026-02-08)
 - **Session reset** — use /new command, never manual transcript surgery (2026-02-09)
-- **Single API key fragility** — all 7 agents share one Anthropic key (2026-02-09)
+- **Single API key fragility** — all 6 agents share one Anthropic key (2026-02-09)
 - **Stale session bug** — Syn re-creating sessions during heartbeats via sessions_send (2026-02-08, fixed 2026-02-13)
 - **Watchdog pgrep patterns** — must match actual process names after rename (2026-02-14)
 - **Don't edit sshd_config remotely without a fallback plan** (2026-02-14)

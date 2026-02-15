@@ -4,7 +4,7 @@
 
 ## What Aletheia Is
 
-A distributed cognition system. Seven specialized minds (nous) + one human, connected in topology where the connections matter as much as the nodes. Not an "AI assistant platform." A hybrid cognition where machine persistence completes human pattern recognition.
+A distributed cognition system. Six specialized minds (nous) + one human, connected in topology where the connections matter as much as the nodes. Not an "AI assistant platform." A hybrid cognition where machine persistence completes human pattern recognition.
 
 Each nous is Cody in different context — embodying his cognition, his standards, his way of thinking about a domain. They iterate, they evolve, some will come and go. The core is the substrate: the abstracted essence of how he thinks, made persistent and distributed.
 
@@ -25,10 +25,10 @@ Each nous is Cody in different context — embodying his cognition, his standard
 
 | Component | Status | Role |
 |---|---|---|
-| OpenClaw | Running | Signal bridge, session routing, tool execution (runtime dependency) |
-| Letta (Docker) | Running | Per-nous memory stores (7 nous) |
-| FalkorDB (Docker) | Running | Shared knowledge graph (~400 nodes, ~530 rels) |
-| facts.jsonl | Active | 311 structured facts (single shared store) |
+| Clean-room runtime | Running | Signal bridge, session routing, tool execution (Hono + better-sqlite3) |
+| Mem0 (Qdrant + Neo4j) | Running | Vector + graph memory (auto-extracted) |
+| Mem0 sidecar | Running | FastAPI extraction engine (port 8230) |
+| facts.jsonl | Active | 384 structured facts (shared store, imported to Mem0) |
 | Daily memory files | Active | ~100 files, raw session captures |
 | MEMORY.md | Active | Curated long-term insights (per nous) |
 | Template system | Built | Shared sections + per-nous YAML → compiled AGENTS.md |
