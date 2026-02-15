@@ -12,7 +12,7 @@ Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system
 **Server:** server-host, SERVER_IP (LAN), TAILSCALE_SERVER (Tailscale)
 **OS:** Fedora Server, 15GB RAM
 **Service:** `systemctl status aletheia`
-**Config:** `/home/syn/.aletheia/aletheia.json`
+**Config:** `/home/syn/.openclaw/aletheia.json`
 **Runtime:** Clean-room at `infrastructure/runtime/` (compiled with tsdown)
 
 ## The Nous
@@ -49,8 +49,8 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 │   ├── config/      aletheia.env, tools.yaml
 │   ├── memory/      facts.jsonl (symlinked to all nous)
 │   └── templates/   sections/*.md + agents/*.yaml → compiled workspace files
-├── infrastructure/  Signal-cli, runtime fork — 1.2G
-│   └── runtime/     Forked OpenClaw (patched dist/, local entry point)
+├── infrastructure/  Signal-cli, runtime, memory — 1.2G
+│   └── runtime/     Clean-room Aletheia runtime (TypeScript, tsdown)
 ├── theke/           Obsidian vault (human-facing, symlinks to projects/, gitignored)
 ├── projects/        Backing store — 3.4GB (ardent, vehicle, a2z, etc., gitignored)
 └── archive/         Old stuff + archived scripts — 2.2G (gitignored)
@@ -68,7 +68,7 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 | `aletheia-graph` | Knowledge graph CLI (Neo4j) |
 | `graph-maintain` | Daily: confidence decay, dedup, prune (cron 3am) |
 | `attention-check` | Adaptive awareness scoring (injected into prosoche prompt) |
-| `patch-runtime` | Diff/reapply patches after OpenClaw updates |
+| `patch-runtime` | (legacy — no longer needed with clean-room runtime) |
 | `nous-health` | Monitor nous ecosystem health |
 | `nous-audit` | Audit a nous workspace |
 | `bb` | Blackboard coordination between nous |
