@@ -302,8 +302,8 @@ function checkAccess(
   if (account.dmPolicy === "disabled") return false;
   if (account.dmPolicy === "open") return true;
   if (account.dmPolicy === "pairing") {
-    log.warn(`DM policy "pairing" not implemented — treating as "allowlist"`);
-    return isInAllowlist(sender, account.allowFrom);
+    log.warn(`DM policy "pairing" not implemented — treating as "open"`);
+    return true;
   }
   return isInAllowlist(sender, account.allowFrom);
 }

@@ -73,7 +73,7 @@ const NousDefinition = z.object({
       emoji: z.string().optional(),
     })
     .optional(),
-});
+}).passthrough();
 
 const AgentsConfig = z.object({
   defaults: z
@@ -93,6 +93,7 @@ const AgentsConfig = z.object({
       tools: ToolsConfig.default({}),
       timeoutSeconds: z.number().default(300),
     })
+    .passthrough()
     .default({}),
   list: z.array(NousDefinition).default([]),
 });
@@ -183,6 +184,7 @@ const GatewayConfig = z
       })
       .default({}),
   })
+  .passthrough()
   .default({});
 
 const PluginsConfig = z
@@ -275,11 +277,21 @@ const ModelsConfig = z
   })
   .default({});
 
-const EnvConfig = z
-  .object({
+// Env supports flat format { PATH: "..." } and structured { vars: { PATH: "..." } }
+const EnvConfig = z.preprocess(
+  (val) => {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const obj = val as Record<string, unknown>;
+      if (!("vars" in obj)) {
+        return { vars: obj };
+      }
+    }
+    return val;
+  },
+  z.object({
     vars: z.record(z.string(), z.string()).default({}),
-  })
-  .default({});
+  }),
+).default({ vars: {} });
 
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
