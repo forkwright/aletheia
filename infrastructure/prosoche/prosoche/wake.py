@@ -1,13 +1,18 @@
-# Wake trigger — sends system events to the Aletheia gateway
+# Wake trigger — sends attention events to the Aletheia HTTP gateway
 from __future__ import annotations
 
-import asyncio
+import json
 import time
+import urllib.request
+import urllib.error
 from collections import defaultdict
 
 from loguru import logger
 
 from .scoring import NousScore
+
+# Prosoche config uses "syn" but runtime config uses "main" for Syn (legacy)
+AGENT_ID_MAP = {"syn": "main"}
 
 
 class WakeBudget:
@@ -47,38 +52,44 @@ class WakeBudget:
 async def trigger_wake(score: NousScore, config: dict) -> bool:
     gateway = config.get("gateway", {})
     token = gateway.get("token", "")
+    base_url = gateway.get("url", "http://127.0.0.1:18789")
+    base_url = base_url.replace("ws://", "http://").replace("wss://", "https://")
 
     urgent_items = [s for s in score.top_signals if s.urgency >= 0.8]
     if not urgent_items:
         return False
 
-    text_parts = [f"Attention needed for {score.nous_id}:"]
+    text_parts = ["[prosoche] Attention needed:"]
     for signal in urgent_items[:3]:
         text_parts.append(f"- {signal.summary}")
 
     event_text = "\n".join(text_parts)
+    agent_id = AGENT_ID_MAP.get(score.nous_id, score.nous_id)
 
-    cmd = [
-        "aletheia", "system", "event",
-        "--text", event_text,
-        "--mode", "now",
-    ]
-    if token:
-        cmd.extend(["--token", token])
+    payload = json.dumps({
+        "agentId": agent_id,
+        "message": event_text,
+        "sessionKey": "prosoche",
+    }).encode()
+
+    url = f"{base_url}/api/sessions/send"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode == 0:
-            logger.info(f"Wake triggered for {score.nous_id}: {urgent_items[0].summary}")
-            return True
-        else:
-            logger.warning(f"Wake failed for {score.nous_id}: {stderr.decode()}")
-            return False
+        req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status == 200:
+                logger.info(f"Wake triggered for {score.nous_id}: {urgent_items[0].summary}")
+                return True
+            else:
+                logger.warning(f"Wake failed for {score.nous_id}: HTTP {resp.status}")
+                return False
+    except urllib.error.HTTPError as e:
+        logger.warning(f"Wake failed for {score.nous_id}: HTTP {e.code}")
+        return False
     except Exception as e:
         logger.error(f"Wake trigger error: {e}")
         return False
