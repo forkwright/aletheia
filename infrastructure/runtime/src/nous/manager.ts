@@ -300,6 +300,8 @@ export class NousManager {
           log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
         }
 
+        toolResult = truncateToolResult(toolResult, toolUse.name);
+
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUse.id,
@@ -413,4 +415,27 @@ export class NousManager {
 
     return messages;
   }
+}
+
+const TOOL_RESULT_MAX_CHARS = 12000;
+const TOOL_RESULT_HEAD_LINES = 80;
+const TOOL_RESULT_TAIL_LINES = 40;
+
+function truncateToolResult(result: string, toolName: string): string {
+  if (result.length <= TOOL_RESULT_MAX_CHARS) return result;
+
+  const lines = result.split("\n");
+  if (lines.length <= TOOL_RESULT_HEAD_LINES + TOOL_RESULT_TAIL_LINES) {
+    // Few lines but long content — char-level truncation
+    return result.slice(0, TOOL_RESULT_MAX_CHARS) +
+      `\n\n[truncated: ${result.length} chars, showing first ${TOOL_RESULT_MAX_CHARS}]`;
+  }
+
+  const head = lines.slice(0, TOOL_RESULT_HEAD_LINES).join("\n");
+  const tail = lines.slice(-TOOL_RESULT_TAIL_LINES).join("\n");
+  const omitted = lines.length - TOOL_RESULT_HEAD_LINES - TOOL_RESULT_TAIL_LINES;
+
+  log.info(`Truncated ${toolName} result: ${lines.length} lines → ${TOOL_RESULT_HEAD_LINES}+${TOOL_RESULT_TAIL_LINES} (omitted ${omitted})`);
+
+  return `${head}\n\n[... ${omitted} lines omitted ...]\n\n${tail}`;
 }
