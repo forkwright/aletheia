@@ -353,7 +353,27 @@ export class NousManager {
           i++;
         }
         i--; // Back up — for loop will increment
-        messages.push({ role: "user", content: toolResults });
+
+        // Validate: tool_results must follow an assistant message with matching tool_use blocks.
+        // Old runtime stored tool_results without the preceding assistant tool_use — skip orphans.
+        const prev = messages[messages.length - 1];
+        if (prev?.role === "assistant" && Array.isArray(prev.content)) {
+          const toolUseIds = new Set(
+            (prev.content as ContentBlock[])
+              .filter((b): b is ToolUseBlock => b.type === "tool_use")
+              .map((b) => b.id),
+          );
+          const valid = toolResults.filter((tr) =>
+            "tool_use_id" in tr && toolUseIds.has(tr.tool_use_id),
+          );
+          if (valid.length > 0) {
+            messages.push({ role: "user", content: valid });
+          } else {
+            log.debug("Dropping orphaned tool_results (no matching tool_use)");
+          }
+        } else {
+          log.debug("Dropping orphaned tool_results (no preceding assistant tool_use)");
+        }
       }
     }
 
