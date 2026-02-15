@@ -10,6 +10,13 @@ import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
 
+// Per-million-token costs (USD) — Anthropic pricing as of 2025
+const MODEL_COSTS: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  "claude-opus-4-6":            { input: 15,   output: 75,   cacheRead: 1.5,  cacheWrite: 18.75 },
+  "claude-sonnet-4-5-20250929": { input: 3,    output: 15,   cacheRead: 0.3,  cacheWrite: 3.75 },
+  "claude-haiku-4-5-20251001":  { input: 0.8,  output: 4,    cacheRead: 0.08, cacheWrite: 1 },
+};
+
 // Set after gateway creation — avoids circular dependency
 let cronRef: CronScheduler | null = null;
 let watchdogRef: Watchdog | null = null;
@@ -167,6 +174,19 @@ export function createGateway(
           )
         : 0;
 
+    const byModel = store.getUsageByModel();
+    const costBreakdown = byModel.map((m) => {
+      const rates = MODEL_COSTS[m.model];
+      if (!rates) return { model: m.model, turns: m.turns, cost: null };
+      const cost =
+        (m.inputTokens * rates.input +
+          m.outputTokens * rates.output +
+          m.cacheReadTokens * rates.cacheRead +
+          m.cacheWriteTokens * rates.cacheWrite) / 1_000_000;
+      return { model: m.model, turns: m.turns, cost: Math.round(cost * 1000) / 1000 };
+    });
+    const totalCost = costBreakdown.reduce((s, m) => s + (m.cost ?? 0), 0);
+
     return c.json({
       status: "ok",
       uptime: Math.round(uptime),
@@ -175,6 +195,10 @@ export function createGateway(
       usage: {
         ...metrics.usage,
         cacheHitRate,
+      },
+      cost: {
+        total: Math.round(totalCost * 1000) / 1000,
+        byModel: costBreakdown,
       },
       cron: cronRef?.getStatus() ?? [],
       services: watchdogRef?.getStatus() ?? [],

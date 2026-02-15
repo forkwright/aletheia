@@ -57,13 +57,14 @@ export interface ListenerOpts {
   baseUrl: string;
   abortSignal?: AbortSignal;
   boundGroupIds?: Set<string>;
+  onStatusRequest?: (target: SendTarget) => Promise<void>;
 }
 
 const MAX_CONCURRENT_TURNS = 3;
 let activeTurns = 0;
 
 export async function startListener(opts: ListenerOpts): Promise<void> {
-  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds } = opts;
+  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds, onStatusRequest } = opts;
   const accountPhone = account.account ?? accountId;
 
   log.info(`Starting SSE listener for account ${accountId}`);
@@ -75,7 +76,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
       await consumeEventStream(
         baseUrl,
         accountPhone,
-        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds),
+        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest),
         abortSignal,
       );
       backoff.current = backoff.min;
@@ -179,6 +180,7 @@ function handleEnvelope(
   manager: NousManager,
   client: SignalClient,
   boundGroupIds?: Set<string>,
+  onStatusRequest?: (target: SendTarget) => Promise<void>,
 ): void {
   if (envelope.syncMessage) return;
 
@@ -243,6 +245,15 @@ function handleEnvelope(
     recipient: isGroup ? undefined : sender,
     groupId: isGroup ? groupId : undefined,
   };
+
+  // Status command — bypass agent turn pipeline
+  if (onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
+    log.info("Status command received, handling directly");
+    onStatusRequest(target).catch((err) =>
+      log.warn(`Status command failed: ${err instanceof Error ? err.message : err}`),
+    );
+    return;
+  }
 
   if (account.sendReadReceipts && !isGroup && envelope.timestamp) {
     sendReadReceipt(client, target, envelope.timestamp).catch((err) =>
