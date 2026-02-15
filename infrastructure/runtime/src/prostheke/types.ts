@@ -21,6 +21,7 @@ export interface TurnResult {
   nousId: string;
   sessionId: string;
   responseText: string;
+  messageText: string;
   toolCalls: number;
   inputTokens: number;
   outputTokens: number;

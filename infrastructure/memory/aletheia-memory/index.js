@@ -30,7 +30,12 @@ module.exports = {
       if (!result.nousId || !result.responseText) return;
       if (result.responseText.length < 100) return;
 
-      const transcript = `assistant: ${result.responseText.slice(0, 50000)}`;
+      const parts = [];
+      if (result.messageText) {
+        parts.push(`user: ${result.messageText.slice(0, 10000)}`);
+      }
+      parts.push(`assistant: ${result.responseText.slice(0, 50000)}`);
+      const transcript = parts.join("\n");
 
       // Fire and forget
       mem0Fetch("/add", {

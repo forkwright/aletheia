@@ -11,6 +11,40 @@ NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "aletheia-memory")
 
+FACT_EXTRACTION_PROMPT = """\
+You extract durable personal facts from conversations. Output JSON only.
+
+EXTRACT — lasting facts about the user:
+- Identity: name, age, location, family, relationships
+- Health: diagnoses, medications, conditions, providers
+- Preferences: tools, workflows, food, communication style
+- Skills: programming languages, technical abilities, certifications
+- Possessions: vehicles, devices, property, subscriptions
+- Work: employer, role, projects, colleagues
+- Education: degrees, courses, institutions
+- Interests: hobbies, goals, values
+
+DO NOT EXTRACT:
+- Ongoing tasks ("currently deploying", "working on a bug")
+- Debugging sessions or troubleshooting steps
+- Tool outputs, error messages, or log snippets
+- Transient states ("server is down", "just restarted")
+- Conversational filler ("sure", "let me check")
+- Facts about the AI assistant itself
+- Information already implied by previous context
+
+QUALITY RULES:
+- Each fact must stand alone without session context
+- Use the user's actual name when known, not "the user"
+- Prefer specific over vague ("drives a 2024 4Runner" not "has a vehicle")
+- One fact per entry, no compound sentences
+- Skip if uncertain — fewer quality memories beats many poor ones
+
+Output format:
+{"facts": ["fact one", "fact two"]}
+
+Return {"facts": []} if nothing worth extracting."""
+
 GRAPH_EXTRACTION_PROMPT = (
     "Use ONLY the following relationship types: "
     "KNOWS, LIVES_IN, WORKS_AT, OWNS, USES, PREFERS, "
@@ -61,5 +95,5 @@ MEM0_CONFIG = {
         },
         "custom_prompt": GRAPH_EXTRACTION_PROMPT,
     },
-    "version": "v1.1",
+    "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
 }

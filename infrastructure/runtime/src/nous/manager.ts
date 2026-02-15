@@ -211,6 +211,7 @@ export class NousManager {
             nousId,
             sessionId,
             responseText: text,
+            messageText: msg.text,
             toolCalls: totalToolCalls,
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,
