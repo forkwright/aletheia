@@ -13,7 +13,7 @@ Aletheia (ἀλήθεια — "unconcealment") is a distributed cognition system
 **OS:** Fedora Server, 15GB RAM
 **Service:** `systemctl status aletheia`
 **Config:** `/home/syn/.aletheia/aletheia.json`
-**Runtime:** Local fork at `infrastructure/runtime/` (patched, compiled with tsdown)
+**Runtime:** Clean-room at `infrastructure/runtime/` (compiled with tsdown)
 
 ## The Nous
 
@@ -75,18 +75,23 @@ Each has: `SOUL.md` (character — who they ARE), `AGENTS.md` (operations — co
 
 CLI convention: `--nous` is our flag (e.g. `distill --nous syn`). `--agent` accepted as alias for backward compat.
 
-## Runtime Patches (infrastructure/runtime/dist/)
+## Runtime Architecture (infrastructure/runtime/)
 
-| File | Patch |
-|------|-------|
-| `agents/compaction.js` | Structured MERGE_SUMMARIES_INSTRUCTIONS |
-| `agents/pi-extensions/compaction-safeguard.js` | ALETHEIA_COMPACTION_INSTRUCTIONS for auto-compaction |
-| `agents/bootstrap-files.js` | `runAssembleContext()` pre-bootstrap hook |
-| `agents/workspace.js` | assembled-context.md injection, PROSOCHE.md filename |
-| `agents/system-prompt.js` | Prosoche section naming |
-| `agents/pi-embedded-runner/compact.js` | Post-compaction distillation (async) |
-| `auto-reply/heartbeat.js` | Pre-computed attention-check in prosoche prompt |
-| `auto-reply/reply/memory-flush.js` | Structured distillation prompt, softThreshold 8000 |
+Clean-room Aletheia runtime. No OpenClaw dependencies.
+
+| Module | Purpose |
+|--------|---------|
+| `taxis/` | Config loading + Zod validation |
+| `nous/` | Agent lifecycle, bootstrap, system prompt |
+| `mneme/` | SQLite session store (WAL mode) |
+| `hermeneus/` | Anthropic SDK, model routing |
+| `organon/` | Tool framework + built-in tools |
+| `semeion/` | Signal channel (daemon, client, listener, sender) |
+| `pylon/` | Hono HTTP gateway with auth |
+| `distillation/` | Context distillation pipeline |
+| `prostheke/` | Plugin system with lifecycle hooks |
+| `daemon/` | Process lifecycle, cron scheduler |
+| `koina/` | Shared utilities (logger, crypto, fs, errors) |
 
 ## Data Stores
 
@@ -158,7 +163,7 @@ cd /mnt/ssd && git clone https://github.com/forkwright/aletheia.git
 cd aletheia
 
 # 2. Install runtime deps
-cd infrastructure/runtime && pnpm install && npx tsdown && cd ../..
+cd infrastructure/runtime && npm install && npx tsdown && cd ../..
 
 # 3. Source environment
 echo '. /mnt/ssd/aletheia/shared/config/aletheia.env' >> ~/.bashrc
