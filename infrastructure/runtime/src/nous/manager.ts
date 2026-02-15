@@ -49,11 +49,12 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
   const previous = sessionLocks.get(sessionId) ?? Promise.resolve();
   const current = previous.then(fn, fn);
   sessionLocks.set(sessionId, current);
+  // Suppress unhandled rejection from the .finally() chain — the caller handles the original
   current.finally(() => {
     if (sessionLocks.get(sessionId) === current) {
       sessionLocks.delete(sessionId);
     }
-  });
+  }).catch(() => {});
   return current;
 }
 
