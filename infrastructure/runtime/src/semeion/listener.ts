@@ -61,7 +61,7 @@ export interface ListenerOpts {
 }
 
 const MAX_CONCURRENT_TURNS = 3;
-let activeTurns = 0;
+const activeTurns = new Map<string, number>();
 
 export async function startListener(opts: ListenerOpts): Promise<void> {
   const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds, onStatusRequest } = opts;
@@ -168,6 +168,21 @@ async function consumeEventStream(
         }
       }
     }
+
+    // Flush any remaining event that wasn't terminated by a blank line
+    if (currentEvent.data && (!currentEvent.event || currentEvent.event === "receive")) {
+      try {
+        const payload = JSON.parse(currentEvent.data);
+        const envelope = payload?.envelope as SignalEnvelope | undefined;
+        if (envelope) {
+          onEnvelope(envelope);
+        }
+      } catch (parseErr) {
+        log.warn(
+          `Failed to parse final SSE data: ${parseErr instanceof Error ? parseErr.message : parseErr}`,
+        );
+      }
+    }
   } finally {
     reader.releaseLock();
   }
@@ -183,9 +198,9 @@ function handleEnvelope(
   onStatusRequest?: (target: SendTarget) => Promise<void>,
 ): void {
   if (envelope.syncMessage) return;
+  if (envelope.editMessage) return;
 
-  const dataMessage =
-    envelope.editMessage?.dataMessage ?? envelope.dataMessage;
+  const dataMessage = envelope.dataMessage;
   if (!dataMessage) return;
 
   // Accept messages with text, quoted text, or attachments
@@ -229,8 +244,8 @@ function handleEnvelope(
   // Append attachment info so the agent is aware
   if (dataMessage.attachments?.length) {
     for (const att of dataMessage.attachments) {
-      const name = att.filename ?? "unnamed";
-      const type = att.contentType ?? "unknown";
+      const name = sanitizeAttachmentField(att.filename ?? "unnamed");
+      const type = sanitizeAttachmentField(att.contentType ?? "unknown");
       const size = att.size ? `${Math.round(att.size / 1024)}KB` : "unknown size";
       text += `\n[Attachment: ${name} (${type}, ${size})${att.id ? ` id=${att.id}` : ""}]`;
     }
@@ -280,8 +295,9 @@ function handleEnvelope(
   };
 
   // Concurrency guard — reject if at limit to protect API and SQLite
-  if (activeTurns >= MAX_CONCURRENT_TURNS) {
-    log.warn(`Concurrency limit reached (${activeTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
+  const accountTurns = activeTurns.get(accountId) ?? 0;
+  if (accountTurns >= MAX_CONCURRENT_TURNS) {
+    log.warn(`Concurrency limit reached for ${accountId} (${accountTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
     sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false })
       .catch((err) => log.warn(`Failed to send busy message: ${err}`));
     return;
@@ -289,9 +305,14 @@ function handleEnvelope(
 
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
   // while different nous/sessions process concurrently
-  activeTurns++;
+  activeTurns.set(accountId, accountTurns + 1);
   processTurn(manager, msg, client, target).finally(() => {
-    activeTurns--;
+    const current = activeTurns.get(accountId) ?? 1;
+    if (current <= 1) {
+      activeTurns.delete(accountId);
+    } else {
+      activeTurns.set(accountId, current - 1);
+    }
   });
 }
 
@@ -412,6 +433,10 @@ function hydrateMentions(
   }
 
   return result.trim();
+}
+
+function sanitizeAttachmentField(value: string): string {
+  return value.replace(/[\n\r\0\[\]]/g, "");
 }
 
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {

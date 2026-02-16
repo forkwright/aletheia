@@ -9,7 +9,7 @@ QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "aletheia-memory")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 
 FACT_EXTRACTION_PROMPT = """\
 You extract durable personal facts from conversations. Output JSON only.
@@ -93,7 +93,7 @@ MEM0_CONFIG = {
             "password": NEO4J_PASSWORD,
             "base_label": True,
         },
-        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
     },
+    "custom_prompt": GRAPH_EXTRACTION_PROMPT,
     "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
 }

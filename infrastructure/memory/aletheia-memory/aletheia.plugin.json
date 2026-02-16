@@ -2,22 +2,5 @@
   "id": "aletheia-memory",
   "name": "Aletheia Memory",
   "description": "Dual-layer memory system with Mem0 extraction and cross-agent recall",
-  "version": "1.0.0",
-  "configSchema": {
-    "type": "object",
-    "properties": {
-      "sidecarUrl": {
-        "type": "string",
-        "default": "http://127.0.0.1:8230"
-      },
-      "userId": {
-        "type": "string",
-        "default": "ck"
-      },
-      "enabled": {
-        "type": "boolean",
-        "default": true
-      }
-    }
-  }
+  "version": "1.0.0"
 }

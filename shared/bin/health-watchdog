@@ -1,6 +1,8 @@
 #!/bin/bash
 set -eo pipefail
 # Health watchdog for Aletheia — checks all critical services
+# Requires: sudoers entry for syn to restart aletheia without password
+# e.g. syn ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart aletheia
 
 LOG="/tmp/aletheia-watchdog.log"
 CODY_UUID="9711115e-8531-462f-87d2-6c152077616d"

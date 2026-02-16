@@ -38,7 +38,7 @@ CRITICAL_DIRS = [
 ]
 
 # Services to check
-SERVICES = ["autarkia"]
+SERVICES = ["aletheia"]
 
 
 def file_hash(path: Path) -> str:
@@ -66,7 +66,7 @@ def check_health() -> dict:
     # 1. Gateway process running?
     try:
         result = subprocess.run(
-            ["pgrep", "-f", "aletheia-gateway|aletheia gateway"],
+            ["pgrep", "-f", "aletheia"],
             capture_output=True, timeout=5
         )
         running = result.returncode == 0
@@ -242,7 +242,7 @@ def cmd_restore(label: str = None):
 
     print(f"\nRestored {restored} files")
     if restored > 0:
-        print("Restart the gateway to apply: sudo systemctl restart autarkia")
+        print("Restart the gateway to apply: sudo systemctl restart aletheia")
 
 
 def cmd_list():

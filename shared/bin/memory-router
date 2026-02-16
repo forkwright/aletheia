@@ -26,18 +26,19 @@ from pathlib import Path
 from typing import List, Dict, Set, Optional, Tuple
 
 # Configuration
-SHARED_DIR = Path("${ALETHEIA_SHARED:-${ALETHEIA_ROOT:-/mnt/ssd/aletheia}/shared}")
+SHARED_DIR = Path(os.environ.get("ALETHEIA_SHARED", os.path.join(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"), "shared")))
 BASE_DIR = SHARED_DIR.parent
 FACTS_FILE = SHARED_DIR / "memory" / "facts.jsonl"
 
 # Agent workspace paths
+NOUS_DIR = Path(os.environ.get("ALETHEIA_NOUS", str(BASE_DIR / "nous")))
 AGENT_DIRS = {
-    "syn": BASE_DIR / "syn",
-    "syl": BASE_DIR / "syl",
-    "eiron": BASE_DIR / "eiron",
-    "demiurge": BASE_DIR / "demiurge",
-    "arbor": BASE_DIR / "arbor",
-    "akron": BASE_DIR / "akron",
+    "syn": NOUS_DIR / "syn",
+    "syl": NOUS_DIR / "syl",
+    "eiron": NOUS_DIR / "eiron",
+    "demiurge": NOUS_DIR / "demiurge",
+    "arbor": NOUS_DIR / "arbor",
+    "akron": NOUS_DIR / "akron",
 }
 
 # Domain keywords for auto-routing
@@ -286,7 +287,7 @@ class ExactMatchStrategy(RetrievalStrategy):
             # Search daily files with recency boost
             memory_dir = workspace / "memory"
             if memory_dir.exists():
-                for daily_file in sorted(memory_dir.glob("2026-*.md"), reverse=True)[:14]:
+                for daily_file in sorted(memory_dir.glob("[0-9][0-9][0-9][0-9]-*.md"), reverse=True)[:14]:
                     try:
                         # Calculate recency boost
                         file_date_str = daily_file.stem

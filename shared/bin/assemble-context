@@ -107,12 +107,13 @@ def get_domain_knowledge(agent_id, limit=8):
     try:
         cypher = (
             "MATCH (s:`__Entity__`)-[r]->(o:`__Entity__`) "
-            "WHERE s.domain = '" + domain + "' AND r.confidence >= 0.7 "
+            "WHERE s.domain = $domain AND r.confidence >= 0.7 "
             "RETURN s.name, type(r), o.name "
-            "ORDER BY r.confidence DESC LIMIT " + str(limit)
+            "ORDER BY r.confidence DESC LIMIT $limit"
         )
         result = subprocess.run(
-            ["aletheia-graph", "query", cypher],
+            ["aletheia-graph", "query", cypher,
+             "--param", f"domain={domain}", "--param", f"limit={limit}"],
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0 and result.stdout.strip():

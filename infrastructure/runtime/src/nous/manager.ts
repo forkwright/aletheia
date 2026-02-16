@@ -34,6 +34,7 @@ export interface InboundMessage {
   accountId?: string;
   mediaUrls?: string[];
   model?: string;
+  depth?: number;
 }
 
 export interface TurnOutcome {
@@ -65,6 +66,8 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
 
 export class NousManager {
   private plugins?: PluginRegistry;
+  activeTurns = 0;
+  isDraining: () => boolean = () => false;
 
   constructor(
     private config: AletheiaConfig,
@@ -82,6 +85,15 @@ export class NousManager {
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
+    if (this.isDraining()) {
+      throw new Error("Runtime is shutting down — rejecting new messages");
+    }
+
+    const maxDepth = this.config.session.agentToAgent.maxPingPongTurns;
+    if (msg.depth && msg.depth >= maxDepth) {
+      throw new Error(`Cross-agent depth limit (${maxDepth}) exceeded`);
+    }
+
     const nousId = this.resolveNousId(msg);
     const nous = resolveNous(this.config, nousId);
     if (!nous) {
@@ -98,9 +110,14 @@ export class NousManager {
     );
 
     // Serialize concurrent turns on the same session
-    return withSessionLock(session.id, () =>
-      this.executeTurn(nousId, session.id, sessionKey, model, msg, nous),
-    );
+    this.activeTurns++;
+    try {
+      return await withSessionLock(session.id, () =>
+        this.executeTurn(nousId, session.id, sessionKey, model, msg, nous),
+      );
+    } finally {
+      this.activeTurns--;
+    }
   }
 
   private async executeTurn(
@@ -144,6 +161,7 @@ export class NousManager {
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
     // Surface unsurfaced cross-agent messages into this session
+    let crossAgentNotice: string | null = null;
     const unsurfaced = this.store.getUnsurfacedMessages(nousId);
     if (unsurfaced.length > 0) {
       const lines = unsurfaced.map((m) => {
@@ -151,13 +169,13 @@ export class NousManager {
         const summary = m.response ? `\n  Response: ${m.response.slice(0, 500)}` : "";
         return `[From ${from}, ${m.kind}] ${m.content}${summary}`;
       });
-      const notice =
+      crossAgentNotice =
         `While you were in another conversation, you received cross-agent messages:\n\n` +
         lines.join("\n\n") +
         `\n\nThe user may not be aware of these. Mention them if relevant.`;
 
-      this.store.appendMessage(sessionId, "user", notice, {
-        tokenEstimate: estimateTokens(notice),
+      this.store.appendMessage(sessionId, "user", crossAgentNotice, {
+        tokenEstimate: estimateTokens(crossAgentNotice),
       });
       this.store.markMessagesSurfaced(
         unsurfaced.map((m) => m.id),
@@ -170,12 +188,19 @@ export class NousManager {
       tokenEstimate: estimateTokens(msg.text),
     });
 
-    const messages = this.buildMessages(history, msg.text);
+    // Build messages from history, injecting any cross-agent notice before current text.
+    // The notice was stored in DB but history was fetched before it was appended,
+    // so we must inject it manually for the current turn.
+    const currentText = crossAgentNotice
+      ? crossAgentNotice + "\n\n" + msg.text
+      : msg.text;
+    const messages = this.buildMessages(history, currentText);
 
     const toolContext: ToolContext = {
       nousId,
       sessionId,
       workspace,
+      depth: msg.depth ?? 0,
     };
 
     if (this.plugins) {
@@ -441,7 +466,24 @@ export class NousManager {
       content: currentText,
     });
 
-    return messages;
+    // Merge consecutive user messages to prevent Anthropic 400 errors
+    const merged: MessageParam[] = [];
+    for (const m of messages) {
+      const prev = merged[merged.length - 1];
+      if (
+        prev &&
+        prev.role === "user" &&
+        m.role === "user" &&
+        typeof prev.content === "string" &&
+        typeof m.content === "string"
+      ) {
+        prev.content = prev.content + "\n\n" + m.content;
+      } else {
+        merged.push({ ...m });
+      }
+    }
+
+    return merged;
   }
 }
 

@@ -57,14 +57,10 @@
   },
   "resources": {
     "tools": [
-      "mba status",
-      "mba tasks",
-      "mba prep",
-      "mba sync",
-      "gdrive school",
-      "temporal-graph",
-      "memory-router",
-      "bb"
+      "exec", "read", "write", "edit", "grep", "find", "ls",
+      "web_fetch", "web_search_brave", "browser", "mem0_search", "message",
+      "sessions_send", "sessions_ask", "sessions_spawn",
+      "config_read"
     ],
     "data_access": [
       "MBA course materials (synced from Metis)",

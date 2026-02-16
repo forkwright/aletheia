@@ -57,10 +57,10 @@
   },
   "resources": {
     "tools": [
-      "temporal-graph",
-      "memory-router",
-      "web_search",
-      "bb"
+      "exec", "read", "write", "edit", "grep", "find", "ls",
+      "web_fetch", "web_search_brave", "browser", "mem0_search", "message",
+      "sessions_send", "sessions_ask", "sessions_spawn",
+      "config_read"
     ],
     "data_access": [
       "A2Z business files",

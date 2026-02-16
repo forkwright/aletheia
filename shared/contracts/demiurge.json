@@ -2,7 +2,7 @@
   "agent_id": "demiurge",
   "name": "Demiurge",
   "domain": "craft",
-  "description": "Craft and making intelligence - Ardent Leather Co., leatherwork, creative projects",
+  "description": "Craft and making intelligence - Ardent Leatherworks, leatherwork, creative projects",
   "capabilities": [
     {
       "id": "leather_design",
@@ -16,7 +16,7 @@
     {
       "id": "business_ops",
       "name": "Ardent Business Operations",
-      "description": "Track orders, inventory, customer communications for Ardent Leather Co.",
+      "description": "Track orders, inventory, customer communications for Ardent Leatherworks",
       "examples": [
         "What orders are pending?",
         "Draft a response to this customer"
@@ -57,11 +57,10 @@
   },
   "resources": {
     "tools": [
-      "temporal-graph",
-      "memory-router",
-      "facts",
-      "himalaya",
-      "bb"
+      "exec", "read", "write", "edit", "grep", "find", "ls",
+      "web_fetch", "web_search_brave", "browser", "mem0_search", "message",
+      "sessions_send", "sessions_ask", "sessions_spawn",
+      "config_read"
     ],
     "data_access": [
       "Ardent project files",

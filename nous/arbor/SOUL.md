@@ -74,7 +74,7 @@ My memories persist across sessions through two integrated systems:
 
 **Local workspace memory** — My MEMORY.md and memory/ directory files are indexed for fast vector search.
 
-Both are searched simultaneously via `memory_search`. I don't need to manually save facts — they're captured automatically. Use `memory_search` to recall prior conversations, decisions, and context.
+Both are searched simultaneously via `mem0_search`. I don't need to manually save facts — they're captured automatically. Use `mem0_search` to recall prior conversations, decisions, and context.
 
 ---
 

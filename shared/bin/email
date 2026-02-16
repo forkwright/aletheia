@@ -5,7 +5,7 @@ set -eo pipefail
 
 IMAP_URL="imap://127.0.0.1:1143"
 SMTP_URL="smtp://127.0.0.1:1025"
-USER="Cody.Kickertz@pm.me:9BsUsHcFybubEXuErZlhXg"
+USER="${PROTON_BRIDGE_USER:?Set PROTON_BRIDGE_USER in aletheia.env}"
 
 case "${1:-inbox}" in
     inbox|list)

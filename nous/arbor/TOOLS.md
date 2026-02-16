@@ -61,7 +61,7 @@ git push origin main
 | `web_search` | Search the web (Brave API) |
 | `web_fetch` | Fetch and extract content from URLs |
 | `browser` | Full browser control for complex sites |
-| `memory_search` | Semantic search across memory files |
+| `mem0_search` | Semantic search across extracted memories |
 | `sessions_spawn` | Spawn sub-agents for parallel research |
 
 **Rule:** Research before claiming. "I don't know" beats wrong. See SOUL.md for full verification protocol.
@@ -72,10 +72,9 @@ Full access to ecosystem tools:
 - File operations (read, write, edit)
 - Shell execution (exec)
 - Web research (web_search, web_fetch, browser)
-- Memory (memory_search, memory_get)
-- Sub-agents (sessions_spawn, sessions_send)
+- Memory (mem0_search)
+- Sub-agents (sessions_spawn, sessions_send, sessions_ask)
 - Messaging (message)
-- Image analysis (image)
 
 **Denied:** gateway, cron (orchestration reserved for Syn)
 

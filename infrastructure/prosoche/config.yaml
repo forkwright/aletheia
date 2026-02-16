@@ -5,7 +5,7 @@ nous_root: /mnt/ssd/aletheia/nous
 shared_bin: /mnt/ssd/aletheia/shared/bin
 
 gateway:
-  token: 1ce0f5d7ebf2121598c5916ddd8e335f599946ab28d0ded9
+  token: ${PROSOCHE_GATEWAY_TOKEN}
   url: ws://127.0.0.1:18789
 
 quiet_hours:

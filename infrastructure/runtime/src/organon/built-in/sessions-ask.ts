@@ -1,5 +1,5 @@
 // Synchronous cross-agent messaging — waits for response
-import type { ToolHandler } from "../registry.js";
+import type { ToolHandler, ToolContext } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 
@@ -39,7 +39,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
     },
     async execute(
       input: Record<string, unknown>,
-      context: { nousId: string; sessionId: string },
+      context: ToolContext,
     ): Promise<string> {
       const agentId = input.agentId as string;
       const message = input.message as string;
@@ -82,6 +82,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
             channel: "internal",
             peerKind: "agent",
             peerId: context.nousId,
+            depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
         ]);

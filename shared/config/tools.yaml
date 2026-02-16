@@ -63,22 +63,8 @@ tasks:
     week: "tw week"
   namespaces: {syn: "project:infra,project:personal,project:aletheia"}
 
-todoist:
-  tool: mcporter
-  projects:
-    inbox: "6fMGGrWFxP5qVrQj"
-    personal: "6fMGHP6prqhwF4Mh"
-    summus: "6fMGHj4w8Qx2m88M"
-    temba: "6fMGJQh8fpJ6cQ3W"
-    alethia: "6fh76Qgxfq88Xj3v"
-  commands:
-    list: "mcporter call todoist.todoist_task_get"
-    create: "mcporter call todoist.todoist_task_create --args '{\"content\":\"...\"}'"
-    complete: "mcporter call todoist.todoist_task_complete --args '{\"task_name\":\"...\"}'"
-    quick_add: "mcporter call todoist.todoist_task_quick_add --args '{\"text\":\"...\"}'"
-
 memory:
-  memory_search: "memory_search tool (agents use via plugin — searches sqlite-vec + Mem0)"
+  mem0_search: "mem0_search tool (agents use via plugin — searches Qdrant + Neo4j via Mem0)"
   knowledge_graph:
     db: neo4j
     commands:
@@ -132,9 +118,6 @@ agents:
   route: "nous-contracts route \"request\""
 
 runtime:
-  patches:
-    signal_group_id: {file: "normalize/signal.js", bug: ".toLowerCase() breaks base64 group IDs"}
-    apply: "patch-runtime (in shared/bin/)"
   config:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"

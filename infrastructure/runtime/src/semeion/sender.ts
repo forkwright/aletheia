@@ -25,30 +25,30 @@ export async function sendMessage(
 ): Promise<void> {
   const useMarkdown = opts?.markdown !== false;
 
-  let message = text;
-  let textStyle: string[] | undefined;
-
-  if (useMarkdown) {
-    const formatted = formatForSignal(text);
-    message = formatted.text;
-    if (formatted.styles.length > 0) {
-      textStyle = stylesToSignalParam(formatted.styles);
-    }
-  }
-
-  const chunks = splitMessage(message, 2000);
+  const chunks = splitMessage(text, 2000);
 
   for (let i = 0; i < chunks.length; i++) {
     const isLast = i === chunks.length - 1;
 
+    let message = chunks[i];
+    let textStyle: string[] | undefined;
+
+    if (useMarkdown) {
+      const formatted = formatForSignal(message);
+      message = formatted.text;
+      if (formatted.styles.length > 0) {
+        textStyle = stylesToSignalParam(formatted.styles);
+      }
+    }
+
     await client.send({
-      message: chunks[i],
+      message,
       recipient: target.recipient,
       groupId: target.groupId,
       username: target.username,
       account: target.account,
       attachments: isLast ? opts?.attachments : undefined,
-      textStyle: i === 0 ? textStyle : undefined,
+      textStyle,
     });
   }
 
@@ -113,6 +113,12 @@ function splitMessage(text: string, maxLen: number): string[] {
     }
     if (splitAt === -1 || splitAt < maxLen * 0.3) {
       splitAt = maxLen;
+    }
+
+    // Avoid splitting in the middle of a surrogate pair
+    const code = remaining.charCodeAt(splitAt - 1);
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      splitAt--;
     }
 
     chunks.push(remaining.slice(0, splitAt));

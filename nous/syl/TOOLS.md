@@ -1,6 +1,6 @@
 # TOOLS.md - Syl's Tools
 
-> **Shared tools:** See [TOOLS-INFRASTRUCTURE.md](/mnt/ssd/aletheia/shared/TOOLS-INFRASTRUCTURE.md) for common commands (gcal, gdrive, tw, memory_search, pplx, facts, mcporter).
+> **Shared tools:** All tools available via exec. Shell scripts in `/mnt/ssd/aletheia/shared/bin/` are on PATH.
 
 
 ## Google Calendar
@@ -9,19 +9,19 @@ Check and manage Cooper's schedule and family events:
 
 ```bash
 # List calendars
-./bin/gcal calendars
+/mnt/ssd/aletheia/shared/bin/gcal calendars
 
 # Cooper's schedule (Family calendar)
-./bin/gcal events -c "family13408790289857991137@group.calendar.google.com" -d 3
+/mnt/ssd/aletheia/shared/bin/gcal events -c "family13408790289857991137@group.calendar.google.com" -d 3
 
 # Today's family events
-./bin/gcal today -c "family13408790289857991137@group.calendar.google.com"
+/mnt/ssd/aletheia/shared/bin/gcal today -c "family13408790289857991137@group.calendar.google.com"
 
 # Add timed event
-./bin/gcal add "Event title" -c "family13408790289857991137@group.calendar.google.com" -s "2026-01-29T14:00" -e "2026-01-29T15:00"
+/mnt/ssd/aletheia/shared/bin/gcal add "Event title" -c "family13408790289857991137@group.calendar.google.com" -s "2026-01-29T14:00" -e "2026-01-29T15:00"
 
 # Add all-day event
-./bin/gcal add "Event" -c "family13408790289857991137@group.calendar.google.com" -s "2026-01-29" --all-day
+/mnt/ssd/aletheia/shared/bin/gcal add "Event" -c "family13408790289857991137@group.calendar.google.com" -s "2026-01-29" --all-day
 ```
 
 **Calendar IDs:**
@@ -32,7 +32,7 @@ Check and manage Cooper's schedule and family events:
 ## Kendall's Work Calendar (Outlook)
 
 ```bash
-./bin/ical events kendall-work --days 3
+/mnt/ssd/aletheia/shared/bin/ical events kendall-work --days 3
 ```
 
 Note: Shows free/busy status only (not event titles) due to Outlook privacy settings. ✅
@@ -40,8 +40,8 @@ Note: Shows free/busy status only (not event titles) due to Outlook privacy sett
 ## Perplexity (Research)
 
 ```bash
-./bin/pplx "your question here"
-./bin/pplx "your question" --sources  # include source URLs
+/mnt/ssd/aletheia/shared/bin/pplx "your question here"
+/mnt/ssd/aletheia/shared/bin/pplx "your question" --sources  # include source URLs
 ```
 
 Great for fact-checking, research, current events.
@@ -49,10 +49,10 @@ Great for fact-checking, research, current events.
 ## Grocery List Management
 
 ```bash
-./bin/grocery list                           # show current list
-./bin/grocery add "milk" -q 2 -c dairy       # add item with quantity/category
-./bin/grocery remove 1                       # remove item by index
-./bin/grocery clear                          # clear entire list
+/mnt/ssd/aletheia/shared/bin/grocery list                           # show current list
+/mnt/ssd/aletheia/shared/bin/grocery add "milk" -q 2 -c dairy       # add item with quantity/category
+/mnt/ssd/aletheia/shared/bin/grocery remove 1                       # remove item by index
+/mnt/ssd/aletheia/shared/bin/grocery clear                          # clear entire list
 ```
 
 For managing HEB shopping lists as needed by Kendall/Cody.
@@ -69,12 +69,12 @@ Built-in capability for reading PDF documents.
 ## Task Management
 
 ```bash
-./bin/tw                                     # show next actions
-./bin/tw add "task" project:family priority:M due:2026-02-01
-./bin/tw done 1                              # complete task #1
-./bin/tw list                                # all tasks  
-./bin/tw today                               # due today
-./bin/tw week                                # due this week
+/mnt/ssd/aletheia/shared/bin/tw                                     # show next actions
+/mnt/ssd/aletheia/shared/bin/tw add "task" project:family priority:M due:2026-02-01
+/mnt/ssd/aletheia/shared/bin/tw done 1                              # complete task #1
+/mnt/ssd/aletheia/shared/bin/tw list                                # all tasks  
+/mnt/ssd/aletheia/shared/bin/tw today                               # due today
+/mnt/ssd/aletheia/shared/bin/tw week                                # due this week
 ```
 
 Projects: `family`, `cody`, `kendall`, `household`. Priorities: H/M/L.
@@ -91,26 +91,6 @@ sessions_send with sessionKey "agent:main:main" and your message
 
 *Updated: 2026-01-28*
 
-## Task Management
-
-**Namespace:** `project:home`
-
-```bash
-# Add home task
-tw add "description" project:home priority:M
-
-# Subprojects
-tw add "..." project:home.calendar    # Family calendar items
-tw add "..." project:home.errands     # Shopping, pickups
-tw add "..." project:home.maintenance # House maintenance
-
-# View home tasks
-tw project:home
-tw project:home +urgent
-```
-
-**Tags:** +errand, +appointment, +kendall, +family, +blocked, +review
-
 ## Memory
 
-Use the `memory_search` tool for semantic recall across local workspace files and long-term extracted memories (shared + domain-specific). Facts are automatically extracted from conversations.
+Use the `mem0_search` tool for semantic recall across extracted memories. Facts are automatically extracted from conversations.

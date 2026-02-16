@@ -71,7 +71,7 @@ def enforce():
 
 def reload_gateway():
     import subprocess
-    result = subprocess.run(["pgrep", "-f", "aletheia-gateway"], capture_output=True, text=True)
+    result = subprocess.run(["pgrep", "-f", "aletheia"], capture_output=True, text=True)
     pid = result.stdout.strip().split("\n")[0] if result.stdout.strip() else None
     if pid:
         os.kill(int(pid), signal.SIGUSR1)

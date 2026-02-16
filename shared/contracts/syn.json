@@ -51,15 +51,16 @@
     }
   ],
   "interfaces": {
-    "session_key": "agent:syn:main",
+    "session_key": "agent:main:main",
     "signal_bindings": ["default"],
     "workspace": "/mnt/ssd/aletheia/nous/syn"
   },
   "resources": {
     "tools": [
-      "temporal-graph", "memory-router", "consolidate-memory",
-      "agent-health", "bb", "task-create", "task-send",
-      "gcal", "tw", "facts", "letta"
+      "exec", "read", "write", "edit", "grep", "find", "ls",
+      "web_fetch", "web_search_brave", "browser", "mem0_search", "message",
+      "sessions_send", "sessions_ask", "sessions_spawn",
+      "config_read"
     ],
     "data_access": [
       "All agent workspaces (read)",

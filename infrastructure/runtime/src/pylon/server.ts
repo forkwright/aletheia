@@ -1,6 +1,7 @@
 // Hono HTTP gateway
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
@@ -9,6 +10,13 @@ import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("pylon");
+
+function safeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 // Set after gateway creation — avoids circular dependency
 let cronRef: CronScheduler | null = null;
@@ -40,7 +48,7 @@ export function createGateway(
         ? header.slice(7)
         : c.req.query("token");
 
-      if (token !== authToken) {
+      if (!safeCompare(token ?? "", authToken)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
     } else if (authMode === "password" && authToken) {
@@ -51,12 +59,18 @@ export function createGateway(
       }
       const decoded = Buffer.from(header.slice(6), "base64").toString();
       const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-      if (password !== authToken) {
+      if (!safeCompare(password, authToken)) {
         return c.json({ error: "Invalid credentials" }, 401);
       }
     }
 
     return next();
+  });
+
+  // Global error handler — log details server-side, return generic message to client
+  app.onError((err, c) => {
+    log.error(`Unhandled error on ${c.req.method} ${c.req.path}: ${err.message}`);
+    return c.json({ error: "Internal server error" }, 500);
   });
 
   app.get("/health", (c) =>
@@ -85,7 +99,13 @@ export function createGateway(
   });
 
   app.post("/api/sessions/send", async (c) => {
-    const body = await c.req.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
     const { agentId, message, sessionKey } = body as {
       agentId: string;
       message: string;
@@ -117,7 +137,7 @@ export function createGateway(
       const msg =
         error instanceof Error ? error.message : String(error);
       log.error(`Session send failed: ${msg}`);
-      return c.json({ error: msg }, 500);
+      return c.json({ error: "Internal error processing message" }, 500);
     }
   });
 

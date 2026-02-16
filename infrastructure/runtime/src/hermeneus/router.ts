@@ -90,14 +90,44 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
 
   // Load OAuth token from credentials if ANTHROPIC_AUTH_TOKEN not in env
   let authToken: string | undefined;
-  if (!process.env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
+  const envAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  const envApiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!envAuthToken && !envApiKey) {
+    const home = process.env.HOME ?? "/home/syn";
+    const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
     try {
-      const home = process.env.HOME ?? "/home/syn";
-      const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
-      const creds = JSON.parse(readFileSync(credPath, "utf-8"));
-      authToken = creds.token;
-      if (authToken) log.info("Loaded OAuth token from credentials");
-    } catch {}
+      const raw = readFileSync(credPath, "utf-8");
+      let creds: unknown;
+      try {
+        creds = JSON.parse(raw);
+      } catch {
+        log.warn(`Credential file ${credPath} contains invalid JSON — skipping`);
+      }
+      if (creds && typeof creds === "object" && "token" in (creds as Record<string, unknown>)) {
+        const token = (creds as Record<string, string>).token;
+        if (typeof token === "string" && token.length > 0) {
+          authToken = token;
+          log.info("Loaded OAuth token from credentials");
+        } else {
+          log.warn(`Credential file ${credPath} has empty or non-string token field`);
+        }
+      } else {
+        log.warn(`Credential file ${credPath} missing "token" field — expected { "token": "sk-ant-..." }`);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        log.warn(`Credential file not found: ${credPath}`);
+      } else {
+        log.warn(`Failed to read credential file ${credPath}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  } else {
+    log.info(`Using ${envAuthToken ? "ANTHROPIC_AUTH_TOKEN" : "ANTHROPIC_API_KEY"} from environment`);
+  }
+
+  if (!authToken && !envAuthToken && !envApiKey) {
+    log.error("No Anthropic authentication configured — no env vars, no credential file. API calls WILL fail.");
   }
 
   // Use model IDs from config if available, otherwise empty list
