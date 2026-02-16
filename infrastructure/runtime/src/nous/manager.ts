@@ -2,7 +2,7 @@
 import { createLogger } from "../koina/logger.js";
 import { SessionStore, type Message } from "../mneme/store.js";
 import { ProviderRouter } from "../hermeneus/router.js";
-import { estimateTokens } from "../hermeneus/token-counter.js";
+import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
 import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
 import { shouldDistill, distillSession } from "../distillation/pipeline.js";
@@ -152,6 +152,19 @@ export class NousManager {
       skillsSection: this.skillsSection,
     });
 
+    // Store bootstrap hash for diff detection across sessions
+    this.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
+    const previousHash = this.store.getLastBootstrapHash(nousId);
+    if (previousHash && previousHash !== bootstrap.contentHash) {
+      log.info(
+        `Bootstrap changed for ${nousId}: ${previousHash.slice(0, 8)} → ${bootstrap.contentHash.slice(0, 8)} ` +
+        `(files: ${Object.keys(bootstrap.fileHashes).join(", ")})`,
+      );
+    }
+    if (bootstrap.droppedFiles.length > 0) {
+      log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
+    }
+
     const systemPrompt = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
@@ -162,10 +175,8 @@ export class NousManager {
       deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
     });
 
-    // Tool definitions count toward the input token budget — estimate and subtract
-    const toolDefTokens = toolDefs.length > 0
-      ? estimateTokens(JSON.stringify(toolDefs))
-      : 0;
+    // Tool definitions count toward the input token budget — estimate with safety margin
+    const toolDefTokens = estimateToolDefTokens(toolDefs);
 
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
@@ -293,6 +304,9 @@ export class NousManager {
           `${totalToolCalls} tool calls`,
         );
 
+        // Store actual API-reported context consumption for accurate distillation triggering
+        this.store.updateSessionActualTokens(sessionId, totalInputTokens);
+
         if (this.plugins) {
           await this.plugins.dispatchAfterTurn({
             nousId,
@@ -305,18 +319,19 @@ export class NousManager {
           });
         }
 
-        // Auto-trigger distillation when context grows too large
+        // Auto-trigger distillation using actual API-reported input tokens (most accurate)
+        // Falls back to heuristic estimate if actual tokens aren't available
         const compaction = this.config.agents.defaults.compaction;
         const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
         try {
-          if (await shouldDistill(this.store, sessionId, { threshold: distillThreshold, minMessages: 10 })) {
-            const session = this.store.findSessionById(sessionId);
-            const utilization = session
-              ? Math.round((session.tokenCountEstimate / contextTokens) * 100)
-              : 0;
+          const session = this.store.findSessionById(sessionId);
+          const actualContext = session?.lastInputTokens ?? session?.tokenCountEstimate ?? 0;
+          if (session && session.messageCount >= 10 && actualContext >= distillThreshold) {
+            const utilization = Math.round((actualContext / contextTokens) * 100);
             log.info(
               `Distillation triggered for ${nousId} session=${sessionId} ` +
-              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
+              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%, ` +
+              `actual=${actualContext} tokens)`,
             );
             const distillModel = compaction.distillationModel;
             await distillSession(this.store, this.router, sessionId, nousId, {

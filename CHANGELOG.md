@@ -1,5 +1,86 @@
 # Changelog
 
+## [2026-02-16] - Foundation quality (Phase 0)
+
+### Changed
+- **Token counter** — added SAFETY_MARGIN (1.15), `estimateTokensSafe()`, `estimateToolDefTokens()` with per-tool overhead accounting
+- **Bootstrap assembly** — SHA-256 content hashing (per-file + composite), dropped-file tracking, degraded-mode service injection, section-aware truncation preserving markdown headers
+- **Extraction prompt** — domain-aware rewrite with anti-temporal rules, quality filters, contradiction detection, [UNCERTAIN] prefix for uncertain facts
+- **Summarization** — agent-context-aware prompts via nousId, anti-photocopying instruction for repeated distillation
+- **Distillation pipeline** — concurrent distillation guard, memory flush with 3x exponential backoff retry, compression ratio check (re-summarizes if > 50%), tool result sanitization (8KB cap), distillation counter with archive warning at 3+, `[Distillation #N]` markers
+- **Multi-stage summarization** — large conversations split by token share, chunk summaries merged; adapted from OpenClaw's `summarizeInStages` pattern
+- **DB migration v4** — `last_input_tokens`, `bootstrap_hash`, `distillation_count` columns on sessions
+- **Distillation trigger** — uses actual API-reported `usage.inputTokens` instead of heuristic estimate
+- Build size: 177KB → 190KB (+13KB for chunked summarization module)
+
+---
+
+## [2026-02-16] - Capability rebuild (Phases 1-5)
+
+### Added
+- **Signal command registry** — 10 built-in `!` commands: ping, help, status, sessions, reset, agent, skills, approve, deny, contacts
+  - Commands intercepted before agent turn pipeline (no API call wasted)
+  - `CommandRegistry` class with register/match/listAll pattern
+- **Link pre-processing** — auto-fetches up to 3 URLs in messages, appends title + content previews
+  - SSRF guard blocks private IP ranges (reuses `ssrf-guard.ts`)
+- **Media understanding** — image attachments converted to Anthropic vision content blocks
+  - `client.getAttachment()` now actually called (existed but was never wired)
+  - Supports jpeg, png, gif, webp up to `mediaMaxMb` config limit
+  - `InboundMessage.media: MediaAttachment[]` replaces unused `mediaUrls: string[]`
+- **CLI admin commands** — `aletheia status`, `send`, `sessions`, `cron list`, `cron trigger`
+- **Admin API endpoints** — `/api/agents`, `/api/agents/:id`, `/api/cron`, `/api/cron/:id/trigger`, `/api/sessions/:id/archive`, `/api/sessions/:id/distill`, `/api/skills`
+- **Contact pairing system** — challenge-code auth flow for unknown Signal senders
+  - DB migration v3: `contact_requests` + `approved_contacts` tables
+  - `dmPolicy: "pairing"` now fully implemented (was stub since clean-room)
+  - Admin commands: `!approve <code>`, `!deny <code>`, `!contacts`
+  - API: `GET /api/contacts/pending`, `POST /api/contacts/:code/approve|deny`
+- **Skills directory** — loads `SKILL.md` files from `shared/skills/` subdirectories
+  - Injected into bootstrap system prompt (semi-static cache group for caching)
+  - `!skills` command + `GET /api/skills` API endpoint
+- **`triggerDistillation()`** method on NousManager for admin-triggered distillation
+- **`findSessionsByKey()`** method on SessionStore for sender-scoped session queries
+
+### Changed
+- Media passed through to plugin `TurnContext` for hooks
+- `assembleBootstrap()` accepts optional `skillsSection` for semi-static injection
+- Build size: 147KB → 177KB (+30KB for all 5 phases)
+- 1,141 lines added across 13 files (3 new, 10 modified)
+
+---
+
+## [2026-02-15] - QA remediation + memory quality
+
+### Fixed
+- **Distillation amnesia** (CRITICAL) — `isDistilled: true` on summary made it invisible to future turns
+  - Summary now `isDistilled: false`, token counts recalculated in transaction
+- **Tool results excluded from extraction/summarization** — now included
+- **Tool definition tokens** not subtracted from history budget — now subtracted
+
+### Added
+- Watchdog service health alerts (qdrant, neo4j, mem0-sidecar, ollama)
+- Cron model override (`InboundMessage.model` field)
+- Concurrent agent turns (MAX_CONCURRENT_TURNS = 3, per-session mutex)
+- Graceful shutdown with 10s drain period
+
+### Changed
+- Heartbeat uses Haiku (~95% token savings)
+- Mem0 custom extraction prompt (domain-aware, anti-temporal)
+- Neo4j: 4,688 → 28 relationship types, 801 → 735 nodes
+- Voyage-3-large embeddings (1024 dims, replaces Ollama)
+- Cross-agent dedup: 0.92 cosine threshold in sidecar
+- OpenClaw purge: .openclaw → .aletheia, git-filter-repo strip (13MB → 7.7MB)
+
+---
+
+## [2026-02-14] - Clean-room runtime
+
+### Added
+- Clean-room rewrite — removed all OpenClaw/PI dependencies (789k lines, 47 packages)
+- Stack: Hono (gateway), better-sqlite3 (sessions), @anthropic-ai/sdk, Zod (config), Commander (CLI)
+- 6 nous, 13 tools, 1 plugin (aletheia-memory)
+
+---
+
 ## [2026-02-13] - Dual-layer memory system
 
 ### Added

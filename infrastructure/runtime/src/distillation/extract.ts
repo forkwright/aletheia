@@ -9,17 +9,35 @@ export interface ExtractionResult {
   decisions: string[];
   openItems: string[];
   keyEntities: string[];
+  contradictions: string[];
 }
 
-const EXTRACTION_PROMPT = `Analyze this conversation and extract structured information.
+const EXTRACTION_PROMPT = `You are extracting durable knowledge from a conversation in the Aletheia multi-agent system.
 
-Return ONLY valid JSON with these fields:
-- facts: Array of factual statements established in the conversation
-- decisions: Array of decisions made or agreed upon
-- openItems: Array of unresolved questions, pending tasks, or things to follow up on
-- keyEntities: Array of important names, projects, tools, or concepts referenced
+## Rules
+- Extract FACTS that would be true tomorrow, next week, next month. Skip ephemeral chatter.
+- Extract DECISIONS with their rationale — the "why" matters as much as the "what".
+- Extract OPEN ITEMS that require future action — include who owns them if stated.
+- Extract KEY ENTITIES: people, projects, tools, services, locations referenced.
+- For tool results: extract the factual findings, not the tool invocation details.
+- NEVER extract: greetings, acknowledgments, timestamps of the conversation itself, meta-commentary about the conversation.
+- Each item: one clear sentence. No duplicates. No hedging language.
+- If a fact contradicts a previously known fact, note BOTH versions and flag the contradiction.
 
-Be thorough but concise. Each item should be a single clear sentence.`;
+## Quality Filters
+- Skip facts that are obvious from context (e.g., "The user asked a question")
+- Skip facts that are purely temporal ("We discussed this at 3pm")
+- Prefer specific over vague: "Honda Passport needs brake pads replaced" over "vehicle maintenance discussed"
+- Include confidence: prefix uncertain facts with [UNCERTAIN]
+
+Return ONLY valid JSON:
+{
+  "facts": ["string"],
+  "decisions": ["string"],
+  "openItems": ["string"],
+  "keyEntities": ["string"],
+  "contradictions": ["string"]
+}`;
 
 export async function extractFromMessages(
   router: ProviderRouter,
@@ -46,11 +64,18 @@ export async function extractFromMessages(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       log.warn(`Extraction returned no JSON object. Raw response: ${text.slice(0, 200)}`);
-      return { facts: [], decisions: [], openItems: [], keyEntities: [] };
+      return { facts: [], decisions: [], openItems: [], keyEntities: [], contradictions: [] };
     }
-    return JSON.parse(jsonMatch[0]) as ExtractionResult;
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    return {
+      facts: Array.isArray(parsed.facts) ? parsed.facts : [],
+      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+      openItems: Array.isArray(parsed.openItems) ? parsed.openItems : [],
+      keyEntities: Array.isArray(parsed.keyEntities) ? parsed.keyEntities : [],
+      contradictions: Array.isArray(parsed.contradictions) ? parsed.contradictions : [],
+    };
   } catch (err) {
     log.warn(`Extraction JSON parse failed: ${err instanceof Error ? err.message : err}. Raw: ${text.slice(0, 200)}`);
-    return { facts: [], decisions: [], openItems: [], keyEntities: [] };
+    return { facts: [], decisions: [], openItems: [], keyEntities: [], contradictions: [] };
   }
 }

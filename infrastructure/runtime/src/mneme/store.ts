@@ -16,6 +16,9 @@ export interface Session {
   model: string | null;
   tokenCountEstimate: number;
   messageCount: number;
+  lastInputTokens: number;
+  bootstrapHash: string | null;
+  distillationCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,7 +137,9 @@ export class SessionStore {
       )
       .run(id, nousId, key, parentSessionId ?? null, model ?? null);
     const session = this.findSessionById(id);
-    if (!session) throw new SessionError("Failed to create session");
+    if (!session) throw new SessionError("Failed to create session", {
+      code: "SESSION_CORRUPTED", context: { sessionId: id, nousId },
+    });
     log.info(`Created session ${id} for nous ${nousId} (key: ${key})`);
     return session;
   }
@@ -357,6 +362,45 @@ export class SessionStore {
     log.info(
       `Distillation recorded: ${record.messagesBefore}→${record.messagesAfter} msgs, ${record.tokensBefore}→${record.tokensAfter} tokens`,
     );
+  }
+
+  updateSessionActualTokens(sessionId: string, inputTokens: number): void {
+    this.db
+      .prepare(
+        `UPDATE sessions SET last_input_tokens = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(inputTokens, sessionId);
+  }
+
+  updateBootstrapHash(sessionId: string, hash: string): void {
+    this.db
+      .prepare(
+        `UPDATE sessions SET bootstrap_hash = ? WHERE id = ?`,
+      )
+      .run(hash, sessionId);
+  }
+
+  incrementDistillationCount(sessionId: string): number {
+    this.db
+      .prepare(
+        `UPDATE sessions SET distillation_count = distillation_count + 1 WHERE id = ?`,
+      )
+      .run(sessionId);
+    const row = this.db
+      .prepare("SELECT distillation_count FROM sessions WHERE id = ?")
+      .get(sessionId) as { distillation_count: number } | undefined;
+    return row?.distillation_count ?? 0;
+  }
+
+  getLastBootstrapHash(nousId: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT bootstrap_hash FROM sessions
+         WHERE nous_id = ? AND bootstrap_hash IS NOT NULL
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(nousId) as { bootstrap_hash: string } | undefined;
+    return row?.bootstrap_hash ?? null;
   }
 
   archiveSession(sessionId: string): void {
@@ -651,6 +695,9 @@ export class SessionStore {
       model: row.model as string | null,
       tokenCountEstimate: row.token_count_estimate as number,
       messageCount: row.message_count as number,
+      lastInputTokens: (row.last_input_tokens as number) ?? 0,
+      bootstrapHash: (row.bootstrap_hash as string) ?? null,
+      distillationCount: (row.distillation_count as number) ?? 0,
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
     };
