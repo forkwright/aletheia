@@ -49,6 +49,8 @@ import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { CompetenceModel } from "./nous/competence.js";
+import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
 
 const log = createLogger("aletheia");
@@ -138,6 +140,14 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Competence model + uncertainty tracker — wired into manager for runtime use
+  const sharedRoot = paths.root;
+  const competence = new CompetenceModel(sharedRoot);
+  const uncertainty = new UncertaintyTracker(sharedRoot);
+  manager.setCompetence(competence);
+  manager.setUncertainty(uncertainty);
+  log.info("Competence model and uncertainty tracker initialized");
+
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {
     handleMessage: manager.handleMessage.bind(manager),
@@ -145,7 +155,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
-  tools.register(createSessionsSpawnTool(auditDispatcher));
+  tools.register(createSessionsSpawnTool(auditDispatcher, sharedRoot));
 
   return {
     config,

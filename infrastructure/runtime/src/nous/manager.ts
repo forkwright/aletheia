@@ -25,6 +25,10 @@ import type {
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import { TraceBuilder } from "./trace.js";
+import { checkInputCircuitBreakers, checkResponseQuality } from "./circuit-breaker.js";
+import { getReversibility, requiresSimulation } from "../organon/reversibility.js";
+import type { CompetenceModel } from "./competence.js";
+import type { UncertaintyTracker } from "./uncertainty.js";
 
 const log = createLogger("nous");
 
@@ -79,6 +83,8 @@ export class NousManager {
   private plugins?: PluginRegistry;
   private watchdog?: Watchdog;
   private skillsSection?: string | undefined;
+  competence?: CompetenceModel;
+  uncertainty?: UncertaintyTracker;
   activeTurns = 0;
   isDraining: () => boolean = () => false;
 
@@ -103,6 +109,14 @@ export class NousManager {
 
   setSkillsSection(section: string | undefined): void {
     this.skillsSection = section;
+  }
+
+  setCompetence(model: CompetenceModel): void {
+    this.competence = model;
+  }
+
+  setUncertainty(tracker: UncertaintyTracker): void {
+    this.uncertainty = tracker;
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
@@ -168,6 +182,29 @@ export class NousManager {
     nous: ReturnType<typeof resolveNous>,
   ): Promise<TurnOutcome> {
     if (!nous) throw new Error(`Unknown nous: ${nousId}`);
+
+    // Input circuit breaker — block safety-violating messages before any processing
+    const inputCheck = checkInputCircuitBreakers(msg.text);
+    if (inputCheck.triggered) {
+      log.warn(`Circuit breaker (${inputCheck.severity}): ${inputCheck.reason} [${nousId}]`);
+      this.store.appendMessage(sessionId, "user", msg.text, {
+        tokenEstimate: estimateTokens(msg.text),
+      });
+      const refusal = `I can't process that request. ${inputCheck.reason}`;
+      this.store.appendMessage(sessionId, "assistant", refusal, {
+        tokenEstimate: estimateTokens(refusal),
+      });
+      return {
+        text: refusal,
+        nousId,
+        sessionId,
+        toolCalls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+    }
 
     log.info(
       `Processing message for ${nousId}:${sessionKey} (session ${sessionId})`,
@@ -323,6 +360,19 @@ export class NousManager {
           .map((b) => b.text)
           .join("\n");
 
+        // Response quality circuit breaker — detect generation loops and low-substance responses
+        const qualityCheck = checkResponseQuality(text);
+        if (qualityCheck.triggered) {
+          log.warn(`Response quality issue (${qualityCheck.severity}): ${qualityCheck.reason} [${nousId}]`);
+          trace.addToolCall({
+            name: "_circuit_breaker",
+            input: { check: "response_quality" },
+            output: qualityCheck.reason ?? "quality check triggered",
+            durationMs: 0,
+            isError: true,
+          });
+        }
+
         this.store.appendMessage(sessionId, "assistant", text, {
           tokenEstimate: estimateTokens(text),
         });
@@ -367,6 +417,12 @@ export class NousManager {
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,
           });
+        }
+
+        // Record competence success for the agent's domain (session key as proxy)
+        if (this.competence && totalToolCalls > 0) {
+          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+          this.competence.recordSuccess(nousId, domain);
         }
 
         // Auto-trigger distillation using actual API-reported input tokens (most accurate)
@@ -418,7 +474,13 @@ export class NousManager {
       const toolResults: UserContentBlock[] = [];
       for (const toolUse of toolUses) {
         totalToolCalls++;
-        log.debug(`Tool call: ${toolUse.name}`);
+        const reversibility = getReversibility(toolUse.name);
+        const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
+        log.debug(`Tool call: ${toolUse.name} (${reversibility}${needsSim ? ", SIMULATED" : ""})`);
+
+        if (needsSim) {
+          log.warn(`Simulation required for ${toolUse.name} (${reversibility}) — logging to trace`);
+        }
 
         let toolResult: string;
         let isError = false;
@@ -433,6 +495,11 @@ export class NousManager {
           isError = true;
           toolResult = err instanceof Error ? err.message : String(err);
           log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
+          // Record tool failure in competence model
+          if (this.competence) {
+            const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+            this.competence.recordCorrection(nousId, domain);
+          }
         }
         const toolDuration = Date.now() - toolStart;
 
@@ -442,6 +509,8 @@ export class NousManager {
           output: toolResult.slice(0, 500),
           durationMs: toolDuration,
           isError,
+          ...(reversibility !== "reversible" ? { reversibility } : {}),
+          ...(needsSim ? { simulationRequired: true } : {}),
         });
 
         toolResults.push({

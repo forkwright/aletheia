@@ -261,6 +261,7 @@ const CronJob = z.object({
   sessionKey: z.string().optional(),
   model: z.string().optional(),
   messageTemplate: z.string().optional(),
+  command: z.string().optional(), // Shell command to run instead of agent message
   timeoutSeconds: z.number().default(300),
 });
 
