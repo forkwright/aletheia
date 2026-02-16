@@ -1,0 +1,68 @@
+version: 2
+
+updates:
+  # Runtime (TypeScript) — the core codebase
+  - package-ecosystem: npm
+    directory: /infrastructure/runtime
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      production-dependencies:
+        dependency-type: production
+        update-types: [patch]
+    reviewers:
+      - forkwright
+
+  # Memory sidecar (Python)
+  - package-ecosystem: pip
+    directory: /infrastructure/memory/sidecar
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      all-python:
+        update-types: [minor, patch]
+
+  # Prosoche daemon (Python)
+  - package-ecosystem: pip
+    directory: /infrastructure/prosoche
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      all-python:
+        update-types: [minor, patch]
+
+  # Docker Compose — memory services
+  - package-ecosystem: docker-compose
+    directory: /infrastructure/memory
+    schedule:
+      interval: monthly
+
+  # Docker Compose — langfuse
+  - package-ecosystem: docker-compose
+    directory: /infrastructure/langfuse
+    schedule:
+      interval: monthly
+
+  # Docker Compose — root (signal-cli)
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
