@@ -297,6 +297,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     });
     watchdog.start();
     setWatchdogRef(watchdog);
+    runtime.manager.setWatchdog(watchdog);
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour

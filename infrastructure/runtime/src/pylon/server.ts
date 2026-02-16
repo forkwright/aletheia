@@ -9,6 +9,7 @@ import type { AletheiaConfig } from "../taxis/schema.js";
 import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
+import { calculateCostBreakdown } from "../hermeneus/pricing.js";
 
 const log = createLogger("pylon");
 
@@ -268,6 +269,66 @@ export function createGateway(
         name: s.name,
         description: s.description,
       })),
+    });
+  });
+
+  // --- Cost Attribution API ---
+
+  app.get("/api/costs/summary", (c) => {
+    const metrics = store.getMetrics();
+    const agentCosts = config.agents.list.map((a) => {
+      const usage = metrics.usageByNous[a.id];
+      if (!usage) return { agentId: a.id, cost: 0, turns: 0 };
+      const cost = calculateCostBreakdown({
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        model: null, // mixed models — approximate with default
+      });
+      return { agentId: a.id, ...cost, turns: usage.turns };
+    });
+    const totalCost = agentCosts.reduce((sum, a) => sum + a.totalCost, 0);
+    return c.json({ totalCost: Math.round(totalCost * 10000) / 10000, agents: agentCosts });
+  });
+
+  app.get("/api/costs/session/:id", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const turns = store.getCostsBySession(id);
+    const costs = turns.map((t) => ({
+      turn: t.turnSeq,
+      ...calculateCostBreakdown(t),
+      model: t.model,
+      timestamp: t.createdAt,
+    }));
+    const totalCost = costs.reduce((sum, c) => sum + c.totalCost, 0);
+    return c.json({
+      sessionId: id,
+      nousId: session.nousId,
+      totalCost: Math.round(totalCost * 10000) / 10000,
+      turns: costs,
+    });
+  });
+
+  app.get("/api/costs/agent/:id", (c) => {
+    const id = c.req.param("id");
+    const agent = config.agents.list.find((a) => a.id === id);
+    if (!agent) return c.json({ error: "Agent not found" }, 404);
+
+    const byModel = store.getCostsByAgent(id);
+    const breakdown = byModel.map((m) => ({
+      model: m.model,
+      ...calculateCostBreakdown(m),
+      turns: m.turns,
+    }));
+    const totalCost = breakdown.reduce((sum, b) => sum + b.totalCost, 0);
+    return c.json({
+      agentId: id,
+      totalCost: Math.round(totalCost * 10000) / 10000,
+      byModel: breakdown,
     });
   });
 

@@ -5,7 +5,9 @@ import { ProviderRouter } from "../hermeneus/router.js";
 import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
 import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
+import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
 import { shouldDistill, distillSession } from "../distillation/pipeline.js";
+import { scoreComplexity, selectModel, type ComplexityTier } from "../hermeneus/complexity.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -21,6 +23,7 @@ import type {
   UserContentBlock,
 } from "../hermeneus/anthropic.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
+import type { Watchdog } from "../daemon/watchdog.js";
 
 const log = createLogger("nous");
 
@@ -73,6 +76,7 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
 
 export class NousManager {
   private plugins?: PluginRegistry;
+  private watchdog?: Watchdog;
   private skillsSection?: string;
   activeTurns = 0;
   isDraining: () => boolean = () => false;
@@ -90,6 +94,10 @@ export class NousManager {
 
   setPlugins(plugins: PluginRegistry): void {
     this.plugins = plugins;
+  }
+
+  setWatchdog(watchdog: Watchdog): void {
+    this.watchdog = watchdog;
   }
 
   setSkillsSection(section: string): void {
@@ -113,7 +121,24 @@ export class NousManager {
     }
 
     const sessionKey = msg.sessionKey ?? "main";
-    const model = msg.model ?? resolveModel(this.config, nous);
+    let model = msg.model ?? resolveModel(this.config, nous);
+
+    // Adaptive inference routing — select model tier based on message complexity
+    const routing = this.config.agents.defaults.routing;
+    if (routing.enabled && !msg.model) {
+      const session = this.store.findSession(nousId, sessionKey);
+      const complexity = scoreComplexity({
+        messageText: msg.text,
+        messageCount: session?.messageCount ?? 0,
+        depth: msg.depth ?? 0,
+        agentOverride: routing.agentOverrides[nousId] as ComplexityTier | undefined,
+      });
+      model = selectModel(complexity.tier, routing.tiers);
+      log.info(
+        `Routing ${nousId}: ${complexity.tier} (score=${complexity.score}, ${complexity.reason}) → ${model}`,
+      );
+    }
+
     const session = this.store.findOrCreateSession(
       nousId,
       sessionKey,
@@ -147,20 +172,26 @@ export class NousManager {
     );
 
     const workspace = resolveWorkspace(this.config, nous);
+
+    // Check watchdog for degraded services — inject into bootstrap
+    const degradedServices: string[] = [];
+    if (this.watchdog) {
+      for (const svc of this.watchdog.getStatus()) {
+        if (!svc.healthy) degradedServices.push(svc.name);
+      }
+    }
+
     const bootstrap = assembleBootstrap(workspace, {
       maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
       skillsSection: this.skillsSection,
+      degradedServices: degradedServices.length > 0 ? degradedServices : undefined,
     });
 
-    // Store bootstrap hash for diff detection across sessions
+    // Store composite hash and detect file-level diffs
     this.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
-    const previousHash = this.store.getLastBootstrapHash(nousId);
-    if (previousHash && previousHash !== bootstrap.contentHash) {
-      log.info(
-        `Bootstrap changed for ${nousId}: ${previousHash.slice(0, 8)} → ${bootstrap.contentHash.slice(0, 8)} ` +
-        `(files: ${Object.keys(bootstrap.fileHashes).join(", ")})`,
-      );
-    }
+    const diff = detectBootstrapDiff(nousId, bootstrap.fileHashes, workspace);
+    if (diff) logBootstrapDiff(diff, workspace);
+
     if (bootstrap.droppedFiles.length > 0) {
       log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
     }
