@@ -3,6 +3,18 @@
 import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { loadConfig } from "./taxis/loader.js";
+import { createLogger } from "./koina/logger.js";
+
+const log = createLogger("entry");
+
+process.on("unhandledRejection", (reason) => {
+  log.error(`Unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : reason}`);
+});
+
+process.on("uncaughtException", (err) => {
+  log.error(`Uncaught exception: ${err.stack ?? err.message}`);
+  process.exit(1);
+});
 
 const program = new Command()
   .name("aletheia")
