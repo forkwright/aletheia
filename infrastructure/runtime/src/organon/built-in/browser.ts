@@ -17,7 +17,7 @@ async function getBrowser(): Promise<Browser> {
       const { chromium } = await import("playwright-core");
       const browser = await chromium.launch({
         executablePath:
-          process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
+          process.env["CHROMIUM_PATH"] ?? "/usr/bin/chromium-browser",
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -95,11 +95,11 @@ export const browserTool: ToolHandler = {
     },
   },
   async execute(input: Record<string, unknown>): Promise<string> {
-    const url = String(input.url ?? "");
-    const action = String(input.action ?? "navigate");
-    const selector = input.selector as string | undefined;
-    const waitFor = input.waitFor as string | undefined;
-    const timeout = (input.timeout as number) ?? 15000;
+    const url = String(input["url"] ?? "");
+    const action = String(input["action"] ?? "navigate");
+    const selector = input["selector"] as string | undefined;
+    const waitFor = input["waitFor"] as string | undefined;
+    const timeout = (input["timeout"] as number) ?? 15000;
 
     try {
       await validateUrl(url);
@@ -172,7 +172,7 @@ export async function closeBrowser(): Promise<void> {
 process.on("exit", () => {
   if (browserInstance) {
     try {
-      browserInstance.process()?.kill("SIGKILL");
+      (browserInstance as unknown as { process(): { kill(sig: string): void } | null }).process()?.kill("SIGKILL");
     } catch {
       // Best-effort — process may already be gone
     }

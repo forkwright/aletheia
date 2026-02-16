@@ -66,20 +66,24 @@ function collectSegments(text: string): Segment[] {
 
   // Code blocks (highest priority — suppress inner markdown)
   for (const match of text.matchAll(/```(?:\w+)?\n([\s\S]*?)```/g)) {
+    const inner = match[1];
+    if (inner == null) continue;
     segments.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      inner: match[1].replace(/\n$/, ""),
+      inner: inner.replace(/\n$/, ""),
       styles: ["MONOSPACE"],
     });
   }
 
   // Inline code (next priority)
   for (const match of text.matchAll(/`([^`]+)`/g)) {
+    const inner = match[1];
+    if (inner == null) continue;
     const start = match.index!;
     const end = start + match[0].length;
     if (overlaps(start, end, segments)) continue;
-    segments.push({ start, end, inner: match[1], styles: ["MONOSPACE"] });
+    segments.push({ start, end, inner, styles: ["MONOSPACE"] });
   }
 
   // Inline formatting (only outside code regions)
@@ -94,21 +98,24 @@ function collectSegments(text: string): Segment[] {
 
   for (const { regex, styles } of patterns) {
     for (const match of text.matchAll(regex)) {
+      const inner = match[1];
+      if (inner == null) continue;
       const start = match.index!;
       const end = start + match[0].length;
       if (overlaps(start, end, segments)) continue;
-      segments.push({ start, end, inner: match[1], styles });
+      segments.push({ start, end, inner, styles });
     }
   }
 
   // Links: [label](url) → "label (url)" or just "label"
   for (const match of text.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
+    const label = match[1];
+    const url = match[2];
+    if (label == null || url == null) continue;
     const start = match.index!;
     const end = start + match[0].length;
     if (overlaps(start, end, segments)) continue;
 
-    const label = match[1];
-    const url = match[2];
     const inner =
       label === url || url.startsWith("mailto:") ? label : `${label} (${url})`;
     segments.push({ start, end, inner, styles: [] });

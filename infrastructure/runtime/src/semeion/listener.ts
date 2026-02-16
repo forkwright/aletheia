@@ -86,7 +86,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
       await consumeEventStream(
         baseUrl,
         accountPhone,
-        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest, commands, store, config, watchdog),
+        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest, commands, store, config, watchdog, skills),
         abortSignal,
       );
       backoff.current = backoff.min;
@@ -115,10 +115,12 @@ async function consumeEventStream(
 ): Promise<void> {
   const url = `${baseUrl}/api/v1/events?account=${encodeURIComponent(account)}`;
 
-  const res = await fetch(url, {
+  const fetchOpts: RequestInit = {
     headers: { Accept: "text/event-stream" },
-    signal: abortSignal,
-  });
+  };
+  if (abortSignal) fetchOpts.signal = abortSignal;
+
+  const res = await fetch(url, fetchOpts);
 
   if (!res.ok) {
     throw new Error(`SSE connect failed: ${res.status} ${res.statusText}`);
@@ -210,6 +212,7 @@ function handleEnvelope(
   store?: SessionStore,
   config?: AletheiaConfig,
   watchdog?: Watchdog | null,
+  skills?: SkillRegistry | null,
 ): void {
   if (envelope.syncMessage) return;
   if (envelope.editMessage) return;
@@ -232,18 +235,20 @@ function handleEnvelope(
   const isGroup = !!dataMessage.groupInfo?.groupId;
   const groupId = dataMessage.groupInfo?.groupId;
 
-  const access = checkAccess(sender, isGroup, groupId, account, boundGroupIds, {
-    store,
+  const pairingTarget: SendTarget = { account: accountPhone };
+  if (!isGroup) pairingTarget.recipient = sender;
+  if (isGroup && groupId) pairingTarget.groupId = groupId;
+
+  const pairingCtx: PairingContext = {
     client,
     accountId,
     accountPhone,
     senderName: envelope.sourceName ?? sender,
-    target: {
-      account: accountPhone,
-      recipient: isGroup ? undefined : sender,
-      groupId: isGroup ? groupId : undefined,
-    },
-  });
+    target: pairingTarget,
+  };
+  if (store) pairingCtx.store = store;
+
+  const access = checkAccess(sender, isGroup, groupId, account, boundGroupIds, pairingCtx);
   if (!access) {
     log.debug(`Blocked message from ${sender} (policy)`);
     return;
@@ -281,11 +286,9 @@ function handleEnvelope(
     `Inbound ${isGroup ? "group" : "DM"} from ${envelope.sourceName ?? sender}: ${text.slice(0, 80)}`,
   );
 
-  const target: SendTarget = {
-    account: accountPhone,
-    recipient: isGroup ? undefined : sender,
-    groupId: isGroup ? groupId : undefined,
-  };
+  const target: SendTarget = { account: accountPhone };
+  if (!isGroup) target.recipient = sender;
+  if (isGroup && groupId) target.groupId = groupId;
 
   // Command detection — bypass agent turn pipeline
   if (commands && store && config) {
@@ -392,13 +395,16 @@ async function preprocessAndProcess(
       }
 
       try {
-        const result = await client.getAttachment({ id: att.id, account: accountPhone });
+        const attParams: { id: string; account?: string } = { id: att.id };
+        if (accountPhone) attParams.account = accountPhone;
+        const result = await client.getAttachment(attParams);
         if (typeof result === "string") {
-          media.push({
+          const attachment: MediaAttachment = {
             contentType: ct,
             data: result,
-            filename: att.filename,
-          });
+          };
+          if (att.filename) attachment.filename = att.filename;
+          media.push(attachment);
           log.debug(`Fetched image attachment: ${att.filename ?? att.id} (${ct})`);
         }
       } catch (err) {

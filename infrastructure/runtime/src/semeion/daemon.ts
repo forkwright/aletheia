@@ -160,12 +160,13 @@ export function daemonOptsFromConfig(
   accountId: string,
   account: SignalAccount,
 ): DaemonOpts {
-  return {
+  const opts: DaemonOpts = {
     account: account.account ?? accountId,
-    cliPath: account.cliPath,
     httpHost: account.httpHost,
     httpPort: account.httpPort,
     receiveMode: account.receiveMode,
     sendReadReceipts: account.sendReadReceipts,
   };
+  if (account.cliPath) opts.cliPath = account.cliPath;
+  return opts;
 }

@@ -29,8 +29,8 @@ export const execTool: ToolHandler = {
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
-    const command = input.command as string;
-    const timeout = (input.timeout as number) ?? 30000;
+    const command = input["command"] as string;
+    const timeout = (input["timeout"] as number) ?? 30000;
 
     try {
       const { stdout, stderr } = await execAsync(command, {

@@ -11,7 +11,7 @@ function isPrivateIP(ip: string): boolean {
   if (ip.startsWith("169.254.")) return true;
   // 172.16.0.0 - 172.31.255.255
   const m = ip.match(/^172\.(\d+)\./);
-  if (m && parseInt(m[1], 10) >= 16 && parseInt(m[1], 10) <= 31) return true;
+  if (m?.[1] && parseInt(m[1], 10) >= 16 && parseInt(m[1], 10) <= 31) return true;
   return false;
 }
 

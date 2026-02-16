@@ -17,7 +17,9 @@ export function loadConfig(configPath?: string): AletheiaConfig {
 
   const raw = readJson(file);
   if (raw === null) {
-    throw new ConfigError(`Config file not found: ${file}`);
+    throw new ConfigError(`Config file not found: ${file}`, {
+      code: "CONFIG_NOT_FOUND", context: { path: file },
+    });
   }
 
   const result = AletheiaConfigSchema.safeParse(raw);
@@ -25,7 +27,9 @@ export function loadConfig(configPath?: string): AletheiaConfig {
     const issues = result.error.issues
       .map((i) => `  ${i.path.join(".")}: ${i.message}`)
       .join("\n");
-    throw new ConfigError(`Invalid config:\n${issues}`);
+    throw new ConfigError(`Invalid config:\n${issues}`, {
+      code: "CONFIG_VALIDATION_FAILED", context: { issueCount: result.error.issues.length },
+    });
   }
 
   const config = result.data;
@@ -92,11 +96,11 @@ function warnUnknownKeys(
     }
   }
 
-  const rawAgents = raw.agents as Record<string, unknown> | undefined;
-  const rawList = rawAgents?.list as Array<Record<string, unknown>> | undefined;
+  const rawAgents = raw["agents"] as Record<string, unknown> | undefined;
+  const rawList = rawAgents?.["list"] as Array<Record<string, unknown>> | undefined;
   if (rawList) {
     for (const entry of rawList) {
-      const nousId = entry.id ?? "unknown";
+      const nousId = entry["id"] ?? "unknown";
       for (const key of Object.keys(entry)) {
         if (!KNOWN_NOUS_KEYS.has(key)) {
           log.warn(`Unknown key "${key}" in nous "${nousId}" config — will be preserved but may be a typo`);

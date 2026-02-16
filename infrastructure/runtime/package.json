@@ -6,9 +6,15 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsx src/entry.ts",
-    "test": "vitest",
-    "lint": "oxlint src/",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "lint": "oxlint src/ --fix",
+    "lint:check": "oxlint src/",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint:check && npm run test",
+    "precommit": "npm run typecheck && npm run lint:check && npm run test -- --reporter=dot"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -26,6 +32,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.4",
+    "oxlint": "^1.48.0",
     "tsdown": "^0.9.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

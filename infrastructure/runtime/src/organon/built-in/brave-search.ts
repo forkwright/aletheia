@@ -24,11 +24,11 @@ export const braveSearchTool: ToolHandler = {
     },
   },
   async execute(input: Record<string, unknown>): Promise<string> {
-    const query = String(input.query ?? "");
-    const maxResults = Math.min((input.maxResults as number) ?? 5, 20);
+    const query = String(input["query"] ?? "");
+    const maxResults = Math.min((input["maxResults"] as number) ?? 5, 20);
 
     try {
-      const apiKey = process.env.BRAVE_API_KEY;
+      const apiKey = process.env["BRAVE_API_KEY"];
       if (!apiKey) {
         return "Error: BRAVE_API_KEY not set in environment";
       }
