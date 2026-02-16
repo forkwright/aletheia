@@ -24,6 +24,7 @@ import type {
 } from "../hermeneus/anthropic.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
+import { TraceBuilder, persistTrace } from "./trace.js";
 
 const log = createLogger("nous");
 
@@ -196,6 +197,16 @@ export class NousManager {
       log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
     }
 
+    // Initialize causal trace for this turn
+    const trace = new TraceBuilder(sessionId, nousId, 0, model);
+    trace.setBootstrap(
+      Object.keys(bootstrap.fileHashes),
+      bootstrap.totalTokens,
+    );
+    if (degradedServices.length > 0) {
+      trace.setDegradedServices(degradedServices);
+    }
+
     const systemPrompt = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
@@ -326,6 +337,13 @@ export class NousManager {
           cacheWriteTokens: totalCacheWriteTokens,
         };
 
+        // Finalize and persist causal trace
+        trace.setUsage(totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens);
+        trace.setResponseLength(text.length);
+        trace.setToolLoops(loop + 1);
+        const finalTrace = trace.finalize();
+        persistTrace(finalTrace, workspace);
+
         const cacheHitRate = totalInputTokens > 0
           ? Math.round((totalCacheReadTokens / totalInputTokens) * 100)
           : 0;
@@ -403,6 +421,7 @@ export class NousManager {
 
         let toolResult: string;
         let isError = false;
+        const toolStart = Date.now();
         try {
           toolResult = await this.tools.execute(
             toolUse.name,
@@ -414,6 +433,15 @@ export class NousManager {
           toolResult = err instanceof Error ? err.message : String(err);
           log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
         }
+        const toolDuration = Date.now() - toolStart;
+
+        trace.addToolCall({
+          name: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: toolResult.slice(0, 500),
+          durationMs: toolDuration,
+          isError,
+        });
 
         toolResults.push({
           type: "tool_result",
