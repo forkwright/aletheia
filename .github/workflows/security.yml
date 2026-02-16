@@ -1,0 +1,46 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 10 * * 1" # Monday 04:00 CST
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: cd infrastructure/runtime && npm ci
+      - name: Audit production dependencies
+        run: cd infrastructure/runtime && npm audit --omit=dev --audit-level=high
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Audit memory sidecar
+        run: cd infrastructure/memory/sidecar && pip-audit -r <(pip install . --dry-run --report - 2>/dev/null | python3 -c "import sys,json; [print(p['metadata']['name']+'=='+p['metadata']['version']) for p in json.load(sys.stdin)['install']]") || pip-audit .
+        continue-on-error: true
+      - name: Audit prosoche
+        run: cd infrastructure/prosoche && pip-audit . || true
+        continue-on-error: true
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
