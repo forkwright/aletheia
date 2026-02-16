@@ -39,7 +39,7 @@ export const lsTool: ToolHandler = {
     context: ToolContext,
   ): Promise<string> {
     const dirPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string)
+      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
       : context.workspace;
     const showAll = (input["all"] as boolean) ?? false;
 

@@ -56,7 +56,7 @@ export const findTool: ToolHandler = {
   ): Promise<string> {
     const pattern = input["pattern"] as string;
     const searchPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string)
+      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
       : context.workspace;
     const type = input["type"] as string | undefined;
     const maxDepth = input["maxDepth"] as number | undefined;

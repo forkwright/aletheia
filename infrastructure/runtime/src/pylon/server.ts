@@ -275,8 +275,14 @@ export function createGateway(
       // Strip markdown bold markers and clean up
       let parsedName = nameMatch?.[1]?.replace(/\*+/g, "").trim() || "";
       if (!parsedName) parsedName = agent.name ?? agent.id;
-      let parsedEmoji = emojiMatch?.[1]?.replace(/\*+/g, "").trim() || null;
-      if (parsedEmoji === "") parsedEmoji = null;
+      let parsedEmoji: string | null = null;
+      if (emojiMatch?.[1]) {
+        // Extract just emoji characters — strip markdown bold and any trailing text
+        const cleaned = emojiMatch[1].replace(/\*+/g, "").trim();
+        // Match leading emoji (Unicode emoji sequences) before any ASCII text
+        const emojiOnly = cleaned.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)+/u);
+        parsedEmoji = emojiOnly?.[0] || null;
+      }
       return c.json({
         id: agent.id,
         name: parsedName,

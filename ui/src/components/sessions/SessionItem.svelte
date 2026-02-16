@@ -13,7 +13,7 @@
   <span class="key">{session.sessionKey}</span>
   <span class="meta">
     {session.messageCount} msgs
-    <span class="dot">.</span>
+    <span class="dot">·</span>
     {formatTimeSince(session.lastActivity ?? session.updatedAt)}
   </span>
 </button>
@@ -37,6 +37,10 @@
   .session-item:hover {
     background: var(--surface-hover);
   }
+  .session-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .session-item.active {
     background: var(--surface);
     border-color: var(--border);
@@ -55,6 +59,6 @@
     font-size: 11px;
   }
   .dot {
-    margin: 0 2px;
+    margin: 0 3px;
   }
 </style>

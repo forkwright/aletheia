@@ -1,17 +1,29 @@
 <script lang="ts">
   import type { Agent } from "../../lib/types";
+  import { formatTimeSince } from "../../lib/format";
 
-  let { agent, isActive = false, onclick }: {
+  let { agent, isActive = false, lastActivity, onclick }: {
     agent: Agent;
     isActive?: boolean;
+    lastActivity?: string | null;
     onclick: () => void;
   } = $props();
 </script>
 
 <button class="agent-card" class:active={isActive} {onclick}>
-  <span class="initials">{agent.name.slice(0, 2).toUpperCase()}</span>
-  <span class="name">{agent.name}</span>
-  <span class="indicator" class:online={true}></span>
+  <span class="avatar">
+    {#if agent.emoji}
+      <span class="emoji">{agent.emoji}</span>
+    {:else}
+      <span class="initials">{agent.name.slice(0, 2).toUpperCase()}</span>
+    {/if}
+  </span>
+  <span class="info">
+    <span class="name">{agent.name}</span>
+    {#if lastActivity}
+      <span class="activity">{formatTimeSince(lastActivity)}</span>
+    {/if}
+  </span>
 </button>
 
 <style>
@@ -32,39 +44,54 @@
   .agent-card:hover {
     background: var(--surface-hover);
   }
+  .agent-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .agent-card.active {
     background: var(--surface);
     border-color: var(--border);
   }
+  .avatar {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+  .emoji {
+    font-size: 20px;
+    line-height: 1;
+  }
   .initials {
     font-size: 11px;
     font-weight: 700;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-sm);
     background: var(--accent);
     color: #fff;
-    flex-shrink: 0;
     letter-spacing: 0.5px;
   }
-  .name {
+  .info {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .name {
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    flex-shrink: 0;
-  }
-  .indicator.online {
-    background: var(--green);
+  .activity {
+    font-size: 11px;
+    color: var(--text-muted);
   }
 </style>

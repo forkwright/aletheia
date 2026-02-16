@@ -1,14 +1,18 @@
 <script lang="ts">
   import { getConnectionStatus } from "../../stores/connection.svelte";
+  import { getActiveAgent } from "../../stores/agents.svelte";
   import { getToken, setToken, clearToken } from "../../lib/api";
 
-  let { onToggleMetrics, showMetrics }: {
+  let { onToggleMetrics, onToggleSidebar, showMetrics }: {
     onToggleMetrics: () => void;
+    onToggleSidebar: () => void;
     showMetrics: boolean;
   } = $props();
 
   let showSettings = $state(false);
   let tokenInput = $state(getToken() ?? "");
+
+  let agent = $derived(getActiveAgent());
 
   function saveToken() {
     if (tokenInput.trim()) {
@@ -26,8 +30,21 @@
 
 <header class="topbar">
   <div class="left">
+    <button class="hamburger" onclick={onToggleSidebar} aria-label="Toggle sidebar">
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+    </button>
     <h1 class="title">Aletheia</h1>
     <span class="status-dot" class:connected={getConnectionStatus() === "connected"} class:connecting={getConnectionStatus() === "connecting"}></span>
+    {#if agent}
+      <span class="active-agent">
+        {#if agent.emoji}
+          <span class="agent-emoji">{agent.emoji}</span>
+        {/if}
+        {agent.name}
+      </span>
+    {/if}
   </div>
   <div class="right">
     <button class="topbar-btn" class:active={showMetrics} onclick={onToggleMetrics}>
@@ -74,6 +91,26 @@
     align-items: center;
     gap: 10px;
   }
+  .hamburger {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+  }
+  .hamburger-line {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: var(--text-secondary);
+    border-radius: 1px;
+    transition: background 0.15s;
+  }
+  .hamburger:hover .hamburger-line {
+    background: var(--text);
+  }
   .title {
     font-size: 16px;
     font-weight: 600;
@@ -96,6 +133,15 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
+  .active-agent {
+    display: none;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .agent-emoji {
+    font-size: 14px;
+  }
   .right {
     display: flex;
     gap: 4px;
@@ -112,6 +158,10 @@
   .topbar-btn:hover {
     color: var(--text);
     background: var(--surface);
+  }
+  .topbar-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
   .topbar-btn.active {
     color: var(--accent);
@@ -174,5 +224,17 @@
   .btn-ghost:hover {
     color: var(--text);
     border-color: var(--text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .hamburger {
+      display: flex;
+    }
+    .title {
+      font-size: 14px;
+    }
+    .active-agent {
+      display: inline;
+    }
   }
 </style>

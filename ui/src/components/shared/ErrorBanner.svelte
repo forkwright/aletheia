@@ -2,10 +2,10 @@
   let { message, onDismiss }: { message: string; onDismiss?: () => void } = $props();
 </script>
 
-<div class="error-banner">
+<div class="error-banner" role="alert">
   <span class="error-text">{message}</span>
   {#if onDismiss}
-    <button class="dismiss" onclick={onDismiss}>x</button>
+    <button class="dismiss" onclick={onDismiss} aria-label="Dismiss error">×</button>
   {/if}
 </div>
 
@@ -28,11 +28,16 @@
     background: none;
     border: none;
     color: var(--red);
-    font-size: 14px;
+    font-size: 18px;
     padding: 0 4px;
     opacity: 0.7;
+    line-height: 1;
   }
   .dismiss:hover {
     opacity: 1;
+  }
+  .dismiss:focus-visible {
+    outline: 2px solid var(--red);
+    outline-offset: 2px;
   }
 </style>

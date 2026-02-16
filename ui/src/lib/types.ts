@@ -48,7 +48,7 @@ export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
-  | { type: "tool_result"; toolName: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "error"; message: string };
 

@@ -39,7 +39,7 @@ export const readTool: ToolHandler = {
   ): Promise<string> {
     const filePath = input["path"] as string;
     const maxLines = input["maxLines"] as number | undefined;
-    const resolved = safePath(context.workspace, filePath);
+    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
 
     try {
       // Read atomically — no stat-then-read race
