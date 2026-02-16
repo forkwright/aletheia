@@ -151,6 +151,15 @@ export class SessionStore {
     );
   }
 
+  findSessionsByKey(sessionKey: string): Session[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM sessions WHERE session_key = ? AND status = 'active' ORDER BY updated_at DESC",
+      )
+      .all(sessionKey) as Record<string, unknown>[];
+    return rows.map((r) => this.mapSession(r));
+  }
+
   findSessionById(id: string): Session | null {
     const row = this.db
       .prepare("SELECT * FROM sessions WHERE id = ?")
@@ -660,5 +669,87 @@ export class SessionStore {
       isDistilled: (row.is_distilled as number) === 1,
       createdAt: row.created_at as string,
     };
+  }
+
+  // --- Contact Management ---
+
+  isApprovedContact(sender: string, channel: string, accountId?: string): boolean {
+    const row = this.db
+      .prepare(
+        "SELECT 1 FROM approved_contacts WHERE sender = ? AND channel = ? AND (account_id = ? OR account_id IS NULL) LIMIT 1",
+      )
+      .get(sender, channel, accountId ?? null) as unknown;
+    return !!row;
+  }
+
+  createContactRequest(
+    sender: string,
+    senderName: string,
+    channel: string,
+    accountId?: string,
+  ): { id: number; challengeCode: string } {
+    const code = String(Math.floor(1000 + Math.random() * 9000));
+
+    // Upsert — if already pending, update the code
+    this.db
+      .prepare(
+        `INSERT INTO contact_requests (sender, sender_name, channel, account_id, challenge_code)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(sender, channel, account_id)
+         DO UPDATE SET challenge_code = ?, status = 'pending', resolved_at = NULL`,
+      )
+      .run(sender, senderName, channel, accountId ?? null, code, code);
+
+    const row = this.db
+      .prepare("SELECT id FROM contact_requests WHERE sender = ? AND channel = ? AND account_id IS ?")
+      .get(sender, channel, accountId ?? null) as { id: number };
+
+    return { id: row.id, challengeCode: code };
+  }
+
+  approveContactByCode(code: string): { sender: string; channel: string } | null {
+    const row = this.db
+      .prepare(
+        "SELECT id, sender, channel, account_id FROM contact_requests WHERE challenge_code = ? AND status = 'pending'",
+      )
+      .get(code) as { id: number; sender: string; channel: string; account_id: string | null } | undefined;
+
+    if (!row) return null;
+
+    const txn = this.db.transaction(() => {
+      this.db
+        .prepare("UPDATE contact_requests SET status = 'approved', resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+        .run(row.id);
+
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO approved_contacts (sender, channel, account_id) VALUES (?, ?, ?)`,
+        )
+        .run(row.sender, row.channel, row.account_id);
+    });
+    txn();
+
+    return { sender: row.sender, channel: row.channel };
+  }
+
+  denyContactByCode(code: string): boolean {
+    const result = this.db
+      .prepare("UPDATE contact_requests SET status = 'denied', resolved_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE challenge_code = ? AND status = 'pending'")
+      .run(code);
+    return result.changes > 0;
+  }
+
+  getPendingRequests(): Array<{ id: number; sender: string; senderName: string; channel: string; code: string; createdAt: string }> {
+    const rows = this.db
+      .prepare("SELECT id, sender, sender_name, channel, challenge_code, created_at FROM contact_requests WHERE status = 'pending' ORDER BY created_at DESC")
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id as number,
+      sender: r.sender as string,
+      senderName: r.sender_name as string,
+      channel: r.channel as string,
+      code: r.challenge_code as string,
+      createdAt: r.created_at as string,
+    }));
   }
 }

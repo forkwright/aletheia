@@ -15,6 +15,7 @@ export interface TurnContext {
   nousId: string;
   sessionId: string;
   messageText: string;
+  media?: Array<{ contentType: string; data: string; filename?: string }>;
 }
 
 export interface TurnResult {

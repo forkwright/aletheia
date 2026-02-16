@@ -30,8 +30,17 @@ export interface ToolResultBlock {
   is_error?: boolean;
 }
 
+export interface ImageBlock {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: string;
+    data: string;
+  };
+}
+
 export type ContentBlock = TextBlock | ToolUseBlock;
-export type UserContentBlock = TextBlock | ToolResultBlock;
+export type UserContentBlock = TextBlock | ToolResultBlock | ImageBlock;
 
 export interface TurnResult {
   content: ContentBlock[];

@@ -15,6 +15,7 @@ import {
 } from "../taxis/loader.js";
 import type {
   ContentBlock,
+  ImageBlock,
   MessageParam,
   ToolUseBlock,
   UserContentBlock,
@@ -22,6 +23,12 @@ import type {
 import type { PluginRegistry } from "../prostheke/registry.js";
 
 const log = createLogger("nous");
+
+export interface MediaAttachment {
+  contentType: string;
+  data: string;
+  filename?: string;
+}
 
 export interface InboundMessage {
   text: string;
@@ -32,7 +39,7 @@ export interface InboundMessage {
   peerId?: string;
   peerKind?: string;
   accountId?: string;
-  mediaUrls?: string[];
+  media?: MediaAttachment[];
   model?: string;
   depth?: number;
 }
@@ -66,6 +73,7 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
 
 export class NousManager {
   private plugins?: PluginRegistry;
+  private skillsSection?: string;
   activeTurns = 0;
   isDraining: () => boolean = () => false;
 
@@ -82,6 +90,10 @@ export class NousManager {
 
   setPlugins(plugins: PluginRegistry): void {
     this.plugins = plugins;
+  }
+
+  setSkillsSection(section: string): void {
+    this.skillsSection = section || undefined;
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
@@ -137,6 +149,7 @@ export class NousManager {
     const workspace = resolveWorkspace(this.config, nous);
     const bootstrap = assembleBootstrap(workspace, {
       maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
+      skillsSection: this.skillsSection,
     });
 
     const systemPrompt = [
@@ -194,7 +207,7 @@ export class NousManager {
     const currentText = crossAgentNotice
       ? crossAgentNotice + "\n\n" + msg.text
       : msg.text;
-    const messages = this.buildMessages(history, currentText);
+    const messages = this.buildMessages(history, currentText, msg.media);
 
     const toolContext: ToolContext = {
       nousId,
@@ -208,6 +221,7 @@ export class NousManager {
         nousId,
         sessionId,
         messageText: msg.text,
+        media: msg.media,
       });
     }
 
@@ -401,6 +415,7 @@ export class NousManager {
   private buildMessages(
     history: Message[],
     currentText: string,
+    media?: MediaAttachment[],
   ): MessageParam[] {
     const messages: MessageParam[] = [];
 
@@ -461,10 +476,32 @@ export class NousManager {
       }
     }
 
-    messages.push({
-      role: "user",
-      content: currentText,
-    });
+    // Current message — multimodal if images present
+    const imageMedia = media?.filter((m) =>
+      /^image\/(jpeg|png|gif|webp)$/i.test(m.contentType),
+    );
+    if (imageMedia && imageMedia.length > 0) {
+      const blocks: UserContentBlock[] = [];
+      for (const img of imageMedia) {
+        // Strip data URI prefix if present
+        let data = img.data;
+        const dataUriMatch = data.match(/^data:[^;]+;base64,(.+)$/);
+        if (dataUriMatch) data = dataUriMatch[1]!;
+
+        blocks.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: img.contentType,
+            data,
+          },
+        } as ImageBlock);
+      }
+      blocks.push({ type: "text", text: currentText });
+      messages.push({ role: "user", content: blocks });
+    } else {
+      messages.push({ role: "user", content: currentText });
+    }
 
     // Merge consecutive user messages to prevent Anthropic 400 errors
     const merged: MessageParam[] = [];
@@ -484,6 +521,25 @@ export class NousManager {
     }
 
     return merged;
+  }
+
+  async triggerDistillation(sessionId: string): Promise<void> {
+    const compaction = this.config.agents.defaults.compaction;
+    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
+    const distillModel = compaction.distillationModel;
+
+    const session = this.store.findSessionById(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    log.info(`Manual distillation triggered for session ${sessionId}`);
+    await distillSession(this.store, this.router, sessionId, session.nousId, {
+      triggerThreshold: distillThreshold,
+      minMessages: 4,
+      extractionModel: distillModel,
+      summaryModel: distillModel,
+      plugins: this.plugins,
+    });
   }
 }
 

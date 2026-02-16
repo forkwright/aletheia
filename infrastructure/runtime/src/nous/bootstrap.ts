@@ -44,6 +44,7 @@ export function assembleBootstrap(
   opts?: {
     maxTokens?: number;
     extraFiles?: string[];
+    skillsSection?: string;
   },
 ): BootstrapResult {
   const maxTokens = opts?.maxTokens ?? 40000;
@@ -136,10 +137,12 @@ export function assembleBootstrap(
   }
 
   // Semi-static group — combine into one block with cache breakpoint
-  if (semiStaticFiles.length > 0) {
-    const text = semiStaticFiles
-      .map((f) => `## ${f.name}\n\n${f.content}`)
-      .join("\n\n---\n\n");
+  if (semiStaticFiles.length > 0 || opts?.skillsSection) {
+    const parts = semiStaticFiles.map((f) => `## ${f.name}\n\n${f.content}`);
+    if (opts?.skillsSection) {
+      parts.push(opts.skillsSection);
+    }
+    const text = parts.join("\n\n---\n\n");
     staticBlocks.push({
       type: "text",
       text,

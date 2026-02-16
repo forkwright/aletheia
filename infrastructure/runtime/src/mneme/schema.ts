@@ -111,4 +111,34 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE cross_agent_messages ADD COLUMN surfaced_in_session TEXT;
     `,
   },
+  {
+    version: 3,
+    sql: `
+      CREATE TABLE IF NOT EXISTS contact_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender TEXT NOT NULL,
+        sender_name TEXT,
+        channel TEXT NOT NULL DEFAULT 'signal',
+        account_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied', 'expired')),
+        challenge_code TEXT,
+        approved_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        resolved_at TEXT,
+        UNIQUE(sender, channel, account_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS approved_contacts (
+        sender TEXT NOT NULL,
+        channel TEXT NOT NULL DEFAULT 'signal',
+        account_id TEXT,
+        approved_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        approved_by TEXT,
+        UNIQUE(sender, channel, account_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_status ON contact_requests(status);
+      CREATE INDEX IF NOT EXISTS idx_approved_sender ON approved_contacts(sender, channel);
+    `,
+  },
 ];
