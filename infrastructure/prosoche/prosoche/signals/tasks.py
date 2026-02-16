@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from . import Signal
+from . import ContextBlock, Signal
 
 TW_BIN = "/mnt/ssd/aletheia/shared/bin/tw"
 
@@ -26,12 +26,26 @@ async def collect(config: dict) -> list[Signal]:
     overdue = await _query_tasks("status:pending", "+OVERDUE")
     for task in overdue:
         nous_id = _resolve_nous(task, project_nous)
+        block_lines = [f"Task: {task.get('description', 'unknown')}"]
+        if task.get("project"):
+            block_lines.append(f"Project: {task['project']}")
+        if task.get("due"):
+            block_lines.append(f"Due: {task['due']}")
+        if task.get("annotations"):
+            for ann in task["annotations"][:2]:
+                block_lines.append(f"Note: {ann.get('description', '')[:100]}")
+
         signals.append(Signal(
             source="tasks",
             summary=f"OVERDUE: {task.get('description', 'unknown task')}",
             urgency=overdue_urgency,
             relevant_nous=[nous_id, "syn"] if nous_id != "syn" else ["syn"],
             details=f"project:{task.get('project', '?')} priority:{task.get('priority', '?')}",
+            context_blocks=[ContextBlock(
+                title=f"Overdue: {task.get('description', 'task')[:40]}",
+                content="\n".join(block_lines),
+                source="tasks",
+            )],
         ))
 
     due_today = await _query_tasks("status:pending", "due:today")

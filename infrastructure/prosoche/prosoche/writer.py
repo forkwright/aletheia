@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from loguru import logger
 
 from .scoring import NousScore
+from .signals import ContextBlock
 
 DOMAIN_MARKER = "## Domain Checks"
+STAGED_MARKER = "## Staged Context"
 
 
 def update_prosoche(nous_id: str, score: NousScore, nous_root: Path) -> bool:
@@ -20,15 +23,20 @@ def update_prosoche(nous_id: str, score: NousScore, nous_root: Path) -> bool:
 
     static_section = _read_static_section(prosoche_path)
     dynamic_section = _build_dynamic_section(score)
+    staged_section = _build_staged_section(score.staged_context)
 
-    if not dynamic_section and not static_section:
+    if not dynamic_section and not staged_section and not static_section:
         return False
 
-    content = ""
+    parts: list[str] = []
     if dynamic_section:
-        content += dynamic_section + "\n\n"
+        parts.append(dynamic_section)
+    if staged_section:
+        parts.append(staged_section)
     if static_section:
-        content += static_section
+        parts.append(static_section)
+
+    content = "\n\n".join(parts) + "\n"
 
     current = ""
     if prosoche_path.exists():
@@ -49,7 +57,10 @@ def update_prosoche(nous_id: str, score: NousScore, nous_root: Path) -> bool:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
-    logger.info(f"Updated PROSOCHE.md for {nous_id} ({len(score.top_signals)} items)")
+    logger.info(
+        f"Updated PROSOCHE.md for {nous_id} "
+        f"({len(score.top_signals)} items, {len(score.staged_context)} staged)"
+    )
     return True
 
 
@@ -79,3 +90,25 @@ def _build_dynamic_section(score: NousScore) -> str:
         lines.append(f"- {prefix} {signal.summary}")
 
     return "\n".join(lines)
+
+
+def _build_staged_section(blocks: list[ContextBlock]) -> str:
+    if not blocks:
+        return ""
+
+    now = datetime.now(timezone.utc)
+    lines = [STAGED_MARKER, ""]
+
+    for block in blocks:
+        lines.append(f"### {block.title}")
+        lines.append(f"*Source: {block.source}*")
+        if block.expires_at:
+            remaining = block.expires_at - now
+            mins = int(remaining.total_seconds() / 60)
+            if mins > 0:
+                lines.append(f"*Expires in ~{mins}min*")
+        lines.append("")
+        lines.append(block.content)
+        lines.append("")
+
+    return "\n".join(lines).rstrip()

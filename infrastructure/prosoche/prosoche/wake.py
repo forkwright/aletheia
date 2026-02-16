@@ -62,6 +62,10 @@ async def trigger_wake(score: NousScore, config: dict) -> bool:
     for signal in urgent_items[:3]:
         text_parts.append(f"- {signal.summary}")
 
+    if score.staged_context:
+        text_parts.append("")
+        text_parts.append("Staged context available — check PROSOCHE.md for details.")
+
     event_text = "\n".join(text_parts)
     agent_id = AGENT_ID_MAP.get(score.nous_id, score.nous_id)
 

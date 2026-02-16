@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from loguru import logger
 
-from . import Signal
+from . import ContextBlock, Signal
 
 GCAL_BIN = "/mnt/ssd/aletheia/shared/bin/gcal"
 
@@ -42,12 +43,29 @@ async def collect(config: dict) -> list[Signal]:
 
                 relevant = _map_calendar_to_nous(cal_name, event, config)
 
+                context_blocks: list[ContextBlock] = []
+                if minutes_until <= urgent_minutes:
+                    block_lines = [f"Event: {event.get('title', '')}"]
+                    block_lines.append(f"Calendar: {cal_name}")
+                    block_lines.append(f"Starts: {event.get('start', '')} (~{minutes_until}min)")
+                    if event.get("location"):
+                        block_lines.append(f"Location: {event['location']}")
+                    if event.get("description"):
+                        block_lines.append(f"Notes: {event['description'][:200]}")
+                    context_blocks.append(ContextBlock(
+                        title=f"Upcoming: {event.get('title', '')}",
+                        content="\n".join(block_lines),
+                        source="calendar",
+                        expires_at=datetime.now(timezone.utc) + timedelta(minutes=max(minutes_until + 15, 30)),
+                    ))
+
                 signals.append(Signal(
                     source="calendar",
                     summary=summary,
                     urgency=urgency,
                     relevant_nous=relevant,
                     details=f"{cal_name}: {event.get('title', '')} at {event.get('start', '')}",
+                    context_blocks=context_blocks,
                 ))
         except Exception as e:
             logger.warning(f"Calendar signal failed for {cal_name}: {e}")
