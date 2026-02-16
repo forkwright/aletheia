@@ -56,7 +56,7 @@ export class SignalClient {
   }): Promise<unknown> {
     const rpcParams: Record<string, unknown> = {};
 
-    if (params.message != null) rpcParams["message"] = params.message;
+    if (params.message !== null && params.message !== undefined) rpcParams["message"] = params.message;
     if (params.recipient) rpcParams["recipient"] = [params.recipient];
     if (params.groupId) rpcParams["groupId"] = params.groupId;
     if (params.username) rpcParams["username"] = [params.username];
