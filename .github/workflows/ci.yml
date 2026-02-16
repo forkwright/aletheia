@@ -6,13 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run typecheck
 
@@ -21,7 +28,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run lint:check
 
@@ -30,17 +40,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run test:coverage
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: coverage
           path: infrastructure/runtime/coverage/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: test-results
           path: infrastructure/runtime/test-results/
+          retention-days: 14
 
   check-shell:
     runs-on: ubuntu-latest
@@ -57,10 +74,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: infrastructure/runtime/dist/
+          retention-days: 30

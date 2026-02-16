@@ -11,7 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run test:coverage
       - run: |
@@ -39,22 +42,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm audit --json > audit-results.json || true
       - uses: actions/upload-artifact@v4
         with:
           name: audit
           path: infrastructure/runtime/audit-results.json
+          retention-days: 30
 
   dead-code-detection:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npx knip --reporter json > dead-code.json || true
       - uses: actions/upload-artifact@v4
         with:
           name: dead-code
           path: infrastructure/runtime/dead-code.json
+          retention-days: 30
