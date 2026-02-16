@@ -1,4 +1,5 @@
 // Main orchestration — wire all modules
+import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
 import { loadConfig } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
@@ -24,7 +25,7 @@ import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { NousManager } from "./nous/manager.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef } from "./pylon/server.js";
+import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -34,6 +35,8 @@ import {
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
 import { sendMessage, parseTarget } from "./semeion/sender.js";
+import { createDefaultRegistry, type CommandRegistry } from "./semeion/commands.js";
+import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
@@ -158,6 +161,18 @@ export async function startRuntime(configPath?: string): Promise<void> {
   startGateway(app, port);
   log.info(`Aletheia gateway listening on port ${port}`);
 
+  // --- Skills ---
+  const skills = new SkillRegistry();
+  skills.loadFromDirectory(join(paths.shared, "skills"));
+  const skillsSection = skills.toBootstrapSection();
+  if (skillsSection) {
+    runtime.manager.setSkillsSection(skillsSection);
+  }
+  setSkillsRef(skills);
+
+  // --- Command Registry ---
+  const commandRegistry = createDefaultRegistry();
+
   // --- Signal ---
   let watchdog: Watchdog | null = null;
   const abortController = new AbortController();
@@ -208,6 +223,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
         baseUrl: httpUrl,
         abortSignal: abortController.signal,
         boundGroupIds,
+        commands: commandRegistry,
+        store: runtime.store,
+        config,
+        get watchdog() { return watchdog; },
+        skills,
         onStatusRequest: async (target) => {
           const status = formatStatusMessage(runtime.store, config, watchdog);
           await sendMessage(client, target, status, { markdown: false });

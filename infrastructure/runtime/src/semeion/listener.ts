@@ -1,9 +1,14 @@
 // SSE event stream consumer — dispatches Signal messages to NousManager
 import { createLogger } from "../koina/logger.js";
-import type { NousManager, InboundMessage } from "../nous/manager.js";
+import type { NousManager, InboundMessage, MediaAttachment } from "../nous/manager.js";
 import { SignalClient } from "./client.js";
 import { sendMessage, sendTyping, sendReadReceipt, type SendTarget } from "./sender.js";
-import type { SignalAccount } from "../taxis/schema.js";
+import type { SignalAccount, AletheiaConfig } from "../taxis/schema.js";
+import type { SessionStore } from "../mneme/store.js";
+import type { CommandRegistry, CommandContext } from "./commands.js";
+import type { Watchdog } from "../daemon/watchdog.js";
+import type { SkillRegistry } from "../organon/skills.js";
+import { preprocessLinks } from "./preprocess.js";
 
 const log = createLogger("semeion:listen");
 
@@ -58,13 +63,18 @@ export interface ListenerOpts {
   abortSignal?: AbortSignal;
   boundGroupIds?: Set<string>;
   onStatusRequest?: (target: SendTarget) => Promise<void>;
+  commands?: CommandRegistry;
+  store?: SessionStore;
+  config?: AletheiaConfig;
+  watchdog?: Watchdog | null;
+  skills?: SkillRegistry | null;
 }
 
 const MAX_CONCURRENT_TURNS = 3;
 const activeTurns = new Map<string, number>();
 
 export async function startListener(opts: ListenerOpts): Promise<void> {
-  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds, onStatusRequest } = opts;
+  const { accountId, account, manager, client, baseUrl, abortSignal, boundGroupIds, onStatusRequest, commands, store, config, watchdog, skills } = opts;
   const accountPhone = account.account ?? accountId;
 
   log.info(`Starting SSE listener for account ${accountId}`);
@@ -76,7 +86,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
       await consumeEventStream(
         baseUrl,
         accountPhone,
-        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest),
+        (envelope) => handleEnvelope(envelope, accountId, account, manager, client, boundGroupIds, onStatusRequest, commands, store, config, watchdog),
         abortSignal,
       );
       backoff.current = backoff.min;
@@ -196,6 +206,10 @@ function handleEnvelope(
   client: SignalClient,
   boundGroupIds?: Set<string>,
   onStatusRequest?: (target: SendTarget) => Promise<void>,
+  commands?: CommandRegistry,
+  store?: SessionStore,
+  config?: AletheiaConfig,
+  watchdog?: Watchdog | null,
 ): void {
   if (envelope.syncMessage) return;
   if (envelope.editMessage) return;
@@ -218,7 +232,19 @@ function handleEnvelope(
   const isGroup = !!dataMessage.groupInfo?.groupId;
   const groupId = dataMessage.groupInfo?.groupId;
 
-  if (!checkAccess(sender, isGroup, groupId, account, boundGroupIds)) {
+  const access = checkAccess(sender, isGroup, groupId, account, boundGroupIds, {
+    store,
+    client,
+    accountId,
+    accountPhone,
+    senderName: envelope.sourceName ?? sender,
+    target: {
+      account: accountPhone,
+      recipient: isGroup ? undefined : sender,
+      groupId: isGroup ? groupId : undefined,
+    },
+  });
+  if (!access) {
     log.debug(`Blocked message from ${sender} (policy)`);
     return;
   }
@@ -261,8 +287,34 @@ function handleEnvelope(
     groupId: isGroup ? groupId : undefined,
   };
 
-  // Status command — bypass agent turn pipeline
-  if (onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
+  // Command detection — bypass agent turn pipeline
+  if (commands && store && config) {
+    const match = commands.match(text);
+    if (match) {
+      log.info(`Command !${match.handler.name} from ${envelope.sourceName ?? sender}`);
+      const cmdCtx: CommandContext = {
+        sender: envelope.sourceUuid ?? sender,
+        senderName: envelope.sourceName ?? sender,
+        isGroup,
+        accountId,
+        target,
+        client,
+        store,
+        config,
+        manager,
+        watchdog: watchdog ?? null,
+        skills: skills ?? null,
+      };
+      match.handler
+        .execute(match.args, cmdCtx)
+        .then((result) => sendMessage(client, target, result, { markdown: false }))
+        .catch((err) => log.warn(`Command !${match.handler.name} failed: ${err instanceof Error ? err.message : err}`));
+      return;
+    }
+  }
+
+  // Legacy status command fallback (if no command registry)
+  if (!commands && onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
     log.info("Status command received, handling directly");
     onStatusRequest(target).catch((err) =>
       log.warn(`Status command failed: ${err instanceof Error ? err.message : err}`),
@@ -306,7 +358,7 @@ function handleEnvelope(
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
   // while different nous/sessions process concurrently
   activeTurns.set(accountId, accountTurns + 1);
-  processTurn(manager, msg, client, target).finally(() => {
+  preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb).finally(() => {
     const current = activeTurns.get(accountId) ?? 1;
     if (current <= 1) {
       activeTurns.delete(accountId);
@@ -314,6 +366,58 @@ function handleEnvelope(
       activeTurns.set(accountId, current - 1);
     }
   });
+}
+
+async function preprocessAndProcess(
+  manager: NousManager,
+  msg: InboundMessage,
+  client: SignalClient,
+  target: SendTarget,
+  attachments?: Array<{ id?: string; contentType?: string; filename?: string; size?: number }>,
+  accountPhone?: string,
+  mediaMaxMb?: number,
+): Promise<void> {
+  // Fetch image attachments for vision
+  if (attachments?.length) {
+    const media: MediaAttachment[] = [];
+    const maxBytes = (mediaMaxMb ?? 25) * 1024 * 1024;
+
+    for (const att of attachments) {
+      if (!att.id) continue;
+      const ct = att.contentType ?? "";
+      if (!ct.startsWith("image/")) continue;
+      if (att.size && att.size > maxBytes) {
+        log.debug(`Skipping oversized attachment ${att.filename ?? att.id} (${att.size} bytes)`);
+        continue;
+      }
+
+      try {
+        const result = await client.getAttachment({ id: att.id, account: accountPhone });
+        if (typeof result === "string") {
+          media.push({
+            contentType: ct,
+            data: result,
+            filename: att.filename,
+          });
+          log.debug(`Fetched image attachment: ${att.filename ?? att.id} (${ct})`);
+        }
+      } catch (err) {
+        log.warn(`Failed to fetch attachment ${att.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    if (media.length > 0) {
+      msg.media = media;
+    }
+  }
+
+  // Link pre-processing: fetch URLs and append previews
+  try {
+    msg.text = await preprocessLinks(msg.text);
+  } catch (err) {
+    log.debug(`Link preprocessing failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+  }
+  return processTurn(manager, msg, client, target);
 }
 
 async function processTurn(
@@ -352,17 +456,26 @@ async function processTurn(
   }
 }
 
+interface PairingContext {
+  store?: SessionStore;
+  client?: SignalClient;
+  accountId?: string;
+  accountPhone?: string;
+  senderName?: string;
+  target?: SendTarget;
+}
+
 function checkAccess(
   sender: string,
   isGroup: boolean,
   groupId: string | undefined,
   account: SignalAccount,
   boundGroupIds?: Set<string>,
+  pairingCtx?: PairingContext,
 ): boolean {
   if (isGroup) {
     if (account.groupPolicy === "disabled") return false;
     if (account.groupPolicy === "open") return true;
-    // Allowlist mode: check explicit groupAllowFrom, then fall back to bindings
     if (groupId && isInAllowlist(groupId, account.groupAllowFrom)) return true;
     if (groupId && boundGroupIds?.has(groupId)) return true;
     return false;
@@ -370,10 +483,28 @@ function checkAccess(
 
   if (account.dmPolicy === "disabled") return false;
   if (account.dmPolicy === "open") return true;
+
   if (account.dmPolicy === "pairing") {
-    log.warn(`DM policy "pairing" not implemented — treating as "open"`);
-    return true;
+    // Check static allowlist first
+    if (isInAllowlist(sender, account.allowFrom)) return true;
+    // Check dynamic approved contacts
+    if (pairingCtx?.store?.isApprovedContact(sender, "signal", pairingCtx.accountId)) return true;
+
+    // Initiate pairing flow
+    if (pairingCtx?.store && pairingCtx?.client && pairingCtx?.target) {
+      const { id, challengeCode } = pairingCtx.store.createContactRequest(
+        sender,
+        pairingCtx.senderName ?? sender,
+        "signal",
+        pairingCtx.accountId,
+      );
+      log.info(`Pairing request #${id} from ${pairingCtx.senderName ?? sender} (code: ${challengeCode})`);
+      sendMessage(pairingCtx.client, pairingCtx.target, `I don't know you yet. Ask an admin to approve code: ${challengeCode}`, { markdown: false })
+        .catch((err) => log.warn(`Failed to send pairing message: ${err}`));
+    }
+    return false;
   }
+
   return isInAllowlist(sender, account.allowFrom);
 }
 
