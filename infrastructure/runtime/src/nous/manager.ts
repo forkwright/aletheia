@@ -127,20 +127,27 @@ export class NousManager {
       ...bootstrap.dynamicBlocks,
     ];
 
-    const history = this.store.getHistoryWithBudget(
-      sessionId,
-      this.config.agents.defaults.contextTokens - bootstrap.totalTokens - 8000,
-    );
+    const toolDefs = this.tools.getDefinitions({
+      allow: nous.tools.allow.length > 0 ? nous.tools.allow : undefined,
+      deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
+    });
+
+    // Tool definitions count toward the input token budget — estimate and subtract
+    const toolDefTokens = toolDefs.length > 0
+      ? estimateTokens(JSON.stringify(toolDefs))
+      : 0;
+
+    const contextTokens = this.config.agents.defaults.contextTokens;
+    const reserveTokens = 8000; // response + overhead
+    const historyBudget = contextTokens - bootstrap.totalTokens - toolDefTokens - reserveTokens;
+
+    const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
     const seq = this.store.appendMessage(sessionId, "user", msg.text, {
       tokenEstimate: estimateTokens(msg.text),
     });
 
     const messages = this.buildMessages(history, msg.text);
-    const toolDefs = this.tools.getDefinitions({
-      allow: nous.tools.allow.length > 0 ? nous.tools.allow : undefined,
-      deny: nous.tools.deny.length > 0 ? nous.tools.deny : undefined,
-    });
 
     const toolContext: ToolContext = {
       nousId,
@@ -237,7 +244,6 @@ export class NousManager {
         }
 
         // Auto-trigger distillation when context grows too large
-        const contextTokens = this.config.agents.defaults.contextTokens;
         const compaction = this.config.agents.defaults.compaction;
         const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
         try {
@@ -299,8 +305,6 @@ export class NousManager {
           toolResult = err instanceof Error ? err.message : String(err);
           log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
         }
-
-        toolResult = truncateToolResult(toolResult, toolUse.name);
 
         toolResults.push({
           type: "tool_result",
@@ -417,25 +421,3 @@ export class NousManager {
   }
 }
 
-const TOOL_RESULT_MAX_CHARS = 12000;
-const TOOL_RESULT_HEAD_LINES = 80;
-const TOOL_RESULT_TAIL_LINES = 40;
-
-function truncateToolResult(result: string, toolName: string): string {
-  if (result.length <= TOOL_RESULT_MAX_CHARS) return result;
-
-  const lines = result.split("\n");
-  if (lines.length <= TOOL_RESULT_HEAD_LINES + TOOL_RESULT_TAIL_LINES) {
-    // Few lines but long content — char-level truncation
-    return result.slice(0, TOOL_RESULT_MAX_CHARS) +
-      `\n\n[truncated: ${result.length} chars, showing first ${TOOL_RESULT_MAX_CHARS}]`;
-  }
-
-  const head = lines.slice(0, TOOL_RESULT_HEAD_LINES).join("\n");
-  const tail = lines.slice(-TOOL_RESULT_TAIL_LINES).join("\n");
-  const omitted = lines.length - TOOL_RESULT_HEAD_LINES - TOOL_RESULT_TAIL_LINES;
-
-  log.info(`Truncated ${toolName} result: ${lines.length} lines → ${TOOL_RESULT_HEAD_LINES}+${TOOL_RESULT_TAIL_LINES} (omitted ${omitted})`);
-
-  return `${head}\n\n[... ${omitted} lines omitted ...]\n\n${tail}`;
-}
