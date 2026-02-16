@@ -107,7 +107,7 @@ async function probeService(svc: ServiceProbe): Promise<boolean> {
     const res = await fetch(svc.url, {
       signal: AbortSignal.timeout(timeout),
     });
-    return res.ok || res.status < 500;
+    return res.ok;
   } catch {
     return false;
   }

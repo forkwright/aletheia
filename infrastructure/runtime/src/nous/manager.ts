@@ -139,7 +139,7 @@ export class NousManager {
 
     const contextTokens = this.config.agents.defaults.contextTokens;
     const reserveTokens = 8000; // response + overhead
-    const historyBudget = contextTokens - bootstrap.totalTokens - toolDefTokens - reserveTokens;
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - reserveTokens);
 
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 

@@ -279,9 +279,12 @@ function handleEnvelope(
     sessionKey,
   };
 
-  // Concurrency guard — don't block the SSE stream
+  // Concurrency guard — reject if at limit to protect API and SQLite
   if (activeTurns >= MAX_CONCURRENT_TURNS) {
-    log.warn(`Concurrency limit reached (${activeTurns}/${MAX_CONCURRENT_TURNS}), queuing message`);
+    log.warn(`Concurrency limit reached (${activeTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
+    sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false })
+      .catch((err) => log.warn(`Failed to send busy message: ${err}`));
+    return;
   }
 
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
