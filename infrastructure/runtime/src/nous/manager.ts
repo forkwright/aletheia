@@ -143,6 +143,29 @@ export class NousManager {
 
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
+    // Surface unsurfaced cross-agent messages into this session
+    const unsurfaced = this.store.getUnsurfacedMessages(nousId);
+    if (unsurfaced.length > 0) {
+      const lines = unsurfaced.map((m) => {
+        const from = m.sourceNousId ?? "unknown";
+        const summary = m.response ? `\n  Response: ${m.response.slice(0, 500)}` : "";
+        return `[From ${from}, ${m.kind}] ${m.content}${summary}`;
+      });
+      const notice =
+        `While you were in another conversation, you received cross-agent messages:\n\n` +
+        lines.join("\n\n") +
+        `\n\nThe user may not be aware of these. Mention them if relevant.`;
+
+      this.store.appendMessage(sessionId, "user", notice, {
+        tokenEstimate: estimateTokens(notice),
+      });
+      this.store.markMessagesSurfaced(
+        unsurfaced.map((m) => m.id),
+        sessionId,
+      );
+      log.info(`Surfaced ${unsurfaced.length} cross-agent messages into session ${sessionId}`);
+    }
+
     const seq = this.store.appendMessage(sessionId, "user", msg.text, {
       tokenEstimate: estimateTokens(msg.text),
     });

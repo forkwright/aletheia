@@ -110,11 +110,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const plugins = new PluginRegistry(config);
 
   // Wire cross-agent tools (need manager + store reference for audit trail)
-  tools.register(createSessionsSendTool(manager));
   const auditDispatcher = {
     handleMessage: manager.handleMessage.bind(manager),
     store,
   };
+  tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
   tools.register(createSessionsSpawnTool(auditDispatcher));
 
