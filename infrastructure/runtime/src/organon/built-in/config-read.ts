@@ -25,7 +25,7 @@ export function createConfigReadTool(config?: AletheiaConfig): ToolHandler {
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
-      const section = input.section as string;
+      const section = input["section"] as string;
 
       if (!config) {
         return JSON.stringify({ error: "Config not available" });

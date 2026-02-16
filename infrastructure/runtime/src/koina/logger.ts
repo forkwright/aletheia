@@ -8,7 +8,7 @@ export const log = new Logger({
   prettyErrorTemplate:
     "{{dateIsoStr}} {{logLevelName}} [{{name}}] {{errorName}} {{errorMessage}}\n{{errorStack}}",
   type: "pretty",
-  minLevel: process.env.ALETHEIA_LOG_LEVEL === "debug" ? 0 : 3,
+  minLevel: process.env["ALETHEIA_LOG_LEVEL"] === "debug" ? 0 : 3,
 });
 
 export function createLogger(name: string): Logger<unknown> {

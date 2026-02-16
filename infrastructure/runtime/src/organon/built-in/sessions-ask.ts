@@ -1,7 +1,10 @@
 // Synchronous cross-agent messaging — waits for response
+import { createLogger } from "../../koina/logger.js";
 import type { ToolHandler, ToolContext } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
+
+const log = createLogger("organon.sessions-ask");
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
@@ -41,11 +44,11 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
-      const agentId = input.agentId as string;
-      const message = input.message as string;
+      const agentId = input["agentId"] as string;
+      const message = input["message"] as string;
       const sessionKey =
-        (input.sessionKey as string) ?? `ask:${context.nousId}`;
-      const timeoutSeconds = (input.timeoutSeconds as number) ?? 120;
+        (input["sessionKey"] as string) ?? `ask:${context.nousId}`;
+      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 120;
 
       if (!dispatcher) {
         return JSON.stringify({ error: "Agent dispatch not available" });
@@ -96,10 +99,19 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
           });
         }
 
+        // Lightweight disagreement detection — heuristic, no extra API call
+        const disagreement = detectDisagreement(outcome.text);
+        if (disagreement) {
+          log.info(
+            `Disagreement detected: ${context.nousId} → ${agentId}: ${disagreement}`,
+          );
+        }
+
         return JSON.stringify({
           agentId,
           response: outcome.text,
           toolCalls: outcome.toolCalls,
+          disagreement: disagreement ?? undefined,
           tokens: {
             input: outcome.inputTokens,
             output: outcome.outputTokens,
@@ -126,3 +138,20 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
 }
 
 export const sessionsAskTool = createSessionsAskTool();
+
+const DISAGREEMENT_PATTERNS = [
+  { pattern: /\bI disagree\b/i, signal: "explicit disagreement" },
+  { pattern: /\bthat's not (?:correct|right|accurate)\b/i, signal: "factual correction" },
+  { pattern: /\bactually,?\s/i, signal: "correction" },
+  { pattern: /\bhowever,?\s.*\binstead\b/i, signal: "alternative proposal" },
+  { pattern: /\bI'd (?:suggest|recommend) (?:instead|rather|a different)\b/i, signal: "counter-suggestion" },
+  { pattern: /\bthat (?:won't|wouldn't|doesn't|can't) work\b/i, signal: "rejection" },
+  { pattern: /\bI (?:don't think|wouldn't say|wouldn't agree)\b/i, signal: "pushback" },
+];
+
+function detectDisagreement(responseText: string): string | null {
+  for (const { pattern, signal } of DISAGREEMENT_PATTERNS) {
+    if (pattern.test(responseText)) return signal;
+  }
+  return null;
+}

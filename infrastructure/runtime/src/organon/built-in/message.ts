@@ -38,8 +38,8 @@ export function createMessageTool(opts: MessageToolOpts = {}): ToolHandler {
       },
     },
     async execute(input: Record<string, unknown>): Promise<string> {
-      const to = input.to as string;
-      let text = input.text as string;
+      const to = input["to"] as string;
+      let text = input["text"] as string;
 
       if (!sender) {
         return JSON.stringify({ error: "Signal not connected" });

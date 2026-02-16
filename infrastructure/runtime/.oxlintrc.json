@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-empty": "warn",
+    "no-empty-function": "warn",
+    "eqeqeq": "error",
+    "require-await": "warn",
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error"
+  },
+  "settings": {},
+  "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/"]
+}

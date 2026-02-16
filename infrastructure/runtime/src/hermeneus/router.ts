@@ -48,7 +48,9 @@ export class ProviderRouter {
     if ((model.startsWith("claude-") || stripped.startsWith("claude-")) && this.providers.length > 0) {
       return this.providers[0]!;
     }
-    throw new ProviderError(`No provider found for model: ${model}`);
+    throw new ProviderError(`No provider found for model: ${model}`, {
+      code: "PROVIDER_NOT_FOUND", context: { model },
+    });
   }
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
@@ -90,11 +92,11 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
 
   // Load OAuth token from credentials if ANTHROPIC_AUTH_TOKEN not in env
   let authToken: string | undefined;
-  const envAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
-  const envApiKey = process.env.ANTHROPIC_API_KEY;
+  const envAuthToken = process.env["ANTHROPIC_AUTH_TOKEN"];
+  const envApiKey = process.env["ANTHROPIC_API_KEY"];
 
   if (!envAuthToken && !envApiKey) {
-    const home = process.env.HOME ?? "/home/syn";
+    const home = process.env["HOME"] ?? "/home/syn";
     const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
     try {
       const raw = readFileSync(credPath, "utf-8");
@@ -105,7 +107,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
         log.warn(`Credential file ${credPath} contains invalid JSON — skipping`);
       }
       if (creds && typeof creds === "object" && "token" in (creds as Record<string, unknown>)) {
-        const token = (creds as Record<string, string>).token;
+        const token = (creds as Record<string, string>)["token"];
         if (typeof token === "string" && token.length > 0) {
           authToken = token;
           log.info("Loaded OAuth token from credentials");

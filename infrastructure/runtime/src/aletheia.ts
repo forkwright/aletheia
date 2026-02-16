@@ -35,7 +35,7 @@ import {
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
 import { sendMessage, parseTarget } from "./semeion/sender.js";
-import { createDefaultRegistry, type CommandRegistry } from "./semeion/commands.js";
+import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
@@ -77,7 +77,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Web access
   tools.register(webFetchTool);
-  if (process.env.BRAVE_API_KEY) {
+  if (process.env["BRAVE_API_KEY"]) {
     tools.register(braveSearchTool);
     log.info("Web search: Brave (API key found)");
   } else {
@@ -89,7 +89,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(mem0SearchTool);
 
   // Browser (requires chromium on host)
-  if (process.env.CHROMIUM_PATH || process.env.ENABLE_BROWSER) {
+  if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
     tools.register(browserTool);
     log.info("Browser tool registered");
   }
@@ -100,13 +100,16 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   log.info(`Registered ${tools.size} tools`);
 
-  const bindings = config.bindings.map((b) => ({
-    channel: b.match.channel,
-    peerKind: b.match.peer?.kind,
-    peerId: b.match.peer?.id,
-    accountId: b.match.accountId,
-    nousId: b.agentId,
-  }));
+  const bindings = config.bindings.map((b) => {
+    const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
+      channel: b.match.channel,
+      nousId: b.agentId,
+    };
+    if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+    if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+    if (b.match.accountId) entry.accountId = b.match.accountId;
+    return entry;
+  });
   store.rebuildRoutingCache(bindings);
 
   const manager = new NousManager(config, store, router, tools);
@@ -242,7 +245,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
       const firstAccountId = clients.keys().next().value!;
       const firstAccount =
         config.channels.signal.accounts[firstAccountId];
-      const defaultAccount = firstAccount.account ?? firstAccountId;
+      const defaultAccount = firstAccount?.account ?? firstAccountId;
 
       const messageTool = createMessageTool({
         sender: {

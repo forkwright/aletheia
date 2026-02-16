@@ -692,21 +692,21 @@ export class SessionStore {
     model: string | null;
     createdAt: string;
   }> {
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT turn_seq, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model, created_at
          FROM usage WHERE session_id = ? ORDER BY turn_seq ASC`,
       )
-      .all(sessionId)
-      .map((row: Record<string, unknown>) => ({
-        turnSeq: row['turn_seq'] as number,
-        inputTokens: row['input_tokens'] as number,
-        outputTokens: row['output_tokens'] as number,
-        cacheReadTokens: row['cache_read_tokens'] as number,
-        cacheWriteTokens: row['cache_write_tokens'] as number,
-        model: row['model'] as string | null,
-        createdAt: row['created_at'] as string,
-      }));
+      .all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      turnSeq: row['turn_seq'] as number,
+      inputTokens: row['input_tokens'] as number,
+      outputTokens: row['output_tokens'] as number,
+      cacheReadTokens: row['cache_read_tokens'] as number,
+      cacheWriteTokens: row['cache_write_tokens'] as number,
+      model: row['model'] as string | null,
+      createdAt: row['created_at'] as string,
+    }));
   }
 
   getCostsByAgent(nousId: string): Array<{
@@ -717,7 +717,7 @@ export class SessionStore {
     model: string | null;
     turns: number;
   }> {
-    return this.db
+    const rows2 = this.db
       .prepare(
         `SELECT u.model,
                 SUM(u.input_tokens) AS input_tokens,
@@ -730,15 +730,15 @@ export class SessionStore {
          WHERE s.nous_id = ?
          GROUP BY u.model`,
       )
-      .all(nousId)
-      .map((row: Record<string, unknown>) => ({
-        inputTokens: row['input_tokens'] as number,
-        outputTokens: row['output_tokens'] as number,
-        cacheReadTokens: row['cache_read_tokens'] as number,
-        cacheWriteTokens: row['cache_write_tokens'] as number,
-        model: row['model'] as string | null,
-        turns: row['turns'] as number,
-      }));
+      .all(nousId) as Array<Record<string, unknown>>;
+    return rows2.map((row) => ({
+      inputTokens: row['input_tokens'] as number,
+      outputTokens: row['output_tokens'] as number,
+      cacheReadTokens: row['cache_read_tokens'] as number,
+      cacheWriteTokens: row['cache_write_tokens'] as number,
+      model: row['model'] as string | null,
+      turns: row['turns'] as number,
+    }));
   }
 
   close(): void {

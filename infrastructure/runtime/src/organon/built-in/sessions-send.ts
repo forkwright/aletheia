@@ -42,9 +42,9 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
-      const agentId = input.agentId as string;
-      const message = input.message as string;
-      const sessionKey = (input.sessionKey as string) ?? "main";
+      const agentId = input["agentId"] as string;
+      const message = input["message"] as string;
+      const sessionKey = (input["sessionKey"] as string) ?? "main";
 
       if (!dispatcher) {
         return JSON.stringify({ error: "Agent dispatch not available" });

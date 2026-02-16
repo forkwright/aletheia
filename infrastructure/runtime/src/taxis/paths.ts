@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const ALETHEIA_ROOT = process.env.ALETHEIA_ROOT ?? "/mnt/ssd/aletheia";
+const ALETHEIA_ROOT = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
 
 export const paths = {
   root: ALETHEIA_ROOT,
@@ -15,7 +15,7 @@ export const paths = {
 
   configDir(): string {
     return (
-      process.env.ALETHEIA_CONFIG_DIR ??
+      process.env["ALETHEIA_CONFIG_DIR"] ??
       join(homedir(), ".aletheia")
     );
   },

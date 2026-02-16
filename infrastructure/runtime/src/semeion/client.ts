@@ -56,12 +56,12 @@ export class SignalClient {
   }): Promise<unknown> {
     const rpcParams: Record<string, unknown> = {};
 
-    if (params.message != null) rpcParams.message = params.message;
-    if (params.recipient) rpcParams.recipient = [params.recipient];
-    if (params.groupId) rpcParams.groupId = params.groupId;
-    if (params.username) rpcParams.username = [params.username];
-    if (params.account) rpcParams.account = params.account;
-    if (params.attachments?.length) rpcParams.attachments = params.attachments;
+    if (params.message != null) rpcParams["message"] = params.message;
+    if (params.recipient) rpcParams["recipient"] = [params.recipient];
+    if (params.groupId) rpcParams["groupId"] = params.groupId;
+    if (params.username) rpcParams["username"] = [params.username];
+    if (params.account) rpcParams["account"] = params.account;
+    if (params.attachments?.length) rpcParams["attachments"] = params.attachments;
     if (params.textStyle?.length) rpcParams["text-style"] = params.textStyle;
 
     const backoffs = [500, 1000];
@@ -91,10 +91,10 @@ export class SignalClient {
     stop?: boolean;
   }): Promise<void> {
     const rpcParams: Record<string, unknown> = {};
-    if (params.recipient) rpcParams.recipient = params.recipient;
-    if (params.groupId) rpcParams.groupId = params.groupId;
-    if (params.account) rpcParams.account = params.account;
-    if (params.stop) rpcParams.stop = true;
+    if (params.recipient) rpcParams["recipient"] = params.recipient;
+    if (params.groupId) rpcParams["groupId"] = params.groupId;
+    if (params.account) rpcParams["account"] = params.account;
+    if (params.stop) rpcParams["stop"] = true;
 
     await this.rpc("sendTyping", rpcParams);
   }
@@ -127,10 +127,10 @@ export class SignalClient {
       targetTimestamp: params.targetTimestamp,
       targetAuthor: params.targetAuthor,
     };
-    if (params.recipient) rpcParams.recipients = [params.recipient];
-    if (params.groupId) rpcParams.groupIds = [params.groupId];
-    if (params.account) rpcParams.account = params.account;
-    if (params.remove) rpcParams.remove = true;
+    if (params.recipient) rpcParams["recipients"] = [params.recipient];
+    if (params.groupId) rpcParams["groupIds"] = [params.groupId];
+    if (params.account) rpcParams["account"] = params.account;
+    if (params.remove) rpcParams["remove"] = true;
 
     await this.rpc("sendReaction", rpcParams);
   }

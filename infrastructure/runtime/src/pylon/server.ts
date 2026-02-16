@@ -166,7 +166,7 @@ export function createGateway(
       id: a.id,
       name: a.name ?? a.id,
       workspace: a.workspace,
-      model: a.model ?? config.models.default,
+      model: a.model ?? config.agents.defaults.model.primary,
     }));
     return c.json({ agents });
   });
@@ -184,7 +184,7 @@ export function createGateway(
       id: agent.id,
       name: agent.name ?? agent.id,
       workspace: agent.workspace,
-      model: agent.model ?? config.models.default,
+      model: agent.model ?? config.agents.defaults.model.primary,
       sessions,
       usage: usage ?? null,
     });
@@ -204,9 +204,9 @@ export function createGateway(
     try {
       await manager.handleMessage({
         text: `[Cron trigger: ${id}] Manual trigger via admin API`,
-        nousId: job.agentId,
         sessionKey: `cron:${id}`,
         channel: "cron",
+        ...(job.agentId ? { nousId: job.agentId } : {}),
       });
       return c.json({ ok: true, jobId: id });
     } catch (err) {
@@ -288,7 +288,7 @@ export function createGateway(
       });
       return { agentId: a.id, ...cost, turns: usage.turns };
     });
-    const totalCost = agentCosts.reduce((sum, a) => sum + a.totalCost, 0);
+    const totalCost = agentCosts.reduce((sum, a) => sum + ("totalCost" in a ? a.totalCost : a.cost), 0);
     return c.json({ totalCost: Math.round(totalCost * 10000) / 10000, agents: agentCosts });
   });
 
