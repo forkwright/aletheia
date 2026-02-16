@@ -43,9 +43,11 @@ export function spawnEphemeral(spec: EphemeralSpec, sharedRoot: string): Ephemer
     }
   }
 
-  const id = `eph_${randomBytes(6).toString("hex")}`;
-  const workspace = join(sharedRoot, "ephemeral", id);
-  mkdirSync(workspace, { recursive: true });
+  const id = `eph_${randomBytes(16).toString("hex")}`;
+  const parentDir = join(sharedRoot, "ephemeral");
+  mkdirSync(parentDir, { recursive: true });
+  const workspace = join(parentDir, id);
+  mkdirSync(workspace, { mode: 0o700 });
 
   // Write SOUL.md for the specialist
   writeFileSync(join(workspace, "SOUL.md"), spec.soul);

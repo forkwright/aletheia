@@ -29,13 +29,13 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
          Claude     Claude    Claude   Claude
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~293KB bundle), Hono gateway on port 18789
+**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~354KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
 
 **Communication**: Signal messenger via signal-cli (JSON-RPC mode on port 8080). 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
-**Models**: Claude Opus 4.6 (primary), Claude Sonnet 4 (fallback), Gemini Flash (fallback). Provider failover across Anthropic, OpenRouter, OpenAI, and Azure.
+**Models**: Claude Opus 4.6 (primary), Claude Sonnet 4 (fallback). Complexity-based routing with temperature selection. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure.
 
-**Memory**: Dual-layer — Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. JSONL fact store with confidence scoring.
+**Memory**: Dual-layer — Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Self-observation tools (calibration, correction tracking).
 
 **Observability**: Self-hosted Langfuse (port 3100) for session traces and metrics.
 
@@ -72,9 +72,9 @@ aletheia/
 │   │   │   ├── taxis/              Config loading + validation (Zod)
 │   │   │   ├── mneme/              Session store (better-sqlite3)
 │   │   │   ├── hermeneus/          Anthropic SDK + provider router
-│   │   │   ├── organon/            Tool registry + built-in tools + skills
+│   │   │   ├── organon/            Tool registry + 28 built-in tools + skills
 │   │   │   ├── semeion/            Signal client, listener, commands, preprocessing
-│   │   │   ├── pylon/              Hono HTTP gateway (17 endpoints)
+│   │   │   ├── pylon/              Hono HTTP gateway, MCP, Web UI
 │   │   │   ├── prostheke/          Plugin system (lifecycle hooks)
 │   │   │   ├── nous/               Agent bootstrap + turn execution
 │   │   │   ├── distillation/       Context summarization pipeline
@@ -88,6 +88,10 @@ aletheia/
 │   │   └── docker-compose.yml  Qdrant + Neo4j containers
 │   ├── langfuse/           Self-hosted observability (Docker)
 │   └── prosoche/           Adaptive attention daemon
+│
+├── ui/                     Web UI (Svelte 5 + TypeScript)
+│   ├── src/                    Components, stores, lib
+│   └── dist/                   Build output (served at /ui)
 │
 ├── config/                 Example configuration
 │   └── aletheia.example.json
@@ -172,11 +176,16 @@ At session start, bootstrap assembles: agent workspace files + recalled memories
 | GET | `/api/metrics` | Full metrics (per-nous, tokens, cache, cron, services) |
 | GET | `/api/agents` | All agents with model info |
 | GET | `/api/agents/:id` | Single agent + recent sessions + usage |
+| GET | `/api/agents/:id/identity` | Agent name + emoji from IDENTITY.md |
 | GET | `/api/sessions` | Session list (optional `?nousId=`) |
-| GET | `/api/sessions/:id/history` | Message history |
+| GET | `/api/sessions/:id/history` | Message history (excludes distilled by default) |
 | POST | `/api/sessions/send` | Send message to agent |
+| POST | `/api/sessions/stream` | Streaming message (SSE: turn_start, text_delta, tool events, turn_complete) |
 | POST | `/api/sessions/:id/archive` | Archive session |
 | POST | `/api/sessions/:id/distill` | Trigger distillation |
+| GET | `/api/events` | SSE event stream (turn, tool, session events) |
+| GET | `/api/costs/summary` | Token usage and cost summary |
+| GET | `/api/costs/session/:id` | Per-session cost breakdown |
 | GET | `/api/cron` | Cron job list |
 | POST | `/api/cron/:id/trigger` | Manual cron trigger |
 | GET | `/api/skills` | Skills directory |
@@ -184,6 +193,16 @@ At session start, bootstrap assembles: agent workspace files + recalled memories
 | POST | `/api/contacts/:code/approve` | Approve contact |
 | POST | `/api/contacts/:code/deny` | Deny contact |
 | GET | `/api/config` | Config summary |
+
+### Web UI
+
+Svelte 5 chat interface at `/ui`. Streaming responses via SSE, real-time event push, per-agent conversation management.
+
+```bash
+cd ui && npm install && npm run build    # Outputs to ui/dist/
+```
+
+The gateway serves `ui/dist/` as static files with SPA fallback. If no build exists, falls back to a minimal status dashboard.
 
 ### Shared Scripts (`shared/bin/`)
 
@@ -275,11 +294,11 @@ Copy `.env.example` to `shared/config/aletheia.env` and fill in values. Must be 
 src/entry.ts          CLI entry point (Commander)
 src/aletheia.ts       Main orchestration — wires all modules
 src/taxis/            Config loading + Zod validation
-src/mneme/            Session store (better-sqlite3, 3 migrations)
+src/mneme/            Session store (better-sqlite3, 6 migrations)
 src/hermeneus/        Anthropic SDK, provider router, token counting
-src/organon/          Tool registry, 13 built-in tools, skills directory
+src/organon/          Tool registry, 28 built-in tools, skills directory
 src/semeion/          Signal client, SSE listener, commands, link preprocessing
-src/pylon/            Hono HTTP gateway (17 endpoints)
+src/pylon/            Hono HTTP gateway, MCP, Web UI
 src/prostheke/        Plugin system (lifecycle hooks)
 src/nous/             Bootstrap assembly, agent turn execution (NousManager)
 src/distillation/     Context summarization pipeline

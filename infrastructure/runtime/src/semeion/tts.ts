@@ -1,13 +1,14 @@
 // Text-to-speech synthesis — OpenAI TTS primary, Piper local fallback
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("semeion:tts");
 
-const TTS_DIR = process.env["ALETHEIA_TTS_DIR"] ?? "/tmp/aletheia-tts";
+const TTS_DIR = process.env["ALETHEIA_TTS_DIR"] ?? join(tmpdir(), "aletheia-tts-" + randomBytes(4).toString("hex"));
 const OPENAI_API_KEY = process.env["OPENAI_API_KEY"] ?? "";
 const PIPER_BIN = process.env["PIPER_BIN"] ?? "/usr/local/bin/piper";
 const PIPER_MODEL = process.env["PIPER_MODEL"] ?? "/usr/local/share/piper/en_US-lessac-medium.onnx";
@@ -95,10 +96,11 @@ function synthesizePiper(text: string, id: string, opts?: TtsOptions): TtsResult
   const outPath = join(TTS_DIR, `${id}.wav`);
   const speed = opts?.speed ?? 1.0;
 
-  execSync(
-    `echo ${JSON.stringify(text.slice(0, 4096))} | "${PIPER_BIN}" --model "${PIPER_MODEL}" --length_scale ${1 / speed} --output_file "${outPath}"`,
-    { timeout: 30000, stdio: "pipe" },
-  );
+  execFileSync(PIPER_BIN, [
+    "--model", PIPER_MODEL,
+    "--length_scale", String(1 / speed),
+    "--output_file", outPath,
+  ], { timeout: 30000, input: text.slice(0, 4096) });
 
   log.info(`Piper TTS: → ${outPath}`);
 

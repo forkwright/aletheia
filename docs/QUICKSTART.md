@@ -68,7 +68,15 @@ Edit the workspace files:
 
 See [WORKSPACE_FILES.md](WORKSPACE_FILES.md) for details on each file.
 
-## 6. Run
+## 6. Build Web UI (optional)
+
+```bash
+cd ui && npm install && npm run build && cd ..
+```
+
+The gateway serves the UI at `/ui`. If no build exists, it shows a minimal status dashboard.
+
+## 7. Run
 
 ```bash
 # Direct:
@@ -79,7 +87,7 @@ sudo ln -s $(pwd)/infrastructure/runtime/aletheia.mjs /usr/local/bin/aletheia
 aletheia gateway
 ```
 
-## 7. Verify
+## 8. Verify
 
 ```bash
 # Health check
@@ -88,11 +96,14 @@ curl http://localhost:18789/health
 # System status
 curl http://localhost:18789/api/status
 
+# Web UI
+open http://localhost:18789/ui
+
 # Send a test message via CLI
 aletheia send -a atlas -m "Hello, are you there?"
 ```
 
-## 8. Signal Integration
+## 9. Signal Integration
 
 Once signal-cli is running (JSON-RPC on port 8080), send a message to the registered Signal number. The gateway routes it to the default agent.
 

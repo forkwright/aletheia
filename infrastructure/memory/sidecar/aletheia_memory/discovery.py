@@ -59,7 +59,7 @@ async def discover(req: DiscoverRequest):
         import networkx as nx
         from neo4j import GraphDatabase
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Missing dependency: {e}")
+        raise HTTPException(status_code=500, detail="Missing dependency")
 
     driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
@@ -194,7 +194,7 @@ async def discover(req: DiscoverRequest):
         }
     except Exception as e:
         logger.exception("discover failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         driver.close()
 
@@ -213,7 +213,7 @@ async def explore_paths(req: ExplorePathsRequest):
         import networkx as nx
         from neo4j import GraphDatabase
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Missing dependency: {e}")
+        raise HTTPException(status_code=500, detail="Missing dependency")
 
     driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
@@ -323,7 +323,7 @@ async def explore_paths(req: ExplorePathsRequest):
         }
     except Exception as e:
         logger.exception("explore_paths failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         driver.close()
 
@@ -342,7 +342,7 @@ async def generate_discovery_candidates():
         import networkx as nx
         from neo4j import GraphDatabase
     except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"Missing dependency: {e}")
+        raise HTTPException(status_code=500, detail="Missing dependency")
 
     driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
@@ -452,7 +452,7 @@ async def generate_discovery_candidates():
         }
     except Exception as e:
         logger.exception("generate_discovery_candidates failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         driver.close()
 
@@ -536,7 +536,7 @@ async def discovery_stats():
         }
     except Exception as e:
         logger.exception("discovery_stats failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Internal helpers ---

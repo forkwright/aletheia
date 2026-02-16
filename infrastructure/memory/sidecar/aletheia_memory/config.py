@@ -68,14 +68,21 @@ MEM0_CONFIG = {
             "api_key": ANTHROPIC_API_KEY,
         },
     },
-    "embedder": {
-        "provider": "openai",
-        "config": {
-            "model": "voyage-3-large",
-            "api_key": VOYAGE_API_KEY,
-            "openai_base_url": "https://api.voyageai.com/v1",
-        },
-    },
+    "embedder": (
+        {
+            "provider": "openai",
+            "config": {
+                "model": "voyage-3-large",
+                "api_key": VOYAGE_API_KEY,
+                "openai_base_url": "https://api.voyageai.com/v1",
+            },
+        } if VOYAGE_API_KEY else {
+            "provider": "huggingface",
+            "config": {
+                "model": "BAAI/bge-large-en-v1.5",
+            },
+        }
+    ),
     "vector_store": {
         "provider": "qdrant",
         "config": {

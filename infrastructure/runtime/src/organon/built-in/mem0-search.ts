@@ -18,8 +18,8 @@ export const mem0SearchTool: ToolHandler = {
       "- Looking for information in the current session — it's already in context\n" +
       "- Searching for files or code — use grep or find instead\n\n" +
       "TIPS:\n" +
-      "- Uses semantic search — phrase queries naturally, not as keywords\n" +
-      "- Tries graph-enhanced search first (entity relationships), falls back to vector\n" +
+      "- Uses semantic search with LLM-powered query rewriting and alias resolution\n" +
+      "- Phrase queries naturally — the system rewrites your query into multiple search variants\n" +
       "- Results include score — higher is more relevant\n" +
       "- Searches both agent-scoped and global memories, deduplicates",
     input_schema: {
@@ -46,28 +46,7 @@ export const mem0SearchTool: ToolHandler = {
 
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-
-      // Try graph-enhanced search first, fall back to standard vector search
-      const graphBody = JSON.stringify({
-        query,
-        user_id: USER_ID,
-        agent_id: context.nousId,
-        limit: limit * 2,
-        graph_weight: 0.3,
-        graph_depth: 2,
-      });
-
-      const searchBody = (agentId?: string) =>
-        JSON.stringify({
-          query,
-          user_id: USER_ID,
-          ...(agentId ? { agent_id: agentId } : {}),
-          limit,
-        });
-
-      let agentResults: unknown[] = [];
-      let globalResults: unknown[] = [];
+      const timer = setTimeout(() => controller.abort(), 12000);
 
       const extract = async (res: Response) => {
         if (!res.ok) return [];
@@ -76,38 +55,62 @@ export const mem0SearchTool: ToolHandler = {
         return Array.isArray(results) ? results : [];
       };
 
+      let results: unknown[] = [];
+
+      // Tier 1: Enhanced search with query rewriting + alias resolution
       try {
-        // Try graph-enhanced endpoint
-        const graphRes = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+        const enhancedRes = await fetch(`${SIDECAR_URL}/search_enhanced`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: graphBody,
+          body: JSON.stringify({
+            query,
+            user_id: USER_ID,
+            agent_id: context.nousId,
+            limit: limit * 2,
+            rewrite: true,
+          }),
           signal: controller.signal,
         });
-
-        if (graphRes.ok) {
-          agentResults = await extract(graphRes);
-        } else {
-          // Fallback to standard search
-          const [aRes, gRes] = await Promise.all([
-            fetch(`${SIDECAR_URL}/search`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: searchBody(context.nousId),
-              signal: controller.signal,
-            }),
-            fetch(`${SIDECAR_URL}/search`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: searchBody(),
-              signal: controller.signal,
-            }),
-          ]);
-          agentResults = await extract(aRes);
-          globalResults = await extract(gRes);
+        if (enhancedRes.ok) {
+          results = await extract(enhancedRes);
         }
       } catch {
-        // If graph-enhanced fails, try standard
+        // Fall through to tier 2
+      }
+
+      // Tier 2: Graph-enhanced search (vector + graph neighbor expansion)
+      if (results.length === 0) {
+        try {
+          const graphRes = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query,
+              user_id: USER_ID,
+              agent_id: context.nousId,
+              limit: limit * 2,
+              graph_weight: 0.3,
+              graph_depth: 2,
+            }),
+            signal: controller.signal,
+          });
+          if (graphRes.ok) {
+            results = await extract(graphRes);
+          }
+        } catch {
+          // Fall through to tier 3
+        }
+      }
+
+      // Tier 3: Basic parallel search (agent-scoped + global)
+      if (results.length === 0) {
+        const searchBody = (agentId?: string) =>
+          JSON.stringify({
+            query,
+            user_id: USER_ID,
+            ...(agentId ? { agent_id: agentId } : {}),
+            limit,
+          });
         try {
           const [aRes, gRes] = await Promise.all([
             fetch(`${SIDECAR_URL}/search`, {
@@ -123,18 +126,20 @@ export const mem0SearchTool: ToolHandler = {
               signal: controller.signal,
             }),
           ]);
-          agentResults = await extract(aRes);
-          globalResults = await extract(gRes);
+          const agentResults = await extract(aRes);
+          const globalResults = await extract(gRes);
+          results = [...agentResults, ...globalResults];
         } catch {
-          // Both failed
+          // All tiers failed
         }
       }
+
       clearTimeout(timer);
 
-      // Merge and deduplicate by memory id, preferring agent-scoped
+      // Deduplicate by memory id, sort by score, take top `limit`
       const seen = new Set<string>();
       const merged: Record<string, unknown>[] = [];
-      const all = [...agentResults, ...globalResults] as Record<string, unknown>[];
+      const all = results as Record<string, unknown>[];
       for (let i = 0; i < all.length; i++) {
         const m = all[i]!;
         const id = String(m["id"] ?? `${m["memory"] ?? ""}_${i}`);
@@ -144,7 +149,6 @@ export const mem0SearchTool: ToolHandler = {
         }
       }
 
-      // Sort by score descending, take top `limit`
       merged.sort((a, b) => ((b["score"] as number) ?? 0) - ((a["score"] as number) ?? 0));
       const memories = merged.slice(0, limit).map((m) => ({
         memory: m["memory"] ?? m["text"] ?? "",

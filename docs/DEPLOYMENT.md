@@ -128,6 +128,20 @@ docker compose up -d    # Langfuse on :3100
 
 Configure API keys via the Langfuse dashboard. Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `aletheia.env`.
 
+## Web UI
+
+Build and deploy the Svelte 5 chat interface:
+
+```bash
+cd ui
+npm install
+npm run build    # Outputs to ui/dist/
+```
+
+The gateway serves `ui/dist/` as static files at `/ui` with SPA fallback. Hashed assets get immutable cache headers. `index.html` gets `no-cache` for instant updates on rebuild.
+
+If `ui/dist/` doesn't exist, the gateway falls back to a minimal inline status dashboard.
+
 ## Prosoche (Adaptive Attention)
 
 Optional daemon that generates directed awareness signals for agents.

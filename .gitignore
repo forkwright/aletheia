@@ -87,6 +87,8 @@ clawd
 shared/logs/
 infrastructure/runtime/node_modules/
 infrastructure/runtime/package-lock.json
+ui/node_modules/
+ui/dist/
 *sync-conflict*
 
 # === Ephemeral state ===

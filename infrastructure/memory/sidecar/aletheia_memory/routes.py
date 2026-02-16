@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
 from .temporal import _neo4j_driver, _extract_entities_for_episode
+from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -62,9 +63,10 @@ async def add_memory(req: AddRequest, request: Request):
             top = candidate
             score = top.get("score", 0)
             if score > DEDUP_THRESHOLD:
+                safe_agent = (req.agent_id or "global").replace("\n", "").replace("\r", "")[:50]
                 logger.info(
                     f"Dedup: skipped (score={score:.3f}, existing={top.get('id', '?')}, "
-                    f"agent={req.agent_id or 'global'})"
+                    f"agent={safe_agent})"
                 )
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
 
@@ -78,10 +80,14 @@ async def add_memory(req: AddRequest, request: Request):
         if NEO4J_PASSWORD and req.agent_id:
             asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
 
+        # Normalize any non-vocab relationship types created by graph extraction
+        if NEO4J_PASSWORD:
+            asyncio.create_task(_normalize_neo4j_relationships())
+
         return {"ok": True, "result": result}
     except Exception as e:
         logger.exception("add_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/search")
@@ -97,7 +103,7 @@ async def search_memory(req: SearchRequest, request: Request):
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/graph_search")
@@ -113,7 +119,7 @@ async def graph_search(req: SearchRequest, request: Request):
         return {"ok": True, "results": graph_results}
     except Exception as e:
         logger.exception("graph_search failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/import")
@@ -169,7 +175,7 @@ async def list_memories(
         return {"ok": True, "memories": entries}
     except Exception as e:
         logger.exception("list_memories failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/memories/{memory_id}")
@@ -180,7 +186,7 @@ async def delete_memory(memory_id: str, request: Request):
         return {"ok": True}
     except Exception as e:
         logger.exception("delete_memory failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/health")
@@ -251,7 +257,79 @@ async def graph_stats():
         }
     except Exception as e:
         logger.exception("graph_stats failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# --- Graph Export for Visualization ---
+
+
+@router.get("/graph/export")
+async def graph_export(
+    limit: int | None = None,
+    community: int | None = None,
+):
+    """Export full graph as nodes + edges for 3D visualization."""
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            # Fetch nodes
+            node_query = "MATCH (n) WHERE n.name IS NOT NULL "
+            if community is not None:
+                node_query += "AND n.community = $community "
+            node_query += "RETURN n.name AS name, labels(n) AS labels, n.pagerank AS pagerank, n.community AS community"
+            if limit:
+                node_query += f" LIMIT {int(limit)}"
+
+            params: dict[str, Any] = {}
+            if community is not None:
+                params["community"] = community
+
+            node_records = session.run(node_query, **params).data()
+            node_names = {r["name"] for r in node_records}
+
+            nodes = [
+                {
+                    "id": r["name"],
+                    "labels": r["labels"],
+                    "pagerank": r["pagerank"] if r["pagerank"] is not None else 0.001,
+                    "community": r["community"] if r["community"] is not None else -1,
+                }
+                for r in node_records
+            ]
+
+            # Fetch edges (only between nodes in our set)
+            edge_query = (
+                "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
+                "RETURN a.name AS source, b.name AS target, type(r) AS rel_type"
+            )
+            edge_records = session.run(edge_query).data()
+
+            # Filter edges to only include nodes we're returning
+            edges = [
+                {"source": r["source"], "target": r["target"], "rel_type": r["rel_type"]}
+                for r in edge_records
+                if r["source"] in node_names and r["target"] in node_names
+            ]
+
+            # Count distinct communities
+            community_ids = {n["community"] for n in nodes if n["community"] != -1}
+
+        driver.close()
+
+        return {
+            "ok": True,
+            "nodes": nodes,
+            "edges": edges,
+            "communities": len(community_ids),
+        }
+    except Exception as e:
+        logger.exception("graph/export failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
@@ -393,7 +471,7 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch memories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch memories")
 
     if not isinstance(entries, list):
         return {"ok": True, "candidates": [], "message": "No memories found"}
@@ -457,7 +535,7 @@ async def merge_memories(req: MergeRequest, request: Request):
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/fact_stats")
@@ -469,7 +547,7 @@ async def fact_stats(request: Request, user_id: str = "default"):
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     if not isinstance(entries, list):
         return {"ok": True, "total": 0}
@@ -524,7 +602,7 @@ async def retract_memory(req: RetractRequest, request: Request):
         raw = await asyncio.to_thread(mem.search, req.query, user_id=req.user_id, limit=20)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
 
     if not isinstance(results, list) or not results:
         return {"ok": True, "retracted": 0, "message": "No matching memories found"}
@@ -702,7 +780,7 @@ async def add_foresight(req: ForesightAddRequest):
         return {"ok": True, "entity": req.entity, "signal": req.signal}
     except Exception as e:
         logger.exception("add_foresight failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @foresight_router.get("/active")
@@ -781,7 +859,7 @@ async def decay_foresight():
         return {"ok": True, "decayed": decayed, "deleted": deleted}
     except Exception as e:
         logger.exception("decay_foresight failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
@@ -1014,7 +1092,7 @@ async def analyze_graph(req: GraphAnalyzeRequest):
         raise HTTPException(status_code=500, detail="networkx not installed")
     except Exception as e:
         logger.exception("graph/analyze failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Enhanced Search with Query Rewriting ---
@@ -1162,6 +1240,79 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
             "total_candidates": len(results) if isinstance(results, list) else 0,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# --- Relationship Type Normalization ---
+
+
+async def _normalize_neo4j_relationships() -> None:
+    """Normalize non-vocab relationship types to controlled vocabulary (fire-and-forget)."""
+    try:
+        driver = _neo4j_driver()
+        vocab_list = list(CONTROLLED_VOCAB)
+        with driver.session() as session:
+            non_vocab = session.run(
+                "MATCH ()-[r]->() "
+                "WITH type(r) AS t, count(*) AS c "
+                "WHERE NOT t IN $vocab "
+                "RETURN t, c",
+                vocab=vocab_list,
+            ).data()
+
+            for row in non_vocab:
+                src_type = row["t"]
+                target = normalize_type(src_type)
+                if src_type != target:
+                    session.run(
+                        f"MATCH (a)-[r:`{src_type}`]->(b) "
+                        f"WITH a, b, r, properties(r) AS props "
+                        f"CREATE (a)-[r2:`{target}`]->(b) "
+                        f"SET r2 = props DELETE r"
+                    )
+            if non_vocab:
+                logger.info(f"Normalized {len(non_vocab)} non-vocab relationship types")
+        driver.close()
+    except Exception:
+        logger.warning("Relationship normalization failed (non-fatal)", exc_info=True)
+
+
+@router.post("/normalize_relationships")
+async def normalize_relationships():
+    """Normalize all non-vocab relationship types and return stats."""
+    try:
+        driver = _neo4j_driver()
+        vocab_list = list(CONTROLLED_VOCAB)
+        mappings: list[dict[str, Any]] = []
+        total = 0
+
+        with driver.session() as session:
+            non_vocab = session.run(
+                "MATCH ()-[r]->() "
+                "WITH type(r) AS t, count(*) AS c "
+                "WHERE NOT t IN $vocab "
+                "RETURN t, c ORDER BY c DESC",
+                vocab=vocab_list,
+            ).data()
+
+            for row in non_vocab:
+                src_type = row["t"]
+                count = row["c"]
+                target = normalize_type(src_type)
+                if src_type != target:
+                    session.run(
+                        f"MATCH (a)-[r:`{src_type}`]->(b) "
+                        f"WITH a, b, r, properties(r) AS props "
+                        f"CREATE (a)-[r2:`{target}`]->(b) "
+                        f"SET r2 = props DELETE r"
+                    )
+                    mappings.append({"from": src_type, "to": target, "count": count})
+                    total += count
+
+        driver.close()
+        return {"ok": True, "normalized_count": total, "type_mappings": mappings}
+    except Exception:
+        logger.exception("normalize_relationships failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -1,0 +1,32 @@
+{
+  "main": {
+    "nousId": "main",
+    "domains": {
+      "signal": {
+        "domain": "signal",
+        "score": 0.4100000000000004,
+        "corrections": 13,
+        "successes": 28,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-18T00:35:26.049Z"
+      },
+      "general": {
+        "domain": "general",
+        "score": 0.5800000000000001,
+        "corrections": 0,
+        "successes": 4,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-17T22:14:08.923Z"
+      },
+      "web": {
+        "domain": "web",
+        "score": 0.52,
+        "corrections": 0,
+        "successes": 1,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-17T23:42:41.750Z"
+      }
+    },
+    "overallScore": 0.5033333333333335
+  }
+}

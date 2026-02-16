@@ -1,9 +1,8 @@
 // Audio transcription via whisper.cpp
 import { execFile } from "node:child_process";
-import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomBytes } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("semeion.transcribe");
@@ -41,7 +40,8 @@ export async function transcribeAudio(
     : contentType.includes("mpeg") ? ".mp3"
     : ".ogg"; // Signal default is OGG/Opus
 
-  const tmpPath = join(tmpdir(), `aletheia-audio-${randomBytes(8).toString("hex")}${ext}`);
+  const tmpDir = mkdtempSync(join(tmpdir(), "aletheia-audio-"));
+  const tmpPath = join(tmpDir, `audio${ext}`);
   const wavPath = tmpPath.replace(/\.[^.]+$/, ".wav");
 
   try {
@@ -73,8 +73,12 @@ export async function transcribeAudio(
     log.warn(`Transcription failed: ${err instanceof Error ? err.message : err}`);
     return null;
   } finally {
-    try { unlinkSync(tmpPath); } catch { /* ignore */ }
-    try { unlinkSync(wavPath); } catch { /* ignore */ }
+    try { unlinkSync(tmpPath); } catch { /* cleanup */ }
+    try { unlinkSync(wavPath); } catch { /* cleanup */ }
+    try {
+      const { rmSync } = require("node:fs") as typeof import("node:fs");
+      rmSync(tmpDir, { recursive: true, force: true });
+    } catch { /* cleanup */ }
   }
 }
 

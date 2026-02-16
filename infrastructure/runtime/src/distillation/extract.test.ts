@@ -1,6 +1,6 @@
 // Distillation extraction tests
 import { describe, it, expect, vi } from "vitest";
-import { extractFromMessages } from "./extract.js";
+import { extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
 
 function mockRouter(responseText: string) {
   return {
@@ -53,7 +53,81 @@ describe("extractFromMessages", () => {
 
     expect(result.facts).toEqual(["a"]);
     expect(result.decisions).toEqual([]);
-    // Missing fields should default to empty arrays
     expect(result.openItems).toEqual([]);
+  });
+});
+
+describe("findBalancedBraces", () => {
+  it("finds balanced JSON object", () => {
+    const result = findBalancedBraces('Some text {"key": "value"} more text');
+    expect(result).toBe('{"key": "value"}');
+  });
+
+  it("handles nested braces", () => {
+    const result = findBalancedBraces('{"a": {"b": 1}}');
+    expect(result).toBe('{"a": {"b": 1}}');
+  });
+
+  it("handles braces inside strings", () => {
+    const result = findBalancedBraces('{"text": "has { and } inside"}');
+    expect(result).toBe('{"text": "has { and } inside"}');
+  });
+
+  it("handles escaped quotes in strings", () => {
+    const result = findBalancedBraces('{"text": "has \\"quotes\\""}');
+    expect(result).toBe('{"text": "has \\"quotes\\""}');
+  });
+
+  it("closes truncated JSON", () => {
+    const result = findBalancedBraces('{"facts": ["a", "b"');
+    expect(result).not.toBeNull();
+    expect(() => JSON.parse(repairJson(result!))).not.toThrow();
+  });
+
+  it("returns null when no braces", () => {
+    expect(findBalancedBraces("no json here")).toBeNull();
+  });
+});
+
+describe("repairJson", () => {
+  it("removes trailing commas before ]", () => {
+    expect(repairJson('{"a": [1, 2, ]}')).toBe('{"a": [1, 2]}');
+  });
+
+  it("removes trailing commas before }", () => {
+    expect(repairJson('{"a": 1, "b": 2, }')).toBe('{"a": 1, "b": 2}');
+  });
+
+  it("handles multiple trailing commas", () => {
+    const repaired = repairJson('{"a": [1, ], "b": [2, ]}');
+    expect(() => JSON.parse(repaired)).not.toThrow();
+  });
+});
+
+describe("extractJson", () => {
+  it("extracts clean JSON", () => {
+    const result = extractJson('{"facts": ["hello"]}');
+    expect(result).toEqual({ facts: ["hello"] });
+  });
+
+  it("extracts JSON with surrounding text", () => {
+    const result = extractJson('Here is the result:\n{"facts": ["test"]}\nDone.');
+    expect(result).toEqual({ facts: ["test"] });
+  });
+
+  it("repairs trailing commas", () => {
+    const result = extractJson('{"facts": ["a", "b", ], "decisions": []}');
+    expect(result).not.toBeNull();
+    expect(result!["facts"]).toEqual(["a", "b"]);
+  });
+
+  it("handles truncated output", () => {
+    const result = extractJson('{"facts": ["a", "b"], "decisions": ["d1"');
+    expect(result).not.toBeNull();
+    expect(result!["facts"]).toEqual(["a", "b"]);
+  });
+
+  it("returns null for no JSON", () => {
+    expect(extractJson("no json content at all")).toBeNull();
   });
 });

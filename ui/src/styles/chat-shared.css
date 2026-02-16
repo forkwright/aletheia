@@ -1,0 +1,104 @@
+/* Shared styles for chat message rendering */
+/* Applied globally — scoped via .chat-msg- prefix */
+
+.chat-msg {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  transition: background 0.15s;
+}
+
+.chat-msg:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-msg.assistant {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.chat-msg.streaming {
+  animation: chat-fade-in 0.2s ease;
+}
+
+@keyframes chat-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.chat-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.chat-avatar.user {
+  background: var(--surface);
+}
+
+.chat-avatar.agent {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.chat-avatar-emoji {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.chat-avatar-text {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.chat-avatar.agent .chat-avatar-text {
+  color: #fff;
+}
+
+.chat-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-content {
+  margin-top: 2px;
+}
+
+.chat-tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chat-tool-pill:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chat-tool-pill.has-error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.chat-tool-icon {
+  font-size: 12px;
+  opacity: 0.7;
+}

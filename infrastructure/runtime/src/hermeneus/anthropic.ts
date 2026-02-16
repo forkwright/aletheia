@@ -68,6 +68,12 @@ export interface CompletionRequest {
   temperature?: number;
 }
 
+export type StreamingEvent =
+  | { type: "text_delta"; text: string }
+  | { type: "tool_use_start"; index: number; id: string; name: string }
+  | { type: "tool_use_end"; index: number }
+  | { type: "message_complete"; result: TurnResult };
+
 export class AnthropicProvider {
   private client: Anthropic;
 
@@ -149,5 +155,109 @@ export class AnthropicProvider {
         cause: error, code: "PROVIDER_TIMEOUT", context: { model },
       });
     }
+  }
+
+  async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
+    const { model, system, messages, tools, maxTokens, temperature } = request;
+
+    const stream = await this.client.messages.create({
+      model,
+      max_tokens: maxTokens ?? 8192,
+      stream: true,
+      system: typeof system === "string"
+        ? system
+        : system as Anthropic.Messages.TextBlockParam[],
+      messages: messages as Anthropic.Messages.MessageParam[],
+      ...(tools ? { tools: tools as Anthropic.Messages.Tool[] } : {}),
+      ...(temperature !== undefined ? { temperature } : {}),
+    });
+
+    const contentBlocks: ContentBlock[] = [];
+    let stopReason = "end_turn";
+    const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let responseModel = model;
+
+    // Track in-progress content blocks by index
+    const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[] }>();
+
+    for await (const event of stream) {
+      switch (event.type) {
+        case "message_start": {
+          const msg = event.message;
+          responseModel = msg.model;
+          const u = msg.usage;
+          usage.inputTokens = u.input_tokens;
+          usage.outputTokens = u.output_tokens;
+          usage.cacheReadTokens = (u as unknown as Record<string, number>)["cache_read_input_tokens"] ?? 0;
+          usage.cacheWriteTokens = (u as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0;
+          break;
+        }
+
+        case "content_block_start": {
+          const block = event.content_block;
+          if (block.type === "text") {
+            blockState.set(event.index, { type: "text", text: "" });
+          } else if (block.type === "tool_use") {
+            blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
+            yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
+          }
+          break;
+        }
+
+        case "content_block_delta": {
+          const delta = event.delta;
+          if (delta.type === "text_delta") {
+            const state = blockState.get(event.index);
+            if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
+            yield { type: "text_delta", text: delta.text };
+          } else if (delta.type === "input_json_delta") {
+            const state = blockState.get(event.index);
+            if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
+          }
+          break;
+        }
+
+        case "content_block_stop": {
+          const state = blockState.get(event.index);
+          if (state?.type === "text") {
+            contentBlocks.push({ type: "text", text: state.text ?? "" });
+          } else if (state?.type === "tool_use") {
+            let input: Record<string, unknown> = {};
+            try {
+              input = JSON.parse(state.jsonParts?.join("") ?? "{}");
+            } catch {
+              log.warn("Failed to parse tool_use input JSON from stream");
+            }
+            contentBlocks.push({
+              type: "tool_use",
+              id: state.id!,
+              name: state.name!,
+              input,
+            });
+            yield { type: "tool_use_end", index: event.index };
+          }
+          break;
+        }
+
+        case "message_delta": {
+          stopReason = event.delta.stop_reason ?? "end_turn";
+          const deltaUsage = event.usage as unknown as Record<string, number> | undefined;
+          if (deltaUsage?.["output_tokens"]) {
+            usage.outputTokens = deltaUsage["output_tokens"];
+          }
+          break;
+        }
+      }
+    }
+
+    yield {
+      type: "message_complete",
+      result: {
+        content: contentBlocks,
+        stopReason,
+        usage,
+        model: responseModel,
+      },
+    };
   }
 }

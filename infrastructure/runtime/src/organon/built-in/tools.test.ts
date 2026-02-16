@@ -25,9 +25,11 @@ describe("readTool", () => {
     expect(result).toContain("hello world");
   });
 
-  it("throws on path traversal", async () => {
+  it("resolves paths outside workspace without restriction", async () => {
     const { readTool } = await import("./read.js");
-    await expect(readTool.execute({ path: "../../etc/passwd" }, ctx)).rejects.toThrow("outside workspace");
+    // Should not throw — path restrictions removed
+    const result = await readTool.execute({ path: "/etc/hostname" }, ctx);
+    expect(typeof result).toBe("string");
   });
 
   it("has valid tool definition", async () => {
@@ -57,11 +59,14 @@ describe("writeTool", () => {
     expect(readFileSync(join(workspace, "sub/dir/file.txt"), "utf-8")).toBe("deep");
   });
 
-  it("throws on path traversal", async () => {
+  it("resolves paths outside workspace without restriction", async () => {
     const { writeTool } = await import("./write.js");
-    await expect(
-      writeTool.execute({ path: "../../tmp/evil.txt", content: "bad" }, ctx),
-    ).rejects.toThrow("outside workspace");
+    // Should not throw — path restrictions removed
+    const result = await writeTool.execute(
+      { path: "/tmp/aletheia-test-write.txt", content: "test" },
+      ctx,
+    );
+    expect(result).toContain("/tmp/aletheia-test-write.txt");
   });
 
   it("has valid tool definition", async () => {

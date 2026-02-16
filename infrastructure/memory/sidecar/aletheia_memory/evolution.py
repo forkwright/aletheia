@@ -59,7 +59,7 @@ async def check_evolution(req: EvolveRequest, request: Request):
         raw = await asyncio.to_thread(mem.search, req.text, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
 
     if not isinstance(results, list):
         return {"ok": True, "action": "add_new", "reason": "no existing memories"}
@@ -117,7 +117,7 @@ async def check_evolution(req: EvolveRequest, request: Request):
             "result": result,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evolution failed: {e}")
+        raise HTTPException(status_code=500, detail="Evolution failed")
 
 
 @evolution_router.post("/reinforce")
@@ -172,7 +172,7 @@ async def decay_memories(req: DecayRequest, request: Request):
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch memories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch memories")
 
     if not isinstance(entries, list):
         return {"ok": True, "decayed": 0, "checked": 0}
@@ -288,7 +288,7 @@ async def evolution_stats():
         }
     except Exception as e:
         logger.exception("evolution_stats failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # --- Internal helpers ---
