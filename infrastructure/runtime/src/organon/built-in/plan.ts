@@ -10,12 +10,12 @@ interface PlanStep {
   id: string;
   description: string;
   status: "pending" | "in_progress" | "completed" | "failed" | "skipped";
-  acceptanceCriteria?: string;
+  acceptanceCriteria?: string | undefined;
   dependsOn: string[];
-  result?: string;
-  failureReason?: string;
-  startedAt?: string;
-  completedAt?: string;
+  result?: string | undefined;
+  failureReason?: string | undefined;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
 }
 
 interface Plan {
@@ -27,8 +27,8 @@ interface Plan {
   steps: PlanStep[];
   createdAt: string;
   updatedAt: string;
-  completedAt?: string;
-  summary?: string;
+  completedAt?: string | undefined;
+  summary?: string | undefined;
 }
 
 function plansFilePath(workspace: string): string {
