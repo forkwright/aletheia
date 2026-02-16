@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
-from .signals import Signal, SignalBundle
+from .signals import ContextBlock, Signal, SignalBundle
 
 
 @dataclass
@@ -11,6 +12,7 @@ class NousScore:
     nous_id: str
     score: float
     top_signals: list[Signal] = field(default_factory=list)
+    staged_context: list[ContextBlock] = field(default_factory=list)
     should_wake: bool = False
 
 
@@ -40,9 +42,18 @@ def score_nous(
 
     top_signals = [s for s, _ in weighted_scores[:5]]
 
+    # Collect staged context from all relevant signals, drop expired blocks
+    now = datetime.now(timezone.utc)
+    staged: list[ContextBlock] = []
+    for signal in relevant:
+        for block in signal.context_blocks:
+            if block.expires_at is None or block.expires_at > now:
+                staged.append(block)
+
     return NousScore(
         nous_id=nous_id,
         score=composite,
         top_signals=top_signals,
+        staged_context=staged,
         should_wake=any(s.urgency >= urgent_threshold for s in top_signals),
     )

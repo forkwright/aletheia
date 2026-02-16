@@ -2,6 +2,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+
+@dataclass
+class ContextBlock:
+    """Pre-assembled context to stage for an agent's next turn."""
+
+    title: str
+    content: str
+    source: str  # which signal collector produced this
+    expires_at: datetime | None = None  # UTC; None = never expires
 
 
 @dataclass
@@ -11,6 +22,7 @@ class Signal:
     urgency: float  # 0.0 = informational, 1.0 = critical
     relevant_nous: list[str] = field(default_factory=list)
     details: str = ""
+    context_blocks: list[ContextBlock] = field(default_factory=list)
 
 
 @dataclass
