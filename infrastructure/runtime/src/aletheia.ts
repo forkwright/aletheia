@@ -17,6 +17,7 @@ import { webFetchTool } from "./organon/built-in/web-fetch.js";
 import { webSearchTool } from "./organon/built-in/web-search.js";
 import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
+import { factRetractTool } from "./organon/built-in/fact-retract.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
@@ -89,6 +90,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Memory
   tools.register(mem0SearchTool);
+  tools.register(factRetractTool);
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {

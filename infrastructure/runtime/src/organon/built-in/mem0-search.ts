@@ -37,7 +37,16 @@ export const mem0SearchTool: ToolHandler = {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
 
-      // Search both agent-scoped and user-level (unscoped) memories in parallel
+      // Try graph-enhanced search first, fall back to standard vector search
+      const graphBody = JSON.stringify({
+        query,
+        user_id: USER_ID,
+        agent_id: context.nousId,
+        limit: limit * 2,
+        graph_weight: 0.3,
+        graph_depth: 2,
+      });
+
       const searchBody = (agentId?: string) =>
         JSON.stringify({
           query,
@@ -46,26 +55,8 @@ export const mem0SearchTool: ToolHandler = {
           limit,
         });
 
-      let agentRes: Response;
-      let globalRes: Response;
-      try {
-        [agentRes, globalRes] = await Promise.all([
-          fetch(`${SIDECAR_URL}/search`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: searchBody(context.nousId),
-            signal: controller.signal,
-          }),
-          fetch(`${SIDECAR_URL}/search`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: searchBody(),
-            signal: controller.signal,
-          }),
-        ]);
-      } finally {
-        clearTimeout(timer);
-      }
+      let agentResults: unknown[] = [];
+      let globalResults: unknown[] = [];
 
       const extract = async (res: Response) => {
         if (!res.ok) return [];
@@ -74,8 +65,60 @@ export const mem0SearchTool: ToolHandler = {
         return Array.isArray(results) ? results : [];
       };
 
-      const agentResults = await extract(agentRes);
-      const globalResults = await extract(globalRes);
+      try {
+        // Try graph-enhanced endpoint
+        const graphRes = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: graphBody,
+          signal: controller.signal,
+        });
+
+        if (graphRes.ok) {
+          agentResults = await extract(graphRes);
+        } else {
+          // Fallback to standard search
+          const [aRes, gRes] = await Promise.all([
+            fetch(`${SIDECAR_URL}/search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: searchBody(context.nousId),
+              signal: controller.signal,
+            }),
+            fetch(`${SIDECAR_URL}/search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: searchBody(),
+              signal: controller.signal,
+            }),
+          ]);
+          agentResults = await extract(aRes);
+          globalResults = await extract(gRes);
+        }
+      } catch {
+        // If graph-enhanced fails, try standard
+        try {
+          const [aRes, gRes] = await Promise.all([
+            fetch(`${SIDECAR_URL}/search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: searchBody(context.nousId),
+              signal: controller.signal,
+            }),
+            fetch(`${SIDECAR_URL}/search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: searchBody(),
+              signal: controller.signal,
+            }),
+          ]);
+          agentResults = await extract(aRes);
+          globalResults = await extract(gRes);
+        } catch {
+          // Both failed
+        }
+      }
+      clearTimeout(timer);
 
       // Merge and deduplicate by memory id, preferring agent-scoped
       const seen = new Set<string>();

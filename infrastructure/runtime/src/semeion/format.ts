@@ -66,8 +66,7 @@ function collectSegments(text: string): Segment[] {
 
   // Code blocks (highest priority — suppress inner markdown)
   for (const match of text.matchAll(/```(?:\w+)?\n([\s\S]*?)```/g)) {
-    const inner = match[1];
-    if (inner == null) continue;
+    const inner = match[1]!;
     segments.push({
       start: match.index!,
       end: match.index! + match[0].length,
@@ -78,8 +77,7 @@ function collectSegments(text: string): Segment[] {
 
   // Inline code (next priority)
   for (const match of text.matchAll(/`([^`]+)`/g)) {
-    const inner = match[1];
-    if (inner == null) continue;
+    const inner = match[1]!;
     const start = match.index!;
     const end = start + match[0].length;
     if (overlaps(start, end, segments)) continue;
@@ -98,8 +96,7 @@ function collectSegments(text: string): Segment[] {
 
   for (const { regex, styles } of patterns) {
     for (const match of text.matchAll(regex)) {
-      const inner = match[1];
-      if (inner == null) continue;
+      const inner = match[1]!;
       const start = match.index!;
       const end = start + match[0].length;
       if (overlaps(start, end, segments)) continue;
@@ -109,9 +106,8 @@ function collectSegments(text: string): Segment[] {
 
   // Links: [label](url) → "label (url)" or just "label"
   for (const match of text.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
-    const label = match[1];
-    const url = match[2];
-    if (label == null || url == null) continue;
+    const label = match[1]!;
+    const url = match[2]!;
     const start = match.index!;
     const end = start + match[0].length;
     if (overlaps(start, end, segments)) continue;

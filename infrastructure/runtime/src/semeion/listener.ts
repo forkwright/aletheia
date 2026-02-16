@@ -548,7 +548,7 @@ function hydrateMentions(
   const sorted = [...mentions].sort((a, b) => (b.start ?? 0) - (a.start ?? 0));
 
   for (const mention of sorted) {
-    if (mention.start == null || mention.length == null) continue;
+    if (mention.start === null || mention.length === null) continue;
 
     // Strip self-mentions (the bot's own mention placeholder)
     const isSelf =
@@ -557,23 +557,23 @@ function hydrateMentions(
         normalizePhone(mention.number ?? "") === normalizePhone(selfAccount));
     if (isSelf) {
       result =
-        result.slice(0, mention.start) +
-        result.slice(mention.start + mention.length);
+        result.slice(0, mention.start!) +
+        result.slice(mention.start! + mention.length!);
       continue;
     }
 
     const id = mention.uuid ?? mention.number ?? mention.name ?? "unknown";
     result =
-      result.slice(0, mention.start) +
+      result.slice(0, mention.start!) +
       `@${id}` +
-      result.slice(mention.start + mention.length);
+      result.slice(mention.start! + mention.length!);
   }
 
   return result.trim();
 }
 
 function sanitizeAttachmentField(value: string): string {
-  return value.replace(/[\n\r\0\[\]]/g, "");
+  return value.replaceAll("\n", "").replaceAll("\r", "").replaceAll(String.fromCharCode(0), "").replaceAll("[", "").replaceAll("]", "");
 }
 
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
