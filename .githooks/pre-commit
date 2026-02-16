@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Pre-commit: typecheck + lint + test the runtime
+cd "$(git rev-parse --show-toplevel)/infrastructure/runtime" || exit 0
+npm run precommit

@@ -28,11 +28,11 @@ export async function sendMessage(
   const chunks = splitMessage(text, 2000);
 
   for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    if (chunk == null) continue;
+    const chunk = chunks[i]!;
+    if (!chunk) continue;
     const isLast = i === chunks.length - 1;
 
-    let message = chunk;
+    let message: string = chunk;
     let textStyle: string[] | undefined;
 
     if (useMarkdown) {
