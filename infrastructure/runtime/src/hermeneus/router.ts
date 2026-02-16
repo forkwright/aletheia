@@ -30,7 +30,7 @@ export class ProviderRouter {
       provider,
       models: new Set(models),
     });
-    log.info(`Registered provider ${name} with ${models.length} models`);
+    log.info(`Registered provider ${name}${models.length > 0 ? ` (${models.join(", ")})` : ""}`);
   }
 
   private resolve(model: string): ProviderEntry {
@@ -81,7 +81,11 @@ export class ProviderRouter {
   }
 }
 
-export function createDefaultRouter(): ProviderRouter {
+export interface RouterConfig {
+  providers?: Record<string, { models?: Array<{ id: string }> }>;
+}
+
+export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   const router = new ProviderRouter();
 
   // Load OAuth token from credentials if ANTHROPIC_AUTH_TOKEN not in env
@@ -96,11 +100,11 @@ export function createDefaultRouter(): ProviderRouter {
     } catch {}
   }
 
+  // Use model IDs from config if available, otherwise empty list
+  // (the router's claude-* fallback handles unregistered models)
+  const configModels = config?.providers?.["anthropic"]?.models?.map((m) => m.id) ?? [];
+
   const anthropic = new AnthropicProvider(authToken ? { authToken } : undefined);
-  router.registerProvider("anthropic", anthropic, [
-    "claude-opus-4-6",
-    "claude-sonnet-4-5-20250929",
-    "claude-haiku-4-5-20251001",
-  ]);
+  router.registerProvider("anthropic", anthropic, configModels);
   return router;
 }

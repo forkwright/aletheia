@@ -119,7 +119,7 @@ export class NousManager {
 
     const workspace = resolveWorkspace(this.config, nous);
     const bootstrap = assembleBootstrap(workspace, {
-      maxTokens: this.config.agents.defaults.bootstrapMaxChars,
+      maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
     });
 
     const systemPrompt = [
@@ -138,8 +138,8 @@ export class NousManager {
       : 0;
 
     const contextTokens = this.config.agents.defaults.contextTokens;
-    const reserveTokens = 8000; // response + overhead
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - reserveTokens);
+    const maxOutput = this.config.agents.defaults.maxOutputTokens;
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput);
 
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
@@ -200,7 +200,7 @@ export class NousManager {
         system: systemPrompt,
         messages: currentMessages,
         tools: toolDefs.length > 0 ? toolDefs : undefined,
-        maxTokens: 8192,
+        maxTokens: this.config.agents.defaults.maxOutputTokens,
       });
 
       totalInputTokens += result.usage.inputTokens;
@@ -279,11 +279,12 @@ export class NousManager {
               `Distillation triggered for ${nousId} session=${sessionId} ` +
               `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
             );
+            const distillModel = compaction.distillationModel;
             await distillSession(this.store, this.router, sessionId, nousId, {
               triggerThreshold: distillThreshold,
               minMessages: 10,
-              extractionModel: "claude-haiku-4-5-20251001",
-              summaryModel: "claude-haiku-4-5-20251001",
+              extractionModel: distillModel,
+              summaryModel: distillModel,
               plugins: this.plugins,
             });
           }
