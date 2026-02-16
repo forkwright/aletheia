@@ -288,7 +288,30 @@ export class SessionStore {
          WHERE session_id = ? AND seq IN (${placeholders})`,
       )
       .run(sessionId, ...seqs);
-    log.debug(`Marked ${seqs.length} messages as distilled in session ${sessionId}`);
+
+    // Recalculate token estimate from undistilled messages only
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(token_estimate), 0) AS total,
+                COUNT(*) AS msg_count
+         FROM messages
+         WHERE session_id = ? AND is_distilled = 0`,
+      )
+      .get(sessionId) as Record<string, number>;
+    this.db
+      .prepare(
+        `UPDATE sessions
+         SET token_count_estimate = ?,
+             message_count = ?,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ?`,
+      )
+      .run(row.total, row.msg_count, sessionId);
+
+    log.info(
+      `Distilled ${seqs.length} messages in session ${sessionId}, ` +
+      `token estimate recalculated: ${row.total} tokens, ${row.msg_count} messages`,
+    );
   }
 
   recordDistillation(record: {
