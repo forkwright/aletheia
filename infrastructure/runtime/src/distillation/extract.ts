@@ -68,11 +68,11 @@ export async function extractFromMessages(
     }
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     return {
-      facts: Array.isArray(parsed.facts) ? parsed.facts : [],
-      decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
-      openItems: Array.isArray(parsed.openItems) ? parsed.openItems : [],
-      keyEntities: Array.isArray(parsed.keyEntities) ? parsed.keyEntities : [],
-      contradictions: Array.isArray(parsed.contradictions) ? parsed.contradictions : [],
+      facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
+      decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
+      openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
+      keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
+      contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
     };
   } catch (err) {
     log.warn(`Extraction JSON parse failed: ${err instanceof Error ? err.message : err}. Raw: ${text.slice(0, 200)}`);

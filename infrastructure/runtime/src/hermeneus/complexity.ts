@@ -1,7 +1,6 @@
 // Complexity scoring for adaptive inference routing
-import { createLogger } from "../koina/logger.js";
-
-const log = createLogger("hermeneus.complexity");
+// import { createLogger } from "../koina/logger.js";
+// const log = createLogger("hermeneus.complexity");
 
 export type ComplexityTier = "routine" | "standard" | "complex";
 
