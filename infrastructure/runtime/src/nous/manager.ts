@@ -79,6 +79,26 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
   return current;
 }
 
+// Ephemeral timestamp formatting — absolute times in operator timezone (America/Chicago)
+// Injected at API-call time only, never stored. Uses absolute format because
+// relative time ("yesterday") becomes inaccurate as conversations age.
+function formatEphemeralTimestamp(isoString: string): string | null {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString("en-US", {
+      timeZone: "America/Chicago",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export class NousManager {
   private plugins?: PluginRegistry;
   private watchdog?: Watchdog;
@@ -567,7 +587,11 @@ export class NousManager {
       const msg = history[i]!;
 
       if (msg.role === "user") {
-        messages.push({ role: "user", content: msg.content });
+        // Ephemeral timestamps — inject absolute time for temporal awareness
+        // These exist only in the API call, never stored
+        const ts = formatEphemeralTimestamp(msg.createdAt);
+        const content = ts ? `[${ts}] ${msg.content}` : msg.content;
+        messages.push({ role: "user", content });
       } else if (msg.role === "assistant") {
         // Try parsing as JSON content blocks (tool_use responses stored as JSON)
         try {
