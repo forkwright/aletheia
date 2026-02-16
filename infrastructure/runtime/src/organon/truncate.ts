@@ -116,6 +116,11 @@ function truncateJson(
         2,
       );
     }
+
+    const maxChars = Math.floor(maxTokens * 3.5);
+    const stringified = JSON.stringify(parsed, null, 2);
+    if (stringified.length <= maxChars) return stringified;
+    return stringified.slice(0, maxChars) + "\n... [truncated]";
   } catch {
     // not valid JSON, fall through
   }

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -38,7 +36,7 @@ class ImportRequest(BaseModel):
     user_id: str = "ck"
 
 
-DEDUP_THRESHOLD = 0.92
+DEDUP_THRESHOLD = 0.85
 
 
 @router.post("/add")
@@ -52,10 +50,10 @@ async def add_memory(req: AddRequest, request: Request):
 
     try:
         # Cross-agent dedup: search globally (no agent_id) before adding
-        existing = await asyncio.to_thread(mem.search, req.text, user_id=req.user_id, limit=1)
+        existing = await asyncio.to_thread(mem.search, req.text, user_id=req.user_id, limit=3)
         results = existing.get("results", []) if isinstance(existing, dict) else existing
-        if results and isinstance(results, list) and len(results) > 0:
-            top = results[0]
+        for candidate in (results if isinstance(results, list) else []):
+            top = candidate
             score = top.get("score", 0)
             if score > DEDUP_THRESHOLD:
                 logger.info(
@@ -150,10 +148,9 @@ async def list_memories(
         kwargs["agent_id"] = agent_id
 
     try:
+        kwargs["limit"] = limit
         results = await asyncio.to_thread(mem.get_all, **kwargs)
         entries = results.get("results", results) if isinstance(results, dict) else results
-        if isinstance(entries, list):
-            entries = entries[:limit]
         return {"ok": True, "memories": entries}
     except Exception as e:
         logger.exception("list_memories failed")
@@ -242,47 +239,3 @@ async def graph_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/import_file")
-async def import_facts_file(request: Request, file_path: str, user_id: str = "ck"):
-    """Import facts from a JSONL file on the server filesystem."""
-    mem = request.app.state.memory
-    path = Path(file_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-
-    imported = 0
-    errors = []
-    with open(path) as f:
-        for i, line in enumerate(f):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                fact = json.loads(line)
-            except json.JSONDecodeError:
-                errors.append({"index": i, "error": "invalid JSON"})
-                continue
-
-            subject = fact.get("subject", "")
-            predicate = fact.get("predicate", "")
-            obj = fact.get("object", "")
-            text = f"{subject} {predicate} {obj}".strip()
-            if not text:
-                continue
-
-            metadata = {
-                "source": "facts.jsonl",
-                "confidence": fact.get("confidence", 1.0),
-            }
-            if fact.get("domain"):
-                metadata["domain"] = fact["domain"]
-
-            try:
-                await asyncio.to_thread(mem.add, text, user_id=user_id, metadata=metadata)
-                imported += 1
-            except Exception as e:
-                errors.append({"index": i, "error": str(e)})
-                if len(errors) > 20:
-                    break
-
-    return {"ok": True, "imported": imported, "total_lines": i + 1, "errors": errors}

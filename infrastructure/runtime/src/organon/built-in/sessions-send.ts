@@ -5,6 +5,8 @@ import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 
 const log = createLogger("organon:sessions-send");
+const MAX_PENDING_SENDS = 5;
+let pendingSends = 0;
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
@@ -48,6 +50,14 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
         return JSON.stringify({ error: "Agent dispatch not available" });
       }
 
+      if (agentId === context.nousId) {
+        return JSON.stringify({ error: "Cannot send to yourself" });
+      }
+
+      if (pendingSends >= MAX_PENDING_SENDS) {
+        return JSON.stringify({ error: "Too many pending sends — try again later" });
+      }
+
       // Audit trail
       const auditId = dispatcher.store?.recordCrossAgentCall({
         sourceSessionId: context.sessionId,
@@ -57,6 +67,7 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
         content: message.slice(0, 2000),
       });
 
+      pendingSends++;
       dispatcher
         .handleMessage({
           text: message,
@@ -65,6 +76,7 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
           channel: "internal",
           peerKind: "agent",
           peerId: context.nousId,
+          depth: (context.depth ?? 0) + 1,
         })
         .then((outcome) => {
           if (auditId && dispatcher.store) {
@@ -83,7 +95,8 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
               response: err instanceof Error ? err.message : String(err),
             });
           }
-        });
+        })
+        .finally(() => { pendingSends--; });
 
       return JSON.stringify({ sent: true, agentId, sessionKey });
     },

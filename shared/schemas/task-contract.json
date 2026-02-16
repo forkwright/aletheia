@@ -27,12 +27,12 @@
     },
     "source_agent": {
       "type": "string",
-      "enum": ["syn", "chiron", "eiron", "syl", "demiurge"],
+      "enum": ["syn", "eiron", "syl", "demiurge", "arbor", "akron"],
       "description": "Agent that created this task"
     },
     "target_agent": {
       "type": "string", 
-      "enum": ["syn", "chiron", "eiron", "syl", "demiurge"],
+      "enum": ["syn", "eiron", "syl", "demiurge", "arbor", "akron"],
       "description": "Agent assigned to execute this task"
     },
     "task_type": {

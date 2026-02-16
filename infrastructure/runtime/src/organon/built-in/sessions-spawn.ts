@@ -83,6 +83,7 @@ export function createSessionsSpawnTool(
             channel: "spawn",
             peerKind: "agent",
             peerId: context.nousId,
+            depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
         ]);

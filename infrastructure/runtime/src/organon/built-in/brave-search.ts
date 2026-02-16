@@ -1,7 +1,6 @@
 // Web search via Brave Search API
 import type { ToolHandler } from "../registry.js";
 
-const BRAVE_API_KEY = process.env.BRAVE_API_KEY || "";
 const BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search";
 
 export const braveSearchTool: ToolHandler = {
@@ -29,6 +28,11 @@ export const braveSearchTool: ToolHandler = {
     const maxResults = Math.min((input.maxResults as number) ?? 5, 20);
 
     try {
+      const apiKey = process.env.BRAVE_API_KEY;
+      if (!apiKey) {
+        return "Error: BRAVE_API_KEY not set in environment";
+      }
+
       const url = new URL(BRAVE_API_URL);
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(maxResults));
@@ -37,7 +41,7 @@ export const braveSearchTool: ToolHandler = {
         headers: {
           Accept: "application/json",
           "Accept-Encoding": "gzip",
-          "X-Subscription-Token": BRAVE_API_KEY,
+          "X-Subscription-Token": apiKey,
         },
         signal: AbortSignal.timeout(10000),
       });

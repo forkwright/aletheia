@@ -1,5 +1,6 @@
 // Web fetch tool — retrieve URL content
 import type { ToolHandler } from "../registry.js";
+import { validateUrl } from "./ssrf-guard.js";
 
 export const webFetchTool: ToolHandler = {
   definition: {
@@ -26,6 +27,8 @@ export const webFetchTool: ToolHandler = {
     const maxLength = (input.maxLength as number) ?? 50000;
 
     try {
+      await validateUrl(url);
+
       const res = await fetch(url, {
         headers: {
           "User-Agent": "Aletheia/1.0",
@@ -37,6 +40,11 @@ export const webFetchTool: ToolHandler = {
 
       if (!res.ok) {
         return `Error: HTTP ${res.status} ${res.statusText}`;
+      }
+
+      const contentLength = res.headers.get("content-length");
+      if (contentLength && parseInt(contentLength, 10) > maxLength * 2) {
+        return `Error: Response too large (${contentLength} bytes, limit ${maxLength * 2})`;
       }
 
       const contentType = res.headers.get("content-type") ?? "";

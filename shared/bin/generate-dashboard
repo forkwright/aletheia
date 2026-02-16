@@ -28,7 +28,7 @@ fi
 
 # Get gateway status
 GATEWAY_STATUS="unknown"
-if systemctl is-active --quiet autarkia 2>/dev/null; then
+if systemctl is-active --quiet aletheia 2>/dev/null; then
     GATEWAY_STATUS="running"
 else
     GATEWAY_STATUS="stopped"
@@ -155,7 +155,7 @@ cat << EOF
 EOF
 
 # Check key services
-SERVICES=("autarkia" "ollama" "docker")
+SERVICES=("aletheia" "ollama" "docker")
 for service in "${SERVICES[@]}"; do
     if systemctl is-active --quiet "$service" 2>/dev/null; then
         echo "- **$service:** 🟢 running"
@@ -201,8 +201,8 @@ fi
 # Check for gateway issues
 if [[ "$GATEWAY_STATUS" != "running" ]]; then
     echo "### 🔴 Gateway Down"
-    echo "- Clawdbot gateway is not running"
-    echo "- Run: \`sudo systemctl start autarkia\`"
+    echo "- Aletheia gateway is not running"
+    echo "- Run: \`sudo systemctl start aletheia\`"
     echo
     ISSUES_FOUND=true
 fi

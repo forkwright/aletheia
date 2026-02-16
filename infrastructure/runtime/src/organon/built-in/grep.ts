@@ -1,8 +1,8 @@
 // Content search tool — grep through files
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolve } from "node:path";
 import type { ToolHandler, ToolContext } from "../registry.js";
+import { safePath } from "./safe-path.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,7 +28,8 @@ export const grepTool: ToolHandler = {
         },
         maxResults: {
           type: "number",
-          description: "Maximum results to return (default: 50)",
+          description:
+            "Maximum matching lines per file (default: 50). Total output is also capped at this limit.",
         },
         caseSensitive: {
           type: "boolean",
@@ -44,7 +45,7 @@ export const grepTool: ToolHandler = {
   ): Promise<string> {
     const pattern = input.pattern as string;
     const searchPath = input.path
-      ? resolve(context.workspace, input.path as string)
+      ? safePath(context.workspace, input.path as string)
       : context.workspace;
     const glob = input.glob as string | undefined;
     const maxResults = (input.maxResults as number) ?? 50;

@@ -1,7 +1,24 @@
 // File read tool
-import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import type { ToolHandler, ToolContext } from "../registry.js";
+import { safePath } from "./safe-path.js";
+
+function isBinaryFile(filePath: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    const buf = Buffer.alloc(8192);
+    const bytesRead = readSync(fd, buf, 0, 8192, 0);
+    for (let i = 0; i < bytesRead; i++) {
+      if (buf[i] === 0x00) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 export const readTool: ToolHandler = {
   definition: {
@@ -28,12 +45,15 @@ export const readTool: ToolHandler = {
   ): Promise<string> {
     const filePath = input.path as string;
     const maxLines = input.maxLines as number | undefined;
-    const resolved = resolve(context.workspace, filePath);
+    const resolved = safePath(context.workspace, filePath);
 
     try {
       const stat = statSync(resolved);
       if (stat.size > 5 * 1024 * 1024) {
         return `Error: File too large (${(stat.size / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`;
+      }
+      if (isBinaryFile(resolved)) {
+        return "Error: Binary file detected — cannot display";
       }
       let content = readFileSync(resolved, "utf-8");
       if (maxLines) {
