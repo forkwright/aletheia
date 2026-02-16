@@ -416,10 +416,14 @@ function hydrateMentions(
 
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    abortSignal?.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      abortSignal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
   });
 }

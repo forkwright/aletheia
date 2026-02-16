@@ -57,7 +57,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   const config = loadConfig(configPath);
   const store = new SessionStore(paths.sessionsDb());
-  const router = createDefaultRouter();
+  const router = createDefaultRouter(config.models);
 
   const tools = new ToolRegistry();
 

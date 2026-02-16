@@ -627,37 +627,6 @@ export class SessionStore {
     };
   }
 
-  getUsageByModel(): Array<{
-    model: string;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-    turns: number;
-  }> {
-    return this.db
-      .prepare(
-        `SELECT model,
-                COALESCE(SUM(input_tokens), 0) AS input,
-                COALESCE(SUM(output_tokens), 0) AS output,
-                COALESCE(SUM(cache_read_tokens), 0) AS cache_read,
-                COALESCE(SUM(cache_write_tokens), 0) AS cache_write,
-                COUNT(*) AS turns
-         FROM usage
-         WHERE model IS NOT NULL
-         GROUP BY model`,
-      )
-      .all()
-      .map((row: Record<string, unknown>) => ({
-        model: row.model as string,
-        inputTokens: row.input as number,
-        outputTokens: row.output as number,
-        cacheReadTokens: row.cache_read as number,
-        cacheWriteTokens: row.cache_write as number,
-        turns: row.turns as number,
-      }));
-  }
-
   close(): void {
     this.db.close();
     log.info("Session store closed");
