@@ -28,6 +28,7 @@ import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
@@ -109,6 +110,14 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   for (const planTool of createPlanTools()) {
     tools.register(planTool);
   }
+
+  // Self-authoring tools — agents can create custom tools at runtime
+  const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
+  for (const authorTool of createSelfAuthorTools(defaultWorkspace, tools)) {
+    tools.register(authorTool);
+  }
+  const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
+  if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
 
   log.info(`Registered ${tools.size} tools`);
 
