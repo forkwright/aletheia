@@ -28,6 +28,7 @@ import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
@@ -95,6 +96,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register(factRetractTool);
+  tools.register(traceLookupTool);
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
