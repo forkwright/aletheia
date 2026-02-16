@@ -20,6 +20,8 @@ import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
+import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
+import { cleanupTtsFiles } from "./semeion/tts.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
@@ -29,6 +31,7 @@ import { createPlanTools } from "./organon/built-in/plan.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
+import { createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
   spawnDaemon,
@@ -175,6 +178,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
   app.route("/mcp", mcpRoutes);
 
+  // Mount Web UI
+  const uiRoutes = createUiRoutes(config, runtime.manager, runtime.store);
+  app.route("/", uiRoutes);
+
   startGateway(app, port);
   log.info(`Aletheia gateway listening on port ${port}`);
 
@@ -271,6 +278,15 @@ export async function startRuntime(configPath?: string): Promise<void> {
       });
       runtime.tools.register(messageTool);
       log.info("Message tool registered with Signal sender");
+
+      const voiceTool = createVoiceReplyTool({
+        send: async (to: string, text: string, attachments: string[]) => {
+          const target = parseTarget(to, defaultAccount);
+          await sendMessage(firstClient, target, text, { attachments });
+        },
+      });
+      runtime.tools.register(voiceTool);
+      log.info("Voice reply tool registered");
     } else {
       runtime.tools.register(createMessageTool());
     }
@@ -318,8 +334,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
+  // TTS file cleanup — remove stale audio files
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    cleanupTtsFiles();
   }, 60 * 60 * 1000);
 
   // --- Shutdown ---
