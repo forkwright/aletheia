@@ -16,6 +16,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           markdown: ["marked", "dompurify", "highlight.js/lib/core"],
+          graph3d: ["three", "3d-force-graph"],
         },
       },
     },

@@ -3,10 +3,12 @@
   import { getActiveAgent } from "../../stores/agents.svelte";
   import { getToken, setToken, clearToken } from "../../lib/api";
 
-  let { onToggleMetrics, onToggleSidebar, showMetrics, sidebarCollapsed = false }: {
-    onToggleMetrics: () => void;
+  type ViewId = "chat" | "metrics" | "graph";
+
+  let { onSetView, onToggleSidebar, activeView, sidebarCollapsed = false }: {
+    onSetView: (view: ViewId) => void;
     onToggleSidebar: () => void;
-    showMetrics: boolean;
+    activeView: ViewId;
     sidebarCollapsed?: boolean;
   } = $props();
 
@@ -55,8 +57,11 @@
     {/if}
   </div>
   <div class="right">
-    <button class="topbar-btn" class:active={showMetrics} onclick={onToggleMetrics}>
+    <button class="topbar-btn" class:active={activeView === "metrics"} onclick={() => onSetView(activeView === "metrics" ? "chat" : "metrics")}>
       Metrics
+    </button>
+    <button class="topbar-btn" class:active={activeView === "graph"} onclick={() => onSetView(activeView === "graph" ? "chat" : "graph")}>
+      Graph
     </button>
     <button class="topbar-btn" onclick={() => showSettings = !showSettings}>
       Settings

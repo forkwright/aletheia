@@ -3,11 +3,14 @@
   import Sidebar from "./Sidebar.svelte";
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
+  import GraphView from "../graph/GraphView.svelte";
   import { getToken, setToken } from "../../lib/api";
+
+  type ViewId = "chat" | "metrics" | "graph";
 
   const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
 
-  let showMetrics = $state(false);
+  let activeView = $state<ViewId>("chat");
   let hasToken = $state(!!getToken());
   let tokenValue = $state("");
   let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
@@ -27,7 +30,6 @@
   }
 
   function closeSidebar() {
-    // Only auto-close on mobile
     if (window.innerWidth <= 768) {
       sidebarCollapsed = true;
       localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
@@ -53,9 +55,9 @@
   </div>
 {:else}
   <TopBar
-    onToggleMetrics={() => showMetrics = !showMetrics}
+    onSetView={(v) => activeView = v}
     onToggleSidebar={toggleSidebar}
-    {showMetrics}
+    {activeView}
     {sidebarCollapsed}
   />
   <div class="main">
@@ -64,8 +66,10 @@
       <button class="sidebar-overlay" onclick={closeSidebar} aria-label="Close sidebar"></button>
     {/if}
     <div class="content">
-      {#if showMetrics}
+      {#if activeView === "metrics"}
         <MetricsView />
+      {:else if activeView === "graph"}
+        <GraphView />
       {:else}
         <ChatView />
       {/if}

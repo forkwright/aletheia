@@ -39,6 +39,14 @@ Return ONLY valid JSON:
   "contradictions": ["string"]
 }`;
 
+const EMPTY_RESULT: ExtractionResult = {
+  facts: [],
+  decisions: [],
+  openItems: [],
+  keyEntities: [],
+  contradictions: [],
+};
+
 export async function extractFromMessages(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
@@ -60,22 +68,112 @@ export async function extractFromMessages(
     .map((b) => b.text)
     .join("");
 
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      log.warn(`Extraction returned no JSON object. Raw response: ${text.slice(0, 200)}`);
-      return { facts: [], decisions: [], openItems: [], keyEntities: [], contradictions: [] };
-    }
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    return {
-      facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
-      decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
-      openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
-      keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
-      contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
-    };
-  } catch (err) {
-    log.warn(`Extraction JSON parse failed: ${err instanceof Error ? err.message : err}. Raw: ${text.slice(0, 200)}`);
-    return { facts: [], decisions: [], openItems: [], keyEntities: [], contradictions: [] };
+  const parsed = extractJson(text);
+  if (!parsed) {
+    log.warn(`Extraction returned no parseable JSON. Raw: ${text.slice(0, 300)}`);
+    return { ...EMPTY_RESULT };
   }
+
+  return {
+    facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
+    decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
+    openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
+    keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
+    contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
+  };
+}
+
+/** Extract first balanced JSON object from text, with repair fallbacks */
+export function extractJson(raw: string): Record<string, unknown> | null {
+  // Strategy 1: Balanced brace extraction + direct parse
+  const balanced = findBalancedBraces(raw);
+  if (balanced) {
+    try {
+      return JSON.parse(balanced) as Record<string, unknown>;
+    } catch {
+      // Strategy 2: Repair common LLM issues then parse
+      const repaired = repairJson(balanced);
+      try {
+        log.debug("JSON parsed after repair (balanced extraction)");
+        return JSON.parse(repaired) as Record<string, unknown>;
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  // Strategy 3: Greedy regex fallback (original behavior)
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as Record<string, unknown>;
+    } catch {
+      const repaired = repairJson(match[0]);
+      try {
+        log.debug("JSON parsed after repair (greedy regex)");
+        return JSON.parse(repaired) as Record<string, unknown>;
+      } catch {
+        log.warn(`All JSON parse strategies failed. Fragment: ${match[0].slice(0, 200)}`);
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Find the first balanced {…} block, respecting string escaping. If truncated, close open braces. */
+export function findBalancedBraces(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]!;
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  // Truncated output — attempt to close open structures
+  if (depth > 0) {
+    let fragment = text.slice(start);
+    // Close any open array bracket before closing braces
+    const lastOpen = fragment.lastIndexOf("[");
+    const lastClose = fragment.lastIndexOf("]");
+    if (lastOpen > lastClose) fragment += "]";
+    for (let d = 0; d < depth; d++) fragment += "}";
+    log.debug(`Closed ${depth} unclosed brace(s) in truncated JSON`);
+    return fragment;
+  }
+
+  return null;
+}
+
+/** Repair common LLM JSON malformations */
+export function repairJson(json: string): string {
+  let s = json;
+  // Trailing commas before ] or }
+  s = s.replace(/,\s*([\]}])/g, "$1");
+  // Single-quoted strings → double-quoted (best-effort)
+  s = s.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+  return s;
 }

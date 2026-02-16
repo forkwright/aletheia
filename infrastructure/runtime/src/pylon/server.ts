@@ -172,10 +172,11 @@ export function createGateway(
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { agentId, message, sessionKey } = body as {
+    const { agentId, message, sessionKey, media } = body as {
       agentId: string;
       message: string;
       sessionKey?: string;
+      media?: Array<{ contentType: string; data: string; filename?: string }>;
     };
 
     if (!agentId || !message) {
@@ -187,6 +188,7 @@ export function createGateway(
         text: message,
         nousId: agentId,
         sessionKey: sessionKey ?? "main",
+        ...(media?.length ? { media } : {}),
       });
       return c.json({
         response: result.text,
@@ -215,10 +217,11 @@ export function createGateway(
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { agentId, message, sessionKey } = body as {
+    const { agentId, message, sessionKey, media } = body as {
       agentId: string;
       message: string;
       sessionKey?: string;
+      media?: Array<{ contentType: string; data: string; filename?: string }>;
     };
 
     if (!agentId || !message) {
@@ -229,6 +232,30 @@ export function createGateway(
       return c.json({ error: "Streaming not implemented" }, 501);
     }
 
+    // Validate media attachments from webchat
+    const validMedia: Array<{ contentType: string; data: string; filename?: string }> = [];
+    if (media?.length) {
+      log.info(`Stream request has ${media.length} media attachment(s)`);
+      const maxBytes = 25 * 1024 * 1024; // 25MB per attachment
+      for (const item of media) {
+        if (!item.contentType || !item.data) continue;
+        const estimatedSize = Math.ceil(item.data.length * 0.75);
+        if (estimatedSize > maxBytes) {
+          log.warn(`Skipping oversized webchat attachment (${Math.round(estimatedSize / 1024)}KB)`);
+          continue;
+        }
+        if (!/^(image|audio|application|text)\//i.test(item.contentType)) {
+          log.warn(`Skipping unsupported media type: ${item.contentType}`);
+          continue;
+        }
+        validMedia.push(item);
+      }
+    }
+
+    if (validMedia.length > 0) {
+      log.info(`Passing ${validMedia.length} valid media to manager (types: ${validMedia.map(m => m.contentType).join(", ")})`);
+    }
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -237,6 +264,7 @@ export function createGateway(
             text: message,
             nousId: agentId,
             sessionKey: sessionKey ?? "main",
+            ...(validMedia.length > 0 ? { media: validMedia } : {}),
           })) {
             const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
             controller.enqueue(encoder.encode(payload));
@@ -528,6 +556,31 @@ export function createGateway(
       cron: cronRef?.getStatus() ?? [],
       services: watchdogRef?.getStatus() ?? [],
     });
+  });
+
+  // --- Memory Sidecar Proxy ---
+
+  const memoryUrl = process.env["MEMORY_SIDECAR_URL"] ?? "http://127.0.0.1:8230";
+
+  app.get("/api/memory/graph/export", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/export${qs}`);
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph_stats", async (c) => {
+    const res = await fetch(`${memoryUrl}/graph_stats`);
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.post("/api/memory/graph/analyze", async (c) => {
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/graph/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
   });
 
   // Blackboard API — for prosoche and external systems to post broadcasts

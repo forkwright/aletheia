@@ -1,11 +1,12 @@
 import { getToken } from "./api";
-import type { TurnStreamEvent } from "./types";
+import type { TurnStreamEvent, MediaItem } from "./types";
 
 export async function* streamMessage(
   agentId: string,
   message: string,
   sessionKey: string,
   signal?: AbortSignal,
+  media?: MediaItem[],
 ): AsyncGenerator<TurnStreamEvent> {
   const base = import.meta.env.DEV ? "" : window.location.origin;
   const token = getToken();
@@ -16,7 +17,12 @@ export async function* streamMessage(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ agentId, message, sessionKey }),
+    body: JSON.stringify({
+      agentId,
+      message,
+      sessionKey,
+      ...(media?.length ? { media } : {}),
+    }),
     signal,
   });
 
