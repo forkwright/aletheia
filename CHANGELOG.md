@@ -1,5 +1,67 @@
 # Changelog
 
+## [2026-02-17] - Web UI + streaming + resilience
+
+### Added
+- **Web UI** — Svelte 5 chat interface served at `/ui` from `ui/dist/`
+  - Streaming responses via SSE (`POST /api/sessions/stream`)
+  - Real-time event push (`GET /api/events`)
+  - Per-agent conversation management, session switching
+  - Markdown rendering, syntax highlighting (tree-shaken hljs), emoji support
+  - Mobile-responsive with swipe sidebar
+  - Dark theme, context proximity indicator
+- **Streaming API** — `completeStreaming()` on AnthropicProvider + ProviderRouter
+  - `StreamingEvent` types: text_delta, tool_use_start/delta/end, message_complete
+  - `executeTurnStreaming()` mirrors full `executeTurn()` with incremental yields
+- **Event bus → SSE bridge** — turn, tool, session events broadcast to WebUI clients
+- **Cost endpoints** — `GET /api/costs/summary`, `GET /api/costs/session/:id`
+- **Agent identity endpoint** — `GET /api/agents/:id/identity` (name + emoji from IDENTITY.md)
+- **Session resilience** — `buildMessages()` detects orphaned `tool_use` blocks and injects synthetic `tool_result` responses. Prevents 400 errors after mid-turn service restarts.
+
+### Fixed
+- **History API** — excluded distilled messages by default (`?includeDistilled=true` to opt in). Previously LIMIT 100 could return only old superseded messages.
+- **Emoji parsing** — identity endpoint extracts only Unicode emoji chars, strips trailing descriptions
+- **Concurrent agent turns** — `MAX_CONCURRENT_TURNS` 3→6 (all agents share one Signal account)
+
+### Changed
+- Sidebar: removed "Agents" section header
+- JS bundle: 1,031KB → 199KB (81% reduction via hljs tree-shaking)
+- Runtime bundle: 293KB → 354KB
+- Static file serving with SPA fallback, immutable caching for hashed assets
+
+---
+
+## [2026-02-17] - Competitive features (Phases 0-5)
+
+### Added
+- **MCP security** — auth bypass fix, crypto session IDs, rate limiting, scope enforcement, CORS
+- **Temperature routing** — `selectTemperature()` based on message content classification
+- **Memory intelligence** — `/graph/analyze` (PageRank, Louvain), `/search_enhanced` (query rewriting)
+- **Self-observation** — check_calibration, what_do_i_know, recent_corrections tools
+- **Mid-session context injection** — every 8 turns
+- **Cross-agent blackboard** — SQLite migration v6, TTL-based expiry
+- **Meta-tools** — context_check, status_report
+- **Whisper transcription** — wraps whisper.cpp for voice messages
+- **Browser automation** — LLM-driven browsing via run_task.py
+
+### Added (competitive patterns)
+- **GOALS.md** in bootstrap (priority 4.5, semi-static)
+- **Git-tracked workspaces** — auto-commit on write/edit
+- **Event bus** — 14 typed events, singleton
+- **Interaction signals** — heuristic classification, stored in `interaction_signals` table
+- **Dynamic tool loading** — essential vs available categories, 5-turn expiry
+- **Similarity pruning** — Jaccard word overlap in distillation pipeline
+- **Foresight signals** — temporal nodes in Neo4j
+- **Autonomous links** — Haiku generates relationship descriptions between memories
+- **Skill learning** — extracts SKILL.md from 3+ tool call trajectories
+
+### Changed
+- Tools: 22 → 28
+- Tests: 705 → 772 (79 test files)
+- Build: 177KB → 293KB
+
+---
+
 ## [2026-02-16] - Foundation quality (Phase 0)
 
 ### Changed

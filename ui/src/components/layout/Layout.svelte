@@ -5,10 +5,12 @@
   import MetricsView from "../metrics/MetricsView.svelte";
   import { getToken, setToken } from "../../lib/api";
 
+  const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
+
   let showMetrics = $state(false);
   let hasToken = $state(!!getToken());
   let tokenValue = $state("");
-  let sidebarCollapsed = $state(true);
+  let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
 
   function handleTokenSubmit(e: Event) {
     e.preventDefault();
@@ -21,10 +23,15 @@
 
   function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
+    localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
   }
 
   function closeSidebar() {
-    sidebarCollapsed = true;
+    // Only auto-close on mobile
+    if (window.innerWidth <= 768) {
+      sidebarCollapsed = true;
+      localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
+    }
   }
 </script>
 
@@ -49,6 +56,7 @@
     onToggleMetrics={() => showMetrics = !showMetrics}
     onToggleSidebar={toggleSidebar}
     {showMetrics}
+    {sidebarCollapsed}
   />
   <div class="main">
     <Sidebar collapsed={sidebarCollapsed} onAgentSelect={closeSidebar} />
