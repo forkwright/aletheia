@@ -358,6 +358,7 @@ export class SessionStore {
 
   recordCrossAgentCall(record: {
     sourceSessionId: string;
+    sourceNousId?: string;
     targetNousId: string;
     targetSessionId?: string;
     kind: "send" | "ask" | "spawn";
@@ -365,17 +366,56 @@ export class SessionStore {
   }): number {
     const result = this.db
       .prepare(
-        `INSERT INTO cross_agent_messages (source_session_id, target_nous_id, target_session_id, kind, content, status)
-         VALUES (?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       )
       .run(
         record.sourceSessionId,
+        record.sourceNousId ?? null,
         record.targetNousId,
         record.targetSessionId ?? null,
         record.kind,
         record.content,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  getUnsurfacedMessages(nousId: string): Array<{
+    id: number;
+    sourceNousId: string | null;
+    content: string;
+    response: string | null;
+    kind: string;
+    createdAt: string;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT id, source_nous_id, content, response, kind, created_at
+         FROM cross_agent_messages
+         WHERE target_nous_id = ? AND surfaced_in_session IS NULL
+           AND status IN ('delivered', 'responded')
+         ORDER BY created_at ASC`,
+      )
+      .all(nousId)
+      .map((row: Record<string, unknown>) => ({
+        id: row.id as number,
+        sourceNousId: row.source_nous_id as string | null,
+        content: row.content as string,
+        response: row.response as string | null,
+        kind: row.kind as string,
+        createdAt: row.created_at as string,
+      }));
+  }
+
+  markMessagesSurfaced(ids: number[], sessionId: string): void {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => "?").join(",");
+    this.db
+      .prepare(
+        `UPDATE cross_agent_messages SET surfaced_in_session = ?
+         WHERE id IN (${placeholders})`,
+      )
+      .run(sessionId, ...ids);
   }
 
   updateCrossAgentCall(

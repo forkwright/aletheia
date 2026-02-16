@@ -58,6 +58,7 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
       // Audit trail
       const auditId = dispatcher.store?.recordCrossAgentCall({
         sourceSessionId: context.sessionId,
+        sourceNousId: context.nousId,
         targetNousId: agentId,
         kind: "ask",
         content: message.slice(0, 2000),
