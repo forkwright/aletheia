@@ -141,4 +141,12 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_approved_sender ON approved_contacts(sender, channel);
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN last_input_tokens INTEGER DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN bootstrap_hash TEXT;
+      ALTER TABLE sessions ADD COLUMN distillation_count INTEGER DEFAULT 0;
+    `,
+  },
 ];

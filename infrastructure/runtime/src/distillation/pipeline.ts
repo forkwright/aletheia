@@ -1,4 +1,4 @@
-// Distillation pipeline — multi-pass context compression
+// Distillation pipeline — multi-pass context compression with hardening
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
@@ -6,9 +6,13 @@ import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
+import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 
 const log = createLogger("distillation");
+
+// Prevent concurrent distillation of the same session
+const activeDistillations = new Set<string>();
 
 export interface DistillationOpts {
   triggerThreshold: number;
@@ -28,6 +32,7 @@ export interface DistillationResult {
   tokensAfter: number;
   factsExtracted: number;
   summary: string;
+  distillationNumber: number;
 }
 
 export async function shouldDistill(
@@ -50,7 +55,40 @@ export async function distillSession(
   nousId: string,
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
-  log.info(`Starting distillation for session ${sessionId}`);
+  if (activeDistillations.has(sessionId)) {
+    log.info(
+      `Distillation already in progress for session ${sessionId}, skipping`,
+    );
+    throw new Error(
+      `Distillation already in progress for session ${sessionId}`,
+    );
+  }
+
+  activeDistillations.add(sessionId);
+  try {
+    return await runDistillation(store, router, sessionId, nousId, opts);
+  } finally {
+    activeDistillations.delete(sessionId);
+  }
+}
+
+async function runDistillation(
+  store: SessionStore,
+  router: ProviderRouter,
+  sessionId: string,
+  nousId: string,
+  opts: DistillationOpts,
+): Promise<DistillationResult> {
+  const distillationNumber = store.incrementDistillationCount(sessionId);
+  log.info(
+    `Starting distillation #${distillationNumber} for session ${sessionId}`,
+  );
+
+  if (distillationNumber > 3) {
+    log.warn(
+      `Session ${sessionId} has been distilled ${distillationNumber} times — consider archiving`,
+    );
+  }
 
   const allMessages = store.getHistory(sessionId, {});
   const undistilled = allMessages.filter((m) => !m.isDistilled);
@@ -75,11 +113,12 @@ export async function distillSession(
     });
   }
 
-  // Include tool_result messages — they contain factual output (file reads, command results, API data)
-  // that would otherwise be permanently lost during distillation.
-  // Assistant messages with JSON tool_use blocks are kept as-is (the extraction LLM handles them).
-  const simpleMessages = undistilled
-    .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "tool_result")
+  // Build simple messages, including tool_result content for factual preservation
+  const rawMessages = undistilled
+    .filter(
+      (m) =>
+        m.role === "user" || m.role === "assistant" || m.role === "tool_result",
+    )
     .map((m) => {
       if (m.role === "tool_result") {
         const label = m.toolName ? `[tool:${m.toolName}]` : "[tool_result]";
@@ -88,6 +127,10 @@ export async function distillSession(
       return { role: m.role, content: m.content };
     });
 
+  // Sanitize tool results — truncate verbose payloads before LLM-facing operations
+  const simpleMessages = sanitizeToolResults(rawMessages);
+
+  // Pass 1: Extraction
   log.info(`Extraction pass: ${simpleMessages.length} messages`);
   const extraction = await extractFromMessages(
     router,
@@ -96,38 +139,84 @@ export async function distillSession(
   );
 
   log.info(
-    `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ${extraction.openItems.length} open items`,
+    `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ` +
+      `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
   );
 
+  // Memory flush with retry — non-blocking, don't fail distillation on flush failure
   if (opts.memoryTarget) {
-    await flushToMemory(opts.memoryTarget, nousId, extraction);
+    const flushResult = await flushToMemory(
+      opts.memoryTarget,
+      nousId,
+      extraction,
+    );
+    if (flushResult.errors > 0) {
+      log.warn(
+        `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
+      );
+    }
   }
 
+  // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
   log.info("Summary pass");
-  const summary = await summarizeMessages(
+  let summary = await summarizeInStages(
     router,
     simpleMessages,
     extraction,
     opts.summaryModel,
+    nousId,
   );
 
-  const summaryTokens = estimateTokens(summary);
+  let summaryTokens = estimateTokens(summary);
 
-  // The summary replaces the old messages and must remain visible in future history.
+  // Compression ratio check — if summary > 50% of input, run a tighter second pass
+  const compressionRatio = tokensBefore > 0 ? summaryTokens / tokensBefore : 0;
+  if (compressionRatio > 0.5 && tokensBefore > 5000) {
+    log.warn(
+      `Compression ratio ${Math.round(compressionRatio * 100)}% exceeds 50% — running second pass`,
+    );
+    const emptyExtraction = {
+      facts: [],
+      decisions: [],
+      openItems: [],
+      keyEntities: [],
+      contradictions: [],
+    };
+    summary = await summarizeMessages(
+      router,
+      [{ role: "assistant", content: summary }],
+      emptyExtraction,
+      opts.summaryModel,
+      nousId,
+    );
+    summaryTokens = estimateTokens(summary);
+  }
+
+  // Tag repeated distillations so agents can see compression history
+  const markedSummary =
+    distillationNumber > 1
+      ? `[Distillation #${distillationNumber}]\n\n${summary}`
+      : summary;
+  const markedTokens = estimateTokens(markedSummary);
+
+  // The summary replaces old messages and must remain visible in future history.
   // isDistilled=false (default) keeps it in getHistoryWithBudget; markMessagesDistilled
   // only marks the OLD messages, not this one.
-  store.appendMessage(sessionId, "assistant", summary, {
-    tokenEstimate: summaryTokens,
+  store.appendMessage(sessionId, "assistant", markedSummary, {
+    tokenEstimate: markedTokens,
   });
 
-  store.markMessagesDistilled(sessionId, undistilled.map((m) => m.seq));
+  store.markMessagesDistilled(
+    sessionId,
+    undistilled.map((m) => m.seq),
+  );
 
   store.recordDistillation({
     sessionId,
     messagesBefore: undistilled.length,
     messagesAfter: 1,
     tokensBefore,
-    tokensAfter: summaryTokens,
+    tokensAfter: markedTokens,
     factsExtracted: extraction.facts.length + extraction.decisions.length,
     model: opts.extractionModel,
   });
@@ -138,9 +227,10 @@ export async function distillSession(
     messagesBefore: undistilled.length,
     messagesAfter: 1,
     tokensBefore,
-    tokensAfter: summaryTokens,
+    tokensAfter: markedTokens,
     factsExtracted: extraction.facts.length + extraction.decisions.length,
-    summary,
+    summary: markedSummary,
+    distillationNumber,
   };
 
   if (opts.plugins) {
@@ -154,7 +244,8 @@ export async function distillSession(
   }
 
   log.info(
-    `Distillation complete: ${result.tokensBefore} → ${result.tokensAfter} tokens (${Math.round((1 - result.tokensAfter / result.tokensBefore) * 100)}% reduction)`,
+    `Distillation #${distillationNumber} complete: ${result.tokensBefore} → ${result.tokensAfter} tokens ` +
+      `(${Math.round((1 - result.tokensAfter / result.tokensBefore) * 100)}% reduction)`,
   );
 
   return result;
