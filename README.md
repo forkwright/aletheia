@@ -30,9 +30,9 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
         Opus 4.6  Opus 4.6  Opus 4.6  Opus 4.6
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown, Express gateway on port 18789
+**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~177KB bundle), Hono gateway on port 18789
 
-**Communication**: Signal messenger via signal-cli (JSON-RPC mode, Docker container on port 8080). Each agent binds to specific Signal groups or DM routing patterns.
+**Communication**: Signal messenger via signal-cli (JSON-RPC mode on port 8080). 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
 **Models**: Claude Opus 4.6 (primary), Claude Sonnet 4 (fallback), Gemini Flash (fallback). Provider failover across Anthropic, OpenRouter, OpenAI, and Azure.
 
@@ -68,18 +68,27 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
 │   └── checkpoints/        System state snapshots
 │
 ├── infrastructure/
-│   ├── runtime/            Aletheia gateway (forked OpenClaw, patched)
-│   │   ├── src/                TypeScript source
+│   ├── runtime/            Clean-room gateway (TypeScript/tsdown)
+│   │   ├── src/                TypeScript source (~177KB compiled)
+│   │   │   ├── taxis/              Config loading + validation (Zod)
+│   │   │   ├── mneme/              Session store (better-sqlite3)
+│   │   │   ├── hermeneus/          Anthropic SDK + provider router
+│   │   │   ├── organon/            Tool registry + built-in tools + skills
+│   │   │   ├── semeion/            Signal client, listener, commands, preprocessing
+│   │   │   ├── pylon/              Hono HTTP gateway (17 endpoints)
+│   │   │   ├── prostheke/          Plugin system (lifecycle hooks)
+│   │   │   ├── nous/               Agent bootstrap + turn execution
+│   │   │   ├── distillation/       Context summarization pipeline
+│   │   │   ├── daemon/             Cron scheduler + watchdog
+│   │   │   └── koina/              Shared utilities (logger, token counter)
 │   │   ├── dist/               Compiled output
-│   │   ├── extensions/signal/  Signal channel plugin
-│   │   ├── skills/             Runtime skills
 │   │   └── aletheia.mjs        Entry point
 │   ├── memory/             Mem0 sidecar + docker-compose (Qdrant, Neo4j)
 │   │   ├── sidecar/            FastAPI Mem0 wrapper (Python/uvicorn)
-│   │   ├── plugin/             Aletheia memory plugin (lifecycle hooks)
+│   │   ├── aletheia-memory/    Memory plugin (lifecycle hooks + mem0_search tool)
 │   │   └── docker-compose.yml  Qdrant + Neo4j containers
 │   ├── langfuse/           Self-hosted observability (Docker)
-│   └── patches/            Runtime patches (workspace, dynamic context)
+│   └── prosoche/           Adaptive attention daemon
 │
 ├── theke/                  Obsidian vault (human-facing, gitignored)
 ├── projects/               Project backing store (gitignored)
@@ -136,42 +145,67 @@ At session start, `assemble-context` compiles: agent workspace files + recent fa
 
 ---
 
-## Tooling
+## Interfaces
 
-### Research
+### Signal Commands
 
 | Command | Purpose |
 |---------|---------|
-| `pplx "query"` | Perplexity pro-search (broad synthesis) |
-| `scholar "topic"` | OpenAlex + arXiv + Semantic Scholar search |
-| `scholar cite DOI` | Citation graph traversal |
-| `scholar fetch ARXIV_ID` | Download + convert to markdown |
-| `wiki "concept"` | Wikipedia lookup (orientation only) |
+| `!status` | System status (uptime, services, per-nous metrics) |
+| `!help` | List all available commands |
+| `!ping` | Liveness check |
+| `!sessions` | List active sessions for this sender |
+| `!reset` | Archive current session, start fresh |
+| `!agent` | Show which agent handles this conversation |
+| `!skills` | List available skills |
+| `!approve <code>` | Approve pending contact request (admin) |
+| `!deny <code>` | Deny pending contact request (admin) |
+| `!contacts` | List pending contact requests (admin) |
+
+### CLI
+
+| Command | Purpose |
+|---------|---------|
+| `aletheia gateway` | Start the runtime (default) |
+| `aletheia status` | System status via `/api/metrics` |
+| `aletheia send -a <agent> -m "..."` | Send message to agent |
+| `aletheia sessions [-a <agent>]` | List sessions |
+| `aletheia cron list` | List cron jobs |
+| `aletheia cron trigger <id>` | Trigger a cron job |
+| `aletheia doctor` | Connectivity checks |
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health check (no auth) |
+| GET | `/api/status` | Agent list + timestamp |
+| GET | `/api/metrics` | Full metrics (per-nous, tokens, cache, cron, services) |
+| GET | `/api/agents` | All agents with model info |
+| GET | `/api/agents/:id` | Single agent + recent sessions + usage |
+| GET | `/api/sessions` | Session list (optional `?nousId=`) |
+| GET | `/api/sessions/:id/history` | Message history |
+| POST | `/api/sessions/send` | Send message to agent |
+| POST | `/api/sessions/:id/archive` | Archive session |
+| POST | `/api/sessions/:id/distill` | Trigger distillation |
+| GET | `/api/cron` | Cron job list |
+| POST | `/api/cron/:id/trigger` | Manual cron trigger |
+| GET | `/api/skills` | Skills directory |
+| GET | `/api/contacts/pending` | Pending contact requests |
+| POST | `/api/contacts/:code/approve` | Approve contact |
+| POST | `/api/contacts/:code/deny` | Deny contact |
+| GET | `/api/config` | Config summary |
+
+### Shared Scripts (`shared/bin/`)
+
+| Command | Purpose |
+|---------|---------|
+| `pplx "query"` | Perplexity pro-search |
+| `scholar "topic"` | Academic search (OpenAlex + arXiv + Semantic Scholar) |
 | `browse "url"` | LLM-driven web automation |
 | `ingest-doc file.pdf` | PDF/DOCX extraction to markdown |
-
-### System
-
-| Command | Purpose |
-|---------|---------|
-| `assemble-context --nous X` | Compile session context for agent |
 | `compile-context` | Regenerate workspace files from templates |
-| `distill --nous X --text "..."` | Extract structured insights |
-| `aletheia-graph query "..."` | Knowledge graph CLI |
-| `attention-check --nous X` | Adaptive awareness scoring |
-| `deliberate "question"` | Cross-agent PROPOSE/CRITIQUE/SYNTHESIZE |
-| `compose-team "task"` | Dynamic agent composition |
-| `checkpoint save/restore/list` | System state management |
-
-### Agent Management
-
-| Command | Purpose |
-|---------|---------|
-| `nous-health` | Agent health check |
-| `nous-contracts show AGENT` | Display agent contract |
-| `nous-contracts route "request"` | Route request to appropriate agent |
-| `audit-all-nous` | Full audit across all agents |
-| `trace-session --stats` | Langfuse session statistics |
+| `aletheia-graph query "..."` | Knowledge graph CLI (Neo4j) |
 
 ---
 
@@ -180,56 +214,53 @@ At session start, `assemble-context` compiles: agent workspace files + recent fa
 ### Prerequisites
 
 - Node.js >=22.12
-- pnpm 10.x
-- Docker (for signal-cli, Langfuse)
-- signal-cli configured with a registered phone number
+- signal-cli (native install or container)
+- Docker (for Qdrant, Neo4j, Langfuse)
+
+### Building
+
+```bash
+cd infrastructure/runtime
+npm install
+npx tsdown            # Single entry point → dist/entry.js (~177KB)
+```
+
+### Deploying
+
+```bash
+# On server as syn user:
+cd /mnt/ssd/aletheia
+git pull origin main
+cd infrastructure/runtime && npx tsdown
+sudo systemctl restart aletheia
+```
 
 ### Systemd Service
 
 The gateway runs as `aletheia.service` under the `syn` service account.
 
 ```bash
-# Service management
 sudo systemctl status aletheia
 sudo systemctl restart aletheia
 journalctl -u aletheia -f
-
-# Config location
-/home/syn/.aletheia/aletheia.json
 ```
 
-**Known issue**: `systemctl restart` can leave an orphan gateway process holding port 18789. If the service fails to bind on restart, check for and kill the orphan process.
+### Services
 
-### Docker Services
-
-**signal-cli** (main docker-compose.yml):
-```bash
-docker compose up -d signal-cli
-```
-- JSON-RPC mode on port 8080 (localhost only)
-- Data volume: `/mnt/ssd/aletheia/signal-cli/`
-
-**Memory stack** (infrastructure/memory/docker-compose.yml):
-```bash
-cd infrastructure/memory && docker compose up -d
-```
-- Qdrant: vector store on port 6333
-- Neo4j: graph store on port 7474 (browser) / 7687 (bolt)
-- Mem0 sidecar: `aletheia-memory.service` on port 8230
-
-**Langfuse** (infrastructure/langfuse/docker-compose.yml):
-```bash
-cd infrastructure/langfuse && docker compose up -d
-```
-- Web UI on port 3100
-- PostgreSQL backend (Alpine, mem-limited 256MB)
-- Telemetry disabled
+| Service | Port | Notes |
+|---------|------|-------|
+| aletheia | 18789 | Gateway + Signal listener |
+| signal-cli | 8080 | JSON-RPC (localhost only) |
+| aletheia-memory | 8230 | Mem0 sidecar (FastAPI/uvicorn) |
+| qdrant | 6333 | Vector store (127.0.0.1) |
+| neo4j | 7474/7687 | Graph store (127.0.0.1) |
+| langfuse | 3100 | Observability |
 
 ### Environment
 
-Environment variables are injected via the `ALETHEIA PATCH` in `server.impl.js`. The `aletheia.env` file uses `export` syntax (not compatible with systemd `EnvironmentFile`).
+`aletheia.env` in shared/config/ — must be systemd `EnvironmentFile` compatible (no `export`, no variable refs).
 
-Key env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ALETHEIA_*` namespace.
+Key env vars: `ANTHROPIC_API_KEY`, `BRAVE_API_KEY`, `ALETHEIA_ROOT`, `CHROMIUM_PATH`.
 
 ---
 
@@ -237,51 +268,36 @@ Key env vars: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ALET
 
 | File | Purpose |
 |------|---------|
-| `/home/syn/.aletheia/aletheia.json` | Gateway config (agents, bindings, routing, sessions) |
-| `shared/config/tools.yaml` | Tool definitions (source of truth for TOOLS.md) |
-| `shared/config/provider-failover.json` | Multi-provider LLM failover rules |
+| `/home/syn/.aletheia/aletheia.json` | Gateway config (agents, bindings, routing, sessions, cron, watchdog) |
+| `/home/syn/.aletheia/credentials/anthropic.json` | Anthropic OAuth token |
 | `infrastructure/memory/sidecar/aletheia_memory/config.py` | Mem0 backend configuration |
 | `shared/contracts/*.json` | Per-agent capability contracts |
 | `shared/templates/` | Template sections + per-agent YAML for compiled workspace files |
+| `shared/skills/*/SKILL.md` | Agent skills (loaded into bootstrap) |
 
-**Config reload**: Bindings, agents, routing, and session configs are `kind: "none"` -- SIGUSR1 will not reload them. Changes require a full `systemctl restart aletheia`.
+**Config reload**: Changes require `systemctl restart aletheia`.
 
 ---
 
 ## Development
 
-### Building the Runtime
+### Module Architecture
 
-```bash
-cd infrastructure/runtime
-pnpm install
-pnpm build          # tsdown compile + plugin SDK + build info
 ```
-
-### Testing
-
-```bash
-pnpm test           # Parallel test runner
-pnpm test:fast      # Unit tests only (vitest)
-pnpm test:e2e       # End-to-end tests
-pnpm test:live      # Live model tests (requires API keys)
+src/entry.ts          CLI entry point (Commander)
+src/aletheia.ts       Main orchestration — wires all modules
+src/taxis/            Config loading + Zod validation
+src/mneme/            Session store (better-sqlite3, 3 migrations)
+src/hermeneus/        Anthropic SDK, provider router, token counting
+src/organon/          Tool registry, 13 built-in tools, skills directory
+src/semeion/          Signal client, SSE listener, commands, link preprocessing
+src/pylon/            Hono HTTP gateway (17 endpoints)
+src/prostheke/        Plugin system (lifecycle hooks)
+src/nous/             Bootstrap assembly, agent turn execution (NousManager)
+src/distillation/     Context summarization pipeline
+src/daemon/           Cron scheduler, watchdog health probes
+src/koina/            Shared utilities (logger, token counter)
 ```
-
-### Runtime Patches
-
-The runtime is a fork of OpenClaw with local patches:
-
-| Patch | Purpose |
-|-------|---------|
-| Structured distillation | Pre-compaction extracts facts to JSONL + graph |
-| Context assembly | Session start compiles state + facts + graph + tasks |
-| Adaptive awareness | Prosoche replaces static heartbeats |
-| Environment injection | `ALETHEIA_*` vars available to all scripts |
-| Post-compaction hooks | Fire-and-forget distillation after context compression |
-| Workspace dynamic context | Dynamic context injection per agent workspace |
-| Mem0 memory integration | Federated search (sqlite-vec + Mem0), compaction context passthrough |
-
-Patches live in `infrastructure/patches/` and are applied via `patch-runtime` (in `shared/bin/`).
 
 ### Template Compilation
 

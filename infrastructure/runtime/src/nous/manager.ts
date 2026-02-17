@@ -29,6 +29,8 @@ import { checkInputCircuitBreakers, checkResponseQuality } from "./circuit-break
 import { getReversibility, requiresSimulation } from "../organon/reversibility.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
+import { eventBus } from "../koina/event-bus.js";
+import { classifyInteraction } from "./interaction-signals.js";
 
 const log = createLogger("nous");
 
@@ -225,6 +227,8 @@ export class NousManager {
         cacheWriteTokens: 0,
       };
     }
+
+    eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
 
     log.info(
       `Processing message for ${nousId}:${sessionKey} (session ${sessionId})`,
@@ -439,6 +443,16 @@ export class NousManager {
           });
         }
 
+        eventBus.emit("turn:after", { nousId, sessionId, toolCalls: totalToolCalls, inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
+
+        // Classify interaction signal and record
+        const signal = classifyInteraction(msg.text, text);
+        this.store.recordSignal({ sessionId, nousId, turnSeq: seq, signal: signal.signal, confidence: signal.confidence });
+        if (signal.signal === "correction" && this.competence) {
+          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+          this.competence.recordCorrection(nousId, domain);
+        }
+
         // Record competence success for the agent's domain (session key as proxy)
         if (this.competence && totalToolCalls > 0) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
@@ -522,6 +536,11 @@ export class NousManager {
           }
         }
         const toolDuration = Date.now() - toolStart;
+
+        eventBus.emit(isError ? "tool:failed" : "tool:called", {
+          nousId, sessionId, tool: toolUse.name, durationMs: toolDuration,
+          ...(isError ? { error: toolResult.slice(0, 200) } : {}),
+        });
 
         trace.addToolCall({
           name: toolUse.name,

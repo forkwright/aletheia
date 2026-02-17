@@ -779,6 +779,51 @@ export class SessionStore {
     };
   }
 
+  // --- Interaction Signals ---
+
+  recordSignal(signal: {
+    sessionId: string;
+    nousId: string;
+    turnSeq: number;
+    signal: string;
+    confidence: number;
+  }): void {
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
+    } catch {
+      // Table may not exist yet if migration hasn't run — don't fail the turn
+    }
+  }
+
+  getSignalHistory(nousId: string, limit = 50): Array<{
+    sessionId: string;
+    turnSeq: number;
+    signal: string;
+    confidence: number;
+    createdAt: string;
+  }> {
+    try {
+      const rows = this.db
+        .prepare(
+          "SELECT session_id, turn_seq, signal, confidence, created_at FROM interaction_signals WHERE nous_id = ? ORDER BY created_at DESC LIMIT ?",
+        )
+        .all(nousId, limit) as Array<Record<string, unknown>>;
+      return rows.map((r) => ({
+        sessionId: r["session_id"] as string,
+        turnSeq: r["turn_seq"] as number,
+        signal: r["signal"] as string,
+        confidence: r["confidence"] as number,
+        createdAt: r["created_at"] as string,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   // --- Contact Management ---
 
   isApprovedContact(sender: string, channel: string, accountId?: string): boolean {

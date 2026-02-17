@@ -52,6 +52,7 @@ import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
+import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
 
@@ -66,6 +67,7 @@ export interface AletheiaRuntime {
 }
 
 export function createRuntime(configPath?: string): AletheiaRuntime {
+  eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
 
   const config = loadConfig(configPath);
@@ -204,6 +206,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   app.route("/", uiRoutes);
 
   startGateway(app, port);
+  eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);
 
   // --- Skills ---
