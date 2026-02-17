@@ -1,18 +1,41 @@
 # Configuration loading and validation
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 
-def load_config(path: Path | str = "/mnt/ssd/aletheia/infrastructure/prosoche/config.yaml") -> dict[str, Any]:
+def _expand_env(obj: Any) -> Any:
+    """Recursively expand ${VAR} references in strings using os.environ."""
+    if isinstance(obj, str):
+        return re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), obj)
+    if isinstance(obj, dict):
+        return {k: _expand_env(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env(v) for v in obj]
+    return obj
+
+
+def _default_config_path() -> Path:
+    root = os.environ.get("ALETHEIA_ROOT")
+    if root:
+        return Path(root) / "infrastructure" / "prosoche" / "config.yaml"
+    return Path(__file__).resolve().parent.parent / "config.yaml"
+
+
+def load_config(path: Path | str | None = None) -> dict[str, Any]:
+    if path is None:
+        path = _default_config_path()
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     with open(path) as f:
-        return yaml.safe_load(f)
+        raw = yaml.safe_load(f)
+    return _expand_env(raw)
 
 
 def get_nous_ids(config: dict) -> list[str]:
