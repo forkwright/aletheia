@@ -1154,6 +1154,41 @@ export class NousManager {
       messages.push({ role: "user", content: currentText });
     }
 
+    // Repair orphaned tool_use blocks — if an assistant message has tool_use but
+    // the next message isn't a user with tool_results, inject synthetic results.
+    // This happens when the service restarts mid-turn before tool execution completes.
+    for (let j = 0; j < messages.length; j++) {
+      const msg = messages[j]!;
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+      const toolUseBlocks = (msg.content as ContentBlock[]).filter(
+        (b): b is ToolUseBlock => b.type === "tool_use",
+      );
+      if (toolUseBlocks.length === 0) continue;
+
+      const next = messages[j + 1];
+      const answeredIds = new Set<string>();
+      if (next?.role === "user" && Array.isArray(next.content)) {
+        for (const block of next.content as UserContentBlock[]) {
+          if ("tool_use_id" in block) answeredIds.add(block.tool_use_id);
+        }
+      }
+      const orphaned = toolUseBlocks.filter((b) => !answeredIds.has(b.id));
+      if (orphaned.length === 0) continue;
+
+      log.warn(`Repairing ${orphaned.length} orphaned tool_use block(s) in history`);
+      const syntheticResults: UserContentBlock[] = orphaned.map((b) => ({
+        type: "tool_result" as const,
+        tool_use_id: b.id,
+        content: "Error: Tool execution interrupted — service restarted mid-turn.",
+      }));
+
+      if (next?.role === "user" && Array.isArray(next.content)) {
+        (next.content as UserContentBlock[]).unshift(...syntheticResults);
+      } else {
+        messages.splice(j + 1, 0, { role: "user", content: syntheticResults });
+      }
+    }
+
     // Merge consecutive user messages to prevent Anthropic 400 errors
     const merged: MessageParam[] = [];
     for (const m of messages) {
