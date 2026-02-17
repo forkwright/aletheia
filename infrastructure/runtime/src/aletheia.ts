@@ -36,6 +36,7 @@ import { createBlackboardTool } from "./organon/built-in/blackboard.js";
 import { createContextCheckTool } from "./organon/built-in/context-check.js";
 import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
+import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
@@ -222,6 +223,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const spawnTool = createSessionsSpawnTool(auditDispatcher, sharedRoot);
   spawnTool.category = "available";
   tools.register(spawnTool);
+  tools.register(createDeliberateTool(auditDispatcher));
 
   return {
     config,
