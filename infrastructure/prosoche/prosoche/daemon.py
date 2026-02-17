@@ -2,6 +2,7 @@
 # Prosoche daemon — adaptive attention engine for Aletheia
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import time
@@ -35,7 +36,7 @@ COLLECTORS = {
 
 
 class ProsocheDaemon:
-    def __init__(self, config_path: str | Path):
+    def __init__(self, config_path: str | Path | None = None):
         self.config = load_config(config_path)
         self.nous_root = Path(self.config["nous_root"])
         self.nous_ids = get_nous_ids(self.config)
@@ -50,7 +51,8 @@ class ProsocheDaemon:
             cooldown_seconds=budget_cfg.get("cooldown_after_wake_seconds", 300),
         )
 
-        data_dir = Path(self.config.get("data_dir", "/mnt/ssd/aletheia/shared/prosoche"))
+        fallback = os.environ.get("ALETHEIA_ROOT", str(Path(__file__).resolve().parents[3]))
+        data_dir = Path(self.config.get("data_dir", f"{fallback}/shared/prosoche"))
         self.activity_model = ActivityModel(data_dir)
 
     async def run(self) -> None:
@@ -165,7 +167,7 @@ class ProsocheDaemon:
 
 
 def main() -> None:
-    config_path = sys.argv[1] if len(sys.argv) > 1 else "/mnt/ssd/aletheia/infrastructure/prosoche/config.yaml"
+    config_path = sys.argv[1] if len(sys.argv) > 1 else None
 
     daemon = ProsocheDaemon(config_path)
 
