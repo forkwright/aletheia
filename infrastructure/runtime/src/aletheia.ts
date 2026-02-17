@@ -32,6 +32,9 @@ import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
 import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
+import { createBlackboardTool } from "./organon/built-in/blackboard.js";
+import { createContextCheckTool } from "./organon/built-in/context-check.js";
+import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
@@ -193,6 +196,17 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const correctionsTool = createRecentCorrectionsTool(store);
   correctionsTool.category = "available";
   tools.register(correctionsTool);
+
+  // Cross-agent blackboard — persistent shared state with auto-expiry
+  tools.register(createBlackboardTool(store));
+
+  // Meta-tools — composed pipelines
+  const ctxCheckTool = createContextCheckTool(tools);
+  ctxCheckTool.category = "available";
+  tools.register(ctxCheckTool);
+  const statusTool = createStatusReportTool(store, competence);
+  statusTool.category = "available";
+  tools.register(statusTool);
 
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {
@@ -408,6 +422,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
     cleanupTtsFiles();
+    runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);
 
   // --- Shutdown ---

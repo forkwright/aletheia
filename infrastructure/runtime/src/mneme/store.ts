@@ -916,4 +916,74 @@ export class SessionStore {
       createdAt: r['created_at'] as string,
     }));
   }
+
+  // --- Blackboard (cross-agent shared state) ---
+
+  blackboardWrite(key: string, value: string, authorNousId: string, ttlSeconds = 3600): string {
+    const id = generateId();
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
+    // Upsert by key + author — each agent can update their own entries
+    this.db
+      .prepare(
+        `INSERT INTO blackboard (id, key, value, author_nous_id, ttl_seconds, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO NOTHING`,
+      )
+      .run(id, key, value, authorNousId, ttlSeconds, expiresAt);
+
+    // Also delete any stale entries for same key by same author
+    this.db
+      .prepare(
+        "DELETE FROM blackboard WHERE key = ? AND author_nous_id = ? AND id != ?",
+      )
+      .run(key, authorNousId, id);
+
+    return id;
+  }
+
+  blackboardRead(key: string): Array<{ id: string; key: string; value: string; author: string; createdAt: string; expiresAt: string | null }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT id, key, value, author_nous_id, created_at, expires_at FROM blackboard WHERE key = ? ORDER BY created_at DESC",
+      )
+      .all(key) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r["id"] as string,
+      key: r["key"] as string,
+      value: r["value"] as string,
+      author: r["author_nous_id"] as string,
+      createdAt: r["created_at"] as string,
+      expiresAt: r["expires_at"] as string | null,
+    }));
+  }
+
+  blackboardList(): Array<{ key: string; count: number; authors: string[] }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT key, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT author_nous_id) as authors FROM blackboard GROUP BY key ORDER BY key",
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      key: r["key"] as string,
+      count: r["cnt"] as number,
+      authors: (r["authors"] as string).split(","),
+    }));
+  }
+
+  blackboardDelete(key: string, authorNousId: string): number {
+    const result = this.db
+      .prepare("DELETE FROM blackboard WHERE key = ? AND author_nous_id = ?")
+      .run(key, authorNousId);
+    return result.changes;
+  }
+
+  blackboardExpire(): number {
+    const result = this.db
+      .prepare("DELETE FROM blackboard WHERE expires_at IS NOT NULL AND expires_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+      .run();
+    return result.changes;
+  }
 }
