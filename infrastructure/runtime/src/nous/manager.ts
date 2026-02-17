@@ -1,4 +1,5 @@
 // Nous manager — lifecycle, routing, agent turn execution
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { SessionStore, type Message } from "../mneme/store.js";
 import { ProviderRouter } from "../hermeneus/router.js";
@@ -31,6 +32,7 @@ import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
 import { eventBus } from "../koina/event-bus.js";
 import { classifyInteraction } from "./interaction-signals.js";
+import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
 
 const log = createLogger("nous");
 
@@ -275,6 +277,7 @@ export class NousManager {
     ];
 
     const toolDefs = this.tools.getDefinitions({
+      sessionId,
       ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
       ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
     });
@@ -346,6 +349,7 @@ export class NousManager {
     let totalCacheReadTokens = 0;
     let totalCacheWriteTokens = 0;
     let currentMessages = messages;
+    const turnToolCalls: ToolCallRecord[] = [];
 
     const MAX_TOOL_LOOPS = 20;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
@@ -459,6 +463,20 @@ export class NousManager {
           this.competence.recordSuccess(nousId, domain);
         }
 
+        // Skill learning — extract reusable patterns from successful multi-tool turns
+        if (turnToolCalls.length >= 3) {
+          const skillModel = this.config.agents.defaults.compaction.distillationModel;
+          const skillsDir = join(resolveWorkspace(this.config, nous)!, "..", "..", "shared", "skills");
+          extractSkillCandidate(this.router, turnToolCalls, skillModel, sessionId, seq, nousId)
+            .then((candidate) => {
+              if (candidate) saveLearnedSkill(candidate, skillsDir);
+            })
+            .catch(() => {}); // Fire-and-forget
+        }
+
+        // Expire unused dynamic tools
+        this.tools.expireUnusedTools(sessionId, seq + loop);
+
         // Auto-trigger distillation using actual API-reported input tokens (most accurate)
         // Falls back to heuristic estimate if actual tokens aren't available
         const compaction = this.config.agents.defaults.compaction;
@@ -537,6 +555,8 @@ export class NousManager {
         }
         const toolDuration = Date.now() - toolStart;
 
+        if (!isError) turnToolCalls.push({ name: toolUse.name, input: toolUse.input as Record<string, unknown>, output: toolResult.slice(0, 500) });
+        this.tools.recordToolUse(toolUse.name, sessionId, seq + loop);
         eventBus.emit(isError ? "tool:failed" : "tool:called", {
           nousId, sessionId, tool: toolUse.name, durationMs: toolDuration,
           ...(isError ? { error: toolResult.slice(0, 200) } : {}),

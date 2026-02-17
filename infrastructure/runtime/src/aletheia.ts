@@ -87,43 +87,73 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(findTool);
   tools.register(lsTool);
 
-  // Web access
-  tools.register(webFetchTool);
+  // Web access (available on-demand)
+  tools.register({ ...webFetchTool, category: "available" as const });
   if (process.env["BRAVE_API_KEY"]) {
-    tools.register(braveSearchTool);
+    tools.register({ ...braveSearchTool, category: "available" as const });
     log.info("Web search: Brave (API key found)");
   } else {
-    tools.register(webSearchTool);
+    tools.register({ ...webSearchTool, category: "available" as const });
     log.info("Web search: DuckDuckGo (no BRAVE_API_KEY)");
   }
 
   // Memory
   tools.register(mem0SearchTool);
-  tools.register(factRetractTool);
-  tools.register(traceLookupTool);
+  tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
-    tools.register(browserTool);
+    tools.register({ ...browserTool, category: "available" as const });
     log.info("Browser tool registered");
   }
 
-  // Wired tools (config + store injected)
-  tools.register(createConfigReadTool(config));
-  tools.register(createSessionStatusTool(store));
+  // Wired tools (config + store injected — available on-demand)
+  const configReadTool = createConfigReadTool(config);
+  configReadTool.category = "available";
+  tools.register(configReadTool);
+  const sessionStatusTool = createSessionStatusTool(store);
+  sessionStatusTool.category = "available";
+  tools.register(sessionStatusTool);
 
-  // Planning tools
+  // Planning tools (available on-demand)
   for (const planTool of createPlanTools()) {
+    planTool.category = "available";
     tools.register(planTool);
   }
 
-  // Self-authoring tools — agents can create custom tools at runtime
+  // Self-authoring tools (available on-demand)
   const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
   for (const authorTool of createSelfAuthorTools(defaultWorkspace, tools)) {
+    authorTool.category = "available";
     tools.register(authorTool);
   }
   const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
   if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
+
+  // enable_tool meta-tool — lets agents activate available tools on demand
+  const enableToolHandler: import("./organon/registry.js").ToolHandler = {
+    definition: {
+      name: "enable_tool",
+      description:
+        "Activate an available tool for this session. Tools auto-expire after 5 unused turns. " +
+        "Available tools: " + tools.getAvailableToolNames().join(", "),
+      input_schema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Tool name to enable" },
+        },
+        required: ["name"],
+      },
+    },
+    async execute(input: Record<string, unknown>, context: import("./organon/registry.js").ToolContext): Promise<string> {
+      const name = input["name"] as string;
+      const ok = tools.enableTool(name, context.sessionId, 0);
+      if (ok) return JSON.stringify({ enabled: true, tool: name });
+      return JSON.stringify({ enabled: false, error: `Tool "${name}" not found` });
+    },
+  };
+  tools.register(enableToolHandler);
 
   log.info(`Registered ${tools.size} tools`);
 
@@ -157,7 +187,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   tools.register(createSessionsSendTool(auditDispatcher));
   tools.register(createSessionsAskTool(auditDispatcher));
-  tools.register(createSessionsSpawnTool(auditDispatcher, sharedRoot));
+  const spawnTool = createSessionsSpawnTool(auditDispatcher, sharedRoot);
+  spawnTool.category = "available";
+  tools.register(spawnTool);
 
   return {
     config,

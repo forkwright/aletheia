@@ -7,6 +7,7 @@ import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
+import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import { eventBus } from "../koina/event-bus.js";
 
@@ -130,7 +131,11 @@ async function runDistillation(
     });
 
   // Sanitize tool results — truncate verbose payloads before LLM-facing operations
-  const simpleMessages = sanitizeToolResults(rawMessages);
+  const sanitized = sanitizeToolResults(rawMessages);
+
+  // Prune low-information segments using word-overlap similarity
+  const { prunedMessages: simpleMessages, removedCount: pruneCount } = pruneBySimilarity(sanitized);
+  if (pruneCount > 0) log.info(`Pruned ${pruneCount} low-information messages before distillation`);
 
   // Pass 1: Extraction
   log.info(`Extraction pass: ${simpleMessages.length} messages`);
