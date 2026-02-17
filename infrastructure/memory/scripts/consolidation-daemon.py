@@ -84,6 +84,20 @@ def run_evolution_decay(dry_run: bool = False) -> dict:
         return resp.json()
 
 
+def run_discovery_generation() -> dict:
+    """Generate cross-community discovery candidates."""
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(
+            f"{SIDECAR_URL}/discovery/generate_candidates",
+            headers=headers(),
+        )
+        if resp.status_code == 404:
+            logger.info("Discovery generation endpoint not available — skipping")
+            return {"candidates": 0}
+        resp.raise_for_status()
+        return resp.json()
+
+
 def run_graph_analytics(store_scores: bool = True) -> dict:
     """Run graph analytics (PageRank, community detection, dedup candidates)."""
     with httpx.Client(timeout=120.0) as client:
@@ -106,6 +120,7 @@ def log_stats(
     foresight: dict | None = None,
     evolution: dict | None = None,
     analytics: dict | None = None,
+    discoveries: dict | None = None,
 ) -> None:
     """Append daily stats to JSONL."""
     STATS_DIR.mkdir(parents=True, exist_ok=True)
@@ -123,6 +138,8 @@ def log_stats(
         "evolution_exempt": (evolution or {}).get("recently_accessed", 0),
         "graph_communities": (analytics or {}).get("communities", 0),
         "graph_dedup_candidates": len((analytics or {}).get("dedup_candidates", [])),
+        "discovery_candidates": (discoveries or {}).get("candidates", 0),
+        "cross_community_bridges": (discoveries or {}).get("cross_community_bridges", 0),
     }
     stats_file = STATS_DIR / "consolidation-log.jsonl"
     with open(stats_file, "a") as f:
@@ -156,7 +173,11 @@ def main() -> None:
                 f"{len(analytics.get('dedup_candidates', []))} dedup candidates"
             )
 
-        log_stats(stats, graph_stats, consolidation, foresight, evolution, analytics)
+        discoveries = run_discovery_generation()
+        logger.info(f"Discovery generation: {discoveries.get('candidates', 0)} candidates, "
+                     f"{discoveries.get('cross_community_bridges', 0)} bridges")
+
+        log_stats(stats, graph_stats, consolidation, foresight, evolution, analytics, discoveries)
 
         print(f"Memories: {stats.get('total', '?')}")
         print(f"Graph: {graph_stats.get('nodes', '?')} nodes, {graph_stats.get('relationships', '?')} rels")
@@ -165,6 +186,7 @@ def main() -> None:
         print(f"Evolution decay: {evolution.get('decayed', 0)} (exempt: {evolution.get('recently_accessed', 0)})")
         if analytics:
             print(f"Communities: {analytics.get('communities', 0)}")
+        print(f"Discoveries: {discoveries.get('candidates', 0)} candidates, {discoveries.get('cross_community_bridges', 0)} bridges")
 
         if dry_run:
             pairs = consolidation.get("pairs", [])

@@ -9,6 +9,7 @@ from mem0 import Memory
 
 from .config import MEM0_CONFIG
 from .routes import router, foresight_router
+from .discovery import discovery_router
 from .evolution import evolution_router
 from .temporal import temporal_router, ensure_temporal_schema
 
@@ -132,3 +133,4 @@ app.include_router(router)
 app.include_router(foresight_router)
 app.include_router(temporal_router)
 app.include_router(evolution_router)
+app.include_router(discovery_router)
