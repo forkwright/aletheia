@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -z "$INPUT" ]] && die "No input file."
 mkdir -p "$WORKDIR"
-trap "rm -rf $WORKDIR" EXIT
+trap 'rm -rf "$WORKDIR"' EXIT
 if [[ "$INPUT" == *:* ]]; then
   REMOTE="$INPUT"
   BASENAME=$(basename "${INPUT#*:}")

@@ -13,6 +13,7 @@
     clearError,
     sendMessage,
     abortStream,
+    hasLocalStream,
     loadHistory,
     clearMessages,
     injectLocalMessage,
@@ -57,12 +58,14 @@
         const turnData = data as { nousId?: string; sessionId?: string };
         if (turnData.nousId === agentId) {
           setRemoteStreaming(agentId, false);
-          // Reload messages to pick up the completed response
-          const sessionId = getActiveSessionId();
-          if (sessionId) {
-            loadHistory(agentId, sessionId);
-            refreshSessions(agentId);
+          // Only reload from server if no local stream is managing messages
+          if (!hasLocalStream(agentId)) {
+            const sessionId = getActiveSessionId();
+            if (sessionId) {
+              loadHistory(agentId, sessionId);
+            }
           }
+          refreshSessions(agentId);
         }
       }
 

@@ -130,10 +130,17 @@ export async function sendMessage(
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
+  let needsTextSeparator = false;
+
   try {
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
         case "text_delta":
+          // Insert separator when text follows tool results (new content block)
+          if (needsTextSeparator && state.streamingText) {
+            state.streamingText += "\n\n";
+            needsTextSeparator = false;
+          }
           state.streamingText += event.text;
           break;
 
@@ -155,6 +162,7 @@ export async function sendMessage(
                 }
               : tc,
           );
+          needsTextSeparator = true;
           break;
 
         case "turn_complete": {
@@ -168,6 +176,8 @@ export async function sendMessage(
           state.messages = [...state.messages, assistantMsg];
           state.streamingText = "";
           state.activeToolCalls = [];
+          state.isStreaming = false;
+          needsTextSeparator = false;
           break;
         }
 
@@ -197,6 +207,10 @@ export async function sendMessage(
     state.activeToolCalls = [];
     state.abortController = null;
   }
+}
+
+export function hasLocalStream(agentId: string): boolean {
+  return readState(agentId).abortController !== null;
 }
 
 export function abortStream(agentId: string): void {

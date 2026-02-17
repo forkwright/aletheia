@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ChatMessage, ToolCallState } from "../../lib/types";
-  import { formatTimestamp } from "../../lib/format";
+  import { formatTimestamp, formatDuration } from "../../lib/format";
   import Markdown from "./Markdown.svelte";
+  import ToolStatusLine from "./ToolStatusLine.svelte";
 
   let { message, agentName, agentEmoji, onToolClick }: {
     message: ChatMessage;
@@ -13,14 +14,6 @@
   let isUser = $derived(message.role === "user");
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
   let hasMedia = $derived(message.media && message.media.length > 0);
-
-  function toolSummary(tools: ToolCallState[]): string {
-    const running = tools.filter((t) => t.status === "running").length;
-    const errors = tools.filter((t) => t.status === "error").length;
-    if (running > 0) return `${tools.length} tools running...`;
-    if (errors > 0) return `${tools.length} tools (${errors} failed)`;
-    return `${tools.length} tool${tools.length === 1 ? "" : "s"} used`;
-  }
 
   let expandedImage = $state<string | null>(null);
 
@@ -45,14 +38,10 @@
   </div>
   <div class="chat-body">
     {#if message.toolCalls && message.toolCalls.length > 0}
-      <button
-        class="chat-tool-pill"
-        class:has-error={message.toolCalls.some((t) => t.status === "error")}
+      <ToolStatusLine
+        tools={message.toolCalls}
         onclick={() => onToolClick?.(message.toolCalls!)}
-      >
-        <span class="chat-tool-icon">⚙</span>
-        {toolSummary(message.toolCalls)}
-      </button>
+      />
     {/if}
     {#if hasMedia}
       <div class="msg-media" class:single={message.media!.length === 1} class:grid={message.media!.length > 1}>

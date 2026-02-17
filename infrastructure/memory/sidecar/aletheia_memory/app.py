@@ -87,8 +87,6 @@ def _patch_openai_embedder_for_voyage():
     Mem0's OpenAI embedder always sends it. Strip it."""
     from mem0.embeddings import openai as openai_emb
 
-    _orig_embed = openai_emb.OpenAIEmbedding.embed
-
     def _patched_embed(self, text, memory_action=None):
         text = text.replace("\n", " ")
         return (
@@ -107,7 +105,8 @@ memory: Memory | None = None
 async def lifespan(app: FastAPI):
     global memory
     _patch_anthropic_params()
-    _patch_openai_embedder_for_voyage()
+    if MEM0_CONFIG["embedder"]["provider"] == "openai":
+        _patch_openai_embedder_for_voyage()
     memory = Memory.from_config(MEM0_CONFIG)
     app.state.memory = memory
     await ensure_temporal_schema()

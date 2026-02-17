@@ -41,6 +41,9 @@ export interface TurnTrace {
   // Cross-agent communication
   crossAgentCalls: CrossAgentTrace[];
 
+  // Pre-turn recall
+  recall?: { count: number; durationMs: number };
+
   // Post-API outcome
   inputTokens: number;
   outputTokens: number;
@@ -104,6 +107,10 @@ export class TraceBuilder {
 
   setResponseLength(len: number): void {
     this.trace.responseLength = len;
+  }
+
+  setRecall(count: number, durationMs: number): void {
+    this.trace.recall = { count, durationMs };
   }
 
   setToolLoops(count: number): void {

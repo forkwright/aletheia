@@ -1,5 +1,5 @@
 // SSE event stream consumer — dispatches Signal messages to NousManager
-import { createLogger } from "../koina/logger.js";
+import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager, InboundMessage, MediaAttachment } from "../nous/manager.js";
 import { SignalClient } from "./client.js";
 import { sendMessage, sendTyping, sendReadReceipt, type SendTarget } from "./sender.js";
@@ -362,7 +362,10 @@ function handleEnvelope(
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
   // while different nous/sessions process concurrently
   activeTurns.set(accountId, accountTurns + 1);
-  preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb).finally(() => {
+  withTurnAsync(
+    { channel: "signal", sessionKey, sender: envelope.sourceName ?? sender },
+    () => preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb),
+  ).finally(() => {
     const current = activeTurns.get(accountId) ?? 1;
     if (current <= 1) {
       activeTurns.delete(accountId);

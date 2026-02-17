@@ -4,11 +4,11 @@
     "domains": {
       "signal": {
         "domain": "signal",
-        "score": 0.4100000000000004,
+        "score": 0.4700000000000005,
         "corrections": 13,
-        "successes": 28,
+        "successes": 31,
         "disagreements": 0,
-        "lastUpdated": "2026-02-18T00:35:26.049Z"
+        "lastUpdated": "2026-02-18T16:49:10.222Z"
       },
       "general": {
         "domain": "general",
@@ -27,7 +27,7 @@
         "lastUpdated": "2026-02-17T23:42:41.750Z"
       }
     },
-    "overallScore": 0.5033333333333335
+    "overallScore": 0.5233333333333335
   },
   "chiron": {
     "nousId": "chiron",

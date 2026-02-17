@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { timingSafeEqual } from "node:crypto";
-import { createLogger } from "../koina/logger.js";
+import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
@@ -184,12 +184,15 @@ export function createGateway(
     }
 
     try {
-      const result = await manager.handleMessage({
-        text: message,
-        nousId: agentId,
-        sessionKey: sessionKey ?? "main",
-        ...(media?.length ? { media } : {}),
-      });
+      const result = await withTurnAsync(
+        { channel: "api", nousId: agentId, sessionKey: sessionKey ?? "main" },
+        () => manager.handleMessage({
+          text: message,
+          nousId: agentId,
+          sessionKey: sessionKey ?? "main",
+          ...(media?.length ? { media } : {}),
+        }),
+      );
       return c.json({
         response: result.text,
         sessionId: result.sessionId,
@@ -257,26 +260,32 @@ export function createGateway(
     }
 
     const encoder = new TextEncoder();
+    const resolvedSessionKey = sessionKey ?? "main";
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-          for await (const event of manager.handleMessageStreaming({
-            text: message,
-            nousId: agentId,
-            sessionKey: sessionKey ?? "main",
-            ...(validMedia.length > 0 ? { media: validMedia } : {}),
-          })) {
-            const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-            controller.enqueue(encoder.encode(payload));
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          log.error(`Stream error: ${msg}`);
-          const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
-          controller.enqueue(encoder.encode(payload));
-        } finally {
-          controller.close();
-        }
+        await withTurnAsync(
+          { channel: "webchat", nousId: agentId, sessionKey: resolvedSessionKey },
+          async () => {
+            try {
+              for await (const event of manager.handleMessageStreaming({
+                text: message,
+                nousId: agentId,
+                sessionKey: resolvedSessionKey,
+                ...(validMedia.length > 0 ? { media: validMedia } : {}),
+              })) {
+                const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+                controller.enqueue(encoder.encode(payload));
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              log.error(`Stream error: ${msg}`);
+              const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
+              controller.enqueue(encoder.encode(payload));
+            } finally {
+              controller.close();
+            }
+          },
+        );
       },
     });
 
