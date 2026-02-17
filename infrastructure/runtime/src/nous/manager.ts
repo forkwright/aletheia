@@ -67,6 +67,14 @@ export interface TurnOutcome {
   cacheWriteTokens: number;
 }
 
+export type TurnStreamEvent =
+  | { type: "turn_start"; sessionId: string; nousId: string }
+  | { type: "text_delta"; text: string }
+  | { type: "tool_start"; toolName: string; toolId: string }
+  | { type: "tool_result"; toolName: string; result: string; isError: boolean; durationMs: number }
+  | { type: "turn_complete"; outcome: TurnOutcome }
+  | { type: "error"; message: string };
+
 // Per-session mutex to prevent concurrent turns from corrupting context
 const sessionLocks = new Map<string, Promise<unknown>>();
 
@@ -141,6 +149,16 @@ export class NousManager {
 
   setUncertainty(tracker: UncertaintyTracker): void {
     this.uncertainty = tracker;
+  }
+
+  // eslint-disable-next-line require-yield
+  async *handleMessageStreaming(msg: InboundMessage): AsyncGenerator<TurnStreamEvent> {
+    // TODO: Implement streaming turn execution (see ergon/manager.ts for reference)
+    // Requires router.completeStreaming() on the Anthropic client
+    const result = await this.handleMessage(msg);
+    yield { type: "turn_start", sessionId: result.sessionId, nousId: result.nousId };
+    yield { type: "text_delta", text: result.text };
+    yield { type: "turn_complete", outcome: result };
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {

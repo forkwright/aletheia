@@ -1,0 +1,121 @@
+<script lang="ts">
+  import TopBar from "./TopBar.svelte";
+  import Sidebar from "./Sidebar.svelte";
+  import ChatView from "../chat/ChatView.svelte";
+  import MetricsView from "../metrics/MetricsView.svelte";
+  import { getToken, setToken } from "../../lib/api";
+
+  let showMetrics = $state(false);
+  let hasToken = $state(!!getToken());
+  let tokenValue = $state("");
+
+  function handleTokenSubmit(e: Event) {
+    e.preventDefault();
+    if (tokenValue.trim()) {
+      setToken(tokenValue.trim());
+      hasToken = true;
+      location.reload();
+    }
+  }
+</script>
+
+{#if !hasToken}
+  <div class="token-setup">
+    <div class="token-card">
+      <h1>Aletheia</h1>
+      <p>Enter your gateway authentication token to get started.</p>
+      <form onsubmit={handleTokenSubmit}>
+        <input
+          type="password"
+          class="token-input"
+          placeholder="Gateway token"
+          bind:value={tokenValue}
+        />
+        <button type="submit" class="token-submit">Connect</button>
+      </form>
+    </div>
+  </div>
+{:else}
+  <TopBar onToggleMetrics={() => showMetrics = !showMetrics} {showMetrics} />
+  <div class="main">
+    <Sidebar />
+    <div class="content">
+      {#if showMetrics}
+        <MetricsView />
+      {:else}
+        <ChatView />
+      {/if}
+    </div>
+  </div>
+{/if}
+
+<style>
+  .main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .token-setup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: var(--bg);
+  }
+  .token-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+  }
+  .token-card h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+  .token-card p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+  .token-card form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .token-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: var(--font-mono);
+    width: 100%;
+  }
+  .token-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .token-submit {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .token-submit:hover {
+    background: var(--accent-hover);
+  }
+</style>

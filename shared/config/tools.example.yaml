@@ -1,0 +1,126 @@
+# tools.yaml — Machine-native tool reference
+# Copy to tools.yaml and fill in your deployment-specific values.
+
+# -- Work tools (deployment-specific) --
+
+redshift:
+  description: "Data warehouse (AWS Redshift Provisioned)"
+  cluster: YOUR_CLUSTER_IDENTIFIER
+  database: dev
+  user: YOUR_ADMIN_USER
+  commands:
+    query: 'query_redshift.sh "SQL"'
+    query_file: 'query_redshift.sh -f path/to/query.sql'
+    schema_table: 'schema_lookup.py table <name>'
+    schema_column: 'schema_lookup.py column <name>'
+    schema_search: 'schema_lookup.py search <term>'
+  notes: "Read-only by default. AWS SSO tokens expire; run 'aws sso login' to refresh."
+
+hex:
+  description: "Hex dashboards"
+  api_url: "https://app.hex.tech/api/v1"
+  config: "~/.hex-mcp/config.yaml"
+  commands:
+    list: "list_hex_projects"
+    search: "search_hex_projects"
+    get: "get_hex_project"
+    run: "run_hex_project"
+    status: "get_hex_run_status"
+    runs: "get_hex_project_runs"
+    cancel: "cancel_hex_run"
+  projects: {}
+  notes: "API is execution/metadata only. Cannot edit notebook content."
+
+github:
+  work_account: YOUR_GITHUB_USERNAME
+  repos: {}
+  commands:
+    status: "safe-git status"
+    commit: 'safe-git commit -m "msg"'
+    push: "safe-git push  # BLOCKED unless --override-push-guard"
+  notes: "Never push without explicit operator approval."
+
+quality:
+  shellcheck: "shellcheck script.sh"
+  ruff_check: "ruff check file.py"
+  ruff_fix: "ruff check --fix file.py"
+  ruff_format: "ruff format file.py"
+
+office:
+  extract: "office extract file.pptx"
+  list: "office list file.pptx"
+  convert: "office convert file.pptx --to pdf"
+
+# -- Upstream research tools (kept from aletheia) --
+
+research:
+  pplx: {cmd: "pplx \"query\"", flags: ["--sources", "--raw"]}
+  scholar:
+    description: "Multi-source academic search + citation graph + paper retrieval"
+    command: "scholar"
+    sources: "OpenAlex (250M+), arXiv, Semantic Scholar (225M+)"
+    examples:
+      - 'scholar "distributed cognition" -v --limit 10'
+      - 'scholar cite DOI  # citation graph'
+      - 'scholar fetch ARXIV_ID  # download + convert to markdown'
+    notes: "S1/S2 source discovery. Deduplicates across sources."
+  wiki:
+    description: "Wikipedia lookup for concept orientation"
+    command: "wiki"
+    notes: "Grey literature. Use for orientation, not as primary source."
+  ingest_doc:
+    description: "PDF/document extraction to markdown"
+    command: "ingest-doc"
+    notes: "Uses Docling."
+
+browser_automation:
+  description: "LLM-driven web browser automation"
+  command: "browse"
+  notes: "Uses Browser Use library. Requires ANTHROPIC_API_KEY."
+
+# -- Memory and knowledge management --
+
+memory:
+  mem0_search: "mem0_search tool (agents use via plugin)"
+  knowledge_graph:
+    db: neo4j
+    commands:
+      stats: "aletheia-graph stats"
+      query: "aletheia-graph query CYPHER"
+      add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
+      connections: "aletheia-graph connections ENTITY"
+      recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
+  mem0:
+    description: "Long-term extracted memories (cross-agent, cross-session)"
+    sidecar: "http://localhost:8230"
+    tool: "mem0_search (available to agents via plugin)"
+  facts:
+    store: "shared/memory/facts.jsonl"
+    commands:
+      list: "facts"
+      add: "facts add <subj> <pred> <obj>"
+      about: "facts about <subject>"
+      search: "facts search <query>"
+      reinforce: 'facts reinforce <id> -e "evidence"'
+      contradict: 'facts contradict <id> -e "evidence"'
+
+# -- System tools --
+
+aletheia:
+  distill: "distill --nous AGENT --text \"SUMMARY\""
+  assemble: "assemble-context --nous AGENT"
+  compile: "compile-context [AGENT]"
+
+agents:
+  health: "nous-health"
+
+runtime:
+  config:
+    bindings_use: "channel (not provider)"
+    model_ids: "full date suffix for pre-4.6 models"
+    validate: "aletheia doctor"
+
+langfuse:
+  description: "Session observability and cross-nous pattern analysis"
+  url: "http://localhost:3100"
+  notes: "Self-hosted. Configure API keys via dashboard."
