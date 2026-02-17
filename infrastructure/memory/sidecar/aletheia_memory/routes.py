@@ -847,3 +847,271 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
     return links
 
 
+# --- Graph Analytics (networkx, since Community Neo4j lacks GDS) ---
+
+
+class GraphAnalyzeRequest(BaseModel):
+    top_k: int = Field(default=20, ge=5, le=100)
+    store_scores: bool = True
+
+
+@router.post("/graph/analyze")
+async def analyze_graph(req: GraphAnalyzeRequest):
+    """Run PageRank + community detection on the Neo4j graph via networkx.
+
+    Scores are optionally written back as node properties for retrieval weighting.
+    Intended to be called from the nightly consolidation cron.
+    """
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        import networkx as nx
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+        # Export graph to networkx
+        G = nx.DiGraph()
+        with driver.session() as session:
+            nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
+            for record in nodes:
+                G.add_node(record["name"], labels=record["labels"])
+
+            rels = session.run(
+                "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
+                "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
+            )
+            for record in rels:
+                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+
+        if G.number_of_nodes() == 0:
+            driver.close()
+            return {"ok": True, "nodes": 0, "message": "Empty graph"}
+
+        # PageRank
+        pagerank = nx.pagerank(G, alpha=0.85, max_iter=100)
+        top_pagerank = sorted(pagerank.items(), key=lambda x: -x[1])[:req.top_k]
+
+        # Community detection (Louvain on undirected projection)
+        G_undirected = G.to_undirected()
+        try:
+            communities = nx.community.louvain_communities(G_undirected, seed=42)
+            community_map: dict[str, int] = {}
+            for idx, community in enumerate(communities):
+                for node in community:
+                    community_map[node] = idx
+            num_communities = len(communities)
+            largest_communities = sorted(communities, key=len, reverse=True)[:5]
+            community_summaries = [
+                {"id": idx, "size": len(c), "sample": sorted(c)[:5]}
+                for idx, c in enumerate(largest_communities)
+            ]
+        except Exception:
+            community_map = {}
+            num_communities = 0
+            community_summaries = []
+
+        # Node similarity — find dedup candidates (nodes with >0.8 Jaccard on neighbors)
+        dedup_candidates: list[dict[str, Any]] = []
+        nodes_list = list(G_undirected.nodes())
+        for i in range(min(len(nodes_list), 200)):
+            n1 = nodes_list[i]
+            neighbors1 = set(G_undirected.neighbors(n1))
+            if not neighbors1:
+                continue
+            for j in range(i + 1, min(len(nodes_list), 200)):
+                n2 = nodes_list[j]
+                neighbors2 = set(G_undirected.neighbors(n2))
+                if not neighbors2:
+                    continue
+                jaccard = len(neighbors1 & neighbors2) / len(neighbors1 | neighbors2)
+                if jaccard > 0.8:
+                    dedup_candidates.append({
+                        "node_a": n1,
+                        "node_b": n2,
+                        "jaccard": round(jaccard, 3),
+                        "shared_neighbors": len(neighbors1 & neighbors2),
+                    })
+        dedup_candidates.sort(key=lambda x: -x["jaccard"])
+
+        # Store scores back to Neo4j
+        scores_stored = 0
+        if req.store_scores:
+            with driver.session() as session:
+                for name, score in top_pagerank:
+                    community_id = community_map.get(name, -1)
+                    session.run(
+                        "MATCH (n {name: $name}) "
+                        "SET n.pagerank = $score, n.community = $community",
+                        name=name, score=round(score, 6), community=community_id,
+                    )
+                    scores_stored += 1
+
+        driver.close()
+
+        return {
+            "ok": True,
+            "nodes": G.number_of_nodes(),
+            "edges": G.number_of_edges(),
+            "pagerank_top": [{"name": n, "score": round(s, 6)} for n, s in top_pagerank],
+            "communities": num_communities,
+            "community_summaries": community_summaries,
+            "dedup_candidates": dedup_candidates[:10],
+            "scores_stored": scores_stored,
+        }
+    except ImportError:
+        raise HTTPException(status_code=500, detail="networkx not installed")
+    except Exception as e:
+        logger.exception("graph/analyze failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Enhanced Search with Query Rewriting ---
+
+
+class EnhancedSearchRequest(BaseModel):
+    query: str
+    user_id: str = "default"
+    agent_id: str | None = None
+    limit: int = Field(default=10, ge=1, le=50)
+    rewrite: bool = True
+
+
+@router.post("/search_enhanced")
+async def search_enhanced(req: EnhancedSearchRequest, request: Request):
+    """Search with entity alias resolution and LLM-generated query variants.
+
+    Pipeline:
+    1. Extract entities from query
+    2. Resolve aliases via Neo4j (find canonical names)
+    3. Generate 2-3 alternate phrasings via Haiku
+    4. Run parallel vector searches on all variants
+    5. Merge and deduplicate results
+    """
+    mem = request.app.state.memory
+
+    # Skip rewriting for very short or very long queries
+    if not req.rewrite or len(req.query) < 10 or len(req.query) > 500:
+        return await _simple_search(mem, req)
+
+    # Step 1: Extract entities
+    entities = _extract_entities(req.query)
+
+    # Step 2: Resolve aliases via Neo4j
+    canonical_names: dict[str, str] = {}
+    if entities and NEO4J_PASSWORD:
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            with driver.session() as session:
+                for entity in entities[:5]:
+                    result = session.run(
+                        "MATCH (n) WHERE toLower(n.name) CONTAINS toLower($name) "
+                        "RETURN n.name AS canonical ORDER BY size(n.name) LIMIT 1",
+                        name=entity,
+                    )
+                    record = result.single()
+                    if record and record["canonical"] != entity:
+                        canonical_names[entity] = record["canonical"]
+            driver.close()
+        except Exception:
+            logger.warning("search_enhanced: Neo4j alias resolution failed")
+
+    # Build alias-resolved query
+    resolved_query = req.query
+    for original, canonical in canonical_names.items():
+        resolved_query = resolved_query.replace(original, canonical)
+
+    # Step 3: Generate alternate phrasings via Haiku
+    query_variants = [req.query]
+    if resolved_query != req.query:
+        query_variants.append(resolved_query)
+
+    if ANTHROPIC_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 128,
+                        "messages": [{
+                            "role": "user",
+                            "content": (
+                                f'Rewrite this search query 2 different ways to find the same information. '
+                                f'Return ONLY the 2 variants, one per line, no numbering.\n\n'
+                                f'Query: "{req.query}"'
+                            ),
+                        }],
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data.get("content", [{}])[0].get("text", "")
+                    for line in text.strip().split("\n"):
+                        line = line.strip().strip('"').strip("- ")
+                        if line and len(line) > 5 and line != req.query:
+                            query_variants.append(line)
+        except Exception:
+            logger.warning("search_enhanced: query rewriting failed")
+
+    # Step 4: Parallel vector searches
+    search_kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
+    if req.agent_id:
+        search_kwargs["agent_id"] = req.agent_id
+
+    async def do_search(query: str) -> list[dict[str, Any]]:
+        try:
+            raw = await asyncio.to_thread(mem.search, query, **search_kwargs)
+            results = raw.get("results", raw) if isinstance(raw, dict) else raw
+            return results if isinstance(results, list) else []
+        except Exception:
+            return []
+
+    all_results = await asyncio.gather(*[do_search(q) for q in query_variants[:4]])
+
+    # Step 5: Merge and deduplicate
+    seen_ids: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for variant_results in all_results:
+        for r in variant_results:
+            rid = r.get("id", r.get("hash", str(r.get("memory", ""))))
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                merged.append(r)
+
+    merged.sort(key=lambda r: r.get("score", 0), reverse=True)
+
+    return {
+        "ok": True,
+        "results": merged[:req.limit],
+        "query_variants": query_variants[:4],
+        "aliases_resolved": canonical_names,
+        "total_candidates": len(merged),
+    }
+
+
+async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
+    if req.agent_id:
+        kwargs["agent_id"] = req.agent_id
+    try:
+        raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        return {
+            "ok": True,
+            "results": results if isinstance(results, list) else [],
+            "query_variants": [req.query],
+            "aliases_resolved": {},
+            "total_candidates": len(results) if isinstance(results, list) else 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
