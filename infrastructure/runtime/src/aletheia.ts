@@ -35,6 +35,7 @@ import { createRecentCorrectionsTool } from "./organon/built-in/recent-correctio
 import { createBlackboardTool } from "./organon/built-in/blackboard.js";
 import { createContextCheckTool } from "./organon/built-in/context-check.js";
 import { createStatusReportTool } from "./organon/built-in/status-report.js";
+import { createResearchTool } from "./organon/built-in/research.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
@@ -207,6 +208,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const statusTool = createStatusReportTool(store, competence);
   statusTool.category = "available";
   tools.register(statusTool);
+  const researchTool = createResearchTool(tools);
+  researchTool.category = "available";
+  tools.register(researchTool);
 
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {
