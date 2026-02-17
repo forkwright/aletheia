@@ -959,6 +959,23 @@ export class SessionStore {
     }));
   }
 
+  blackboardReadPrefix(prefix: string): Array<{ id: string; key: string; value: string; author: string; createdAt: string; expiresAt: string | null }> {
+    this.blackboardExpire();
+    const rows = this.db
+      .prepare(
+        "SELECT id, key, value, author_nous_id, created_at, expires_at FROM blackboard WHERE key LIKE ? ORDER BY created_at DESC LIMIT 10",
+      )
+      .all(`${prefix}%`) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r["id"] as string,
+      key: r["key"] as string,
+      value: r["value"] as string,
+      author: r["author_nous_id"] as string,
+      createdAt: r["created_at"] as string,
+      expiresAt: r["expires_at"] as string | null,
+    }));
+  }
+
   blackboardList(): Array<{ key: string; count: number; authors: string[] }> {
     this.blackboardExpire();
     const rows = this.db

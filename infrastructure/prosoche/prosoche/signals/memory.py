@@ -68,6 +68,61 @@ async def collect(config: dict) -> list[Signal]:
             except Exception as e:
                 logger.debug(f"Foresight query failed (non-critical): {e}")
 
+            # Discovery candidates — cross-domain bridges and unexpected connections
+            try:
+                disc_resp = await client.get(f"{sidecar_url}/discovery/candidates", params={"limit": 10})
+                if disc_resp.status_code == 200:
+                    data = disc_resp.json()
+                    candidates = data.get("candidates", [])
+                    bridges = [c for c in candidates if c.get("type") == "cross_community_bridge"]
+                    hubs = [c for c in candidates if c.get("type") == "high_betweenness_hub"]
+
+                    if bridges:
+                        bridge_lines = []
+                        for b in bridges[:5]:
+                            bridge_lines.append(
+                                f"- **{b['entity_a']}** ↔ **{b['entity_b']}** "
+                                f"(communities {b.get('community_a', '?')} and {b.get('community_b', '?')})"
+                            )
+                        signals.append(Signal(
+                            source="memory",
+                            summary=f"{len(bridges)} cross-domain bridges discovered",
+                            urgency=0.4,
+                            relevant_nous=[],
+                            details=f"Bridges: {len(bridges)}, Hubs: {len(hubs)}",
+                            context_blocks=[ContextBlock(
+                                title="Cross-Domain Discoveries",
+                                content=(
+                                    "The knowledge graph found unexpected connections between domains:\n"
+                                    + "\n".join(bridge_lines)
+                                    + "\n\nThese may reveal non-obvious relationships worth exploring."
+                                ),
+                                source="discovery",
+                                expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+                            )],
+                        ))
+            except Exception as e:
+                logger.debug(f"Discovery query failed (non-critical): {e}")
+
+            # Evolution stats — memory health
+            try:
+                evo_resp = await client.get(f"{sidecar_url}/evolution/stats")
+                if evo_resp.status_code == 200:
+                    data = evo_resp.json()
+                    decaying = data.get("decaying_memories", 0)
+                    evolutions = data.get("evolutions", 0)
+
+                    if decaying > 10:
+                        signals.append(Signal(
+                            source="memory",
+                            summary=f"{decaying} memories decaying — may need attention",
+                            urgency=0.3,
+                            relevant_nous=["syn"],
+                            details=f"Decaying: {decaying}, Evolutions: {evolutions}",
+                        ))
+            except Exception as e:
+                logger.debug(f"Evolution stats query failed (non-critical): {e}")
+
     except Exception as e:
         signals.append(Signal(
             source="memory",
