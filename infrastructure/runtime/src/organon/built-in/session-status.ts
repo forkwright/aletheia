@@ -7,7 +7,14 @@ export function createSessionStatusTool(store?: SessionStore): ToolHandler {
     definition: {
       name: "session_status",
       description:
-        "Get current session information including model, token usage, and message count.",
+        "Get current session info: model, token count, message count, and status.\n\n" +
+        "USE WHEN:\n" +
+        "- Checking how much context you've used\n" +
+        "- Verifying which model is active for this session\n" +
+        "- Monitoring session health before long operations\n\n" +
+        "TIPS:\n" +
+        "- No parameters needed — reads current session automatically\n" +
+        "- tokenCount is an estimate, not exact",
       input_schema: {
         type: "object",
         properties: {},

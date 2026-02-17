@@ -64,7 +64,19 @@ export const browserTool: ToolHandler = {
   definition: {
     name: "browser",
     description:
-      "Browse a URL with a headless browser. Renders JavaScript, can take screenshots, and extract content via CSS selectors. Use for pages that require JS rendering.",
+      "Browse a URL with headless Chromium — renders JavaScript, takes screenshots, extracts via CSS selectors.\n\n" +
+      "USE WHEN:\n" +
+      "- Pages that require JavaScript to render content (SPAs, dynamic sites)\n" +
+      "- Taking screenshots for visual verification\n" +
+      "- Extracting structured data via CSS selectors\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Static pages or APIs — use web_fetch instead (faster, lighter)\n" +
+      "- Simple web searches — use web_search instead\n\n" +
+      "TIPS:\n" +
+      "- Actions: navigate (get text), screenshot (base64 PNG), extract (CSS selector)\n" +
+      "- Use waitFor to wait for dynamic content before extracting\n" +
+      "- Max 3 concurrent pages\n" +
+      "- Requires Chromium — set CHROMIUM_PATH if not at default location",
     input_schema: {
       type: "object",
       properties: {

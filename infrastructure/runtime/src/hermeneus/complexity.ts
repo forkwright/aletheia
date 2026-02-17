@@ -91,3 +91,12 @@ export function selectModel(
 ): string {
   return tiers[tier];
 }
+
+export function selectTemperature(tier: ComplexityTier, hasTools: boolean): number {
+  if (hasTools) return 0.3;
+  switch (tier) {
+    case "routine": return 0.3;
+    case "standard": return 0.5;
+    case "complex": return 0.7;
+  }
+}

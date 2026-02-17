@@ -7,9 +7,19 @@ export const traceLookupTool: ToolHandler = {
   definition: {
     name: "trace_lookup",
     description:
-      "Inspect your own reasoning trace from recent turns. Shows what bootstrap files " +
-      "were loaded, which tools were called (with timing), any cross-agent calls, and " +
-      "token usage. Use for self-debugging and understanding your own decision provenance.",
+      "Inspect your own reasoning traces from recent turns.\n\n" +
+      "USE WHEN:\n" +
+      "- Debugging why a previous action failed or produced unexpected results\n" +
+      "- Understanding your own tool call patterns and timing\n" +
+      "- Checking token usage and model selection for recent turns\n" +
+      "- Reviewing what bootstrap files were loaded\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Looking at another agent's traces — only shows your own\n" +
+      "- Current turn info — use session_status instead\n\n" +
+      "TIPS:\n" +
+      "- Filter by 'tools', 'cross-agent', 'usage', or 'all' (default)\n" +
+      "- Shows up to 20 turns back\n" +
+      "- Includes tool call timing for performance analysis",
     input_schema: {
       type: "object",
       properties: {

@@ -13,6 +13,19 @@
         "mode": "default",
         "distillationModel": "claude-haiku-4-5-20251001"
       },
+      "routing": {
+        "enabled": true,
+        "tiers": {
+          "routine": "claude-haiku-4-5-20251001",
+          "standard": "claude-sonnet-4-5-20250929",
+          "complex": "claude-opus-4-6"
+        },
+        "agentOverrides": {
+          "main": "complex",
+          "creative": "complex",
+          "technical": "complex"
+        }
+      },
       "tools": {
         "profile": "full"
       }

@@ -8,7 +8,7 @@ import { ToolRegistry, type ToolContext } from "../organon/registry.js";
 import { assembleBootstrap } from "./bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
 import { distillSession } from "../distillation/pipeline.js";
-import { scoreComplexity, selectModel, type ComplexityTier } from "../hermeneus/complexity.js";
+import { scoreComplexity, selectModel, selectTemperature, type ComplexityTier } from "../hermeneus/complexity.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -163,6 +163,7 @@ export class NousManager {
     let model = msg.model ?? resolveModel(this.config, nous);
 
     // Adaptive inference routing — select model tier based on message complexity
+    let temperature: number | undefined;
     const routing = this.config.agents.defaults.routing;
     if (routing.enabled && !msg.model) {
       const session = this.store.findSession(nousId, sessionKey);
@@ -174,8 +175,9 @@ export class NousManager {
         ...(override ? { agentOverride: override } : {}),
       });
       model = selectModel(complexity.tier, routing.tiers);
+      temperature = selectTemperature(complexity.tier, this.tools.hasTools());
       log.info(
-        `Routing ${nousId}: ${complexity.tier} (score=${complexity.score}, ${complexity.reason}) → ${model}`,
+        `Routing ${nousId}: ${complexity.tier} (score=${complexity.score}, ${complexity.reason}) → ${model} temp=${temperature}`,
       );
     }
 
@@ -190,7 +192,7 @@ export class NousManager {
     this.activeTurns++;
     try {
       return await withSessionLock(session.id, () =>
-        this.executeTurn(nousId, session.id, sessionKey, model, msg, nous),
+        this.executeTurn(nousId, session.id, sessionKey, model, msg, nous, temperature),
       );
     } finally {
       this.activeTurns--;
@@ -204,6 +206,7 @@ export class NousManager {
     model: string,
     msg: InboundMessage,
     nous: ReturnType<typeof resolveNous>,
+    temperature?: number,
   ): Promise<TurnOutcome> {
     if (!nous) throw new Error(`Unknown nous: ${nousId}`);
 
@@ -359,6 +362,7 @@ export class NousManager {
         messages: currentMessages,
         ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
         maxTokens: this.config.agents.defaults.maxOutputTokens,
+        ...(temperature !== undefined ? { temperature } : {}),
       });
 
       totalInputTokens += result.usage.inputTokens;

@@ -8,7 +8,17 @@ export function createConfigReadTool(config?: AletheiaConfig): ToolHandler {
     definition: {
       name: "config_read",
       description:
-        "Read configuration values. Returns your agent config, bindings, cron jobs, or system info.",
+        "Read your own agent config, system bindings, cron jobs, or gateway info.\n\n" +
+        "USE WHEN:\n" +
+        "- Checking your own model, tools, or workspace configuration\n" +
+        "- Listing available agents and their IDs\n" +
+        "- Reviewing cron schedules or plugin status\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- You need session-level info — use session_status instead\n\n" +
+        "TIPS:\n" +
+        "- Sections: agent, agents, bindings, cron, gateway, plugins\n" +
+        "- 'agent' shows YOUR config; 'agents' lists all agent IDs\n" +
+        "- Bindings are filtered to your agent only",
       input_schema: {
         type: "object",
         properties: {

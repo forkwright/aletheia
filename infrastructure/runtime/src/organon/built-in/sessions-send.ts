@@ -18,7 +18,19 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
     definition: {
       name: "sessions_send",
       description:
-        "Send a message to another nous (agent). Fire-and-forget — does not wait for a response.",
+        "Send a message to another agent without waiting for a response (fire-and-forget).\n\n" +
+        "USE WHEN:\n" +
+        "- Notifying another agent of information they should know\n" +
+        "- Delegating a task where you don't need the result\n" +
+        "- Broadcasting updates or status changes\n\n" +
+        "DO NOT USE WHEN:\n" +
+        "- You need the other agent's response — use sessions_ask instead\n" +
+        "- You need a dedicated sub-task with isolation — use sessions_spawn instead\n" +
+        "- You want to message a human — use message instead\n\n" +
+        "TIPS:\n" +
+        "- Cannot send to yourself\n" +
+        "- Max 5 concurrent pending sends\n" +
+        "- Cross-agent calls are audited and tracked",
       input_schema: {
         type: "object",
         properties: {

@@ -8,7 +8,19 @@ import { commitWorkspaceChange } from "../workspace-git.js";
 export const writeTool: ToolHandler = {
   definition: {
     name: "write",
-    description: "Write content to a file, creating directories as needed.",
+    description:
+      "Write content to a file, creating parent directories as needed.\n\n" +
+      "USE WHEN:\n" +
+      "- Creating new files\n" +
+      "- Replacing entire file contents\n" +
+      "- Appending to logs or data files (set append=true)\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- Making surgical edits to existing files (use edit instead)\n" +
+      "- You haven't read the file first and need to preserve existing content\n\n" +
+      "TIPS:\n" +
+      "- Overwrites by default — use append=true to add to end\n" +
+      "- Automatically creates missing directories\n" +
+      "- Changes are tracked in workspace git",
     input_schema: {
       type: "object",
       properties: {

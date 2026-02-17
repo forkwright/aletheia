@@ -10,9 +10,19 @@ export const factRetractTool: ToolHandler = {
   definition: {
     name: "fact_retract",
     description:
-      "Request retraction of facts from long-term memory. " +
-      "Searches for matching memories and removes them from both vector store and knowledge graph. " +
-      "Use when information is outdated, incorrect, or needs to be forgotten.",
+      "Remove facts from long-term memory (vector store and knowledge graph).\n\n" +
+      "USE WHEN:\n" +
+      "- Information is outdated or incorrect and should be forgotten\n" +
+      "- User requests deletion of specific memories\n" +
+      "- Correcting a fact — retract the old one, let the new one be captured naturally\n\n" +
+      "DO NOT USE WHEN:\n" +
+      "- You're unsure whether the fact is wrong — verify first\n" +
+      "- The fact is just old but still accurate\n\n" +
+      "TIPS:\n" +
+      "- Use dry_run=true first to preview what would be removed\n" +
+      "- cascade=true removes connected graph entities — use carefully\n" +
+      "- Reason is required and logged for audit trail\n" +
+      "- Retraction is permanent — cannot be undone",
     input_schema: {
       type: "object",
       properties: {
