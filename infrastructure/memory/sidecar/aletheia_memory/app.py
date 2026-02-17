@@ -9,6 +9,7 @@ from mem0 import Memory
 
 from .config import MEM0_CONFIG
 from .routes import router, foresight_router
+from .temporal import temporal_router, ensure_temporal_schema
 
 
 def _patch_anthropic_params():
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
     _patch_openai_embedder_for_voyage()
     memory = Memory.from_config(MEM0_CONFIG)
     app.state.memory = memory
+    await ensure_temporal_schema()
     yield
     memory = None
 
@@ -127,3 +129,4 @@ async def auth_middleware(request: Request, call_next):
 
 app.include_router(router)
 app.include_router(foresight_router)
+app.include_router(temporal_router)
