@@ -9,6 +9,7 @@ import { assembleBootstrap } from "./bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
 import { distillSession } from "../distillation/pipeline.js";
 import { scoreComplexity, selectModel, selectTemperature, type ComplexityTier } from "../hermeneus/complexity.js";
+import { paths } from "../taxis/paths.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -331,7 +332,7 @@ export class NousManager {
     const currentText = crossAgentNotice ? crossAgentNotice + "\n\n" + msg.text : msg.text;
     const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
 
-    const toolContext: ToolContext = { nousId, sessionId, workspace, depth: msg.depth ?? 0 };
+    const toolContext: ToolContext = { nousId, sessionId, workspace, allowedRoots: [paths.root], depth: msg.depth ?? 0 };
 
     if (this.plugins) {
       await this.plugins.dispatchBeforeTurn({ nousId, sessionId, messageText: msg.text, ...(msg.media ? { media: msg.media } : {}) });
@@ -770,6 +771,7 @@ export class NousManager {
       nousId,
       sessionId,
       workspace,
+      allowedRoots: [paths.root],
       depth: msg.depth ?? 0,
     };
 

@@ -57,7 +57,7 @@ export const grepTool: ToolHandler = {
   ): Promise<string> {
     const pattern = input["pattern"] as string;
     const searchPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string)
+      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
       : context.workspace;
     const glob = input["glob"] as string | undefined;
     const maxResults = (input["maxResults"] as number) ?? 50;

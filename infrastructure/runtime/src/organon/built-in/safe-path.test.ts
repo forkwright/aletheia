@@ -36,4 +36,19 @@ describe("safePath", () => {
   it("handles ./relative paths", () => {
     expect(safePath(ws, "./file.txt")).toBe("/home/agent/workspace/file.txt");
   });
+
+  it("allows paths within allowedRoots", () => {
+    expect(safePath(ws, "/mnt/ssd/aletheia/ui/src/App.svelte", ["/mnt/ssd/aletheia"]))
+      .toBe("/mnt/ssd/aletheia/ui/src/App.svelte");
+  });
+
+  it("allows paths in any of multiple allowedRoots", () => {
+    expect(safePath(ws, "/tmp/data.txt", ["/mnt/ssd", "/tmp"]))
+      .toBe("/tmp/data.txt");
+  });
+
+  it("still throws when path outside workspace and allowedRoots", () => {
+    expect(() => safePath(ws, "/etc/passwd", ["/mnt/ssd/aletheia"]))
+      .toThrow("Path outside workspace");
+  });
 });
