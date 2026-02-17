@@ -2,62 +2,98 @@ import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
 import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem } from "../lib/types";
 
-let messages = $state<ChatMessage[]>([]);
-let isStreaming = $state(false);
-let streamingText = $state("");
-let activeToolCalls = $state<ToolCallState[]>([]);
-let error = $state<string | null>(null);
-let abortController: AbortController | null = null;
-
-export function getMessages(): ChatMessage[] {
-  return messages;
+interface AgentChatState {
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  streamingText: string;
+  activeToolCalls: ToolCallState[];
+  error: string | null;
+  abortController: AbortController | null;
 }
 
-export function getIsStreaming(): boolean {
-  return isStreaming;
+let states = $state<Record<string, AgentChatState>>({});
+
+const EMPTY: AgentChatState = {
+  messages: [],
+  isStreaming: false,
+  streamingText: "",
+  activeToolCalls: [],
+  error: null,
+  abortController: null,
+};
+
+// Read-only access — returns default for unknown agents, never mutates during render
+function readState(agentId: string): AgentChatState {
+  return states[agentId] ?? EMPTY;
 }
 
-export function getStreamingText(): string {
-  return streamingText;
+// Write access — lazily creates state, safe outside render cycle
+function writeState(agentId: string): AgentChatState {
+  if (!states[agentId]) {
+    states[agentId] = {
+      messages: [],
+      isStreaming: false,
+      streamingText: "",
+      activeToolCalls: [],
+      error: null,
+      abortController: null,
+    };
+  }
+  return states[agentId]!;
 }
 
-export function getActiveToolCalls(): ToolCallState[] {
-  return activeToolCalls;
+export function getMessages(agentId: string): ChatMessage[] {
+  return readState(agentId).messages;
 }
 
-export function getError(): string | null {
-  return error;
+export function getIsStreaming(agentId: string): boolean {
+  return readState(agentId).isStreaming;
 }
 
-export function clearError(): void {
-  error = null;
+export function getStreamingText(agentId: string): string {
+  return readState(agentId).streamingText;
 }
 
-export async function loadHistory(sessionId: string): Promise<void> {
+export function getActiveToolCalls(agentId: string): ToolCallState[] {
+  return readState(agentId).activeToolCalls;
+}
+
+export function getError(agentId: string): string | null {
+  return readState(agentId).error;
+}
+
+export function clearError(agentId: string): void {
+  writeState(agentId).error = null;
+}
+
+export async function loadHistory(agentId: string, sessionId: string): Promise<void> {
+  const state = writeState(agentId);
   try {
     const history = await fetchHistory(sessionId);
-    messages = historyToMessages(history);
+    state.messages = historyToMessages(history);
   } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
+    state.error = err instanceof Error ? err.message : String(err);
   }
 }
 
-export function clearMessages(): void {
-  messages = [];
-  streamingText = "";
-  activeToolCalls = [];
-  error = null;
+export function clearMessages(agentId: string): void {
+  const state = writeState(agentId);
+  state.messages = [];
+  state.streamingText = "";
+  state.activeToolCalls = [];
+  state.error = null;
 }
 
 /** Inject a local-only message (not sent to any agent) */
-export function injectLocalMessage(content: string): void {
+export function injectLocalMessage(agentId: string, content: string): void {
+  const state = writeState(agentId);
   const msg: ChatMessage = {
     id: `system-${Date.now()}`,
     role: "assistant",
     content,
     timestamp: new Date().toISOString(),
   };
-  messages = [...messages, msg];
+  state.messages = [...state.messages, msg];
 }
 
 export async function sendMessage(
@@ -66,8 +102,9 @@ export async function sendMessage(
   sessionKey: string,
   media?: MediaItem[],
 ): Promise<void> {
-  if (isStreaming) return;
-  error = null;
+  const state = writeState(agentId);
+  if (state.isStreaming) return;
+  state.error = null;
 
   // Add user message optimistically
   const userMsg: ChatMessage = {
@@ -77,30 +114,30 @@ export async function sendMessage(
     timestamp: new Date().toISOString(),
     ...(media?.length ? { media } : {}),
   };
-  messages = [...messages, userMsg];
+  state.messages = [...state.messages, userMsg];
 
   // Start streaming
-  isStreaming = true;
-  streamingText = "";
-  activeToolCalls = [];
-  abortController = new AbortController();
+  state.isStreaming = true;
+  state.streamingText = "";
+  state.activeToolCalls = [];
+  state.abortController = new AbortController();
 
   try {
-    for await (const event of streamMessage(agentId, text, sessionKey, abortController.signal, media)) {
+    for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
         case "text_delta":
-          streamingText += event.text;
+          state.streamingText += event.text;
           break;
 
         case "tool_start":
-          activeToolCalls = [
-            ...activeToolCalls,
+          state.activeToolCalls = [
+            ...state.activeToolCalls,
             { id: event.toolId, name: event.toolName, status: "running" },
           ];
           break;
 
         case "tool_result":
-          activeToolCalls = activeToolCalls.map((tc) =>
+          state.activeToolCalls = state.activeToolCalls.map((tc) =>
             tc.id === event.toolId
               ? {
                   ...tc,
@@ -116,46 +153,46 @@ export async function sendMessage(
           const assistantMsg: ChatMessage = {
             id: `assistant-${Date.now()}`,
             role: "assistant",
-            content: streamingText || event.outcome.text,
+            content: state.streamingText || event.outcome.text,
             timestamp: new Date().toISOString(),
-            toolCalls: activeToolCalls.length > 0 ? [...activeToolCalls] : undefined,
+            toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
           };
-          messages = [...messages, assistantMsg];
-          streamingText = "";
-          activeToolCalls = [];
+          state.messages = [...state.messages, assistantMsg];
+          state.streamingText = "";
+          state.activeToolCalls = [];
           break;
         }
 
         case "error":
-          error = event.message;
+          state.error = event.message;
           break;
       }
     }
   } catch (err) {
     if ((err as Error).name !== "AbortError") {
-      error = err instanceof Error ? err.message : String(err);
+      state.error = err instanceof Error ? err.message : String(err);
     }
   } finally {
     // If we still have streaming text (e.g. aborted mid-stream), save it
-    if (streamingText) {
+    if (state.streamingText) {
       const partial: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: streamingText,
+        content: state.streamingText,
         timestamp: new Date().toISOString(),
-        toolCalls: activeToolCalls.length > 0 ? [...activeToolCalls] : undefined,
+        toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
       };
-      messages = [...messages, partial];
+      state.messages = [...state.messages, partial];
     }
-    isStreaming = false;
-    streamingText = "";
-    activeToolCalls = [];
-    abortController = null;
+    state.isStreaming = false;
+    state.streamingText = "";
+    state.activeToolCalls = [];
+    state.abortController = null;
   }
 }
 
-export function abortStream(): void {
-  abortController?.abort();
+export function abortStream(agentId: string): void {
+  states[agentId]?.abortController?.abort();
 }
 
 function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
