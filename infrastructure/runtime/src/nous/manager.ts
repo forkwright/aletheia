@@ -274,10 +274,32 @@ export class NousManager {
       trace.setDegradedServices(degradedServices);
     }
 
-    const systemPrompt = [
+    const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
+
+    // Mid-session working state injection — every 8 turns, give the agent a lightweight status pulse
+    const currentSession = this.store.findSessionById(sessionId);
+    const msgCount = currentSession?.messageCount ?? 0;
+    if (msgCount > 0 && msgCount % 8 === 0) {
+      const recentTools = this.store.getRecentToolCalls(sessionId, 6);
+      const elapsed = currentSession?.createdAt
+        ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
+        : 0;
+      const utilization = this.config.agents.defaults.contextTokens > 0
+        ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / this.config.agents.defaults.contextTokens) * 100)
+        : 0;
+      systemPrompt.push({
+        type: "text",
+        text:
+          `## Working State — Turn ${msgCount}\n\n` +
+          `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "none"}\n` +
+          `Session duration: ${elapsed} min\n` +
+          `Context utilization: ${utilization}%\n` +
+          `Distillations: ${currentSession?.distillationCount ?? 0}`,
+      });
+    }
 
     const toolDefs = this.tools.getDefinitions({
       sessionId,

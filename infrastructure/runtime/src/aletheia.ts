@@ -29,6 +29,9 @@ import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
 import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
+import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
+import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
+import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
@@ -179,6 +182,17 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   manager.setCompetence(competence);
   manager.setUncertainty(uncertainty);
   log.info("Competence model and uncertainty tracker initialized");
+
+  // Self-observation tools — query competence model, calibration, and interaction signals
+  const calibrationTool = createCheckCalibrationTool(competence, uncertainty);
+  calibrationTool.category = "available";
+  tools.register(calibrationTool);
+  const knowTool = createWhatDoIKnowTool(competence, store);
+  knowTool.category = "available";
+  tools.register(knowTool);
+  const correctionsTool = createRecentCorrectionsTool(store);
+  correctionsTool.category = "available";
+  tools.register(correctionsTool);
 
   // Wire cross-agent tools (need manager + store reference for audit trail)
   const auditDispatcher = {

@@ -276,6 +276,15 @@ export class SessionStore {
     return result;
   }
 
+  getRecentToolCalls(sessionId: string, limit = 10): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT DISTINCT tool_name FROM messages WHERE session_id = ? AND tool_name IS NOT NULL AND is_distilled = 0 ORDER BY seq DESC LIMIT ?",
+      )
+      .all(sessionId, limit) as Array<{ tool_name: string }>;
+    return rows.map((r) => r.tool_name);
+  }
+
   recordUsage(record: UsageRecord): void {
     this.db
       .prepare(

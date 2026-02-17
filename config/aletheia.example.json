@@ -117,7 +117,14 @@
   },
   "cron": {
     "enabled": false,
-    "jobs": []
+    "jobs": [
+      {
+        "name": "eval-feedback",
+        "schedule": "0 3 * * *",
+        "command": "python3 /mnt/ssd/aletheia/infrastructure/evaluation/scripts/eval-feedback.py",
+        "timeoutSeconds": 120
+      }
+    ]
   },
   "env": {
     "PATH": "/path/to/aletheia/shared/bin",
