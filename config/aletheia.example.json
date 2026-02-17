@@ -1,0 +1,127 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "claude-opus-4-6",
+        "fallbacks": ["claude-sonnet-4-5-20250929"]
+      },
+      "bootstrapMaxTokens": 40000,
+      "contextTokens": 200000,
+      "maxOutputTokens": 16384,
+      "userTimezone": "America/Chicago",
+      "compaction": {
+        "mode": "default",
+        "distillationModel": "claude-haiku-4-5-20251001"
+      },
+      "tools": {
+        "profile": "full"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "name": "Atlas",
+        "default": true,
+        "workspace": "/path/to/aletheia/nous/atlas",
+        "identity": {
+          "name": "Atlas",
+          "emoji": "🏛️"
+        }
+      },
+      {
+        "id": "research",
+        "name": "Scholar",
+        "workspace": "/path/to/aletheia/nous/scholar",
+        "model": {
+          "primary": "claude-sonnet-4-5-20250929",
+          "fallbacks": []
+        },
+        "identity": {
+          "name": "Scholar",
+          "emoji": "📚"
+        }
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "dm",
+          "id": "YOUR_SIGNAL_UUID"
+        }
+      }
+    },
+    {
+      "agentId": "research",
+      "match": {
+        "channel": "signal",
+        "peer": {
+          "kind": "group",
+          "id": "YOUR_GROUP_ID"
+        }
+      }
+    }
+  ],
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "accounts": {
+        "default": {
+          "account": "+1XXXXXXXXXX",
+          "httpHost": "localhost",
+          "httpPort": 8080,
+          "dmPolicy": "pairing",
+          "groupPolicy": "allowlist",
+          "groupAllowFrom": []
+        }
+      }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "GENERATE_A_RANDOM_TOKEN"
+    },
+    "controlUi": {
+      "enabled": true
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "load": {
+      "paths": ["infrastructure/memory/aletheia-memory"]
+    }
+  },
+  "session": {
+    "scope": "per-sender",
+    "idleMinutes": 120,
+    "mainKey": "main"
+  },
+  "cron": {
+    "enabled": false,
+    "jobs": []
+  },
+  "env": {
+    "PATH": "/path/to/aletheia/shared/bin",
+    "ALETHEIA_ROOT": "/path/to/aletheia"
+  },
+  "watchdog": {
+    "enabled": true,
+    "intervalMs": 300000,
+    "services": [
+      {
+        "name": "memory-sidecar",
+        "url": "http://localhost:8230/health"
+      },
+      {
+        "name": "qdrant",
+        "url": "http://localhost:6333/healthz"
+      }
+    ]
+  }
+}

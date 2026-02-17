@@ -1,34 +1,26 @@
 # Aletheia
 
-> Multi-agent AI system coordinating 6 specialized agents through Signal messaging.
+> Multi-agent AI system coordinating specialized agents through Signal messaging.
 
-Self-hosted, privacy-first. 6 nous (agents) + 1 human in distributed cognition topology. Dual-layer memory system with automatic fact extraction.
+Self-hosted, privacy-first distributed cognition. N agents (nous) + 1 human in topology. Dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, Signal messaging, HTTP API.
 
 ## Documentation
-- [README.md](README.md): Architecture, directory structure, agents, deployment, configuration
+- [README.md](README.md): Architecture, directory structure, deployment, configuration, API reference
 - [ALETHEIA.md](ALETHEIA.md): System manifesto and naming philosophy
 - [RESCUE.md](RESCUE.md): Full recovery guide from scratch
 - [CHANGELOG.md](CHANGELOG.md): Change history with decision context
 
 ## Key Directories
-- [nous/](nous/): Agent workspaces (SOUL.md, AGENTS.md, MEMORY.md per agent)
-- [shared/bin/](shared/bin/): ~70 shared scripts (on PATH for all agents)
-- [shared/templates/](shared/templates/): Template compilation for workspace files
-- [shared/config/](shared/config/): Environment, tools, provider failover
-- [shared/contracts/](shared/contracts/): Agent capability contracts (JSON)
-- [infrastructure/runtime/](infrastructure/runtime/): Aletheia gateway (TypeScript, clean-room)
+- [nous/_example/](nous/_example/): Template agent workspace (SOUL.md, USER.md, AGENTS.md, etc.)
+- [shared/bin/](shared/bin/): Shared scripts (pplx, scholar, browse, ingest-doc, aletheia-graph, nous-health)
+- [shared/config/](shared/config/): Environment and tool configuration
+- [config/](config/): Example gateway config (aletheia.example.json)
+- [infrastructure/runtime/](infrastructure/runtime/): Gateway source (TypeScript, tsdown)
+- [infrastructure/runtime/src/](infrastructure/runtime/src/): Module architecture (taxis, mneme, hermeneus, organon, semeion, pylon, prostheke, nous, distillation, daemon, koina)
 - [infrastructure/memory/](infrastructure/memory/): Mem0 sidecar + Qdrant + Neo4j
+- [infrastructure/prosoche/](infrastructure/prosoche/): Adaptive attention daemon
 
-## Memory System
-- [infrastructure/memory/sidecar/](infrastructure/memory/sidecar/): Mem0 FastAPI extraction service
-- [infrastructure/memory/plugin/](infrastructure/memory/plugin/): Aletheia memory plugin (lifecycle hooks)
-- [infrastructure/runtime/src/organon/built-in/](infrastructure/runtime/src/organon/built-in/): Built-in tools (exec, grep, message, memory search)
-- [shared/memory/facts.jsonl](shared/memory/facts.jsonl): Structured fact store
-
-## Agents
-- **Syn**: Orchestrator, primary interface (Signal DM default)
-- **Eiron**: MBA coursework, academic
-- **Demiurge**: Creative, craft, leatherwork
-- **Syl**: General assistant, family (family group chat)
-- **Arbor**: Work / Summus healthcare (Arbor group chat)
-- **Akron**: Vehicle, preparedness, technical
+## Configuration
+- [config/aletheia.example.json](config/aletheia.example.json): Gateway config reference
+- [.env.example](.env.example): Environment variables template
+- [infrastructure/runtime/src/taxis/schema.ts](infrastructure/runtime/src/taxis/schema.ts): Zod config schema (source of truth)

@@ -23,11 +23,11 @@ __pycache__/
 *.pyc
 .cache/
 
-# === Agent session data (ephemeral) ===
-nous/*/memory/session-state.yaml
-nous/*/memory/assembled-context.md
-nous/**/AGENTS.md.pre-compile.bak
-nous/**/TOOLS.md.pre-gen.bak
+# === Agent workspace data (ephemeral) ===
+nous/*/memory/
+nous/*/docs/
+nous/*/research/
+!nous/_example/
 
 # === OS ===
 .DS_Store
@@ -41,9 +41,6 @@ Thumbs.db
 # === Workspace backups ===
 *.aletheia-backup
 
-# === Embedded repos ===
-nous/arbor/a2z-tree-site/
-
 # === Backup files ===
 *.bak
 *.pre-compile.bak
@@ -52,8 +49,6 @@ nous/arbor/a2z-tree-site/
 clawd
 
 # === Financial data ===
-nous/demiurge/documents/relay-exports/
-nous/demiurge/relay-import/
 **/*relay*.csv
 **/*transaction*.csv
 
@@ -68,35 +63,16 @@ nous/demiurge/relay-import/
 *.mp4
 *.zip
 *.tar.gz
-nous/arbor/ZOHO-API-SETUP.md
-
-# === Config with tokens ===
-nous/*/config/
-nous/arbor/A2Z_ZOHO_INTEGRATION_PLAN.md
-nous/arbor/get_zoho_complete_access.sh
-nous/demiurge/ardent-stripe-webhook/
-nous/demiurge/scripts/workdrive-sync.sh
-nous/arbor/knowledge/
-
-# === Nested git repos ===
-nous/demiurge/writing/
-nous/demiurge/ardent-site/
-aletheia.git/
 
 # === Python venvs ===
 **/venv/
 **/.venv/
 **/lib/python*/
 **/site-packages/
-
-# === Catch-all for venvs and python packages ===
 **/pyvenv.cfg
 **/.venv*
-nous/syn/crewai/
-shared/venv/
 
-# === Generated/ephemeral ===  
-nous/syn/memory/entities/
+# === Generated/ephemeral ===
 shared/logs/
 infrastructure/runtime/node_modules/
 infrastructure/runtime/package-lock.json
@@ -106,22 +82,14 @@ infrastructure/runtime/package-lock.json
 **/.task/
 **/.taskrc
 **/cookies.txt
-**/crewai-storage/
 **/heartbeat-state.json
 
-# === Cache/logs (ephemeral) ===
+# === Cache/logs ===
 shared/cache/
 shared/blackboard/*.jsonl
 shared/blackboard/*.json
 shared/blackboard/*.log
 shared/blackboard/.last_dispatch
 
-# === Legacy (superseded) ===
-shared/ZOHO_SHARED_ARCHITECTURE.md
-shared/TOOLS-COMMON.md
-shared/research/moltbook-*.md
-nous/syn/context/letta-config.md
-nous/syn/STYLE.md
-nous/syn/TASK_NAMESPACES.md
-shared/config/mcporter.json
-nous/syn/llms-full.txt
+# === Config with tokens ===
+nous/*/config/

@@ -19,13 +19,13 @@ describe("mem0SearchTool", () => {
       ok: true,
       json: vi.fn().mockResolvedValue({
         results: [
-          { id: "m1", memory: "the operator likes TypeScript", score: 0.9, agent_id: "syn" },
-          { id: "m2", memory: "the operator uses Fedora", score: 0.8, agent_id: "syn" },
+          { id: "m1", memory: "User prefers TypeScript", score: 0.9, agent_id: "syn" },
+          { id: "m2", memory: "User runs Fedora", score: 0.8, agent_id: "syn" },
         ],
       }),
     });
 
-    const result = await mem0SearchTool.execute({ query: "what does the operator like" }, ctx);
+    const result = await mem0SearchTool.execute({ query: "what preferences exist" }, ctx);
     const parsed = JSON.parse(result);
     expect(parsed.count).toBe(2);
     expect(parsed.results[0].memory).toContain("TypeScript");

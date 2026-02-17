@@ -7,32 +7,12 @@ services:
     environment:
       - MODE=json-rpc
     volumes:
-      - /mnt/ssd/aletheia/signal-cli:/home/.local/share/signal-cli
+      - ./signal-cli:/home/.local/share/signal-cli
     ports:
       - "127.0.0.1:8080:8080"
     networks:
-      - moltbot
-
-  moltbot:
-    image: ghcr.io/moltbot/moltbot:latest
-    container_name: moltbot
-    restart: unless-stopped
-    depends_on:
-      - signal-cli
-    env_file:
-      - /mnt/ssd/aletheia/.env
-    environment:
-      - TZ=America/Chicago
-    volumes:
-      - /mnt/ssd/aletheia/clawd:/root/clawd
-      - /mnt/ssd/aletheia/skills:/root/clawd/skills
-      - /mnt/nas/docker/moltbot/history:/root/clawd/history
-    ports:
-      - "127.0.0.1:18789:18789"
-    networks:
-      - moltbot
-    command: ["node", "dist/index.js", "gateway", "--bind", "127.0.0.1", "--port", "18789"]
+      - aletheia
 
 networks:
-  moltbot:
+  aletheia:
     driver: bridge
