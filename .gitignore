@@ -97,10 +97,8 @@ infrastructure/runtime/package-lock.json
 
 # === Cache/logs ===
 shared/cache/
-shared/blackboard/*.jsonl
-shared/blackboard/*.json
-shared/blackboard/*.log
-shared/blackboard/.last_dispatch
+shared/blackboard/
+shared/traces/
 
 # === Config with tokens ===
 nous/*/config/
