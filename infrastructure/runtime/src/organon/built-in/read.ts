@@ -1,24 +1,7 @@
 // File read tool
-import { readFileSync, statSync, openSync, readSync, closeSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { ToolHandler, ToolContext } from "../registry.js";
 import { safePath } from "./safe-path.js";
-
-function isBinaryFile(filePath: string): boolean {
-  let fd: number | undefined;
-  try {
-    fd = openSync(filePath, "r");
-    const buf = Buffer.alloc(8192);
-    const bytesRead = readSync(fd, buf, 0, 8192, 0);
-    for (let i = 0; i < bytesRead; i++) {
-      if (buf[i] === 0x00) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
 
 export const readTool: ToolHandler = {
   definition: {
@@ -59,14 +42,16 @@ export const readTool: ToolHandler = {
     const resolved = safePath(context.workspace, filePath);
 
     try {
-      const stat = statSync(resolved);
-      if (stat.size > 5 * 1024 * 1024) {
-        return `Error: File too large (${(stat.size / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`;
+      // Read atomically — no stat-then-read race
+      const buf = readFileSync(resolved);
+      if (buf.length > 5 * 1024 * 1024) {
+        return `Error: File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`;
       }
-      if (isBinaryFile(resolved)) {
-        return "Error: Binary file detected — cannot display";
+      // Check for null bytes (binary indicator)
+      for (let i = 0; i < Math.min(buf.length, 8192); i++) {
+        if (buf[i] === 0x00) return "Error: Binary file detected — cannot display";
       }
-      let content = readFileSync(resolved, "utf-8");
+      let content = buf.toString("utf-8");
       if (maxLines) {
         content = content.split("\n").slice(0, maxLines).join("\n");
       }
