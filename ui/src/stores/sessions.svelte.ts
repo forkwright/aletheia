@@ -25,14 +25,18 @@ export async function loadSessions(nousId: string): Promise<void> {
   loading = true;
   try {
     const all = await fetchSessions(nousId);
-    // Filter out cron/system sessions — they're background noise
-    sessions = all.filter((s) => !s.sessionKey.startsWith("cron:"));
-    // Auto-select: prefer "main", then most recent user session
+    // Filter out background/system sessions
+    sessions = all.filter((s) =>
+      !s.sessionKey.startsWith("cron:") &&
+      !s.sessionKey.startsWith("agent:") &&
+      !s.sessionKey.startsWith("prosoche"),
+    );
+    // Auto-select: prefer Signal session (shared with phone), then most recent
     if (sessions.length > 0) {
       const current = sessions.find((s) => s.id === activeSessionId);
       if (!current) {
-        const main = sessions.find((s) => s.sessionKey === "main");
-        activeSessionId = main?.id ?? sessions[0]!.id;
+        const signal = sessions.find((s) => s.sessionKey.startsWith("signal:"));
+        activeSessionId = signal?.id ?? sessions[0]!.id;
       }
     } else {
       activeSessionId = null;
