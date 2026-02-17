@@ -23,11 +23,18 @@ __pycache__/
 *.pyc
 .cache/
 
-# === Agent workspace data (ephemeral) ===
-nous/*/memory/
-nous/*/docs/
-nous/*/research/
+# === Agent workspaces (personal, live on server only) ===
+nous/*/
 !nous/_example/
+!nous/_example/**
+
+# === Shared personal data ===
+shared/memory/
+shared/contracts/
+shared/checkpoints/
+shared/status/
+shared/insights/
+shared/task-contracts/
 
 # === OS ===
 .DS_Store
