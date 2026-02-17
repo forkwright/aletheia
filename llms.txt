@@ -9,6 +9,12 @@ Self-hosted, privacy-first distributed cognition. N agents (nous) + 1 human in t
 - [ALETHEIA.md](ALETHEIA.md): System manifesto and naming philosophy
 - [RESCUE.md](RESCUE.md): Full recovery guide from scratch
 - [CHANGELOG.md](CHANGELOG.md): Change history with decision context
+- [docs/QUICKSTART.md](docs/QUICKSTART.md): Zero-to-running in 5 minutes
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Full config reference (all Zod-validated options)
+- [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Production setup with systemd, Signal, memory sidecar
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Building, module architecture, testing, contributing
+- [docs/PLUGINS.md](docs/PLUGINS.md): Plugin system, lifecycle hooks, tool registration
 
 ## Key Directories
 - [nous/_example/](nous/_example/): Template agent workspace (SOUL.md, USER.md, AGENTS.md, etc.)
