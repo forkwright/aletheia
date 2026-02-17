@@ -88,7 +88,7 @@ export async function sendMessage(
 
         case "tool_result":
           activeToolCalls = activeToolCalls.map((tc) =>
-            tc.name === event.toolName && tc.status === "running"
+            tc.id === event.toolId
               ? {
                   ...tc,
                   status: event.isError ? "error" as const : "complete" as const,

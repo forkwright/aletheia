@@ -21,6 +21,7 @@ export interface ToolContext {
   nousId: string;
   sessionId: string;
   workspace: string;
+  allowedRoots?: string[];
   depth?: number;
 }
 

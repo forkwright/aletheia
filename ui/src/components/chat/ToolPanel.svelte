@@ -11,7 +11,7 @@
 <div class="tool-panel">
   <div class="panel-header">
     <span class="panel-title">Tool Calls ({tools.length})</span>
-    <button class="close-btn" onclick={onClose}>x</button>
+    <button class="close-btn" onclick={onClose} aria-label="Close panel">×</button>
   </div>
   <div class="panel-body">
     {#each tools as tool}
@@ -52,7 +52,7 @@
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 18px;
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     line-height: 1;
@@ -60,6 +60,10 @@
   .close-btn:hover {
     background: var(--surface-hover);
     color: var(--text);
+  }
+  .close-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
   .panel-body {
     flex: 1;

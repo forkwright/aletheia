@@ -9,6 +9,7 @@ import { assembleBootstrap } from "./bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
 import { distillSession } from "../distillation/pipeline.js";
 import { scoreComplexity, selectModel, selectTemperature, type ComplexityTier } from "../hermeneus/complexity.js";
+import { paths } from "../taxis/paths.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import {
   resolveNous,
@@ -71,7 +72,7 @@ export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
-  | { type: "tool_result"; toolName: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "error"; message: string };
 
@@ -331,7 +332,7 @@ export class NousManager {
     const currentText = crossAgentNotice ? crossAgentNotice + "\n\n" + msg.text : msg.text;
     const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
 
-    const toolContext: ToolContext = { nousId, sessionId, workspace, depth: msg.depth ?? 0 };
+    const toolContext: ToolContext = { nousId, sessionId, workspace, allowedRoots: [paths.root], depth: msg.depth ?? 0 };
 
     if (this.plugins) {
       await this.plugins.dispatchBeforeTurn({ nousId, sessionId, messageText: msg.text, ...(msg.media ? { media: msg.media } : {}) });
@@ -509,6 +510,7 @@ export class NousManager {
         yield {
           type: "tool_result",
           toolName: toolUse.name,
+          toolId: toolUse.id,
           result: toolResult.slice(0, 2000),
           isError,
           durationMs: toolDuration,
@@ -770,6 +772,7 @@ export class NousManager {
       nousId,
       sessionId,
       workspace,
+      allowedRoots: [paths.root],
       depth: msg.depth ?? 0,
     };
 
