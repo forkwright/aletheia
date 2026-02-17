@@ -71,7 +71,7 @@ export interface ListenerOpts {
   skills?: SkillRegistry | null;
 }
 
-const MAX_CONCURRENT_TURNS = 3;
+const MAX_CONCURRENT_TURNS = 6;
 const activeTurns = new Map<string, number>();
 
 export async function startListener(opts: ListenerOpts): Promise<void> {
