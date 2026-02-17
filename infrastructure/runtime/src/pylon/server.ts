@@ -271,10 +271,14 @@ export function createGateway(
       const raw = readFileSync(identityPath, "utf-8");
       const emojiMatch = raw.match(/emoji:\s*(.+)/i);
       const nameMatch = raw.match(/name:\s*(.+)/i);
+      // Strip markdown bold markers and clean up
+      let parsedName = nameMatch?.[1]?.replace(/\*+/g, "").trim() || "";
+      if (!parsedName) parsedName = agent.name ?? agent.id;
+      let parsedEmoji = emojiMatch?.[1]?.trim() ?? null;
       return c.json({
         id: agent.id,
-        name: nameMatch?.[1]?.trim() ?? agent.name ?? agent.id,
-        emoji: emojiMatch?.[1]?.trim() ?? null,
+        name: parsedName,
+        emoji: parsedEmoji,
       });
     } catch {
       return c.json({

@@ -24,12 +24,15 @@ export function isSessionsLoading(): boolean {
 export async function loadSessions(nousId: string): Promise<void> {
   loading = true;
   try {
-    sessions = await fetchSessions(nousId);
-    // Auto-select first session if none selected or current doesn't belong to this agent
+    const all = await fetchSessions(nousId);
+    // Filter out cron/system sessions — they're background noise
+    sessions = all.filter((s) => !s.sessionKey.startsWith("cron:"));
+    // Auto-select: prefer "main", then most recent user session
     if (sessions.length > 0) {
       const current = sessions.find((s) => s.id === activeSessionId);
       if (!current) {
-        activeSessionId = sessions[0]!.id;
+        const main = sessions.find((s) => s.sessionKey === "main");
+        activeSessionId = main?.id ?? sessions[0]!.id;
       }
     } else {
       activeSessionId = null;
