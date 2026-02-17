@@ -15,7 +15,12 @@ describe("calculateTurnCost", () => {
     expect(cost).toBeCloseTo(15 + 75 + 1.5 + 18.75);
   });
 
-  it("calculates Sonnet pricing (exact model ID)", () => {
+  it("calculates Sonnet 4.6 pricing (exact model ID)", () => {
+    const cost = calculateTurnCost({ ...baseUsage, model: "claude-sonnet-4-6" });
+    expect(cost).toBeCloseTo(3 + 15 + 0.3 + 3.75);
+  });
+
+  it("calculates Sonnet 4.5 pricing (legacy exact model ID)", () => {
     const cost = calculateTurnCost({ ...baseUsage, model: "claude-sonnet-4-5-20250929" });
     expect(cost).toBeCloseTo(3 + 15 + 0.3 + 3.75);
   });

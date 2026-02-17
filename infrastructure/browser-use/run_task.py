@@ -18,7 +18,7 @@ async def run():
         print(json.dumps({"error": "BROWSE_TASK environment variable not set"}))
         sys.exit(1)
 
-    model = os.environ.get("BROWSE_MODEL", "claude-sonnet-4-20250514")
+    model = os.environ.get("BROWSE_MODEL", "claude-sonnet-4-6")
     llm = ChatAnthropic(model_name=model)
     agent = Agent(task=task, llm=llm)
 

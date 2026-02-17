@@ -31,8 +31,8 @@ const RoutingConfig = z
     tiers: z
       .object({
         routine: z.string().default("claude-haiku-4-5-20251001"),
-        standard: z.string().default("claude-sonnet-4-5-20250929"),
-        complex: z.string().default("claude-sonnet-4-5-20250929"),
+        standard: z.string().default("claude-sonnet-4-6"),
+        complex: z.string().default("claude-sonnet-4-6"),
       })
       .default({}),
     agentOverrides: z

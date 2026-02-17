@@ -52,7 +52,7 @@ describe("createDefaultRouter", () => {
       providers: {
         anthropic: {
           models: [
-            { id: "claude-sonnet-4-5-20250929" },
+            { id: "claude-sonnet-4-6" },
             { id: "claude-haiku-4-5-20251001" },
           ],
         },

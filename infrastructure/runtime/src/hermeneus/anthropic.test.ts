@@ -15,7 +15,7 @@ vi.mock("@anthropic-ai/sdk", () => {
           cache_read_input_tokens: 10,
           cache_creation_input_tokens: 5,
         },
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-6",
       }),
     };
     constructor(_opts: Record<string, unknown>) {}
@@ -48,7 +48,7 @@ describe("AnthropicProvider", () => {
   it("completes a request", async () => {
     const provider = new AnthropicProvider({ apiKey: "sk-test" });
     const result = await provider.complete({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       system: "You are helpful",
       messages: [{ role: "user", content: "hello" }],
     });
@@ -64,7 +64,7 @@ describe("AnthropicProvider", () => {
   it("passes maxTokens parameter", async () => {
     const provider = new AnthropicProvider({ apiKey: "sk-test" });
     const result = await provider.complete({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
       maxTokens: 2048,
@@ -75,7 +75,7 @@ describe("AnthropicProvider", () => {
   it("passes tools parameter", async () => {
     const provider = new AnthropicProvider({ apiKey: "sk-test" });
     const result = await provider.complete({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
       tools: [{ name: "read", description: "Read file", input_schema: { type: "object", properties: {} } }],
@@ -91,7 +91,7 @@ describe("AnthropicProvider", () => {
     (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } }).client.messages.create = vi.fn().mockRejectedValue(apiError);
 
     await expect(provider.complete({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
     })).rejects.toThrow("Anthropic API error");
@@ -103,7 +103,7 @@ describe("AnthropicProvider", () => {
     (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } }).client.messages.create = vi.fn().mockRejectedValue(new Error("Network failure"));
 
     await expect(provider.complete({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
     })).rejects.toThrow("Network failure");

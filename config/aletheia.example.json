@@ -3,7 +3,7 @@
     "defaults": {
       "model": {
         "primary": "claude-opus-4-6",
-        "fallbacks": ["claude-sonnet-4-5-20250929"]
+        "fallbacks": ["claude-sonnet-4-6"]
       },
       "bootstrapMaxTokens": 40000,
       "contextTokens": 200000,
@@ -17,7 +17,7 @@
         "enabled": true,
         "tiers": {
           "routine": "claude-haiku-4-5-20251001",
-          "standard": "claude-sonnet-4-5-20250929",
+          "standard": "claude-sonnet-4-6",
           "complex": "claude-opus-4-6"
         },
         "agentOverrides": {
@@ -46,7 +46,7 @@
         "name": "Scholar",
         "workspace": "/path/to/aletheia/nous/scholar",
         "model": {
-          "primary": "claude-sonnet-4-5-20250929",
+          "primary": "claude-sonnet-4-6",
           "fallbacks": []
         },
         "identity": {
