@@ -83,15 +83,15 @@ function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>
   return current;
 }
 
-// Ephemeral timestamp formatting — absolute times in operator timezone (America/Chicago)
+// Ephemeral timestamp formatting — absolute times in operator timezone
 // Injected at API-call time only, never stored. Uses absolute format because
 // relative time ("yesterday") becomes inaccurate as conversations age.
-function formatEphemeralTimestamp(isoString: string): string | null {
+function formatEphemeralTimestamp(isoString: string, tz: string = "UTC"): string | null {
   try {
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return null;
     return d.toLocaleString("en-US", {
-      timeZone: "America/Chicago",
+      timeZone: tz,
       month: "short",
       day: "numeric",
       hour: "numeric",
@@ -325,7 +325,7 @@ export class NousManager {
     const currentText = crossAgentNotice
       ? crossAgentNotice + "\n\n" + msg.text
       : msg.text;
-    const messages = this.buildMessages(history, currentText, msg.media);
+    const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
 
     const toolContext: ToolContext = {
       nousId,
@@ -619,6 +619,7 @@ export class NousManager {
     history: Message[],
     currentText: string,
     media?: MediaAttachment[],
+    tz?: string,
   ): MessageParam[] {
     const messages: MessageParam[] = [];
 
@@ -628,7 +629,7 @@ export class NousManager {
       if (msg.role === "user") {
         // Ephemeral timestamps — inject absolute time for temporal awareness
         // These exist only in the API call, never stored
-        const ts = formatEphemeralTimestamp(msg.createdAt);
+        const ts = formatEphemeralTimestamp(msg.createdAt, tz);
         const content = ts ? `[${ts}] ${msg.content}` : msg.content;
         messages.push({ role: "user", content });
       } else if (msg.role === "assistant") {

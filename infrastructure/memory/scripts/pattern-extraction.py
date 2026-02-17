@@ -15,7 +15,7 @@ logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}", level="INFO")
 
 ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia"))
-SESSIONS_DB = Path(os.environ.get("SESSIONS_DB", "/home/syn/.aletheia/sessions.db"))
+SESSIONS_DB = Path(os.environ.get("SESSIONS_DB", ""))
 SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
 PATTERNS_FILE = ALETHEIA_HOME / "shared" / "memory" / "patterns.json"
 MAX_PATTERNS = 5
@@ -91,7 +91,7 @@ def extract_patterns(summaries: list[dict]) -> list[dict]:
             for query in ["reasoning approach", "problem solving", "decision making", "coordination"]:
                 resp = client.post(
                     f"{SIDECAR_URL}/search",
-                    json={"query": query, "user_id": "ck", "limit": 5},
+                    json={"query": query, "user_id": "default", "limit": 5},
                 )
                 if resp.status_code == 200:
                     results = resp.json().get("results", [])

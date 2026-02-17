@@ -4,7 +4,7 @@ import type { ToolHandler, ToolContext } from "../registry.js";
 
 const log = createLogger("organon.fact-retract");
 const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "ck";
+const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const factRetractTool: ToolHandler = {
   definition: {

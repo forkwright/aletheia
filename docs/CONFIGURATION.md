@@ -32,7 +32,7 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `model.primary` | string | `"claude-opus-4-6"` | Primary model ID |
 | `model.fallbacks` | string[] | `[]` | Fallback model IDs tried in order |
 | `bootstrapMaxTokens` | number | `40000` | Max tokens for bootstrap context injection |
-| `userTimezone` | string | `"America/Chicago"` | IANA timezone for time-aware prompts |
+| `userTimezone` | string | `"UTC"` | IANA timezone for time-aware prompts |
 | `contextTokens` | number | `200000` | Context window budget |
 | `maxOutputTokens` | number | `16384` | Max tokens per response |
 | `timeoutSeconds` | number | `300` | LLM call timeout |
@@ -450,7 +450,7 @@ Used in `agents.defaults.heartbeat` or per-agent `heartbeat`. Sends periodic che
 | `every` | string | `"45m"` | Interval (duration string) |
 | `activeHours.start` | string | `"08:00"` | Quiet hours start (24h format) |
 | `activeHours.end` | string | `"23:00"` | Quiet hours end |
-| `activeHours.timezone` | string | `"America/Chicago"` | Timezone for active hours |
+| `activeHours.timezone` | string | `"UTC"` | Timezone for active hours |
 | `model` | string | _(none)_ | Model override for heartbeat calls (optional) |
 | `session` | string | `"main"` | Session key for heartbeat messages |
 | `prompt` | string | _(none)_ | Custom heartbeat prompt (optional) |

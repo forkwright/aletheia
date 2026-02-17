@@ -179,7 +179,7 @@ describe("distillSession", () => {
       minMessages: 4,
       extractionModel: "claude-haiku",
       summaryModel: "claude-haiku",
-      memoryTarget: { url: "http://localhost:8230/add", userId: "ck" } as never,
+      memoryTarget: { url: "http://localhost:8230/add", userId: "default" } as never,
     });
     expect(flushToMemory).toHaveBeenCalled();
   });

@@ -132,7 +132,7 @@ class ProsocheDaemon:
                     # Record activity for predictive model
                     import zoneinfo
                     from datetime import datetime
-                    tz_name = self.config.get("quiet_hours", {}).get("timezone", "America/Chicago")
+                    tz_name = self.config.get("quiet_hours", {}).get("timezone", "UTC")
                     tz = zoneinfo.ZoneInfo(tz_name)
                     self.activity_model.record_activity(nous_id, datetime.now(tz))
 

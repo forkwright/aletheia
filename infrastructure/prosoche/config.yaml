@@ -11,7 +11,7 @@ gateway:
 quiet_hours:
   start: "23:00"
   end: "06:00"
-  timezone: America/Chicago
+  timezone: UTC
 
 rhythm:
   morning_prep: "07:45"
