@@ -159,7 +159,8 @@ export function createGateway(
   app.get("/api/sessions/:id/history", (c) => {
     const id = c.req.param("id");
     const limit = parseInt(c.req.query("limit") ?? "100", 10);
-    const history = store.getHistory(id, { limit });
+    const includeDistilled = c.req.query("includeDistilled") === "true";
+    const history = store.getHistory(id, { limit, excludeDistilled: !includeDistilled });
     return c.json({ messages: history });
   });
 
