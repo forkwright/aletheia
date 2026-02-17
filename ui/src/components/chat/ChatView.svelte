@@ -16,11 +16,13 @@
     loadHistory,
     clearMessages,
   } from "../../stores/chat.svelte";
-  import { getActiveAgent, getActiveAgentId } from "../../stores/agents.svelte";
+  import { getActiveAgent, getActiveAgentId, getAgentEmoji } from "../../stores/agents.svelte";
   import {
     getActiveSessionId,
     getActiveSessionKey,
+    getActiveSession,
     refreshSessions,
+    createNewSession,
   } from "../../stores/sessions.svelte";
 
   // Load history when active session changes (but skip if we just streamed into it)
@@ -41,10 +43,35 @@
     }
   });
 
+  // Slash command registry
+  const slashCommands: Record<string, { description: string; handler: () => void }> = {
+    "/new": {
+      description: "Start a fresh conversation",
+      handler: () => {
+        const agentId = getActiveAgentId();
+        if (agentId) createNewSession(agentId);
+        clearMessages();
+      },
+    },
+    "/clear": {
+      description: "Clear message display (keeps history)",
+      handler: () => clearMessages(),
+    },
+  };
+
   function handleSend(text: string) {
+    const trimmed = text.trim();
+
     // Handle slash commands
-    if (text.trim() === "/new") {
-      clearMessages();
+    const cmd = slashCommands[trimmed];
+    if (cmd) {
+      cmd.handler();
+      return;
+    }
+
+    // Show help for unknown slash commands
+    if (trimmed.startsWith("/")) {
+      // Unknown command — ignore silently
       return;
     }
 
@@ -58,6 +85,17 @@
   }
 
   let agent = $derived(getActiveAgent());
+  let agentId = $derived(getActiveAgentId());
+  let emoji = $derived(agentId ? getAgentEmoji(agentId) : null);
+
+  // Context utilization for distillation indicator
+  let session = $derived(getActiveSession());
+  let contextPercent = $derived(() => {
+    const tokens = session?.tokenCountEstimate ?? 0;
+    // 200k context window is the default
+    const contextWindow = 200_000;
+    return Math.min(100, Math.round((tokens / contextWindow) * 100));
+  });
 
   // Tool panel state
   let selectedTools = $state<ToolCallState[] | null>(null);
@@ -68,6 +106,13 @@
 
   function closeToolPanel() {
     selectedTools = null;
+  }
+
+  function getSlashCommands(): Array<{ command: string; description: string }> {
+    return Object.entries(slashCommands).map(([command, { description }]) => ({
+      command,
+      description,
+    }));
   }
 </script>
 
@@ -82,6 +127,7 @@
       activeToolCalls={getActiveToolCalls()}
       isStreaming={getIsStreaming()}
       agentName={agent?.name}
+      agentEmoji={emoji}
       onToolClick={handleToolClick}
     />
     {#if selectedTools}
@@ -92,6 +138,8 @@
     isStreaming={getIsStreaming()}
     onSend={handleSend}
     onAbort={abortStream}
+    contextPercent={contextPercent()}
+    slashCommands={getSlashCommands()}
   />
 </div>
 

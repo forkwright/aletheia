@@ -6,20 +6,36 @@ const marked = new Marked({
   gfm: true,
 });
 
-// Lazy-loaded highlight.js instance
-let hljs: typeof import("highlight.js").default | null = null;
-let hljsLoading: Promise<void> | null = null;
+// Selective highlight.js — only the languages we actually need (~90% smaller)
+import hljs from "highlight.js/lib/core";
+import typescript from "highlight.js/lib/languages/typescript";
+import javascript from "highlight.js/lib/languages/javascript";
+import python from "highlight.js/lib/languages/python";
+import bash from "highlight.js/lib/languages/bash";
+import json from "highlight.js/lib/languages/json";
+import yaml from "highlight.js/lib/languages/yaml";
+import sql from "highlight.js/lib/languages/sql";
+import markdownLang from "highlight.js/lib/languages/markdown";
+import xml from "highlight.js/lib/languages/xml";
+import css from "highlight.js/lib/languages/css";
 
-async function ensureHljs(): Promise<typeof import("highlight.js").default> {
-  if (hljs) return hljs;
-  if (!hljsLoading) {
-    hljsLoading = import("highlight.js").then((mod) => {
-      hljs = mod.default;
-    });
-  }
-  await hljsLoading;
-  return hljs!;
-}
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("shell", bash);
+hljs.registerLanguage("sh", bash);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("yml", yaml);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("markdown", markdownLang);
+hljs.registerLanguage("md", markdownLang);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("html", xml);
+hljs.registerLanguage("css", css);
+hljs.registerLanguage("ts", typescript);
+hljs.registerLanguage("js", javascript);
 
 export function renderMarkdown(text: string): string {
   const raw = marked.parse(text, { async: false }) as string;
@@ -28,28 +44,16 @@ export function renderMarkdown(text: string): string {
   });
 }
 
-export async function highlightCode(code: string, language?: string): Promise<string> {
-  const hl = await ensureHljs();
-  if (language && hl.getLanguage(language)) {
-    return hl.highlight(code, { language }).value;
-  }
-  return hl.highlightAuto(code).value;
-}
-
-export function highlightCodeSync(code: string, language?: string): string {
-  if (!hljs) return escapeHtml(code);
+export function highlightCode(code: string, language?: string): string {
   if (language && hljs.getLanguage(language)) {
     return hljs.highlight(code, { language }).value;
   }
   return hljs.highlightAuto(code).value;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+export function highlightCodeSync(code: string, language?: string): string {
+  if (language && hljs.getLanguage(language)) {
+    return hljs.highlight(code, { language }).value;
+  }
+  return hljs.highlightAuto(code).value;
 }
-
-// Pre-warm highlight.js on first import
-ensureHljs();

@@ -10,6 +10,7 @@
     activeToolCalls,
     isStreaming,
     agentName,
+    agentEmoji,
     onToolClick,
   }: {
     messages: ChatMessage[];
@@ -17,6 +18,7 @@
     activeToolCalls: ToolCallState[];
     isStreaming: boolean;
     agentName?: string | null;
+    agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
   } = $props();
 
@@ -59,32 +61,40 @@
 <div class="message-list" bind:this={container} onscroll={checkScroll}>
   {#if messages.length === 0 && !isStreaming}
     <div class="empty-state">
-      <div class="empty-initials">{initials}</div>
+      {#if agentEmoji}
+        <div class="empty-emoji">{agentEmoji}</div>
+      {:else}
+        <div class="empty-initials">{initials}</div>
+      {/if}
       <p>Send a message to start a conversation.</p>
     </div>
   {:else}
     {#each messages as message (message.id)}
-      <Message {message} {agentName} {onToolClick} />
+      <Message {message} {agentName} {agentEmoji} {onToolClick} />
     {/each}
 
     {#if isStreaming}
-      <div class="message assistant streaming">
-        <div class="avatar agent-avatar">
-          <span class="avatar-text">{initials}</span>
+      <div class="chat-msg assistant streaming">
+        <div class="chat-avatar agent">
+          {#if agentEmoji}
+            <span class="chat-avatar-emoji">{agentEmoji}</span>
+          {:else}
+            <span class="chat-avatar-text">{initials}</span>
+          {/if}
         </div>
-        <div class="body">
+        <div class="chat-body">
           {#if activeToolCalls.length > 0}
             <button
-              class="tool-pill"
+              class="chat-tool-pill"
               class:has-error={activeToolCalls.some((t) => t.status === "error")}
               onclick={() => onToolClick?.(activeToolCalls)}
             >
-              <span class="tool-icon">&#9881;</span>
+              <span class="chat-tool-icon">⚙</span>
               {streamingToolSummary(activeToolCalls)}
             </button>
           {/if}
           {#if streamingText}
-            <div class="content">
+            <div class="chat-content">
               <Markdown content={streamingText} />
             </div>
           {:else if activeToolCalls.length === 0}
@@ -120,6 +130,15 @@
     font-size: 14px;
     gap: 12px;
   }
+  .empty-emoji {
+    font-size: 48px;
+    line-height: 1;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .empty-initials {
     font-size: 28px;
     font-weight: 700;
@@ -132,77 +151,6 @@
     background: var(--accent);
     color: #fff;
     letter-spacing: 1px;
-  }
-  .message {
-    display: flex;
-    gap: 12px;
-    padding: 12px 16px;
-  }
-  .message.assistant {
-    background: rgba(255, 255, 255, 0.01);
-  }
-  .message.streaming {
-    animation: fade-in 0.2s ease;
-  }
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  .avatar {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-  }
-  .agent-avatar {
-    background: var(--accent);
-    border-color: var(--accent);
-  }
-  .avatar-text {
-    font-size: 10px;
-    font-weight: 700;
-    color: #fff;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-  .body {
-    flex: 1;
-    min-width: 0;
-  }
-  .content {
-    margin-top: 2px;
-  }
-  .tool-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    margin-bottom: 6px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .tool-pill:hover {
-    background: var(--surface-hover);
-    border-color: var(--accent);
-    color: var(--text);
-  }
-  .tool-pill.has-error {
-    border-color: var(--red);
-    color: var(--red);
-  }
-  .tool-icon {
-    font-size: 12px;
-    opacity: 0.7;
   }
   .scroll-btn {
     position: sticky;

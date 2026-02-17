@@ -14,16 +14,16 @@
       {#if tool.status === "running"}
         <Spinner size={14} />
       {:else if tool.status === "error"}
-        <span class="icon-error">!</span>
+        <span class="icon-error">✕</span>
       {:else}
-        <span class="icon-ok">ok</span>
+        <span class="icon-ok">✓</span>
       {/if}
     </span>
     <span class="tool-name">{tool.name}</span>
     {#if tool.durationMs != null}
       <span class="tool-duration">{formatDuration(tool.durationMs)}</span>
     {/if}
-    <span class="expand-icon">{expanded ? "-" : "+"}</span>
+    <span class="expand-icon">{expanded ? "−" : "+"}</span>
   </button>
   {#if expanded && tool.result}
     <div class="tool-output">
@@ -66,6 +66,10 @@
   .tool-header:hover {
     background: var(--surface-hover);
   }
+  .tool-header:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
   .tool-icon {
     display: flex;
     align-items: center;
@@ -75,13 +79,13 @@
   }
   .icon-ok {
     color: var(--green);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
   }
   .icon-error {
     color: var(--red);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 13px;
   }
   .tool-name {
     font-family: var(--font-mono);
@@ -95,7 +99,7 @@
   }
   .expand-icon {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 14px;
     width: 16px;
     text-align: center;
   }

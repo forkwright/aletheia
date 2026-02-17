@@ -8,6 +8,7 @@
   let showMetrics = $state(false);
   let hasToken = $state(!!getToken());
   let tokenValue = $state("");
+  let sidebarCollapsed = $state(true);
 
   function handleTokenSubmit(e: Event) {
     e.preventDefault();
@@ -16,6 +17,14 @@
       hasToken = true;
       location.reload();
     }
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+  }
+
+  function closeSidebar() {
+    sidebarCollapsed = true;
   }
 </script>
 
@@ -36,9 +45,16 @@
     </div>
   </div>
 {:else}
-  <TopBar onToggleMetrics={() => showMetrics = !showMetrics} {showMetrics} />
+  <TopBar
+    onToggleMetrics={() => showMetrics = !showMetrics}
+    onToggleSidebar={toggleSidebar}
+    {showMetrics}
+  />
   <div class="main">
-    <Sidebar />
+    <Sidebar collapsed={sidebarCollapsed} onAgentSelect={closeSidebar} />
+    {#if !sidebarCollapsed}
+      <button class="sidebar-overlay" onclick={closeSidebar} aria-label="Close sidebar"></button>
+    {/if}
     <div class="content">
       {#if showMetrics}
         <MetricsView />
@@ -55,12 +71,16 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    position: relative;
   }
   .content {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
+  }
+  .sidebar-overlay {
+    display: none;
   }
   .token-setup {
     display: flex;
@@ -117,5 +137,21 @@
   }
   .token-submit:hover {
     background: var(--accent-hover);
+  }
+
+  @media (max-width: 768px) {
+    .sidebar-overlay {
+      display: block;
+      position: fixed;
+      inset: 0;
+      top: var(--topbar-height);
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 99;
+      border: none;
+      cursor: default;
+    }
+    .token-card {
+      margin: 0 16px;
+    }
   }
 </style>
