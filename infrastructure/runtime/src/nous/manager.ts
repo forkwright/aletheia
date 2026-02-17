@@ -120,6 +120,7 @@ export class NousManager {
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
+  private activeTurnsByNous = new Map<string, number>();
   isDraining: () => boolean = () => false;
 
   constructor(
@@ -151,6 +152,14 @@ export class NousManager {
 
   setUncertainty(tracker: UncertaintyTracker): void {
     this.uncertainty = tracker;
+  }
+
+  getActiveTurnsByNous(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [nousId, count] of this.activeTurnsByNous) {
+      if (count > 0) result[nousId] = count;
+    }
+    return result;
   }
 
   async *handleMessageStreaming(msg: InboundMessage): AsyncGenerator<TurnStreamEvent> {
@@ -194,6 +203,7 @@ export class NousManager {
     yield { type: "turn_start", sessionId: session.id, nousId };
 
     this.activeTurns++;
+    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
     const channel = new AsyncChannel<TurnStreamEvent>();
 
     // Run turn inside session lock, pushing events to channel in real-time
@@ -223,6 +233,9 @@ export class NousManager {
       yield { type: "error", message: err instanceof Error ? err.message : String(err) };
     } finally {
       this.activeTurns--;
+      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
+      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
+      else this.activeTurnsByNous.set(nousId, cur - 1);
     }
   }
 
@@ -476,6 +489,8 @@ export class NousManager {
             await distillSession(this.store, this.router, sessionId, nousId, {
               triggerThreshold: distillThreshold, minMessages: 10,
               extractionModel: distillModel, summaryModel: distillModel,
+              preserveRecentMessages: compaction.preserveRecentMessages,
+              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -605,12 +620,16 @@ export class NousManager {
 
     // Serialize concurrent turns on the same session
     this.activeTurns++;
+    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
     try {
       return await withSessionLock(session.id, () =>
         this.executeTurn(nousId, session.id, sessionKey, model, msg, nous, temperature),
       );
     } finally {
       this.activeTurns--;
+      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
+      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
+      else this.activeTurnsByNous.set(nousId, cur - 1);
     }
   }
 
@@ -952,6 +971,8 @@ export class NousManager {
               minMessages: 10,
               extractionModel: distillModel,
               summaryModel: distillModel,
+              preserveRecentMessages: compaction.preserveRecentMessages,
+              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -1270,6 +1291,8 @@ export class NousManager {
       minMessages: 4,
       extractionModel: distillModel,
       summaryModel: distillModel,
+      preserveRecentMessages: compaction.preserveRecentMessages,
+      preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(this.plugins ? { plugins: this.plugins } : {}),
     });
   }

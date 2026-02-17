@@ -45,7 +45,7 @@ export async function transcribeAudio(
   const wavPath = tmpPath.replace(/\.[^.]+$/, ".wav");
 
   try {
-    writeFileSync(tmpPath, Buffer.from(base64Data, "base64"));
+    writeFileSync(tmpPath, Buffer.from(base64Data, "base64")); // codeql[js/http-to-file-access] - intentional: inbound audio written to mkdtemp for transcription
 
     // Convert to WAV (whisper.cpp requires 16kHz WAV)
     await execAsync("ffmpeg", [

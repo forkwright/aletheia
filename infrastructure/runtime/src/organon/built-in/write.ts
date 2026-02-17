@@ -51,6 +51,7 @@ export const writeTool: ToolHandler = {
 
     try {
       mkdirSync(dirname(resolved), { recursive: true });
+      // codeql[js/insecure-temporary-file] - path is workspace-constrained via safePath, not tmpdir
       writeFileSync(resolved, content, {
         flag: append ? "a" : "w",
         encoding: "utf-8",

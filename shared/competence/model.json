@@ -28,5 +28,27 @@
       }
     },
     "overallScore": 0.5033333333333335
+  },
+  "chiron": {
+    "nousId": "chiron",
+    "domains": {
+      "web": {
+        "domain": "web",
+        "score": 0.6400000000000001,
+        "corrections": 0,
+        "successes": 7,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-18T14:26:47.003Z"
+      },
+      "test-deploy": {
+        "domain": "test-deploy",
+        "score": 0.6200000000000001,
+        "corrections": 0,
+        "successes": 6,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-18T15:14:21.241Z"
+      }
+    },
+    "overallScore": 0.6300000000000001
   }
 }

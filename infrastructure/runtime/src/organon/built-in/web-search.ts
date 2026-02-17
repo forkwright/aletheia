@@ -108,13 +108,23 @@ function stripTags(html: string): string {
     "&quot;": '"', "&#39;": "'", "&nbsp;": " ",
     "&#x27;": "'", "&#x2F;": "/", "&#x60;": "`",
   };
-  // Decode entities then strip dangerous tags to catch double-encoded XSS
-  let text = html.replace(/&(?:#x?[0-9a-f]+|[a-z]+);/gi, (match) => entities[match] ?? match);
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  // Remove block elements with content (handles spaces before closing >)
+  let text = html;
+  text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
+  text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
+  // Strip all remaining tags
   let prev = "";
   while (prev !== text) {
     prev = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  // Decode entities, then loop-strip script/style blocks and all tags until stable
+  text = text.replace(/&(?:#x?[0-9a-f]+|[a-z]+);/gi, (match) => entities[match] ?? match);
+  prev = "";
+  while (prev !== text) {
+    prev = text;
+    text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
+    text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
     text = text.replace(/<[^>]*>/g, "");
   }
   return text.trim();

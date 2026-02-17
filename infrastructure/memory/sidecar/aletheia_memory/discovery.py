@@ -498,7 +498,7 @@ async def get_discovery_candidates(limit: int = 20):
         return {"ok": True, "candidates": candidates}
     except Exception as e:
         logger.warning(f"get_discovery_candidates failed: {e}")
-        return {"ok": True, "candidates": [], "error": str(e)}
+        return {"ok": True, "candidates": [], "error": "Internal error"}
 
 
 @discovery_router.get("/stats")

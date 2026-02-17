@@ -583,6 +583,56 @@ export function createGateway(
     return c.json(await res.json(), res.status as 200);
   });
 
+  // --- Export / Analytics API ---
+
+  app.get("/api/export/stats", (c) => {
+    const nousId = c.req.query("nousId");
+    const since = c.req.query("since");
+    const stats = store.getExportStats({
+      ...(nousId ? { nousId } : {}),
+      ...(since ? { since } : {}),
+    });
+    return c.json(stats);
+  });
+
+  app.get("/api/export/sessions", (c) => {
+    const nousId = c.req.query("nousId");
+    const since = c.req.query("since");
+    const until = c.req.query("until");
+    const sessions = store.listSessionsFiltered({
+      ...(nousId ? { nousId } : {}),
+      ...(since ? { since } : {}),
+      ...(until ? { until } : {}),
+    });
+    return c.json({ sessions });
+  });
+
+  app.get("/api/export/sessions/:id", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const messages = store.getHistory(id, { excludeDistilled: false });
+    const usage = store.getUsageForSession(id);
+
+    // Stream as JSONL
+    const lines: string[] = [];
+    lines.push(JSON.stringify({ type: "session", ...session }));
+    for (const m of messages) {
+      lines.push(JSON.stringify({ type: "message", seq: m.seq, role: m.role, content: m.content, isDistilled: m.isDistilled, toolName: m.toolName ?? null, tokenEstimate: m.tokenEstimate ?? null, createdAt: m.createdAt }));
+    }
+    for (const u of usage) {
+      lines.push(JSON.stringify({ type: "usage", turnSeq: u.turnSeq, inputTokens: u.inputTokens, outputTokens: u.outputTokens, model: u.model, createdAt: u.createdAt }));
+    }
+
+    return new Response(lines.join("\n") + "\n", {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Content-Disposition": `attachment; filename="${id}.jsonl"`,
+      },
+    });
+  });
+
   // Blackboard API — for prosoche and external systems to post broadcasts
   app.get("/api/blackboard", (c) => {
     return c.json({ entries: store.blackboardList() });

@@ -301,7 +301,9 @@ def fetch_paper(identifier, output_dir="."):
     pdf_url = None
     basename = identifier
 
-    if "arxiv.org" in identifier or re.match(r"\d{4}\.\d+", identifier):
+    parsed_id = urllib.parse.urlparse(identifier)
+    is_arxiv_url = parsed_id.scheme in ("http", "https") and parsed_id.netloc in ("arxiv.org", "www.arxiv.org")
+    if is_arxiv_url or re.match(r"\d{4}\.\d+", identifier):
         arxiv_id = identifier.split("/")[-1].replace(".pdf", "")
         # Validate arxiv_id format to prevent path traversal
         if not re.match(r"^[\w.-]+$", arxiv_id):
@@ -351,7 +353,7 @@ def fetch_paper(identifier, output_dir="."):
         except Exception as e:
             print(f"Conversion note: {e}")
 
-    if "arxiv.org" in (pdf_url or ""):
+    if pdf_url and pdf_url.startswith(("https://arxiv.org/", "http://arxiv.org/")):
         html_url = pdf_url.replace("/pdf/", "/html/")
         print(f"Try HTML version: web_fetch {html_url}")
 

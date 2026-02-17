@@ -1003,4 +1003,99 @@ export class SessionStore {
       .run();
     return result.changes;
   }
+
+  // --- Export / Analytics ---
+
+  getUsageForSession(sessionId: string): Array<UsageRecord & { createdAt: string }> {
+    const rows = this.db
+      .prepare("SELECT * FROM usage WHERE session_id = ? ORDER BY turn_seq ASC")
+      .all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      sessionId: r["session_id"] as string,
+      turnSeq: r["turn_seq"] as number,
+      inputTokens: r["input_tokens"] as number,
+      outputTokens: r["output_tokens"] as number,
+      cacheReadTokens: r["cache_read_tokens"] as number,
+      cacheWriteTokens: r["cache_write_tokens"] as number,
+      model: r["model"] as string | null,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  getExportStats(opts?: { nousId?: string; since?: string }): {
+    totalSessions: number;
+    totalMessages: number;
+    userMessages: number;
+    assistantMessages: number;
+    toolMessages: number;
+    totalDistillations: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+  } {
+    const nousId = opts?.nousId ?? null;
+    const since = opts?.since ?? null;
+    const row = this.db
+      .prepare(`
+        SELECT
+          COUNT(DISTINCT m.session_id) AS total_sessions,
+          COUNT(*) AS total_messages,
+          SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS user_messages,
+          SUM(CASE WHEN m.role = 'assistant' THEN 1 ELSE 0 END) AS assistant_messages,
+          SUM(CASE WHEN m.role = 'tool_result' THEN 1 ELSE 0 END) AS tool_messages
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.id
+        WHERE (? IS NULL OR s.nous_id = ?)
+          AND (? IS NULL OR m.created_at >= ?)
+      `)
+      .get(nousId, nousId, since, since) as Record<string, number>;
+
+    const usageRow = this.db
+      .prepare(`
+        SELECT
+          COALESCE(SUM(u.input_tokens), 0) AS total_input,
+          COALESCE(SUM(u.output_tokens), 0) AS total_output
+        FROM usage u
+        JOIN sessions s ON u.session_id = s.id
+        WHERE (? IS NULL OR s.nous_id = ?)
+          AND (? IS NULL OR u.created_at >= ?)
+      `)
+      .get(nousId, nousId, since, since) as Record<string, number>;
+
+    const distillRow = this.db
+      .prepare(`
+        SELECT COUNT(*) AS total
+        FROM distillations d
+        JOIN sessions s ON d.session_id = s.id
+        WHERE (? IS NULL OR s.nous_id = ?)
+          AND (? IS NULL OR d.created_at >= ?)
+      `)
+      .get(nousId, nousId, since, since) as Record<string, number>;
+
+    return {
+      totalSessions: row["total_sessions"] ?? 0,
+      totalMessages: row["total_messages"] ?? 0,
+      userMessages: row["user_messages"] ?? 0,
+      assistantMessages: row["assistant_messages"] ?? 0,
+      toolMessages: row["tool_messages"] ?? 0,
+      totalDistillations: distillRow["total"] ?? 0,
+      totalInputTokens: usageRow["total_input"] ?? 0,
+      totalOutputTokens: usageRow["total_output"] ?? 0,
+    };
+  }
+
+  listSessionsFiltered(opts?: { nousId?: string; since?: string; until?: string }): Session[] {
+    const nousId = opts?.nousId ?? null;
+    const since = opts?.since ?? null;
+    const until = opts?.until ?? null;
+    const rows = this.db
+      .prepare(`
+        SELECT * FROM sessions
+        WHERE (? IS NULL OR nous_id = ?)
+          AND (? IS NULL OR created_at >= ?)
+          AND (? IS NULL OR created_at <= ?)
+        ORDER BY updated_at DESC
+      `)
+      .all(nousId, nousId, since, since, until, until) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.mapSession(r));
+  }
 }
