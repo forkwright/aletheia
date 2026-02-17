@@ -274,7 +274,8 @@ export function createGateway(
       // Strip markdown bold markers and clean up
       let parsedName = nameMatch?.[1]?.replace(/\*+/g, "").trim() || "";
       if (!parsedName) parsedName = agent.name ?? agent.id;
-      let parsedEmoji = emojiMatch?.[1]?.trim() ?? null;
+      let parsedEmoji = emojiMatch?.[1]?.replace(/\*+/g, "").trim() || null;
+      if (parsedEmoji === "") parsedEmoji = null;
       return c.json({
         id: agent.id,
         name: parsedName,
