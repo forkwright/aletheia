@@ -214,6 +214,22 @@ const GatewayConfig = z
         allowInsecureAuth: z.boolean().default(false),
       })
       .default({}),
+    mcp: z
+      .object({
+        requireAuth: z.boolean().default(true),
+      })
+      .default({}),
+    rateLimit: z
+      .object({
+        requestsPerMinute: z.number().default(60),
+      })
+      .default({}),
+    cors: z
+      .object({
+        allowOrigins: z.array(z.string()).default([]),
+      })
+      .default({}),
+    maxBodyBytes: z.number().default(1_048_576),
   })
   .passthrough()
   .default({});
