@@ -35,6 +35,10 @@ shared/checkpoints/
 shared/status/
 shared/insights/
 shared/task-contracts/
+shared/USER.md
+
+# === Runtime data ===
+data/
 
 # === OS ===
 .DS_Store
