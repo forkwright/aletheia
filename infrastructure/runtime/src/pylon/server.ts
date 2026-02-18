@@ -9,6 +9,7 @@ import type { AletheiaConfig } from "../taxis/schema.js";
 import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
+import type { McpClientManager } from "../organon/mcp-client.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +27,7 @@ function safeCompare(a: string, b: string): boolean {
 let cronRef: CronScheduler | null = null;
 let watchdogRef: Watchdog | null = null;
 let skillsRef: SkillRegistry | null = null;
+let mcpRef: McpClientManager | null = null;
 export function setCronRef(cron: CronScheduler): void {
   cronRef = cron;
 }
@@ -34,6 +36,9 @@ export function setWatchdogRef(wd: Watchdog): void {
 }
 export function setSkillsRef(sr: SkillRegistry): void {
   skillsRef = sr;
+}
+export function setMcpRef(mcp: McpClientManager): void {
+  mcpRef = mcp;
 }
 
 export function createGateway(
@@ -490,6 +495,27 @@ export function createGateway(
     });
   });
 
+  // --- MCP Servers API ---
+
+  app.get("/api/mcp/servers", (c) => {
+    return c.json({ servers: mcpRef?.getStatus() ?? [] });
+  });
+
+  app.post("/api/mcp/servers/:name/reconnect", async (c) => {
+    if (!mcpRef) return c.json({ error: "MCP not enabled" }, 400);
+    const name = c.req.param("name");
+    const mcpConfig = (config as Record<string, unknown>)["mcp"] as { servers?: Record<string, unknown> } | undefined;
+    const serverConfig = mcpConfig?.servers?.[name];
+    if (!serverConfig) return c.json({ error: "Server not found in config" }, 404);
+    try {
+      await mcpRef.connect(name, serverConfig as import("../organon/mcp-client.js").McpServerConfig);
+      return c.json({ ok: true, name });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `Reconnect failed: ${msg}` }, 500);
+    }
+  });
+
   // --- Cost Attribution API ---
 
   app.get("/api/costs/summary", (c) => {
@@ -595,6 +621,7 @@ export function createGateway(
       },
       cron: cronRef?.getStatus() ?? [],
       services: watchdogRef?.getStatus() ?? [],
+      mcp: mcpRef?.getStatus() ?? [],
     });
   });
 

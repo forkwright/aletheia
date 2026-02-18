@@ -44,6 +44,12 @@ export class ToolRegistry {
     log.debug(`Registered tool: ${name}`);
   }
 
+  unregister(name: string): boolean {
+    const deleted = this.tools.delete(name);
+    if (deleted) log.debug(`Unregistered tool: ${name}`);
+    return deleted;
+  }
+
   get(name: string): ToolHandler | undefined {
     return this.tools.get(name);
   }
