@@ -1,6 +1,6 @@
 // Nous manager — lifecycle, routing, agent turn execution
 import { join } from "node:path";
-import { createLogger } from "../koina/logger.js";
+import { createLogger, updateTurnContext } from "../koina/logger.js";
 import { SessionStore, type Message } from "../mneme/store.js";
 import { ProviderRouter } from "../hermeneus/router.js";
 import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
@@ -33,6 +33,7 @@ import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
 import { eventBus } from "../koina/event-bus.js";
 import { classifyInteraction } from "./interaction-signals.js";
+import { LoopDetector } from "./loop-detector.js";
 import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
 import { AsyncChannel } from "./async-channel.js";
 
@@ -264,6 +265,7 @@ export class NousManager {
       return;
     }
 
+    updateTurnContext({ nousId, sessionId, sessionKey });
     eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
     log.info(`Processing streaming message for ${nousId}:${sessionKey} (session ${sessionId})`);
 
@@ -370,8 +372,9 @@ export class NousManager {
     let totalCacheWriteTokens = 0;
     let currentMessages = messages;
     const turnToolCalls: ToolCallRecord[] = [];
+    const loopDetector = new LoopDetector();
 
-    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 40;
+    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 100;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       // Stream the completion
       let accumulatedText = "";
@@ -565,6 +568,27 @@ export class NousManager {
         this.store.appendMessage(sessionId, "tool_result", toolResult, {
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
         });
+
+        // Check for repetitive tool call patterns
+        const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
+        if (loopCheck.verdict === "halt") {
+          // Inject halt notice and stop
+          toolResults.push({
+            type: "tool_result", tool_use_id: toolUse.id,
+            content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
+            is_error: true,
+          });
+          currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+          yield { type: "error", message: loopCheck.reason ?? "Tool loop detected" };
+          return;
+        }
+        if (loopCheck.verdict === "warn") {
+          // Inject warning as an additional tool result so the model sees it
+          toolResults.push({
+            type: "tool_result", tool_use_id: toolUse.id,
+            content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
+          });
+        }
       }
 
       currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
@@ -667,6 +691,7 @@ export class NousManager {
       };
     }
 
+    updateTurnContext({ nousId, sessionId, sessionKey });
     eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
 
     log.info(
@@ -823,8 +848,9 @@ export class NousManager {
     let totalCacheWriteTokens = 0;
     let currentMessages = messages;
     const turnToolCalls: ToolCallRecord[] = [];
+    const loopDetector = new LoopDetector();
 
-    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 40;
+    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 100;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const result = await this.router.complete({
         model,
@@ -1060,6 +1086,25 @@ export class NousManager {
           toolName: toolUse.name,
           tokenEstimate: estimateTokens(toolResult),
         });
+
+        // Check for repetitive tool call patterns
+        const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
+        if (loopCheck.verdict === "halt") {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
+            is_error: true,
+          });
+          throw new Error(loopCheck.reason ?? "Tool loop detected");
+        }
+        if (loopCheck.verdict === "warn") {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
+          });
+        }
       }
 
       currentMessages = [
