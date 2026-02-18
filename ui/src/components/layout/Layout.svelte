@@ -3,7 +3,6 @@
   import Sidebar from "./Sidebar.svelte";
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
-  import GraphView from "../graph/GraphView.svelte";
   import { getToken, setToken } from "../../lib/api";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
 
@@ -73,7 +72,11 @@
       {#if activeView === "metrics"}
         <MetricsView />
       {:else if activeView === "graph"}
-        <GraphView />
+        {#await import("../graph/GraphView.svelte") then { default: GraphView }}
+          <GraphView />
+        {:catch}
+          <div style="padding:2rem;color:var(--text-secondary)">Failed to load graph view</div>
+        {/await}
       {:else}
         <ChatView />
       {/if}
