@@ -113,3 +113,21 @@ export async function fetchGraphExport(params?: GraphExportParams): Promise<Grap
     total_nodes: data.total_nodes ?? data.nodes.length,
   };
 }
+
+export async function approveToolCall(turnId: string, toolId: string, alwaysAllow = false): Promise<void> {
+  await fetchJson(`/api/turns/${encodeURIComponent(turnId)}/tools/${encodeURIComponent(toolId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ alwaysAllow }),
+  });
+}
+
+export async function denyToolCall(turnId: string, toolId: string): Promise<void> {
+  await fetchJson(`/api/turns/${encodeURIComponent(turnId)}/tools/${encodeURIComponent(toolId)}/deny`, {
+    method: "POST",
+  });
+}
+
+export async function fetchApprovalMode(): Promise<string> {
+  const data = await fetchJson<{ mode: string }>("/api/approval/mode");
+  return data.mode;
+}

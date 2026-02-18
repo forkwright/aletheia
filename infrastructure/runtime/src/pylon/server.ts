@@ -377,6 +377,41 @@ export function createGateway(
     return c.json({ ok: true, turnId: id });
   });
 
+  // --- Tool Approval ---
+
+  app.post("/api/turns/:turnId/tools/:toolId/approve", async (c) => {
+    const turnId = c.req.param("turnId");
+    const toolId = c.req.param("toolId");
+    let alwaysAllow = false;
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      alwaysAllow = body["alwaysAllow"] === true;
+    } catch {
+      // No body is fine
+    }
+    const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
+      decision: "approve",
+      alwaysAllow,
+    });
+    if (!resolved) return c.json({ error: "No pending approval for this tool" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/turns/:turnId/tools/:toolId/deny", (c) => {
+    const turnId = c.req.param("turnId");
+    const toolId = c.req.param("toolId");
+    const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
+      decision: "deny",
+    });
+    if (!resolved) return c.json({ error: "No pending approval for this tool" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/approval/mode", (c) => {
+    const approval = (config.agents.defaults as Record<string, unknown>)["approval"] as { mode?: string } | undefined;
+    return c.json({ mode: approval?.mode ?? "autonomous" });
+  });
+
   // --- Admin API ---
 
   app.get("/api/agents", (c) => {

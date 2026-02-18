@@ -2,6 +2,7 @@
   import MessageList from "./MessageList.svelte";
   import InputBar from "./InputBar.svelte";
   import ToolPanel from "./ToolPanel.svelte";
+  import ToolApproval from "./ToolApproval.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
   import {
@@ -18,6 +19,8 @@
     clearMessages,
     injectLocalMessage,
     setRemoteStreaming,
+    getPendingApproval,
+    clearPendingApproval,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -211,6 +214,13 @@
     return Math.min(100, Math.round((tokens / contextWindow) * 100));
   });
 
+  // Pending tool approval
+  let pendingApproval = $derived(currentAgentId ? getPendingApproval(currentAgentId) : null);
+
+  function handleApprovalResolved() {
+    if (currentAgentId) clearPendingApproval(currentAgentId);
+  }
+
   // Tool panel state
   let selectedTools = $state<ToolCallState[] | null>(null);
 
@@ -253,6 +263,9 @@
       <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
     {/if}
   </div>
+  {#if pendingApproval}
+    <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
+  {/if}
   <InputBar
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}
