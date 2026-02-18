@@ -1,6 +1,6 @@
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
-import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem } from "../lib/types";
+import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem, PendingApproval } from "../lib/types";
 
 interface AgentChatState {
   messages: ChatMessage[];
@@ -10,6 +10,7 @@ interface AgentChatState {
   activeToolCalls: ToolCallState[];
   error: string | null;
   abortController: AbortController | null;
+  pendingApproval: PendingApproval | null;
 }
 
 let states = $state<Record<string, AgentChatState>>({});
@@ -22,6 +23,7 @@ const EMPTY: AgentChatState = {
   activeToolCalls: [],
   error: null,
   abortController: null,
+  pendingApproval: null,
 };
 
 // Read-only access — returns default for unknown agents, never mutates during render
@@ -40,6 +42,7 @@ function writeState(agentId: string): AgentChatState {
       activeToolCalls: [],
       error: null,
       abortController: null,
+      pendingApproval: null,
     };
   }
   return states[agentId]!;
@@ -70,6 +73,14 @@ export function getError(agentId: string): string | null {
   return readState(agentId).error;
 }
 
+export function getPendingApproval(agentId: string): PendingApproval | null {
+  return readState(agentId).pendingApproval;
+}
+
+export function clearPendingApproval(agentId: string): void {
+  writeState(agentId).pendingApproval = null;
+}
+
 export function clearError(agentId: string): void {
   writeState(agentId).error = null;
 }
@@ -90,6 +101,7 @@ export function clearMessages(agentId: string): void {
   state.streamingText = "";
   state.activeToolCalls = [];
   state.error = null;
+  state.pendingApproval = null;
 }
 
 /** Inject a local-only message (not sent to any agent) */
@@ -165,6 +177,21 @@ export async function sendMessage(
           needsTextSeparator = true;
           break;
 
+        case "tool_approval_required":
+          state.pendingApproval = {
+            turnId: event.turnId,
+            toolName: event.toolName,
+            toolId: event.toolId,
+            input: event.input,
+            risk: event.risk,
+            reason: event.reason,
+          };
+          break;
+
+        case "tool_approval_resolved":
+          state.pendingApproval = null;
+          break;
+
         case "turn_complete": {
           const assistantMsg: ChatMessage = {
             id: `assistant-${Date.now()}`,
@@ -206,6 +233,7 @@ export async function sendMessage(
     state.streamingText = "";
     state.activeToolCalls = [];
     state.abortController = null;
+    state.pendingApproval = null;
   }
 }
 

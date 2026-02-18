@@ -10,6 +10,8 @@ import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
 import { distillSession } from "../distillation/pipeline.js";
+import { ApprovalGate } from "../organon/approval.js";
+import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
 import { resolveNousId } from "./pipeline/stages/resolve.js";
 import { runStreamingPipeline, runBufferedPipeline } from "./pipeline/runner.js";
@@ -43,6 +45,7 @@ export class NousManager {
   private activeTurnsByNous = new Map<string, number>();
   private turnAbortControllers = new Map<string, AbortController>();
   private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
+  readonly approvalGate = new ApprovalGate();
   isDraining: () => boolean = () => false;
 
   constructor(
@@ -80,6 +83,9 @@ export class NousManager {
   }
 
   private buildServices(): RuntimeServices {
+    const approvalMode: ApprovalMode =
+      ((this.config.agents.defaults as Record<string, unknown>)["approval"] as { mode?: ApprovalMode } | undefined)?.mode ?? "autonomous";
+
     return {
       config: this.config,
       store: this.store,
@@ -90,6 +96,8 @@ export class NousManager {
       ...(this.competence ? { competence: this.competence } : {}),
       ...(this.uncertainty ? { uncertainty: this.uncertainty } : {}),
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
+      approvalGate: this.approvalGate,
+      approvalMode,
     };
   }
 

@@ -60,6 +60,13 @@ const CompactionConfig = z
   })
   .default({});
 
+const ApprovalConfig = z
+  .object({
+    mode: z.enum(["autonomous", "guarded", "supervised"]).default("autonomous"),
+    autoApproveTimeoutMs: z.number().default(0), // 0 = wait forever
+  })
+  .default({});
+
 const ToolsConfig = z
   .object({
     profile: z
@@ -130,6 +137,7 @@ const AgentDefaults = z.preprocess(
         overrides: z.record(z.string(), z.number()).default({}),
       })
       .default({}),
+    approval: ApprovalConfig.default({}),
   }).passthrough(),
 ).default({});
 

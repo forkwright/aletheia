@@ -3,6 +3,7 @@ import { createLogger } from "../../../koina/logger.js";
 import { estimateTokens } from "../../../hermeneus/token-counter.js";
 import { getReversibility, requiresSimulation } from "../../../organon/reversibility.js";
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
+import { requiresApproval as checkApproval } from "../../../organon/approval.js";
 import { checkResponseQuality } from "../../circuit-breaker.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type {
@@ -158,6 +159,62 @@ export async function* executeStreaming(
 
       const reversibility = getReversibility(toolUse.name);
       const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
+
+      // Tool approval gate — check if this tool needs user confirmation
+      if (services.approvalGate && services.approvalMode && services.approvalMode !== "autonomous") {
+        const approvalCheck = checkApproval(
+          toolUse.name,
+          toolUse.input as Record<string, unknown>,
+          services.approvalMode,
+          services.approvalGate.getSessionAllowList(sessionId),
+        );
+
+        if (approvalCheck.required) {
+          yield {
+            type: "tool_approval_required",
+            turnId: state.turnId ?? `${nousId}:${sessionId}`,
+            toolName: toolUse.name,
+            toolId: toolUse.id,
+            input: toolUse.input,
+            risk: approvalCheck.risk,
+            reason: approvalCheck.reason ?? "Approval required",
+          };
+
+          try {
+            const decision = await services.approvalGate.waitForApproval(
+              state.turnId ?? `${nousId}:${sessionId}`,
+              toolUse.id,
+              toolUse.name,
+              toolUse.input,
+              approvalCheck.risk,
+              abortSignal,
+            );
+
+            yield { type: "tool_approval_resolved", toolId: toolUse.id, decision: decision.decision };
+
+            if (decision.alwaysAllow) {
+              services.approvalGate.addToSessionAllowList(sessionId, toolUse.name);
+            }
+
+            if (decision.decision === "deny") {
+              toolResults.push({
+                type: "tool_result", tool_use_id: toolUse.id,
+                content: `[DENIED] Tool "${toolUse.name}" was denied by the user.`,
+                is_error: true,
+              });
+              continue;
+            }
+          } catch {
+            // Approval cancelled (abort or timeout) — deny the tool
+            toolResults.push({
+              type: "tool_result", tool_use_id: toolUse.id,
+              content: `[DENIED] Tool "${toolUse.name}" approval was cancelled.`,
+              is_error: true,
+            });
+            continue;
+          }
+        }
+      }
 
       let toolResult: string;
       let isError = false;
@@ -351,6 +408,25 @@ export async function executeBuffered(
       const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
       log.debug(`Tool call: ${toolUse.name} (${reversibility}${needsSim ? ", SIMULATED" : ""})`);
       if (needsSim) log.warn(`Simulation required for ${toolUse.name} (${reversibility}) — logging to trace`);
+
+      // Non-streaming approval gate — auto-deny destructive ops (no UI to approve)
+      if (services.approvalMode && services.approvalMode !== "autonomous") {
+        const nsApprovalCheck = checkApproval(
+          toolUse.name,
+          toolUse.input as Record<string, unknown>,
+          services.approvalMode,
+          services.approvalGate?.getSessionAllowList(sessionId),
+        );
+        if (nsApprovalCheck.required) {
+          log.warn(`Tool "${toolUse.name}" requires approval but no interactive session — auto-denying`);
+          toolResults.push({
+            type: "tool_result", tool_use_id: toolUse.id,
+            content: `[DENIED] Tool "${toolUse.name}" requires approval but no interactive session is available.`,
+            is_error: true,
+          });
+          continue;
+        }
+      }
 
       let toolResult: string;
       let isError = false;
