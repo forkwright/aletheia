@@ -77,6 +77,30 @@ export function allNousIds(config: AletheiaConfig): string[] {
   return config.agents.list.map((n) => n.id);
 }
 
+/**
+ * Apply env vars from config.env.vars to process.env.
+ * Must be called before any module reads process.env (router, providers, etc.).
+ * Existing env vars take precedence (won't overwrite).
+ */
+export function applyEnv(config: AletheiaConfig): number {
+  const vars = config.env?.vars;
+  if (!vars || Object.keys(vars).length === 0) return 0;
+
+  let applied = 0;
+  for (const [key, value] of Object.entries(vars)) {
+    if (process.env[key]) {
+      log.debug(`env: ${key} already set in environment, skipping`);
+      continue;
+    }
+    process.env[key] = value;
+    applied++;
+    // Mask sensitive values in log output
+    const masked = value.length > 8 ? value.slice(0, 4) + "..." + value.slice(-4) : "****";
+    log.info(`env: set ${key} from config (${masked})`);
+  }
+  return applied;
+}
+
 const KNOWN_TOP_KEYS = new Set([
   "agents", "bindings", "channels", "gateway", "plugins",
   "session", "cron", "models", "env", "watchdog",

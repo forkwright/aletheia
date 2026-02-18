@@ -1,7 +1,7 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
-import { loadConfig } from "./taxis/loader.js";
+import { loadConfig, applyEnv } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -80,15 +80,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   const config = loadConfig(configPath);
 
-  // Apply env vars from config before anything reads process.env
-  const configEnv = (config as Record<string, unknown>)["env"];
-  if (configEnv && typeof configEnv === "object") {
-    for (const [key, value] of Object.entries(configEnv as Record<string, string>)) {
-      if (typeof value === "string" && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-  }
+  applyEnv(config);
 
   const store = new SessionStore(paths.sessionsDb());
   const router = createDefaultRouter(config.models);
