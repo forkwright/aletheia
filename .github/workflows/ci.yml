@@ -45,7 +45,9 @@ jobs:
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - name: Install system tools
-        run: sudo apt-get install -y ripgrep fd-find
+        run: |
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run test:coverage
       - uses: actions/upload-artifact@v4

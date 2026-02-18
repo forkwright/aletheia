@@ -59,7 +59,7 @@ export async function recallMemories(
   }
 
   const filtered = hits
-    .filter((h) => h.score != null && h.score >= minScore)
+    .filter((h) => h.score !== null && h.score !== undefined && h.score >= minScore)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   const seen = new Set<string>();
