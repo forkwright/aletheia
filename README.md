@@ -1,8 +1,8 @@
 # Aletheia
 
-*Multi-agent AI system coordinating specialized agents through Signal messaging.*
+*Multi-agent AI system infrastructure coordinating specialized agents through a custom web UI & Signal messaging.*
 
-Self-hosted, privacy-first. Runs on a home server as a systemd service.
+Self-hosted, privacy-first. Runs on most any hardware as a systemd service.
 
 ---
 
@@ -31,9 +31,9 @@ Self-hosted, privacy-first. Runs on a home server as a systemd service.
 
 **Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~354KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
 
-**Communication**: Signal messenger via signal-cli (JSON-RPC mode on port 8080). 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
+**Communication**: Fully featured web chat with file upload. Signal messenger via signal-cli. 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
-**Models**: Claude Opus 4.6 (primary), Claude Sonnet 4 (fallback). Complexity-based routing with temperature selection. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure.
+**Models**: Currently only piped for Anthropic oauth or API. Complexity-based routing with temperature selection. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure being built.
 
 **Memory**: Dual-layer — Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Self-observation tools (calibration, correction tracking).
 
