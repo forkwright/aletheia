@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
+  import { highlightCode, inferLanguage } from "../../lib/markdown";
+  import DOMPurify from "dompurify";
   import Spinner from "../shared/Spinner.svelte";
 
   let { tools, onClose }: {
@@ -78,6 +80,42 @@
     if (trimmed.length <= 120) return trimmed;
     return trimmed.slice(0, 120) + "…";
   }
+
+  const COLLAPSE_THRESHOLD = 20;
+  let collapsedIds = $state<Set<string>>(new Set());
+
+  function toggleCollapse(id: string) {
+    const next = new Set(collapsedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    collapsedIds = next;
+  }
+
+  function resultLineCount(result: string | undefined): number {
+    if (!result) return 0;
+    return result.split("\n").length;
+  }
+
+  function isCollapsible(tool: ToolCallState): boolean {
+    return resultLineCount(tool.result) > COLLAPSE_THRESHOLD;
+  }
+
+  function isCollapsed(tool: ToolCallState): boolean {
+    return isCollapsible(tool) && !collapsedIds.has(tool.id);
+  }
+
+  function highlightResult(tool: ToolCallState): string {
+    if (!tool.result) return "";
+    const lang = inferLanguage(tool.name, tool.result);
+    if (lang) {
+      return DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
+    }
+    // Escape HTML for non-highlighted results
+    return tool.result
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
 </script>
 
 <div class="tool-panel">
@@ -134,7 +172,12 @@
         </button>
         {#if expandedIds.has(tool.id) && tool.result}
           <div class="tool-detail">
-            <pre class="tool-result">{tool.result}</pre>
+            <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
+            {#if isCollapsible(tool)}
+              <button class="collapse-toggle" onclick={() => toggleCollapse(tool.id)}>
+                {isCollapsed(tool) ? `Show all ${resultLineCount(tool.result)} lines` : "Show less"}
+              </button>
+            {/if}
           </div>
         {:else if !expandedIds.has(tool.id) && tool.result}
           <div class="tool-preview">{previewResult(tool.result)}</div>
@@ -341,6 +384,40 @@
     border-radius: var(--radius-sm);
     padding: 8px 10px;
   }
+  .tool-result.collapsed {
+    max-height: calc(1.5em * 10 + 16px);
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+  .collapse-toggle {
+    display: block;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 11px;
+    padding: 2px 0;
+    cursor: pointer;
+    margin-top: 2px;
+  }
+  .collapse-toggle:hover {
+    text-decoration: underline;
+  }
+  /* hljs tokens in tool results */
+  .tool-result :global(.hljs-keyword) { color: #ff7b72; }
+  .tool-result :global(.hljs-string),
+  .tool-result :global(.hljs-regexp) { color: #a5d6ff; }
+  .tool-result :global(.hljs-number) { color: #79c0ff; }
+  .tool-result :global(.hljs-comment) { color: #8b949e; }
+  .tool-result :global(.hljs-built_in) { color: #ffa657; }
+  .tool-result :global(.hljs-function),
+  .tool-result :global(.hljs-title) { color: #d2a8ff; }
+  .tool-result :global(.hljs-property) { color: #79c0ff; }
+  .tool-result :global(.hljs-tag) { color: #7ee787; }
+  .tool-result :global(.hljs-name) { color: #7ee787; }
+  .tool-result :global(.hljs-attr) { color: #79c0ff; }
+  .tool-result :global(.hljs-addition) { color: #aff5b4; background: rgba(63, 185, 80, 0.15); }
+  .tool-result :global(.hljs-deletion) { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
 
   @media (max-width: 768px) {
     .tool-panel {
