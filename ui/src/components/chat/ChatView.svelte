@@ -13,9 +13,11 @@
     clearError,
     sendMessage,
     abortStream,
+    hasLocalStream,
     loadHistory,
     clearMessages,
     injectLocalMessage,
+    setRemoteStreaming,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -33,22 +35,69 @@
     createNewSession,
     loadSessions,
   } from "../../stores/sessions.svelte";
+  import { onGlobalEvent } from "../../lib/events";
+  import { onMount, onDestroy } from "svelte";
 
-  // Load history when active session changes (but skip if we just streamed into it)
+  // Recover streaming state after refresh
+  let unsubEvents: (() => void) | null = null;
+
+  onMount(() => {
+    unsubEvents = onGlobalEvent((event, data) => {
+      const agentId = getActiveAgentId();
+      if (!agentId) return;
+
+      if (event === "init") {
+        const initData = data as { activeTurns?: Record<string, number> };
+        const activeTurns = initData.activeTurns ?? {};
+        if (activeTurns[agentId] && activeTurns[agentId] > 0) {
+          setRemoteStreaming(agentId, true);
+        }
+      }
+
+      if (event === "turn:after") {
+        const turnData = data as { nousId?: string; sessionId?: string };
+        if (turnData.nousId === agentId) {
+          setRemoteStreaming(agentId, false);
+          // Only reload from server if no local stream is managing messages
+          if (!hasLocalStream(agentId)) {
+            const sessionId = getActiveSessionId();
+            if (sessionId) {
+              loadHistory(agentId, sessionId);
+            }
+          }
+          refreshSessions(agentId);
+        }
+      }
+
+      if (event === "turn:before") {
+        const turnData = data as { nousId?: string };
+        if (turnData.nousId === agentId) {
+          setRemoteStreaming(agentId, true);
+        }
+      }
+    });
+  });
+
+  onDestroy(() => {
+    unsubEvents?.();
+  });
+
+  // Load history when active session or agent changes
   let prevSessionId: string | null = null;
   let skipNextHistoryLoad = false;
   $effect(() => {
     const sessionId = getActiveSessionId();
-    if (sessionId && sessionId !== prevSessionId) {
+    const currentAgentId = getActiveAgentId();
+    if (sessionId && currentAgentId && sessionId !== prevSessionId) {
       prevSessionId = sessionId;
       if (skipNextHistoryLoad) {
         skipNextHistoryLoad = false;
       } else {
-        loadHistory(sessionId);
+        loadHistory(currentAgentId, sessionId);
       }
     } else if (!sessionId && prevSessionId) {
       prevSessionId = null;
-      clearMessages();
+      if (currentAgentId) clearMessages(currentAgentId);
     }
   });
 
@@ -57,14 +106,19 @@
     "/new": {
       description: "Start a fresh conversation",
       handler: () => {
-        const agentId = getActiveAgentId();
-        if (agentId) createNewSession(agentId);
-        clearMessages();
+        const id = getActiveAgentId();
+        if (id) {
+          createNewSession(id);
+          clearMessages(id);
+        }
       },
     },
     "/clear": {
       description: "Clear message display (keeps server history)",
-      handler: () => clearMessages(),
+      handler: () => {
+        const id = getActiveAgentId();
+        if (id) clearMessages(id);
+      },
     },
     "/switch": {
       description: "Switch agent — /switch <name>",
@@ -83,10 +137,12 @@
     "/help": {
       description: "Show available commands",
       handler: () => {
+        const id = getActiveAgentId();
+        if (!id) return;
         const helpLines = Object.entries(slashCommands)
           .map(([cmd, { description }]) => `\`${cmd}\` — ${description}`)
           .join("\n");
-        injectLocalMessage(`**Available commands:**\n${helpLines}`);
+        injectLocalMessage(id, `**Available commands:**\n${helpLines}`);
       },
     },
   };
@@ -110,18 +166,18 @@
       return;
     }
 
-    const agentId = getActiveAgentId();
-    if (!agentId) return;
+    const currentAgentId = getActiveAgentId();
+    if (!currentAgentId) return;
     const sessionKey = getActiveSessionKey();
-    sendMessage(agentId, text, sessionKey, media).then(() => {
+    sendMessage(currentAgentId, text, sessionKey, media).then(() => {
       skipNextHistoryLoad = true;
-      refreshSessions(agentId);
+      refreshSessions(currentAgentId);
     });
   }
 
   let agent = $derived(getActiveAgent());
-  let agentId = $derived(getActiveAgentId());
-  let emoji = $derived(agentId ? getAgentEmoji(agentId) : null);
+  let currentAgentId = $derived(getActiveAgentId());
+  let emoji = $derived(currentAgentId ? getAgentEmoji(currentAgentId) : null);
 
   // Context utilization for distillation indicator
   let session = $derived(getActiveSession());
@@ -142,6 +198,11 @@
     selectedTools = null;
   }
 
+  function handleAbort() {
+    const id = getActiveAgentId();
+    if (id) abortStream(id);
+  }
+
   function getSlashCommands(): Array<{ command: string; description: string }> {
     return Object.entries(slashCommands).map(([command, { description }]) => ({
       command,
@@ -151,15 +212,15 @@
 </script>
 
 <div class="chat-view">
-  {#if getError()}
-    <ErrorBanner message={getError()!} onDismiss={clearError} />
+  {#if currentAgentId && getError(currentAgentId)}
+    <ErrorBanner message={getError(currentAgentId)!} onDismiss={() => { if (currentAgentId) clearError(currentAgentId); }} />
   {/if}
   <div class="chat-area">
     <MessageList
-      messages={getMessages()}
-      streamingText={getStreamingText()}
-      activeToolCalls={getActiveToolCalls()}
-      isStreaming={getIsStreaming()}
+      messages={currentAgentId ? getMessages(currentAgentId) : []}
+      streamingText={currentAgentId ? getStreamingText(currentAgentId) : ""}
+      activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
+      isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
       agentName={agent?.name}
       agentEmoji={emoji}
       onToolClick={handleToolClick}
@@ -169,9 +230,9 @@
     {/if}
   </div>
   <InputBar
-    isStreaming={getIsStreaming()}
+    isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}
-    onAbort={abortStream}
+    onAbort={handleAbort}
     contextPercent={contextPercent()}
     slashCommands={getSlashCommands()}
   />
