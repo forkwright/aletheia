@@ -42,13 +42,13 @@
       },
       "test-deploy": {
         "domain": "test-deploy",
-        "score": 0.6200000000000001,
+        "score": 0.6400000000000001,
         "corrections": 0,
-        "successes": 6,
+        "successes": 7,
         "disagreements": 0,
-        "lastUpdated": "2026-02-18T15:14:21.241Z"
+        "lastUpdated": "2026-02-18T17:42:03.247Z"
       }
     },
-    "overallScore": 0.6300000000000001
+    "overallScore": 0.6400000000000001
   }
 }
