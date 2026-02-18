@@ -79,10 +79,11 @@ function loadAuthoredTool(dir: string, name: string): ToolHandler | null {
   // The tool file must export: { definition, execute }
   // We evaluate it in a controlled way
   try {
-    // eslint-disable-next-line no-new-func
+    // Sandboxed evaluation: no require, no process, no global access
     const module = { exports: {} as Record<string, unknown> };
-    const fn = new Function("module", "exports", "require", code);
-    fn(module, module.exports, require);
+    // eslint-disable-next-line no-new-func
+    const fn = new Function("module", "exports", code);
+    fn(module, module.exports);
 
     const def = module.exports["definition"] as Record<string, unknown> | undefined;
     const exec = module.exports["execute"] as Function | undefined;

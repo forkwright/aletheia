@@ -111,7 +111,7 @@ export function createGateway(
   const authToken = config.gateway.auth.token;
 
   app.use("*", async (c, next) => {
-    if (c.req.path === "/health" || c.req.path === "/api/branding" || c.req.path.startsWith("/ui")) return next();
+    if (c.req.path === "/health" || c.req.path === "/api/branding" || c.req.path === "/ui" || c.req.path.startsWith("/ui/")) return next();
 
     if (authMode === "token" && authToken) {
       const header = c.req.header("Authorization");

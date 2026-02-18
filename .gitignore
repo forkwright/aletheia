@@ -107,3 +107,4 @@ shared/traces/
 
 # === Config with tokens ===
 nous/*/config/
+shared/competence/model.json

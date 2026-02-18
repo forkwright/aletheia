@@ -1,7 +1,7 @@
 // MCP (Model Context Protocol) server — exposes Aletheia agents as MCP tools
 import { Hono } from "hono";
 import { readFileSync, existsSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { NousManager } from "../nous/manager.js";
@@ -56,7 +56,13 @@ export function validateMcpToken(
   if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
   if (!token) return null;
-  return tokens.find((t) => t.token === token) ?? null;
+  return tokens.find((t) => {
+    try {
+      const a = Buffer.from(t.token);
+      const b = Buffer.from(token);
+      return a.length === b.length && timingSafeEqual(a, b);
+    } catch { return false; }
+  }) ?? null;
 }
 
 function hasScope(client: McpToken, required: string): boolean {

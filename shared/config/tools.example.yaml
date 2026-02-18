@@ -1,7 +1,7 @@
-# tools.yaml — Machine-native tool reference
+# tools.yaml - Machine-native tool reference
 # Copy to tools.yaml and fill in your deployment-specific values.
 
-# -- Work tools (deployment-specific) --
+# -- Data tools (deployment-specific) --
 
 redshift:
   description: "Data warehouse (AWS Redshift Provisioned)"
@@ -31,8 +31,10 @@ hex:
   projects: {}
   notes: "API is execution/metadata only. Cannot edit notebook content."
 
+# -- Development tools --
+
 github:
-  work_account: YOUR_GITHUB_USERNAME
+  account: YOUR_GITHUB_USERNAME
   repos: {}
   commands:
     status: "safe-git status"
@@ -51,7 +53,7 @@ office:
   list: "office list file.pptx"
   convert: "office convert file.pptx --to pdf"
 
-# -- Upstream research tools (kept from aletheia) --
+# -- Research tools --
 
 research:
   pplx: {cmd: "pplx \"query\"", flags: ["--sources", "--raw"]}
