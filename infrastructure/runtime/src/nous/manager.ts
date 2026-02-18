@@ -374,8 +374,9 @@ export class NousManager {
     const turnToolCalls: ToolCallRecord[] = [];
     const loopDetector = new LoopDetector();
 
-    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 100;
-    for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+    // No hard cap — the LoopDetector handles actual repetitive patterns.
+    // The loop exits naturally when the model produces a text-only response (no tool_use).
+    for (let loop = 0; ; loop++) {
       // Stream the completion
       let accumulatedText = "";
       let streamResult: import("../hermeneus/anthropic.js").TurnResult | null = null;
@@ -593,8 +594,6 @@ export class NousManager {
 
       currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
     }
-
-    yield { type: "error", message: "Max tool loops exceeded" };
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
@@ -850,8 +849,8 @@ export class NousManager {
     const turnToolCalls: ToolCallRecord[] = [];
     const loopDetector = new LoopDetector();
 
-    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 100;
-    for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+    // No hard cap — the LoopDetector handles actual repetitive patterns.
+    for (let loop = 0; ; loop++) {
       const result = await this.router.complete({
         model,
         system: systemPrompt,
@@ -1115,8 +1114,6 @@ export class NousManager {
         },
       ];
     }
-
-    throw new Error("Max tool loops exceeded");
   }
 
   private resolveNousId(msg: InboundMessage): string {

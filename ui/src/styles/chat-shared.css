@@ -71,34 +71,4 @@
   margin-top: 2px;
 }
 
-.chat-tool-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  margin-bottom: 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.chat-tool-pill:hover {
-  background: var(--surface-hover);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.chat-tool-pill.has-error {
-  border-color: var(--red);
-  color: var(--red);
-}
-
-.chat-tool-icon {
-  font-size: 12px;
-  opacity: 0.7;
-}
+/* Tool pill styles removed — replaced by ToolStatusLine component */
