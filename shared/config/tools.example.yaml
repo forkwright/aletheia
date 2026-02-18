@@ -1,6 +1,36 @@
 # tools.yaml - Machine-native tool reference
 # Copy to tools.yaml and fill in your deployment-specific values.
 
+# -- Data tools (deployment-specific) --
+
+redshift:
+  description: "Data warehouse (AWS Redshift Provisioned)"
+  cluster: YOUR_CLUSTER_IDENTIFIER
+  database: dev
+  user: YOUR_ADMIN_USER
+  commands:
+    query: 'query_redshift.sh "SQL"'
+    query_file: 'query_redshift.sh -f path/to/query.sql'
+    schema_table: 'schema_lookup.py table <name>'
+    schema_column: 'schema_lookup.py column <name>'
+    schema_search: 'schema_lookup.py search <term>'
+  notes: "Read-only by default. AWS SSO tokens expire; run 'aws sso login' to refresh."
+
+hex:
+  description: "Hex dashboards"
+  api_url: "https://app.hex.tech/api/v1"
+  config: "~/.hex-mcp/config.yaml"
+  commands:
+    list: "list_hex_projects"
+    search: "search_hex_projects"
+    get: "get_hex_project"
+    run: "run_hex_project"
+    status: "get_hex_run_status"
+    runs: "get_hex_project_runs"
+    cancel: "cancel_hex_run"
+  projects: {}
+  notes: "API is execution/metadata only. Cannot edit notebook content."
+
 # -- Development tools --
 
 github:
