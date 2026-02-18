@@ -196,6 +196,12 @@
         >{cid}</button>
       {/each}
     </div>
+    <button
+      class="pill refresh-btn"
+      onclick={() => loadGraph()}
+      disabled={getLoading()}
+      title="Reload graph data"
+    >{getLoading() ? "..." : "Refresh"}</button>
     <span class="graph-stats">
       {getGraphData().nodes.length} nodes · {getGraphData().edges.length} edges
     </span>

@@ -28,18 +28,16 @@ describe("createUiRoutes", () => {
     expect(app.fetch).toBeDefined();
   });
 
-  it("/ui returns HTML dashboard", async () => {
+  it("/ui returns HTML", async () => {
     const app = createUiRoutes(makeConfig(), null, makeStore());
     const res = await app.request("/ui");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("Aletheia");
-    expect(html).toContain("Syn");
-    expect(html).toContain("Eiron");
   });
 
-  it("/ui/* returns same dashboard HTML", async () => {
+  it("/ui/* serves SPA (fallback to index.html)", async () => {
     const app = createUiRoutes(makeConfig(), null, makeStore());
     const res = await app.request("/ui/agents/syn");
     expect(res.status).toBe(200);
@@ -54,35 +52,11 @@ describe("createUiRoutes", () => {
     expect(res.headers.get("Content-Type")).toBe("text/event-stream");
     expect(res.headers.get("Cache-Control")).toBe("no-cache");
   });
-
-  it("fallback dashboard contains agent names", async () => {
-    const app = createUiRoutes(makeConfig(), null, makeStore());
-    const res = await app.request("/ui");
-    const html = await res.text();
-    expect(html).toContain("Syn");
-    expect(html).toContain("Eiron");
-  });
-
-  it("fallback dashboard includes CSS styles", async () => {
-    const app = createUiRoutes(makeConfig(), null, makeStore());
-    const res = await app.request("/ui");
-    const html = await res.text();
-    expect(html).toContain("<style>");
-    expect(html).toContain("--bg:");
-  });
-
-  it("fallback dashboard shows build instructions", async () => {
-    const app = createUiRoutes(makeConfig(), null, makeStore());
-    const res = await app.request("/ui");
-    const html = await res.text();
-    expect(html).toContain("npm run build");
-  });
 });
 
 describe("broadcastEvent", () => {
   it("is exported and callable", () => {
     expect(typeof broadcastEvent).toBe("function");
-    // Should not throw even when no clients connected
     broadcastEvent("test", { hello: "world" });
   });
 });

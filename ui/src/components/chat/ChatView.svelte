@@ -16,6 +16,7 @@
     loadHistory,
     clearMessages,
     injectLocalMessage,
+    setRemoteStreaming,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -33,6 +34,50 @@
     createNewSession,
     loadSessions,
   } from "../../stores/sessions.svelte";
+  import { onGlobalEvent } from "../../lib/events";
+  import { onMount, onDestroy } from "svelte";
+
+  // Recover streaming state after refresh
+  let unsubEvents: (() => void) | null = null;
+
+  onMount(() => {
+    unsubEvents = onGlobalEvent((event, data) => {
+      const agentId = getActiveAgentId();
+      if (!agentId) return;
+
+      if (event === "init") {
+        const initData = data as { activeTurns?: Record<string, number> };
+        const activeTurns = initData.activeTurns ?? {};
+        if (activeTurns[agentId] && activeTurns[agentId] > 0) {
+          setRemoteStreaming(agentId, true);
+        }
+      }
+
+      if (event === "turn:after") {
+        const turnData = data as { nousId?: string; sessionId?: string };
+        if (turnData.nousId === agentId) {
+          setRemoteStreaming(agentId, false);
+          // Reload messages to pick up the completed response
+          const sessionId = getActiveSessionId();
+          if (sessionId) {
+            loadHistory(agentId, sessionId);
+            refreshSessions(agentId);
+          }
+        }
+      }
+
+      if (event === "turn:before") {
+        const turnData = data as { nousId?: string };
+        if (turnData.nousId === agentId) {
+          setRemoteStreaming(agentId, true);
+        }
+      }
+    });
+  });
+
+  onDestroy(() => {
+    unsubEvents?.();
+  });
 
   // Load history when active session or agent changes
   let prevSessionId: string | null = null;
