@@ -25,11 +25,9 @@ describe("readTool", () => {
     expect(result).toContain("hello world");
   });
 
-  it("resolves paths outside workspace without restriction", async () => {
+  it("blocks paths outside workspace", async () => {
     const { readTool } = await import("./read.js");
-    // Should not throw — path restrictions removed
-    const result = await readTool.execute({ path: "/etc/hostname" }, ctx);
-    expect(typeof result).toBe("string");
+    await expect(readTool.execute({ path: "/etc/hostname" }, ctx)).rejects.toThrow("Path traversal blocked");
   });
 
   it("has valid tool definition", async () => {
@@ -59,14 +57,11 @@ describe("writeTool", () => {
     expect(readFileSync(join(workspace, "sub/dir/file.txt"), "utf-8")).toBe("deep");
   });
 
-  it("resolves paths outside workspace without restriction", async () => {
+  it("blocks paths outside workspace", async () => {
     const { writeTool } = await import("./write.js");
-    // Should not throw — path restrictions removed
-    const result = await writeTool.execute(
-      { path: "/tmp/aletheia-test-write.txt", content: "test" },
-      ctx,
-    );
-    expect(result).toContain("/tmp/aletheia-test-write.txt");
+    await expect(
+      writeTool.execute({ path: "/tmp/aletheia-test-write.txt", content: "test" }, ctx),
+    ).rejects.toThrow("Path traversal blocked");
   });
 
   it("has valid tool definition", async () => {

@@ -13,16 +13,16 @@ describe("safePath", () => {
     expect(safePath(ws, "sub/dir/file.txt")).toBe("/home/agent/workspace/sub/dir/file.txt");
   });
 
-  it("resolves absolute paths as-is", () => {
-    expect(safePath(ws, "/etc/hosts")).toBe("/etc/hosts");
+  it("blocks absolute paths outside workspace", () => {
+    expect(() => safePath(ws, "/etc/hosts")).toThrow("Path traversal blocked");
   });
 
-  it("resolves parent traversal to absolute path", () => {
-    expect(safePath(ws, "../etc/passwd")).toBe("/home/agent/etc/passwd");
+  it("blocks parent traversal escaping workspace", () => {
+    expect(() => safePath(ws, "../etc/passwd")).toThrow("Path traversal blocked");
   });
 
-  it("resolves paths outside workspace without restriction", () => {
-    expect(safePath(ws, "/tmp/data.txt")).toBe("/tmp/data.txt");
+  it("blocks paths outside workspace without allowedRoots", () => {
+    expect(() => safePath(ws, "/tmp/data.txt")).toThrow("Path traversal blocked");
   });
 
   it("handles . (current dir)", () => {
@@ -33,7 +33,19 @@ describe("safePath", () => {
     expect(safePath(ws, "./file.txt")).toBe("/home/agent/workspace/file.txt");
   });
 
-  it("ignores allowedRoots parameter", () => {
+  it("allows paths in allowedRoots", () => {
     expect(safePath(ws, "/mnt/ssd/data.txt", ["/mnt/ssd"])).toBe("/mnt/ssd/data.txt");
+  });
+
+  it("blocks paths not in allowedRoots", () => {
+    expect(() => safePath(ws, "/etc/passwd", ["/mnt/ssd"])).toThrow("Path traversal blocked");
+  });
+
+  it("allows workspace root itself", () => {
+    expect(safePath(ws, ws)).toBe(ws);
+  });
+
+  it("allows allowedRoot itself", () => {
+    expect(safePath(ws, "/mnt/ssd", ["/mnt/ssd"])).toBe("/mnt/ssd");
   });
 });
