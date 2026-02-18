@@ -35,7 +35,7 @@ Build output lands in `dist/` as a single ESM bundle:
 
 ```
 dist/
-  entry.mjs        # ~280KB, single-file executable
+  entry.mjs        # ~354KB, single-file executable
   entry.mjs.map    # Source map
 ```
 
@@ -80,7 +80,7 @@ Files: `schema.ts` (Zod schemas + types), `loader.ts` (config loading + agent re
 
 `src/mneme/`
 
-SQLite-backed session store using `better-sqlite3`. Manages conversation history, message persistence, token counting, routing cache, contact approval (pairing), and session archival. All database migrations are embedded in the store.
+SQLite-backed session store using `better-sqlite3`. Manages conversation history, message persistence, token counting, routing cache, contact approval (pairing), blackboard, interaction signals, and session archival. 6 embedded migrations.
 
 Files: `store.ts` (SessionStore class), `schema.ts` (DB schema types).
 
@@ -96,7 +96,7 @@ Files: `anthropic.ts` (SDK wrapper + type definitions), `router.ts` (ProviderRou
 
 `src/organon/`
 
-Tool registry with dynamic loading, on-demand activation, and automatic expiry. Contains all built-in tools (`built-in/`), the skill system (`skills.ts`), self-authoring tools (`self-author.ts`), reversibility tagging (`reversibility.ts`), and result truncation (`truncate.ts`).
+Tool registry with dynamic loading, on-demand activation, and automatic expiry. 28 built-in tools (`built-in/`), the skill system (`skills.ts`), self-authoring tools (`self-author.ts`), reversibility tagging (`reversibility.ts`), and result truncation (`truncate.ts`).
 
 Files: `registry.ts` (ToolRegistry class), `skills.ts` (SkillRegistry), `self-author.ts` (runtime tool creation by agents), `reversibility.ts` (action safety classification), `built-in/*.ts` (individual tools).
 
@@ -128,9 +128,9 @@ Files: `client.ts` (SignalClient HTTP wrapper), `listener.ts` (SSE message liste
 
 `src/pylon/`
 
-Hono-based HTTP gateway serving the REST API, MCP (Model Context Protocol) SSE endpoints, and the web UI. All external access enters through pylon.
+Hono-based HTTP gateway serving the REST API, MCP (Model Context Protocol) SSE endpoints, streaming message API, and the Svelte web UI. All external access enters through pylon.
 
-Files: `server.ts` (Hono app + REST API routes), `mcp.ts` (MCP SSE transport), `ui.ts` (web UI routes).
+Files: `server.ts` (Hono app + REST API routes), `mcp.ts` (MCP SSE transport), `ui.ts` (web UI static serving + SSE events).
 
 ### prostheke -- Plugin System
 
