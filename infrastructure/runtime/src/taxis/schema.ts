@@ -124,6 +124,12 @@ const AgentDefaults = z.preprocess(
     heartbeat: HeartbeatConfig.optional(),
     tools: ToolsConfig.default({}),
     timeoutSeconds: z.number().default(300),
+    toolTimeouts: z
+      .object({
+        defaultMs: z.number().default(120_000),
+        overrides: z.record(z.string(), z.number()).default({}),
+      })
+      .default({}),
   }).passthrough(),
 ).default({});
 

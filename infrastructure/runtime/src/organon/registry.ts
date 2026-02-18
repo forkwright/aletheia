@@ -23,6 +23,7 @@ export interface ToolContext {
   workspace: string;
   allowedRoots?: string[];
   depth?: number;
+  signal?: AbortSignal;
 }
 
 interface ActiveToolEntry {

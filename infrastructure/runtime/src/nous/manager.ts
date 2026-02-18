@@ -37,6 +37,7 @@ import { LoopDetector } from "./loop-detector.js";
 import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
 import { AsyncChannel } from "./async-channel.js";
 import { recallMemories } from "./recall.js";
+import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../organon/timeout.js";
 
 const log = createLogger("nous");
 
@@ -72,11 +73,12 @@ export interface TurnOutcome {
 }
 
 export type TurnStreamEvent =
-  | { type: "turn_start"; sessionId: string; nousId: string }
+  | { type: "turn_start"; sessionId: string; nousId: string; turnId: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "turn_complete"; outcome: TurnOutcome }
+  | { type: "turn_abort"; reason: string }
   | { type: "error"; message: string };
 
 // Per-session mutex to prevent concurrent turns from corrupting context
@@ -123,6 +125,8 @@ export class NousManager {
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
   private activeTurnsByNous = new Map<string, number>();
+  private turnAbortControllers = new Map<string, AbortController>();
+  private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
   isDraining: () => boolean = () => false;
 
   constructor(
@@ -164,6 +168,21 @@ export class NousManager {
     return result;
   }
 
+  getActiveTurnDetails(): Array<{ turnId: string; nousId: string; sessionId: string; startedAt: number }> {
+    const details: Array<{ turnId: string; nousId: string; sessionId: string; startedAt: number }> = [];
+    for (const [turnId, meta] of this.turnMeta) {
+      details.push({ turnId, ...meta });
+    }
+    return details;
+  }
+
+  abortTurn(turnId: string): boolean {
+    const controller = this.turnAbortControllers.get(turnId);
+    if (!controller) return false;
+    controller.abort();
+    return true;
+  }
+
   async *handleMessageStreaming(msg: InboundMessage): AsyncGenerator<TurnStreamEvent> {
     if (this.isDraining()) {
       yield { type: "error", message: "Runtime is shutting down" };
@@ -202,7 +221,11 @@ export class NousManager {
     }
 
     const session = this.store.findOrCreateSession(nousId, sessionKey, model, msg.parentSessionId);
-    yield { type: "turn_start", sessionId: session.id, nousId };
+    const turnId = `${nousId}:${session.id}:${Date.now()}`;
+    const turnAbortController = new AbortController();
+    this.turnAbortControllers.set(turnId, turnAbortController);
+    this.turnMeta.set(turnId, { nousId, sessionId: session.id, startedAt: Date.now() });
+    yield { type: "turn_start", sessionId: session.id, nousId, turnId };
 
     this.activeTurns++;
     this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
@@ -213,6 +236,7 @@ export class NousManager {
       try {
         for await (const event of this.executeTurnStreaming(
           nousId, session.id, sessionKey, model, msg, nous, temperature,
+          turnAbortController.signal,
         )) {
           channel.push(event);
         }
@@ -238,6 +262,8 @@ export class NousManager {
       const cur = this.activeTurnsByNous.get(nousId) ?? 1;
       if (cur <= 1) this.activeTurnsByNous.delete(nousId);
       else this.activeTurnsByNous.set(nousId, cur - 1);
+      this.turnAbortControllers.delete(turnId);
+      this.turnMeta.delete(turnId);
     }
   }
 
@@ -249,6 +275,7 @@ export class NousManager {
     msg: InboundMessage,
     nous: ReturnType<typeof resolveNous>,
     temperature?: number,
+    abortSignal?: AbortSignal,
   ): AsyncGenerator<TurnStreamEvent> {
     if (!nous) throw new Error(`Unknown nous: ${nousId}`);
 
@@ -377,7 +404,10 @@ export class NousManager {
     const currentText = crossAgentNotice ? crossAgentNotice + "\n\n" + msg.text : msg.text;
     const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
 
-    const toolContext: ToolContext = { nousId, sessionId, workspace, allowedRoots: [paths.root], depth: msg.depth ?? 0 };
+    const toolContext: ToolContext = {
+      nousId, sessionId, workspace, allowedRoots: [paths.root], depth: msg.depth ?? 0,
+      ...(abortSignal ? { signal: abortSignal } : {}),
+    };
 
     if (this.plugins) {
       await this.plugins.dispatchBeforeTurn({ nousId, sessionId, messageText: msg.text, ...(msg.media ? { media: msg.media } : {}) });
@@ -537,8 +567,25 @@ export class NousManager {
 
       // Execute tools
       const toolResults: UserContentBlock[] = [];
-      for (const toolUse of toolUses) {
+      for (let toolIdx = 0; toolIdx < toolUses.length; toolIdx++) {
+        const toolUse = toolUses[toolIdx]!;
         totalToolCalls++;
+
+        // Check for abort before executing this tool
+        if (abortSignal?.aborted) {
+          for (const remaining of toolUses.slice(toolIdx)) {
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: remaining.id,
+              content: "[CANCELLED] Turn aborted by user.",
+              is_error: true,
+            });
+          }
+          currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+          yield { type: "turn_abort", reason: "user" };
+          return;
+        }
+
         const reversibility = getReversibility(toolUse.name);
         const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
 
@@ -546,13 +593,23 @@ export class NousManager {
         let isError = false;
         const toolStart = Date.now();
         try {
-          toolResult = await this.tools.execute(toolUse.name, toolUse.input, toolContext);
+          const timeoutMs = resolveTimeout(toolUse.name, this.config.agents.defaults.toolTimeouts);
+          toolResult = await executeWithTimeout(
+            () => this.tools.execute(toolUse.name, toolUse.input, toolContext),
+            timeoutMs,
+            toolUse.name,
+          );
         } catch (err) {
           isError = true;
-          toolResult = err instanceof Error ? err.message : String(err);
-          if (this.competence) {
-            const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-            this.competence.recordCorrection(nousId, domain);
+          if (err instanceof ToolTimeoutError) {
+            toolResult = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
+            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
+          } else {
+            toolResult = err instanceof Error ? err.message : String(err);
+            if (this.competence) {
+              const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+              this.competence.recordCorrection(nousId, domain);
+            }
           }
         }
         const toolDuration = Date.now() - toolStart;
@@ -1062,7 +1119,8 @@ export class NousManager {
       ];
 
       const toolResults: UserContentBlock[] = [];
-      for (const toolUse of toolUses) {
+      for (let toolIdx = 0; toolIdx < toolUses.length; toolIdx++) {
+        const toolUse = toolUses[toolIdx]!;
         totalToolCalls++;
         const reversibility = getReversibility(toolUse.name);
         const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
@@ -1076,19 +1134,24 @@ export class NousManager {
         let isError = false;
         const toolStart = Date.now();
         try {
-          toolResult = await this.tools.execute(
+          const timeoutMs = resolveTimeout(toolUse.name, this.config.agents.defaults.toolTimeouts);
+          toolResult = await executeWithTimeout(
+            () => this.tools.execute(toolUse.name, toolUse.input, toolContext),
+            timeoutMs,
             toolUse.name,
-            toolUse.input,
-            toolContext,
           );
         } catch (err) {
           isError = true;
-          toolResult = err instanceof Error ? err.message : String(err);
-          log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
-          // Record tool failure in competence model
-          if (this.competence) {
-            const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-            this.competence.recordCorrection(nousId, domain);
+          if (err instanceof ToolTimeoutError) {
+            toolResult = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
+            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
+          } else {
+            toolResult = err instanceof Error ? err.message : String(err);
+            log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
+            if (this.competence) {
+              const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
+              this.competence.recordCorrection(nousId, domain);
+            }
           }
         }
         const toolDuration = Date.now() - toolStart;

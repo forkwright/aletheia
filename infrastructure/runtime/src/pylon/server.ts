@@ -261,6 +261,9 @@ export function createGateway(
 
     const encoder = new TextEncoder();
     const resolvedSessionKey = sessionKey ?? "main";
+    const requestSignal = c.req.raw.signal;
+    let activeTurnId: string | null = null;
+
     const stream = new ReadableStream({
       async start(controller) {
         await withTurnAsync(
@@ -273,6 +276,15 @@ export function createGateway(
                 sessionKey: resolvedSessionKey,
                 ...(validMedia.length > 0 ? { media: validMedia } : {}),
               })) {
+                if (event.type === "turn_start") {
+                  activeTurnId = event.turnId;
+                  requestSignal?.addEventListener("abort", () => {
+                    if (activeTurnId) {
+                      manager.abortTurn(activeTurnId);
+                      activeTurnId = null;
+                    }
+                  }, { once: true });
+                }
                 const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
                 controller.enqueue(encoder.encode(payload));
               }
@@ -344,6 +356,19 @@ export function createGateway(
       bindings: config.bindings.length,
       plugins: Object.keys(config.plugins.entries).length,
     });
+  });
+
+  // --- Turn management ---
+
+  app.get("/api/turns/active", (c) => {
+    return c.json({ turns: manager.getActiveTurnDetails() });
+  });
+
+  app.post("/api/turns/:id/abort", (c) => {
+    const id = c.req.param("id");
+    const aborted = manager.abortTurn(id);
+    if (!aborted) return c.json({ error: "Turn not found or already completed" }, 404);
+    return c.json({ ok: true, turnId: id });
   });
 
   // --- Admin API ---
