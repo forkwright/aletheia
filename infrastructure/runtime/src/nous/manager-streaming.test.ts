@@ -297,6 +297,7 @@ describe("handleMessageStreaming", () => {
   it("decrements activeTurns even after error", async () => {
     const router = {
       complete: vi.fn(),
+      // oxlint-disable-next-line require-yield
       completeStreaming: vi.fn().mockImplementation(async function* () {
         throw new Error("API down");
       }),
