@@ -5,12 +5,16 @@
   import MetricsView from "../metrics/MetricsView.svelte";
   import GraphView from "../graph/GraphView.svelte";
   import { getToken, setToken } from "../../lib/api";
+  import { getBrandName, loadBranding } from "../../stores/branding.svelte";
 
   type ViewId = "chat" | "metrics" | "graph";
 
   const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
 
   let activeView = $state<ViewId>("chat");
+  // Load branding before auth so login screen shows the right name
+  loadBranding();
+
   let hasToken = $state(!!getToken());
   let tokenValue = $state("");
   let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
@@ -40,7 +44,7 @@
 {#if !hasToken}
   <div class="token-setup">
     <div class="token-card">
-      <h1>Aletheia</h1>
+      <h1>{getBrandName()}</h1>
       <p>Enter your gateway authentication token to get started.</p>
       <form onsubmit={handleTokenSubmit}>
         <input

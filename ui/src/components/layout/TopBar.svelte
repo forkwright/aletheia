@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getConnectionStatus } from "../../stores/connection.svelte";
   import { getActiveAgent } from "../../stores/agents.svelte";
+  import { getBrandName } from "../../stores/branding.svelte";
   import { getToken, setToken, clearToken } from "../../lib/api";
 
   type ViewId = "chat" | "metrics" | "graph";
@@ -45,7 +46,7 @@
         <line x1="6.5" y1="2" x2="6.5" y2="16" stroke="currentColor" stroke-width="1.5"/>
       </svg>
     </button>
-    <h1 class="title">Aletheia</h1>
+    <h1 class="title">{getBrandName()}</h1>
     <span class="status-dot" class:connected={getConnectionStatus() === "connected"} class:connecting={getConnectionStatus() === "connecting"}></span>
     {#if agent}
       <span class="active-agent">

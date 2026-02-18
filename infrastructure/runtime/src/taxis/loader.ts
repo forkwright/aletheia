@@ -103,7 +103,7 @@ export function applyEnv(config: AletheiaConfig): number {
 
 const KNOWN_TOP_KEYS = new Set([
   "agents", "bindings", "channels", "gateway", "plugins",
-  "session", "cron", "models", "env", "watchdog",
+  "session", "cron", "models", "env", "watchdog", "branding",
 ]);
 
 const KNOWN_NOUS_KEYS = new Set([

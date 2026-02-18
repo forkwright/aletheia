@@ -2,10 +2,12 @@
   import Layout from "./components/layout/Layout.svelte";
   import { initConnection } from "./stores/connection.svelte";
   import { loadAgents } from "./stores/agents.svelte";
+  import { loadBranding } from "./stores/branding.svelte";
   import { getToken } from "./lib/api";
 
   $effect(() => {
     if (getToken()) {
+      loadBranding();
       loadAgents();
       initConnection();
     }

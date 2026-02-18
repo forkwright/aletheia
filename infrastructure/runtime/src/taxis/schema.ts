@@ -359,6 +359,14 @@ const WatchdogConfig = z
   })
   .default({});
 
+const BrandingConfig = z
+  .object({
+    name: z.string().default("Aletheia"),
+    tagline: z.string().optional(),
+    favicon: z.string().optional(),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -372,6 +380,7 @@ export const AletheiaConfigSchema = z.object({
   models: ModelsConfig.default({}),
   env: EnvConfig.default({}),
   watchdog: WatchdogConfig.default({}),
+  branding: BrandingConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
