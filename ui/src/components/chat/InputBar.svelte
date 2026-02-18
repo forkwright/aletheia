@@ -14,6 +14,7 @@
   } = $props();
 
   let text = $state("");
+  let queued = $state<string | null>(null);
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let showSlashMenu = $state(false);
   let selectedSlashIdx = $state(0);
@@ -27,6 +28,15 @@
   $effect(() => {
     showSlashMenu = filteredCommands.length > 0 && text.startsWith("/");
     if (showSlashMenu) selectedSlashIdx = 0;
+  });
+
+  // When streaming ends, send queued message
+  $effect(() => {
+    if (!isStreaming && queued) {
+      const msg = queued;
+      queued = null;
+      onSend(msg);
+    }
   });
 
   function handleKeydown(e: KeyboardEvent) {
@@ -66,7 +76,16 @@
 
   function submit() {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed) return;
+
+    if (isStreaming) {
+      // Queue message for after streaming completes
+      queued = trimmed;
+      text = "";
+      if (textarea) textarea.style.height = "40px";
+      return;
+    }
+
     onSend(trimmed);
     text = "";
     showSlashMenu = false;
@@ -89,13 +108,11 @@
   }
 
   $effect(() => {
-    // Focus textarea when not streaming
     if (!isStreaming && textarea) {
       textarea.focus();
     }
   });
 
-  // Context bar color based on proximity to distillation
   let contextColor = $derived(
     contextPercent > 80 ? "var(--red)" :
     contextPercent > 60 ? "var(--yellow)" :
@@ -112,46 +129,51 @@
       ></div>
     </div>
   {/if}
-  {#if isStreaming}
-    <button class="abort-btn" onclick={onAbort}>
-      Stop generating
-    </button>
-  {:else}
-    <div class="input-area">
-      {#if showSlashMenu}
-        <div class="slash-menu">
-          {#each filteredCommands as cmd, i}
-            <button
-              class="slash-item"
-              class:selected={i === selectedSlashIdx}
-              onclick={() => selectSlashCommand(i)}
-            >
-              <span class="slash-cmd">{cmd.command}</span>
-              <span class="slash-desc">{cmd.description}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-      <div class="input-wrapper">
-        <textarea
-          bind:this={textarea}
-          bind:value={text}
-          onkeydown={handleKeydown}
-          oninput={autoResize}
-          placeholder="Type a message... (/ for commands)"
-          rows="1"
-          disabled={isStreaming}
-        ></textarea>
-        <button
-          class="send-btn"
-          onclick={submit}
-          disabled={!text.trim() || isStreaming}
-        >
-          Send
-        </button>
+  <div class="input-area">
+    {#if showSlashMenu}
+      <div class="slash-menu">
+        {#each filteredCommands as cmd, i}
+          <button
+            class="slash-item"
+            class:selected={i === selectedSlashIdx}
+            onclick={() => selectSlashCommand(i)}
+          >
+            <span class="slash-cmd">{cmd.command}</span>
+            <span class="slash-desc">{cmd.description}</span>
+          </button>
+        {/each}
       </div>
+    {/if}
+    {#if queued}
+      <div class="queued-indicator">
+        <span class="queued-text">Queued: {queued.length > 60 ? queued.slice(0, 60) + "…" : queued}</span>
+        <button class="queued-cancel" onclick={() => { queued = null; }} aria-label="Cancel queued message">×</button>
+      </div>
+    {/if}
+    <div class="input-wrapper" class:streaming={isStreaming}>
+      {#if isStreaming}
+        <button class="stop-btn" onclick={onAbort} aria-label="Stop generating" title="Stop generating (Esc)">
+          <span class="stop-icon">■</span>
+        </button>
+      {/if}
+      <textarea
+        bind:this={textarea}
+        bind:value={text}
+        onkeydown={handleKeydown}
+        oninput={autoResize}
+        placeholder={isStreaming ? "Type to queue a message..." : "Type a message... (/ for commands)"}
+        rows="1"
+      ></textarea>
+      <button
+        class="send-btn"
+        onclick={submit}
+        disabled={!text.trim()}
+        class:queuing={isStreaming && text.trim().length > 0}
+      >
+        {isStreaming && text.trim().length > 0 ? "Queue" : "Send"}
+      </button>
     </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -186,6 +208,9 @@
   .input-wrapper:focus-within {
     border-color: var(--accent);
   }
+  .input-wrapper.streaming {
+    border-color: var(--border);
+  }
   textarea {
     flex: 1;
     background: transparent;
@@ -202,6 +227,28 @@
   }
   textarea::placeholder {
     color: var(--text-muted);
+  }
+  .stop-btn {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    color: var(--red);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    align-self: flex-end;
+    margin-bottom: 2px;
+  }
+  .stop-btn:hover {
+    background: rgba(248, 81, 73, 0.2);
+  }
+  .stop-icon {
+    font-size: 10px;
+    line-height: 1;
   }
   .send-btn {
     background: var(--accent);
@@ -221,20 +268,41 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
-  .abort-btn {
-    width: calc(100% - 32px);
-    margin: 12px 16px;
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    color: var(--red);
-    padding: 10px;
-    border-radius: var(--radius);
-    font-size: 13px;
-    font-weight: 500;
-    transition: background 0.15s;
+  .send-btn.queuing {
+    background: var(--yellow);
   }
-  .abort-btn:hover {
-    background: rgba(248, 81, 73, 0.2);
+  .send-btn.queuing:hover {
+    background: #e0a820;
+  }
+  .queued-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    margin-bottom: 6px;
+    background: rgba(210, 153, 34, 0.1);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--yellow);
+  }
+  .queued-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .queued-cancel {
+    background: none;
+    border: none;
+    color: var(--yellow);
+    font-size: 16px;
+    padding: 0 4px;
+    opacity: 0.7;
+    line-height: 1;
+  }
+  .queued-cancel:hover {
+    opacity: 1;
   }
   .slash-menu {
     position: absolute;
