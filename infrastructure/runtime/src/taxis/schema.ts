@@ -116,6 +116,7 @@ const AgentDefaults = z.preprocess(
     userTimezone: z.string().default("UTC"),
     contextTokens: z.number().default(200000),
     maxOutputTokens: z.number().default(16384),
+    maxToolLoops: z.number().default(40),
     compaction: CompactionConfig.default({}),
     routing: RoutingConfig.default({}),
     heartbeat: HeartbeatConfig.optional(),
