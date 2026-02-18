@@ -39,7 +39,8 @@ import { createResearchTool } from "./organon/built-in/research.js";
 import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./pylon/server.js";
+import { McpClientManager } from "./organon/mcp-client.js";
+import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
@@ -295,6 +296,20 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
   setSkillsRef(skills);
 
+  // --- MCP Client ---
+  let mcpManager: McpClientManager | null = null;
+  const mcpConfig = (config as Record<string, unknown>)["mcp"] as { enabled?: boolean; servers?: Record<string, unknown> } | undefined;
+  if (mcpConfig?.enabled && mcpConfig.servers && Object.keys(mcpConfig.servers).length > 0) {
+    mcpManager = new McpClientManager(runtime.tools);
+    try {
+      await mcpManager.connectAll(mcpConfig.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
+      log.info(`MCP client: ${mcpManager.getToolCount()} tools from ${mcpManager.getStatus().filter(s => s.status === "connected").length} server(s)`);
+    } catch (err) {
+      log.error(`MCP client initialization error: ${err instanceof Error ? err.message : err}`);
+    }
+    setMcpRef(mcpManager);
+  }
+
   // --- Command Registry ---
   const commandRegistry = createDefaultRegistry();
 
@@ -463,6 +478,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
       log.warn(`Forcing shutdown with ${runtime.manager.activeTurns} active turns`);
     }
 
+    if (mcpManager) await mcpManager.disconnectAll().catch(() => {});
     abortController.abort();
     for (const daemon of daemons) {
       daemon.stop();
