@@ -35,8 +35,11 @@
     createNewSession,
     loadSessions,
   } from "../../stores/sessions.svelte";
+  import { distillSession } from "../../lib/api";
   import { onGlobalEvent } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
+
+  let distilling = $state(false);
 
   // Recover streaming state after refresh
   let unsubEvents: (() => void) | null = null;
@@ -131,6 +134,27 @@
         if (agent) {
           setActiveAgent(agent.id);
           loadSessions(agent.id);
+        }
+      },
+    },
+    "/compact": {
+      description: "Compress context — distill older messages into memory",
+      handler: async () => {
+        const id = getActiveAgentId();
+        const sessionId = getActiveSessionId();
+        if (!id || !sessionId) return;
+        if (distilling) return;
+        distilling = true;
+        injectLocalMessage(id, "*Compacting context...*");
+        try {
+          await distillSession(sessionId);
+          injectLocalMessage(id, "*Context compacted. Older messages distilled into long-term memory.*");
+          loadHistory(id, sessionId);
+          refreshSessions(id);
+        } catch (e) {
+          injectLocalMessage(id, `*Compaction failed: ${e instanceof Error ? e.message : String(e)}*`);
+        } finally {
+          distilling = false;
         }
       },
     },
