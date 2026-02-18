@@ -81,12 +81,50 @@
     overflow-x: auto;
     position: relative;
   }
+  .markdown-body :global(pre .code-lang) {
+    position: absolute;
+    top: 4px;
+    left: 12px;
+    font-size: 10px;
+    font-family: var(--font-sans);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    opacity: 0.6;
+  }
   .markdown-body :global(pre code) {
     padding: 0;
     background: none;
     font-size: 13px;
     line-height: 1.5;
   }
+  /* highlight.js token colors — dark theme */
+  .markdown-body :global(.hljs-keyword) { color: #ff7b72; }
+  .markdown-body :global(.hljs-string),
+  .markdown-body :global(.hljs-regexp) { color: #a5d6ff; }
+  .markdown-body :global(.hljs-number),
+  .markdown-body :global(.hljs-literal) { color: #79c0ff; }
+  .markdown-body :global(.hljs-comment) { color: #8b949e; font-style: italic; }
+  .markdown-body :global(.hljs-function),
+  .markdown-body :global(.hljs-title) { color: #d2a8ff; }
+  .markdown-body :global(.hljs-built_in) { color: #ffa657; }
+  .markdown-body :global(.hljs-type),
+  .markdown-body :global(.hljs-class) { color: #ffa657; }
+  .markdown-body :global(.hljs-attr),
+  .markdown-body :global(.hljs-attribute) { color: #79c0ff; }
+  .markdown-body :global(.hljs-variable),
+  .markdown-body :global(.hljs-template-variable) { color: #ffa657; }
+  .markdown-body :global(.hljs-property) { color: #79c0ff; }
+  .markdown-body :global(.hljs-tag) { color: #7ee787; }
+  .markdown-body :global(.hljs-name) { color: #7ee787; }
+  .markdown-body :global(.hljs-selector-class),
+  .markdown-body :global(.hljs-selector-id),
+  .markdown-body :global(.hljs-selector-tag) { color: #7ee787; }
+  .markdown-body :global(.hljs-meta) { color: #79c0ff; }
+  .markdown-body :global(.hljs-addition) { color: #aff5b4; background: rgba(63, 185, 80, 0.15); }
+  .markdown-body :global(.hljs-deletion) { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
+  .markdown-body :global(.hljs-punctuation) { color: #c9d1d9; }
   .markdown-body :global(pre .copy-btn) {
     position: absolute;
     top: 6px;

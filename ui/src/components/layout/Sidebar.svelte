@@ -27,7 +27,6 @@
 </script>
 
 <aside class="sidebar" class:collapsed>
-  <div class="section-header">Agents</div>
   <div class="agent-list">
     {#each getAgents() as agent}
       <AgentCard
@@ -57,17 +56,6 @@
     opacity: 0;
     border-right: none;
     pointer-events: none;
-  }
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 12px 8px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
   }
   .agent-list {
     display: flex;
