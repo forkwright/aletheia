@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus } from "./types";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -90,8 +90,75 @@ export async function fetchSessionCosts(sessionId: string): Promise<unknown> {
   return fetchJson(`/api/costs/session/${sessionId}`);
 }
 
-export async function fetchGraphExport(community?: number): Promise<GraphData> {
-  const params = community !== undefined ? `?community=${community}` : "";
-  const data = await fetchJson<{ ok: boolean } & GraphData>(`/api/memory/graph/export${params}`);
-  return { nodes: data.nodes, edges: data.edges, communities: data.communities };
+export interface GraphExportParams {
+  mode?: "top" | "community" | "all";
+  limit?: number;
+  community?: number;
+}
+
+export async function fetchGraphExport(params?: GraphExportParams): Promise<GraphData> {
+  const sp = new URLSearchParams();
+  if (params?.mode) sp.set("mode", params.mode);
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.community !== undefined) sp.set("community", String(params.community));
+  const qs = sp.toString();
+  const data = await fetchJson<{ ok: boolean } & GraphData>(
+    `/api/memory/graph/export${qs ? `?${qs}` : ""}`,
+  );
+  return {
+    nodes: data.nodes,
+    edges: data.edges,
+    communities: data.communities,
+    community_meta: data.community_meta ?? [],
+    total_nodes: data.total_nodes ?? data.nodes.length,
+  };
+}
+
+export async function approveToolCall(turnId: string, toolId: string, alwaysAllow = false): Promise<void> {
+  await fetchJson(`/api/turns/${encodeURIComponent(turnId)}/tools/${encodeURIComponent(toolId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ alwaysAllow }),
+  });
+}
+
+export async function denyToolCall(turnId: string, toolId: string): Promise<void> {
+  await fetchJson(`/api/turns/${encodeURIComponent(turnId)}/tools/${encodeURIComponent(toolId)}/deny`, {
+    method: "POST",
+  });
+}
+
+export async function fetchApprovalMode(): Promise<string> {
+  const data = await fetchJson<{ mode: string }>("/api/approval/mode");
+  return data.mode;
+}
+
+// --- Workspace File Explorer ---
+
+export async function fetchWorkspaceTree(
+  agentId?: string,
+  path?: string,
+  depth = 2,
+): Promise<{ root: string; entries: FileTreeEntry[] }> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  if (path) sp.set("path", path);
+  sp.set("depth", String(depth));
+  return fetchJson(`/api/workspace/tree?${sp.toString()}`);
+}
+
+export async function fetchWorkspaceFile(
+  path: string,
+  agentId?: string,
+): Promise<{ path: string; size: number; content: string }> {
+  const sp = new URLSearchParams({ path });
+  if (agentId) sp.set("agentId", agentId);
+  return fetchJson(`/api/workspace/file?${sp.toString()}`);
+}
+
+export async function fetchGitStatus(
+  agentId?: string,
+): Promise<{ files: GitFileStatus[] }> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  return fetchJson(`/api/workspace/git-status?${sp.toString()}`);
 }

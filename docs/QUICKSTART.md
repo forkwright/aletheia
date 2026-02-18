@@ -27,9 +27,9 @@ cd ../..
 cp .env.example shared/config/aletheia.env
 ```
 
-Edit `shared/config/aletheia.env` — at minimum set:
-- `ANTHROPIC_API_KEY` — your Anthropic API key
-- `ALETHEIA_ROOT` — absolute path to this repo
+Edit `shared/config/aletheia.env` - at minimum set:
+- `ANTHROPIC_API_KEY` - your Anthropic API key
+- `ALETHEIA_ROOT` - absolute path to this repo
 
 ## 3. Start Memory Infrastructure
 
@@ -62,9 +62,9 @@ cp -r nous/_example nous/atlas
 ```
 
 Edit the workspace files:
-- `SOUL.md` — define who this agent is (character, voice, values)
-- `USER.md` — describe yourself as the operator
-- `IDENTITY.md` — set name and emoji
+- `SOUL.md` - define who this agent is (character, voice, values)
+- `USER.md` - describe yourself as the operator
+- `IDENTITY.md` - set name and emoji
 
 See [WORKSPACE_FILES.md](WORKSPACE_FILES.md) for details on each file.
 
@@ -111,7 +111,7 @@ Use `!help` in Signal to see available commands.
 
 ## Next Steps
 
-- [CONFIGURATION.md](CONFIGURATION.md) — full config reference
-- [WORKSPACE_FILES.md](WORKSPACE_FILES.md) — agent workspace file guide
-- [DEPLOYMENT.md](DEPLOYMENT.md) — production setup with systemd
-- [PLUGINS.md](PLUGINS.md) — plugin system and memory plugin
+- [CONFIGURATION.md](CONFIGURATION.md) - full config reference
+- [WORKSPACE_FILES.md](WORKSPACE_FILES.md) - agent workspace file guide
+- [DEPLOYMENT.md](DEPLOYMENT.md) - production setup with systemd
+- [PLUGINS.md](PLUGINS.md) - plugin system and memory plugin

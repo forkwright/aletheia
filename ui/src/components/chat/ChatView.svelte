@@ -2,6 +2,7 @@
   import MessageList from "./MessageList.svelte";
   import InputBar from "./InputBar.svelte";
   import ToolPanel from "./ToolPanel.svelte";
+  import ToolApproval from "./ToolApproval.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
   import {
@@ -18,6 +19,8 @@
     clearMessages,
     injectLocalMessage,
     setRemoteStreaming,
+    getPendingApproval,
+    clearPendingApproval,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -35,8 +38,11 @@
     createNewSession,
     loadSessions,
   } from "../../stores/sessions.svelte";
+  import { distillSession } from "../../lib/api";
   import { onGlobalEvent } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
+
+  let distilling = $state(false);
 
   // Recover streaming state after refresh
   let unsubEvents: (() => void) | null = null;
@@ -134,6 +140,27 @@
         }
       },
     },
+    "/compact": {
+      description: "Compress context — distill older messages into memory",
+      handler: async () => {
+        const id = getActiveAgentId();
+        const sessionId = getActiveSessionId();
+        if (!id || !sessionId) return;
+        if (distilling) return;
+        distilling = true;
+        injectLocalMessage(id, "*Compacting context...*");
+        try {
+          await distillSession(sessionId);
+          injectLocalMessage(id, "*Context compacted. Older messages distilled into long-term memory.*");
+          loadHistory(id, sessionId);
+          refreshSessions(id);
+        } catch (e) {
+          injectLocalMessage(id, `*Compaction failed: ${e instanceof Error ? e.message : String(e)}*`);
+        } finally {
+          distilling = false;
+        }
+      },
+    },
     "/help": {
       description: "Show available commands",
       handler: () => {
@@ -187,6 +214,13 @@
     return Math.min(100, Math.round((tokens / contextWindow) * 100));
   });
 
+  // Pending tool approval
+  let pendingApproval = $derived(currentAgentId ? getPendingApproval(currentAgentId) : null);
+
+  function handleApprovalResolved() {
+    if (currentAgentId) clearPendingApproval(currentAgentId);
+  }
+
   // Tool panel state
   let selectedTools = $state<ToolCallState[] | null>(null);
 
@@ -229,6 +263,9 @@
       <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
     {/if}
   </div>
+  {#if pendingApproval}
+    <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
+  {/if}
   <InputBar
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}

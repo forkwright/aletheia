@@ -52,12 +52,23 @@ export interface ToolCallState {
 }
 
 export type TurnStreamEvent =
-  | { type: "turn_start"; sessionId: string; nousId: string }
+  | { type: "turn_start"; sessionId: string; nousId: string; turnId?: string }
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
+  | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "error"; message: string };
+
+export interface PendingApproval {
+  turnId: string;
+  toolName: string;
+  toolId: string;
+  input: unknown;
+  risk: string;
+  reason: string;
+}
 
 export interface TurnOutcome {
   text: string;
@@ -131,10 +142,31 @@ export interface GraphEdge {
   rel_type: string;
 }
 
+export interface CommunityMeta {
+  id: number;
+  size: number;
+  centroid_node: string;
+}
+
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
   communities: number;
+  community_meta: CommunityMeta[];
+  total_nodes: number;
+}
+
+export interface FileTreeEntry {
+  name: string;
+  type: "file" | "directory";
+  size?: number;
+  modified?: string;
+  children?: FileTreeEntry[];
+}
+
+export interface GitFileStatus {
+  status: string;
+  path: string;
 }
 
 export interface CostSummary {

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import * as THREE from "three";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getConnectedNodes, getCommunityIds,
-    getHighlightedCommunity, getSearchQuery,
+    getHighlightedCommunity, getSearchQuery, getLoadedMode, getLoadedLimit,
+    getTotalNodes,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
     loadGraph,
   } from "../../stores/graph.svelte";
@@ -26,13 +28,11 @@
   }
 
   function pagerankSize(pr: number): number {
-    // Scale: min 2, max 14, logarithmic
     const clamped = Math.max(pr, 0.0001);
     const scaled = (Math.log(clamped) + 10) / 10;
     return Math.max(2, Math.min(14, scaled * 12));
   }
 
-  // Relationship type color categories
   function edgeColor(relType: string): string {
     const social = ["KNOWS", "LIVES_WITH", "FAMILY_OF", "WORKS_WITH", "COMMUNICATES_WITH"];
     const structural = ["PART_OF", "CONTAINS", "DEPENDS_ON", "INSTANCE_OF", "LOCATED_AT"];
@@ -44,13 +44,152 @@
     return "rgba(139, 148, 158, 0.25)";
   }
 
+  // --- Community Cloud System ---
+
+  const CLOUD_GEOMETRY = new THREE.SphereGeometry(1, 24, 16);
+  const cloudMeshes = new Map<number, THREE.Mesh>();
+  const cloudLabels = new Map<number, THREE.Sprite>();
+  let cloudScene: THREE.Scene | null = null;
+
+  function createCloudMaterial(color: string, opacity: number): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({
+      color: new THREE.Color(color),
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      side: THREE.BackSide,
+    });
+  }
+
+  function createLabelSprite(text: string, color: string): THREE.Sprite {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    canvas.width = 512;
+    canvas.height = 64;
+    ctx.font = "bold 28px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.8;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const label = text.length > 30 ? text.slice(0, 27) + "..." : text;
+    ctx.fillText(label, 256, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(60, 8, 1);
+    sprite.renderOrder = 10;
+    return sprite;
+  }
+
+  function updateClouds(runtimeNodes: any[]) {
+    if (!cloudScene) return;
+
+    // Group runtime nodes by community (only those with positions)
+    const byCommunity = new Map<number, any[]>();
+    for (const node of runtimeNodes) {
+      if (node.community == null || node.community < 0) continue;
+      if (node.x == null) continue;
+      const list = byCommunity.get(node.community) || [];
+      list.push(node);
+      byCommunity.set(node.community, list);
+    }
+
+    // Remove stale meshes
+    for (const [cid, mesh] of cloudMeshes) {
+      if (!byCommunity.has(cid)) {
+        cloudScene.remove(mesh);
+        (mesh.material as THREE.Material).dispose();
+        cloudMeshes.delete(cid);
+      }
+    }
+    for (const [cid, sprite] of cloudLabels) {
+      if (!byCommunity.has(cid)) {
+        cloudScene.remove(sprite);
+        (sprite.material as THREE.SpriteMaterial).map?.dispose();
+        sprite.material.dispose();
+        cloudLabels.delete(cid);
+      }
+    }
+
+    const hl = getHighlightedCommunity();
+
+    for (const [cid, members] of byCommunity) {
+      if (members.length < 3) continue;
+
+      // Compute centroid
+      let cx = 0, cy = 0, cz = 0;
+      for (const m of members) { cx += m.x; cy += m.y; cz += m.z; }
+      cx /= members.length; cy /= members.length; cz /= members.length;
+
+      // Compute radius: 1.5 * stddev of distances from centroid
+      let sumSqDist = 0;
+      for (const m of members) {
+        const dx = m.x - cx, dy = m.y - cy, dz = m.z - cz;
+        sumSqDist += dx * dx + dy * dy + dz * dz;
+      }
+      const stddev = Math.sqrt(sumSqDist / members.length);
+      const radius = Math.max(stddev * 1.5, 25);
+
+      // Cloud mesh
+      let mesh = cloudMeshes.get(cid);
+      if (!mesh) {
+        const color = communityColor(cid);
+        mesh = new THREE.Mesh(CLOUD_GEOMETRY, createCloudMaterial(color, 0.06));
+        mesh.renderOrder = -1;
+        cloudScene.add(mesh);
+        cloudMeshes.set(cid, mesh);
+      }
+      mesh.position.set(cx, cy, cz);
+      mesh.scale.setScalar(radius);
+
+      // Adjust opacity based on highlight
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      if (hl === null) {
+        mat.opacity = 0.06;
+      } else if (cid === hl) {
+        mat.opacity = 0.12;
+      } else {
+        mat.opacity = 0.02;
+      }
+
+      // Label sprite — positioned above the cloud
+      let sprite = cloudLabels.get(cid);
+      if (!sprite) {
+        // Use the highest-pagerank node name as label
+        const topNode = members.reduce((a: any, b: any) =>
+          (a.pagerank || 0) > (b.pagerank || 0) ? a : b
+        );
+        sprite = createLabelSprite(topNode.id, communityColor(cid));
+        cloudScene.add(sprite);
+        cloudLabels.set(cid, sprite);
+      }
+      sprite.position.set(cx, cy + radius * 0.9, cz);
+      // Fade label with highlight
+      (sprite.material as THREE.SpriteMaterial).opacity = hl === null ? 0.6 : (cid === hl ? 0.9 : 0.15);
+    }
+  }
+
+  function disposeClouds() {
+    if (!cloudScene) return;
+    for (const [, mesh] of cloudMeshes) {
+      cloudScene.remove(mesh);
+      (mesh.material as THREE.Material).dispose();
+    }
+    for (const [, sprite] of cloudLabels) {
+      cloudScene.remove(sprite);
+      (sprite.material as THREE.SpriteMaterial).map?.dispose();
+      sprite.material.dispose();
+    }
+    cloudMeshes.clear();
+    cloudLabels.clear();
+    cloudScene = null;
+  }
+
+  // --- Graph initialization ---
+
   function focusOnNode(nodeId: string) {
     if (!graph) return;
-    const data = getGraphData();
-    const node = data.nodes.find((n: any) => n.id === nodeId);
-    if (!node) return;
-
-    // Look up the runtime node object with x/y/z from the graph's internal data
     const gd = graph.graphData();
     const runtimeNode = gd.nodes.find((n: any) => n.id === nodeId);
     if (!runtimeNode) return;
@@ -79,6 +218,49 @@
     if (e.key === "Enter") handleSearch(e);
   }
 
+  function handleModeChange(e: Event) {
+    const mode = (e.target as HTMLSelectElement).value as "top" | "all";
+    reloadGraph({ mode });
+  }
+
+  function handleLoadMore() {
+    const newLimit = getLoadedLimit() + 100;
+    reloadGraph({ mode: "top", limit: newLimit });
+  }
+
+  function handleCommunityClick(cid: number) {
+    if (getHighlightedCommunity() === cid) {
+      setHighlightedCommunity(null);
+      reloadGraph();
+    } else {
+      setHighlightedCommunity(cid);
+      reloadGraph({ mode: "community", community: cid });
+    }
+  }
+
+  async function reloadGraph(params?: { mode?: "top" | "community" | "all"; limit?: number; community?: number }) {
+    // Clear stale clouds before reload
+    disposeClouds();
+
+    await loadGraph(params);
+
+    if (!graph || !container) return;
+
+    const data = getGraphData();
+    const graphInput = {
+      nodes: data.nodes.map((n) => ({ ...n })),
+      links: data.edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
+    };
+    graph.graphData(graphInput);
+
+    // Re-init clouds with the fresh scene
+    cloudScene = graph.scene();
+
+    setTimeout(() => {
+      if (graph) graph.zoomToFit(500, 50);
+    }, 2000);
+  }
+
   async function initGraph() {
     await loadGraph();
     if (!container) return;
@@ -86,7 +268,6 @@
     const ForceGraph3D = (await import("3d-force-graph")).default;
     const data = getGraphData();
 
-    // Transform to 3d-force-graph format (links, not edges)
     const graphInput = {
       nodes: data.nodes.map((n) => ({ ...n })),
       links: data.edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
@@ -137,7 +318,14 @@
         setHighlightedCommunity(null);
       })
       .warmupTicks(100)
-      .cooldownTime(3000);
+      .cooldownTime(3000)
+      .onEngineTick(() => {
+        const gd = graph.graphData();
+        updateClouds(gd.nodes);
+      });
+
+    // Init cloud system
+    cloudScene = graph.scene();
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
@@ -154,6 +342,8 @@
 
     return () => {
       resizeObserver.disconnect();
+      disposeClouds();
+      CLOUD_GEOMETRY.dispose();
       if (graph) graph._destructor();
     };
   }
@@ -164,7 +354,7 @@
     return () => cleanup?.();
   });
 
-  // Reactive helpers for the info panel
+  // Reactive helpers
   let selectedNode = $derived(getSelectedNode());
   let selectedEdges = $derived(getSelectedNodeId() ? getNodeEdges(getSelectedNodeId()!) : []);
   let connectedNodes = $derived(getSelectedNodeId() ? getConnectedNodes(getSelectedNodeId()!) : []);
@@ -185,25 +375,36 @@
       <button
         class="pill"
         class:active={getHighlightedCommunity() === null}
-        onclick={() => setHighlightedCommunity(null)}
+        onclick={() => { setHighlightedCommunity(null); reloadGraph(); }}
       >All</button>
       {#each communityIds.slice(0, 12) as cid}
         <button
           class="pill"
           class:active={getHighlightedCommunity() === cid}
           style="--pill-color: {communityColor(cid)}"
-          onclick={() => setHighlightedCommunity(getHighlightedCommunity() === cid ? null : cid)}
+          onclick={() => handleCommunityClick(cid)}
         >{cid}</button>
       {/each}
     </div>
+    <div class="load-controls">
+      <select class="mode-select" onchange={handleModeChange}>
+        <option value="top" selected={getLoadedMode() === "top"}>Top nodes</option>
+        <option value="all" selected={getLoadedMode() === "all"}>All nodes</option>
+      </select>
+      {#if getLoadedMode() === "top"}
+        <button class="pill load-more" onclick={handleLoadMore} disabled={getLoading()}>
+          + More
+        </button>
+      {/if}
+    </div>
     <button
       class="pill refresh-btn"
-      onclick={() => loadGraph()}
+      onclick={() => reloadGraph()}
       disabled={getLoading()}
       title="Reload graph data"
     >{getLoading() ? "..." : "Refresh"}</button>
     <span class="graph-stats">
-      {getGraphData().nodes.length} nodes · {getGraphData().edges.length} edges
+      {getGraphData().nodes.length}{getTotalNodes() > 0 ? ` of ${getTotalNodes()}` : ""} nodes · {getGraphData().edges.length} edges
     </span>
   </div>
 
@@ -318,6 +519,31 @@
     background: var(--pill-color, var(--accent));
     border-color: var(--pill-color, var(--accent));
     color: #fff;
+  }
+  .pill:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .load-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .mode-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .load-more {
+    font-size: 10px;
+    padding: 2px 6px;
   }
 
   .graph-stats {

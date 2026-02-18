@@ -2,9 +2,8 @@
   import { getConnectionStatus } from "../../stores/connection.svelte";
   import { getActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
-  import { getToken, setToken, clearToken } from "../../lib/api";
 
-  type ViewId = "chat" | "metrics" | "graph";
+  type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
   let { onSetView, onToggleSidebar, activeView, sidebarCollapsed = false }: {
     onSetView: (view: ViewId) => void;
@@ -13,23 +12,7 @@
     sidebarCollapsed?: boolean;
   } = $props();
 
-  let showSettings = $state(false);
-  let tokenInput = $state(getToken() ?? "");
-
   let agent = $derived(getActiveAgent());
-
-  function saveToken() {
-    if (tokenInput.trim()) {
-      setToken(tokenInput.trim());
-      showSettings = false;
-      location.reload();
-    }
-  }
-
-  function logout() {
-    clearToken();
-    location.reload();
-  }
 </script>
 
 <header class="topbar">
@@ -58,36 +41,21 @@
     {/if}
   </div>
   <div class="right">
+    <button class="topbar-btn" class:active={activeView === "files"} onclick={() => onSetView(activeView === "files" ? "chat" : "files")}>
+      Files
+    </button>
     <button class="topbar-btn" class:active={activeView === "metrics"} onclick={() => onSetView(activeView === "metrics" ? "chat" : "metrics")}>
       Metrics
     </button>
     <button class="topbar-btn" class:active={activeView === "graph"} onclick={() => onSetView(activeView === "graph" ? "chat" : "graph")}>
       Graph
     </button>
-    <button class="topbar-btn" onclick={() => showSettings = !showSettings}>
+    <button class="topbar-btn" class:active={activeView === "settings"} onclick={() => onSetView(activeView === "settings" ? "chat" : "settings")}>
       Settings
     </button>
   </div>
 </header>
 
-{#if showSettings}
-  <div class="settings-panel">
-    <label class="settings-label">
-      Gateway Token
-      <input
-        type="password"
-        class="settings-input"
-        bind:value={tokenInput}
-        placeholder="Enter gateway auth token"
-      />
-    </label>
-    <div class="settings-actions">
-      <button class="btn-primary" onclick={saveToken}>Save</button>
-      <button class="btn-ghost" onclick={logout}>Clear & Logout</button>
-      <button class="btn-ghost" onclick={() => showSettings = false}>Cancel</button>
-    </div>
-  </div>
-{/if}
 
 <style>
   .topbar {
@@ -179,62 +147,5 @@
     color: var(--accent);
     border-color: var(--border);
     background: var(--surface);
-  }
-  .settings-panel {
-    padding: 12px 16px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .settings-label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-  .settings-input {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    padding: 6px 10px;
-    font-size: 13px;
-    font-family: var(--font-mono);
-    width: 100%;
-  }
-  .settings-input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .settings-actions {
-    display: flex;
-    gap: 8px;
-  }
-  .btn-primary {
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 500;
-  }
-  .btn-primary:hover {
-    background: var(--accent-hover);
-  }
-  .btn-ghost {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-  }
-  .btn-ghost:hover {
-    color: var(--text);
-    border-color: var(--text-muted);
   }
 </style>

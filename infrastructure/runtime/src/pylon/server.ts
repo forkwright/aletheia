@@ -9,9 +9,11 @@ import type { AletheiaConfig } from "../taxis/schema.js";
 import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
+import type { McpClientManager } from "../organon/mcp-client.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { execSync } from "node:child_process";
 
 const log = createLogger("pylon");
 
@@ -26,6 +28,7 @@ function safeCompare(a: string, b: string): boolean {
 let cronRef: CronScheduler | null = null;
 let watchdogRef: Watchdog | null = null;
 let skillsRef: SkillRegistry | null = null;
+let mcpRef: McpClientManager | null = null;
 export function setCronRef(cron: CronScheduler): void {
   cronRef = cron;
 }
@@ -34,6 +37,9 @@ export function setWatchdogRef(wd: Watchdog): void {
 }
 export function setSkillsRef(sr: SkillRegistry): void {
   skillsRef = sr;
+}
+export function setMcpRef(mcp: McpClientManager): void {
+  mcpRef = mcp;
 }
 
 export function createGateway(
@@ -377,6 +383,41 @@ export function createGateway(
     return c.json({ ok: true, turnId: id });
   });
 
+  // --- Tool Approval ---
+
+  app.post("/api/turns/:turnId/tools/:toolId/approve", async (c) => {
+    const turnId = c.req.param("turnId");
+    const toolId = c.req.param("toolId");
+    let alwaysAllow = false;
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      alwaysAllow = body["alwaysAllow"] === true;
+    } catch {
+      // No body is fine
+    }
+    const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
+      decision: "approve",
+      alwaysAllow,
+    });
+    if (!resolved) return c.json({ error: "No pending approval for this tool" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/turns/:turnId/tools/:toolId/deny", (c) => {
+    const turnId = c.req.param("turnId");
+    const toolId = c.req.param("toolId");
+    const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
+      decision: "deny",
+    });
+    if (!resolved) return c.json({ error: "No pending approval for this tool" }, 404);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/approval/mode", (c) => {
+    const approval = (config.agents.defaults as Record<string, unknown>)["approval"] as { mode?: string } | undefined;
+    return c.json({ mode: approval?.mode ?? "autonomous" });
+  });
+
   // --- Admin API ---
 
   app.get("/api/agents", (c) => {
@@ -490,6 +531,27 @@ export function createGateway(
     });
   });
 
+  // --- MCP Servers API ---
+
+  app.get("/api/mcp/servers", (c) => {
+    return c.json({ servers: mcpRef?.getStatus() ?? [] });
+  });
+
+  app.post("/api/mcp/servers/:name/reconnect", async (c) => {
+    if (!mcpRef) return c.json({ error: "MCP not enabled" }, 400);
+    const name = c.req.param("name");
+    const mcpConfig = (config as Record<string, unknown>)["mcp"] as { servers?: Record<string, unknown> } | undefined;
+    const serverConfig = mcpConfig?.servers?.[name];
+    if (!serverConfig) return c.json({ error: "Server not found in config" }, 404);
+    try {
+      await mcpRef.connect(name, serverConfig as import("../organon/mcp-client.js").McpServerConfig);
+      return c.json({ ok: true, name });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: `Reconnect failed: ${msg}` }, 500);
+    }
+  });
+
   // --- Cost Attribution API ---
 
   app.get("/api/costs/summary", (c) => {
@@ -595,6 +657,7 @@ export function createGateway(
       },
       cron: cronRef?.getStatus() ?? [],
       services: watchdogRef?.getStatus() ?? [],
+      mcp: mcpRef?.getStatus() ?? [],
     });
   });
 
@@ -694,6 +757,132 @@ export function createGateway(
     }
     const id = store.blackboardWrite(key, value, author, ttl);
     return c.json({ ok: true, id });
+  });
+
+  // --- Workspace File Explorer API ---
+
+  function resolveAgentWorkspace(agentId?: string): string | null {
+    const id = agentId ?? config.agents.list.find((a) => a.default)?.id ?? config.agents.list[0]?.id;
+    if (!id) return null;
+    const agent = config.agents.list.find((a) => a.id === id);
+    return agent?.workspace ?? null;
+  }
+
+  function safeWorkspacePath(workspace: string, userPath: string): string | null {
+    const resolved = resolve(workspace, userPath);
+    if (!resolved.startsWith(workspace)) return null;
+    return resolved;
+  }
+
+  interface TreeEntry {
+    name: string;
+    type: "file" | "directory";
+    size?: number | undefined;
+    modified?: string | undefined;
+    children?: TreeEntry[] | undefined;
+  }
+
+  function buildTree(dirPath: string, depth: number, maxDepth: number): TreeEntry[] {
+    if (depth >= maxDepth) return [];
+    try {
+      const entries = readdirSync(dirPath, { withFileTypes: true });
+      const result: TreeEntry[] = [];
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        const fullPath = join(dirPath, entry.name);
+        try {
+          const stat = statSync(fullPath);
+          if (entry.isDirectory()) {
+            result.push({
+              name: entry.name,
+              type: "directory",
+              modified: stat.mtime.toISOString(),
+              children: depth + 1 < maxDepth ? buildTree(fullPath, depth + 1, maxDepth) : undefined,
+            });
+          } else {
+            result.push({
+              name: entry.name,
+              type: "file",
+              size: stat.size,
+              modified: stat.mtime.toISOString(),
+            });
+          }
+        } catch {
+          // skip unreadable entries
+        }
+      }
+      // directories first, then files, alphabetical within each
+      result.sort((a, b) => {
+        if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      return result;
+    } catch {
+      return [];
+    }
+  }
+
+  app.get("/api/workspace/tree", (c) => {
+    const agentId = c.req.query("agentId");
+    const subpath = c.req.query("path") ?? "";
+    const depth = Math.min(parseInt(c.req.query("depth") ?? "2", 10), 5);
+    const workspace = resolveAgentWorkspace(agentId ?? undefined);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    const targetPath = subpath ? safeWorkspacePath(workspace, subpath) : workspace;
+    if (!targetPath) return c.json({ error: "Invalid path" }, 400);
+    if (!existsSync(targetPath)) return c.json({ error: "Path not found" }, 404);
+
+    const tree = buildTree(targetPath, 0, depth);
+    return c.json({ root: subpath || ".", entries: tree });
+  });
+
+  app.get("/api/workspace/file", (c) => {
+    const agentId = c.req.query("agentId");
+    const filePath = c.req.query("path");
+    if (!filePath) return c.json({ error: "path required" }, 400);
+
+    const workspace = resolveAgentWorkspace(agentId ?? undefined);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    const resolved = safeWorkspacePath(workspace, filePath);
+    if (!resolved) return c.json({ error: "Invalid path" }, 400);
+    if (!existsSync(resolved)) return c.json({ error: "File not found" }, 404);
+
+    try {
+      const stat = statSync(resolved);
+      if (stat.isDirectory()) return c.json({ error: "Path is a directory" }, 400);
+      if (stat.size > 1_048_576) return c.json({ error: "File too large (>1MB)" }, 400);
+
+      const content = readFileSync(resolved, "utf-8");
+      return c.json({ path: filePath, size: stat.size, content });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Read failed" }, 500);
+    }
+  });
+
+  app.get("/api/workspace/git-status", (c) => {
+    const agentId = c.req.query("agentId");
+    const workspace = resolveAgentWorkspace(agentId ?? undefined);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    try {
+      const output = execSync("git status --porcelain 2>/dev/null || true", {
+        cwd: workspace,
+        encoding: "utf-8",
+        timeout: 5000,
+      });
+      const files: Array<{ status: string; path: string }> = [];
+      for (const line of output.split("\n")) {
+        if (!line.trim()) continue;
+        const status = line.slice(0, 2).trim();
+        const path = line.slice(3);
+        files.push({ status, path });
+      }
+      return c.json({ files });
+    } catch {
+      return c.json({ files: [] });
+    }
   });
 
   return app;

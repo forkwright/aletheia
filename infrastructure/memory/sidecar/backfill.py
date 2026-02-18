@@ -10,6 +10,7 @@ for fact extraction, embedding, and graph storage.
 """
 
 import argparse
+import os
 import json
 import logging
 import sqlite3
@@ -23,10 +24,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("backfill")
 
 SIDECAR_URL = "http://127.0.0.1:8230"
-USER_ID = "ckickertz"
+USER_ID = os.environ.get("ALETHEIA_USER", "default")
 AGENT_ID = "chiron"
 SESSIONS_DB = Path.home() / ".aletheia" / "sessions.db"
-CLAUDE_CODE_DIR = Path.home() / ".claude" / "projects" / "-home-ckickertz-summus"
+CLAUDE_CODE_DIR = Path(os.environ.get("CLAUDE_CODE_PROJECT_DIR", str(Path.home() / ".claude" / "projects")))
 
 # Batch user+assistant turns into chunks of this many characters
 MAX_CHUNK_CHARS = 3000

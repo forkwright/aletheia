@@ -1,7 +1,7 @@
 # Distillation Memory Persistence
 
 **RFC / Implementation Spec**
-**Author:** Syn (Nous)
+**Author:** forkwright
 **Date:** 2026-02-19
 **Status:** Ready for implementation
 **Assignee:** Metis (Claude Code)
@@ -15,11 +15,11 @@ When the distillation pipeline compresses a session's context window, it produce
 2. Extracted facts/decisions (flushed to Mem0 vector store)
 3. Audit metrics (stored in `distillations` table)
 
-**What it does NOT produce:** Any durable workspace file. The summary exists only in the session DB, and facts go only to Mem0. If the runtime restarts after distillation, the agent wakes up with only the post-compaction tail — a summary message and a few preserved recent messages. The detailed context from hours of work is gone from the agent's working memory.
+**What it does NOT produce:** Any durable workspace file. The summary exists only in the session DB, and facts go only to Mem0. If the runtime restarts after distillation, the agent wakes up with only the post-compaction tail - a summary message and a few preserved recent messages. The detailed context from hours of work is gone from the agent's working memory.
 
 ### The Amnesia Failure Mode
 
-On 2026-02-18, a single session accumulated 1,916 messages across 13 distillation cycles. When the runtime restarted at 11:13 AM, the agent (Syn) had zero continuity for the day's work — no daily memory file existed, and the post-compaction tail covered only the last few minutes of activity.
+On 2026-02-18, a single session accumulated 1,916 messages across 13 distillation cycles. When the runtime restarted at 11:13 AM, the agent (Syn) had zero continuity for the day's work - no daily memory file existed, and the post-compaction tail covered only the last few minutes of activity.
 
 The data was all *preserved* in the DB (messages marked `is_distilled`), but nothing in the pipeline writes it to the agent's workspace memory files (`memory/YYYY-MM-DD.md`), which is what agents actually read on boot via their bootstrap system prompt.
 
@@ -27,7 +27,7 @@ The data was all *preserved* in the DB (messages marked `is_distilled`), but not
 
 - **Bootstrap reads workspace files, not the DB.** The `assembleBootstrap()` function reads markdown files from the agent's workspace directory. The session DB is for conversation replay, not for boot-time context loading.
 - **Mem0 recall is query-dependent.** Facts flushed to Mem0 are only surfaced when the incoming message triggers a semantically relevant recall. They don't provide narrative continuity.
-- **Distillation summaries are lossy.** Each cycle compresses further. After 13 cycles, the surviving summary captures only the most recent work. Early-session context is permanently compressed away — unless it was written to a durable file.
+- **Distillation summaries are lossy.** Each cycle compresses further. After 13 cycles, the surviving summary captures only the most recent work. Early-session context is permanently compressed away - unless it was written to a durable file.
 
 ---
 
@@ -35,7 +35,7 @@ The data was all *preserved* in the DB (messages marked `is_distilled`), but not
 
 1. **Zero-config durability.** Every distillation automatically produces a workspace memory file. No agent behavior change required.
 2. **Append-only daily logs.** Multiple distillations per day append to the same file, building a chronological record.
-3. **Lightweight.** The workspace write happens as a side-effect of the existing pipeline — no additional LLM calls, no new models, no extra latency beyond a file write.
+3. **Lightweight.** The workspace write happens as a side-effect of the existing pipeline - no additional LLM calls, no new models, no extra latency beyond a file write.
 4. **Agent-scoped.** Each agent's memory goes to *its own* workspace, respecting the existing `nous/{agentId}/memory/` convention.
 5. **Non-blocking.** File write failures must not fail the distillation pipeline.
 6. **Observable.** Log when writes succeed/fail. Include distillation number in the file for auditability.
@@ -78,7 +78,7 @@ A markdown file at `{workspace}/memory/{YYYY-MM-DD}.md` with the following struc
 ```markdown
 ---
 
-## Distillation #N — HH:MM (session: {sessionId})
+## Distillation #N - HH:MM (session: {sessionId})
 
 ### Summary
 {narrative summary from summarize pass}
@@ -153,11 +153,11 @@ export function flushToWorkspace(opts: WorkspaceFlushOpts): { written: boolean; 
 
     // Header if file doesn't exist yet
     if (!existsSync(filePath)) {
-      sections.push(`# Memory — ${dateStr}\n`);
+      sections.push(`# Memory - ${dateStr}\n`);
     }
 
     sections.push(`\n---\n`);
-    sections.push(`## Distillation #${opts.distillationNumber} — ${timeStr} (session: ${opts.sessionId.slice(0, 12)})\n`);
+    sections.push(`## Distillation #${opts.distillationNumber} - ${timeStr} (session: ${opts.sessionId.slice(0, 12)})\n`);
 
     // Summary
     sections.push(`### Summary\n`);
@@ -231,7 +231,7 @@ export function flushToWorkspace(opts: WorkspaceFlushOpts): { written: boolean; 
 ```
 
 **Key design decisions:**
-- **Synchronous file I/O** (`appendFileSync`). This is a single small write to a local SSD — sub-millisecond. Using sync avoids race conditions if two distillations fire in quick succession.
+- **Synchronous file I/O** (`appendFileSync`). This is a single small write to a local SSD - sub-millisecond. Using sync avoids race conditions if two distillations fire in quick succession.
 - **Append mode.** Never overwrites existing content. Safe for concurrent access patterns.
 - **Capped facts list** (max 20 in file). The full extraction goes to Mem0; the workspace file is for narrative continuity, not exhaustive storage.
 - **Non-throwing.** Returns a result object with `written: boolean` and optional `error`. The caller decides whether to log or ignore.
@@ -311,7 +311,7 @@ Test cases:
 3. **Handles empty extraction gracefully.** All arrays empty → only summary section written.
 4. **Caps facts at 20.** Pass 30 facts → only 20 listed + "and 10 more".
 5. **Returns error on permission failure.** Mock a read-only dir → `written: false`, error populated.
-6. **File header only on first write.** First call creates `# Memory — YYYY-MM-DD` header; second call does not duplicate it.
+6. **File header only on first write.** First call creates `# Memory - YYYY-MM-DD` header; second call does not duplicate it.
 
 **Updated test: `distillation/pipeline.test.ts`**
 
@@ -323,9 +323,9 @@ Add test case:
 
 ## Configuration
 
-No new configuration needed. The feature activates automatically whenever the agent has a workspace configured (which is always — it's a required field in `NousDefinition`).
+No new configuration needed. The feature activates automatically whenever the agent has a workspace configured (which is always - it's a required field in `NousDefinition`).
 
-The `compaction.memoryFlush` config section already exists in the schema but is currently unused for workspace writes. We intentionally **do not** gate this feature behind that config — workspace memory persistence should be unconditional. The `memoryFlush` config can be reserved for future Mem0-specific tuning.
+The `compaction.memoryFlush` config section already exists in the schema but is currently unused for workspace writes. We intentionally **do not** gate this feature behind that config - workspace memory persistence should be unconditional. The `memoryFlush` config can be reserved for future Mem0-specific tuning.
 
 ---
 
@@ -333,11 +333,11 @@ The `compaction.memoryFlush` config section already exists in the schema but is 
 
 | File | Action |
 |------|--------|
-| `infrastructure/runtime/src/distillation/workspace-flush.ts` | **NEW** — workspace memory writer |
-| `infrastructure/runtime/src/distillation/workspace-flush.test.ts` | **NEW** — tests |
-| `infrastructure/runtime/src/distillation/pipeline.ts` | **MODIFY** — add workspace opt, call flushToWorkspace |
-| `infrastructure/runtime/src/distillation/pipeline.test.ts` | **MODIFY** — add workspace integration test |
-| `infrastructure/runtime/src/nous/manager.ts` | **MODIFY** — pass workspace to distillSession (3 call sites) |
+| `infrastructure/runtime/src/distillation/workspace-flush.ts` | **NEW** - workspace memory writer |
+| `infrastructure/runtime/src/distillation/workspace-flush.test.ts` | **NEW** - tests |
+| `infrastructure/runtime/src/distillation/pipeline.ts` | **MODIFY** - add workspace opt, call flushToWorkspace |
+| `infrastructure/runtime/src/distillation/pipeline.test.ts` | **MODIFY** - add workspace integration test |
+| `infrastructure/runtime/src/nous/manager.ts` | **MODIFY** - pass workspace to distillSession (3 call sites) |
 
 ---
 
@@ -345,10 +345,10 @@ The `compaction.memoryFlush` config section already exists in the schema but is 
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| File write fails (permissions, disk full) | Agent loses this distillation's workspace record | Non-blocking: log error, distillation still succeeds. ACL issues are the main risk — document that agent workspace must be writable by the runtime user. |
+| File write fails (permissions, disk full) | Agent loses this distillation's workspace record | Non-blocking: log error, distillation still succeeds. ACL issues are the main risk - document that agent workspace must be writable by the runtime user. |
 | Race condition: two distillations write simultaneously | Corrupted file content | `appendFileSync` is atomic for small writes on Linux (< PIPE_BUF). Our writes are typically 1-5KB. For extra safety, we could use `O_APPEND` mode explicitly, but `appendFileSync` already does this. |
-| Large extraction bloats file | Workspace file grows very large over a day | Capped at 20 facts per distillation. 13 distillations × ~3KB each = ~40KB per day — negligible. |
-| Summary quality varies | Haiku produces thin summaries sometimes | Not solved here — that's a model quality issue. But having *something* written is infinitely better than nothing. |
+| Large extraction bloats file | Workspace file grows very large over a day | Capped at 20 facts per distillation. 13 distillations × ~3KB each = ~40KB per day - negligible. |
+| Summary quality varies | Haiku produces thin summaries sometimes | Not solved here - that's a model quality issue. But having *something* written is infinitely better than nothing. |
 | Clock skew in timestamps | Distillation time shows wrong hour | Uses `process.env.TZ` for timezone. Default UTC is fine. Configurable per-agent via `userTimezone` in the future. |
 
 ---
@@ -378,14 +378,14 @@ After implementation:
 
 ## Implementation Notes for Metis
 
-1. **Start with `workspace-flush.ts`** — it's a pure function with no dependencies beyond `node:fs` and the logger. Easy to write and test in isolation.
+1. **Start with `workspace-flush.ts`** - it's a pure function with no dependencies beyond `node:fs` and the logger. Easy to write and test in isolation.
 
 2. **The pipeline change is surgical.** One new import, one new optional field on `DistillationOpts`, and a ~5-line block after `store.recordDistillation()`.
 
 3. **The manager change is mechanical.** Three call sites, same pattern: resolve workspace, pass it through. The workspace is already resolved earlier in the turn for bootstrap assembly, so the value is available.
 
-4. **For tests:** Use `node:os` `tmpdir()` for temp directories. Clean up after. The pipeline tests already mock the store and router — just add `workspace: tempDir` to the opts.
+4. **For tests:** Use `node:os` `tmpdir()` for temp directories. Clean up after. The pipeline tests already mock the store and router - just add `workspace: tempDir` to the opts.
 
-5. **The `resolveWorkspace` import** is already available in `manager.ts` — it's used for bootstrap assembly. No new imports needed there.
+5. **The `resolveWorkspace` import** is already available in `manager.ts` - it's used for bootstrap assembly. No new imports needed there.
 
 6. **File path:** `workspace-flush.ts` goes in the `distillation/` directory alongside `hooks.ts`, `extract.ts`, `summarize.ts`, and `pipeline.ts`. It's a natural peer.

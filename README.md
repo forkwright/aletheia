@@ -1,17 +1,21 @@
 # Aletheia
 
-*Multi-agent AI system infrastructure coordinating specialized agents through a custom web UI & Signal messaging.*
+*Self-hosted multi-agent AI system with a web UI, persistent memory, and Signal messaging.*
 
-Self-hosted, privacy-first. Runs on most any hardware as a systemd service.
+Privacy-first. Runs on commodity hardware as a systemd service. No cloud dependencies beyond your LLM API key.
+
+**v0.9.0** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
 
 ---
 
 ## Architecture
 
 ```
-                    Signal Messenger
-                         |
-                    signal-cli (JSON-RPC, :8080)
+         Web UI (Svelte 5)          Signal Messenger
+              |                          |
+         HTTP/SSE (:18789/ui)       signal-cli (JSON-RPC, :8080)
+              |                          |
+              +----------+---------------+
                          |
                   +--------------+
                   |   Aletheia   |     Node.js gateway (TypeScript/tsdown)
@@ -19,23 +23,23 @@ Self-hosted, privacy-first. Runs on most any hardware as a systemd service.
                   |   (:18789)   |     message routing, context assembly
                   +--------------+
                    /    |    |   \
-              Bindings (per-agent group routing)
+              Bindings (per-agent routing)
                 /       |    |      \
-         +-----+  +------+ +------+ +------+
-         | Syn |  | ...  | | ...  | | ...  |   N agents, each with:
-         +-----+  +------+ +------+ +------+   - SOUL.md (character)
+         +------+  +------+ +------+ +------+
+         | agent|  | agent| | agent| | agent|   N agents, each with:
+         +------+  +------+ +------+ +------+   - SOUL.md (character)
             |         |         |        |       - AGENTS.md (operations)
             v         v         v        v       - MEMORY.md (continuity)
          Claude     Claude    Claude   Claude
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~354KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
+**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~400KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
 
-**Communication**: Fully featured web chat with file upload. Signal messenger via signal-cli. 10 built-in `!` commands. Link pre-processing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
+**Communication**: Web chat UI (Svelte 5) with streaming responses, file upload, syntax highlighting, and real-time tool activity. Signal messenger via signal-cli as a secondary channel. 10 built-in `!` commands. Link preprocessing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
 **Models**: Currently only piped for Anthropic oauth or API. Complexity-based routing with temperature selection. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure being built.
 
-**Memory**: Dual-layer — Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Self-observation tools (calibration, correction tracking).
+**Memory**: Dual-layer: Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Self-observation tools (calibration, correction tracking).
 
 **Observability**: Self-hosted Langfuse (port 3100) for session traces and metrics.
 
@@ -130,7 +134,7 @@ Services: Mem0 sidecar (:8230), Qdrant (:6333), Neo4j (:7474/:7687)
 
 ### Local Memory (sqlite-vec)
 
-Built into the gateway runtime. Per-agent vector search over workspace files (MEMORY.md, daily logs). Federated with Mem0 — the `memory_search` tool queries both backends in parallel and merges results.
+Built into the gateway runtime. Per-agent vector search over workspace files (MEMORY.md, daily logs). Federated with Mem0. The `memory_search` tool queries both backends in parallel and merges results.
 
 ### Context Assembly
 
@@ -292,7 +296,7 @@ Copy `.env.example` to `shared/config/aletheia.env` and fill in values. Must be 
 
 ```
 src/entry.ts          CLI entry point (Commander)
-src/aletheia.ts       Main orchestration — wires all modules
+src/aletheia.ts       Main orchestration, wires all modules
 src/taxis/            Config loading + Zod validation
 src/mneme/            Session store (better-sqlite3, 6 migrations)
 src/hermeneus/        Anthropic SDK, provider router, token counting

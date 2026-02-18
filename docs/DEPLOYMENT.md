@@ -114,8 +114,8 @@ Enable in gateway config:
 ```
 
 The plugin hooks into agent lifecycle:
-- `before_agent_start` — recalls relevant memories into context
-- `agent_end` — extracts new memories from the conversation
+- `before_agent_start` - recalls relevant memories into context
+- `agent_end` - extracts new memories from the conversation
 
 ## Langfuse (Observability)
 

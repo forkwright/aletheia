@@ -60,6 +60,13 @@ const CompactionConfig = z
   })
   .default({});
 
+const ApprovalConfig = z
+  .object({
+    mode: z.enum(["autonomous", "guarded", "supervised"]).default("autonomous"),
+    autoApproveTimeoutMs: z.number().default(0), // 0 = wait forever
+  })
+  .default({});
+
 const ToolsConfig = z
   .object({
     profile: z
@@ -130,6 +137,7 @@ const AgentDefaults = z.preprocess(
         overrides: z.record(z.string(), z.number()).default({}),
       })
       .default({}),
+    approval: ApprovalConfig.default({}),
   }).passthrough(),
 ).default({});
 
@@ -367,6 +375,23 @@ const BrandingConfig = z
   })
   .default({});
 
+const McpServerDef = z.object({
+  transport: z.enum(["stdio", "http", "sse"]).default("stdio"),
+  command: z.string().optional(),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}),
+  url: z.string().optional(),
+  headers: z.record(z.string(), z.string()).default({}),
+  timeoutMs: z.number().default(30000),
+});
+
+const McpConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    servers: z.record(z.string(), McpServerDef).default({}),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -381,6 +406,7 @@ export const AletheiaConfigSchema = z.object({
   env: EnvConfig.default({}),
   watchdog: WatchdogConfig.default({}),
   branding: BrandingConfig,
+  mcp: McpConfig.default({}),
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;

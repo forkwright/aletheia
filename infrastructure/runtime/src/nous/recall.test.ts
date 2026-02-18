@@ -24,7 +24,7 @@ describe("recallMemories", () => {
   it("returns formatted block for matching memories", async () => {
     mockFetch.mockResolvedValueOnce(makeResponse([
       { memory: "User prefers dark mode", score: 0.95 },
-      { memory: "User works at Summus", score: 0.88 },
+      { memory: "User prefers Fish shell for terminals", score: 0.88 },
       { memory: "User uses Fish shell", score: 0.82 },
     ]));
 
