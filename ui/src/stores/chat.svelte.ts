@@ -1,6 +1,6 @@
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
-import type { ChatMessage, ToolCallState, HistoryMessage } from "../lib/types";
+import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem } from "../lib/types";
 
 let messages = $state<ChatMessage[]>([]);
 let isStreaming = $state(false);
@@ -64,6 +64,7 @@ export async function sendMessage(
   agentId: string,
   text: string,
   sessionKey: string,
+  media?: MediaItem[],
 ): Promise<void> {
   if (isStreaming) return;
   error = null;
@@ -74,6 +75,7 @@ export async function sendMessage(
     role: "user",
     content: text,
     timestamp: new Date().toISOString(),
+    ...(media?.length ? { media } : {}),
   };
   messages = [...messages, userMsg];
 
@@ -84,7 +86,7 @@ export async function sendMessage(
   abortController = new AbortController();
 
   try {
-    for await (const event of streamMessage(agentId, text, sessionKey, abortController.signal)) {
+    for await (const event of streamMessage(agentId, text, sessionKey, abortController.signal, media)) {
       switch (event.type) {
         case "text_delta":
           streamingText += event.text;

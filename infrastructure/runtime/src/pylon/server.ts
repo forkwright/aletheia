@@ -172,10 +172,11 @@ export function createGateway(
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { agentId, message, sessionKey } = body as {
+    const { agentId, message, sessionKey, media } = body as {
       agentId: string;
       message: string;
       sessionKey?: string;
+      media?: Array<{ contentType: string; data: string; filename?: string }>;
     };
 
     if (!agentId || !message) {
@@ -187,6 +188,7 @@ export function createGateway(
         text: message,
         nousId: agentId,
         sessionKey: sessionKey ?? "main",
+        ...(media?.length ? { media } : {}),
       });
       return c.json({
         response: result.text,
@@ -215,10 +217,11 @@ export function createGateway(
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { agentId, message, sessionKey } = body as {
+    const { agentId, message, sessionKey, media } = body as {
       agentId: string;
       message: string;
       sessionKey?: string;
+      media?: Array<{ contentType: string; data: string; filename?: string }>;
     };
 
     if (!agentId || !message) {
@@ -229,6 +232,25 @@ export function createGateway(
       return c.json({ error: "Streaming not implemented" }, 501);
     }
 
+    // Validate media attachments from webchat
+    const validMedia: Array<{ contentType: string; data: string; filename?: string }> = [];
+    if (media?.length) {
+      const maxBytes = 25 * 1024 * 1024; // 25MB per attachment
+      for (const item of media) {
+        if (!item.contentType || !item.data) continue;
+        const estimatedSize = Math.ceil(item.data.length * 0.75);
+        if (estimatedSize > maxBytes) {
+          log.warn(`Skipping oversized webchat attachment (${Math.round(estimatedSize / 1024)}KB)`);
+          continue;
+        }
+        if (!/^(image|audio|application)\//i.test(item.contentType)) {
+          log.warn(`Skipping unsupported media type: ${item.contentType}`);
+          continue;
+        }
+        validMedia.push(item);
+      }
+    }
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -237,6 +259,7 @@ export function createGateway(
             text: message,
             nousId: agentId,
             sessionKey: sessionKey ?? "main",
+            ...(validMedia.length > 0 ? { media: validMedia } : {}),
           })) {
             const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
             controller.enqueue(encoder.encode(payload));

@@ -17,6 +17,7 @@
     clearMessages,
     injectLocalMessage,
   } from "../../stores/chat.svelte";
+  import type { MediaItem } from "../../lib/types";
   import {
     getActiveAgent,
     getActiveAgentId,
@@ -90,7 +91,7 @@
     },
   };
 
-  function handleSend(text: string) {
+  function handleSend(text: string, media?: MediaItem[]) {
     const trimmed = text.trim();
 
     // Handle slash commands
@@ -112,7 +113,7 @@
     const agentId = getActiveAgentId();
     if (!agentId) return;
     const sessionKey = getActiveSessionKey();
-    sendMessage(agentId, text, sessionKey).then(() => {
+    sendMessage(agentId, text, sessionKey, media).then(() => {
       skipNextHistoryLoad = true;
       refreshSessions(agentId);
     });

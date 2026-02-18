@@ -27,6 +27,12 @@ export interface HistoryMessage {
   toolName?: string;
 }
 
+export interface MediaItem {
+  contentType: string;
+  data: string;
+  filename?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -34,6 +40,7 @@ export interface ChatMessage {
   timestamp: string;
   toolCalls?: ToolCallState[];
   isStreaming?: boolean;
+  media?: MediaItem[];
 }
 
 export interface ToolCallState {

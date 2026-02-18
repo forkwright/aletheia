@@ -12,6 +12,7 @@
 
   let isUser = $derived(message.role === "user");
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
+  let hasMedia = $derived(message.media && message.media.length > 0);
 
   function toolSummary(tools: ToolCallState[]): string {
     const running = tools.filter((t) => t.status === "running").length;
@@ -19,6 +20,16 @@
     if (running > 0) return `${tools.length} tools running...`;
     if (errors > 0) return `${tools.length} tools (${errors} failed)`;
     return `${tools.length} tool${tools.length === 1 ? "" : "s"} used`;
+  }
+
+  let expandedImage = $state<string | null>(null);
+
+  function openLightbox(src: string) {
+    expandedImage = src;
+  }
+
+  function closeLightbox() {
+    expandedImage = null;
   }
 </script>
 
@@ -43,6 +54,20 @@
         {toolSummary(message.toolCalls)}
       </button>
     {/if}
+    {#if hasMedia}
+      <div class="msg-media" class:single={message.media!.length === 1} class:grid={message.media!.length > 1}>
+        {#each message.media! as item}
+          {#if item.contentType.startsWith("image/")}
+            <button class="media-thumb" onclick={() => openLightbox(`data:${item.contentType};base64,${item.data}`)}>
+              <img
+                src="data:{item.contentType};base64,{item.data}"
+                alt={item.filename ?? "image"}
+              />
+            </button>
+          {/if}
+        {/each}
+      </div>
+    {/if}
     {#if message.content}
       <div class="chat-content">
         {#if isUser}
@@ -56,6 +81,13 @@
   </div>
 </div>
 
+{#if expandedImage}
+  <div class="lightbox" onclick={closeLightbox} onkeydown={(e) => e.key === "Escape" && closeLightbox()} role="dialog" tabindex="-1">
+    <img src={expandedImage} alt="Expanded view" />
+    <button class="lightbox-close" onclick={closeLightbox} aria-label="Close">×</button>
+  </div>
+{/if}
+
 <style>
   .user-text {
     white-space: pre-wrap;
@@ -65,5 +97,82 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-top: 4px;
+  }
+
+  /* Media in messages */
+  .msg-media {
+    margin-bottom: 8px;
+  }
+  .msg-media.single {
+    max-width: 400px;
+  }
+  .msg-media.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+    max-width: 500px;
+  }
+  .media-thumb {
+    display: block;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .media-thumb:hover {
+    border-color: var(--accent);
+  }
+  .media-thumb img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 300px;
+    object-fit: contain;
+    background: var(--surface);
+  }
+  .msg-media.grid .media-thumb img {
+    height: 150px;
+    object-fit: cover;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 32px;
+  }
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: var(--radius);
+  }
+  .lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.2);
   }
 </style>
