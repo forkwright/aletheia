@@ -98,8 +98,10 @@ export interface RouterConfig {
 export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   const router = new ProviderRouter();
 
-  // Load OAuth token from credentials if ANTHROPIC_AUTH_TOKEN not in env
+  // Resolve Anthropic credentials: env vars take priority, then credential file.
+  // Credential file supports both "apiKey" (API key) and "token" (OAuth) fields.
   let authToken: string | undefined;
+  let fileApiKey: string | undefined;
   const envAuthToken = process.env["ANTHROPIC_AUTH_TOKEN"];
   const envApiKey = process.env["ANTHROPIC_API_KEY"];
 
@@ -108,22 +110,24 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
     const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
     try {
       const raw = readFileSync(credPath, "utf-8");
-      let creds: unknown;
+      let creds: Record<string, unknown> | undefined;
       try {
-        creds = JSON.parse(raw);
+        creds = JSON.parse(raw) as Record<string, unknown>;
       } catch {
         log.warn(`Credential file ${credPath} contains invalid JSON — skipping`);
       }
-      if (creds && typeof creds === "object" && "token" in (creds as Record<string, unknown>)) {
-        const token = (creds as Record<string, string>)["token"];
+      if (creds && typeof creds === "object") {
+        const token = creds["token"];
+        const apiKey = creds["apiKey"];
         if (typeof token === "string" && token.length > 0) {
           authToken = token;
           log.info("Loaded OAuth token from credentials");
+        } else if (typeof apiKey === "string" && apiKey.length > 0) {
+          fileApiKey = apiKey;
+          log.info("Loaded API key from credentials");
         } else {
-          log.warn(`Credential file ${credPath} has empty or non-string token field`);
+          log.warn(`Credential file ${credPath} has no valid "apiKey" or "token" field`);
         }
-      } else {
-        log.warn(`Credential file ${credPath} missing "token" field — expected { "token": "sk-ant-..." }`);
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -136,7 +140,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
     log.info(`Using ${envAuthToken ? "ANTHROPIC_AUTH_TOKEN" : "ANTHROPIC_API_KEY"} from environment`);
   }
 
-  if (!authToken && !envAuthToken && !envApiKey) {
+  if (!authToken && !fileApiKey && !envAuthToken && !envApiKey) {
     log.error("No Anthropic authentication configured — no env vars, no credential file. API calls WILL fail.");
   }
 
@@ -144,7 +148,8 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   // (the router's claude-* fallback handles unregistered models)
   const configModels = config?.providers?.["anthropic"]?.models?.map((m) => m.id) ?? [];
 
-  const anthropic = new AnthropicProvider(authToken ? { authToken } : undefined);
+  const providerOpts = authToken ? { authToken } : fileApiKey ? { apiKey: fileApiKey } : undefined;
+  const anthropic = new AnthropicProvider(providerOpts);
   router.registerProvider("anthropic", anthropic, configModels);
   return router;
 }
