@@ -1,8 +1,8 @@
 # Aletheia
 
-> Multi-agent AI system coordinating specialized agents through Signal messaging.
+> Self-hosted multi-agent AI system with a web UI, persistent memory, and Signal messaging.
 
-Self-hosted, privacy-first distributed cognition. N agents (nous) + 1 human in topology. Dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, Signal messaging, HTTP API.
+Privacy-first distributed cognition. N agents + 1 human operator. Web chat UI (Svelte 5), dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, tool approval system, HTTP API.
 
 ## Documentation
 - [README.md](README.md): Architecture, directory structure, deployment, configuration, API reference

@@ -1,10 +1,10 @@
 # Spec: Modular Runtime Architecture
 
 **Status:** Approved  
-**Author:** Syn  
-**Reviewer:** Cody  
+**Author:** forkwright
+
 **Date:** 2026-02-18  
-**Updated:** 2026-02-19 — Decisions locked on buildMessages, config layout, hot-reload scope  
+**Updated:** 2026-02-19 - Decisions locked on buildMessages, config layout, hot-reload scope  
 
 ---
 
@@ -12,7 +12,7 @@
 
 `manager.ts` is 1,446 lines and growing. It contains two near-identical turn execution paths (streaming and non-streaming), hardwired feature composition (recall, loop detection, circuit breakers, tracing, skill learning, competence tracking, distillation), and a constructor that takes four dependencies with six more injected via setters. Every new feature requires touching the same file. The streaming and non-streaming paths drift apart with each change.
 
-More broadly: the runtime is a monolith that happens to have good internal module boundaries. A user who wants to change behavior — disable recall, swap the loop detector strategy, add a pre-turn hook, change how distillation triggers — has to either edit TypeScript or hope the existing config surface covers their need. It usually doesn't.
+More broadly: the runtime is a monolith that happens to have good internal module boundaries. A user who wants to change behavior - disable recall, swap the loop detector strategy, add a pre-turn hook, change how distillation triggers - has to either edit TypeScript or hope the existing config surface covers their need. It usually doesn't.
 
 The config schema (`taxis/schema.ts`) covers deployment topology well (agents, bindings, channels, gateway) but barely touches turn execution behavior. The turn pipeline is implicit in code, not declarative in config.
 
@@ -37,9 +37,9 @@ These were discussed and agreed on 2026-02-19:
 
 ### D1: `buildMessages` is a utility, not a pipeline stage
 
-`buildMessages` (~150 lines) does format conversion: translating stored `Message[]` into API-shaped `MessageParam[]`, handling media blocks, repairing orphaned tool_use, merging consecutive user messages, and injecting ephemeral timestamps. None of this is pipeline *behavior* — it's structural plumbing. It doesn't need configuration, toggling, or per-agent variation.
+`buildMessages` (~150 lines) does format conversion: translating stored `Message[]` into API-shaped `MessageParam[]`, handling media blocks, repairing orphaned tool_use, merging consecutive user messages, and injecting ephemeral timestamps. None of this is pipeline *behavior* - it's structural plumbing. It doesn't need configuration, toggling, or per-agent variation.
 
-**Implementation:** Lives at `src/nous/pipeline/utils/build-messages.ts`. The `history` stage imports and calls it. If ephemeral timestamps ever need a toggle, the utility takes an options bag — not a pipeline config key.
+**Implementation:** Lives at `src/nous/pipeline/utils/build-messages.ts`. The `history` stage imports and calls it. If ephemeral timestamps ever need a toggle, the utility takes an options bag - not a pipeline config key.
 
 ### D2: Single `config.yaml` with per-agent sparse overrides
 
@@ -72,16 +72,16 @@ Layer 4 (overlay files) exists only for agent self-configuration via the `config
 
 **No per-agent config files for human use.** One file to look at, one file to validate, one file to version control.
 
-### D3: Conservative hot-reload — feature flags and thresholds only (Phase 3.0)
+### D3: Conservative hot-reload - feature flags and thresholds only (Phase 3.0)
 
 **Safe to hot-reload (takes effect next turn):**
 - Feature flags: enable/disable recall, tracing, skill learning, signal classification, competence tracking
 - Thresholds: loop detection params, recall timeout/minScore, circuit breaker sensitivity
 - Tool timeouts (defaultMs + per-tool overrides)
 
-**Safe with side effects — Phase 3.1 (model changes):**
-- Model swap: takes effect next turn, history format is model-agnostic, no issue. **But** if the new model has a smaller context window, the history stage truncates more aggressively — the agent may lose context. Log a warning: `"Model changed for {nousId}: effective context reduced from {old} to {new} tokens."`
-- `contextTokens` change: same truncation behavior. Additionally, if the new value puts the current history above the distillation threshold, distillation triggers on the next turn. This is correct behavior but surprising — log it.
+**Safe with side effects - Phase 3.1 (model changes):**
+- Model swap: takes effect next turn, history format is model-agnostic, no issue. **But** if the new model has a smaller context window, the history stage truncates more aggressively - the agent may lose context. Log a warning: `"Model changed for {nousId}: effective context reduced from {old} to {new} tokens."`
+- `contextTokens` change: same truncation behavior. Additionally, if the new value puts the current history above the distillation threshold, distillation triggers on the next turn. This is correct behavior but surprising - log it.
 
 **Not hot-reloadable (requires restart):**
 - New agents / removed agents
@@ -91,7 +91,7 @@ Layer 4 (overlay files) exists only for agent self-configuration via the `config
 - Store / database config
 - Channel config (new Signal numbers, webhook URLs)
 
-**Mechanism:** Extend existing SIGUSR1 handler. No API endpoint in Phase 3.0 — an HTTP config reload endpoint is effectively `POST /reconfigure-the-runtime`, which is security-critical surface that needs auth and rate-limiting. SIGUSR1 requires local access. Start there, widen later if needed.
+**Mechanism:** Extend existing SIGUSR1 handler. No API endpoint in Phase 3.0 - an HTTP config reload endpoint is effectively `POST /reconfigure-the-runtime`, which is security-critical surface that needs auth and rate-limiting. SIGUSR1 requires local access. Start there, widen later if needed.
 
 ---
 
@@ -114,7 +114,7 @@ InboundMessage
 
 **Stage ordering is static.** Users cannot reorder or inject custom stages. The existing `prostheke` plugin system handles custom hooks (pre-turn, post-turn, pre-tool, etc.). Stages are structural; plugins are behavioral extensions.
 
-Each stage is a function with a typed input/output contract. The pipeline runner composes them. Streaming and non-streaming share the same stages — the only difference is whether `execute` yields events or buffers them.
+Each stage is a function with a typed input/output contract. The pipeline runner composes them. Streaming and non-streaming share the same stages - the only difference is whether `execute` yields events or buffers them.
 
 ```typescript
 // pipeline/types.ts
@@ -234,14 +234,14 @@ agents:
 
 Resolution order: `agent.pipeline.X` → `defaults.pipeline.X` → hardcoded fallback → `nous/<id>/config-overrides.yaml` (machine overlay, highest priority).
 
-Existing configs with no `pipeline` key behave identically — all hardcoded defaults match current behavior. Zero breaking changes.
+Existing configs with no `pipeline` key behave identically - all hardcoded defaults match current behavior. Zero breaking changes.
 
 ### 3. Pipeline Assembly
 
 The manager no longer contains turn logic. It becomes a thin orchestrator:
 
 ```typescript
-// manager.ts (after refactor — ~200 lines)
+// manager.ts (after refactor - ~200 lines)
 
 export class NousManager {
   private pipelineCache = new Map<string, Pipeline>();
@@ -327,7 +327,7 @@ src/nous/pipeline/
                         #   media handling, ephemeral timestamps, consecutive-user merge)
 ```
 
-The `execute.ts` stage contains the tool loop — still the most complex piece, but now isolated. It receives fully-prepared `systemPrompt`, `messages`, and `toolDefs` and just runs the LLM interaction.
+The `execute.ts` stage contains the tool loop - still the most complex piece, but now isolated. It receives fully-prepared `systemPrompt`, `messages`, and `toolDefs` and just runs the LLM interaction.
 
 ### 6. Hot Reload
 
@@ -452,8 +452,8 @@ recall: z.object({
 
 **CLI commands:**
 
-- **`aletheia config show <agent>`** — Dumps fully-resolved effective config for an agent, showing all 4 layers merged. Annotates each field with its source (`default`, `agent`, `overlay`, `hardcoded`).
-- **`aletheia doctor --verbose`** — Existing doctor check, extended to show per-agent pipeline config and flag any anomalies (e.g., agent with recall enabled but no Mem0 sidecar configured).
+- **`aletheia config show <agent>`** - Dumps fully-resolved effective config for an agent, showing all 4 layers merged. Annotates each field with its source (`default`, `agent`, `overlay`, `hardcoded`).
+- **`aletheia doctor --verbose`** - Existing doctor check, extended to show per-agent pipeline config and flag any anomalies (e.g., agent with recall enabled but no Mem0 sidecar configured).
 
 ### 8. Agent Self-Configuration
 
@@ -472,7 +472,7 @@ Agents can modify their own pipeline config within bounds:
 ```
 
 **Guardrails:**
-- Agents can only modify their own `pipeline.*` — no cross-agent changes
+- Agents can only modify their own `pipeline.*` - no cross-agent changes
 - Cannot modify bindings, channels, gateway, other agents, or any structural config
 - Changes written to `nous/<id>/config-overrides.yaml` (machine-managed, not human-edited)
 - `config_write` triggers hot reload for the calling agent's pipeline cache entry only
@@ -498,11 +498,11 @@ This is a refactor, not a rewrite. The external API doesn't change. Migration is
 ### Phase 1: Extract Pipeline Stages (no config changes)
 1. Create `src/nous/pipeline/` directory with `types.ts`, `runner.ts`, `build.ts`
 2. Create `src/nous/pipeline/stages/` with `resolve.ts`, `guard.ts`, `context.ts`, `history.ts`, `execute.ts`, `finalize.ts`
-3. Create `src/nous/pipeline/utils/build-messages.ts` — extract from manager
+3. Create `src/nous/pipeline/utils/build-messages.ts` - extract from manager
 4. Extract each stage from `manager.ts` into its corresponding file
 5. Build `runner.ts` that composes stages for both streaming and non-streaming
-6. Manager delegates to runner — becomes ~200 lines
-7. Delete the non-streaming `executeTurn` entirely — the runner handles both modes
+6. Manager delegates to runner - becomes ~200 lines
+7. Delete the non-streaming `executeTurn` entirely - the runner handles both modes
 8. **Tests:** Existing manager tests still pass (black-box). No behavior change.
 
 ### Phase 2: Pipeline Config
@@ -512,13 +512,13 @@ This is a refactor, not a rewrite. The external API doesn't change. Migration is
 4. Add `resolvePipelineConfig()` with 4-layer resolution
 5. **Backward compatible:** Existing configs with no `pipeline` key get all defaults = current behavior
 
-### Phase 3.0: Hot Reload — Feature Flags & Thresholds
+### Phase 3.0: Hot Reload - Feature Flags & Thresholds
 1. Implement `diffConfig()` with structural vs safe categorization
 2. Extend SIGUSR1 handler to call `reloadConfig()`
 3. Pipeline cache invalidation on reload
 4. Logging: what changed, what was applied, what requires restart
 
-### Phase 3.1: Hot Reload — Model Changes
+### Phase 3.1: Hot Reload - Model Changes
 1. Add model/contextTokens to safe-with-warnings category
 2. Implement context budget warnings
 3. Implement distillation threshold warnings
@@ -542,7 +542,7 @@ Success looks like:
 - `manager.ts` drops from 1,446 lines to <250 (orchestration only)
 - No stage file exceeds 300 lines
 - `build-messages.ts` is a pure utility with no pipeline config dependencies
-- Adding a new pre-turn or post-turn feature requires creating one file and adding one config key — zero changes to existing stage files
+- Adding a new pre-turn or post-turn feature requires creating one file and adding one config key - zero changes to existing stage files
 - Existing test suite passes without modification after Phase 1
 - A user can disable memory recall for one agent by adding 3 lines to `config.yaml`
 - Hot reload applies feature flag changes without restart or session disruption

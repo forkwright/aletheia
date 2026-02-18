@@ -1,7 +1,7 @@
 # Spec: Authentication & Security Hardening
 
 **Status:** Draft  
-**Author:** Syn  
+**Author:** forkwright
 **Date:** 2026-02-19  
 
 ---
@@ -17,14 +17,14 @@ This was fine for local-only development. It is not fine for a system that:
 - Serves a webchat UI over Tailscale to remote devices
 - Stores conversation history, personal data, and API keys for LLM providers
 
-### Current State — What Exists
+### Current State - What Exists
 
 **Gateway auth (pylon/server.ts):**
 - Two modes: `token` (Bearer header) and `password` (HTTP Basic Auth)
 - Single shared secret in `config.yaml` (`gateway.auth.token`)
 - `timingSafeEqual` used for comparison (good)
 - `/health` and `/api/branding` exempt from auth (correct)
-- `/ui/*` routes exempt from auth (the UI handles its own token check — but this means static assets are public)
+- `/ui/*` routes exempt from auth (the UI handles its own token check - but this means static assets are public)
 
 **Webchat auth (ui/lib/api.ts):**
 - Token stored in `localStorage` under `aletheia_token`
@@ -37,7 +37,7 @@ This was fine for local-only development. It is not fine for a system that:
 - Separate token system: `mcp-tokens.json` file with scoped tokens
 - Per-token scopes (`agent:*`, `system:status`, etc.)
 - `hasScope()` check per tool call
-- Decent design — but tokens are static files, no rotation, no revocation
+- Decent design - but tokens are static files, no rotation, no revocation
 
 **Signal channel auth (semeion/listener.ts):**
 - Allowlist-based (static phone numbers in config)
@@ -56,7 +56,7 @@ This was fine for local-only development. It is not fine for a system that:
 - `Referrer-Policy: no-referrer` ✓
 - `X-XSS-Protection: 0` ✓
 - No `Content-Security-Policy`
-- No `Strict-Transport-Security` (can't — no TLS)
+- No `Strict-Transport-Security` (can't - no TLS)
 - No `Permissions-Policy`
 
 **TLS:** None. Everything is HTTP. The Tailscale connection provides encryption for remote access, but LAN access is unencrypted.
@@ -72,7 +72,7 @@ This was fine for local-only development. It is not fine for a system that:
 - CSRF protection
 - TLS termination
 - Input sanitization beyond basic type checks
-- Memory sidecar proxy auth (gateway proxies to `http://127.0.0.1:8230` with no auth — fine if loopback-only, but worth documenting)
+- Memory sidecar proxy auth (gateway proxies to `http://127.0.0.1:8230` with no auth - fine if loopback-only, but worth documenting)
 
 ---
 
@@ -88,7 +88,7 @@ This was fine for local-only development. It is not fine for a system that:
 
 ## Non-Goals
 
-- OAuth2 / OIDC provider integration (defer — overkill for self-hosted)
+- OAuth2 / OIDC provider integration (defer - overkill for self-hosted)
 - Multi-user with separate databases (all users share the same agent ecosystem)
 - E2E encryption of stored messages (SQLite encryption at rest is a separate concern)
 - Changing the Signal channel auth model (it's already good)
@@ -106,7 +106,7 @@ gateway:
   auth:
     mode: "session"            # "token" | "password" | "session"
 
-    # Token mode (existing — unchanged)
+    # Token mode (existing - unchanged)
     token: "my-secret-token"
 
     # Session mode (new)
@@ -114,12 +114,12 @@ gateway:
       secret: "..."            # HMAC signing key for session tokens (auto-generated if absent)
       accessTokenTtl: 900      # 15 minutes (seconds)
       refreshTokenTtl: 604800  # 7 days (seconds)
-      maxSessions: 10          # per user — oldest evicted on overflow
+      maxSessions: 10          # per user - oldest evicted on overflow
       secureCookies: true      # Requires TLS. Set false for HTTP-only dev.
 
-    # Users (new — replaces single shared token)
+    # Users (new - replaces single shared token)
     users:
-      - username: "cody"
+      - username: "admin"
         passwordHash: "$argon2id$..."   # argon2id hash
         role: "admin"
       - username: "guest"
@@ -159,7 +159,7 @@ GET  /api/auth/me          (access token in header) → { username, role, sessio
 
 **Refresh tokens:** Longer-lived (7 days default), stored in the SQLite database (hashed), bound to a session ID. Can be revoked individually or all-at-once per user. Sent as `httpOnly` cookie (preferred) or in request body (for non-browser clients).
 
-**Token format:** HMAC-signed JWTs. No external dependency — `node:crypto` HMAC is sufficient for self-hosted single-server deployment. Not using RSA/ECDSA because there's no multi-service verification scenario.
+**Token format:** HMAC-signed JWTs. No external dependency - `node:crypto` HMAC is sufficient for self-hosted single-server deployment. Not using RSA/ECDSA because there's no multi-service verification scenario.
 
 ```typescript
 // auth/tokens.ts
@@ -209,7 +209,7 @@ aletheia auth hash-password
 ```
 
 ```bash
-aletheia auth add-user --username cody --role admin
+aletheia auth add-user --username admin --role admin
 # Interactive password prompt → writes to config.yaml
 ```
 
@@ -250,7 +250,7 @@ Periodic cleanup: expired and revoked sessions deleted on a schedule (hourly cro
 The webchat UI currently stores a static token in `localStorage`. With session auth:
 
 1. **Login page** replaces the token entry form. Username + password fields.
-2. **Access token** stored in memory only (not `localStorage` — XSS-safe). Refreshed automatically.
+2. **Access token** stored in memory only (not `localStorage` - XSS-safe). Refreshed automatically.
 3. **Refresh token** stored as `httpOnly`, `Secure`, `SameSite=Strict` cookie. Not accessible to JavaScript.
 4. **SSE connection** authenticates via cookie (refresh token validates the connection, or a short-lived SSE-specific token is issued). Eliminates the `?token=` query param leak.
 5. **Auto-refresh:** Before the access token expires, the client calls `/api/auth/refresh`. On failure (revoked, expired refresh), redirect to login.
@@ -359,7 +359,7 @@ serve({ fetch: app.fetch, createServer: () => server, port });
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 ```
 
-**Tailscale consideration:** Tailscale already provides WireGuard encryption between devices. TLS on top of Tailscale is defense-in-depth — it protects against scenarios where Tailscale is misconfigured, or when accessing via LAN IP instead of Tailscale IP. Worth having.
+**Tailscale consideration:** Tailscale already provides WireGuard encryption between devices. TLS on top of Tailscale is defense-in-depth - it protects against scenarios where Tailscale is misconfigured, or when accessing via LAN IP instead of Tailscale IP. Worth having.
 
 ### 7. Role-Based Access Control
 
@@ -404,9 +404,9 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
 };
 ```
 
-The `admin` role has `"*"` — matches everything. The `user` role has explicit permissions. This is checked once in middleware, not scattered across route handlers.
+The `admin` role has `"*"` - matches everything. The `user` role has explicit permissions. This is checked once in middleware, not scattered across route handlers.
 
-For the `token` auth mode, the token implicitly has the `admin` role (backward compatible — existing behavior is full access).
+For the `token` auth mode, the token implicitly has the `admin` role (backward compatible - existing behavior is full access).
 
 ### 8. Audit Logging
 
@@ -477,7 +477,7 @@ app.use("*", async (c, next) => {
     "camera=(), microphone=(), geolocation=(), payment=()"
   );
 
-  // HSTS — only when TLS is enabled
+  // HSTS - only when TLS is enabled
   if (tlsEnabled) {
     c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
@@ -486,7 +486,7 @@ app.use("*", async (c, next) => {
 });
 ```
 
-### 10. Rate Limiting — All Endpoints
+### 10. Rate Limiting - All Endpoints
 
 Extend the existing per-IP rate limiter from MCP-only to all API routes:
 
@@ -494,7 +494,7 @@ Extend the existing per-IP rate limiter from MCP-only to all API routes:
 gateway:
   rateLimit:
     requestsPerMinute: 60        # general API
-    authRequestsPerMinute: 10    # login/refresh — tighter to prevent brute force
+    authRequestsPerMinute: 10    # login/refresh - tighter to prevent brute force
     streamRequestsPerMinute: 20  # streaming endpoints (expensive)
 ```
 
@@ -511,17 +511,17 @@ app.use("/api/sessions/stream", rateLimiters.stream);
 app.use("/api/*", rateLimiters.general);
 ```
 
-**Auth rate limiting:** After 5 failed login attempts from the same IP within 15 minutes, enforce exponential backoff (doubling delay up to 5 min). This is separate from the per-minute rate limit — it specifically tracks failed auth attempts.
+**Auth rate limiting:** After 5 failed login attempts from the same IP within 15 minutes, enforce exponential backoff (doubling delay up to 5 min). This is separate from the per-minute rate limit - it specifically tracks failed auth attempts.
 
 ### 11. Input Validation Hardening
 
 The current code does basic type checks. Formalize:
 
 - **Message length:** Cap `message` field at `maxBodyBytes` (existing, 1MB default). Consider a lower default for chat messages (e.g., 100KB).
-- **Agent ID validation:** Whitelist check against `config.agents.list` — already done in most places, but not consistently.
+- **Agent ID validation:** Whitelist check against `config.agents.list` - already done in most places, but not consistently.
 - **Session key validation:** Alphanumeric + `:` + `-` + `_`, max 128 chars. Prevent injection via session keys.
 - **SQL injection:** Not a risk (using parameterized queries via better-sqlite3 `.prepare()` consistently), but worth noting in the spec as verified.
-- **Path traversal:** The UI file serving already checks `fullPath.startsWith(distDir)` — good. The MCP and API don't serve files.
+- **Path traversal:** The UI file serving already checks `fullPath.startsWith(distDir)` - good. The MCP and API don't serve files.
 
 ### 12. MCP Token Improvements
 
@@ -530,7 +530,7 @@ The existing MCP token system is decent. Improvements:
 - **Token rotation:** Add `aletheia mcp rotate-token <name>` CLI command.
 - **Expiry:** Optional `expiresAt` field per token.
 - **Usage logging:** Log MCP tool calls to audit log with client name.
-- **Connection to main auth:** In `session` mode, MCP tokens could optionally be scoped session tokens instead of static files. Defer this — static tokens are fine for machine-to-machine.
+- **Connection to main auth:** In `session` mode, MCP tokens could optionally be scoped session tokens instead of static files. Defer this - static tokens are fine for machine-to-machine.
 
 ---
 
@@ -558,7 +558,7 @@ src/auth/
 4. HTTP → HTTPS redirect listener
 5. Add CSP, Permissions-Policy, HSTS headers
 6. Add rate limiting to all API endpoints (not just MCP)
-7. **Zero breaking changes** — TLS is opt-in, headers are additive
+7. **Zero breaking changes** - TLS is opt-in, headers are additive
 
 ### Phase 2: Session Auth + RBAC
 1. Add `gateway.auth.session`, `users`, `roles` to schema
@@ -568,7 +568,7 @@ src/auth/
 5. Add auth endpoints: `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/mode`
 6. Implement multi-mode auth middleware (supports `token`, `password`, and `session` simultaneously during migration)
 7. Implement RBAC middleware (`auth/rbac.ts`)
-8. **Backward compatible** — `mode: "token"` behavior unchanged
+8. **Backward compatible** - `mode: "token"` behavior unchanged
 
 ### Phase 3: Webchat Integration
 1. Update UI login flow: detect mode via `/api/auth/mode`
@@ -585,12 +585,12 @@ src/auth/
 4. Integrate with structured logger
 
 ### Phase 5: CLI Tooling
-1. `aletheia auth hash-password` — interactive password hashing
-2. `aletheia auth add-user` — add user to config
-3. `aletheia auth migrate` — migrate from token mode to session mode
-4. `aletheia auth sessions` — list active sessions
-5. `aletheia auth revoke` — revoke a session or all sessions for a user
-6. `aletheia mcp rotate-token` — rotate MCP token
+1. `aletheia auth hash-password` - interactive password hashing
+2. `aletheia auth add-user` - add user to config
+3. `aletheia auth migrate` - migrate from token mode to session mode
+4. `aletheia auth sessions` - list active sessions
+5. `aletheia auth revoke` - revoke a session or all sessions for a user
+6. `aletheia mcp rotate-token` - rotate MCP token
 
 ---
 

@@ -46,18 +46,18 @@ git config core.hooksPath .githooks
 
 ## Code Style
 
-- **TypeScript strict mode** — all strict flags enabled, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
-- **File headers** — single-line comment describing the file's purpose. No JSDoc, no dates, no author info.
-- **Imports** — use `.js` extensions (NodeNext resolution). Group: node builtins, then local.
-- **Naming** — files: `kebab-case.ts`, classes: `PascalCase`, functions: `camelCase`, constants: `UPPER_SNAKE_CASE`
-- **Index access** — bracket notation for string-keyed records (`record["key"]`, not `record.key`)
-- **Tests** — adjacent to source (`foo.ts` / `foo.test.ts`), vitest with `describe`/`it`
+- **TypeScript strict mode** - all strict flags enabled, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
+- **File headers** - single-line comment describing the file's purpose. No JSDoc, no dates, no author info.
+- **Imports** - use `.js` extensions (NodeNext resolution). Group: node builtins, then local.
+- **Naming** - files: `kebab-case.ts`, classes: `PascalCase`, functions: `camelCase`, constants: `UPPER_SNAKE_CASE`
+- **Index access** - bracket notation for string-keyed records (`record["key"]`, not `record.key`)
+- **Tests** - adjacent to source (`foo.ts` / `foo.test.ts`), vitest with `describe`/`it`
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full style guide and module architecture.
 
 ## Pull Requests
 
-- Keep PRs focused — one feature or fix per PR
+- Keep PRs focused - one feature or fix per PR
 - Include tests for new functionality
 - Ensure `npm run precommit` passes
 - Write a clear description of what changed and why
@@ -73,9 +73,9 @@ Signal commands (`!command`) are registered in `src/semeion/commands.ts`. See [d
 
 ## Reporting Issues
 
-- **Bugs** — use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
-- **Features** — use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
-- **Security** — see [SECURITY.md](.github/SECURITY.md). Do not open public issues for vulnerabilities.
+- **Bugs** - use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+- **Features** - use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
+- **Security** - see [SECURITY.md](.github/SECURITY.md). Do not open public issues for vulnerabilities.
 
 ## License
 

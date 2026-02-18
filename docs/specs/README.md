@@ -2,7 +2,7 @@
 
 Design specs for Aletheia's architecture, security model, and subsystems.
 
-These are **internal design documents** — they describe how things should work,
+These are **internal design documents** - they describe how things should work,
 what constraints exist, and what tradeoffs were made. They're living documents
 that evolve with the system.
 

@@ -59,18 +59,18 @@ Plugins can implement these hooks:
 export default {
   hooks: {
     before_agent_start: async (ctx) => {
-      // ctx.nousId — agent ID
-      // ctx.sessionId — session ID
-      // ctx.messages — conversation history
+      // ctx.nousId - agent ID
+      // ctx.sessionId - session ID
+      // ctx.messages - conversation history
       // Return: { inject?: string } to add context
       return { inject: "Additional context for this turn." };
     },
 
     agent_end: async (ctx) => {
-      // ctx.nousId — agent ID
-      // ctx.sessionId — session ID
-      // ctx.messages — full conversation including this turn
-      // ctx.response — the agent's response text
+      // ctx.nousId - agent ID
+      // ctx.sessionId - session ID
+      // ctx.messages - full conversation including this turn
+      // ctx.response - the agent's response text
     },
   },
 };
@@ -96,9 +96,9 @@ export default {
         },
       },
       execute: async (input, ctx) => {
-        // input.query — tool input
-        // ctx.nousId — agent ID
-        // ctx.sessionId — session ID
+        // input.query - tool input
+        // ctx.nousId - agent ID
+        // ctx.sessionId - session ID
         return JSON.stringify({ result: "tool output" });
       },
     },

@@ -35,7 +35,7 @@ Build output lands in `dist/` as a single ESM bundle:
 
 ```
 dist/
-  entry.mjs        # ~354KB, single-file executable
+  entry.mjs        # ~400KB, single-file executable
   entry.mjs.map    # Source map
 ```
 

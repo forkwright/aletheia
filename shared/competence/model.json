@@ -4,11 +4,11 @@
     "domains": {
       "signal": {
         "domain": "signal",
-        "score": 0.4600000000000005,
+        "score": 0.5800000000000006,
         "corrections": 14,
-        "successes": 33,
+        "successes": 39,
         "disagreements": 0,
-        "lastUpdated": "2026-02-18T22:19:05.410Z"
+        "lastUpdated": "2026-02-18T22:46:24.145Z"
       },
       "general": {
         "domain": "general",
@@ -25,9 +25,17 @@
         "successes": 1,
         "disagreements": 0,
         "lastUpdated": "2026-02-17T23:42:41.750Z"
+      },
+      "cron": {
+        "domain": "cron",
+        "score": 0.52,
+        "corrections": 0,
+        "successes": 1,
+        "disagreements": 0,
+        "lastUpdated": "2026-02-18T22:40:39.673Z"
       }
     },
-    "overallScore": 0.5200000000000001
+    "overallScore": 0.5500000000000002
   },
   "chiron": {
     "nousId": "chiron",
