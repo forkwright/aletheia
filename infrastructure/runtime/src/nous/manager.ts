@@ -36,6 +36,7 @@ import { classifyInteraction } from "./interaction-signals.js";
 import { LoopDetector } from "./loop-detector.js";
 import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
 import { AsyncChannel } from "./async-channel.js";
+import { recallMemories } from "./recall.js";
 
 const log = createLogger("nous");
 
@@ -291,10 +292,27 @@ export class NousManager {
     trace.setBootstrap(Object.keys(bootstrap.fileHashes), bootstrap.totalTokens);
     if (degradedServices.length > 0) trace.setDegradedServices(degradedServices);
 
+    // Pre-turn memory recall
+    let recallBlock: { type: "text"; text: string } | null = null;
+    let recallTokens = 0;
+    if (!degradedServices.includes("mem0-sidecar")) {
+      const recall = await recallMemories(msg.text, nousId);
+      recallBlock = recall.block;
+      recallTokens = recall.tokens;
+      if (recall.count > 0) {
+        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
+        trace.setRecall(recall.count, recall.durationMs);
+      }
+    }
+
     const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
+
+    if (recallBlock) {
+      systemPrompt.push(recallBlock);
+    }
 
     const broadcasts = this.store.blackboardReadPrefix("broadcast:");
     if (broadcasts.length > 0) {
@@ -335,7 +353,7 @@ export class NousManager {
     const toolDefTokens = estimateToolDefTokens(toolDefs);
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput);
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
     let crossAgentNotice: string | null = null;
@@ -732,10 +750,27 @@ export class NousManager {
       trace.setDegradedServices(degradedServices);
     }
 
+    // Pre-turn memory recall
+    let recallBlock: { type: "text"; text: string } | null = null;
+    let recallTokens = 0;
+    if (!degradedServices.includes("mem0-sidecar")) {
+      const recall = await recallMemories(msg.text, nousId);
+      recallBlock = recall.block;
+      recallTokens = recall.tokens;
+      if (recall.count > 0) {
+        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
+        trace.setRecall(recall.count, recall.durationMs);
+      }
+    }
+
     const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
+
+    if (recallBlock) {
+      systemPrompt.push(recallBlock);
+    }
 
     // Broadcast injection — prosoche and agents can post attention-worthy items via blackboard
     const broadcasts = this.store.blackboardReadPrefix("broadcast:");
@@ -783,7 +818,7 @@ export class NousManager {
 
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput);
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
 
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
