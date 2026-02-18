@@ -90,8 +90,26 @@ export async function fetchSessionCosts(sessionId: string): Promise<unknown> {
   return fetchJson(`/api/costs/session/${sessionId}`);
 }
 
-export async function fetchGraphExport(community?: number): Promise<GraphData> {
-  const params = community !== undefined ? `?community=${community}` : "";
-  const data = await fetchJson<{ ok: boolean } & GraphData>(`/api/memory/graph/export${params}`);
-  return { nodes: data.nodes, edges: data.edges, communities: data.communities };
+export interface GraphExportParams {
+  mode?: "top" | "community" | "all";
+  limit?: number;
+  community?: number;
+}
+
+export async function fetchGraphExport(params?: GraphExportParams): Promise<GraphData> {
+  const sp = new URLSearchParams();
+  if (params?.mode) sp.set("mode", params.mode);
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.community !== undefined) sp.set("community", String(params.community));
+  const qs = sp.toString();
+  const data = await fetchJson<{ ok: boolean } & GraphData>(
+    `/api/memory/graph/export${qs ? `?${qs}` : ""}`,
+  );
+  return {
+    nodes: data.nodes,
+    edges: data.edges,
+    communities: data.communities,
+    community_meta: data.community_meta ?? [],
+    total_nodes: data.total_nodes ?? data.nodes.length,
+  };
 }

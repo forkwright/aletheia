@@ -1,8 +1,8 @@
 // Graph visualization store
-import { fetchGraphExport } from "../lib/api";
-import type { GraphData, GraphNode, GraphEdge } from "../lib/types";
+import { fetchGraphExport, type GraphExportParams } from "../lib/api";
+import type { GraphData, GraphNode, GraphEdge, CommunityMeta } from "../lib/types";
 
-const EMPTY: GraphData = { nodes: [], edges: [], communities: 0 };
+const EMPTY: GraphData = { nodes: [], edges: [], communities: 0, community_meta: [], total_nodes: 0 };
 
 let graphData = $state<GraphData>(EMPTY);
 let loading = $state(false);
@@ -10,6 +10,8 @@ let error = $state<string | null>(null);
 let selectedNodeId = $state<string | null>(null);
 let highlightedCommunity = $state<number | null>(null);
 let searchQuery = $state("");
+let loadedMode = $state<"top" | "community" | "all">("top");
+let loadedLimit = $state(200);
 
 export function getGraphData(): GraphData {
   return graphData;
@@ -73,11 +75,29 @@ export function getCommunityIds(): number[] {
   return [...ids].sort((a, b) => a - b);
 }
 
-export async function loadGraph(community?: number): Promise<void> {
+export function getLoadedMode(): string {
+  return loadedMode;
+}
+
+export function getLoadedLimit(): number {
+  return loadedLimit;
+}
+
+export function getTotalNodes(): number {
+  return graphData.total_nodes;
+}
+
+export function getCommunityMeta(): CommunityMeta[] {
+  return graphData.community_meta;
+}
+
+export async function loadGraph(params?: GraphExportParams): Promise<void> {
   loading = true;
   error = null;
   try {
-    graphData = await fetchGraphExport(community);
+    graphData = await fetchGraphExport(params);
+    loadedMode = params?.mode ?? "top";
+    loadedLimit = params?.limit ?? 200;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     graphData = EMPTY;
