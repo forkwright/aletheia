@@ -118,6 +118,25 @@ export interface ServiceStatus {
   message?: string;
 }
 
+export interface GraphNode {
+  id: string;
+  labels: string[];
+  pagerank: number;
+  community: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  rel_type: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  communities: number;
+}
+
 export interface CostSummary {
   totalCost: number;
   agents: AgentCost[];

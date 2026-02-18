@@ -558,6 +558,31 @@ export function createGateway(
     });
   });
 
+  // --- Memory Sidecar Proxy ---
+
+  const memoryUrl = process.env["MEMORY_SIDECAR_URL"] ?? "http://127.0.0.1:8230";
+
+  app.get("/api/memory/graph/export", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/export${qs}`);
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph_stats", async (c) => {
+    const res = await fetch(`${memoryUrl}/graph_stats`);
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.post("/api/memory/graph/analyze", async (c) => {
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/graph/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
   // Blackboard API — for prosoche and external systems to post broadcasts
   app.get("/api/blackboard", (c) => {
     return c.json({ entries: store.blackboardList() });

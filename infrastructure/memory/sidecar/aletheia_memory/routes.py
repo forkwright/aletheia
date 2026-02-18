@@ -260,6 +260,78 @@ async def graph_stats():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# --- Graph Export for Visualization ---
+
+
+@router.get("/graph/export")
+async def graph_export(
+    limit: int | None = None,
+    community: int | None = None,
+):
+    """Export full graph as nodes + edges for 3D visualization."""
+    if not NEO4J_PASSWORD:
+        raise HTTPException(status_code=503, detail="Neo4j not configured")
+
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        with driver.session() as session:
+            # Fetch nodes
+            node_query = "MATCH (n) WHERE n.name IS NOT NULL "
+            if community is not None:
+                node_query += "AND n.community = $community "
+            node_query += "RETURN n.name AS name, labels(n) AS labels, n.pagerank AS pagerank, n.community AS community"
+            if limit:
+                node_query += f" LIMIT {int(limit)}"
+
+            params: dict[str, Any] = {}
+            if community is not None:
+                params["community"] = community
+
+            node_records = session.run(node_query, **params).data()
+            node_names = {r["name"] for r in node_records}
+
+            nodes = [
+                {
+                    "id": r["name"],
+                    "labels": r["labels"],
+                    "pagerank": r["pagerank"] if r["pagerank"] is not None else 0.001,
+                    "community": r["community"] if r["community"] is not None else -1,
+                }
+                for r in node_records
+            ]
+
+            # Fetch edges (only between nodes in our set)
+            edge_query = (
+                "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
+                "RETURN a.name AS source, b.name AS target, type(r) AS rel_type"
+            )
+            edge_records = session.run(edge_query).data()
+
+            # Filter edges to only include nodes we're returning
+            edges = [
+                {"source": r["source"], "target": r["target"], "rel_type": r["rel_type"]}
+                for r in edge_records
+                if r["source"] in node_names and r["target"] in node_names
+            ]
+
+            # Count distinct communities
+            community_ids = {n["community"] for n in nodes if n["community"] != -1}
+
+        driver.close()
+
+        return {
+            "ok": True,
+            "nodes": nodes,
+            "edges": edges,
+            "communities": len(community_ids),
+        }
+    except Exception as e:
+        logger.exception("graph/export failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
 
 

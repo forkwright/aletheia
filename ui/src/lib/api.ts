@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData } from "./types";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -78,4 +78,10 @@ export async function fetchCostSummary(): Promise<CostSummary> {
 
 export async function fetchSessionCosts(sessionId: string): Promise<unknown> {
   return fetchJson(`/api/costs/session/${sessionId}`);
+}
+
+export async function fetchGraphExport(community?: number): Promise<GraphData> {
+  const params = community !== undefined ? `?community=${community}` : "";
+  const data = await fetchJson<{ ok: boolean } & GraphData>(`/api/memory/graph/export${params}`);
+  return { nodes: data.nodes, edges: data.edges, communities: data.communities };
 }
