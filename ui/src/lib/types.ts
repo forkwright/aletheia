@@ -131,10 +131,18 @@ export interface GraphEdge {
   rel_type: string;
 }
 
+export interface CommunityMeta {
+  id: number;
+  size: number;
+  centroid_node: string;
+}
+
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
   communities: number;
+  community_meta: CommunityMeta[];
+  total_nodes: number;
 }
 
 export interface CostSummary {
