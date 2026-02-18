@@ -105,7 +105,7 @@ export function createGateway(
   const authToken = config.gateway.auth.token;
 
   app.use("*", async (c, next) => {
-    if (c.req.path === "/health" || c.req.path.startsWith("/ui")) return next();
+    if (c.req.path === "/health" || c.req.path === "/api/branding" || c.req.path.startsWith("/ui")) return next();
 
     if (authMode === "token" && authToken) {
       const header = c.req.header("Authorization");
@@ -119,7 +119,7 @@ export function createGateway(
     } else if (authMode === "password" && authToken) {
       const header = c.req.header("Authorization");
       if (!header?.startsWith("Basic ")) {
-        c.header("WWW-Authenticate", 'Basic realm="Aletheia"');
+        c.header("WWW-Authenticate", `Basic realm="${config.branding?.name ?? "Aletheia"}"`);
         return c.json({ error: "Unauthorized" }, 401);
       }
       const decoded = Buffer.from(header.slice(6), "base64").toString();
@@ -338,12 +338,17 @@ export function createGateway(
         emoji: parsedEmoji,
       });
     } catch {
+      // IDENTITY.md not found — fall back to config identity
       return c.json({
         id: agent.id,
-        name: agent.name ?? agent.id,
-        emoji: null,
+        name: agent.identity?.name ?? agent.name ?? agent.id,
+        emoji: agent.identity?.emoji ?? null,
       });
     }
+  });
+
+  app.get("/api/branding", (c) => {
+    return c.json(config.branding ?? { name: "Aletheia" });
   });
 
   app.get("/api/config", (c) => {
@@ -355,6 +360,7 @@ export function createGateway(
       })),
       bindings: config.bindings.length,
       plugins: Object.keys(config.plugins.entries).length,
+      branding: config.branding,
     });
   });
 

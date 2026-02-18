@@ -38,6 +38,16 @@ async function fetchJson<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface Branding {
+  name: string;
+  tagline?: string;
+  favicon?: string;
+}
+
+export async function fetchBranding(): Promise<Branding> {
+  return fetchJson("/api/branding");
+}
+
 export async function fetchAgents(): Promise<Agent[]> {
   const data = await fetchJson<{ agents: Agent[] }>("/api/agents");
   return data.agents;
