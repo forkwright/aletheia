@@ -104,8 +104,40 @@
     return isCollapsible(tool) && !collapsedIds.has(tool.id);
   }
 
+  function isDiffResult(tool: ToolCallState): boolean {
+    if (tool.name === "edit") return true;
+    if (!tool.result) return false;
+    // Detect unified diff markers
+    const r = tool.result;
+    return (r.startsWith("---") && r.includes("+++")) || r.includes("@@ ");
+  }
+
+  function renderDiff(result: string): string {
+    const lines = result.split("\n");
+    return lines.map(line => {
+      const escaped = line
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        return `<span class="diff-add">${escaped}</span>`;
+      }
+      if (line.startsWith("-") && !line.startsWith("---")) {
+        return `<span class="diff-del">${escaped}</span>`;
+      }
+      if (line.startsWith("@@")) {
+        return `<span class="diff-hunk">${escaped}</span>`;
+      }
+      return escaped;
+    }).join("\n");
+  }
+
   function highlightResult(tool: ToolCallState): string {
     if (!tool.result) return "";
+    // Render diffs with diff coloring
+    if (isDiffResult(tool)) {
+      return DOMPurify.sanitize(renderDiff(tool.result), { ADD_ATTR: ["class"] });
+    }
     const lang = inferLanguage(tool.name, tool.result);
     if (lang) {
       return DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
@@ -403,6 +435,24 @@
   .collapse-toggle:hover {
     text-decoration: underline;
   }
+  /* Diff rendering */
+  .tool-result :global(.diff-add) {
+    color: #aff5b4;
+    background: rgba(63, 185, 80, 0.15);
+    display: inline-block;
+    width: 100%;
+  }
+  .tool-result :global(.diff-del) {
+    color: #ffdcd7;
+    background: rgba(248, 81, 73, 0.15);
+    display: inline-block;
+    width: 100%;
+  }
+  .tool-result :global(.diff-hunk) {
+    color: var(--purple);
+    font-weight: 500;
+  }
+
   /* hljs tokens in tool results */
   .tool-result :global(.hljs-keyword) { color: #ff7b72; }
   .tool-result :global(.hljs-string),

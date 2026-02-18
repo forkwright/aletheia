@@ -79,3 +79,18 @@ export function inferLanguage(toolName: string, input?: string): string | undefi
   };
   return extMap[ext];
 }
+
+/** Infer language from a file path (for file preview) */
+export function inferLanguageFromPath(filePath: string): string | undefined {
+  const ext = filePath.match(/\.(\w+)$/)?.[1]?.toLowerCase();
+  if (!ext) return undefined;
+
+  const extMap: Record<string, string> = {
+    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
+    py: "python", sh: "bash", bash: "bash", fish: "bash",
+    json: "json", yaml: "yaml", yml: "yaml", toml: "yaml",
+    sql: "sql", md: "markdown", html: "html", xml: "xml",
+    css: "css", svelte: "html",
+  };
+  return extMap[ext];
+}

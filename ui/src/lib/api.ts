@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus } from "./types";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -130,4 +130,35 @@ export async function denyToolCall(turnId: string, toolId: string): Promise<void
 export async function fetchApprovalMode(): Promise<string> {
   const data = await fetchJson<{ mode: string }>("/api/approval/mode");
   return data.mode;
+}
+
+// --- Workspace File Explorer ---
+
+export async function fetchWorkspaceTree(
+  agentId?: string,
+  path?: string,
+  depth = 2,
+): Promise<{ root: string; entries: FileTreeEntry[] }> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  if (path) sp.set("path", path);
+  sp.set("depth", String(depth));
+  return fetchJson(`/api/workspace/tree?${sp.toString()}`);
+}
+
+export async function fetchWorkspaceFile(
+  path: string,
+  agentId?: string,
+): Promise<{ path: string; size: number; content: string }> {
+  const sp = new URLSearchParams({ path });
+  if (agentId) sp.set("agentId", agentId);
+  return fetchJson(`/api/workspace/file?${sp.toString()}`);
+}
+
+export async function fetchGitStatus(
+  agentId?: string,
+): Promise<{ files: GitFileStatus[] }> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  return fetchJson(`/api/workspace/git-status?${sp.toString()}`);
 }
