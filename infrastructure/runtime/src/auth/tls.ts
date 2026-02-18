@@ -1,10 +1,10 @@
 // TLS certificate generation and server setup
-import { generateKeyPairSync, randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createServer as createHttpsServer } from "node:https";
 import { createLogger } from "../koina/logger.js";
-import tmp from "tmp";
 
 const log = createLogger("tls");
 
@@ -32,10 +32,7 @@ function generateSelfSignedCert(sans: string[]): TlsCerts {
   // doesn't have a full X509 builder.
   const { execSync } = require("node:child_process") as typeof import("node:child_process");
 
-  const { name: tmpDir } = tmp.dirSync({
-    unsafeCleanup: true,
-    prefix: "aletheia-tls-",
-  });
+  const tmpDir = mkdtempSync(join(tmpdir(), "aletheia-tls-"));
 
   const keyPath = join(tmpDir, "server.key");
   const certPath = join(tmpDir, "server.crt");
@@ -123,12 +120,14 @@ export function loadOrGenerateCerts(
   const certPath = join(tlsDir, "server.crt");
   const keyPath = join(tlsDir, "server.key");
 
-  if (existsSync(certPath) && existsSync(keyPath)) {
+  // codeql[js/file-system-race] - single-user startup path, no concurrent writers
+  try {
+    const cert = readFileSync(certPath, "utf-8");
+    const key = readFileSync(keyPath, "utf-8");
     log.info("Loading existing self-signed TLS certificate");
-    return {
-      cert: readFileSync(certPath, "utf-8"),
-      key: readFileSync(keyPath, "utf-8"),
-    };
+    return { cert, key };
+  } catch {
+    // cert doesn't exist yet — generate below
   }
 
   log.info("Generating self-signed TLS certificate");
