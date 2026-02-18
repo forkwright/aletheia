@@ -14,6 +14,7 @@ import type {
 } from "../../hermeneus/anthropic.js";
 import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
+import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
 
 export interface MediaAttachment {
   contentType: string;
@@ -51,6 +52,8 @@ export type TurnStreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
+  | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "turn_abort"; reason: string }
   | { type: "error"; message: string };
@@ -90,6 +93,9 @@ export interface TurnState {
 
   // Abort signal for cooperative cancellation
   abortSignal?: AbortSignal;
+
+  // Turn identifier for approval gates
+  turnId?: string;
 }
 
 /** Services available to all pipeline stages. */
@@ -103,6 +109,8 @@ export interface RuntimeServices {
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   skillsSection?: string;
+  approvalGate?: ApprovalGate;
+  approvalMode?: ApprovalMode;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */
