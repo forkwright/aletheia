@@ -346,7 +346,7 @@ export class NousManager {
     let currentMessages = messages;
     const turnToolCalls: ToolCallRecord[] = [];
 
-    const MAX_TOOL_LOOPS = 20;
+    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 40;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       // Stream the completion
       let accumulatedText = "";
@@ -793,7 +793,7 @@ export class NousManager {
     let currentMessages = messages;
     const turnToolCalls: ToolCallRecord[] = [];
 
-    const MAX_TOOL_LOOPS = 20;
+    const MAX_TOOL_LOOPS = (nous["maxToolLoops"] as number | undefined) ?? this.config.agents.defaults.maxToolLoops ?? 40;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       const result = await this.router.complete({
         model,

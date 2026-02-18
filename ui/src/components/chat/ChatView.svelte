@@ -15,14 +15,22 @@
     abortStream,
     loadHistory,
     clearMessages,
+    injectLocalMessage,
   } from "../../stores/chat.svelte";
-  import { getActiveAgent, getActiveAgentId, getAgentEmoji } from "../../stores/agents.svelte";
+  import {
+    getActiveAgent,
+    getActiveAgentId,
+    getAgentEmoji,
+    getAgents,
+    setActiveAgent,
+  } from "../../stores/agents.svelte";
   import {
     getActiveSessionId,
     getActiveSessionKey,
     getActiveSession,
     refreshSessions,
     createNewSession,
+    loadSessions,
   } from "../../stores/sessions.svelte";
 
   // Load history when active session changes (but skip if we just streamed into it)
@@ -44,7 +52,7 @@
   });
 
   // Slash command registry
-  const slashCommands: Record<string, { description: string; handler: () => void }> = {
+  const slashCommands: Record<string, { description: string; handler: (args?: string) => void }> = {
     "/new": {
       description: "Start a fresh conversation",
       handler: () => {
@@ -54,8 +62,31 @@
       },
     },
     "/clear": {
-      description: "Clear message display (keeps history)",
+      description: "Clear message display (keeps server history)",
       handler: () => clearMessages(),
+    },
+    "/switch": {
+      description: "Switch agent — /switch <name>",
+      handler: (args?: string) => {
+        if (!args) return;
+        const name = args.toLowerCase().trim();
+        const agent = getAgents().find((a) =>
+          a.name.toLowerCase() === name || a.id.toLowerCase() === name,
+        );
+        if (agent) {
+          setActiveAgent(agent.id);
+          loadSessions(agent.id);
+        }
+      },
+    },
+    "/help": {
+      description: "Show available commands",
+      handler: () => {
+        const helpLines = Object.entries(slashCommands)
+          .map(([cmd, { description }]) => `\`${cmd}\` — ${description}`)
+          .join("\n");
+        injectLocalMessage(`**Available commands:**\n${helpLines}`);
+      },
     },
   };
 
@@ -63,15 +94,18 @@
     const trimmed = text.trim();
 
     // Handle slash commands
-    const cmd = slashCommands[trimmed];
-    if (cmd) {
-      cmd.handler();
-      return;
-    }
-
-    // Show help for unknown slash commands
     if (trimmed.startsWith("/")) {
-      // Unknown command — ignore silently
+      const spaceIdx = trimmed.indexOf(" ");
+      const cmdName = spaceIdx > 0 ? trimmed.slice(0, spaceIdx) : trimmed;
+      const args = spaceIdx > 0 ? trimmed.slice(spaceIdx + 1) : undefined;
+
+      const cmd = slashCommands[cmdName];
+      if (cmd) {
+        cmd.handler(args);
+        return;
+      }
+
+      // Unknown command — ignore
       return;
     }
 
@@ -92,7 +126,6 @@
   let session = $derived(getActiveSession());
   let contextPercent = $derived(() => {
     const tokens = session?.tokenCountEstimate ?? 0;
-    // 200k context window is the default
     const contextWindow = 200_000;
     return Math.min(100, Math.round((tokens / contextWindow) * 100));
   });

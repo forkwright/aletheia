@@ -3,10 +3,11 @@
   import { getActiveAgent } from "../../stores/agents.svelte";
   import { getToken, setToken, clearToken } from "../../lib/api";
 
-  let { onToggleMetrics, onToggleSidebar, showMetrics }: {
+  let { onToggleMetrics, onToggleSidebar, showMetrics, sidebarCollapsed = false }: {
     onToggleMetrics: () => void;
     onToggleSidebar: () => void;
     showMetrics: boolean;
+    sidebarCollapsed?: boolean;
   } = $props();
 
   let showSettings = $state(false);
@@ -30,10 +31,17 @@
 
 <header class="topbar">
   <div class="left">
-    <button class="hamburger" onclick={onToggleSidebar} aria-label="Toggle sidebar">
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
+    <button
+      class="sidebar-toggle"
+      class:open={!sidebarCollapsed}
+      onclick={onToggleSidebar}
+      aria-label="Toggle sidebar"
+      title={sidebarCollapsed ? "Show agents" : "Hide agents"}
+    >
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <rect x="1" y="2" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <line x1="6.5" y1="2" x2="6.5" y2="16" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
     </button>
     <h1 class="title">Aletheia</h1>
     <span class="status-dot" class:connected={getConnectionStatus() === "connected"} class:connecting={getConnectionStatus() === "connecting"}></span>
@@ -91,25 +99,24 @@
     align-items: center;
     gap: 10px;
   }
-  .hamburger {
-    display: none;
-    flex-direction: column;
-    gap: 4px;
+  .sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
   }
-  .hamburger-line {
-    display: block;
-    width: 18px;
-    height: 2px;
-    background: var(--text-secondary);
-    border-radius: 1px;
-    transition: background 0.15s;
+  .sidebar-toggle:hover {
+    color: var(--text);
+    background: var(--surface);
   }
-  .hamburger:hover .hamburger-line {
-    background: var(--text);
+  .sidebar-toggle.open {
+    color: var(--text-secondary);
   }
   .title {
     font-size: 16px;
@@ -134,7 +141,6 @@
     50% { opacity: 0.4; }
   }
   .active-agent {
-    display: none;
     font-size: 13px;
     color: var(--text-secondary);
     font-weight: 500;
@@ -224,17 +230,5 @@
   .btn-ghost:hover {
     color: var(--text);
     border-color: var(--text-muted);
-  }
-
-  @media (max-width: 768px) {
-    .hamburger {
-      display: flex;
-    }
-    .title {
-      font-size: 14px;
-    }
-    .active-agent {
-      display: inline;
-    }
   }
 </style>

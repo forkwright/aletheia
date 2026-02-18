@@ -4,9 +4,42 @@
   let { content }: { content: string } = $props();
 
   let html = $derived(renderMarkdown(content));
+  let container = $state<HTMLDivElement | null>(null);
+
+  // Add copy buttons to code blocks after render
+  $effect(() => {
+    void html;
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      const pres = container!.querySelectorAll("pre");
+      for (const pre of pres) {
+        // Skip if already has a copy button
+        if (pre.querySelector(".copy-btn")) continue;
+
+        const btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.textContent = "Copy";
+        btn.setAttribute("aria-label", "Copy code to clipboard");
+        btn.addEventListener("click", () => {
+          const code = pre.querySelector("code")?.textContent ?? pre.textContent ?? "";
+          navigator.clipboard.writeText(code).then(() => {
+            btn.textContent = "Copied!";
+            btn.classList.add("copied");
+            setTimeout(() => {
+              btn.textContent = "Copy";
+              btn.classList.remove("copied");
+            }, 2000);
+          });
+        });
+        pre.style.position = "relative";
+        pre.appendChild(btn);
+      }
+    });
+  });
 </script>
 
-<div class="markdown-body">
+<div class="markdown-body" bind:this={container}>
   {@html html}
 </div>
 
@@ -53,6 +86,34 @@
     background: none;
     font-size: 13px;
     line-height: 1.5;
+  }
+  .markdown-body :global(pre .copy-btn) {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-family: var(--font-sans);
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    cursor: pointer;
+    z-index: 1;
+  }
+  .markdown-body :global(pre:hover .copy-btn) {
+    opacity: 1;
+  }
+  .markdown-body :global(pre .copy-btn:hover) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .markdown-body :global(pre .copy-btn.copied) {
+    color: var(--green);
+    border-color: var(--green);
+    opacity: 1;
   }
   .markdown-body :global(ul),
   .markdown-body :global(ol) {
