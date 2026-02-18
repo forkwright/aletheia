@@ -39,9 +39,13 @@ const MIME_TYPES: Record<string, string> = {
   ".map": "application/json",
 };
 
+interface ManagerLike {
+  getActiveTurnsByNous(): Record<string, number>;
+}
+
 export function createUiRoutes(
   config: AletheiaConfig,
-  _manager: unknown,
+  manager: ManagerLike | null,
   store: SessionStore,
 ): Hono {
   const app = new Hono();
@@ -72,6 +76,7 @@ export function createUiRoutes(
           })),
           uptime: Math.round(process.uptime()),
           usage: metrics.usage,
+          activeTurns: manager?.getActiveTurnsByNous() ?? {},
         };
         controller.enqueue(
           new TextEncoder().encode(`event: init\ndata: ${JSON.stringify(initData)}\n\n`),

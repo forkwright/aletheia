@@ -5,6 +5,7 @@ import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem } from "../l
 interface AgentChatState {
   messages: ChatMessage[];
   isStreaming: boolean;
+  remoteStreaming: boolean;
   streamingText: string;
   activeToolCalls: ToolCallState[];
   error: string | null;
@@ -16,6 +17,7 @@ let states = $state<Record<string, AgentChatState>>({});
 const EMPTY: AgentChatState = {
   messages: [],
   isStreaming: false,
+  remoteStreaming: false,
   streamingText: "",
   activeToolCalls: [],
   error: null,
@@ -33,6 +35,7 @@ function writeState(agentId: string): AgentChatState {
     states[agentId] = {
       messages: [],
       isStreaming: false,
+      remoteStreaming: false,
       streamingText: "",
       activeToolCalls: [],
       error: null,
@@ -47,7 +50,12 @@ export function getMessages(agentId: string): ChatMessage[] {
 }
 
 export function getIsStreaming(agentId: string): boolean {
-  return readState(agentId).isStreaming;
+  const s = readState(agentId);
+  return s.isStreaming || s.remoteStreaming;
+}
+
+export function setRemoteStreaming(agentId: string, active: boolean): void {
+  writeState(agentId).remoteStreaming = active;
 }
 
 export function getStreamingText(agentId: string): string {
