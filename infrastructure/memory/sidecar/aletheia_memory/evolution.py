@@ -156,7 +156,7 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
         }
     except Exception as e:
         logger.warning(f"Reinforcement failed: {e}")
-        return {"ok": True, "reinforced": False, "error": str(e)}
+        return {"ok": True, "reinforced": False, "error": "Internal error"}
 
 
 @evolution_router.post("/decay")

@@ -149,7 +149,8 @@ async def import_facts(req: ImportRequest, request: Request):
             await asyncio.to_thread(mem.add, text, user_id=req.user_id, metadata=metadata)
             imported += 1
         except Exception as e:
-            errors.append({"index": i, "error": str(e)})
+            logger.debug("facts import error at index %d: %s", i, e)
+            errors.append({"index": i, "error": "Import failed"})
             if len(errors) > 10:
                 break
 
@@ -686,7 +687,8 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     }
     with open(RETRACTION_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
-    logger.info(f"Retraction logged: {len(retracted)} memories, reason={req.reason or 'none'}")
+    safe_reason = (req.reason or "none").replace("\n", " ").replace("\r", " ")[:100]
+    logger.info("Retraction logged: %d memories, reason=%s", len(retracted), safe_reason)
 
 
 # --- Episode recording (linked from /add) ---
@@ -819,7 +821,7 @@ async def active_foresight():
         return {"ok": True, "signals": signals}
     except Exception as e:
         logger.exception("active_foresight failed")
-        return {"ok": True, "signals": [], "error": str(e)}
+        return {"ok": True, "signals": [], "error": "Internal error"}
 
 
 @foresight_router.post("/decay")

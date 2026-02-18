@@ -92,11 +92,11 @@ async function fetchPreview(url: string): Promise<string | null> {
 
 function stripHtml(html: string): string {
   let text = html;
-  // Remove dangerous/noisy block elements first
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
-  text = text.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "");
-  text = text.replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "");
+  // Remove block elements with content (handles spaces before closing >)
+  text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
+  text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
+  text = text.replace(/<nav[\s\S]*?<\/nav\s*>/gi, "");
+  text = text.replace(/<footer[\s\S]*?<\/footer\s*>/gi, "");
   // Semantic whitespace
   text = text.replace(/<br\s*\/?>/gi, "\n");
   text = text.replace(/<\/p>/gi, "\n\n");
@@ -104,14 +104,19 @@ function stripHtml(html: string): string {
   text = text.replace(/<\/h[1-6]>/gi, "\n\n");
   text = text.replace(/<li[^>]*>/gi, "- ");
   text = text.replace(/<\/li>/gi, "\n");
-  // Decode entities then re-strip dangerous tags to catch double-encoded XSS
-  text = decodeHtmlEntities(text);
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   // Strip all remaining tags — loop to handle malformed/nested tags
   let prev = "";
   while (prev !== text) {
     prev = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  // Decode entities, then loop-strip script/style blocks and all tags until stable
+  text = decodeHtmlEntities(text);
+  prev = "";
+  while (prev !== text) {
+    prev = text;
+    text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
+    text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
     text = text.replace(/<[^>]*>/g, "");
   }
   text = text.replace(/\n{3,}/g, "\n\n");

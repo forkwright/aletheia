@@ -1,5 +1,5 @@
 // Workspace git tracking — auto-commit file changes for history and rollback
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative, basename } from "node:path";
 import { createLogger } from "../koina/logger.js";
@@ -12,9 +12,9 @@ export function initWorkspaceRepo(workspace: string): boolean {
   if (existsSync(join(workspace, ".git"))) return true;
 
   try {
-    execSync("git init", { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
-    execSync('git config user.email "aletheia@local"', { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
-    execSync('git config user.name "aletheia"', { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
+    execFileSync("git", ["init"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "aletheia@local"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "aletheia"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
     log.info(`Initialized git repo in ${workspace}`);
     return true;
   } catch (err) {
@@ -37,16 +37,16 @@ export function commitWorkspaceChange(
     // Only track files inside the workspace
     if (rel.startsWith("..")) return;
 
-    execSync(`git add "${rel}"`, { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
-    execSync(`git diff --cached --quiet`, { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
+    execFileSync("git", ["add", rel], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
+    execFileSync("git", ["diff", "--cached", "--quiet"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
     // If git diff --cached --quiet exits 0, nothing staged — skip commit
   } catch {
     // Exit code 1 from git diff means there ARE staged changes — commit them
     try {
       const rel = relative(workspace, filePath);
       const name = basename(rel);
-      execSync(
-        `git commit -m "${operation}: ${name}" --no-gpg-sign`,
+      execFileSync(
+        "git", ["commit", "-m", `${operation}: ${name}`, "--no-gpg-sign"],
         { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" },
       );
       log.debug(`Committed workspace change: ${operation}: ${name}`);

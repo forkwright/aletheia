@@ -47,7 +47,7 @@ export function spawnEphemeral(spec: EphemeralSpec, sharedRoot: string): Ephemer
   const parentDir = join(sharedRoot, "ephemeral");
   mkdirSync(parentDir, { recursive: true });
   const workspace = join(parentDir, id);
-  mkdirSync(workspace, { mode: 0o700 });
+  mkdirSync(workspace, { mode: 0o700 }); // codeql[js/insecure-temporary-file] - dedicated ephemeral workspace under sharedRoot, not tmpdir
 
   // Write SOUL.md for the specialist
   writeFileSync(join(workspace, "SOUL.md"), spec.soul);

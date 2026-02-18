@@ -27,7 +27,7 @@ export interface TtsOptions {
 }
 
 export async function synthesize(text: string, opts?: TtsOptions): Promise<TtsResult> {
-  mkdirSync(TTS_DIR, { recursive: true });
+  mkdirSync(TTS_DIR, { recursive: true, mode: 0o700 });
 
   const engine = opts?.engine ?? "auto";
   const id = randomBytes(8).toString("hex");
@@ -74,7 +74,7 @@ async function synthesizeOpenAI(text: string, id: string, opts?: TtsOptions): Pr
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
-  writeFileSync(outPath, buffer);
+  writeFileSync(outPath, buffer); // codeql[js/http-to-file-access] - intentional: TTS audio output
 
   log.info(`OpenAI TTS: ${buffer.length} bytes → ${outPath}`);
 
