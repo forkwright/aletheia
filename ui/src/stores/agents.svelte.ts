@@ -26,16 +26,19 @@ export async function loadAgents(): Promise<void> {
   loading = true;
   try {
     const list = await fetchAgents();
-    // Enrich with identity (emoji)
-    for (const agent of list) {
-      if (!identityCache.has(agent.id)) {
-        try {
-          const identity = await fetchAgentIdentity(agent.id);
-          identityCache.set(agent.id, identity);
-        } catch {
-          identityCache.set(agent.id, { name: agent.name, emoji: null });
+    // Enrich with identity (emoji) — fetch all in parallel
+    const uncached = list.filter((a) => !identityCache.has(a.id));
+    if (uncached.length > 0) {
+      const results = await Promise.allSettled(
+        uncached.map((a) => fetchAgentIdentity(a.id).then((identity) => ({ id: a.id, identity }))),
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          identityCache.set(result.value.id, result.value.identity);
         }
       }
+    }
+    for (const agent of list) {
       const cached = identityCache.get(agent.id);
       if (cached) {
         agent.name = cached.name || agent.name;

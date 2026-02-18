@@ -49,6 +49,17 @@ export function clearMessages(): void {
   error = null;
 }
 
+/** Inject a local-only message (not sent to any agent) */
+export function injectLocalMessage(content: string): void {
+  const msg: ChatMessage = {
+    id: `system-${Date.now()}`,
+    role: "assistant",
+    content,
+    timestamp: new Date().toISOString(),
+  };
+  messages = [...messages, msg];
+}
+
 export async function sendMessage(
   agentId: string,
   text: string,
