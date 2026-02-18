@@ -4,7 +4,6 @@ import os
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
@@ -77,9 +76,9 @@ MEM0_CONFIG = {
                 "openai_base_url": "https://api.voyageai.com/v1",
             },
         } if VOYAGE_API_KEY else {
-            "provider": "huggingface",
+            "provider": "fastembed",
             "config": {
-                "model": "BAAI/bge-large-en-v1.5",
+                "model": "thenlper/gte-large",
             },
         }
     ),

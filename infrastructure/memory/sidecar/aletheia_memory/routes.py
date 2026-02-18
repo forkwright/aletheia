@@ -190,7 +190,7 @@ async def delete_memory(memory_id: str, request: Request):
 
 
 @router.get("/health")
-async def health_check():
+async def health_check(request: Request):
     checks: dict[str, Any] = {}
 
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -200,18 +200,15 @@ async def health_check():
         except Exception as e:
             checks["qdrant"] = f"error: {e}"
 
-        try:
-            r = await client.post(
-                "https://api.voyageai.com/v1/embeddings",
-                headers={
-                    "Authorization": f"Bearer {os.environ.get('VOYAGE_API_KEY', '')}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": "voyage-3-large", "input": ["health check"]},
-            )
-            checks["voyage"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
-        except Exception as e:
-            checks["voyage"] = f"error: {e}"
+    try:
+        mem = request.app.state.memory
+        if mem and hasattr(mem, "embedding_model"):
+            vec = mem.embedding_model.embed("health check")
+            checks["embedder"] = "ok" if len(vec) > 0 else "empty vector"
+        else:
+            checks["embedder"] = "not initialized"
+    except Exception as e:
+        checks["embedder"] = f"error: {e}"
 
     try:
         from neo4j import GraphDatabase
