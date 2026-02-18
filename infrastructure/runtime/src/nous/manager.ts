@@ -34,6 +34,7 @@ import type { UncertaintyTracker } from "./uncertainty.js";
 import { eventBus } from "../koina/event-bus.js";
 import { classifyInteraction } from "./interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
+import { AsyncChannel } from "./async-channel.js";
 
 const log = createLogger("nous");
 
@@ -193,20 +194,31 @@ export class NousManager {
     yield { type: "turn_start", sessionId: session.id, nousId };
 
     this.activeTurns++;
-    try {
-      // Collect events from executeTurnStreaming through session lock
-      // We can't yield directly from withSessionLock, so collect into a buffer
-      const events: TurnStreamEvent[] = [];
-      await withSessionLock(session.id, async () => {
+    const channel = new AsyncChannel<TurnStreamEvent>();
+
+    // Run turn inside session lock, pushing events to channel in real-time
+    const turnPromise = withSessionLock(session.id, async () => {
+      try {
         for await (const event of this.executeTurnStreaming(
           nousId, session.id, sessionKey, model, msg, nous, temperature,
         )) {
-          events.push(event);
+          channel.push(event);
         }
-      });
-      for (const event of events) {
+      } catch (err) {
+        channel.push({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        channel.close();
+      }
+    });
+
+    try {
+      for await (const event of channel) {
         yield event;
       }
+      await turnPromise;
     } catch (err) {
       yield { type: "error", message: err instanceof Error ? err.message : String(err) };
     } finally {
