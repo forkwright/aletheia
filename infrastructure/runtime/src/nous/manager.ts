@@ -34,6 +34,8 @@ import type { UncertaintyTracker } from "./uncertainty.js";
 import { eventBus } from "../koina/event-bus.js";
 import { classifyInteraction } from "./interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
+import { AsyncChannel } from "./async-channel.js";
+import { recallMemories } from "./recall.js";
 
 const log = createLogger("nous");
 
@@ -119,6 +121,7 @@ export class NousManager {
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
+  private activeTurnsByNous = new Map<string, number>();
   isDraining: () => boolean = () => false;
 
   constructor(
@@ -150,6 +153,14 @@ export class NousManager {
 
   setUncertainty(tracker: UncertaintyTracker): void {
     this.uncertainty = tracker;
+  }
+
+  getActiveTurnsByNous(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [nousId, count] of this.activeTurnsByNous) {
+      if (count > 0) result[nousId] = count;
+    }
+    return result;
   }
 
   async *handleMessageStreaming(msg: InboundMessage): AsyncGenerator<TurnStreamEvent> {
@@ -193,24 +204,39 @@ export class NousManager {
     yield { type: "turn_start", sessionId: session.id, nousId };
 
     this.activeTurns++;
-    try {
-      // Collect events from executeTurnStreaming through session lock
-      // We can't yield directly from withSessionLock, so collect into a buffer
-      const events: TurnStreamEvent[] = [];
-      await withSessionLock(session.id, async () => {
+    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
+    const channel = new AsyncChannel<TurnStreamEvent>();
+
+    // Run turn inside session lock, pushing events to channel in real-time
+    const turnPromise = withSessionLock(session.id, async () => {
+      try {
         for await (const event of this.executeTurnStreaming(
           nousId, session.id, sessionKey, model, msg, nous, temperature,
         )) {
-          events.push(event);
+          channel.push(event);
         }
-      });
-      for (const event of events) {
+      } catch (err) {
+        channel.push({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        channel.close();
+      }
+    });
+
+    try {
+      for await (const event of channel) {
         yield event;
       }
+      await turnPromise;
     } catch (err) {
       yield { type: "error", message: err instanceof Error ? err.message : String(err) };
     } finally {
       this.activeTurns--;
+      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
+      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
+      else this.activeTurnsByNous.set(nousId, cur - 1);
     }
   }
 
@@ -264,10 +290,27 @@ export class NousManager {
     trace.setBootstrap(Object.keys(bootstrap.fileHashes), bootstrap.totalTokens);
     if (degradedServices.length > 0) trace.setDegradedServices(degradedServices);
 
+    // Pre-turn memory recall
+    let recallBlock: { type: "text"; text: string } | null = null;
+    let recallTokens = 0;
+    if (!degradedServices.includes("mem0-sidecar")) {
+      const recall = await recallMemories(msg.text, nousId);
+      recallBlock = recall.block;
+      recallTokens = recall.tokens;
+      if (recall.count > 0) {
+        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
+        trace.setRecall(recall.count, recall.durationMs);
+      }
+    }
+
     const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
+
+    if (recallBlock) {
+      systemPrompt.push(recallBlock);
+    }
 
     const broadcasts = this.store.blackboardReadPrefix("broadcast:");
     if (broadcasts.length > 0) {
@@ -308,7 +351,7 @@ export class NousManager {
     const toolDefTokens = estimateToolDefTokens(toolDefs);
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput);
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
     let crossAgentNotice: string | null = null;
@@ -464,6 +507,8 @@ export class NousManager {
             await distillSession(this.store, this.router, sessionId, nousId, {
               triggerThreshold: distillThreshold, minMessages: 10,
               extractionModel: distillModel, summaryModel: distillModel,
+              preserveRecentMessages: compaction.preserveRecentMessages,
+              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -593,12 +638,16 @@ export class NousManager {
 
     // Serialize concurrent turns on the same session
     this.activeTurns++;
+    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
     try {
       return await withSessionLock(session.id, () =>
         this.executeTurn(nousId, session.id, sessionKey, model, msg, nous, temperature),
       );
     } finally {
       this.activeTurns--;
+      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
+      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
+      else this.activeTurnsByNous.set(nousId, cur - 1);
     }
   }
 
@@ -677,10 +726,27 @@ export class NousManager {
       trace.setDegradedServices(degradedServices);
     }
 
+    // Pre-turn memory recall
+    let recallBlock: { type: "text"; text: string } | null = null;
+    let recallTokens = 0;
+    if (!degradedServices.includes("mem0-sidecar")) {
+      const recall = await recallMemories(msg.text, nousId);
+      recallBlock = recall.block;
+      recallTokens = recall.tokens;
+      if (recall.count > 0) {
+        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
+        trace.setRecall(recall.count, recall.durationMs);
+      }
+    }
+
     const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
       ...bootstrap.staticBlocks,
       ...bootstrap.dynamicBlocks,
     ];
+
+    if (recallBlock) {
+      systemPrompt.push(recallBlock);
+    }
 
     // Broadcast injection — prosoche and agents can post attention-worthy items via blackboard
     const broadcasts = this.store.blackboardReadPrefix("broadcast:");
@@ -728,7 +794,7 @@ export class NousManager {
 
     const contextTokens = this.config.agents.defaults.contextTokens;
     const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput);
+    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
 
     const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
 
@@ -940,6 +1006,8 @@ export class NousManager {
               minMessages: 10,
               extractionModel: distillModel,
               summaryModel: distillModel,
+              preserveRecentMessages: compaction.preserveRecentMessages,
+              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -1258,6 +1326,8 @@ export class NousManager {
       minMessages: 4,
       extractionModel: distillModel,
       summaryModel: distillModel,
+      preserveRecentMessages: compaction.preserveRecentMessages,
+      preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(this.plugins ? { plugins: this.plugins } : {}),
     });
   }
