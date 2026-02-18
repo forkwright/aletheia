@@ -9,6 +9,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
+  cache_control?: { type: "ephemeral" };
 }
 
 export interface ToolUseBlock {
@@ -98,18 +99,62 @@ export class AnthropicProvider {
     }
   }
 
+  // Inject cache_control breakpoints on tools and conversation history
+  // to maximize Anthropic prefix caching. Uses 2 of the 4 allowed breakpoints
+  // (the other 2 are on the system prompt, set in bootstrap.ts).
+  private injectCacheBreakpoints(request: CompletionRequest): {
+    system: CompletionRequest["system"];
+    messages: Anthropic.Messages.MessageParam[];
+    tools?: Anthropic.Messages.Tool[];
+  } {
+    const cacheHint = { type: "ephemeral" as const };
+
+    // Cache tool definitions: mark last tool
+    let tools: Anthropic.Messages.Tool[] | undefined;
+    if (request.tools && request.tools.length > 0) {
+      tools = request.tools.map((t, i) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema as Anthropic.Messages.Tool.InputSchema,
+        ...(i === request.tools!.length - 1 ? { cache_control: cacheHint } : {}),
+      }));
+    }
+
+    // Cache conversation history: mark last user message's last content block
+    const messages = (request.messages as Anthropic.Messages.MessageParam[]).map((m) => ({ ...m }));
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]!;
+      if (msg.role !== "user") continue;
+
+      if (typeof msg.content === "string") {
+        messages[i] = {
+          role: "user",
+          content: [{ type: "text" as const, text: msg.content, cache_control: cacheHint }],
+        };
+      } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+        const blocks = msg.content.map((b) => ({ ...b }));
+        (blocks[blocks.length - 1] as Record<string, unknown>)["cache_control"] = cacheHint;
+        messages[i] = { role: "user", content: blocks as Anthropic.Messages.ContentBlockParam[] };
+      }
+      break;
+    }
+
+    return { system: request.system, messages, ...(tools ? { tools } : {}) };
+  }
+
   async complete(request: CompletionRequest): Promise<TurnResult> {
-    const { model, system, messages, tools, maxTokens, temperature } = request;
+    const { model, maxTokens, temperature } = request;
+    const cached = this.injectCacheBreakpoints(request);
 
     try {
       const response = await this.client.messages.create({
         model,
         max_tokens: maxTokens ?? 8192,
-        system: typeof system === "string"
-          ? system
-          : system as Anthropic.Messages.TextBlockParam[],
-        messages: messages as Anthropic.Messages.MessageParam[],
-        ...(tools ? { tools: tools as Anthropic.Messages.Tool[] } : {}),
+        system: typeof cached.system === "string"
+          ? cached.system
+          : cached.system as Anthropic.Messages.TextBlockParam[],
+        messages: cached.messages,
+        ...(cached.tools ? { tools: cached.tools } : {}),
         ...(temperature !== undefined ? { temperature } : {}),
       });
 
@@ -158,17 +203,18 @@ export class AnthropicProvider {
   }
 
   async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
-    const { model, system, messages, tools, maxTokens, temperature } = request;
+    const { model, maxTokens, temperature } = request;
+    const cached = this.injectCacheBreakpoints(request);
 
     const stream = await this.client.messages.create({
       model,
       max_tokens: maxTokens ?? 8192,
       stream: true,
-      system: typeof system === "string"
-        ? system
-        : system as Anthropic.Messages.TextBlockParam[],
-      messages: messages as Anthropic.Messages.MessageParam[],
-      ...(tools ? { tools: tools as Anthropic.Messages.Tool[] } : {}),
+      system: typeof cached.system === "string"
+        ? cached.system
+        : cached.system as Anthropic.Messages.TextBlockParam[],
+      messages: cached.messages,
+      ...(cached.tools ? { tools: cached.tools } : {}),
       ...(temperature !== undefined ? { temperature } : {}),
     });
 
