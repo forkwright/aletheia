@@ -1,6 +1,6 @@
 // Config loading unit tests
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadConfig, resolveNous, resolveModel, resolveWorkspace, resolveDefaultNous, allNousIds } from "./loader.js";
+import { loadConfig, resolveNous, resolveModel, resolveWorkspace, resolveDefaultNous, allNousIds, applyEnv } from "./loader.js";
 import { ConfigError } from "../koina/errors.js";
 import type { AletheiaConfig, NousConfig } from "./schema.js";
 
@@ -251,5 +251,61 @@ describe("allNousIds", () => {
     });
     const config = loadConfig();
     expect(allNousIds(config)).toEqual(["syn", "chiron"]);
+  });
+});
+
+describe("applyEnv", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedEnv["TEST_APPLY_A"] = process.env["TEST_APPLY_A"];
+    savedEnv["TEST_APPLY_B"] = process.env["TEST_APPLY_B"];
+    delete process.env["TEST_APPLY_A"];
+    delete process.env["TEST_APPLY_B"];
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it("applies flat env vars through Zod preprocess", () => {
+    mockReadJson.mockReturnValue(minimalConfig({
+      env: { TEST_APPLY_A: "hello", TEST_APPLY_B: "world" },
+    }));
+    const config = loadConfig();
+    const count = applyEnv(config);
+    expect(count).toBe(2);
+    expect(process.env["TEST_APPLY_A"]).toBe("hello");
+    expect(process.env["TEST_APPLY_B"]).toBe("world");
+  });
+
+  it("applies structured env.vars format", () => {
+    mockReadJson.mockReturnValue(minimalConfig({
+      env: { vars: { TEST_APPLY_A: "structured" } },
+    }));
+    const config = loadConfig();
+    const count = applyEnv(config);
+    expect(count).toBe(1);
+    expect(process.env["TEST_APPLY_A"]).toBe("structured");
+  });
+
+  it("does not overwrite existing env vars", () => {
+    process.env["TEST_APPLY_A"] = "original";
+    mockReadJson.mockReturnValue(minimalConfig({
+      env: { TEST_APPLY_A: "overwritten" },
+    }));
+    const config = loadConfig();
+    const count = applyEnv(config);
+    expect(count).toBe(0);
+    expect(process.env["TEST_APPLY_A"]).toBe("original");
+  });
+
+  it("returns 0 when no env config", () => {
+    mockReadJson.mockReturnValue(minimalConfig());
+    const config = loadConfig();
+    expect(applyEnv(config)).toBe(0);
   });
 });
