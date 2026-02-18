@@ -235,6 +235,7 @@ export function createGateway(
     // Validate media attachments from webchat
     const validMedia: Array<{ contentType: string; data: string; filename?: string }> = [];
     if (media?.length) {
+      log.info(`Stream request has ${media.length} media attachment(s)`);
       const maxBytes = 25 * 1024 * 1024; // 25MB per attachment
       for (const item of media) {
         if (!item.contentType || !item.data) continue;
@@ -243,12 +244,16 @@ export function createGateway(
           log.warn(`Skipping oversized webchat attachment (${Math.round(estimatedSize / 1024)}KB)`);
           continue;
         }
-        if (!/^(image|audio|application)\//i.test(item.contentType)) {
+        if (!/^(image|audio|application|text)\//i.test(item.contentType)) {
           log.warn(`Skipping unsupported media type: ${item.contentType}`);
           continue;
         }
         validMedia.push(item);
       }
+    }
+
+    if (validMedia.length > 0) {
+      log.info(`Passing ${validMedia.length} valid media to manager (types: ${validMedia.map(m => m.contentType).join(", ")})`);
     }
 
     const encoder = new TextEncoder();

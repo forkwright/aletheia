@@ -24,8 +24,22 @@
   let fileInput = $state<HTMLInputElement | null>(null);
   let isDragOver = $state(false);
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-  const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+  const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  const DOC_TYPES = ["application/pdf"];
+  const TEXT_TYPES = [
+    "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
+    "application/json", "application/xml",
+  ];
+  const ACCEPTED_TYPES = [...IMAGE_TYPES, ...DOC_TYPES, ...TEXT_TYPES];
+
+  function isTextLikeType(type: string): boolean {
+    return TEXT_TYPES.includes(type) || type.startsWith("text/");
+  }
+
+  function isImageType(type: string): boolean {
+    return IMAGE_TYPES.includes(type);
+  }
 
   let filteredCommands = $derived(
     text.startsWith("/")
@@ -47,9 +61,48 @@
     }
   });
 
+  function inferContentType(file: File): string | null {
+    if (file.type && (ACCEPTED_TYPES.includes(file.type) || file.type.startsWith("text/"))) {
+      return file.type;
+    }
+    // Infer from extension for common types
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const extMap: Record<string, string> = {
+      pdf: "application/pdf",
+      json: "application/json",
+      xml: "application/xml",
+      csv: "text/csv",
+      md: "text/markdown",
+      txt: "text/plain",
+      html: "text/html",
+      htm: "text/html",
+      yaml: "text/yaml",
+      yml: "text/yaml",
+      toml: "text/plain",
+      log: "text/plain",
+      py: "text/plain",
+      js: "text/plain",
+      ts: "text/plain",
+      sh: "text/plain",
+      sql: "text/plain",
+      css: "text/plain",
+      rs: "text/plain",
+      go: "text/plain",
+      java: "text/plain",
+      c: "text/plain",
+      cpp: "text/plain",
+      h: "text/plain",
+      rb: "text/plain",
+      swift: "text/plain",
+    };
+    if (ext && extMap[ext]) return extMap[ext];
+    return null;
+  }
+
   function fileToMediaItem(file: File): Promise<MediaItem | null> {
     return new Promise((resolve) => {
-      if (!ACCEPTED_TYPES.includes(file.type)) {
+      const contentType = inferContentType(file);
+      if (!contentType) {
         resolve(null);
         return;
       }
@@ -64,7 +117,7 @@
         const base64Match = result.match(/^data:[^;]+;base64,(.+)$/);
         const data = base64Match ? base64Match[1] : result;
         resolve({
-          contentType: file.type,
+          contentType,
           data,
           filename: file.name,
         });
@@ -122,16 +175,16 @@
   function handlePaste(e: ClipboardEvent) {
     const items = e.clipboardData?.items;
     if (!items) return;
-    const imageFiles: File[] = [];
+    const pastedFiles: File[] = [];
     for (const item of items) {
-      if (item.kind === "file" && ACCEPTED_TYPES.includes(item.type)) {
+      if (item.kind === "file") {
         const file = item.getAsFile();
-        if (file) imageFiles.push(file);
+        if (file && inferContentType(file)) pastedFiles.push(file);
       }
     }
-    if (imageFiles.length > 0) {
+    if (pastedFiles.length > 0) {
       e.preventDefault();
-      handleFiles(imageFiles);
+      handleFiles(pastedFiles);
     }
   }
 
@@ -185,7 +238,9 @@
     }
 
     const media = attachments.length > 0 ? [...attachments] : undefined;
-    const message = trimmed || (media ? "What's in this image?" : "");
+    const hasImages = media?.some(m => isImageType(m.contentType));
+    const defaultPrompt = hasImages ? "What's in this image?" : "Please review this file.";
+    const message = trimmed || (media ? defaultPrompt : "");
 
     onSend(message, media);
     text = "";
@@ -264,7 +319,19 @@
       <div class="attachment-preview">
         {#each attachments as att, i}
           <div class="attachment-thumb">
-            <img src="data:{att.contentType};base64,{att.data}" alt={att.filename ?? "attachment"} />
+            {#if isImageType(att.contentType)}
+              <img src="data:{att.contentType};base64,{att.data}" alt={att.filename ?? "attachment"} />
+            {:else}
+              <div class="file-icon">
+                {#if att.contentType === "application/pdf"}
+                  <span class="file-emoji">📄</span>
+                {:else if isTextLikeType(att.contentType)}
+                  <span class="file-emoji">📝</span>
+                {:else}
+                  <span class="file-emoji">📎</span>
+                {/if}
+              </div>
+            {/if}
             <button class="remove-btn" onclick={() => removeAttachment(i)} aria-label="Remove attachment">×</button>
             {#if att.filename}
               <span class="attachment-name">{att.filename}</span>
@@ -282,8 +349,8 @@
       <button
         class="attach-btn"
         onclick={handleAttachClick}
-        title="Attach image (JPEG, PNG, GIF, WebP)"
-        aria-label="Attach image"
+        title="Attach file (images, PDFs, text, code)"
+        aria-label="Attach file"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
@@ -310,7 +377,7 @@
     <input
       bind:this={fileInput}
       type="file"
-      accept={ACCEPTED_TYPES.join(",")}
+      accept="image/*,application/pdf,.json,.xml,.csv,.md,.txt,.html,.yaml,.yml,.toml,.log,.py,.js,.ts,.sh,.sql,.css,.rs,.go,.java,.c,.cpp,.h,.rb,.swift"
       multiple
       onchange={handleFileSelect}
       class="hidden-file-input"
@@ -318,7 +385,7 @@
   </div>
   {#if isDragOver}
     <div class="drag-overlay">
-      <div class="drag-label">Drop image to attach</div>
+      <div class="drag-label">Drop file to attach</div>
     </div>
   {/if}
 </div>
@@ -494,6 +561,17 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .file-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+  }
+  .file-emoji {
+    font-size: 28px;
   }
   .attachment-thumb .remove-btn {
     position: absolute;

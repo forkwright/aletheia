@@ -383,14 +383,18 @@ async function preprocessAndProcess(
 ): Promise<void> {
   // Fetch attachments — images for vision, audio for transcription
   if (attachments?.length) {
+    log.info(`Processing ${attachments.length} attachment(s)`);
     const media: MediaAttachment[] = [];
     const maxBytes = (mediaMaxMb ?? 25) * 1024 * 1024;
 
     for (const att of attachments) {
-      if (!att.id) continue;
+      if (!att.id) {
+        log.info(`Attachment missing id field (keys: ${Object.keys(att).join(", ")})`);
+        continue;
+      }
       const ct = att.contentType ?? "";
       if (att.size && att.size > maxBytes) {
-        log.debug(`Skipping oversized attachment ${att.filename ?? att.id} (${att.size} bytes)`);
+        log.info(`Skipping oversized attachment ${att.filename ?? att.id} (${att.size} bytes)`);
         continue;
       }
 
@@ -398,8 +402,11 @@ async function preprocessAndProcess(
         const attParams: { id: string; account?: string } = { id: att.id };
         if (accountPhone) attParams.account = accountPhone;
 
-        if (ct.startsWith("image/")) {
+        if (ct.startsWith("image/") || ct === "application/pdf" || ct.startsWith("text/") || ct === "application/json" || ct === "application/xml") {
+          // Fetch as media for vision/document blocks
+          log.info(`Fetching attachment ${att.id} (${ct})`);
           const result = await client.getAttachment(attParams);
+          log.info(`getAttachment result type: ${typeof result}, length: ${typeof result === "string" ? result.length : "N/A"}`);
           if (typeof result === "string") {
             const attachment: MediaAttachment = {
               contentType: ct,
@@ -407,7 +414,9 @@ async function preprocessAndProcess(
             };
             if (att.filename) attachment.filename = att.filename;
             media.push(attachment);
-            log.debug(`Fetched image attachment: ${att.filename ?? att.id} (${ct})`);
+            log.info(`Fetched attachment: ${att.filename ?? att.id} (${ct}, ${Math.round(result.length / 1024)}KB base64)`);
+          } else {
+            log.warn(`getAttachment returned non-string for ${att.id}: ${JSON.stringify(result).slice(0, 200)}`);
           }
         } else if (ct.startsWith("audio/")) {
           const result = await client.getAttachment(attParams);
@@ -420,6 +429,8 @@ async function preprocessAndProcess(
               msg.text = `[Voice message — transcription unavailable]\n\n${msg.text}`;
             }
           }
+        } else {
+          log.info(`Unsupported attachment type: ${ct} (${att.filename ?? att.id})`);
         }
       } catch (err) {
         log.warn(`Failed to fetch attachment ${att.id}: ${err instanceof Error ? err.message : err}`);
@@ -427,6 +438,7 @@ async function preprocessAndProcess(
     }
 
     if (media.length > 0) {
+      log.info(`Passing ${media.length} media attachment(s) to manager`);
       msg.media = media;
     }
   }

@@ -64,6 +64,16 @@
                 alt={item.filename ?? "image"}
               />
             </button>
+          {:else if item.contentType === "application/pdf"}
+            <div class="file-attachment">
+              <span class="file-att-icon">📄</span>
+              <span class="file-att-name">{item.filename ?? "document.pdf"}</span>
+            </div>
+          {:else}
+            <div class="file-attachment">
+              <span class="file-att-icon">📝</span>
+              <span class="file-att-name">{item.filename ?? "file"}</span>
+            </div>
           {/if}
         {/each}
       </div>
@@ -136,6 +146,30 @@
   .msg-media.grid .media-thumb img {
     height: 150px;
     object-fit: cover;
+  }
+
+  /* File attachments */
+  .file-attachment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .file-att-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .file-att-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12px;
   }
 
   /* Lightbox */

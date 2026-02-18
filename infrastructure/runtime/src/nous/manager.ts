@@ -1127,27 +1127,61 @@ export class NousManager {
       }
     }
 
-    // Current message — multimodal if images present
-    const imageMedia = media?.filter((m) =>
-      /^image\/(jpeg|png|gif|webp)$/i.test(m.contentType),
-    );
-    if (imageMedia && imageMedia.length > 0) {
+    // Current message — multimodal if media present (images, PDFs, text documents)
+    if (media?.length) {
+      log.info(`buildMessages received ${media.length} media items: ${media.map(m => m.contentType).join(", ")}`);
+    }
+
+    const hasMedia = media && media.length > 0;
+    if (hasMedia) {
       const blocks: UserContentBlock[] = [];
-      for (const img of imageMedia) {
+
+      for (const item of media) {
         // Strip data URI prefix if present
-        let data = img.data;
+        let data = item.data;
         const dataUriMatch = data.match(/^data:[^;]+;base64,(.+)$/);
         if (dataUriMatch) data = dataUriMatch[1]!;
 
-        blocks.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: img.contentType,
-            data,
-          },
-        } as ImageBlock);
+        if (/^image\/(jpeg|png|gif|webp)$/i.test(item.contentType)) {
+          // Image → vision block
+          blocks.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: item.contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data,
+            },
+          } as ImageBlock);
+        } else if (item.contentType === "application/pdf") {
+          // PDF → document block
+          blocks.push({
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data,
+            },
+            ...(item.filename ? { title: item.filename } : {}),
+          } as unknown as UserContentBlock);
+        } else if (item.contentType.startsWith("text/")) {
+          // Text files → decode and include as text block
+          try {
+            const decoded = Buffer.from(data, "base64").toString("utf-8");
+            const label = item.filename ? `[File: ${item.filename}]` : "[Text file]";
+            blocks.push({ type: "text", text: `${label}\n\n${decoded}` });
+          } catch {
+            blocks.push({ type: "text", text: `[Could not decode text file: ${item.filename ?? "unknown"}]` });
+          }
+        } else {
+          // Unknown type — note it for the agent
+          blocks.push({
+            type: "text",
+            text: `[Attachment: ${item.filename ?? "file"} (${item.contentType}) — unsupported for inline viewing]`,
+          });
+        }
       }
+
+      log.info(`Including ${blocks.length} content block(s) from media (${blocks.map(b => b.type).join(", ")})`);
       blocks.push({ type: "text", text: currentText });
       messages.push({ role: "user", content: blocks });
     } else {
