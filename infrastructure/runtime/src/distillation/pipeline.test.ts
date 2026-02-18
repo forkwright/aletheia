@@ -1,5 +1,8 @@
 // Distillation pipeline tests
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { shouldDistill, distillSession } from "./pipeline.js";
 
 // Mock extraction
@@ -206,5 +209,50 @@ describe("distillSession", () => {
 
     const { sanitizeToolResults } = await import("./chunked-summarize.js");
     expect(sanitizeToolResults).toHaveBeenCalled();
+  });
+
+  describe("workspace memory flush", () => {
+    const tmpDirs: string[] = [];
+
+    afterEach(() => {
+      for (const d of tmpDirs.splice(0)) {
+        try { rmSync(d, { recursive: true }); } catch { /* ignore */ }
+      }
+    });
+
+    it("writes memory file when workspace provided", async () => {
+      const workspace = mkdtempSync(join(tmpdir(), "pipeline-test-"));
+      tmpDirs.push(workspace);
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_ws", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        workspace,
+      });
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const memFile = join(workspace, "memory", `${dateStr}.md`);
+      expect(existsSync(memFile)).toBe(true);
+      const content = readFileSync(memFile, "utf-8");
+      expect(content).toContain("Distillation #1");
+    });
+
+    it("succeeds even when workspace flush fails (bad path)", async () => {
+      const store = makeStore();
+      const result = await distillSession(store, makeRouter(), "ses_ws_fail", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        workspace: "/proc/no-such-dir",
+      });
+
+      // Distillation completed despite flush failure
+      expect(result.sessionId).toBe("ses_ws_fail");
+      expect(result.distillationNumber).toBe(1);
+    });
   });
 });

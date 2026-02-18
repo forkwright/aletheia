@@ -10,6 +10,7 @@ import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import { eventBus } from "../koina/event-bus.js";
+import { flushToWorkspace } from "./workspace-flush.js";
 
 const log = createLogger("distillation");
 
@@ -25,6 +26,7 @@ export interface DistillationOpts {
   plugins?: PluginRegistry;
   preserveRecentMessages?: number;
   preserveRecentMaxTokens?: number;
+  workspace?: string;
 }
 
 export interface DistillationResult {
@@ -255,6 +257,20 @@ async function runDistillation(
     factsExtracted: extraction.facts.length + extraction.decisions.length,
     model: opts.extractionModel,
   });
+
+  if (opts.workspace) {
+    const flushResult = flushToWorkspace({
+      workspace: opts.workspace,
+      nousId,
+      sessionId,
+      distillationNumber,
+      summary: markedSummary,
+      extraction,
+    });
+    if (!flushResult.written) {
+      log.warn(`Workspace memory flush failed: ${flushResult.error}`);
+    }
+  }
 
   const result: DistillationResult = {
     sessionId,

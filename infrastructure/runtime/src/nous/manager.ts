@@ -513,6 +513,7 @@ export class NousManager {
               extractionModel: distillModel, summaryModel: distillModel,
               preserveRecentMessages: compaction.preserveRecentMessages,
               preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+              ...(workspace ? { workspace } : {}),
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -1033,6 +1034,7 @@ export class NousManager {
               summaryModel: distillModel,
               preserveRecentMessages: compaction.preserveRecentMessages,
               preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+              ...(workspace ? { workspace } : {}),
               ...(this.plugins ? { plugins: this.plugins } : {}),
             });
           }
@@ -1362,6 +1364,9 @@ export class NousManager {
     const session = this.store.findSessionById(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
+    const nous = resolveNous(this.config, session.nousId);
+    const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
+
     log.info(`Manual distillation triggered for session ${sessionId}`);
     await distillSession(this.store, this.router, sessionId, session.nousId, {
       triggerThreshold: distillThreshold,
@@ -1370,6 +1375,7 @@ export class NousManager {
       summaryModel: distillModel,
       preserveRecentMessages: compaction.preserveRecentMessages,
       preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+      ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
     });
   }
