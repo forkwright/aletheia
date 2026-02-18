@@ -1,121 +1,39 @@
-// Nous manager — lifecycle, routing, agent turn execution
-import { join } from "node:path";
-import { createLogger, updateTurnContext } from "../koina/logger.js";
-import { SessionStore, type Message } from "../mneme/store.js";
-import { ProviderRouter } from "../hermeneus/router.js";
-import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
-import { ToolRegistry, type ToolContext } from "../organon/registry.js";
-import { assembleBootstrap } from "./bootstrap.js";
-import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
-import { distillSession } from "../distillation/pipeline.js";
-import { scoreComplexity, selectModel, selectTemperature, type ComplexityTier } from "../hermeneus/complexity.js";
-import { paths } from "../taxis/paths.js";
+// Nous manager — lifecycle, turn coordination, pipeline delegation
+import { createLogger } from "../koina/logger.js";
+import type { SessionStore } from "../mneme/store.js";
+import type { ProviderRouter } from "../hermeneus/router.js";
+import type { ToolRegistry } from "../organon/registry.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
-import {
-  resolveNous,
-  resolveModel,
-  resolveWorkspace,
-  resolveDefaultNous,
-} from "../taxis/loader.js";
-import type {
-  ContentBlock,
-  ImageBlock,
-  MessageParam,
-  ToolUseBlock,
-  UserContentBlock,
-} from "../hermeneus/anthropic.js";
+import { resolveNous, resolveWorkspace } from "../taxis/loader.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
-import { TraceBuilder } from "./trace.js";
-import { checkInputCircuitBreakers, checkResponseQuality } from "./circuit-breaker.js";
-import { getReversibility, requiresSimulation } from "../organon/reversibility.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
-import { eventBus } from "../koina/event-bus.js";
-import { classifyInteraction } from "./interaction-signals.js";
-import { LoopDetector } from "./loop-detector.js";
-import { extractSkillCandidate, saveLearnedSkill, type ToolCallRecord } from "../organon/skill-learner.js";
+import { distillSession } from "../distillation/pipeline.js";
+import { ApprovalGate } from "../organon/approval.js";
+import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
-import { recallMemories } from "./recall.js";
-import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../organon/timeout.js";
+import { resolveNousId } from "./pipeline/stages/resolve.js";
+import { runStreamingPipeline, runBufferedPipeline } from "./pipeline/runner.js";
+import type { RuntimeServices, InboundMessage, TurnStreamEvent, TurnOutcome } from "./pipeline/types.js";
+
+export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
 const log = createLogger("nous");
 
-export interface MediaAttachment {
-  contentType: string;
-  data: string;
-  filename?: string;
-}
-
-export interface InboundMessage {
-  text: string;
-  nousId?: string;
-  sessionKey?: string;
-  parentSessionId?: string;
-  channel?: string;
-  peerId?: string;
-  peerKind?: string;
-  accountId?: string;
-  media?: MediaAttachment[];
-  model?: string;
-  depth?: number;
-}
-
-export interface TurnOutcome {
-  text: string;
-  nousId: string;
-  sessionId: string;
-  toolCalls: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-}
-
-export type TurnStreamEvent =
-  | { type: "turn_start"; sessionId: string; nousId: string; turnId: string }
-  | { type: "text_delta"; text: string }
-  | { type: "tool_start"; toolName: string; toolId: string }
-  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
-  | { type: "turn_complete"; outcome: TurnOutcome }
-  | { type: "turn_abort"; reason: string }
-  | { type: "error"; message: string };
-
-// Per-session mutex to prevent concurrent turns from corrupting context
 const sessionLocks = new Map<string, Promise<unknown>>();
 
-function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
-  const previous = sessionLocks.get(sessionId) ?? Promise.resolve();
+function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = sessionLocks.get(key) ?? Promise.resolve();
   const current = previous.then(fn, fn);
-  sessionLocks.set(sessionId, current);
-  // Suppress unhandled rejection from the .finally() chain — the caller handles the original
+  sessionLocks.set(key, current);
   current.finally(() => {
-    if (sessionLocks.get(sessionId) === current) {
-      sessionLocks.delete(sessionId);
-    }
+    if (sessionLocks.get(key) === current) sessionLocks.delete(key);
   }).catch(() => {});
   return current;
 }
 
-// Ephemeral timestamp formatting — absolute times in operator timezone
-// Injected at API-call time only, never stored. Uses absolute format because
-// relative time ("yesterday") becomes inaccurate as conversations age.
-function formatEphemeralTimestamp(isoString: string, tz: string = "UTC"): string | null {
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return null;
-    return d.toLocaleString("en-US", {
-      timeZone: tz,
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  } catch {
-    return null;
-  }
-}
+let turnCounter = 0;
 
 export class NousManager {
   private plugins?: PluginRegistry;
@@ -127,6 +45,7 @@ export class NousManager {
   private activeTurnsByNous = new Map<string, number>();
   private turnAbortControllers = new Map<string, AbortController>();
   private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
+  readonly approvalGate = new ApprovalGate();
   isDraining: () => boolean = () => false;
 
   constructor(
@@ -135,30 +54,14 @@ export class NousManager {
     private router: ProviderRouter,
     private tools: ToolRegistry,
   ) {
-    log.info(
-      `NousManager initialized with ${config.agents.list.length} nous`,
-    );
+    log.info(`NousManager initialized with ${config.agents.list.length} nous`);
   }
 
-  setPlugins(plugins: PluginRegistry): void {
-    this.plugins = plugins;
-  }
-
-  setWatchdog(watchdog: Watchdog): void {
-    this.watchdog = watchdog;
-  }
-
-  setSkillsSection(section: string | undefined): void {
-    this.skillsSection = section;
-  }
-
-  setCompetence(model: CompetenceModel): void {
-    this.competence = model;
-  }
-
-  setUncertainty(tracker: UncertaintyTracker): void {
-    this.uncertainty = tracker;
-  }
+  setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
+  setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
+  setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
+  setCompetence(model: CompetenceModel): void { this.competence = model; }
+  setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
 
   getActiveTurnsByNous(): Record<string, number> {
     const result: Record<string, number> = {};
@@ -169,11 +72,7 @@ export class NousManager {
   }
 
   getActiveTurnDetails(): Array<{ turnId: string; nousId: string; sessionId: string; startedAt: number }> {
-    const details: Array<{ turnId: string; nousId: string; sessionId: string; startedAt: number }> = [];
-    for (const [turnId, meta] of this.turnMeta) {
-      details.push({ turnId, ...meta });
-    }
-    return details;
+    return [...this.turnMeta].map(([turnId, meta]) => ({ turnId, ...meta }));
   }
 
   abortTurn(turnId: string): boolean {
@@ -181,6 +80,37 @@ export class NousManager {
     if (!controller) return false;
     controller.abort();
     return true;
+  }
+
+  private buildServices(): RuntimeServices {
+    const approvalMode: ApprovalMode =
+      ((this.config.agents.defaults as Record<string, unknown>)["approval"] as { mode?: ApprovalMode } | undefined)?.mode ?? "autonomous";
+
+    return {
+      config: this.config,
+      store: this.store,
+      router: this.router,
+      tools: this.tools,
+      ...(this.plugins ? { plugins: this.plugins } : {}),
+      ...(this.watchdog ? { watchdog: this.watchdog } : {}),
+      ...(this.competence ? { competence: this.competence } : {}),
+      ...(this.uncertainty ? { uncertainty: this.uncertainty } : {}),
+      ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
+      approvalGate: this.approvalGate,
+      approvalMode,
+    };
+  }
+
+  private trackTurnStart(nousId: string): void {
+    this.activeTurns++;
+    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
+  }
+
+  private trackTurnEnd(nousId: string): void {
+    this.activeTurns--;
+    const cur = this.activeTurnsByNous.get(nousId) ?? 1;
+    if (cur <= 1) this.activeTurnsByNous.delete(nousId);
+    else this.activeTurnsByNous.set(nousId, cur - 1);
   }
 
   async *handleMessageStreaming(msg: InboundMessage): AsyncGenerator<TurnStreamEvent> {
@@ -195,56 +125,31 @@ export class NousManager {
       return;
     }
 
-    const nousId = this.resolveNousId(msg);
-    const nous = resolveNous(this.config, nousId);
-    if (!nous) {
-      yield { type: "error", message: `Unknown nous: ${nousId}` };
-      return;
-    }
+    const services = this.buildServices();
+    const nousId = resolveNousId(msg, services);
+    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
+    const turnId = `${nousId}:${++turnCounter}:${Date.now()}`;
+    const abortController = new AbortController();
 
-    const sessionKey = msg.sessionKey ?? "main";
-    let model = msg.model ?? resolveModel(this.config, nous);
+    this.turnAbortControllers.set(turnId, abortController);
+    this.turnMeta.set(turnId, { nousId, sessionId: "", startedAt: Date.now() });
+    this.trackTurnStart(nousId);
 
-    let temperature: number | undefined;
-    const routing = this.config.agents.defaults.routing;
-    if (routing.enabled && !msg.model) {
-      const session = this.store.findSession(nousId, sessionKey);
-      const override = routing.agentOverrides[nousId] as ComplexityTier | undefined;
-      const complexity = scoreComplexity({
-        messageText: msg.text,
-        messageCount: session?.messageCount ?? 0,
-        depth: msg.depth ?? 0,
-        ...(override ? { agentOverride: override } : {}),
-      });
-      model = selectModel(complexity.tier, routing.tiers);
-      temperature = selectTemperature(complexity.tier, this.tools.hasTools());
-    }
-
-    const session = this.store.findOrCreateSession(nousId, sessionKey, model, msg.parentSessionId);
-    const turnId = `${nousId}:${session.id}:${Date.now()}`;
-    const turnAbortController = new AbortController();
-    this.turnAbortControllers.set(turnId, turnAbortController);
-    this.turnMeta.set(turnId, { nousId, sessionId: session.id, startedAt: Date.now() });
-    yield { type: "turn_start", sessionId: session.id, nousId, turnId };
-
-    this.activeTurns++;
-    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
     const channel = new AsyncChannel<TurnStreamEvent>();
 
-    // Run turn inside session lock, pushing events to channel in real-time
-    const turnPromise = withSessionLock(session.id, async () => {
+    const turnPromise = withSessionLock(lockKey, async () => {
       try {
-        for await (const event of this.executeTurnStreaming(
-          nousId, session.id, sessionKey, model, msg, nous, temperature,
-          turnAbortController.signal,
-        )) {
+        for await (const event of runStreamingPipeline(msg, services, {
+          abortSignal: abortController.signal,
+          turnId,
+        })) {
+          if (event.type === "turn_start") {
+            this.turnMeta.set(turnId, { nousId, sessionId: event.sessionId, startedAt: Date.now() });
+          }
           channel.push(event);
         }
       } catch (err) {
-        channel.push({
-          type: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
+        channel.push({ type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
         channel.close();
       }
@@ -258,417 +163,9 @@ export class NousManager {
     } catch (err) {
       yield { type: "error", message: err instanceof Error ? err.message : String(err) };
     } finally {
-      this.activeTurns--;
-      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
-      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
-      else this.activeTurnsByNous.set(nousId, cur - 1);
+      this.trackTurnEnd(nousId);
       this.turnAbortControllers.delete(turnId);
       this.turnMeta.delete(turnId);
-    }
-  }
-
-  private async *executeTurnStreaming(
-    nousId: string,
-    sessionId: string,
-    sessionKey: string,
-    model: string,
-    msg: InboundMessage,
-    nous: ReturnType<typeof resolveNous>,
-    temperature?: number,
-    abortSignal?: AbortSignal,
-  ): AsyncGenerator<TurnStreamEvent> {
-    if (!nous) throw new Error(`Unknown nous: ${nousId}`);
-
-    const inputCheck = checkInputCircuitBreakers(msg.text);
-    if (inputCheck.triggered) {
-      log.warn(`Circuit breaker (${inputCheck.severity}): ${inputCheck.reason} [${nousId}]`);
-      this.store.appendMessage(sessionId, "user", msg.text, { tokenEstimate: estimateTokens(msg.text) });
-      const refusal = `I can't process that request. ${inputCheck.reason}`;
-      this.store.appendMessage(sessionId, "assistant", refusal, { tokenEstimate: estimateTokens(refusal) });
-      yield { type: "text_delta", text: refusal };
-      yield {
-        type: "turn_complete",
-        outcome: { text: refusal, nousId, sessionId, toolCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-      };
-      return;
-    }
-
-    updateTurnContext({ nousId, sessionId, sessionKey });
-    eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
-    log.info(`Processing streaming message for ${nousId}:${sessionKey} (session ${sessionId})`);
-
-    const workspace = resolveWorkspace(this.config, nous);
-    const degradedServices: string[] = [];
-    if (this.watchdog) {
-      for (const svc of this.watchdog.getStatus()) {
-        if (!svc.healthy) degradedServices.push(svc.name);
-      }
-    }
-
-    const bootstrap = assembleBootstrap(workspace, {
-      maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
-      ...(this.skillsSection ? { skillsSection: this.skillsSection } : {}),
-      ...(degradedServices.length > 0 ? { degradedServices } : {}),
-    });
-
-    this.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
-    const diff = detectBootstrapDiff(nousId, bootstrap.fileHashes, workspace);
-    if (diff) logBootstrapDiff(diff, workspace);
-
-    const trace = new TraceBuilder(sessionId, nousId, 0, model);
-    trace.setBootstrap(Object.keys(bootstrap.fileHashes), bootstrap.totalTokens);
-    if (degradedServices.length > 0) trace.setDegradedServices(degradedServices);
-
-    // Pre-turn memory recall
-    let recallBlock: { type: "text"; text: string } | null = null;
-    let recallTokens = 0;
-    if (!degradedServices.includes("mem0-sidecar")) {
-      const recall = await recallMemories(msg.text, nousId);
-      recallBlock = recall.block;
-      recallTokens = recall.tokens;
-      if (recall.count > 0) {
-        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
-        trace.setRecall(recall.count, recall.durationMs);
-      }
-    }
-
-    const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
-      ...bootstrap.staticBlocks,
-      ...bootstrap.dynamicBlocks,
-    ];
-
-    if (recallBlock) {
-      systemPrompt.push(recallBlock);
-    }
-
-    const broadcasts = this.store.blackboardReadPrefix("broadcast:");
-    if (broadcasts.length > 0) {
-      const broadcastLines = broadcasts
-        .slice(0, 5)
-        .map((b) => `- **[${b.key.replace("broadcast:", "")}]** ${b.value.slice(0, 300)}`)
-        .join("\n");
-      systemPrompt.push({ type: "text", text: `## Broadcasts\n\n${broadcastLines}` });
-    }
-
-    const currentSession = this.store.findSessionById(sessionId);
-    const msgCount = currentSession?.messageCount ?? 0;
-    if (msgCount > 0 && msgCount % 8 === 0) {
-      const recentTools = this.store.getRecentToolCalls(sessionId, 6);
-      const elapsed = currentSession?.createdAt
-        ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
-        : 0;
-      const utilization = this.config.agents.defaults.contextTokens > 0
-        ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / this.config.agents.defaults.contextTokens) * 100)
-        : 0;
-      systemPrompt.push({
-        type: "text",
-        text:
-          `## Working State — Turn ${msgCount}\n\n` +
-          `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "none"}\n` +
-          `Session duration: ${elapsed} min\n` +
-          `Context utilization: ${utilization}%\n` +
-          `Distillations: ${currentSession?.distillationCount ?? 0}`,
-      });
-    }
-
-    const toolDefs = this.tools.getDefinitions({
-      sessionId,
-      ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
-      ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
-    });
-
-    const toolDefTokens = estimateToolDefTokens(toolDefs);
-    const contextTokens = this.config.agents.defaults.contextTokens;
-    const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
-    const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
-
-    let crossAgentNotice: string | null = null;
-    const unsurfaced = this.store.getUnsurfacedMessages(nousId);
-    if (unsurfaced.length > 0) {
-      const lines = unsurfaced.map((m) => {
-        const from = m.sourceNousId ?? "unknown";
-        const summary = m.response ? `\n  Response: ${m.response.slice(0, 500)}` : "";
-        return `[From ${from}, ${m.kind}] ${m.content}${summary}`;
-      });
-      crossAgentNotice =
-        `While you were in another conversation, you received cross-agent messages:\n\n` +
-        lines.join("\n\n") +
-        `\n\nThe user may not be aware of these. Mention them if relevant.`;
-      this.store.appendMessage(sessionId, "user", crossAgentNotice, { tokenEstimate: estimateTokens(crossAgentNotice) });
-      this.store.markMessagesSurfaced(unsurfaced.map((m) => m.id), sessionId);
-    }
-
-    const seq = this.store.appendMessage(sessionId, "user", msg.text, { tokenEstimate: estimateTokens(msg.text) });
-
-    const currentText = crossAgentNotice ? crossAgentNotice + "\n\n" + msg.text : msg.text;
-    const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
-
-    const toolContext: ToolContext = {
-      nousId, sessionId, workspace, allowedRoots: [paths.root], depth: msg.depth ?? 0,
-      ...(abortSignal ? { signal: abortSignal } : {}),
-    };
-
-    if (this.plugins) {
-      await this.plugins.dispatchBeforeTurn({ nousId, sessionId, messageText: msg.text, ...(msg.media ? { media: msg.media } : {}) });
-    }
-
-    let totalToolCalls = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheReadTokens = 0;
-    let totalCacheWriteTokens = 0;
-    let currentMessages = messages;
-    const turnToolCalls: ToolCallRecord[] = [];
-    const loopDetector = new LoopDetector();
-
-    // No hard cap — the LoopDetector handles actual repetitive patterns.
-    // The loop exits naturally when the model produces a text-only response (no tool_use).
-    for (let loop = 0; ; loop++) {
-      // Stream the completion
-      let accumulatedText = "";
-      let streamResult: import("../hermeneus/anthropic.js").TurnResult | null = null;
-
-      for await (const streamEvent of this.router.completeStreaming({
-        model,
-        system: systemPrompt,
-        messages: currentMessages,
-        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-        maxTokens: this.config.agents.defaults.maxOutputTokens,
-        ...(temperature !== undefined ? { temperature } : {}),
-      })) {
-        switch (streamEvent.type) {
-          case "text_delta":
-            accumulatedText += streamEvent.text;
-            yield { type: "text_delta", text: streamEvent.text };
-            break;
-          case "tool_use_start":
-            yield { type: "tool_start", toolName: streamEvent.name, toolId: streamEvent.id };
-            break;
-          case "message_complete":
-            streamResult = streamEvent.result;
-            break;
-        }
-      }
-
-      if (!streamResult) throw new Error("Stream ended without message_complete");
-
-      totalInputTokens += streamResult.usage.inputTokens;
-      totalOutputTokens += streamResult.usage.outputTokens;
-      totalCacheReadTokens += streamResult.usage.cacheReadTokens;
-      totalCacheWriteTokens += streamResult.usage.cacheWriteTokens;
-
-      this.store.recordUsage({
-        sessionId,
-        turnSeq: seq + loop,
-        inputTokens: streamResult.usage.inputTokens,
-        outputTokens: streamResult.usage.outputTokens,
-        cacheReadTokens: streamResult.usage.cacheReadTokens,
-        cacheWriteTokens: streamResult.usage.cacheWriteTokens,
-        model: streamResult.model,
-      });
-
-      const toolUses = streamResult.content.filter(
-        (b): b is ToolUseBlock => b.type === "tool_use",
-      );
-
-      if (toolUses.length === 0) {
-        const text = accumulatedText || streamResult.content
-          .filter((b): b is { type: "text"; text: string } => b.type === "text")
-          .map((b) => b.text)
-          .join("\n");
-
-        const qualityCheck = checkResponseQuality(text);
-        if (qualityCheck.triggered) {
-          log.warn(`Response quality issue (${qualityCheck.severity}): ${qualityCheck.reason} [${nousId}]`);
-          trace.addToolCall({ name: "_circuit_breaker", input: { check: "response_quality" }, output: qualityCheck.reason ?? "quality check triggered", durationMs: 0, isError: true });
-        }
-
-        this.store.appendMessage(sessionId, "assistant", text, { tokenEstimate: estimateTokens(text) });
-
-        const outcome: TurnOutcome = {
-          text, nousId, sessionId, toolCalls: totalToolCalls,
-          inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
-          cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
-        };
-
-        trace.setUsage(totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens);
-        trace.setResponseLength(text.length);
-        trace.setToolLoops(loop + 1);
-        const finalTrace = trace.finalize();
-        (await import("./trace.js")).persistTrace(finalTrace, workspace);
-
-        this.store.updateSessionActualTokens(sessionId, totalInputTokens);
-
-        if (this.plugins) {
-          await this.plugins.dispatchAfterTurn({
-            nousId, sessionId, responseText: text, messageText: msg.text,
-            toolCalls: totalToolCalls, inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
-          });
-        }
-
-        eventBus.emit("turn:after", { nousId, sessionId, toolCalls: totalToolCalls, inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
-
-        const signal = classifyInteraction(msg.text, text);
-        this.store.recordSignal({ sessionId, nousId, turnSeq: seq, signal: signal.signal, confidence: signal.confidence });
-        if (signal.signal === "correction" && this.competence) {
-          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-          this.competence.recordCorrection(nousId, domain);
-        }
-
-        if (this.competence && totalToolCalls > 0) {
-          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-          this.competence.recordSuccess(nousId, domain);
-        }
-
-        if (turnToolCalls.length >= 3) {
-          const skillModel = this.config.agents.defaults.compaction.distillationModel;
-          const skillsDir = join(resolveWorkspace(this.config, nous)!, "..", "..", "shared", "skills");
-          extractSkillCandidate(this.router, turnToolCalls, skillModel, sessionId, seq, nousId)
-            .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
-            .catch(() => {});
-        }
-
-        this.tools.expireUnusedTools(sessionId, seq + loop);
-
-        const compaction = this.config.agents.defaults.compaction;
-        const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
-        try {
-          const sess = this.store.findSessionById(sessionId);
-          const actualContext = sess?.lastInputTokens ?? sess?.tokenCountEstimate ?? 0;
-          if (sess && sess.messageCount >= 10 && actualContext >= distillThreshold) {
-            const distillModel = compaction.distillationModel;
-            await distillSession(this.store, this.router, sessionId, nousId, {
-              triggerThreshold: distillThreshold, minMessages: 10,
-              extractionModel: distillModel, summaryModel: distillModel,
-              preserveRecentMessages: compaction.preserveRecentMessages,
-              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-              ...(workspace ? { workspace } : {}),
-              ...(this.plugins ? { plugins: this.plugins } : {}),
-            });
-          }
-        } catch (err) {
-          log.warn(`Distillation failed: ${err instanceof Error ? err.message : err}`);
-        }
-
-        yield { type: "turn_complete", outcome };
-        return;
-      }
-
-      // Store assistant tool_use response
-      this.store.appendMessage(sessionId, "assistant", JSON.stringify(streamResult.content), {
-        tokenEstimate: estimateTokens(JSON.stringify(streamResult.content)),
-      });
-
-      currentMessages = [
-        ...currentMessages,
-        { role: "assistant" as const, content: streamResult.content as ContentBlock[] },
-      ];
-
-      // Execute tools
-      const toolResults: UserContentBlock[] = [];
-      for (let toolIdx = 0; toolIdx < toolUses.length; toolIdx++) {
-        const toolUse = toolUses[toolIdx]!;
-        totalToolCalls++;
-
-        // Check for abort before executing this tool
-        if (abortSignal?.aborted) {
-          for (const remaining of toolUses.slice(toolIdx)) {
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: remaining.id,
-              content: "[CANCELLED] Turn aborted by user.",
-              is_error: true,
-            });
-          }
-          currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
-          yield { type: "turn_abort", reason: "user" };
-          return;
-        }
-
-        const reversibility = getReversibility(toolUse.name);
-        const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
-
-        let toolResult: string;
-        let isError = false;
-        const toolStart = Date.now();
-        try {
-          const timeoutMs = resolveTimeout(toolUse.name, this.config.agents.defaults.toolTimeouts);
-          toolResult = await executeWithTimeout(
-            () => this.tools.execute(toolUse.name, toolUse.input, toolContext),
-            timeoutMs,
-            toolUse.name,
-          );
-        } catch (err) {
-          isError = true;
-          if (err instanceof ToolTimeoutError) {
-            toolResult = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
-            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
-          } else {
-            toolResult = err instanceof Error ? err.message : String(err);
-            if (this.competence) {
-              const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-              this.competence.recordCorrection(nousId, domain);
-            }
-          }
-        }
-        const toolDuration = Date.now() - toolStart;
-
-        yield {
-          type: "tool_result",
-          toolName: toolUse.name,
-          toolId: toolUse.id,
-          result: toolResult.slice(0, 2000),
-          isError,
-          durationMs: toolDuration,
-        };
-
-        if (!isError) turnToolCalls.push({ name: toolUse.name, input: toolUse.input as Record<string, unknown>, output: toolResult.slice(0, 500) });
-        this.tools.recordToolUse(toolUse.name, sessionId, seq + loop);
-        eventBus.emit(isError ? "tool:failed" : "tool:called", {
-          nousId, sessionId, tool: toolUse.name, durationMs: toolDuration,
-          ...(isError ? { error: toolResult.slice(0, 200) } : {}),
-        });
-
-        trace.addToolCall({
-          name: toolUse.name, input: toolUse.input as Record<string, unknown>,
-          output: toolResult.slice(0, 500), durationMs: toolDuration, isError,
-          ...(reversibility !== "reversible" ? { reversibility } : {}),
-          ...(needsSim ? { simulationRequired: true } : {}),
-        });
-
-        toolResults.push({
-          type: "tool_result", tool_use_id: toolUse.id, content: toolResult,
-          ...(isError ? { is_error: true } : {}),
-        });
-
-        this.store.appendMessage(sessionId, "tool_result", toolResult, {
-          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
-        });
-
-        // Check for repetitive tool call patterns
-        const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
-        if (loopCheck.verdict === "halt") {
-          // Inject halt notice and stop
-          toolResults.push({
-            type: "tool_result", tool_use_id: toolUse.id,
-            content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
-            is_error: true,
-          });
-          currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
-          yield { type: "error", message: loopCheck.reason ?? "Tool loop detected" };
-          return;
-        }
-        if (loopCheck.verdict === "warn") {
-          // Inject warning as an additional tool result so the model sees it
-          toolResults.push({
-            type: "tool_result", tool_use_id: toolUse.id,
-            content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
-          });
-        }
-      }
-
-      currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
     }
   }
 
@@ -682,740 +179,16 @@ export class NousManager {
       throw new Error(`Cross-agent depth limit (${maxDepth}) exceeded`);
     }
 
-    const nousId = this.resolveNousId(msg);
-    const nous = resolveNous(this.config, nousId);
-    if (!nous) {
-      throw new Error(`Unknown nous: ${nousId}`);
-    }
+    const services = this.buildServices();
+    const nousId = resolveNousId(msg, services);
+    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
 
-    const sessionKey = msg.sessionKey ?? "main";
-    let model = msg.model ?? resolveModel(this.config, nous);
-
-    // Adaptive inference routing — select model tier based on message complexity
-    let temperature: number | undefined;
-    const routing = this.config.agents.defaults.routing;
-    if (routing.enabled && !msg.model) {
-      const session = this.store.findSession(nousId, sessionKey);
-      const override = routing.agentOverrides[nousId] as ComplexityTier | undefined;
-      const complexity = scoreComplexity({
-        messageText: msg.text,
-        messageCount: session?.messageCount ?? 0,
-        depth: msg.depth ?? 0,
-        ...(override ? { agentOverride: override } : {}),
-      });
-      model = selectModel(complexity.tier, routing.tiers);
-      temperature = selectTemperature(complexity.tier, this.tools.hasTools());
-      log.info(
-        `Routing ${nousId}: ${complexity.tier} (score=${complexity.score}, ${complexity.reason}) → ${model} temp=${temperature}`,
-      );
-    }
-
-    const session = this.store.findOrCreateSession(
-      nousId,
-      sessionKey,
-      model,
-      msg.parentSessionId,
-    );
-
-    // Serialize concurrent turns on the same session
-    this.activeTurns++;
-    this.activeTurnsByNous.set(nousId, (this.activeTurnsByNous.get(nousId) ?? 0) + 1);
+    this.trackTurnStart(nousId);
     try {
-      return await withSessionLock(session.id, () =>
-        this.executeTurn(nousId, session.id, sessionKey, model, msg, nous, temperature),
-      );
+      return await withSessionLock(lockKey, () => runBufferedPipeline(msg, services));
     } finally {
-      this.activeTurns--;
-      const cur = this.activeTurnsByNous.get(nousId) ?? 1;
-      if (cur <= 1) this.activeTurnsByNous.delete(nousId);
-      else this.activeTurnsByNous.set(nousId, cur - 1);
+      this.trackTurnEnd(nousId);
     }
-  }
-
-  private async executeTurn(
-    nousId: string,
-    sessionId: string,
-    sessionKey: string,
-    model: string,
-    msg: InboundMessage,
-    nous: ReturnType<typeof resolveNous>,
-    temperature?: number,
-  ): Promise<TurnOutcome> {
-    if (!nous) throw new Error(`Unknown nous: ${nousId}`);
-
-    // Input circuit breaker — block safety-violating messages before any processing
-    const inputCheck = checkInputCircuitBreakers(msg.text);
-    if (inputCheck.triggered) {
-      log.warn(`Circuit breaker (${inputCheck.severity}): ${inputCheck.reason} [${nousId}]`);
-      this.store.appendMessage(sessionId, "user", msg.text, {
-        tokenEstimate: estimateTokens(msg.text),
-      });
-      const refusal = `I can't process that request. ${inputCheck.reason}`;
-      this.store.appendMessage(sessionId, "assistant", refusal, {
-        tokenEstimate: estimateTokens(refusal),
-      });
-      return {
-        text: refusal,
-        nousId,
-        sessionId,
-        toolCalls: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-      };
-    }
-
-    updateTurnContext({ nousId, sessionId, sessionKey });
-    eventBus.emit("turn:before", { nousId, sessionId, sessionKey, channel: msg.channel });
-
-    log.info(
-      `Processing message for ${nousId}:${sessionKey} (session ${sessionId})`,
-    );
-
-    const workspace = resolveWorkspace(this.config, nous);
-
-    // Check watchdog for degraded services — inject into bootstrap
-    const degradedServices: string[] = [];
-    if (this.watchdog) {
-      for (const svc of this.watchdog.getStatus()) {
-        if (!svc.healthy) degradedServices.push(svc.name);
-      }
-    }
-
-    const bootstrap = assembleBootstrap(workspace, {
-      maxTokens: this.config.agents.defaults.bootstrapMaxTokens,
-      ...(this.skillsSection ? { skillsSection: this.skillsSection } : {}),
-      ...(degradedServices.length > 0 ? { degradedServices } : {}),
-    });
-
-    // Store composite hash and detect file-level diffs
-    this.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
-    const diff = detectBootstrapDiff(nousId, bootstrap.fileHashes, workspace);
-    if (diff) logBootstrapDiff(diff, workspace);
-
-    if (bootstrap.droppedFiles.length > 0) {
-      log.warn(`Bootstrap for ${nousId} dropped files due to budget: ${bootstrap.droppedFiles.join(", ")}`);
-    }
-
-    // Initialize causal trace for this turn
-    const trace = new TraceBuilder(sessionId, nousId, 0, model);
-    trace.setBootstrap(
-      Object.keys(bootstrap.fileHashes),
-      bootstrap.totalTokens,
-    );
-    if (degradedServices.length > 0) {
-      trace.setDegradedServices(degradedServices);
-    }
-
-    // Pre-turn memory recall
-    let recallBlock: { type: "text"; text: string } | null = null;
-    let recallTokens = 0;
-    if (!degradedServices.includes("mem0-sidecar")) {
-      const recall = await recallMemories(msg.text, nousId);
-      recallBlock = recall.block;
-      recallTokens = recall.tokens;
-      if (recall.count > 0) {
-        log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
-        trace.setRecall(recall.count, recall.durationMs);
-      }
-    }
-
-    const systemPrompt: Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }> = [
-      ...bootstrap.staticBlocks,
-      ...bootstrap.dynamicBlocks,
-    ];
-
-    if (recallBlock) {
-      systemPrompt.push(recallBlock);
-    }
-
-    // Broadcast injection — prosoche and agents can post attention-worthy items via blackboard
-    const broadcasts = this.store.blackboardReadPrefix("broadcast:");
-    if (broadcasts.length > 0) {
-      const broadcastLines = broadcasts
-        .slice(0, 5)
-        .map((b) => `- **[${b.key.replace("broadcast:", "")}]** ${b.value.slice(0, 300)}`)
-        .join("\n");
-      systemPrompt.push({
-        type: "text",
-        text: `## Broadcasts\n\n${broadcastLines}`,
-      });
-    }
-
-    // Mid-session working state injection — every 8 turns, give the agent a lightweight status pulse
-    const currentSession = this.store.findSessionById(sessionId);
-    const msgCount = currentSession?.messageCount ?? 0;
-    if (msgCount > 0 && msgCount % 8 === 0) {
-      const recentTools = this.store.getRecentToolCalls(sessionId, 6);
-      const elapsed = currentSession?.createdAt
-        ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
-        : 0;
-      const utilization = this.config.agents.defaults.contextTokens > 0
-        ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / this.config.agents.defaults.contextTokens) * 100)
-        : 0;
-      systemPrompt.push({
-        type: "text",
-        text:
-          `## Working State — Turn ${msgCount}\n\n` +
-          `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "none"}\n` +
-          `Session duration: ${elapsed} min\n` +
-          `Context utilization: ${utilization}%\n` +
-          `Distillations: ${currentSession?.distillationCount ?? 0}`,
-      });
-    }
-
-    const toolDefs = this.tools.getDefinitions({
-      sessionId,
-      ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
-      ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
-    });
-
-    // Tool definitions count toward the input token budget — estimate with safety margin
-    const toolDefTokens = estimateToolDefTokens(toolDefs);
-
-    const contextTokens = this.config.agents.defaults.contextTokens;
-    const maxOutput = this.config.agents.defaults.maxOutputTokens;
-    const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
-
-    const history = this.store.getHistoryWithBudget(sessionId, historyBudget);
-
-    // Surface unsurfaced cross-agent messages into this session
-    let crossAgentNotice: string | null = null;
-    const unsurfaced = this.store.getUnsurfacedMessages(nousId);
-    if (unsurfaced.length > 0) {
-      const lines = unsurfaced.map((m) => {
-        const from = m.sourceNousId ?? "unknown";
-        const summary = m.response ? `\n  Response: ${m.response.slice(0, 500)}` : "";
-        return `[From ${from}, ${m.kind}] ${m.content}${summary}`;
-      });
-      crossAgentNotice =
-        `While you were in another conversation, you received cross-agent messages:\n\n` +
-        lines.join("\n\n") +
-        `\n\nThe user may not be aware of these. Mention them if relevant.`;
-
-      this.store.appendMessage(sessionId, "user", crossAgentNotice, {
-        tokenEstimate: estimateTokens(crossAgentNotice),
-      });
-      this.store.markMessagesSurfaced(
-        unsurfaced.map((m) => m.id),
-        sessionId,
-      );
-      log.info(`Surfaced ${unsurfaced.length} cross-agent messages into session ${sessionId}`);
-    }
-
-    const seq = this.store.appendMessage(sessionId, "user", msg.text, {
-      tokenEstimate: estimateTokens(msg.text),
-    });
-
-    // Build messages from history, injecting any cross-agent notice before current text.
-    // The notice was stored in DB but history was fetched before it was appended,
-    // so we must inject it manually for the current turn.
-    const currentText = crossAgentNotice
-      ? crossAgentNotice + "\n\n" + msg.text
-      : msg.text;
-    const messages = this.buildMessages(history, currentText, msg.media, nous["userTimezone"] as string | undefined);
-
-    const toolContext: ToolContext = {
-      nousId,
-      sessionId,
-      workspace,
-      allowedRoots: [paths.root],
-      depth: msg.depth ?? 0,
-    };
-
-    if (this.plugins) {
-      await this.plugins.dispatchBeforeTurn({
-        nousId,
-        sessionId,
-        messageText: msg.text,
-        ...(msg.media ? { media: msg.media } : {}),
-      });
-    }
-
-    let totalToolCalls = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheReadTokens = 0;
-    let totalCacheWriteTokens = 0;
-    let currentMessages = messages;
-    const turnToolCalls: ToolCallRecord[] = [];
-    const loopDetector = new LoopDetector();
-
-    // No hard cap — the LoopDetector handles actual repetitive patterns.
-    for (let loop = 0; ; loop++) {
-      const result = await this.router.complete({
-        model,
-        system: systemPrompt,
-        messages: currentMessages,
-        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-        maxTokens: this.config.agents.defaults.maxOutputTokens,
-        ...(temperature !== undefined ? { temperature } : {}),
-      });
-
-      totalInputTokens += result.usage.inputTokens;
-      totalOutputTokens += result.usage.outputTokens;
-      totalCacheReadTokens += result.usage.cacheReadTokens;
-      totalCacheWriteTokens += result.usage.cacheWriteTokens;
-
-      this.store.recordUsage({
-        sessionId,
-        turnSeq: seq + loop,
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-        cacheReadTokens: result.usage.cacheReadTokens,
-        cacheWriteTokens: result.usage.cacheWriteTokens,
-        model: result.model,
-      });
-
-      const toolUses = result.content.filter(
-        (b): b is ToolUseBlock => b.type === "tool_use",
-      );
-
-      // Only exit when there are no tool calls — don't check stopReason
-      // (Anthropic can return end_turn with tool_use blocks in the same response)
-      if (toolUses.length === 0) {
-        const text = result.content
-          .filter((b): b is { type: "text"; text: string } => b.type === "text")
-          .map((b) => b.text)
-          .join("\n");
-
-        // Response quality circuit breaker — detect generation loops and low-substance responses
-        const qualityCheck = checkResponseQuality(text);
-        if (qualityCheck.triggered) {
-          log.warn(`Response quality issue (${qualityCheck.severity}): ${qualityCheck.reason} [${nousId}]`);
-          trace.addToolCall({
-            name: "_circuit_breaker",
-            input: { check: "response_quality" },
-            output: qualityCheck.reason ?? "quality check triggered",
-            durationMs: 0,
-            isError: true,
-          });
-        }
-
-        this.store.appendMessage(sessionId, "assistant", text, {
-          tokenEstimate: estimateTokens(text),
-        });
-
-        const outcome: TurnOutcome = {
-          text,
-          nousId,
-          sessionId,
-          toolCalls: totalToolCalls,
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          cacheReadTokens: totalCacheReadTokens,
-          cacheWriteTokens: totalCacheWriteTokens,
-        };
-
-        // Finalize and persist causal trace
-        trace.setUsage(totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens);
-        trace.setResponseLength(text.length);
-        trace.setToolLoops(loop + 1);
-        const finalTrace = trace.finalize();
-        (await import("./trace.js")).persistTrace(finalTrace, workspace);
-
-        const cacheHitRate = totalInputTokens > 0
-          ? Math.round((totalCacheReadTokens / totalInputTokens) * 100)
-          : 0;
-        log.info(
-          `Turn complete for ${nousId}: ${totalInputTokens}in/${totalOutputTokens}out, ` +
-          `cache ${totalCacheReadTokens}r/${totalCacheWriteTokens}w (${cacheHitRate}% hit), ` +
-          `${totalToolCalls} tool calls`,
-        );
-
-        // Store actual API-reported context consumption for accurate distillation triggering
-        this.store.updateSessionActualTokens(sessionId, totalInputTokens);
-
-        if (this.plugins) {
-          await this.plugins.dispatchAfterTurn({
-            nousId,
-            sessionId,
-            responseText: text,
-            messageText: msg.text,
-            toolCalls: totalToolCalls,
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-          });
-        }
-
-        eventBus.emit("turn:after", { nousId, sessionId, toolCalls: totalToolCalls, inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
-
-        // Classify interaction signal and record
-        const signal = classifyInteraction(msg.text, text);
-        this.store.recordSignal({ sessionId, nousId, turnSeq: seq, signal: signal.signal, confidence: signal.confidence });
-        if (signal.signal === "correction" && this.competence) {
-          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-          this.competence.recordCorrection(nousId, domain);
-        }
-
-        // Record competence success for the agent's domain (session key as proxy)
-        if (this.competence && totalToolCalls > 0) {
-          const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-          this.competence.recordSuccess(nousId, domain);
-        }
-
-        // Skill learning — extract reusable patterns from successful multi-tool turns
-        if (turnToolCalls.length >= 3) {
-          const skillModel = this.config.agents.defaults.compaction.distillationModel;
-          const skillsDir = join(resolveWorkspace(this.config, nous)!, "..", "..", "shared", "skills");
-          extractSkillCandidate(this.router, turnToolCalls, skillModel, sessionId, seq, nousId)
-            .then((candidate) => {
-              if (candidate) saveLearnedSkill(candidate, skillsDir);
-            })
-            .catch(() => {}); // Fire-and-forget
-        }
-
-        // Expire unused dynamic tools
-        this.tools.expireUnusedTools(sessionId, seq + loop);
-
-        // Auto-trigger distillation using actual API-reported input tokens (most accurate)
-        // Falls back to heuristic estimate if actual tokens aren't available
-        const compaction = this.config.agents.defaults.compaction;
-        const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
-        try {
-          const session = this.store.findSessionById(sessionId);
-          const actualContext = session?.lastInputTokens ?? session?.tokenCountEstimate ?? 0;
-          if (session && session.messageCount >= 10 && actualContext >= distillThreshold) {
-            const utilization = Math.round((actualContext / contextTokens) * 100);
-            log.info(
-              `Distillation triggered for ${nousId} session=${sessionId} ` +
-              `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%, ` +
-              `actual=${actualContext} tokens)`,
-            );
-            const distillModel = compaction.distillationModel;
-            await distillSession(this.store, this.router, sessionId, nousId, {
-              triggerThreshold: distillThreshold,
-              minMessages: 10,
-              extractionModel: distillModel,
-              summaryModel: distillModel,
-              preserveRecentMessages: compaction.preserveRecentMessages,
-              preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-              ...(workspace ? { workspace } : {}),
-              ...(this.plugins ? { plugins: this.plugins } : {}),
-            });
-          }
-        } catch (err) {
-          log.warn(`Distillation failed: ${err instanceof Error ? err.message : err}`);
-        }
-
-        return outcome;
-      }
-
-      // Store the assistant's tool_use response as JSON for history replay
-      this.store.appendMessage(
-        sessionId,
-        "assistant",
-        JSON.stringify(result.content),
-        { tokenEstimate: estimateTokens(JSON.stringify(result.content)) },
-      );
-
-      currentMessages = [
-        ...currentMessages,
-        {
-          role: "assistant" as const,
-          content: result.content as ContentBlock[],
-        },
-      ];
-
-      const toolResults: UserContentBlock[] = [];
-      for (let toolIdx = 0; toolIdx < toolUses.length; toolIdx++) {
-        const toolUse = toolUses[toolIdx]!;
-        totalToolCalls++;
-        const reversibility = getReversibility(toolUse.name);
-        const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
-        log.debug(`Tool call: ${toolUse.name} (${reversibility}${needsSim ? ", SIMULATED" : ""})`);
-
-        if (needsSim) {
-          log.warn(`Simulation required for ${toolUse.name} (${reversibility}) — logging to trace`);
-        }
-
-        let toolResult: string;
-        let isError = false;
-        const toolStart = Date.now();
-        try {
-          const timeoutMs = resolveTimeout(toolUse.name, this.config.agents.defaults.toolTimeouts);
-          toolResult = await executeWithTimeout(
-            () => this.tools.execute(toolUse.name, toolUse.input, toolContext),
-            timeoutMs,
-            toolUse.name,
-          );
-        } catch (err) {
-          isError = true;
-          if (err instanceof ToolTimeoutError) {
-            toolResult = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
-            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
-          } else {
-            toolResult = err instanceof Error ? err.message : String(err);
-            log.warn(`Tool ${toolUse.name} failed: ${toolResult}`);
-            if (this.competence) {
-              const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
-              this.competence.recordCorrection(nousId, domain);
-            }
-          }
-        }
-        const toolDuration = Date.now() - toolStart;
-
-        if (!isError) turnToolCalls.push({ name: toolUse.name, input: toolUse.input as Record<string, unknown>, output: toolResult.slice(0, 500) });
-        this.tools.recordToolUse(toolUse.name, sessionId, seq + loop);
-        eventBus.emit(isError ? "tool:failed" : "tool:called", {
-          nousId, sessionId, tool: toolUse.name, durationMs: toolDuration,
-          ...(isError ? { error: toolResult.slice(0, 200) } : {}),
-        });
-
-        trace.addToolCall({
-          name: toolUse.name,
-          input: toolUse.input as Record<string, unknown>,
-          output: toolResult.slice(0, 500),
-          durationMs: toolDuration,
-          isError,
-          ...(reversibility !== "reversible" ? { reversibility } : {}),
-          ...(needsSim ? { simulationRequired: true } : {}),
-        });
-
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: toolResult,
-          ...(isError ? { is_error: true } : {}),
-        });
-
-        this.store.appendMessage(sessionId, "tool_result", toolResult, {
-          toolCallId: toolUse.id,
-          toolName: toolUse.name,
-          tokenEstimate: estimateTokens(toolResult),
-        });
-
-        // Check for repetitive tool call patterns
-        const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
-        if (loopCheck.verdict === "halt") {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
-            is_error: true,
-          });
-          throw new Error(loopCheck.reason ?? "Tool loop detected");
-        }
-        if (loopCheck.verdict === "warn") {
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
-          });
-        }
-      }
-
-      currentMessages = [
-        ...currentMessages,
-        {
-          role: "user" as const,
-          content: toolResults,
-        },
-      ];
-    }
-  }
-
-  private resolveNousId(msg: InboundMessage): string {
-    if (msg.nousId) return msg.nousId;
-
-    if (msg.channel && msg.peerKind && msg.peerId) {
-      const routed = this.store.resolveRoute(
-        msg.channel,
-        msg.peerKind,
-        msg.peerId,
-        msg.accountId,
-      );
-      if (routed) return routed;
-    }
-
-    const defaultNous = resolveDefaultNous(this.config);
-    return defaultNous?.id ?? "syn";
-  }
-
-  private buildMessages(
-    history: Message[],
-    currentText: string,
-    media?: MediaAttachment[],
-    tz?: string,
-  ): MessageParam[] {
-    const messages: MessageParam[] = [];
-
-    for (let i = 0; i < history.length; i++) {
-      const msg = history[i]!;
-
-      if (msg.role === "user") {
-        // Ephemeral timestamps — inject absolute time for temporal awareness
-        // These exist only in the API call, never stored
-        const ts = formatEphemeralTimestamp(msg.createdAt, tz);
-        const content = ts ? `[${ts}] ${msg.content}` : msg.content;
-        messages.push({ role: "user", content });
-      } else if (msg.role === "assistant") {
-        // Try parsing as JSON content blocks (tool_use responses stored as JSON)
-        try {
-          const parsed = JSON.parse(msg.content);
-          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
-            messages.push({
-              role: "assistant",
-              content: parsed as ContentBlock[],
-            });
-            continue;
-          }
-        } catch {
-          // Not JSON — plain text assistant message
-        }
-        messages.push({ role: "assistant", content: msg.content });
-      } else if (msg.role === "tool_result") {
-        // Group consecutive tool_results into a single user message
-        const toolResults: UserContentBlock[] = [];
-        while (i < history.length && history[i]!.role === "tool_result") {
-          const tr = history[i]!;
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: tr.toolCallId ?? "",
-            content: tr.content,
-          });
-          i++;
-        }
-        i--; // Back up — for loop will increment
-
-        // Validate: tool_results must follow an assistant message with matching tool_use blocks.
-        // Old runtime stored tool_results without the preceding assistant tool_use — skip orphans.
-        const prev = messages[messages.length - 1];
-        if (prev?.role === "assistant" && Array.isArray(prev.content)) {
-          const toolUseIds = new Set(
-            (prev.content as ContentBlock[])
-              .filter((b): b is ToolUseBlock => b.type === "tool_use")
-              .map((b) => b.id),
-          );
-          const valid = toolResults.filter((tr) =>
-            "tool_use_id" in tr && toolUseIds.has(tr.tool_use_id),
-          );
-          if (valid.length > 0) {
-            messages.push({ role: "user", content: valid });
-          } else {
-            log.debug("Dropping orphaned tool_results (no matching tool_use)");
-          }
-        } else {
-          log.debug("Dropping orphaned tool_results (no preceding assistant tool_use)");
-        }
-      }
-    }
-
-    // Current message — multimodal if media present (images, PDFs, text documents)
-    if (media?.length) {
-      log.info(`buildMessages received ${media.length} media items: ${media.map(m => m.contentType).join(", ")}`);
-    }
-
-    const hasMedia = media && media.length > 0;
-    if (hasMedia) {
-      const blocks: UserContentBlock[] = [];
-
-      for (const item of media) {
-        // Strip data URI prefix if present
-        let data = item.data;
-        const dataUriMatch = data.match(/^data:[^;]+;base64,(.+)$/);
-        if (dataUriMatch) data = dataUriMatch[1]!;
-
-        if (/^image\/(jpeg|png|gif|webp)$/i.test(item.contentType)) {
-          // Image → vision block
-          blocks.push({
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: item.contentType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-              data,
-            },
-          } as ImageBlock);
-        } else if (item.contentType === "application/pdf") {
-          // PDF → document block
-          blocks.push({
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data,
-            },
-            ...(item.filename ? { title: item.filename } : {}),
-          } as unknown as UserContentBlock);
-        } else if (item.contentType.startsWith("text/")) {
-          // Text files → decode and include as text block
-          try {
-            const decoded = Buffer.from(data, "base64").toString("utf-8");
-            const label = item.filename ? `[File: ${item.filename}]` : "[Text file]";
-            blocks.push({ type: "text", text: `${label}\n\n${decoded}` });
-          } catch {
-            blocks.push({ type: "text", text: `[Could not decode text file: ${item.filename ?? "unknown"}]` });
-          }
-        } else {
-          // Unknown type — note it for the agent
-          blocks.push({
-            type: "text",
-            text: `[Attachment: ${item.filename ?? "file"} (${item.contentType}) — unsupported for inline viewing]`,
-          });
-        }
-      }
-
-      log.info(`Including ${blocks.length} content block(s) from media (${blocks.map(b => b.type).join(", ")})`);
-      blocks.push({ type: "text", text: currentText });
-      messages.push({ role: "user", content: blocks });
-    } else {
-      messages.push({ role: "user", content: currentText });
-    }
-
-    // Repair orphaned tool_use blocks — if an assistant message has tool_use but
-    // the next message isn't a user with tool_results, inject synthetic results.
-    // This happens when the service restarts mid-turn before tool execution completes.
-    for (let j = 0; j < messages.length; j++) {
-      const msg = messages[j]!;
-      if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
-      const toolUseBlocks = (msg.content as ContentBlock[]).filter(
-        (b): b is ToolUseBlock => b.type === "tool_use",
-      );
-      if (toolUseBlocks.length === 0) continue;
-
-      const next = messages[j + 1];
-      const answeredIds = new Set<string>();
-      if (next?.role === "user" && Array.isArray(next.content)) {
-        for (const block of next.content as UserContentBlock[]) {
-          if ("tool_use_id" in block) answeredIds.add(block.tool_use_id);
-        }
-      }
-      const orphaned = toolUseBlocks.filter((b) => !answeredIds.has(b.id));
-      if (orphaned.length === 0) continue;
-
-      log.warn(`Repairing ${orphaned.length} orphaned tool_use block(s) in history`);
-      const syntheticResults: UserContentBlock[] = orphaned.map((b) => ({
-        type: "tool_result" as const,
-        tool_use_id: b.id,
-        content: "Error: Tool execution interrupted — service restarted mid-turn.",
-      }));
-
-      if (next?.role === "user" && Array.isArray(next.content)) {
-        (next.content as UserContentBlock[]).unshift(...syntheticResults);
-      } else {
-        messages.splice(j + 1, 0, { role: "user", content: syntheticResults });
-      }
-    }
-
-    // Merge consecutive user messages to prevent Anthropic 400 errors
-    const merged: MessageParam[] = [];
-    for (const m of messages) {
-      const prev = merged[merged.length - 1];
-      if (
-        prev &&
-        prev.role === "user" &&
-        m.role === "user" &&
-        typeof prev.content === "string" &&
-        typeof m.content === "string"
-      ) {
-        prev.content = prev.content + "\n\n" + m.content;
-      } else {
-        merged.push({ ...m });
-      }
-    }
-
-    return merged;
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {
@@ -1443,4 +216,3 @@ export class NousManager {
     });
   }
 }
-

@@ -119,14 +119,15 @@ describe("message operations", () => {
     expect(history[2]!.content).toBe("third");
   });
 
-  it("getHistory respects limit", () => {
+  it("getHistory respects limit (returns most recent N)", () => {
     store.appendMessage(sessionId, "user", "one");
     store.appendMessage(sessionId, "assistant", "two");
     store.appendMessage(sessionId, "user", "three");
 
     const limited = store.getHistory(sessionId, { limit: 2 });
     expect(limited.length).toBe(2);
-    expect(limited[0]!.content).toBe("one");
+    expect(limited[0]!.content).toBe("two");
+    expect(limited[1]!.content).toBe("three");
   });
 
   it("appendMessage stores tool metadata", () => {

@@ -240,14 +240,17 @@ export class SessionStore {
     sessionId: string,
     opts?: { limit?: number; excludeDistilled?: boolean },
   ): Message[] {
-    let query = "SELECT * FROM messages WHERE session_id = ?";
     const params: (string | number)[] = [sessionId];
+    let where = "session_id = ?";
+    if (opts?.excludeDistilled) where += " AND is_distilled = 0";
 
-    if (opts?.excludeDistilled) query += " AND is_distilled = 0";
-    query += " ORDER BY seq ASC";
+    let query: string;
     if (opts?.limit && opts.limit > 0) {
-      query += " LIMIT ?";
+      // Return the N most recent messages in chronological order
+      query = `SELECT * FROM (SELECT * FROM messages WHERE ${where} ORDER BY seq DESC LIMIT ?) ORDER BY seq ASC`;
       params.push(opts.limit);
+    } else {
+      query = `SELECT * FROM messages WHERE ${where} ORDER BY seq ASC`;
     }
 
     const rows = this.db.prepare(query).all(...params) as Record<
