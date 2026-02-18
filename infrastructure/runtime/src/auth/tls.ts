@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createServer as createHttpsServer } from "node:https";
 import { createLogger } from "../koina/logger.js";
+import tmp from "tmp";
 
 const log = createLogger("tls");
 
@@ -31,8 +32,10 @@ function generateSelfSignedCert(sans: string[]): TlsCerts {
   // doesn't have a full X509 builder.
   const { execSync } = require("node:child_process") as typeof import("node:child_process");
 
-  const tmpDir = join(require("node:os").tmpdir(), `aletheia-tls-${randomBytes(4).toString("hex")}`);
-  mkdirSync(tmpDir, { recursive: true });
+  const { name: tmpDir } = tmp.dirSync({
+    unsafeCleanup: true,
+    prefix: "aletheia-tls-",
+  });
 
   const keyPath = join(tmpDir, "server.key");
   const certPath = join(tmpDir, "server.crt");
