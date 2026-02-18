@@ -75,6 +75,9 @@ clawd
 *.zip
 *.tar.gz
 
+# === Python build artifacts ===
+**/*.egg-info/
+
 # === Python venvs ===
 **/venv/
 **/.venv/
