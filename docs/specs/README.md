@@ -11,6 +11,7 @@ that evolve with the system.
 | Spec | Status | Summary |
 |------|--------|---------|
 | [Unified Thread Model](spec-unified-thread-model.md) | Draft | Transport-isolated execution, seamless continuity, thread abstraction |
+| [Cost-Aware Orchestration](spec-cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | [Data Privacy](spec-data-privacy.md) | Draft | Encryption at rest, PII handling, data portability |
 
 ## Implemented (Archived)
