@@ -18,6 +18,7 @@ that evolve with the system.
 | 6 | [Code Quality](06_code-quality.md) | Draft | Error handling overhaul, dead code audit, coding standards (CONTRIBUTING.md) |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
 | 8 | [Memory Continuity](08_memory-continuity.md) | Draft | Survive distillation: working state, structured summaries, context editing API, expanded tail, agent notes |
+| 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default over 3D, progressive loading, named communities, semantic node cards, search, edit capabilities |
 
 ### Why this order
 
@@ -29,6 +30,7 @@ that evolve with the system.
 6. **Code Quality** — Sustainability. Can be done in parallel with anything. Error handling overhaul makes debugging easier for all other specs. Dead code audit reduces surface area. Standards prevent new debt.
 7. **Knowledge Graph** — Performance and utility. Graph recall is currently too slow and inconsistent. Fixing this improves every agent's quality. Depends on infrastructure stability (1-3).
 8. **Memory Continuity** — The hardest problem. Requires stable distillation (1), working graph (7), and reliable pipeline. Introduces Anthropic's context editing API, working state maintenance, and agent notes. This is the frontier.
+9. **Graph Visualization** — Polish. The 3D force graph is a demo, not a tool. 2D default fixes performance, semantic node cards make it useful, edit capabilities close the feedback loop. Depends on knowledge graph backend (7).
 
 ## Implemented (Archived)
 
