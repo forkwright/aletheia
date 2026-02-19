@@ -140,6 +140,17 @@ export function buildMessages(
   }
 
   // Repair orphaned tool_use blocks
+  // First, build a global set of ALL tool_result IDs already present in the message array.
+  // This prevents creating synthetic results for tool_use blocks that already have a
+  // real result somewhere in the history (even if not immediately adjacent).
+  const globalAnsweredIds = new Set<string>();
+  for (const m of messages) {
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const block of m.content as UserContentBlock[]) {
+      if ("tool_use_id" in block) globalAnsweredIds.add(block.tool_use_id);
+    }
+  }
+
   for (let j = 0; j < messages.length; j++) {
     const msg = messages[j]!;
     if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
@@ -148,14 +159,15 @@ export function buildMessages(
     );
     if (toolUseBlocks.length === 0) continue;
 
+    // Check both the immediately-next message and the global set
     const next = messages[j + 1];
-    const answeredIds = new Set<string>();
+    const localAnsweredIds = new Set<string>();
     if (next?.role === "user" && Array.isArray(next.content)) {
       for (const block of next.content as UserContentBlock[]) {
-        if ("tool_use_id" in block) answeredIds.add(block.tool_use_id);
+        if ("tool_use_id" in block) localAnsweredIds.add(block.tool_use_id);
       }
     }
-    const orphaned = toolUseBlocks.filter((b) => !answeredIds.has(b.id));
+    const orphaned = toolUseBlocks.filter((b) => !localAnsweredIds.has(b.id) && !globalAnsweredIds.has(b.id));
     if (orphaned.length === 0) continue;
 
     const details = orphaned.map(b => `${b.name ?? "unknown"}(${b.id})`).join(", ");
@@ -170,11 +182,34 @@ export function buildMessages(
       content: `Error: Tool "${b.name ?? "unknown"}" execution interrupted — service restarted mid-turn.`,
     }));
 
+    // Track synthetic IDs so we don't duplicate them for later assistant messages
+    for (const sr of syntheticResults) {
+      if ("tool_use_id" in sr) globalAnsweredIds.add(sr.tool_use_id);
+    }
+
     if (next?.role === "user" && Array.isArray(next.content)) {
       (next.content as UserContentBlock[]).unshift(...syntheticResults);
     } else {
       messages.splice(j + 1, 0, { role: "user", content: syntheticResults });
     }
+  }
+
+  // Deduplicate tool_results — Anthropic rejects messages with multiple tool_result
+  // blocks sharing the same tool_use_id (400: "each tool_use must have a single result")
+  const seenToolResultIds = new Set<string>();
+  for (const m of messages) {
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    const deduped = (m.content as UserContentBlock[]).filter((block) => {
+      if (!("tool_use_id" in block)) return true;
+      const id = block.tool_use_id;
+      if (seenToolResultIds.has(id)) {
+        log.warn(`Dropping duplicate tool_result for ${id}`);
+        return false;
+      }
+      seenToolResultIds.add(id);
+      return true;
+    });
+    (m as { content: UserContentBlock[] }).content = deduped;
   }
 
   // Merge consecutive user messages to prevent Anthropic 400 errors
