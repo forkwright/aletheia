@@ -32,6 +32,13 @@ The graph view should answer questions like:
 - "Are there contradicting memories about X?"
 - "When did the system learn Y?"
 - "What's connected to Z that I might have forgotten about?"
+- "Is the system's understanding of X getting stale?"
+- "Does Demiurge know about this, or do I need to tell him?"
+- "What did we discuss last Tuesday?"
+- "Which memories are things I said vs. things the system inferred?"
+- "What needs cleanup?"
+
+It should be three things: a **knowledge browser** (explore what the system knows), a **quality control dashboard** (find and fix what's wrong), and a **pre-conversation tool** (check context before asking).
 
 Currently it answers: "Look, nodes with lines."
 
@@ -169,6 +176,122 @@ The detail card for each node includes edit actions:
 
 These actions call existing sidecar endpoints (or new ones as needed) and refresh the graph.
 
+### Memory auditing
+
+The graph becomes the **quality control dashboard** for the entire memory layer. Right now there's no way to see what the system believes about you — what's stale, what's wrong, what contradicts what.
+
+**Visual confidence decay.** Node opacity and saturation map to confidence score. A node last reinforced yesterday is vivid; one untouched for 3 months is ghostly. At a glance you see what the system is confident about and what's fading. Edges work the same way — a relationship that hasn't been referenced fades toward invisible.
+
+```
+[Vivid]  ●━━━━● Recently reinforced, high confidence
+[Normal] ●────● Active, moderate confidence  
+[Faded]  ○┄┄┄┄○ Stale, low confidence — needs review or removal
+[Red]    ◉╌╌╌╌◉ Conflicting memories detected
+```
+
+**Contradiction detection.** When two memories about the same entity conflict (e.g., "oil change interval is 10K" vs. "oil change interval is 7.5K"), the node gets a red conflict indicator. Clicking it shows both memories side-by-side with timestamps, so you can resolve which is correct. This surfaces errors that would otherwise silently degrade agent responses.
+
+**Bulk operations.** Select multiple faded nodes → "Archive all" or "Re-verify." Select a cluster of near-duplicate nodes → "Merge all into one." The graph makes batch cleanup visual and fast instead of hunting through text lists.
+
+**Health summary bar.** A persistent bar at the top of the graph view:
+
+```
+Memories: 847 total · 12 conflicting · 43 stale (>30 days) · 3 flagged
+[Review conflicts] [Archive stale] [Show flagged]
+```
+
+This gives you a single-glance system health read without needing to explore individual nodes.
+
+### Conversation archaeology
+
+Every memory traces back to a conversation. The graph should surface *when* things were learned and from what context.
+
+**Timeline mode.** A slider or scrubber at the bottom of the graph that controls a temporal filter:
+
+```
+[|━━━━━━━━━━━━━━━━━━━━━━━━━━|]
+Jan 28          Feb 10          Feb 19
+           ▲ "DEF delete discussed"
+```
+
+Drag it to see the graph at any point in time — which nodes existed, what was connected to what. Animate it to watch the knowledge graph grow over days/weeks. This answers "what did we talk about last Tuesday?" visually.
+
+**Session provenance.** Each memory in a node card links back to the session where it was learned. Click "3 sessions" on a connection → see a list of conversations where that relationship was discussed, with timestamps and snippets. This is conversation search, but spatial — you start from an entity and trace back to the conversations, instead of searching conversations and hoping to find the entity.
+
+**"Learned" vs. "Stated" markers.** Distinguish between memories extracted from conversation (inferred by the system) and facts explicitly stated by the user. Inferred memories are more likely to be wrong. Visual indicator: solid border = user-stated, dashed border = system-inferred.
+
+```
+┌─ Memories ─────────────────────────────┐
+│ ▐ DEF system rebuilt Feb 2026          │  ← solid: you said this
+│   (stated, 0.98, 2 weeks ago)          │
+│ ┊ Turbo might need replacement         │  ← dashed: system inferred
+│   (inferred, 0.71, 1 week ago)         │
+└────────────────────────────────────────┘
+```
+
+### Cross-agent visibility
+
+Right now there's no way to see what each agent knows. The graph can partition or color by agent domain to reveal knowledge distribution and gaps.
+
+**Agent domain overlay.** Toggle an overlay that colors nodes by which agent(s) have memories about them:
+
+```
+🔵 Syn    🟠 Demiurge    🟢 Syl    🔴 Akron    ⚪ Unowned
+```
+
+A node colored with multiple agents' colors (split or blended) means multiple agents have context on that entity. A node that's ⚪ means nobody has specific domain knowledge — it's in the shared graph but no agent has claimed expertise.
+
+**Knowledge gap detection.** The overlay immediately reveals imbalances: "Demiurge knows a lot about leather but nothing about thread suppliers" or "Akron has zero memories about the radio install, even though that's his domain." These gaps are actionable — you can tell an agent to pay attention to something, or realize a domain assignment is wrong.
+
+**Agent filter pills.** Like community pills, but for agents:
+
+```
+[All] [🔵 Syn] [🟠 Demiurge] [🟢 Syl] [🔴 Akron]
+```
+
+Select one to see only that agent's knowledge. Select two to see overlap. This answers "does Demiurge know about X?" before you ask Demiurge about X.
+
+### Drift detection
+
+The graph becomes **proactive** — it tells you what needs attention rather than waiting for you to notice.
+
+**Staleness alerts.** Nodes that haven't been referenced or reinforced in a configurable period (default 30 days) get flagged automatically. The health bar surfaces these. But beyond just flagging, drift detection looks for patterns:
+
+- **Orphaned clusters.** A group of interconnected nodes that has zero connections to the rest of the graph. Likely an abandoned topic or a data quality issue.
+- **Confidence divergence.** An entity where some memories are high-confidence and others are low — the system's understanding is fragmenting.
+- **Temporal clusters.** A burst of nodes all created in one session, never referenced again. Probably a one-off conversation that generated noise rather than knowledge.
+
+**Decay timeline.** For any node, show a sparkline of its confidence over time. Is it stable? Declining? Recently reinforced? This tells you whether the system's understanding is improving or degrading.
+
+```
+Cummins ISB 6.7  ▁▂▃▅▇▇█▇▆▅  (trending down — last update 12 days ago)
+Leather tooling  ▁▁▂▃▄▅▆▇██  (trending up — active domain)
+```
+
+**Suggested actions.** Based on drift patterns, the graph suggests specific actions:
+
+- "5 nodes in 'Truck' community haven't been referenced in 30+ days. Review?"
+- "2 conflicting memories about 'oil change interval'. Resolve?"
+- "'Cody' and 'Cody Kickertz' appear to be the same entity. Merge?"
+
+These appear as a notification badge on the graph tab: `Graph (3)` — three items need attention.
+
+### Context before conversation
+
+The graph serves as a **pre-conversation lookup** — check what the system already knows before starting a conversation with an agent.
+
+**"What does the system know about X?" flow:**
+
+1. Open graph tab
+2. Search "cummins" or click the Truck community
+3. See all memories, connections, confidence scores, which agents know what
+4. Decide: "It already knows about the DEF delete, I can just ask about the turbo"
+5. Switch to chat with full context awareness
+
+This eliminates the "let me tell you the whole backstory" preamble that wastes tokens and time. You know what context exists, so you can reference it directly.
+
+**Quick-lookup from chat.** A future integration: type `@graph cummins` in chat to get an inline summary of the graph node without switching tabs. Or hover over an entity mention in a chat message to see a tooltip with the graph card.
+
 ### Performance budget
 
 | Metric | Current | Target |
@@ -184,29 +307,57 @@ These actions call existing sidecar endpoints (or new ones as needed) and refres
 
 ## Implementation Order
 
+### Foundation (Performance)
+
 | Phase | Effort | Impact |
 |-------|--------|--------|
 | **1: 2D default + 3D toggle** | Medium | Immediate performance win, better usability |
 | **2: Lazy-load 3D** | Small | Bundle size reduction |
-| **3: Named communities** | Small | Makes the pills actually useful |
-| **4: Progressive loading** | Medium | Fast initial render |
+| **3: Progressive loading** | Medium | Fast initial render |
+
+### Making It Useful (Knowledge Browser)
+
+| Phase | Effort | Impact |
+|-------|--------|--------|
+| **4: Named communities** | Small | Makes the pills actually useful |
 | **5: Semantic node cards** | Medium | The graph becomes a knowledge browser |
 | **6: Search overhaul** | Medium | Answering real questions |
-| **7: Edit capabilities** | Medium | User can correct the graph |
-| **8: Relationship filtering** | Small | Edge-type exploration |
+| **7: Relationship filtering** | Small | Edge-type exploration |
+
+### Value Add (System Intelligence)
+
+| Phase | Effort | Impact |
+|-------|--------|--------|
+| **8: Memory auditing** | Medium | Visual confidence decay, contradiction detection, bulk operations, health bar |
+| **9: Conversation archaeology** | Medium | Timeline mode, session provenance, stated vs. inferred markers |
+| **10: Cross-agent visibility** | Medium | Agent domain overlay, knowledge gap detection, agent filter pills |
+| **11: Drift detection** | Medium | Staleness alerts, orphaned clusters, decay sparklines, suggested actions |
+| **12: Edit capabilities** | Medium | Rename, merge, delete, flag — closes the feedback loop |
+| **13: Context before conversation** | Small | Pre-conversation lookup, future `@graph` inline integration |
 
 ---
 
 ## Testing
 
+### Foundation
 - **Performance:** Graph tab renders first meaningful content in <1 second on a standard laptop. 200 nodes at 60fps in 2D mode.
 - **3D lazy load:** Opening the graph tab doesn't load Three.js. Switching to 3D mode triggers the import. Switching back to 2D disposes the 3D renderer.
 - **Progressive load:** Initial render shows top 20 nodes. Within 3 seconds, 200 nodes are visible. No layout jumps — new nodes animate into position.
-- **Node cards:** Click any node → detail card shows memories, connections, and edit actions. Memory fetch completes in <500ms.
-- **Named communities:** Every community pill shows a descriptive name, not a number.
-- **Search:** Searching "cummins" highlights the node, centers it, and shows a results list with related memories.
-- **Edit:** Merge two nodes → graph updates, both names resolve to one node. Delete a node → it disappears with its orphaned edges.
 - **Mobile:** Graph tab is usable on phone/tablet. Pan, zoom, tap-to-select all work in 2D.
+
+### Knowledge Browser
+- **Named communities:** Every community pill shows a descriptive name, not a number.
+- **Node cards:** Click any node → detail card shows memories, connections, confidence scores, and source attribution. Memory fetch completes in <500ms.
+- **Search:** Searching "cummins" highlights the node, centers it, and shows a results list with related memories. Filter by community, relationship type, or agent.
+- **Relationship filtering:** Toggle edge types on/off → layout updates, only selected relationship types visible.
+
+### System Intelligence
+- **Memory auditing:** Nodes visually reflect confidence (opacity/saturation). Conflicting memories show red indicator. Health bar shows totals (conflicts, stale, flagged). Bulk select → archive/merge works.
+- **Conversation archaeology:** Timeline scrubber filters graph to a date range. Click a memory → links to the originating session. Stated vs. inferred memories are visually distinct.
+- **Cross-agent visibility:** Agent overlay colors nodes by domain owner. Agent filter pills show/hide per-agent knowledge. Knowledge gaps are visually obvious (uncolored nodes in an agent's domain).
+- **Drift detection:** Stale nodes (>30 days) are auto-flagged. Orphaned clusters are identified. Decay sparklines show confidence trends. Suggested actions appear as notification badge on graph tab.
+- **Edit:** Merge two nodes → graph updates, both names resolve to one node. Delete a node → it disappears with its orphaned edges. Flag a node → warning indicator visible.
+- **Context lookup:** Search an entity → see full system knowledge before starting a conversation about it.
 
 ---
 
@@ -214,4 +365,7 @@ These actions call existing sidecar endpoints (or new ones as needed) and refres
 
 - **The graph answers questions.** A user can find what the system knows about any topic in <10 seconds.
 - **Performance:** No more fan spin or battery drain from the graph tab.
-- **Actually used.** The graph tab goes from "I looked at it once" to a regular part of the workflow — checking what the system knows, correcting mistakes, exploring connections.
+- **Memory quality improves.** Contradictions, staleness, and duplicates are surfaced and resolved through the graph interface. Measurable: conflict count decreases over time, average confidence increases.
+- **Pre-conversation context.** Users check the graph before asking agents about complex topics at least occasionally. Token usage for backstory decreases.
+- **Cross-agent awareness.** Knowledge gaps between agents are visible and actionable. No more "I didn't know Akron didn't know about X."
+- **Actually used.** The graph tab goes from "I looked at it once" to a regular part of the workflow — checking what the system knows, correcting mistakes, exploring connections, auditing memory quality.
