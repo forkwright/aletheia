@@ -274,6 +274,22 @@ export function createGateway(
     const requestSignal = c.req.raw.signal;
     let activeTurnId: string | null = null;
 
+    // Thread resolution: webchat identity is "anonymous" until auth is wired
+    let webchatThreadId: string | undefined;
+    let webchatBindingId: string | undefined;
+    let webchatLockKey: string | undefined;
+    try {
+      const identity = "anonymous";
+      const channelKey = `web:${identity}:${agentId}`;
+      const thread = manager.sessionStore.resolveThread(agentId, identity);
+      const binding = manager.sessionStore.resolveBinding(thread.id, "webchat", channelKey);
+      webchatThreadId = thread.id;
+      webchatBindingId = binding.id;
+      webchatLockKey = `binding:${binding.id}`;
+    } catch (err) {
+      log.warn(`Webchat thread resolution failed: ${err instanceof Error ? err.message : err}`);
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
         await withTurnAsync(
@@ -284,6 +300,9 @@ export function createGateway(
                 text: message,
                 nousId: agentId,
                 sessionKey: resolvedSessionKey,
+                ...(webchatThreadId ? { threadId: webchatThreadId } : {}),
+                ...(webchatBindingId ? { bindingId: webchatBindingId } : {}),
+                ...(webchatLockKey ? { lockKey: webchatLockKey } : {}),
                 ...(validMedia.length > 0 ? { media: validMedia } : {}),
               })) {
                 if (event.type === "turn_start") {

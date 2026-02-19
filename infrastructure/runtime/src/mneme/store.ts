@@ -46,6 +46,22 @@ export interface UsageRecord {
   model: string | null;
 }
 
+export interface Thread {
+  id: string;
+  nousId: string;
+  identity: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportBinding {
+  id: string;
+  threadId: string;
+  transport: string;
+  channelKey: string;
+  lastSeenAt: string;
+}
+
 export class SessionStore {
   private db: Database.Database;
 
@@ -1126,5 +1142,123 @@ export class SessionStore {
       `)
       .all(nousId, nousId, since, since, until, until) as Array<Record<string, unknown>>;
     return rows.map((r) => this.mapSession(r));
+  }
+
+  // --- Thread Model (Phase 1 + 2) ---
+
+  resolveThread(nousId: string, identity: string): Thread {
+    const existing = this.db
+      .prepare("SELECT * FROM threads WHERE nous_id = ? AND identity = ?")
+      .get(nousId, identity) as Record<string, unknown> | undefined;
+    if (existing) return this.mapThread(existing);
+
+    const id = generateId("thr");
+    this.db
+      .prepare("INSERT INTO threads (id, nous_id, identity) VALUES (?, ?, ?)")
+      .run(id, nousId, identity);
+    log.info(`Created thread ${id} for ${identity} <-> ${nousId}`);
+    return this.mapThread(
+      this.db.prepare("SELECT * FROM threads WHERE id = ?").get(id) as Record<string, unknown>,
+    );
+  }
+
+  resolveBinding(threadId: string, transport: string, channelKey: string): TransportBinding {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO transport_bindings (id, thread_id, transport, channel_key, last_seen_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(transport, channel_key)
+         DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+      )
+      .run(generateId("tbnd"), threadId, transport, channelKey, now);
+    const row = this.db
+      .prepare("SELECT * FROM transport_bindings WHERE transport = ? AND channel_key = ?")
+      .get(transport, channelKey) as Record<string, unknown>;
+    return this.mapBinding(row);
+  }
+
+  getIdentityForSignalSender(sender: string, accountId?: string): string {
+    const row = this.db
+      .prepare(
+        `SELECT sender_name FROM contact_requests
+         WHERE sender = ? AND channel = 'signal' AND (account_id = ? OR account_id IS NULL)
+         AND status = 'approved'
+         ORDER BY resolved_at DESC LIMIT 1`,
+      )
+      .get(sender, accountId ?? null) as { sender_name: string | null } | undefined;
+    return row?.sender_name?.trim() || sender;
+  }
+
+  linkSessionToThread(sessionId: string, threadId: string, transport: string): void {
+    this.db
+      .prepare("UPDATE sessions SET thread_id = ?, transport = ? WHERE id = ?")
+      .run(threadId, transport, sessionId);
+  }
+
+  migrateSessionsToThreads(): number {
+    const unlinked = this.db
+      .prepare(
+        "SELECT id, nous_id, session_key FROM sessions WHERE thread_id IS NULL AND status != 'archived'",
+      )
+      .all() as Array<{ id: string; nous_id: string; session_key: string }>;
+
+    let migrated = 0;
+    for (const session of unlinked) {
+      const { nous_id: nousId, session_key: sessionKey, id: sessionId } = session;
+      let transport: string;
+      let identity: string;
+      let channelKey: string;
+
+      if (sessionKey.startsWith("signal:")) {
+        transport = "signal";
+        channelKey = sessionKey;
+        identity = this.getIdentityForSignalSender(sessionKey.slice("signal:".length));
+      } else if (sessionKey.startsWith("cron:")) {
+        transport = "cron";
+        channelKey = sessionKey;
+        identity = sessionKey;
+      } else if (sessionKey.startsWith("spawn:")) {
+        transport = "agent";
+        channelKey = sessionKey;
+        identity = sessionKey;
+      } else {
+        transport = "webchat";
+        channelKey = `web:anonymous:${nousId}`;
+        identity = "anonymous";
+      }
+
+      try {
+        const thread = this.resolveThread(nousId, identity);
+        this.resolveBinding(thread.id, transport, channelKey);
+        this.linkSessionToThread(sessionId, thread.id, transport);
+        migrated++;
+      } catch (err) {
+        log.warn(`Failed to migrate session ${sessionId} to thread: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    if (migrated > 0) log.info(`Migrated ${migrated} sessions to thread model`);
+    return migrated;
+  }
+
+  private mapThread(r: Record<string, unknown>): Thread {
+    return {
+      id: r["id"] as string,
+      nousId: r["nous_id"] as string,
+      identity: r["identity"] as string,
+      createdAt: r["created_at"] as string,
+      updatedAt: r["updated_at"] as string,
+    };
+  }
+
+  private mapBinding(r: Record<string, unknown>): TransportBinding {
+    return {
+      id: r["id"] as string,
+      threadId: r["thread_id"] as string,
+      transport: r["transport"] as string,
+      channelKey: r["channel_key"] as string,
+      lastSeenAt: r["last_seen_at"] as string,
+    };
   }
 }

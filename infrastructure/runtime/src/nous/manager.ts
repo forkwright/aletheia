@@ -57,6 +57,8 @@ export class NousManager {
     log.info(`NousManager initialized with ${config.agents.list.length} nous`);
   }
 
+  get sessionStore(): SessionStore { return this.store; }
+
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
@@ -127,7 +129,7 @@ export class NousManager {
 
     const services = this.buildServices();
     const nousId = resolveNousId(msg, services);
-    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
+    const lockKey = msg.lockKey ?? `${nousId}:${msg.sessionKey ?? "main"}`;
     const turnId = `${nousId}:${++turnCounter}:${Date.now()}`;
     const abortController = new AbortController();
 
@@ -181,7 +183,7 @@ export class NousManager {
 
     const services = this.buildServices();
     const nousId = resolveNousId(msg, services);
-    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
+    const lockKey = msg.lockKey ?? `${nousId}:${msg.sessionKey ?? "main"}`;
 
     this.trackTurnStart(nousId);
     try {
