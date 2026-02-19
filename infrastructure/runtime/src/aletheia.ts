@@ -298,11 +298,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- MCP Client ---
   let mcpManager: McpClientManager | null = null;
-  const mcpConfig = (config as Record<string, unknown>)["mcp"] as { enabled?: boolean; servers?: Record<string, unknown> } | undefined;
-  if (mcpConfig?.enabled && mcpConfig.servers && Object.keys(mcpConfig.servers).length > 0) {
+  if (config.mcp.enabled && Object.keys(config.mcp.servers).length > 0) {
     mcpManager = new McpClientManager(runtime.tools);
     try {
-      await mcpManager.connectAll(mcpConfig.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
+      await mcpManager.connectAll(config.mcp.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
       log.info(`MCP client: ${mcpManager.getToolCount()} tools from ${mcpManager.getStatus().filter(s => s.status === "connected").length} server(s)`);
     } catch (err) {
       log.error(`MCP client initialization error: ${err instanceof Error ? err.message : err}`);
