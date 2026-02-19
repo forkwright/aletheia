@@ -38,6 +38,30 @@ describe("CommandRegistry", () => {
     expect(reg.match("!Ping")).not.toBeNull();
   });
 
+  it("matches / prefix (slash commands)", () => {
+    const reg = new CommandRegistry();
+    reg.register({
+      name: "test",
+      description: "Test",
+      execute: async () => "done",
+    });
+    const match = reg.match("/test");
+    expect(match).not.toBeNull();
+    expect(match!.handler.name).toBe("test");
+  });
+
+  it("matches / prefix with arguments", () => {
+    const reg = new CommandRegistry();
+    reg.register({
+      name: "model",
+      description: "Switch model",
+      execute: async () => "done",
+    });
+    const match = reg.match("/model sonnet");
+    expect(match).not.toBeNull();
+    expect(match!.args).toBe("sonnet");
+  });
+
   it("returns null for non-command text", () => {
     const reg = new CommandRegistry();
     expect(reg.match("hello")).toBeNull();
@@ -80,7 +104,7 @@ describe("createDefaultRegistry", () => {
   it("returns a registry with default commands", () => {
     const reg = createDefaultRegistry();
     const all = reg.listAll();
-    expect(all.length).toBeGreaterThanOrEqual(10);
+    expect(all.length).toBeGreaterThanOrEqual(14);
     const names = all.map((c) => c.name);
     expect(names).toContain("ping");
     expect(names).toContain("help");
@@ -89,6 +113,10 @@ describe("createDefaultRegistry", () => {
     expect(names).toContain("reset");
     expect(names).toContain("agent");
     expect(names).toContain("skills");
+    expect(names).toContain("model");
+    expect(names).toContain("think");
+    expect(names).toContain("distill");
+    expect(names).toContain("blackboard");
     expect(names).toContain("approve");
     expect(names).toContain("deny");
     expect(names).toContain("contacts");

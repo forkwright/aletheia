@@ -41,6 +41,7 @@ export interface ChatMessage {
   toolCalls?: ToolCallState[];
   isStreaming?: boolean;
   media?: MediaItem[];
+  thinking?: string;
 }
 
 export interface ToolCallState {
@@ -54,11 +55,13 @@ export interface ToolCallState {
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId?: string }
   | { type: "text_delta"; text: string }
+  | { type: "thinking_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
+  | { type: "turn_abort"; reason: string }
   | { type: "error"; message: string };
 
 export interface PendingApproval {
@@ -154,6 +157,12 @@ export interface GraphData {
   communities: number;
   community_meta: CommunityMeta[];
   total_nodes: number;
+}
+
+export interface CommandInfo {
+  name: string;
+  description: string;
+  aliases: string[];
 }
 
 export interface FileTreeEntry {

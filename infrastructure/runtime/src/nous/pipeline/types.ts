@@ -50,6 +50,7 @@ export interface TurnOutcome {
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId: string }
   | { type: "text_delta"; text: string }
+  | { type: "thinking_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }

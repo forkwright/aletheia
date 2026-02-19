@@ -15,7 +15,10 @@
     "lint:check": "oxlint src/",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint:check && npm run test",
-    "precommit": "npm run typecheck && npm run lint:check && npm run test -- --reporter=dot"
+    "precommit": "npm run typecheck && npm run lint:check && npm run test:fast",
+    "test:fast": "vitest run -c vitest.fast.config.ts",
+    "test:affected": "vitest run --changed HEAD~1",
+    "test:file": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

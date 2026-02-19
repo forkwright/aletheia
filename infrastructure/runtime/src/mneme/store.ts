@@ -407,6 +407,32 @@ export class SessionStore {
     return row?.distillation_count ?? 0;
   }
 
+  updateSessionModel(sessionId: string, model: string): void {
+    this.db
+      .prepare(
+        `UPDATE sessions SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(model, sessionId);
+  }
+
+  getThinkingConfig(sessionId: string): { enabled: boolean; budget: number } {
+    const row = this.db
+      .prepare("SELECT thinking_enabled, thinking_budget FROM sessions WHERE id = ?")
+      .get(sessionId) as { thinking_enabled: number; thinking_budget: number } | undefined;
+    return {
+      enabled: (row?.thinking_enabled ?? 0) === 1,
+      budget: row?.thinking_budget ?? 10_000,
+    };
+  }
+
+  setThinkingConfig(sessionId: string, enabled: boolean, budget: number): void {
+    this.db
+      .prepare(
+        `UPDATE sessions SET thinking_enabled = ?, thinking_budget = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(enabled ? 1 : 0, budget, sessionId);
+  }
+
   getLastBootstrapHash(nousId: string): string | null {
     const row = this.db
       .prepare(

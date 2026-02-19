@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VITEST_MAX_FORKS: 4
+
 jobs:
   typecheck:
     runs-on: ubuntu-latest
@@ -35,7 +38,25 @@ jobs:
       - run: cd infrastructure/runtime && npm ci
       - run: cd infrastructure/runtime && npm run lint:check
 
-  test-unit:
+  # Fast tests — lightweight unit tests, quick PR feedback
+  test-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/runtime/package-lock.json
+      - name: Install system tools
+        run: |
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
+      - run: cd infrastructure/runtime && npm ci
+      - run: cd infrastructure/runtime && npm run test:fast
+
+  # Full test suite with coverage
+  test-full:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

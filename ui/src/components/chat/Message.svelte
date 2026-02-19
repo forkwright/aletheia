@@ -67,6 +67,12 @@
         {/each}
       </div>
     {/if}
+    {#if message.thinking}
+      <details class="thinking-block">
+        <summary class="thinking-summary">Thought process</summary>
+        <div class="thinking-content">{message.thinking}</div>
+      </details>
+    {/if}
     {#if message.content}
       <div class="chat-content">
         {#if isUser}
@@ -88,6 +94,35 @@
 {/if}
 
 <style>
+  .thinking-block {
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .thinking-summary {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    background: var(--surface);
+  }
+  .thinking-summary:hover {
+    color: var(--text-secondary);
+  }
+  .thinking-content {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    line-height: 1.5;
+  }
   .user-text {
     white-space: pre-wrap;
     word-break: break-word;

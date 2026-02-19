@@ -47,7 +47,7 @@ export const editTool: ToolHandler = {
     const filePath = input["path"] as string;
     const oldText = input["old_text"] as string;
     const newText = input["new_text"] as string;
-    const resolved = safePath(context.workspace, filePath);
+    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
 
     if (oldText === "") {
       return "Error: old_text cannot be empty — it would match everywhere";

@@ -26,5 +26,11 @@ export default defineConfig({
     testTimeout: 10000,
     hookTimeout: 10000,
     pool: "forks",
+    poolOptions: {
+      forks: {
+        // CI overrides via VITEST_MAX_FORKS env var; local default is conservative
+        maxForks: parseInt(process.env["VITEST_MAX_FORKS"] ?? "2", 10),
+      },
+    },
   },
 });
