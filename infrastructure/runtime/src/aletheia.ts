@@ -180,6 +180,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     return entry;
   });
   store.rebuildRoutingCache(bindings);
+  store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);

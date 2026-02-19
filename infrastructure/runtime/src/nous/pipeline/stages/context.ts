@@ -50,6 +50,20 @@ export async function buildContext(
     ...bootstrap.dynamicBlocks,
   ];
 
+  // Thread-level relationship context (injected before recall so it primes memory search)
+  if (msg.threadId) {
+    const threadSummary = services.store.getThreadSummary(msg.threadId);
+    if (threadSummary?.summary) {
+      const factsText = threadSummary.keyFacts.length > 0
+        ? `\n\n**Key facts:**\n${threadSummary.keyFacts.slice(0, 20).map((f) => `- ${f}`).join("\n")}`
+        : "";
+      systemPrompt.push({
+        type: "text",
+        text: `## Thread Memory\n\n${threadSummary.summary}${factsText}`,
+      });
+    }
+  }
+
   // Pre-turn memory recall
   let recallTokens = 0;
   if (!degradedServices.includes("mem0-sidecar")) {

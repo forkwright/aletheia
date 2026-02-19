@@ -188,4 +188,43 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN thinking_budget INTEGER DEFAULT 10000;
     `,
   },
+  {
+    version: 8,
+    sql: `
+      -- Threads: one per (identity, nousId) pair — the persistent relationship
+      CREATE TABLE IF NOT EXISTS threads (
+        id TEXT PRIMARY KEY,
+        nous_id TEXT NOT NULL,
+        identity TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        UNIQUE(nous_id, identity)
+      );
+      CREATE INDEX IF NOT EXISTS idx_threads_nous ON threads(nous_id);
+
+      -- Transport bindings: per-channel connection to a thread (separate lock per transport)
+      CREATE TABLE IF NOT EXISTS transport_bindings (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(id),
+        transport TEXT NOT NULL,
+        channel_key TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        UNIQUE(transport, channel_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_bindings_thread ON transport_bindings(thread_id);
+
+      -- Thread summaries: running relationship digest (populated by Phase 3 distillation)
+      CREATE TABLE IF NOT EXISTS thread_summaries (
+        thread_id TEXT PRIMARY KEY REFERENCES threads(id),
+        summary TEXT NOT NULL DEFAULT '',
+        key_facts TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+
+      -- Link sessions (segments) to threads
+      ALTER TABLE sessions ADD COLUMN thread_id TEXT;
+      ALTER TABLE sessions ADD COLUMN transport TEXT;
+      CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
+    `,
+  },
 ];

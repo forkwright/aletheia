@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage } from "./types";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -76,6 +76,26 @@ export async function archiveSession(sessionId: string): Promise<void> {
 
 export async function distillSession(sessionId: string): Promise<void> {
   await fetchJson(`/api/sessions/${sessionId}/distill`, { method: "POST" });
+}
+
+export async function fetchThreads(nousId?: string): Promise<Thread[]> {
+  const qs = nousId ? `?nousId=${nousId}` : "";
+  const data = await fetchJson<{ threads: Thread[] }>(`/api/threads${qs}`);
+  return data.threads;
+}
+
+export async function fetchThreadHistory(
+  threadId: string,
+  opts?: { before?: string; limit?: number },
+): Promise<ThreadMessage[]> {
+  const sp = new URLSearchParams();
+  if (opts?.before) sp.set("before", opts.before);
+  if (opts?.limit) sp.set("limit", String(opts.limit));
+  const qs = sp.toString();
+  const data = await fetchJson<{ messages: ThreadMessage[] }>(
+    `/api/threads/${threadId}/history${qs ? `?${qs}` : ""}`,
+  );
+  return data.messages;
 }
 
 export async function fetchMetrics(): Promise<MetricsData> {

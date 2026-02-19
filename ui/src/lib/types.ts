@@ -178,6 +178,22 @@ export interface GitFileStatus {
   path: string;
 }
 
+export interface Thread {
+  id: string;
+  nousId: string;
+  identity: string;
+  createdAt: string;
+  updatedAt: string;
+  sessionCount: number;
+  messageCount: number;
+  lastActivity: string | null;
+  summary: string | null;
+}
+
+export interface ThreadMessage extends HistoryMessage {
+  sessionId: string;
+}
+
 export interface CostSummary {
   totalCost: number;
   agents: AgentCost[];

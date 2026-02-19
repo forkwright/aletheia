@@ -274,6 +274,47 @@ export function createGateway(
     const requestSignal = c.req.raw.signal;
     let activeTurnId: string | null = null;
 
+    // Thread resolution: webchat identity is "anonymous" until auth is wired
+    let webchatThreadId: string | undefined;
+    let webchatBindingId: string | undefined;
+    let webchatLockKey: string | undefined;
+    try {
+      const identity = "anonymous";
+      const channelKey = `web:${identity}:${agentId}`;
+      const thread = manager.sessionStore.resolveThread(agentId, identity);
+      const binding = manager.sessionStore.resolveBinding(thread.id, "webchat", channelKey);
+      webchatThreadId = thread.id;
+      webchatBindingId = binding.id;
+      webchatLockKey = `binding:${binding.id}`;
+    } catch (err) {
+      log.warn(`Webchat thread resolution failed: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Handle /new topic boundary command
+    const newTopicMatch = message.trim().match(/^\/new(?:\s+(.+))?$/i);
+    if (newTopicMatch) {
+      const topicLabel = newTopicMatch[1]?.trim() ?? "";
+      const boundaryContent = topicLabel ? `[TOPIC: ${topicLabel}]` : "[TOPIC]";
+      const ackText = topicLabel ? `New topic: ${topicLabel}` : "New topic started.";
+      try {
+        const session = store.findOrCreateSession(agentId, resolvedSessionKey);
+        store.appendMessage(session.id, "user", boundaryContent, { tokenEstimate: 10 });
+      } catch (err) {
+        log.warn(`Topic boundary insert failed: ${err instanceof Error ? err.message : err}`);
+      }
+      const enc = new TextEncoder();
+      const topicStream = new ReadableStream({
+        start(ctrl) {
+          const turnId = `webchat:topic:${Date.now()}`;
+          ctrl.enqueue(enc.encode(`event: turn_start\ndata: ${JSON.stringify({ type: "turn_start", sessionId: "", nousId: agentId, turnId })}\n\n`));
+          ctrl.enqueue(enc.encode(`event: text_delta\ndata: ${JSON.stringify({ type: "text_delta", text: ackText })}\n\n`));
+          ctrl.enqueue(enc.encode(`event: turn_complete\ndata: ${JSON.stringify({ type: "turn_complete", outcome: { text: ackText, nousId: agentId, sessionId: "", toolCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } })}\n\n`));
+          ctrl.close();
+        },
+      });
+      return new Response(topicStream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" } });
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
         await withTurnAsync(
@@ -284,6 +325,9 @@ export function createGateway(
                 text: message,
                 nousId: agentId,
                 sessionKey: resolvedSessionKey,
+                ...(webchatThreadId ? { threadId: webchatThreadId } : {}),
+                ...(webchatBindingId ? { bindingId: webchatBindingId } : {}),
+                ...(webchatLockKey ? { lockKey: webchatLockKey } : {}),
                 ...(validMedia.length > 0 ? { media: validMedia } : {}),
               })) {
                 if (event.type === "turn_start") {
@@ -545,6 +589,43 @@ export function createGateway(
       log.error(`Distillation trigger failed: ${msg}`);
       return c.json({ error: "Failed to trigger distillation" }, 500);
     }
+  });
+
+  // --- Thread API ---
+
+  app.get("/api/threads", (c) => {
+    const nousId = c.req.query("nousId");
+    const threads = store.listThreads(nousId ?? undefined);
+    return c.json({ threads });
+  });
+
+  app.get("/api/threads/:id/history", (c) => {
+    const id = c.req.param("id");
+    const before = c.req.query("before");
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10), 200);
+    const messages = store.getThreadHistory(id, {
+      ...(before ? { before } : {}),
+      limit,
+    });
+    return c.json({
+      messages: messages.map((m) => ({
+        id: m.id,
+        sessionId: m.sessionId,
+        seq: m.seq,
+        role: m.role,
+        content: m.content,
+        toolCallId: m.toolCallId,
+        toolName: m.toolName,
+        createdAt: m.createdAt,
+      })),
+    });
+  });
+
+  app.get("/api/threads/:id/summary", (c) => {
+    const id = c.req.param("id");
+    const summary = store.getThreadSummary(id);
+    if (!summary) return c.json({ error: "No summary for this thread" }, 404);
+    return c.json(summary);
   });
 
   // --- Contact/Pairing API ---

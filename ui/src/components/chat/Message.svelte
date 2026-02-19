@@ -15,7 +15,26 @@
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
   let hasMedia = $derived(message.media && message.media.length > 0);
 
+  // Detect special message types for alternate rendering
+  let isDistillationSummary = $derived(
+    !isUser && message.content.startsWith("[Distillation #"),
+  );
+  let isTopicBoundary = $derived(
+    message.content.startsWith("[TOPIC:") || message.content === "[TOPIC]",
+  );
+  let topicLabel = $derived(
+    isTopicBoundary
+      ? message.content.replace(/^\[TOPIC:\s*/, "").replace(/\]$/, "").trim() || "New topic"
+      : "",
+  );
+  let distillationLabel = $derived(
+    isDistillationSummary
+      ? (message.content.match(/\[Distillation #(\d+)\]/)?.[0] ?? "Memory consolidated")
+      : "",
+  );
+
   let expandedImage = $state<string | null>(null);
+  let summaryExpanded = $state(false);
 
   function openLightbox(src: string) {
     expandedImage = src;
@@ -26,6 +45,24 @@
   }
 </script>
 
+{#if isTopicBoundary}
+  <div class="topic-boundary">
+    <span class="topic-label">{topicLabel}</span>
+  </div>
+{:else if isDistillationSummary}
+  <div class="segment-boundary">
+    <div class="segment-line"></div>
+    <button class="segment-label" onclick={() => (summaryExpanded = !summaryExpanded)}>
+      {distillationLabel} — {summaryExpanded ? "hide" : "show"} summary
+    </button>
+    <div class="segment-line"></div>
+  </div>
+  {#if summaryExpanded}
+    <div class="segment-summary">
+      <Markdown content={message.content.replace(/^\[Distillation #\d+\]\n\n/, "")} />
+    </div>
+  {/if}
+{:else}
 <div class="chat-msg" class:user={isUser} class:assistant={!isUser}>
   <div class="chat-avatar" class:user={isUser} class:agent={!isUser}>
     {#if isUser}
@@ -92,8 +129,68 @@
     <button class="lightbox-close" onclick={closeLightbox} aria-label="Close">×</button>
   </div>
 {/if}
+{/if}
 
 <style>
+  /* Segment boundary (distillation summary) */
+  .segment-boundary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    margin: 4px 0;
+  }
+  .segment-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    opacity: 0.5;
+  }
+  .segment-label {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .segment-label:hover {
+    color: var(--text-secondary);
+    background: var(--surface);
+  }
+  .segment-summary {
+    padding: 10px 16px;
+    margin: 0 0 8px;
+    border-left: 2px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--surface);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  /* Topic boundary */
+  .topic-boundary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0 8px;
+    margin: 4px 0;
+  }
+  .topic-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    background: var(--surface);
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
   .thinking-block {
     margin-bottom: 8px;
     border: 1px solid var(--border);

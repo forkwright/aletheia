@@ -34,6 +34,10 @@ export interface InboundMessage {
   media?: MediaAttachment[];
   model?: string;
   depth?: number;
+  // Thread model (Phase 2): resolved by transport layer before manager
+  threadId?: string;
+  bindingId?: string;
+  lockKey?: string;
 }
 
 export interface TurnOutcome {

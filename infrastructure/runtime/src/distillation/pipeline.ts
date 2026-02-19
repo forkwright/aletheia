@@ -27,6 +27,8 @@ export interface DistillationOpts {
   preserveRecentMessages?: number;
   preserveRecentMaxTokens?: number;
   workspace?: string;
+  /** Called after successful distillation to update the thread-level running summary. */
+  onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
 }
 
 export interface DistillationResult {
@@ -292,6 +294,15 @@ async function runDistillation(
       tokensBefore: result.tokensBefore,
       tokensAfter: result.tokensAfter,
     });
+  }
+
+  // Update thread-level running summary if callback provided
+  if (opts.onThreadSummaryUpdate) {
+    const keyFacts = [
+      ...extraction.facts.slice(0, 30),
+      ...extraction.decisions.map((d) => `Decision: ${d}`).slice(0, 10),
+    ];
+    opts.onThreadSummaryUpdate(markedSummary, keyFacts);
   }
 
   eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });
