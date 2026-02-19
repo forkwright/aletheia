@@ -71,6 +71,19 @@ export interface ThinkingConfig {
   budget_tokens: number;
 }
 
+export interface ContextManagementEdit {
+  type: "clear_thinking_20251015" | "clear_tool_uses_20250919";
+  trigger?: { type: "input_tokens"; value: number };
+  keep?: { type: "tool_uses" | "thinking_turns"; value: number } | "all";
+  clear_at_least?: { type: "input_tokens"; value: number };
+  exclude_tools?: string[];
+  clear_tool_inputs?: boolean;
+}
+
+export interface ContextManagement {
+  edits: ContextManagementEdit[];
+}
+
 export interface CompletionRequest {
   model: string;
   system: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
@@ -80,6 +93,7 @@ export interface CompletionRequest {
   temperature?: number;
   signal?: AbortSignal;
   thinking?: ThinkingConfig;
+  contextManagement?: ContextManagement;
 }
 
 export type StreamingEvent =
@@ -157,7 +171,7 @@ export class AnthropicProvider {
   }
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
-    const { model, maxTokens, temperature, signal, thinking } = request;
+    const { model, maxTokens, temperature, signal, thinking, contextManagement } = request;
     const cached = this.injectCacheBreakpoints(request);
 
     // Build params — thinking requires dropping temperature (API constraint)
@@ -172,9 +186,16 @@ export class AnthropicProvider {
       ...(thinking ? {} : temperature !== undefined ? { temperature } : {}),
     };
     if (thinking) params["thinking"] = thinking;
+    if (contextManagement) params["context_management"] = contextManagement;
+
+    // Beta header for context management
+    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
 
     try {
-      const response = await this.client.messages.create(params, ...(signal ? [{ signal }] : []));
+      const response = await this.client.messages.create(params, {
+        ...(signal ? { signal } : {}),
+        ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+      });
 
       const usage = response.usage;
       return {
@@ -221,7 +242,7 @@ export class AnthropicProvider {
   }
 
   async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
-    const { model, maxTokens, temperature, signal, thinking } = request;
+    const { model, maxTokens, temperature, signal, thinking, contextManagement } = request;
     const cached = this.injectCacheBreakpoints(request);
 
     const streamParams: Anthropic.Messages.MessageCreateParamsStreaming & Record<string, unknown> = {
@@ -236,8 +257,15 @@ export class AnthropicProvider {
       ...(thinking ? {} : temperature !== undefined ? { temperature } : {}),
     };
     if (thinking) streamParams["thinking"] = thinking;
+    if (contextManagement) streamParams["context_management"] = contextManagement;
 
-    const stream = await this.client.messages.create(streamParams, ...(signal ? [{ signal }] : []));
+    // Beta header for context management
+    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
+
+    const stream = await this.client.messages.create(streamParams, {
+      ...(signal ? { signal } : {}),
+      ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+    });
 
     const contentBlocks: ContentBlock[] = [];
     let stopReason = "end_turn";
