@@ -100,6 +100,33 @@ async function runDistillation(
   }
 
   const allMessages = store.getHistory(sessionId, {});
+
+  // Guard: reject distillation if history has orphaned tool_use blocks
+  const lastAssistant = [...allMessages].reverse().find(m => !m.isDistilled && m.role === "assistant");
+  if (lastAssistant) {
+    try {
+      const parsed = JSON.parse(lastAssistant.content);
+      if (Array.isArray(parsed)) {
+        const toolUses = parsed.filter((b: { type: string }) => b.type === "tool_use");
+        if (toolUses.length > 0) {
+          const answeredIds = new Set(
+            allMessages
+              .filter(m => m.role === "tool_result" && m.seq > lastAssistant.seq)
+              .map(m => m.toolCallId)
+              .filter(Boolean),
+          );
+          const unanswered = toolUses.filter((b: { id: string }) => !answeredIds.has(b.id));
+          if (unanswered.length > 0) {
+            log.warn(`Distillation blocked: ${unanswered.length} unanswered tool_use blocks at seq ${lastAssistant.seq}`);
+            throw new Error(`Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`);
+          }
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("Cannot distill")) throw e;
+    }
+  }
+
   const undistilled = allMessages.filter((m) => !m.isDistilled);
 
   if (undistilled.length < opts.minMessages) {

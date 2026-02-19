@@ -497,6 +497,12 @@ async function processTurn(
   try {
     const outcome = await manager.handleMessage(msg);
 
+    if (outcome.error) {
+      log.error(`Turn completed with error: ${outcome.error}`, { nousId: outcome.nousId, sessionId: outcome.sessionId });
+      await sendMessage(client, target, "I encountered an error processing that. Please try again.", { markdown: false });
+      return;
+    }
+
     sendTyping(client, target, true).catch(() => {});
 
     if (outcome.text) {

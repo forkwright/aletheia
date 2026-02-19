@@ -1,15 +1,11 @@
-// Finalize stage — trace persistence, signal classification, skill extraction, distillation
+// Finalize stage — trace persistence, signal classification, skill extraction
 import { join } from "node:path";
-import { createLogger } from "../../../koina/logger.js";
 import { persistTrace } from "../../trace.js";
 import { classifyInteraction } from "../../interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill } from "../../../organon/skill-learner.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
-import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type { TurnState, RuntimeServices } from "../types.js";
-
-const log = createLogger("pipeline:finalize");
 
 export async function finalize(
   state: TurnState,
@@ -73,39 +69,5 @@ export async function finalize(
       .catch(() => {});
   }
 
-  // Auto-trigger distillation
-  const contextTokens = services.config.agents.defaults.contextTokens;
-  const compaction = services.config.agents.defaults.compaction;
-  const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
-  try {
-    const session = services.store.findSessionById(sessionId);
-    const actualContext = session?.lastInputTokens ?? session?.tokenCountEstimate ?? 0;
-    if (session && session.messageCount >= 10 && actualContext >= distillThreshold) {
-      const utilization = Math.round((actualContext / contextTokens) * 100);
-      log.info(
-        `Distillation triggered for ${nousId} session=${sessionId} ` +
-        `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%, ` +
-        `actual=${actualContext} tokens)`,
-      );
-      const distillModel = compaction.distillationModel;
-      const thread = services.store.getThreadForSession(sessionId);
-      await distillSession(services.store, services.router, sessionId, nousId, {
-        triggerThreshold: distillThreshold,
-        minMessages: 10,
-        extractionModel: distillModel,
-        summaryModel: distillModel,
-        preserveRecentMessages: compaction.preserveRecentMessages,
-        preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-        ...(workspace ? { workspace } : {}),
-        ...(services.plugins ? { plugins: services.plugins } : {}),
-        ...(thread ? {
-          onThreadSummaryUpdate: (summary, keyFacts) => {
-            services.store.updateThreadSummary(thread.id, summary, keyFacts);
-          },
-        } : {}),
-      });
-    }
-  } catch (err) {
-    log.warn(`Distillation failed: ${err instanceof Error ? err.message : err}`);
-  }
+  // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)
 }

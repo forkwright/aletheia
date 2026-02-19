@@ -49,6 +49,7 @@ export interface TurnOutcome {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  error?: string;
 }
 
 export type TurnStreamEvent =
