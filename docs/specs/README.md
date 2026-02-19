@@ -6,36 +6,35 @@ These are **internal design documents** — they describe how things should work
 what constraints exist, and what tradeoffs were made. They're living documents
 that evolve with the system.
 
-## Active Specs (Implementation Order)
+## Active Specs
 
 | # | Spec | Status | Summary |
 |---|------|--------|---------|
-| 1 | [Turn Safety](01_turn-safety.md) | **Implemented** | Error propagation, distillation guards, orphan prevention — PR #38 |
 | 2 | [Webchat UX](02_webchat-ux.md) | Draft | SSE events, cross-agent notifications, refresh resilience, file editor with split pane |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Draft | Login page (user/pass + remember me), self-update CLI, GitHub Releases |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
-| 6 | [Code Quality](06_code-quality.md) | **Phase 1 done** | Error handling overhaul, dead code audit, coding standards — CONTRIBUTING.md + CLAUDE.md in PR #37 |
+| 6 | [Code Quality](06_code-quality.md) | Phase 1 done | Error handling overhaul, dead code audit — CONTRIBUTING.md + CLAUDE.md in PR #37. Remaining: error sweep, dead code removal, ESLint rules |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
-| 8 | [Memory Continuity](08_memory-continuity.md) | **Phase 1 done** | Survive distillation: expanded tail (4→10 msgs) in PR #36, remaining: structured summaries, context editing API, working state, agent notes |
-| 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default over 3D, progressive loading, named communities, semantic node cards, search, edit capabilities |
+| 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1 done | Expanded tail (4→10 msgs) in PR #36. Remaining: structured summaries, context editing API, working state, agent notes |
+| 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default, progressive loading, named communities, semantic node cards, memory auditing, drift detection |
 
-### Why this order
+### Priority order
 
-1. **Turn Safety** — Correctness. Messages silently vanish. Nothing else matters if the pipeline drops turns.
-2. **Webchat UX** — Daily usability. SSE endpoint fixes staleness, refresh resilience stops killing agent work, notifications enable multi-agent workflow. Depends on reliable pipeline (1).
-3. **Auth & Updates** — Security + maintainability. Login replaces insecure token, update CLI eliminates manual deploys, GitHub Releases enable versioning. Depends on stable UI (2).
-4. **Cost-Aware Orchestration** — Economic sustainability. Sub-agents on cheaper models cut Anthropic spend 40-60%. Message queue and plan mode improve interaction model. Depends on reliable pipeline (1) and working UI (2).
-5. **Plug-and-Play Onboarding** — Adoption. Setup wizard, process management, agent CLI. The capstone — depends on everything else being stable and well-designed. Ship last.
-6. **Code Quality** — Sustainability. Can be done in parallel with anything. Error handling overhaul makes debugging easier for all other specs. Dead code audit reduces surface area. Standards prevent new debt.
-7. **Knowledge Graph** — Performance and utility. Graph recall is currently too slow and inconsistent. Fixing this improves every agent's quality. Depends on infrastructure stability (1-3).
-8. **Memory Continuity** — The hardest problem. Requires stable distillation (1), working graph (7), and reliable pipeline. Introduces Anthropic's context editing API, working state maintenance, and agent notes. This is the frontier.
-9. **Graph Visualization** — Polish. The 3D force graph is a demo, not a tool. 2D default fixes performance, semantic node cards make it useful, edit capabilities close the feedback loop. Depends on knowledge graph backend (7).
+- **2 Webchat UX** — Daily usability. SSE endpoint fixes staleness, refresh resilience stops killing agent work.
+- **3 Auth & Updates** — Security. Login replaces insecure token, update CLI eliminates manual deploys.
+- **4 Cost-Aware Orchestration** — Economics. Sub-agents on cheaper models cut spend 40-60%.
+- **5 Plug-and-Play Onboarding** — Adoption. The capstone — ship last.
+- **6 Code Quality** — Parallel. Error sweep + dead code removal can happen alongside anything.
+- **7 Knowledge Graph** — Performance. Graph recall too slow. Depends on infrastructure stability (2-3).
+- **8 Memory Continuity** — Frontier. Structured summaries, context editing API, working state, agent notes.
+- **9 Graph Visualization** — Polish. Depends on knowledge graph backend (7).
 
 ## Implemented (Archived)
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Turn Safety](archive/01_turn-safety.md) | PR #38 + #39 | Error propagation, distillation guards, orphan diagnostics, duplicate tool_result fix |
 | [Data Privacy](archive/spec-data-privacy.md) | PR #33 | File permissions hardening, retention policy, log sanitization, encrypted export, sidecar auth |
 | [Unified Thread Model](archive/spec-unified-thread-model.md) | PR #32 | Transport isolation, thread abstraction, thread summaries, topic branching (all 4 phases) |
 | [Auth & Security](archive/spec-auth-and-security.md) | PR #26 + security commits | JWT, RBAC, sessions, audit, TLS, passwords (standalone modules; integration pending) |
