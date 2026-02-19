@@ -1,6 +1,7 @@
 # Wake trigger — sends attention events to the Aletheia HTTP gateway
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections import defaultdict
@@ -14,6 +15,12 @@ from .scoring import NousScore
 AGENT_ID_MAP = {"syn": "main"}
 
 
+def _signal_fingerprint(signals: list) -> str:
+    """Create a hash of the urgent signal summaries to detect duplicates."""
+    key = "|".join(sorted(s.summary for s in signals))
+    return hashlib.md5(key.encode()).hexdigest()
+
+
 class WakeBudget:
     def __init__(self, max_per_nous_per_hour: int = 2, max_total_per_hour: int = 6, cooldown_seconds: int = 300):
         self._max_per_nous = max_per_nous_per_hour
@@ -22,6 +29,11 @@ class WakeBudget:
         self._nous_wakes: dict[str, list[float]] = defaultdict(list)
         self._total_wakes: list[float] = []
         self._last_wake: dict[str, float] = {}
+        # Track which signal sets have already been delivered per nous
+        # Maps nous_id -> (fingerprint, delivery_time)
+        self._delivered: dict[str, tuple[str, float]] = {}
+        # Don't re-deliver the same signal set within this window (1 hour)
+        self._dedup_window = 3600.0
 
     def can_wake(self, nous_id: str) -> bool:
         now = time.monotonic()
@@ -41,11 +53,24 @@ class WakeBudget:
 
         return True
 
-    def record_wake(self, nous_id: str) -> None:
+    def is_duplicate(self, nous_id: str, signals: list) -> bool:
+        """Check if this exact set of signals was already delivered recently."""
+        fp = _signal_fingerprint(signals)
+        prev = self._delivered.get(nous_id)
+        if prev is None:
+            return False
+        prev_fp, prev_time = prev
+        if fp == prev_fp and (time.monotonic() - prev_time) < self._dedup_window:
+            return True
+        return False
+
+    def record_wake(self, nous_id: str, signals: list | None = None) -> None:
         now = time.monotonic()
         self._nous_wakes[nous_id].append(now)
         self._total_wakes.append(now)
         self._last_wake[nous_id] = now
+        if signals:
+            self._delivered[nous_id] = (_signal_fingerprint(signals), now)
 
 
 async def trigger_wake(score: NousScore, config: dict) -> bool:

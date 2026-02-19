@@ -1,4 +1,6 @@
 // Pipeline runner — composes stages for streaming and non-streaming turn execution
+import { createLogger } from "../../koina/logger.js";
+import { eventBus } from "../../koina/event-bus.js";
 import { resolveStage } from "./stages/resolve.js";
 import { checkGuards } from "./stages/guard.js";
 import { buildContext } from "./stages/context.js";
@@ -8,13 +10,23 @@ import { finalize } from "./stages/finalize.js";
 import type {
   InboundMessage,
   TurnOutcome,
+  TurnState,
   TurnStreamEvent,
   RuntimeServices,
 } from "./types.js";
 
+const log = createLogger("pipeline:runner");
+
 export interface StreamingPipelineOpts {
   abortSignal?: AbortSignal;
   turnId?: string;
+}
+
+function identifyFailedStage(state: Partial<TurnState>): string {
+  if (!state.systemPrompt) return "context";
+  if (!state.messages) return "history";
+  if (!state.outcome) return "execute";
+  return "finalize";
 }
 
 export async function* runStreamingPipeline(
@@ -40,22 +52,33 @@ export async function* runStreamingPipeline(
     return refusal.outcome;
   }
 
-  // Stage 3: Context
-  await buildContext(state, services);
+  try {
+    // Stage 3: Context
+    await buildContext(state, services);
 
-  // Stage 4: History
-  await prepareHistory(state, services);
+    // Stage 4: History
+    await prepareHistory(state, services);
 
-  // Stage 5: Execute (streaming)
-  const finalState = yield* executeStreaming(state, services);
+    // Stage 5: Execute (streaming)
+    const finalState = yield* executeStreaming(state, services);
 
-  // Stage 6: Finalize
-  if (finalState.outcome) {
-    await finalize(finalState, services);
-    yield { type: "turn_complete", outcome: finalState.outcome };
+    // Stage 6: Finalize
+    if (finalState.outcome) {
+      await finalize(finalState, services);
+      yield { type: "turn_complete", outcome: finalState.outcome };
+    }
+
+    return finalState.outcome;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stage = identifyFailedStage(state);
+    log.error(`Pipeline failed at ${stage}: ${message}`, { nousId: state.nousId, sessionId: state.sessionId, stage });
+    if (err instanceof Error && err.stack) log.error(err.stack);
+    eventBus.emit("pipeline:error", { nousId: state.nousId, sessionId: state.sessionId, stage, error: message });
+
+    yield { type: "error", message: `Turn failed at ${stage}: ${message}` };
+    return undefined;
   }
-
-  return finalState.outcome;
 }
 
 export async function runBufferedPipeline(
@@ -74,23 +97,43 @@ export async function runBufferedPipeline(
     return refusal.outcome;
   }
 
-  // Stage 3: Context
-  await buildContext(state, services);
+  try {
+    // Stage 3: Context
+    await buildContext(state, services);
 
-  // Stage 4: History
-  await prepareHistory(state, services);
+    // Stage 4: History
+    await prepareHistory(state, services);
 
-  // Stage 5: Execute (buffered)
-  const finalState = await executeBuffered(state, services);
+    // Stage 5: Execute (buffered)
+    const finalState = await executeBuffered(state, services);
 
-  // Stage 6: Finalize
-  if (finalState.outcome) {
-    await finalize(finalState, services);
+    // Stage 6: Finalize
+    if (finalState.outcome) {
+      await finalize(finalState, services);
+    }
+
+    if (!finalState.outcome) {
+      throw new Error("Turn produced no outcome");
+    }
+
+    return finalState.outcome;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stage = identifyFailedStage(state);
+    log.error(`Pipeline failed at ${stage}: ${message}`, { nousId: state.nousId, sessionId: state.sessionId, stage });
+    if (err instanceof Error && err.stack) log.error(err.stack);
+    eventBus.emit("pipeline:error", { nousId: state.nousId, sessionId: state.sessionId, stage, error: message });
+
+    return {
+      text: "",
+      nousId: state.nousId,
+      sessionId: state.sessionId,
+      toolCalls: state.totalToolCalls,
+      inputTokens: state.totalInputTokens,
+      outputTokens: state.totalOutputTokens,
+      cacheReadTokens: state.totalCacheReadTokens ?? 0,
+      cacheWriteTokens: state.totalCacheWriteTokens ?? 0,
+      error: message,
+    };
   }
-
-  if (!finalState.outcome) {
-    throw new Error("Turn produced no outcome");
-  }
-
-  return finalState.outcome;
 }

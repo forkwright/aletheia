@@ -207,6 +207,7 @@ export function createGateway(
         response: result.text,
         sessionId: result.sessionId,
         toolCalls: result.toolCalls,
+        ...(result.error ? { error: result.error } : {}),
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
@@ -403,6 +404,7 @@ export function createGateway(
     if (!commandsRef) return c.json({ error: "Commands not available" }, 503);
     const body = await c.req.json() as Record<string, unknown>;
     const command = body["command"] as string;
+    const sessionId = body["sessionId"] as string | undefined;
     if (!command || typeof command !== "string") {
       return c.json({ error: "Missing command" }, 400);
     }
@@ -421,6 +423,7 @@ export function createGateway(
         manager,
         watchdog: watchdogRef,
         skills: skillsRef,
+        sessionId,
       };
       const result = await match.handler.execute(match.args, ctx);
       return c.json({ ok: true, result });
