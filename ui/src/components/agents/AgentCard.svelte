@@ -2,11 +2,12 @@
   import type { Agent } from "../../lib/types";
   import { formatTimeSince } from "../../lib/format";
 
-  let { agent, isActive = false, lastActivity, onclick }: {
+  let { agent, isActive = false, lastActivity, onclick, unreadCount = 0 }: {
     agent: Agent;
     isActive?: boolean;
     lastActivity?: string | null;
     onclick: () => void;
+    unreadCount?: number;
   } = $props();
 </script>
 
@@ -24,6 +25,9 @@
       <span class="activity">{formatTimeSince(lastActivity)}</span>
     {/if}
   </span>
+  {#if unreadCount > 0}
+    <span class="unread-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+  {/if}
 </button>
 
 <style>
@@ -93,5 +97,20 @@
   .activity {
     font-size: 11px;
     color: var(--text-muted);
+  }
+  .unread-badge {
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
   }
 </style>
