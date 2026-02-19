@@ -134,9 +134,16 @@ class ProsocheDaemon:
                     await self._post_broadcasts(nous_id, urgent)
 
             if score.should_wake and self.budget.can_wake(nous_id):
-                woke = await trigger_wake(score, self.config)
-                if woke:
-                    self.budget.record_wake(nous_id)
+                urgent = [s for s in score.top_signals if s.urgency >= 0.8]
+                if self.budget.is_duplicate(nous_id, urgent):
+                    logger.debug(f"{nous_id}: skipping wake — duplicate signal set")
+                else:
+                    # Record fingerprint BEFORE delivery so failed attempts
+                    # don't cause infinite retry spam
+                    self.budget.record_wake(nous_id, signals=urgent)
+                    woke = await trigger_wake(score, self.config)
+                    if not woke:
+                        logger.warning(f"{nous_id}: wake delivery failed — will retry after dedup window")
                     # Record activity for predictive model
                     import zoneinfo
                     from datetime import datetime
