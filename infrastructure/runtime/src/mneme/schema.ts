@@ -181,4 +181,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);
     `,
   },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN thinking_enabled INTEGER DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN thinking_budget INTEGER DEFAULT 10000;
+    `,
+  },
 ];

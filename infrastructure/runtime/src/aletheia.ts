@@ -40,7 +40,7 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef } from "./pylon/server.js";
+import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef, setCommandsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
@@ -312,6 +312,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Command Registry ---
   const commandRegistry = createDefaultRegistry();
+  setCommandsRef(commandRegistry);
 
   // --- Signal ---
   let watchdog: Watchdog | null = null;

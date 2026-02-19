@@ -42,6 +42,11 @@ export async function* executeStreaming(
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
 
+    // Build thinking config from session if available
+    const thinkingConfig = state.sessionId
+      ? services.store.getThinkingConfig(state.sessionId)
+      : undefined;
+
     for await (const streamEvent of services.router.completeStreaming({
       model,
       system: systemPrompt,
@@ -49,11 +54,16 @@ export async function* executeStreaming(
       ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
+      ...(abortSignal ? { signal: abortSignal } : {}),
+      ...(thinkingConfig?.enabled ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
     })) {
       switch (streamEvent.type) {
         case "text_delta":
           accumulatedText += streamEvent.text;
           yield { type: "text_delta", text: streamEvent.text };
+          break;
+        case "thinking_delta":
+          yield { type: "thinking_delta", text: streamEvent.text };
           break;
         case "tool_use_start":
           yield { type: "tool_start", toolName: streamEvent.name, toolId: streamEvent.id };

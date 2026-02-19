@@ -45,7 +45,7 @@ export class CommandRegistry {
 
   match(text: string): { handler: CommandHandler; args: string } | null {
     const trimmed = text.trim();
-    if (!trimmed.startsWith("!")) return null;
+    if (!trimmed.startsWith("!") && !trimmed.startsWith("/")) return null;
     const spaceIdx = trimmed.indexOf(" ", 1);
     const cmd = spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx);
     const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
@@ -84,9 +84,10 @@ export function createDefaultRegistry(): CommandRegistry {
       const cmds = ctx.manager
         ? (registry as CommandRegistry).listAll()
         : [];
+      const prefix = ctx.target.groupId ? "!" : "/";
       const lines = ["Available commands:", ""];
       for (const cmd of cmds) {
-        lines.push(`  !${cmd.name} — ${cmd.description}`);
+        lines.push(`  ${prefix}${cmd.name} — ${cmd.description}`);
       }
       return lines.join("\n");
     },
@@ -205,6 +206,124 @@ export function createDefaultRegistry(): CommandRegistry {
         lines.push(`  ${skill.name} — ${skill.description}`);
       }
       return lines.join("\n");
+    },
+  });
+
+  registry.register({
+    name: "model",
+    description: "Show or switch model — /model [name]",
+    async execute(args, ctx) {
+      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      if (!args.trim()) {
+        const current = session?.model ?? ctx.config.agents.defaults.model ?? "default";
+        return `Current model: ${current}`;
+      }
+      const modelName = args.trim().toLowerCase();
+      const aliases: Record<string, string> = {
+        opus: "claude-opus-4-6",
+        sonnet: "claude-sonnet-4-6",
+        haiku: "claude-haiku-4-5-20251001",
+      };
+      const resolved = aliases[modelName] ?? modelName;
+      if (session) {
+        ctx.store.updateSessionModel(session.id, resolved);
+        return `Model switched to: ${resolved}`;
+      }
+      return `No active session. Model will be set when you send your next message.`;
+    },
+  });
+
+  registry.register({
+    name: "think",
+    description: "Toggle extended thinking — /think [on|off|budget]",
+    async execute(args, ctx) {
+      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      if (!session) return "No active session.";
+      const config = ctx.store.getThinkingConfig(session.id);
+      const arg = args.trim().toLowerCase();
+      if (!arg) {
+        const newState = !config.enabled;
+        ctx.store.setThinkingConfig(session.id, newState, config.budget);
+        return `Extended thinking: ${newState ? "ON" : "OFF"} (budget: ${config.budget} tokens)`;
+      }
+      if (arg === "on") {
+        ctx.store.setThinkingConfig(session.id, true, config.budget);
+        return `Extended thinking: ON (budget: ${config.budget} tokens)`;
+      }
+      if (arg === "off") {
+        ctx.store.setThinkingConfig(session.id, false, config.budget);
+        return "Extended thinking: OFF";
+      }
+      const budget = parseInt(arg, 10);
+      if (!isNaN(budget) && budget > 0) {
+        ctx.store.setThinkingConfig(session.id, true, budget);
+        return `Extended thinking: ON (budget: ${budget} tokens)`;
+      }
+      return "Usage: /think [on|off|<budget>]";
+    },
+  });
+
+  registry.register({
+    name: "distill",
+    aliases: ["compact"],
+    description: "Compress context — distill older messages into memory",
+    async execute(_args, ctx) {
+      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      if (!session) return "No active session to distill.";
+      try {
+        await ctx.manager.triggerDistillation(session.id);
+        return "Context distilled. Older messages compressed into memory.";
+      } catch (err) {
+        return `Distillation failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  });
+
+  registry.register({
+    name: "blackboard",
+    description: "Cross-agent blackboard — /blackboard [list|read|write|delete] [key] [value]",
+    async execute(args, ctx) {
+      const parts = args.trim().split(/\s+/);
+      const sub = parts[0]?.toLowerCase();
+      if (!sub || sub === "list") {
+        const entries = ctx.store.blackboardList();
+        if (entries.length === 0) return "Blackboard is empty.";
+        const lines = ["Blackboard:", ""];
+        for (const e of entries) {
+          lines.push(`  ${e.key} (${e.count} entries, by ${e.authors.join(", ")})`);
+        }
+        return lines.join("\n");
+      }
+      if (sub === "read") {
+        const key = parts[1];
+        if (!key) return "Usage: /blackboard read <key>";
+        const entries = ctx.store.blackboardRead(key);
+        if (entries.length === 0) return `No entries for key: ${key}`;
+        return entries.map((e) => `[${e.author}] ${e.value}`).join("\n");
+      }
+      if (sub === "write") {
+        const key = parts[1];
+        const value = parts.slice(2).join(" ");
+        if (!key || !value) return "Usage: /blackboard write <key> <value>";
+        const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+        const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+        const author = session?.nousId ?? "user";
+        ctx.store.blackboardWrite(key, value, author);
+        return `Written to blackboard: ${key} = ${value}`;
+      }
+      if (sub === "delete") {
+        const key = parts[1];
+        if (!key) return "Usage: /blackboard delete <key>";
+        const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+        const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+        const author = session?.nousId ?? "user";
+        const count = ctx.store.blackboardDelete(key, author);
+        return count > 0 ? `Deleted ${count} entries for key: ${key}` : `No entries found for key: ${key}`;
+      }
+      return "Usage: /blackboard [list|read|write|delete] [key] [value]";
     },
   });
 

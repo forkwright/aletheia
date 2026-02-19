@@ -63,6 +63,13 @@ describe("command execution", () => {
     const match = registry.match("!help");
     const result = await match!.handler.execute("", makeCtx());
     expect(result).toContain("Available commands");
+    expect(result).toContain("/ping");
+    expect(result).toContain("/status");
+  });
+
+  it("help uses ! prefix in group context", async () => {
+    const match = registry.match("!help");
+    const result = await match!.handler.execute("", makeCtx({ target: { account: "+1", groupId: "grp1" } }));
     expect(result).toContain("!ping");
     expect(result).toContain("!status");
   });
