@@ -42,10 +42,12 @@ export async function* executeStreaming(
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
 
-    // Build thinking config from session if available
+    // Build thinking config — only for models that support extended thinking (opus, sonnet-4)
     const thinkingConfig = state.sessionId
       ? services.store.getThinkingConfig(state.sessionId)
       : undefined;
+    const supportsThinking = /opus|sonnet-4/i.test(model);
+    const useThinking = thinkingConfig?.enabled && supportsThinking;
 
     for await (const streamEvent of services.router.completeStreaming({
       model,
@@ -55,7 +57,7 @@ export async function* executeStreaming(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
-      ...(thinkingConfig?.enabled ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
+      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
     })) {
       switch (streamEvent.type) {
         case "text_delta":
