@@ -50,7 +50,17 @@ export function buildMessages(
       try {
         const parsed = JSON.parse(msg.content);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
-          messages.push({ role: "assistant", content: parsed as ContentBlock[] });
+          // Strip thinking blocks without signatures from history — the API
+          // rejects them without the signature field. Blocks with signatures
+          // (captured during streaming) are kept for optimal context.
+          const filtered = (parsed as Array<{ type: string; signature?: string }>).filter(
+            (b) => b.type !== "thinking" || b.signature,
+          );
+          if (filtered.length > 0) {
+            messages.push({ role: "assistant", content: filtered as ContentBlock[] });
+          } else {
+            messages.push({ role: "assistant", content: "" });
+          }
           continue;
         }
       } catch {

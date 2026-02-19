@@ -43,6 +43,7 @@ export interface ImageBlock {
 export interface ThinkingBlock {
   type: "thinking";
   thinking: string;
+  signature?: string;
 }
 
 export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock;
@@ -244,7 +245,7 @@ export class AnthropicProvider {
     let responseModel = model;
 
     // Track in-progress content blocks by index
-    const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[] }>();
+    const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[]; signature?: string }>();
 
     for await (const event of stream) {
       switch (event.type) {
@@ -282,6 +283,11 @@ export class AnthropicProvider {
             const state = blockState.get(event.index);
             if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
             yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
+          } else if (delta.type === "signature_delta") {
+            const state = blockState.get(event.index);
+            if (state?.type === "thinking") {
+              state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+            }
           } else if (delta.type === "input_json_delta") {
             const state = blockState.get(event.index);
             if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
@@ -292,7 +298,11 @@ export class AnthropicProvider {
         case "content_block_stop": {
           const state = blockState.get(event.index);
           if (state?.type === "thinking") {
-            contentBlocks.push({ type: "thinking", thinking: state.text ?? "" });
+            contentBlocks.push({
+              type: "thinking",
+              thinking: state.text ?? "",
+              ...(state.signature ? { signature: state.signature } : {}),
+            });
           } else if (state?.type === "text") {
             contentBlocks.push({ type: "text", text: state.text ?? "" });
           } else if (state?.type === "tool_use") {
