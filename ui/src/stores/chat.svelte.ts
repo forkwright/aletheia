@@ -7,6 +7,7 @@ interface AgentChatState {
   isStreaming: boolean;
   remoteStreaming: boolean;
   streamingText: string;
+  thinkingText: string;
   activeToolCalls: ToolCallState[];
   error: string | null;
   abortController: AbortController | null;
@@ -20,6 +21,7 @@ const EMPTY: AgentChatState = {
   isStreaming: false,
   remoteStreaming: false,
   streamingText: "",
+  thinkingText: "",
   activeToolCalls: [],
   error: null,
   abortController: null,
@@ -39,6 +41,7 @@ function writeState(agentId: string): AgentChatState {
       isStreaming: false,
       remoteStreaming: false,
       streamingText: "",
+      thinkingText: "",
       activeToolCalls: [],
       error: null,
       abortController: null,
@@ -63,6 +66,10 @@ export function setRemoteStreaming(agentId: string, active: boolean): void {
 
 export function getStreamingText(agentId: string): string {
   return readState(agentId).streamingText;
+}
+
+export function getThinkingText(agentId: string): string {
+  return readState(agentId).thinkingText;
 }
 
 export function getActiveToolCalls(agentId: string): ToolCallState[] {
@@ -139,6 +146,7 @@ export async function sendMessage(
   // Start streaming
   state.isStreaming = true;
   state.streamingText = "";
+  state.thinkingText = "";
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
@@ -147,6 +155,10 @@ export async function sendMessage(
   try {
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
+        case "thinking_delta":
+          state.thinkingText += event.text;
+          break;
+
         case "text_delta":
           // Insert separator when text follows tool results (new content block)
           if (needsTextSeparator && state.streamingText) {
@@ -199,12 +211,31 @@ export async function sendMessage(
             content: state.streamingText || event.outcome.text,
             timestamp: new Date().toISOString(),
             toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+            ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
           };
           state.messages = [...state.messages, assistantMsg];
           state.streamingText = "";
+          state.thinkingText = "";
           state.activeToolCalls = [];
           state.isStreaming = false;
           needsTextSeparator = false;
+          break;
+        }
+
+        case "turn_abort": {
+          state.remoteStreaming = false;
+          if (state.streamingText) {
+            const partial: ChatMessage = {
+              id: `assistant-${Date.now()}`,
+              role: "assistant",
+              content: state.streamingText,
+              timestamp: new Date().toISOString(),
+              toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+            };
+            state.messages = [...state.messages, partial];
+            state.streamingText = "";
+            state.activeToolCalls = [];
+          }
           break;
         }
 
@@ -226,11 +257,14 @@ export async function sendMessage(
         content: state.streamingText,
         timestamp: new Date().toISOString(),
         toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+        ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
       };
       state.messages = [...state.messages, partial];
     }
     state.isStreaming = false;
+    state.remoteStreaming = false;
     state.streamingText = "";
+    state.thinkingText = "";
     state.activeToolCalls = [];
     state.abortController = null;
     state.pendingApproval = null;
@@ -242,7 +276,11 @@ export function hasLocalStream(agentId: string): boolean {
 }
 
 export function abortStream(agentId: string): void {
-  states[agentId]?.abortController?.abort();
+  const s = states[agentId];
+  if (s) {
+    s.abortController?.abort();
+    s.remoteStreaming = false;
+  }
 }
 
 function historyToMessages(history: HistoryMessage[]): ChatMessage[] {

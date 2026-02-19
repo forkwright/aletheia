@@ -29,6 +29,7 @@ let cronRef: CronScheduler | null = null;
 let watchdogRef: Watchdog | null = null;
 let skillsRef: SkillRegistry | null = null;
 let mcpRef: McpClientManager | null = null;
+let commandsRef: import("../semeion/commands.js").CommandRegistry | null = null;
 export function setCronRef(cron: CronScheduler): void {
   cronRef = cron;
 }
@@ -40,6 +41,9 @@ export function setSkillsRef(sr: SkillRegistry): void {
 }
 export function setMcpRef(mcp: McpClientManager): void {
   mcpRef = mcp;
+}
+export function setCommandsRef(reg: import("../semeion/commands.js").CommandRegistry): void {
+  commandsRef = reg;
 }
 
 export function createGateway(
@@ -381,6 +385,49 @@ export function createGateway(
     const aborted = manager.abortTurn(id);
     if (!aborted) return c.json({ error: "Turn not found or already completed" }, 404);
     return c.json({ ok: true, turnId: id });
+  });
+
+  // --- Commands ---
+
+  app.get("/api/commands", (c) => {
+    if (!commandsRef) return c.json({ commands: [] });
+    const cmds = commandsRef.listAll().map((cmd) => ({
+      name: cmd.name,
+      description: cmd.description,
+      aliases: cmd.aliases ?? [],
+    }));
+    return c.json({ commands: cmds });
+  });
+
+  app.post("/api/command", async (c) => {
+    if (!commandsRef) return c.json({ error: "Commands not available" }, 503);
+    const body = await c.req.json() as Record<string, unknown>;
+    const command = body["command"] as string;
+    if (!command || typeof command !== "string") {
+      return c.json({ error: "Missing command" }, 400);
+    }
+    const match = commandsRef.match(command);
+    if (!match) return c.json({ error: `Unknown command: ${command}` }, 404);
+    try {
+      const ctx = {
+        sender: "webchat",
+        senderName: "WebUI",
+        isGroup: false,
+        accountId: "",
+        target: { account: "" } as import("../semeion/sender.js").SendTarget,
+        client: {} as import("../semeion/client.js").SignalClient,
+        store,
+        config,
+        manager,
+        watchdog: watchdogRef,
+        skills: skillsRef,
+      };
+      const result = await match.handler.execute(match.args, ctx);
+      return c.json({ ok: true, result });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: msg }, 500);
+    }
   });
 
   // --- Tool Approval ---

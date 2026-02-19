@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo } from "./types";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -112,6 +112,19 @@ export async function fetchGraphExport(params?: GraphExportParams): Promise<Grap
     community_meta: data.community_meta ?? [],
     total_nodes: data.total_nodes ?? data.nodes.length,
   };
+}
+
+export async function fetchCommands(): Promise<CommandInfo[]> {
+  const data = await fetchJson<{ commands: CommandInfo[] }>("/api/commands");
+  return data.commands;
+}
+
+export async function executeCommand(command: string, sessionId?: string): Promise<string> {
+  const data = await fetchJson<{ ok: boolean; result: string }>("/api/command", {
+    method: "POST",
+    body: JSON.stringify({ command, sessionId }),
+  });
+  return data.result;
 }
 
 export async function approveToolCall(turnId: string, toolId: string, alwaysAllow = false): Promise<void> {

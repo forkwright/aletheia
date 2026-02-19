@@ -9,6 +9,7 @@
     getMessages,
     getIsStreaming,
     getStreamingText,
+    getThinkingText,
     getActiveToolCalls,
     getError,
     clearError,
@@ -38,16 +39,20 @@
     createNewSession,
     loadSessions,
   } from "../../stores/sessions.svelte";
-  import { distillSession } from "../../lib/api";
+  import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
+  import type { CommandInfo } from "../../lib/types";
   import { onGlobalEvent } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
 
   let distilling = $state(false);
+  let serverCommands = $state<CommandInfo[]>([]);
 
   // Recover streaming state after refresh
   let unsubEvents: (() => void) | null = null;
 
   onMount(() => {
+    fetchCommands().then((cmds) => { serverCommands = cmds; }).catch(() => {});
+
     unsubEvents = onGlobalEvent((event, data) => {
       const agentId = getActiveAgentId();
       if (!agentId) return;
@@ -189,6 +194,22 @@
         return;
       }
 
+      // Try server command
+      const serverCmd = serverCommands.find(
+        (sc) => `/${sc.name}` === cmdName || sc.aliases?.some((a) => `/${a}` === cmdName),
+      );
+      if (serverCmd) {
+        const id = getActiveAgentId();
+        if (!id) return;
+        const sessionId = getActiveSessionId();
+        executeCommand(trimmed, sessionId ?? undefined).then((result) => {
+          injectLocalMessage(id, result);
+        }).catch((err) => {
+          injectLocalMessage(id, `*Command failed: ${err instanceof Error ? err.message : String(err)}*`);
+        });
+        return;
+      }
+
       // Unknown command — ignore
       return;
     }
@@ -238,10 +259,15 @@
   }
 
   function getSlashCommands(): Array<{ command: string; description: string }> {
-    return Object.entries(slashCommands).map(([command, { description }]) => ({
+    const clientCmds = Object.entries(slashCommands).map(([command, { description }]) => ({
       command,
       description,
     }));
+    const clientNames = new Set(clientCmds.map((c) => c.command.slice(1)));
+    const serverCmds = serverCommands
+      .filter((sc) => !clientNames.has(sc.name))
+      .map((sc) => ({ command: `/${sc.name}`, description: sc.description }));
+    return [...clientCmds, ...serverCmds];
   }
 </script>
 
@@ -253,6 +279,7 @@
     <MessageList
       messages={currentAgentId ? getMessages(currentAgentId) : []}
       streamingText={currentAgentId ? getStreamingText(currentAgentId) : ""}
+      thinkingText={currentAgentId ? getThinkingText(currentAgentId) : ""}
       activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
       isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
       agentName={agent?.name}
