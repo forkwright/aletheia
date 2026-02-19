@@ -211,6 +211,67 @@ describe("distillSession", () => {
     expect(sanitizeToolResults).toHaveBeenCalled();
   });
 
+  it("preserves recent messages when preserveRecentMessages is set", async () => {
+    // 20 messages so we have enough to distill + preserve
+    const messages = Array.from({ length: 20 }, (_, i) => ({
+      seq: i + 1,
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `message ${i + 1}`,
+      isDistilled: false,
+      tokenEstimate: 200,
+    }));
+    const store = makeStore({
+      getHistory: vi.fn().mockReturnValue(messages),
+    });
+
+    const result = await distillSession(store, makeRouter(), "ses_preserve", "syn", {
+      triggerThreshold: 10000,
+      minMessages: 4,
+      extractionModel: "claude-haiku",
+      summaryModel: "claude-haiku",
+      preserveRecentMessages: 10,
+      preserveRecentMaxTokens: 12000,
+    });
+
+    // Should preserve up to 10 recent messages (within token budget)
+    // messagesAfter = 1 (summary) + preserved count
+    expect(result.messagesAfter).toBeGreaterThan(1);
+    expect(result.messagesAfter).toBeLessThanOrEqual(11); // 1 summary + up to 10 preserved
+
+    // The distilled seqs should NOT include the preserved messages
+    const distilledSeqs = store.markMessagesDistilled.mock.calls[0]?.[1] as number[];
+    const preservedSeqs = messages.slice(-10).map(m => m.seq);
+    for (const seq of preservedSeqs.slice(-(result.messagesAfter - 1))) {
+      expect(distilledSeqs).not.toContain(seq);
+    }
+  });
+
+  it("preserves fewer messages when token budget is tight", async () => {
+    // 20 messages, each 2000 tokens — with 4000 token budget, only ~2 fit
+    const messages = Array.from({ length: 20 }, (_, i) => ({
+      seq: i + 1,
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `message ${i + 1}`,
+      isDistilled: false,
+      tokenEstimate: 2000,
+    }));
+    const store = makeStore({
+      getHistory: vi.fn().mockReturnValue(messages),
+    });
+
+    const result = await distillSession(store, makeRouter(), "ses_token_limit", "syn", {
+      triggerThreshold: 10000,
+      minMessages: 4,
+      extractionModel: "claude-haiku",
+      summaryModel: "claude-haiku",
+      preserveRecentMessages: 10,
+      preserveRecentMaxTokens: 4000,
+    });
+
+    // Token budget limits preservation to ~2 messages (2000 tokens each, budget 4000)
+    expect(result.messagesAfter).toBeLessThanOrEqual(3); // 1 summary + up to 2 preserved
+  });
+
   describe("workspace memory flush", () => {
     const tmpDirs: string[] = [];
 

@@ -1,3 +1,4 @@
+// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Auth session CRUD — SQLite-backed
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";

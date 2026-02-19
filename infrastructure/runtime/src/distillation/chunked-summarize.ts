@@ -132,8 +132,9 @@ export async function summarizeInStages(
     model,
     system:
       "Merge these partial summaries of your own conversation into a single cohesive summary. " +
+      "Use these sections (omit any that are empty): ## Task Context, ## Completed Work, ## Key Decisions, ## Current State, ## Open Threads, ## Corrections. " +
       "Preserve all decisions, open items, technical details, and specific facts. " +
-      "Remove redundancies. Write in first person (\"I\"). Keep under 500 words.",
+      "Remove redundancies. Write in first person (\"I\"). Keep under 600 words.",
     messages: [{ role: "user", content: mergeContent }],
     maxTokens: 2048,
   });

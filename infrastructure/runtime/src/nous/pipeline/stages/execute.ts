@@ -8,6 +8,7 @@ import { checkResponseQuality } from "../../circuit-breaker.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type {
   ContentBlock,
+  ContextManagement,
   ToolUseBlock,
   UserContentBlock,
 } from "../../../hermeneus/anthropic.js";
@@ -19,6 +20,33 @@ import type {
 } from "../types.js";
 
 const log = createLogger("pipeline:execute");
+
+/**
+ * Build context management config for Anthropic's server-side context editing.
+ * Clears old tool results at 60% of context window and thinking blocks (keeping last 2 turns).
+ * This delays distillation by freeing context space automatically.
+ */
+function buildContextManagement(contextTokens: number, thinkingEnabled: boolean): ContextManagement | undefined {
+  const edits: ContextManagement["edits"] = [];
+
+  // Thinking clearing must come first in the edits array (API requirement)
+  if (thinkingEnabled) {
+    edits.push({
+      type: "clear_thinking_20251015",
+      keep: { type: "thinking_turns", value: 2 },
+    });
+  }
+
+  // Clear old tool results at 60% context, keep last 8, clear at least 20K tokens
+  edits.push({
+    type: "clear_tool_uses_20250919",
+    trigger: { type: "input_tokens", value: Math.floor(contextTokens * 0.6) },
+    keep: { type: "tool_uses", value: 8 },
+    clear_at_least: { type: "input_tokens", value: 20000 },
+  });
+
+  return edits.length > 0 ? { edits } : undefined;
+}
 
 export async function* executeStreaming(
   state: TurnState,
@@ -42,10 +70,16 @@ export async function* executeStreaming(
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
 
-    // Build thinking config from session if available
+    // Build thinking config — only for models that support extended thinking (opus, sonnet-4)
     const thinkingConfig = state.sessionId
       ? services.store.getThinkingConfig(state.sessionId)
       : undefined;
+    const supportsThinking = /opus|sonnet-4/i.test(model);
+    const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
+
+    // Build context management — clears old tool results and thinking blocks server-side
+    const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+    const contextManagement = buildContextManagement(contextTokens, useThinking);
 
     for await (const streamEvent of services.router.completeStreaming({
       model,
@@ -55,7 +89,8 @@ export async function* executeStreaming(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
-      ...(thinkingConfig?.enabled ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
+      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
+      ...(contextManagement ? { contextManagement } : {}),
     })) {
       switch (streamEvent.type) {
         case "text_delta":
@@ -328,6 +363,10 @@ export async function executeBuffered(
   const { turnToolCalls, loopDetector } = state;
   const seq = state.seq;
 
+  // Context management for buffered path
+  const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+  const bufferedContextMgmt = buildContextManagement(contextTokens, false);
+
   for (let loop = 0; ; loop++) {
     const result = await services.router.complete({
       model,
@@ -336,6 +375,7 @@ export async function executeBuffered(
       ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
+      ...(bufferedContextMgmt ? { contextManagement: bufferedContextMgmt } : {}),
     });
 
     totalInputTokens += result.usage.inputTokens;

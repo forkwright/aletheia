@@ -1,3 +1,4 @@
+// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Multi-mode auth middleware for Hono
 import type { Context, Next } from "hono";
 import { timingSafeEqual } from "node:crypto";

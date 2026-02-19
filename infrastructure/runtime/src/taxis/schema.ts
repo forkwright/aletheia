@@ -47,8 +47,8 @@ const CompactionConfig = z
     reserveTokensFloor: z.number().default(8000),
     maxHistoryShare: z.number().default(0.7),
     distillationModel: z.string().default("claude-haiku-4-5-20251001"),
-    preserveRecentMessages: z.number().default(4),
-    preserveRecentMaxTokens: z.number().default(4000),
+    preserveRecentMessages: z.number().default(10),
+    preserveRecentMaxTokens: z.number().default(12000),
     memoryFlush: z
       .object({
         enabled: z.boolean().default(true),

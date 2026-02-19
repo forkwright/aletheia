@@ -68,6 +68,15 @@ export function resolveStage(
   }
 
   const session = services.store.findOrCreateSession(nousId, sessionKey, model, msg.parentSessionId);
+
+  // Auto-enable extended thinking for Opus models (spec 10)
+  const thinkingConfig = services.store.getThinkingConfig(session.id);
+  const isOpus = /opus/i.test(model);
+  if (isOpus && !thinkingConfig.enabled) {
+    services.store.setThinkingConfig(session.id, true, thinkingConfig.budget);
+    log.info(`Enabled extended thinking for ${nousId} session=${session.id} (model=${model})`);
+  }
+
   const workspace = resolveWorkspace(services.config, nous);
 
   // Merge per-agent allowedRoots + global defaults + ALETHEIA_ROOT
