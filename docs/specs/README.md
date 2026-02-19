@@ -10,14 +10,14 @@ that evolve with the system.
 
 | # | Spec | Status | Summary |
 |---|------|--------|---------|
-| 1 | [Turn Safety](01_turn-safety.md) | Draft | Error propagation, distillation guards, orphan prevention — fix silent message failures |
+| 1 | [Turn Safety](01_turn-safety.md) | **Implemented** | Error propagation, distillation guards, orphan prevention — PR #38 |
 | 2 | [Webchat UX](02_webchat-ux.md) | Draft | SSE events, cross-agent notifications, refresh resilience, file editor with split pane |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Draft | Login page (user/pass + remember me), self-update CLI, GitHub Releases |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
-| 6 | [Code Quality](06_code-quality.md) | Draft | Error handling overhaul, dead code audit, coding standards (CONTRIBUTING.md) |
+| 6 | [Code Quality](06_code-quality.md) | **Phase 1 done** | Error handling overhaul, dead code audit, coding standards — CONTRIBUTING.md + CLAUDE.md in PR #37 |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
-| 8 | [Memory Continuity](08_memory-continuity.md) | Draft | Survive distillation: working state, structured summaries, context editing API, expanded tail, agent notes |
+| 8 | [Memory Continuity](08_memory-continuity.md) | **Phase 1 done** | Survive distillation: expanded tail (4→10 msgs) in PR #36, remaining: structured summaries, context editing API, working state, agent notes |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default over 3D, progressive loading, named communities, semantic node cards, search, edit capabilities |
 
 ### Why this order
