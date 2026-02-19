@@ -391,6 +391,28 @@ const McpConfig = z
   })
   .default({});
 
+const RetentionPolicy = z
+  .object({
+    // Days after distillation before raw messages in distilled sessions are purged.
+    // 0 = never purge.
+    distilledMessageMaxAgeDays: z.number().default(90),
+    // Days of inactivity before an archived session's messages are hard-deleted.
+    // 0 = never purge.
+    archivedSessionMaxAgeDays: z.number().default(180),
+    // Tool results longer than this are truncated in the DB after a turn completes.
+    // 0 = no truncation.
+    toolResultMaxChars: z.number().default(0),
+  })
+  .default({});
+
+const PrivacyConfig = z
+  .object({
+    retention: RetentionPolicy,
+    // If true, session DB file permissions are hardened to 0o600 on startup.
+    hardenFilePermissions: z.boolean().default(true),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -406,9 +428,11 @@ export const AletheiaConfigSchema = z.object({
   watchdog: WatchdogConfig.default({}),
   branding: BrandingConfig,
   mcp: McpConfig.default({}),
+  privacy: PrivacyConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
 export type NousConfig = z.infer<typeof NousDefinition>;
 export type BindingConfig = z.infer<typeof Binding>;
 export type SignalAccount = z.infer<typeof SignalAccountConfig>;
+export type PrivacySettings = z.infer<typeof PrivacyConfig>;

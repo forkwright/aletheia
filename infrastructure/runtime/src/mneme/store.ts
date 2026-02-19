@@ -804,6 +804,75 @@ export class SessionStore {
     }));
   }
 
+  // --- Retention / Data Lifecycle ---
+
+  /**
+   * Delete messages in fully-distilled sessions older than `days`.
+   * The session rows and their metadata are preserved; only the raw message
+   * content is removed to free space while keeping audit trails intact.
+   * Returns count of messages deleted.
+   */
+  purgeDistilledMessages(days: number): number {
+    if (days <= 0) return 0;
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+    const result = this.db
+      .prepare(
+        `DELETE FROM messages
+         WHERE session_id IN (
+           SELECT id FROM sessions
+           WHERE status = 'distilled' AND updated_at < ?
+         )`,
+      )
+      .run(cutoff);
+    if (result.changes > 0) {
+      log.info(`Retention: purged ${result.changes} messages from distilled sessions older than ${days}d`);
+    }
+    return result.changes;
+  }
+
+  /**
+   * Delete messages in archived sessions older than `days`.
+   * Archived sessions are ones that were manually archived (not distilled),
+   * e.g. stale spawn sessions. Returns count of messages deleted.
+   */
+  purgeArchivedSessionMessages(days: number): number {
+    if (days <= 0) return 0;
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+    const result = this.db
+      .prepare(
+        `DELETE FROM messages
+         WHERE session_id IN (
+           SELECT id FROM sessions
+           WHERE status = 'archived' AND updated_at < ?
+         )`,
+      )
+      .run(cutoff);
+    if (result.changes > 0) {
+      log.info(`Retention: purged ${result.changes} messages from archived sessions older than ${days}d`);
+    }
+    return result.changes;
+  }
+
+  /**
+   * Truncate oversized tool results stored in the messages table.
+   * Operates on `role = 'tool_result'` rows whose content exceeds maxChars.
+   * Returns count of rows truncated.
+   */
+  truncateToolResults(maxChars: number): number {
+    if (maxChars <= 0) return 0;
+    const result = this.db
+      .prepare(
+        `UPDATE messages
+         SET content = substr(content, 1, ?) || '…[truncated]'
+         WHERE role = 'tool_result' AND length(content) > ?`,
+      )
+      .run(maxChars, maxChars);
+    if (result.changes > 0) {
+      log.info(`Retention: truncated ${result.changes} oversized tool results to ${maxChars} chars`);
+    }
+    return result.changes;
+  }
+
   close(): void {
     this.db.close();
     log.info("Session store closed");
