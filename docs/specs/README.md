@@ -13,6 +13,7 @@ that evolve with the system.
 | [Unified Thread Model](spec-unified-thread-model.md) | Draft | Transport-isolated execution, seamless continuity, thread abstraction |
 | [Cost-Aware Orchestration](spec-cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | [Data Privacy](spec-data-privacy.md) | Draft | Encryption at rest, PII handling, data portability |
+| [Plug-and-Play Onboarding](spec-plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
 
 ## Implemented (Archived)
 
