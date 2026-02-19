@@ -145,22 +145,22 @@
         }
       },
     },
-    "/compact": {
-      description: "Compress context — distill older messages into memory",
+    "/distill": {
+      description: "Distill context — compress older messages into long-term memory",
       handler: async () => {
         const id = getActiveAgentId();
         const sessionId = getActiveSessionId();
         if (!id || !sessionId) return;
         if (distilling) return;
         distilling = true;
-        injectLocalMessage(id, "*Compacting context...*");
+        injectLocalMessage(id, "*Distilling context...*");
         try {
           await distillSession(sessionId);
-          injectLocalMessage(id, "*Context compacted. Older messages distilled into long-term memory.*");
+          injectLocalMessage(id, "*Context distilled. Older messages compressed into long-term memory.*");
           loadHistory(id, sessionId);
           refreshSessions(id);
         } catch (e) {
-          injectLocalMessage(id, `*Compaction failed: ${e instanceof Error ? e.message : String(e)}*`);
+          injectLocalMessage(id, `*Distillation failed: ${e instanceof Error ? e.message : String(e)}*`);
         } finally {
           distilling = false;
         }

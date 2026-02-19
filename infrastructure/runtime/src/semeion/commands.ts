@@ -290,8 +290,8 @@ export function createDefaultRegistry(): CommandRegistry {
 
   registry.register({
     name: "distill",
-    aliases: ["compact"],
-    description: "Compress context \u2014 distill older messages into memory",
+    aliases: [],
+    description: "Distill context \u2014 compress older messages into long-term memory",
     async execute(_args, ctx) {
       const session = findSession(ctx);
       if (!session) return "No active session to distill.";
