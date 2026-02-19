@@ -93,6 +93,7 @@ const NousDefinition = z.object({
   subagents: SubagentConfig.default({}),
   tools: ToolsConfig.default({}),
   heartbeat: HeartbeatConfig.optional(),
+  allowedRoots: z.array(z.string()).optional(),
   identity: z
     .object({
       name: z.string().optional(),
@@ -114,6 +115,9 @@ const AgentDefaults = z.preprocess(
     return val;
   },
   z.object({
+    // Additional filesystem roots the agent may read/write outside its workspace.
+    // Each entry is an absolute path. The ALETHEIA_ROOT is always allowed.
+    allowedRoots: z.array(z.string()).default([]),
     model: z
       .object({
         primary: z.string().default("claude-opus-4-6"),
