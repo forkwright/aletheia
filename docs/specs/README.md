@@ -18,6 +18,7 @@ that evolve with the system.
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
 | 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1 done | Expanded tail (4→10 msgs) in PR #36. Remaining: structured summaries, context editing API, working state, agent notes |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default, progressive loading, named communities, semantic node cards, memory auditing, drift detection |
+| 10 | [Thinking UI](10_thinking-ui.md) | Draft | Extended thinking visibility — live summary pill, detail panel, collapsed reasoning on completed messages |
 
 ### Priority order
 
@@ -29,6 +30,7 @@ that evolve with the system.
 - **7 Knowledge Graph** — Performance. Graph recall too slow. Depends on infrastructure stability (2-3).
 - **8 Memory Continuity** — Frontier. Structured summaries, context editing API, working state, agent notes.
 - **9 Graph Visualization** — Polish. Depends on knowledge graph backend (7).
+- **10 Thinking UI** — UX. Extended thinking pills + detail panel. Can be done alongside 2 (same UI domain).
 
 ## Implemented (Archived)
 
