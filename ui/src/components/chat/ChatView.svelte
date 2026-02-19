@@ -171,8 +171,8 @@
       handler: () => {
         const id = getActiveAgentId();
         if (!id) return;
-        const helpLines = Object.entries(slashCommands)
-          .map(([cmd, { description }]) => `\`${cmd}\` — ${description}`)
+        const helpLines = getSlashCommands()
+          .map(({ command, description }) => `\`${command}\` — ${description}`)
           .join("\n");
         injectLocalMessage(id, `**Available commands:**\n${helpLines}`);
       },
