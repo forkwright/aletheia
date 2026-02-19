@@ -16,9 +16,9 @@ that evolve with the system.
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
 | 6 | [Code Quality](06_code-quality.md) | Phase 1 done | Error handling overhaul, dead code audit — CONTRIBUTING.md + CLAUDE.md in PR #37. Remaining: error sweep, dead code removal, ESLint rules |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
-| 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1 done | Expanded tail (4→10 msgs) in PR #36. Remaining: structured summaries, context editing API, working state, agent notes |
+| 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1-2 done | Expanded tail (#36), structured summaries (#43). Remaining: context editing API, working state, agent notes |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default, progressive loading, named communities, semantic node cards, memory auditing, drift detection |
-| 10 | [Thinking UI](10_thinking-ui.md) | Draft | Extended thinking visibility — live summary pill, detail panel, collapsed reasoning on completed messages |
+| 10 | [Thinking UI](10_thinking-ui.md) | Phase 1 done | Extended thinking enabled for Opus (#40). Remaining: live summary pill, detail panel, collapsed reasoning |
 
 ### Priority order
 
