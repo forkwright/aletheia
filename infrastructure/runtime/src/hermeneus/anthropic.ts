@@ -40,7 +40,13 @@ export interface ImageBlock {
   };
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock;
+export interface ThinkingBlock {
+  type: "thinking";
+  thinking: string;
+  signature?: string;
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock;
 export type UserContentBlock = TextBlock | ToolResultBlock | ImageBlock;
 
 export interface TurnResult {
@@ -60,6 +66,24 @@ export interface MessageParam {
   content: string | ContentBlock[] | UserContentBlock[];
 }
 
+export interface ThinkingConfig {
+  type: "enabled";
+  budget_tokens: number;
+}
+
+export interface ContextManagementEdit {
+  type: "clear_thinking_20251015" | "clear_tool_uses_20250919";
+  trigger?: { type: "input_tokens"; value: number };
+  keep?: { type: "tool_uses" | "thinking_turns"; value: number } | "all";
+  clear_at_least?: { type: "input_tokens"; value: number };
+  exclude_tools?: string[];
+  clear_tool_inputs?: boolean;
+}
+
+export interface ContextManagement {
+  edits: ContextManagementEdit[];
+}
+
 export interface CompletionRequest {
   model: string;
   system: string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
@@ -67,10 +91,14 @@ export interface CompletionRequest {
   tools?: ToolDefinition[];
   maxTokens?: number;
   temperature?: number;
+  signal?: AbortSignal;
+  thinking?: ThinkingConfig;
+  contextManagement?: ContextManagement;
 }
 
 export type StreamingEvent =
   | { type: "text_delta"; text: string }
+  | { type: "thinking_delta"; text: string }
   | { type: "tool_use_start"; index: number; id: string; name: string }
   | { type: "tool_use_end"; index: number }
   | { type: "message_complete"; result: TurnResult };
@@ -143,19 +171,30 @@ export class AnthropicProvider {
   }
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
-    const { model, maxTokens, temperature } = request;
+    const { model, maxTokens, temperature, signal, thinking, contextManagement } = request;
     const cached = this.injectCacheBreakpoints(request);
 
+    // Build params — thinking requires dropping temperature (API constraint)
+    const params: Anthropic.Messages.MessageCreateParamsNonStreaming & Record<string, unknown> = {
+      model,
+      max_tokens: maxTokens ?? 8192,
+      system: typeof cached.system === "string"
+        ? cached.system
+        : cached.system as Anthropic.Messages.TextBlockParam[],
+      messages: cached.messages,
+      ...(cached.tools ? { tools: cached.tools } : {}),
+      ...(thinking ? {} : temperature !== undefined ? { temperature } : {}),
+    };
+    if (thinking) params["thinking"] = thinking;
+    if (contextManagement) params["context_management"] = contextManagement;
+
+    // Beta header for context management
+    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
+
     try {
-      const response = await this.client.messages.create({
-        model,
-        max_tokens: maxTokens ?? 8192,
-        system: typeof cached.system === "string"
-          ? cached.system
-          : cached.system as Anthropic.Messages.TextBlockParam[],
-        messages: cached.messages,
-        ...(cached.tools ? { tools: cached.tools } : {}),
-        ...(temperature !== undefined ? { temperature } : {}),
+      const response = await this.client.messages.create(params, {
+        ...(signal ? { signal } : {}),
+        ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
       });
 
       const usage = response.usage;
@@ -203,10 +242,10 @@ export class AnthropicProvider {
   }
 
   async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
-    const { model, maxTokens, temperature } = request;
+    const { model, maxTokens, temperature, signal, thinking, contextManagement } = request;
     const cached = this.injectCacheBreakpoints(request);
 
-    const stream = await this.client.messages.create({
+    const streamParams: Anthropic.Messages.MessageCreateParamsStreaming & Record<string, unknown> = {
       model,
       max_tokens: maxTokens ?? 8192,
       stream: true,
@@ -215,7 +254,17 @@ export class AnthropicProvider {
         : cached.system as Anthropic.Messages.TextBlockParam[],
       messages: cached.messages,
       ...(cached.tools ? { tools: cached.tools } : {}),
-      ...(temperature !== undefined ? { temperature } : {}),
+      ...(thinking ? {} : temperature !== undefined ? { temperature } : {}),
+    };
+    if (thinking) streamParams["thinking"] = thinking;
+    if (contextManagement) streamParams["context_management"] = contextManagement;
+
+    // Beta header for context management
+    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
+
+    const stream = await this.client.messages.create(streamParams, {
+      ...(signal ? { signal } : {}),
+      ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
     });
 
     const contentBlocks: ContentBlock[] = [];
@@ -224,7 +273,7 @@ export class AnthropicProvider {
     let responseModel = model;
 
     // Track in-progress content blocks by index
-    const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[] }>();
+    const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[]; signature?: string }>();
 
     for await (const event of stream) {
       switch (event.type) {
@@ -246,6 +295,8 @@ export class AnthropicProvider {
           } else if (block.type === "tool_use") {
             blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
             yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
+          } else if (block.type === "thinking") {
+            blockState.set(event.index, { type: "thinking", text: "" });
           }
           break;
         }
@@ -256,6 +307,15 @@ export class AnthropicProvider {
             const state = blockState.get(event.index);
             if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
             yield { type: "text_delta", text: delta.text };
+          } else if (delta.type === "thinking_delta") {
+            const state = blockState.get(event.index);
+            if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
+            yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
+          } else if (delta.type === "signature_delta") {
+            const state = blockState.get(event.index);
+            if (state?.type === "thinking") {
+              state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+            }
           } else if (delta.type === "input_json_delta") {
             const state = blockState.get(event.index);
             if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
@@ -265,7 +325,13 @@ export class AnthropicProvider {
 
         case "content_block_stop": {
           const state = blockState.get(event.index);
-          if (state?.type === "text") {
+          if (state?.type === "thinking") {
+            contentBlocks.push({
+              type: "thinking",
+              thinking: state.text ?? "",
+              ...(state.signature ? { signature: state.signature } : {}),
+            });
+          } else if (state?.type === "text") {
             contentBlocks.push({ type: "text", text: state.text ?? "" });
           } else if (state?.type === "tool_use") {
             let input: Record<string, unknown> = {};

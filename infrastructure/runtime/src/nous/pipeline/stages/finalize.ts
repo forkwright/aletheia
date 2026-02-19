@@ -88,6 +88,7 @@ export async function finalize(
         `actual=${actualContext} tokens)`,
       );
       const distillModel = compaction.distillationModel;
+      const thread = services.store.getThreadForSession(sessionId);
       await distillSession(services.store, services.router, sessionId, nousId, {
         triggerThreshold: distillThreshold,
         minMessages: 10,
@@ -97,6 +98,11 @@ export async function finalize(
         preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
         ...(workspace ? { workspace } : {}),
         ...(services.plugins ? { plugins: services.plugins } : {}),
+        ...(thread ? {
+          onThreadSummaryUpdate: (summary, keyFacts) => {
+            services.store.updateThreadSummary(thread.id, summary, keyFacts);
+          },
+        } : {}),
       });
     }
   } catch (err) {

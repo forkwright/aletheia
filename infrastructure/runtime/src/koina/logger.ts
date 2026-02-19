@@ -153,3 +153,25 @@ function findModuleLevel(name: string): number | undefined {
   }
   return undefined;
 }
+
+/**
+ * Truncate long strings in a value before logging — prevents PII-heavy
+ * payloads (message content, tool results) from appearing in log output.
+ * Primitive types are returned as-is. Objects are shallow-cloned with
+ * string fields longer than `maxLen` truncated to `[…N chars]`.
+ */
+export function sanitizeForLog(value: unknown, maxLen = 200): unknown {
+  if (typeof value === "string") {
+    return value.length > maxLen ? `${value.slice(0, maxLen)}…[${value.length} chars]` : value;
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = typeof v === "string" && v.length > maxLen
+        ? `${v.slice(0, maxLen)}…[${v.length} chars]`
+        : v;
+    }
+    return out;
+  }
+  return value;
+}

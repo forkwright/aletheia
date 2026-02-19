@@ -25,11 +25,18 @@ const sessionLocks = new Map<string, Promise<unknown>>();
 
 function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const previous = sessionLocks.get(key) ?? Promise.resolve();
-  const current = previous.then(fn, fn);
-  sessionLocks.set(key, current);
-  current.finally(() => {
-    if (sessionLocks.get(key) === current) sessionLocks.delete(key);
-  }).catch(() => {});
+  const current = previous.then(
+    () => fn(),
+    (prevErr) => {
+      log.warn(`Previous turn on lock "${key}" failed: ${prevErr instanceof Error ? prevErr.message : prevErr}`);
+      return fn();
+    },
+  );
+  const settled = current.catch(() => {});
+  sessionLocks.set(key, settled);
+  settled.then(() => {
+    if (sessionLocks.get(key) === settled) sessionLocks.delete(key);
+  });
   return current;
 }
 
@@ -56,6 +63,8 @@ export class NousManager {
   ) {
     log.info(`NousManager initialized with ${config.agents.list.length} nous`);
   }
+
+  get sessionStore(): SessionStore { return this.store; }
 
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
@@ -127,7 +136,7 @@ export class NousManager {
 
     const services = this.buildServices();
     const nousId = resolveNousId(msg, services);
-    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
+    const lockKey = msg.lockKey ?? `${nousId}:${msg.sessionKey ?? "main"}`;
     const turnId = `${nousId}:${++turnCounter}:${Date.now()}`;
     const abortController = new AbortController();
 
@@ -155,11 +164,16 @@ export class NousManager {
       }
     });
 
+    let resolvedSessionId = "";
     try {
       for await (const event of channel) {
+        if (event.type === "turn_start") resolvedSessionId = event.sessionId;
         yield event;
       }
       await turnPromise;
+      if (resolvedSessionId) {
+        this.maybeScheduleDistillation(resolvedSessionId, nousId, lockKey);
+      }
     } catch (err) {
       yield { type: "error", message: err instanceof Error ? err.message : String(err) };
     } finally {
@@ -181,14 +195,58 @@ export class NousManager {
 
     const services = this.buildServices();
     const nousId = resolveNousId(msg, services);
-    const lockKey = `${nousId}:${msg.sessionKey ?? "main"}`;
+    const lockKey = msg.lockKey ?? `${nousId}:${msg.sessionKey ?? "main"}`;
 
     this.trackTurnStart(nousId);
     try {
-      return await withSessionLock(lockKey, () => runBufferedPipeline(msg, services));
+      const outcome = await withSessionLock(lockKey, () => runBufferedPipeline(msg, services));
+      this.maybeScheduleDistillation(outcome.sessionId, outcome.nousId, lockKey);
+      return outcome;
     } finally {
       this.trackTurnEnd(nousId);
     }
+  }
+
+  private maybeScheduleDistillation(sessionId: string, nousId: string, lockKey: string): void {
+    const compaction = this.config.agents.defaults.compaction;
+    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
+
+    const session = this.store.findSessionById(sessionId);
+    if (!session) return;
+    const actualContext = session.lastInputTokens ?? session.tokenCountEstimate ?? 0;
+    if (session.messageCount < 10 || actualContext < distillThreshold) return;
+
+    const utilization = Math.round((actualContext / contextTokens) * 100);
+    log.info(
+      `Scheduling deferred distillation for ${nousId} session=${sessionId} ` +
+      `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
+    );
+
+    const nous = resolveNous(this.config, nousId);
+    const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
+    const thread = this.store.getThreadForSession(sessionId);
+    const distillModel = compaction.distillationModel;
+
+    withSessionLock(lockKey, async () => {
+      await distillSession(this.store, this.router, sessionId, nousId, {
+        triggerThreshold: distillThreshold,
+        minMessages: 10,
+        extractionModel: distillModel,
+        summaryModel: distillModel,
+        preserveRecentMessages: compaction.preserveRecentMessages,
+        preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+        ...(workspace ? { workspace } : {}),
+        ...(this.plugins ? { plugins: this.plugins } : {}),
+        ...(thread ? {
+          onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
+            this.store.updateThreadSummary(thread.id, summary, keyFacts);
+          },
+        } : {}),
+      });
+    }).catch((err) => {
+      log.warn(`Deferred distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+    });
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {
@@ -203,6 +261,7 @@ export class NousManager {
     const nous = resolveNous(this.config, session.nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
 
+    const thread = this.store.getThreadForSession(sessionId);
     log.info(`Manual distillation triggered for session ${sessionId}`);
     await distillSession(this.store, this.router, sessionId, session.nousId, {
       triggerThreshold: distillThreshold,
@@ -213,6 +272,11 @@ export class NousManager {
       preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
+      ...(thread ? {
+        onThreadSummaryUpdate: (summary, keyFacts) => {
+          this.store.updateThreadSummary(thread.id, summary, keyFacts);
+        },
+      } : {}),
     });
   }
 }

@@ -40,7 +40,7 @@ export function highlightCode(code: string, language?: string): string {
 }
 
 const marked = new Marked({
-  breaks: true,
+  breaks: false,
   gfm: true,
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {

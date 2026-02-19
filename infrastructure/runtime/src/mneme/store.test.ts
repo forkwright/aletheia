@@ -395,3 +395,212 @@ describe("archiveStaleSpawnSessions", () => {
     expect(typeof count).toBe("number");
   });
 });
+
+describe("thread model (Phase 2)", () => {
+  it("resolveThread creates new thread on first call", () => {
+    const thread = store.resolveThread("syn", "alice");
+    expect(thread.id).toMatch(/^thr_/);
+    expect(thread.nousId).toBe("syn");
+    expect(thread.identity).toBe("alice");
+  });
+
+  it("resolveThread returns same thread on second call", () => {
+    const t1 = store.resolveThread("syn", "alice");
+    const t2 = store.resolveThread("syn", "alice");
+    expect(t1.id).toBe(t2.id);
+  });
+
+  it("resolveThread creates separate threads for different (nous, identity) pairs", () => {
+    const t1 = store.resolveThread("syn", "alice");
+    const t2 = store.resolveThread("chiron", "alice");
+    const t3 = store.resolveThread("syn", "alice");
+    expect(t1.id).not.toBe(t2.id);
+    expect(t1.id).not.toBe(t3.id);
+    expect(t2.id).not.toBe(t3.id);
+  });
+
+  it("resolveBinding upserts binding and returns it", () => {
+    const thread = store.resolveThread("syn", "alice");
+    const binding = store.resolveBinding(thread.id, "signal", "signal:abc123");
+    expect(binding.id).toMatch(/^tbnd_/);
+    expect(binding.threadId).toBe(thread.id);
+    expect(binding.transport).toBe("signal");
+    expect(binding.channelKey).toBe("signal:abc123");
+  });
+
+  it("resolveBinding returns same binding on repeat call (updates lastSeenAt)", () => {
+    const thread = store.resolveThread("syn", "alice");
+    const b1 = store.resolveBinding(thread.id, "webchat", "web:alice:syn");
+    const b2 = store.resolveBinding(thread.id, "webchat", "web:alice:syn");
+    expect(b1.id).toBe(b2.id);
+  });
+
+  it("migrateSessionsToThreads links sessions to threads", () => {
+    store.createSession("syn", "signal:abc123");
+    store.createSession("chiron", "web:anonymous:chiron");
+    const count = store.migrateSessionsToThreads();
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+
+  it("migrateSessionsToThreads does not re-migrate already linked sessions", () => {
+    store.createSession("syn", "signal:abc123");
+    const c1 = store.migrateSessionsToThreads();
+    const c2 = store.migrateSessionsToThreads();
+    expect(c1).toBeGreaterThanOrEqual(1);
+    expect(c2).toBe(0); // already linked
+  });
+});
+
+describe("thread summary (Phase 3)", () => {
+  let threadId: string;
+
+  beforeEach(() => {
+    const thread = store.resolveThread("syn", "alice");
+    threadId = thread.id;
+  });
+
+  it("getThreadSummary returns null when no summary exists", () => {
+    expect(store.getThreadSummary(threadId)).toBeNull();
+  });
+
+  it("updateThreadSummary creates new summary", () => {
+    store.updateThreadSummary(threadId, "Alice and I have been working on auth.", ["Auth implemented", "PR #26 merged"]);
+    const summary = store.getThreadSummary(threadId);
+    expect(summary).not.toBeNull();
+    expect(summary!.summary).toBe("Alice and I have been working on auth.");
+    expect(summary!.keyFacts).toEqual(["Auth implemented", "PR #26 merged"]);
+    expect(summary!.threadId).toBe(threadId);
+  });
+
+  it("updateThreadSummary replaces existing summary", () => {
+    store.updateThreadSummary(threadId, "First summary", ["fact 1"]);
+    store.updateThreadSummary(threadId, "Updated summary", ["fact 2"]);
+    const summary = store.getThreadSummary(threadId);
+    expect(summary!.summary).toBe("Updated summary");
+    expect(summary!.keyFacts).toEqual(["fact 2"]);
+  });
+
+  it("getThreadForSession returns the thread linked to a session", () => {
+    const session = store.createSession("syn", "signal:cody123");
+    const thread = store.resolveThread("syn", "alice");
+    store.resolveBinding(thread.id, "signal", "signal:cody123");
+    store.linkSessionToThread(session.id, thread.id, "signal");
+
+    const found = store.getThreadForSession(session.id);
+    expect(found).not.toBeNull();
+    expect(found!.id).toBe(thread.id);
+  });
+
+  it("getThreadForSession returns null for unlinked session", () => {
+    const session = store.createSession("syn", "main");
+    expect(store.getThreadForSession(session.id)).toBeNull();
+  });
+
+  it("getSessionsByThread returns sessions in the thread", () => {
+    const session = store.createSession("syn", "signal:cody123");
+    const thread = store.resolveThread("syn", "alice");
+    store.linkSessionToThread(session.id, thread.id, "signal");
+
+    const sessions = store.getSessionsByThread(thread.id);
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]!.id).toBe(session.id);
+  });
+
+  it("getThreadHistory returns messages across all sessions in thread", () => {
+    const s1 = store.createSession("syn", "signal:cody123");
+    const s2 = store.createSession("syn", "signal:cody456");
+    const thread = store.resolveThread("syn", "alice");
+    store.linkSessionToThread(s1.id, thread.id, "signal");
+    store.linkSessionToThread(s2.id, thread.id, "signal");
+
+    store.appendMessage(s1.id, "user", "hello from session 1", { tokenEstimate: 10 });
+    store.appendMessage(s2.id, "user", "hello from session 2", { tokenEstimate: 10 });
+
+    const history = store.getThreadHistory(thread.id);
+    expect(history.length).toBe(2);
+    // Should include messages from both sessions
+    const contents = history.map((m) => m.content);
+    expect(contents).toContain("hello from session 1");
+    expect(contents).toContain("hello from session 2");
+  });
+
+  it("listThreads returns threads with session and message counts", () => {
+    const thread = store.resolveThread("syn", "alice");
+    const session = store.createSession("syn", "signal:cody123");
+    store.linkSessionToThread(session.id, thread.id, "signal");
+    store.appendMessage(session.id, "user", "hello", { tokenEstimate: 5 });
+
+    const threads = store.listThreads("syn");
+    expect(threads.length).toBeGreaterThanOrEqual(1);
+    const t = threads.find((x) => x.id === thread.id);
+    expect(t).not.toBeUndefined();
+    expect(t!.sessionCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("retention", () => {
+  it("purgeDistilledMessages returns 0 when days=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "hello");
+    store.archiveSession(session.id);
+    // Set to distilled status manually via updateStatus
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET status = 'distilled' WHERE id = ?")
+      .run(session.id);
+    expect(store.purgeDistilledMessages(0)).toBe(0);
+  });
+
+  it("purgeDistilledMessages removes messages from old distilled sessions", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "to purge");
+    // Mark distilled with an old updated_at
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET status = 'distilled', updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+    const deleted = store.purgeDistilledMessages(30);
+    expect(deleted).toBe(1);
+  });
+
+  it("purgeArchivedSessionMessages removes messages from old archived sessions", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "to purge");
+    store.archiveSession(session.id);
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+    const deleted = store.purgeArchivedSessionMessages(30);
+    expect(deleted).toBe(1);
+  });
+
+  it("purgeArchivedSessionMessages returns 0 when days=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "hello");
+    store.archiveSession(session.id);
+    expect(store.purgeArchivedSessionMessages(0)).toBe(0);
+  });
+
+  it("truncateToolResults truncates long tool result content", () => {
+    const session = store.createSession("syn", "main");
+    const longContent = "x".repeat(500);
+    store.appendMessage(session.id, "tool_result", longContent, { toolCallId: "tc1", toolName: "exec" });
+    const truncated = store.truncateToolResults(100);
+    expect(truncated).toBe(1);
+    const history = store.getHistory(session.id, { excludeDistilled: false });
+    const toolMsg = history.find((m) => m.role === "tool_result");
+    expect(toolMsg!.content.length).toBeLessThan(longContent.length);
+    expect(toolMsg!.content).toContain("[truncated]");
+  });
+
+  it("truncateToolResults returns 0 when maxChars=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "tool_result", "x".repeat(500));
+    expect(store.truncateToolResults(0)).toBe(0);
+  });
+
+  it("truncateToolResults does not truncate short results", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "tool_result", "short result", { toolCallId: "tc1" });
+    const truncated = store.truncateToolResults(100);
+    expect(truncated).toBe(0);
+  });
+});

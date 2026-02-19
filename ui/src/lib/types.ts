@@ -41,6 +41,7 @@ export interface ChatMessage {
   toolCalls?: ToolCallState[];
   isStreaming?: boolean;
   media?: MediaItem[];
+  thinking?: string;
 }
 
 export interface ToolCallState {
@@ -54,11 +55,13 @@ export interface ToolCallState {
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId?: string }
   | { type: "text_delta"; text: string }
+  | { type: "thinking_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
+  | { type: "turn_abort"; reason: string }
   | { type: "error"; message: string };
 
 export interface PendingApproval {
@@ -156,6 +159,12 @@ export interface GraphData {
   total_nodes: number;
 }
 
+export interface CommandInfo {
+  name: string;
+  description: string;
+  aliases: string[];
+}
+
 export interface FileTreeEntry {
   name: string;
   type: "file" | "directory";
@@ -167,6 +176,22 @@ export interface FileTreeEntry {
 export interface GitFileStatus {
   status: string;
   path: string;
+}
+
+export interface Thread {
+  id: string;
+  nousId: string;
+  identity: string;
+  createdAt: string;
+  updatedAt: string;
+  sessionCount: number;
+  messageCount: number;
+  lastActivity: string | null;
+  summary: string | null;
+}
+
+export interface ThreadMessage extends HistoryMessage {
+  sessionId: string;
 }
 
 export interface CostSummary {

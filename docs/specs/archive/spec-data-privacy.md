@@ -1,6 +1,6 @@
 # Spec: Data Privacy & Encryption at Rest
 
-**Status:** Draft  
+**Status:** Implemented — feat/data-privacy
 **Author:** forkwright
 **Date:** 2026-02-19  
 **Depends on:** [spec-auth-and-security.md](spec-auth-and-security.md) (TLS, session auth)

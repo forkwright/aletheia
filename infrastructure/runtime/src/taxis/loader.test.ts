@@ -79,6 +79,30 @@ describe("loadConfig", () => {
     expect(config.agents.defaults.bootstrapMaxTokens).toBe(40000);
   });
 
+  it("defaults compaction preserveRecentMessages to 10 and preserveRecentMaxTokens to 12000", () => {
+    mockReadJson.mockReturnValue(minimalConfig());
+    const config = loadConfig();
+    expect(config.agents.defaults.compaction.preserveRecentMessages).toBe(10);
+    expect(config.agents.defaults.compaction.preserveRecentMaxTokens).toBe(12000);
+  });
+
+  it("allows overriding compaction preservation settings", () => {
+    mockReadJson.mockReturnValue({
+      agents: {
+        defaults: {
+          compaction: {
+            preserveRecentMessages: 6,
+            preserveRecentMaxTokens: 8000,
+          },
+        },
+        list: [{ id: "syn", workspace: "/nous/syn" }],
+      },
+    });
+    const config = loadConfig();
+    expect(config.agents.defaults.compaction.preserveRecentMessages).toBe(6);
+    expect(config.agents.defaults.compaction.preserveRecentMaxTokens).toBe(8000);
+  });
+
   it("uses provided configPath over default", () => {
     mockReadJson.mockReturnValue(minimalConfig());
     loadConfig("/custom/path.json");

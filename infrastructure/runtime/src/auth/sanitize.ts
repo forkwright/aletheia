@@ -1,3 +1,4 @@
+// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Log sanitization — strip user content from error logs
 export function sanitizeForLog(text: string, maxLen = 200): string {
   if (!text) return "";

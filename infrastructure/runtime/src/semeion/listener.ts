@@ -351,6 +351,26 @@ function handleEnvelope(
   const peerKind = isGroup ? "group" : "dm";
   const sessionKey = `signal:${peerId}`;
 
+  // Thread resolution: map Signal sender to canonical identity, then resolve thread + binding
+  let threadId: string | undefined;
+  let bindingId: string | undefined;
+  let lockKey: string | undefined;
+  try {
+    const store = manager.sessionStore;
+    // Groups share a thread per group (not per member). DMs share a thread per contact identity.
+    const identity = isGroup
+      ? `group:${groupId ?? peerId}`
+      : store.getIdentityForSignalSender(sender, accountId);
+    const nousIdForThread = isGroup ? (groupId ?? "main") : peerId;
+    const thread = store.resolveThread(nousIdForThread, identity);
+    const binding = store.resolveBinding(thread.id, "signal", sessionKey);
+    threadId = thread.id;
+    bindingId = binding.id;
+    lockKey = `binding:${binding.id}`;
+  } catch (err) {
+    log.warn(`Thread resolution failed for signal:${peerId}: ${err instanceof Error ? err.message : err}`);
+  }
+
   const msg: InboundMessage = {
     text,
     channel: "signal",
@@ -358,6 +378,9 @@ function handleEnvelope(
     peerKind,
     accountId,
     sessionKey,
+    ...(threadId ? { threadId } : {}),
+    ...(bindingId ? { bindingId } : {}),
+    ...(lockKey ? { lockKey } : {}),
   };
 
   // Concurrency guard — reject if at limit to protect API and SQLite
@@ -473,6 +496,12 @@ async function processTurn(
 ): Promise<void> {
   try {
     const outcome = await manager.handleMessage(msg);
+
+    if (outcome.error) {
+      log.error(`Turn completed with error: ${outcome.error}`, { nousId: outcome.nousId, sessionId: outcome.sessionId });
+      await sendMessage(client, target, "I encountered an error processing that. Please try again.", { markdown: false });
+      return;
+    }
 
     sendTyping(client, target, true).catch(() => {});
 

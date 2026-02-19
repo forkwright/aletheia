@@ -16,7 +16,9 @@ export type EventName =
   | "memory:retracted"
   | "signal:received"
   | "boot:start"
-  | "boot:ready";
+  | "boot:ready"
+  | "pipeline:error"
+  | "history:orphan_repair";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;

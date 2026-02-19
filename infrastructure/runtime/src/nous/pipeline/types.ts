@@ -34,6 +34,10 @@ export interface InboundMessage {
   media?: MediaAttachment[];
   model?: string;
   depth?: number;
+  // Thread model (Phase 2): resolved by transport layer before manager
+  threadId?: string;
+  bindingId?: string;
+  lockKey?: string;
 }
 
 export interface TurnOutcome {
@@ -45,11 +49,13 @@ export interface TurnOutcome {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  error?: string;
 }
 
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId: string }
   | { type: "text_delta"; text: string }
+  | { type: "thinking_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolId: string }
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }

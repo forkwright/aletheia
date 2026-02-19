@@ -40,7 +40,7 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef } from "./pylon/server.js";
+import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef, setCommandsRef } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
@@ -57,10 +57,12 @@ import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { runRetention } from "./daemon/retention.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
+import { chmodSync, existsSync } from "node:fs";
 import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
@@ -84,6 +86,20 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   applyEnv(config);
 
   const store = new SessionStore(paths.sessionsDb());
+
+  // Harden file permissions on sensitive files at startup
+  if (config.privacy.hardenFilePermissions) {
+    const dbPath = paths.sessionsDb();
+    const cfgPath = paths.configFile();
+    for (const p of [dbPath, cfgPath]) {
+      try {
+        if (existsSync(p)) chmodSync(p, 0o600);
+      } catch {
+        log.warn(`Could not harden permissions on ${p}`);
+      }
+    }
+  }
+
   const router = createDefaultRouter(config.models);
 
   const tools = new ToolRegistry();
@@ -180,6 +196,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     return entry;
   });
   store.rebuildRoutingCache(bindings);
+  store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
@@ -298,11 +315,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- MCP Client ---
   let mcpManager: McpClientManager | null = null;
-  const mcpConfig = (config as Record<string, unknown>)["mcp"] as { enabled?: boolean; servers?: Record<string, unknown> } | undefined;
-  if (mcpConfig?.enabled && mcpConfig.servers && Object.keys(mcpConfig.servers).length > 0) {
+  if (config.mcp.enabled && Object.keys(config.mcp.servers).length > 0) {
     mcpManager = new McpClientManager(runtime.tools);
     try {
-      await mcpManager.connectAll(mcpConfig.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
+      await mcpManager.connectAll(config.mcp.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
       log.info(`MCP client: ${mcpManager.getToolCount()} tools from ${mcpManager.getStatus().filter(s => s.status === "connected").length} server(s)`);
     } catch (err) {
       log.error(`MCP client initialization error: ${err instanceof Error ? err.message : err}`);
@@ -312,6 +328,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Command Registry ---
   const commandRegistry = createDefaultRegistry();
+  setCommandsRef(commandRegistry);
 
   // --- Signal ---
   let watchdog: Watchdog | null = null;
@@ -451,11 +468,18 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // Spawn session cleanup — archive stale spawn sessions every hour
   // TTS file cleanup — remove stale audio files
+  // Retention — enforce data lifecycle policy every 24h (with immediate first run)
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
     cleanupTtsFiles();
     runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);
+
+  const retentionTimer = setInterval(() => {
+    runRetention(runtime.store, config.privacy);
+  }, 24 * 60 * 60 * 1000);
+  // Run once shortly after startup so stale data is cleared without waiting 24h
+  setTimeout(() => runRetention(runtime.store, config.privacy), 60_000);
 
   // --- Shutdown ---
   let draining = false;
@@ -466,6 +490,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     draining = true;
     log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
+    clearInterval(retentionTimer);
     watchdog?.stop();
     cron.stop();
 
