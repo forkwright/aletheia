@@ -1,3 +1,4 @@
+// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Role-based access control
 const ROUTE_PERMISSIONS: Record<string, string> = {
   // Chat
