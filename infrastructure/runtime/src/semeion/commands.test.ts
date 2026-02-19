@@ -122,11 +122,12 @@ describe("createDefaultRegistry", () => {
     expect(names).toContain("contacts");
   });
 
-  it("ping command returns pong", async () => {
+  it("ping command returns status indicator", async () => {
     const reg = createDefaultRegistry();
     const match = reg.match("!ping");
     const result = await match!.handler.execute("", {} as never);
-    expect(result).toBe("pong");
+    expect(result).toContain("**pong**");
+    expect(result).toContain("uptime");
   });
 
   it("help alias works", () => {
