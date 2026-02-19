@@ -537,3 +537,70 @@ describe("thread summary (Phase 3)", () => {
     expect(t!.sessionCount).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("retention", () => {
+  it("purgeDistilledMessages returns 0 when days=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "hello");
+    store.archiveSession(session.id);
+    // Set to distilled status manually via updateStatus
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET status = 'distilled' WHERE id = ?")
+      .run(session.id);
+    expect(store.purgeDistilledMessages(0)).toBe(0);
+  });
+
+  it("purgeDistilledMessages removes messages from old distilled sessions", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "to purge");
+    // Mark distilled with an old updated_at
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET status = 'distilled', updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+    const deleted = store.purgeDistilledMessages(30);
+    expect(deleted).toBe(1);
+  });
+
+  it("purgeArchivedSessionMessages removes messages from old archived sessions", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "to purge");
+    store.archiveSession(session.id);
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+    const deleted = store.purgeArchivedSessionMessages(30);
+    expect(deleted).toBe(1);
+  });
+
+  it("purgeArchivedSessionMessages returns 0 when days=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "user", "hello");
+    store.archiveSession(session.id);
+    expect(store.purgeArchivedSessionMessages(0)).toBe(0);
+  });
+
+  it("truncateToolResults truncates long tool result content", () => {
+    const session = store.createSession("syn", "main");
+    const longContent = "x".repeat(500);
+    store.appendMessage(session.id, "tool_result", longContent, { toolCallId: "tc1", toolName: "exec" });
+    const truncated = store.truncateToolResults(100);
+    expect(truncated).toBe(1);
+    const history = store.getHistory(session.id, { excludeDistilled: false });
+    const toolMsg = history.find((m) => m.role === "tool_result");
+    expect(toolMsg!.content.length).toBeLessThan(longContent.length);
+    expect(toolMsg!.content).toContain("[truncated]");
+  });
+
+  it("truncateToolResults returns 0 when maxChars=0 (disabled)", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "tool_result", "x".repeat(500));
+    expect(store.truncateToolResults(0)).toBe(0);
+  });
+
+  it("truncateToolResults does not truncate short results", () => {
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "tool_result", "short result", { toolCallId: "tc1" });
+    const truncated = store.truncateToolResults(100);
+    expect(truncated).toBe(0);
+  });
+});

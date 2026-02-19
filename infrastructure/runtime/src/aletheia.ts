@@ -57,10 +57,12 @@ import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { runRetention } from "./daemon/retention.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
+import { chmodSync, existsSync } from "node:fs";
 import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
@@ -84,6 +86,20 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   applyEnv(config);
 
   const store = new SessionStore(paths.sessionsDb());
+
+  // Harden file permissions on sensitive files at startup
+  if (config.privacy.hardenFilePermissions) {
+    const dbPath = paths.sessionsDb();
+    const cfgPath = paths.configFile();
+    for (const p of [dbPath, cfgPath]) {
+      try {
+        if (existsSync(p)) chmodSync(p, 0o600);
+      } catch {
+        log.warn(`Could not harden permissions on ${p}`);
+      }
+    }
+  }
+
   const router = createDefaultRouter(config.models);
 
   const tools = new ToolRegistry();
@@ -452,11 +468,18 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // Spawn session cleanup — archive stale spawn sessions every hour
   // TTS file cleanup — remove stale audio files
+  // Retention — enforce data lifecycle policy every 24h (with immediate first run)
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
     cleanupTtsFiles();
     runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);
+
+  const retentionTimer = setInterval(() => {
+    runRetention(runtime.store, config.privacy);
+  }, 24 * 60 * 60 * 1000);
+  // Run once shortly after startup so stale data is cleared without waiting 24h
+  setTimeout(() => runRetention(runtime.store, config.privacy), 60_000);
 
   // --- Shutdown ---
   let draining = false;
@@ -467,6 +490,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     draining = true;
     log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
+    clearInterval(retentionTimer);
     watchdog?.stop();
     cron.stop();
 
