@@ -207,6 +207,7 @@ export function createGateway(
         response: result.text,
         sessionId: result.sessionId,
         toolCalls: result.toolCalls,
+        ...(result.error ? { error: result.error } : {}),
         usage: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,

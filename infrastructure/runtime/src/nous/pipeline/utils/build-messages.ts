@@ -1,6 +1,7 @@
 // Message builder — converts stored Message[] into API-shaped MessageParam[]
 // Handles media blocks, orphaned tool_use repair, consecutive user merge, ephemeral timestamps
 import { createLogger } from "../../../koina/logger.js";
+import { eventBus } from "../../../koina/event-bus.js";
 import type { Message } from "../../../mneme/store.js";
 import type {
   ContentBlock,
@@ -157,11 +158,16 @@ export function buildMessages(
     const orphaned = toolUseBlocks.filter((b) => !answeredIds.has(b.id));
     if (orphaned.length === 0) continue;
 
-    log.warn(`Repairing ${orphaned.length} orphaned tool_use block(s) in history`);
+    const details = orphaned.map(b => `${b.name ?? "unknown"}(${b.id})`).join(", ");
+    log.warn(`Repairing ${orphaned.length} orphaned tool_use block(s): ${details}`);
+    eventBus.emit("history:orphan_repair", {
+      count: orphaned.length,
+      tools: orphaned.map(b => b.name ?? "unknown"),
+    });
     const syntheticResults: UserContentBlock[] = orphaned.map((b) => ({
       type: "tool_result" as const,
       tool_use_id: b.id,
-      content: "Error: Tool execution interrupted — service restarted mid-turn.",
+      content: `Error: Tool "${b.name ?? "unknown"}" execution interrupted — service restarted mid-turn.`,
     }));
 
     if (next?.role === "user" && Array.isArray(next.content)) {

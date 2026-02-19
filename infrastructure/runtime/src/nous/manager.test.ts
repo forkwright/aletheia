@@ -43,6 +43,8 @@ function makeStore() {
     recordSignal: vi.fn(),
     getSignalHistory: vi.fn().mockReturnValue([]),
     blackboardReadPrefix: vi.fn().mockReturnValue([]),
+    getThreadForSession: vi.fn().mockReturnValue(null),
+    getHistory: vi.fn().mockReturnValue([]),
   } as never;
 }
 
@@ -95,6 +97,14 @@ vi.mock("./trace.js", async () => {
 vi.mock("../distillation/pipeline.js", () => ({
   distillSession: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("./pipeline/stages/context.js", async () => {
+  const actual = await vi.importActual("./pipeline/stages/context.js") as Record<string, unknown>;
+  return {
+    ...actual,
+    buildContext: vi.fn().mockImplementation(actual.buildContext as (...args: unknown[]) => unknown),
+  };
+});
 
 describe("NousManager", () => {
   let manager: NousManager;
@@ -234,5 +244,28 @@ describe("NousManager", () => {
       media: [{ contentType: "image/png", data: "base64data" }],
     });
     expect(outcome.text).toBe("Hello from the model");
+  });
+
+  it("returns error outcome when pipeline stage fails (no throw)", async () => {
+    const { buildContext } = await import("./pipeline/stages/context.js");
+    (buildContext as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("stage exploded"));
+
+    const outcome = await manager.handleMessage({ text: "hello", nousId: "syn" });
+    expect(outcome.error).toBe("stage exploded");
+    expect(outcome.text).toBe("");
+    expect(outcome.nousId).toBe("syn");
+  });
+
+  it("subsequent turn succeeds after previous turn fails", async () => {
+    const { buildContext } = await import("./pipeline/stages/context.js");
+    (buildContext as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("first turn fail"));
+
+    const outcome1 = await manager.handleMessage({ text: "fail", nousId: "syn" });
+    expect(outcome1.error).toBeDefined();
+
+    (buildContext as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    const outcome2 = await manager.handleMessage({ text: "succeed", nousId: "syn" });
+    expect(outcome2.text).toBe("Hello from the model");
+    expect(outcome2.error).toBeUndefined();
   });
 });
