@@ -70,11 +70,16 @@ export function resolveStage(
   const session = services.store.findOrCreateSession(nousId, sessionKey, model, msg.parentSessionId);
   const workspace = resolveWorkspace(services.config, nous);
 
+  // Merge per-agent allowedRoots + global defaults + ALETHEIA_ROOT
+  const globalRoots = services.config.agents.defaults.allowedRoots ?? [];
+  const agentRoots = nous.allowedRoots ?? [];
+  const allowedRoots = [...new Set([paths.root, ...globalRoots, ...agentRoots])];
+
   const toolContext: ToolContext = {
     nousId,
     sessionId: session.id,
     workspace,
-    allowedRoots: [paths.root],
+    allowedRoots,
     depth: msg.depth ?? 0,
     ...(abortSignal ? { signal: abortSignal } : {}),
   };

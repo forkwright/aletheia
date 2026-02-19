@@ -4,6 +4,7 @@ import { estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
 import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
+import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type { TurnState, RuntimeServices, SystemBlock } from "../types.js";
 
@@ -43,6 +44,46 @@ export async function buildContext(
 
   state.trace.setBootstrap(Object.keys(bootstrap.fileHashes), bootstrap.totalTokens);
   if (degradedServices.length > 0) state.trace.setDegradedServices(degradedServices);
+
+  // Pre-flight context overflow guard:
+  // If the last API-reported token count is ≥90% of the context window, distill
+  // NOW — before building history — so this turn doesn't hit the 200K hard limit.
+  {
+    const preflightContextTokens = services.config.agents.defaults.contextTokens;
+    if (preflightContextTokens > 0) {
+      const session = services.store.findSessionById(sessionId);
+      const lastActual = session?.lastInputTokens ?? 0;
+      const dangerThreshold = Math.floor(preflightContextTokens * 0.90);
+      if (session && lastActual >= dangerThreshold && session.messageCount >= 10) {
+        log.warn(
+          `Emergency distillation: ${nousId} session=${sessionId} at ${lastActual} tokens ` +
+          `(${Math.round((lastActual / preflightContextTokens) * 100)}% — above 90% ceiling)`,
+        );
+        const compaction = services.config.agents.defaults.compaction;
+        const thread = services.store.getThreadForSession(sessionId);
+        try {
+          await distillSession(services.store, services.router, sessionId, nousId, {
+            triggerThreshold: dangerThreshold,
+            minMessages: 10,
+            extractionModel: compaction.distillationModel,
+            summaryModel: compaction.distillationModel,
+            preserveRecentMessages: compaction.preserveRecentMessages,
+            preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+            ...(workspace ? { workspace } : {}),
+            ...(services.plugins ? { plugins: services.plugins } : {}),
+            ...(thread ? {
+              onThreadSummaryUpdate: (summary, keyFacts) => {
+                services.store.updateThreadSummary(thread.id, summary, keyFacts);
+              },
+            } : {}),
+          });
+          log.info(`Emergency distillation complete for ${nousId} — context cleared`);
+        } catch (distillErr) {
+          log.error(`Emergency distillation failed: ${distillErr instanceof Error ? distillErr.message : distillErr}`);
+        }
+      }
+    }
+  }
 
   // System prompt blocks
   const systemPrompt: SystemBlock[] = [
