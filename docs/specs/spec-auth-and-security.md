@@ -326,7 +326,7 @@ gateway:
     # auto mode: self-signed cert generated on first run
     # stored at $ALETHEIA_HOME/credentials/tls/
     autoSubjectAltNames:
-      - "192.168.0.29"
+      - "192.168.1.100"  # example LAN IP
       - "100.87.6.45"
       - "localhost"
 

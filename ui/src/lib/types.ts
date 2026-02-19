@@ -156,6 +156,19 @@ export interface GraphData {
   total_nodes: number;
 }
 
+export interface FileTreeEntry {
+  name: string;
+  type: "file" | "directory";
+  size?: number;
+  modified?: string;
+  children?: FileTreeEntry[];
+}
+
+export interface GitFileStatus {
+  status: string;
+  path: string;
+}
+
 export interface CostSummary {
   totalCost: number;
   agents: AgentCost[];

@@ -3,10 +3,12 @@
   import Sidebar from "./Sidebar.svelte";
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
+  import SettingsView from "../settings/SettingsView.svelte";
+  import FileExplorer from "../files/FileExplorer.svelte";
   import { getToken, setToken } from "../../lib/api";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
 
-  type ViewId = "chat" | "metrics" | "graph";
+  type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
   const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
 
@@ -77,6 +79,10 @@
         {:catch}
           <div style="padding:2rem;color:var(--text-secondary)">Failed to load graph view</div>
         {/await}
+      {:else if activeView === "files"}
+        <FileExplorer />
+      {:else if activeView === "settings"}
+        <SettingsView />
       {:else}
         <ChatView />
       {/if}

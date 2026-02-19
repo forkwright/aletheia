@@ -3,7 +3,7 @@ set -euo pipefail
 ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
 THEKE="$ALETHEIA_ROOT/theke"
 DEFAULT_MODEL="tiny"
-DEFAULT_DOMAIN="summus"
+DEFAULT_DOMAIN="default"
 WORKDIR="/tmp/transcribe-$$"
 log() { echo "[transcribe] $*"; }
 die() { log "ERROR: $*" >&2; exit 1; }

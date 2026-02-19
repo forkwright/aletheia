@@ -6,7 +6,7 @@ When you need to quickly understand the state of a project workspace, including 
 
 ## Steps
 1. Measure disk usage across all major directories using `du -sh` to identify large directories and storage distribution
-2. Check for configuration files and database artifacts in hidden directories (`.summus/`, `.env.*`) to understand project setup
+2. Check for configuration files and database artifacts in hidden directories (`.project/`, `.env.*`) to understand project setup
 3. Verify git remote configuration to confirm repository origin and connectivity
 4. Review recent git commits to understand recent work and project momentum
 
