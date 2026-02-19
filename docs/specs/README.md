@@ -15,6 +15,9 @@ that evolve with the system.
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Draft | Login page (user/pass + remember me), self-update CLI, GitHub Releases |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
+| 6 | [Code Quality](06_code-quality.md) | Draft | Error handling overhaul, dead code audit, coding standards (CONTRIBUTING.md) |
+| 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
+| 8 | [Memory Continuity](08_memory-continuity.md) | Draft | Survive distillation: working state, structured summaries, context editing API, expanded tail, agent notes |
 
 ### Why this order
 
@@ -23,6 +26,9 @@ that evolve with the system.
 3. **Auth & Updates** — Security + maintainability. Login replaces insecure token, update CLI eliminates manual deploys, GitHub Releases enable versioning. Depends on stable UI (2).
 4. **Cost-Aware Orchestration** — Economic sustainability. Sub-agents on cheaper models cut Anthropic spend 40-60%. Message queue and plan mode improve interaction model. Depends on reliable pipeline (1) and working UI (2).
 5. **Plug-and-Play Onboarding** — Adoption. Setup wizard, process management, agent CLI. The capstone — depends on everything else being stable and well-designed. Ship last.
+6. **Code Quality** — Sustainability. Can be done in parallel with anything. Error handling overhaul makes debugging easier for all other specs. Dead code audit reduces surface area. Standards prevent new debt.
+7. **Knowledge Graph** — Performance and utility. Graph recall is currently too slow and inconsistent. Fixing this improves every agent's quality. Depends on infrastructure stability (1-3).
+8. **Memory Continuity** — The hardest problem. Requires stable distillation (1), working graph (7), and reliable pipeline. Introduces Anthropic's context editing API, working state maintenance, and agent notes. This is the frontier.
 
 ## Implemented (Archived)
 
