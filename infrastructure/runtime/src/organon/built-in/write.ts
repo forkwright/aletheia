@@ -47,7 +47,7 @@ export const writeTool: ToolHandler = {
     const filePath = input["path"] as string;
     const content = input["content"] as string;
     const append = (input["append"] as boolean) ?? false;
-    const resolved = safePath(context.workspace, filePath);
+    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
 
     try {
       mkdirSync(dirname(resolved), { recursive: true });
