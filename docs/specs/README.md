@@ -10,7 +10,6 @@ that evolve with the system.
 
 | Spec | Status | Summary |
 |------|--------|---------|
-| [Unified Thread Model](spec-unified-thread-model.md) | Draft | Transport-isolated execution, seamless continuity, thread abstraction |
 | [Cost-Aware Orchestration](spec-cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | [Data Privacy](spec-data-privacy.md) | Draft | Encryption at rest, PII handling, data portability |
 | [Plug-and-Play Onboarding](spec-plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
@@ -19,6 +18,7 @@ that evolve with the system.
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Unified Thread Model](archive/spec-unified-thread-model.md) | PR #32 | Transport isolation, thread abstraction, thread summaries, topic branching (all 4 phases) |
 | [Auth & Security](archive/spec-auth-and-security.md) | PR #26 + security commits | JWT, RBAC, sessions, audit, TLS, passwords (standalone modules; integration pending) |
 | [Modular Runtime Architecture](archive/spec-modular-runtime-architecture.md) | PR #21 | Pipeline decomposition, composable stages |
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
