@@ -19,6 +19,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
       findSessionsByKey: vi.fn().mockReturnValue([
         { id: "ses_1", nousId: "syn", messageCount: 10, updatedAt: new Date().toISOString() },
       ]),
+      findSessionById: vi.fn().mockReturnValue(null),
       archiveSession: vi.fn(),
       approveContactByCode: vi.fn().mockReturnValue({ sender: "+999", channel: "signal" }),
       denyContactByCode: vi.fn().mockReturnValue(true),
@@ -28,6 +29,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     } as never,
     config: {
       agents: {
+        defaults: { model: { primary: "claude-opus-4-6", fallbacks: [] } },
         list: [
           { id: "syn", name: "Syn" },
           { id: "eiron", name: "Eiron" },
@@ -52,26 +54,28 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 describe("command execution", () => {
   const registry = createDefaultRegistry();
 
-  it("!ping returns pong", async () => {
+  it("!ping returns status indicator", async () => {
     const match = registry.match("!ping");
     expect(match).not.toBeNull();
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toBe("pong");
+    expect(result).toContain("**pong**");
+    expect(result).toContain("uptime");
   });
 
-  it("!help lists commands", async () => {
+  it("!help lists commands as table", async () => {
     const match = registry.match("!help");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Available commands");
-    expect(result).toContain("/ping");
-    expect(result).toContain("/status");
+    expect(result).toContain("**Commands**");
+    expect(result).toContain("| Command | Description |");
+    expect(result).toContain("`/ping`");
+    expect(result).toContain("`/status`");
   });
 
   it("help uses ! prefix in group context", async () => {
     const match = registry.match("!help");
     const result = await match!.handler.execute("", makeCtx({ target: { account: "+1", groupId: "grp1" } }));
-    expect(result).toContain("!ping");
-    expect(result).toContain("!status");
+    expect(result).toContain("`!ping`");
+    expect(result).toContain("`!status`");
   });
 
   it("!commands is alias for help", async () => {
@@ -79,21 +83,21 @@ describe("command execution", () => {
     expect(match!.handler.name).toBe("help");
   });
 
-  it("!status shows system overview", async () => {
+  it("!status shows system overview with tables", async () => {
     const match = registry.match("!status");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Aletheia Status");
-    expect(result).toContain("Uptime:");
-    expect(result).toContain("Syn:");
-    expect(result).toContain("Tokens:");
-    expect(result).toContain("Cache:");
+    expect(result).toContain("## Aletheia Status");
+    expect(result).toContain("**Uptime:**");
+    expect(result).toContain("| Syn |");
+    expect(result).toContain("**Tokens:**");
+    expect(result).toContain("**Cache:**");
   });
 
-  it("!status shows watchdog service status", async () => {
+  it("!status shows service table", async () => {
     const match = registry.match("!status");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Services:");
-    expect(result).toContain("neo4j");
+    expect(result).toContain("### Services");
+    expect(result).toContain("| neo4j | \u2713 healthy |");
   });
 
   it("!status shows degraded when services unhealthy", async () => {
@@ -107,14 +111,14 @@ describe("command execution", () => {
     const match = registry.match("!status");
     const result = await match!.handler.execute("", ctx);
     expect(result).toContain("DEGRADED");
-    expect(result).toContain("X neo4j");
+    expect(result).toContain("\u2717 down");
   });
 
-  it("!sessions lists active sessions", async () => {
+  it("!sessions lists active sessions as table", async () => {
     const match = registry.match("!sessions");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Active sessions:");
-    expect(result).toContain("syn");
+    expect(result).toContain("**Active sessions**");
+    expect(result).toContain("| syn |");
   });
 
   it("!sessions returns no sessions message", async () => {
@@ -141,10 +145,11 @@ describe("command execution", () => {
     expect(result).toContain("No active session");
   });
 
-  it("!agent shows current agent", async () => {
+  it("!agent shows current agent formatted", async () => {
     const match = registry.match("!agent");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Current agent: Syn");
+    expect(result).toContain("**Agent:**");
+    expect(result).toContain("`Syn`");
   });
 
   it("!agent with args returns routing note", async () => {
@@ -153,11 +158,11 @@ describe("command execution", () => {
     expect(result).toContain("config bindings");
   });
 
-  it("!skills lists skills", async () => {
+  it("!skills lists skills as table", async () => {
     const match = registry.match("!skills");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Available skills:");
-    expect(result).toContain("web-research");
+    expect(result).toContain("**Available skills**");
+    expect(result).toContain("| `web-research` |");
   });
 
   it("!skills with no skills loaded", async () => {
@@ -170,13 +175,13 @@ describe("command execution", () => {
   it("!approve approves contact", async () => {
     const match = registry.match("!approve");
     const result = await match!.handler.execute("ABC123", makeCtx());
-    expect(result).toContain("Approved contact");
+    expect(result).toContain("**Approved contact:**");
   });
 
   it("!approve requires code", async () => {
     const match = registry.match("!approve");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Usage:");
+    expect(result).toContain("**Usage:**");
   });
 
   it("!approve handles no match", async () => {
@@ -190,21 +195,21 @@ describe("command execution", () => {
   it("!deny denies contact", async () => {
     const match = registry.match("!deny");
     const result = await match!.handler.execute("ABC123", makeCtx());
-    expect(result).toContain("Denied");
+    expect(result).toContain("**Denied**");
   });
 
   it("!deny requires code", async () => {
     const match = registry.match("!deny");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Usage:");
+    expect(result).toContain("**Usage:**");
   });
 
-  it("!contacts lists pending requests", async () => {
+  it("!contacts lists pending requests as table", async () => {
     const match = registry.match("!contacts");
     const result = await match!.handler.execute("", makeCtx());
-    expect(result).toContain("Pending contact requests:");
-    expect(result).toContain("John");
-    expect(result).toContain("ABC123");
+    expect(result).toContain("**Pending contact requests**");
+    expect(result).toContain("| John |");
+    expect(result).toContain("`ABC123`");
   });
 
   it("!contacts with no pending", async () => {

@@ -22,6 +22,7 @@ export interface CommandContext {
   manager: NousManager;
   watchdog: Watchdog | null;
   skills: SkillRegistry | null;
+  sessionId?: string | undefined;
 }
 
 export interface CommandHandler {
@@ -68,11 +69,30 @@ export class CommandRegistry {
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
 
+  // Helper: find session via sessionId (WebUI) or sessionKey (Signal)
+  function findSession(ctx: CommandContext, nousId?: string): ReturnType<SessionStore["findSessionById"]> {
+    if (ctx.sessionId) return ctx.store.findSessionById(ctx.sessionId);
+    const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+    return ctx.store.findSession(nousId ?? ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+  }
+
+  function findSessionsByCtx(ctx: CommandContext): ReturnType<SessionStore["findSessionsByKey"]> {
+    if (ctx.sessionId) {
+      const s = ctx.store.findSessionById(ctx.sessionId);
+      return s ? [s] : [];
+    }
+    const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+    return ctx.store.findSessionsByKey(sessionKey);
+  }
+
   registry.register({
     name: "ping",
     description: "Check if the system is alive",
     async execute() {
-      return "pong";
+      const uptime = process.uptime();
+      const hours = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      return `**pong** \u2014 \`${hours}h ${mins}m\` uptime`;
     },
   });
 
@@ -85,9 +105,11 @@ export function createDefaultRegistry(): CommandRegistry {
         ? (registry as CommandRegistry).listAll()
         : [];
       const prefix = ctx.target.groupId ? "!" : "/";
-      const lines = ["Available commands:", ""];
+      const lines = [`**Commands** (use \`${prefix}\` prefix)\n`];
+      lines.push("| Command | Description |");
+      lines.push("|---------|-------------|");
       for (const cmd of cmds) {
-        lines.push(`  ${prefix}${cmd.name} — ${cmd.description}`);
+        lines.push(`| \`${prefix}${cmd.name}\` | ${cmd.description} |`);
       }
       return lines.join("\n");
     },
@@ -101,22 +123,34 @@ export function createDefaultRegistry(): CommandRegistry {
       const uptime = process.uptime();
       const hours = Math.floor(uptime / 3600);
       const mins = Math.floor((uptime % 3600) / 60);
+      const cacheHitRate =
+        metrics.usage.totalInputTokens > 0
+          ? Math.round((metrics.usage.totalCacheReadTokens / metrics.usage.totalInputTokens) * 100)
+          : 0;
 
-      const lines: string[] = ["Aletheia Status", ""];
-      lines.push(`Uptime: ${hours}h ${mins}m`);
-      lines.push("");
+      const lines: string[] = ["## Aletheia Status\n"];
+      lines.push(
+        `**Uptime:** \`${hours}h ${mins}m\` \u00b7 ` +
+        `**Turns:** ${metrics.usage.turnCount.toLocaleString()} \u00b7 ` +
+        `**Tokens:** ${formatK(metrics.usage.totalInputTokens)} in / ${formatK(metrics.usage.totalOutputTokens)} out \u00b7 ` +
+        `**Cache:** ${cacheHitRate}%\n`,
+      );
 
       if (ctx.watchdog) {
         const svcStatus = ctx.watchdog.getStatus();
         const allHealthy = svcStatus.every((s) => s.healthy);
-        lines.push(`Services: ${allHealthy ? "all healthy" : "DEGRADED"}`);
+        lines.push(`### Services${allHealthy ? "" : " \u2014 DEGRADED"}\n`);
+        lines.push("| Service | Status |");
+        lines.push("|---------|--------|");
         for (const svc of svcStatus) {
-          lines.push(`  ${svc.healthy ? "+" : "X"} ${svc.name}`);
+          lines.push(`| ${svc.name} | ${svc.healthy ? "\u2713 healthy" : "\u2717 down"} |`);
         }
         lines.push("");
       }
 
-      lines.push("Nous:");
+      lines.push("### Nous\n");
+      lines.push("| Agent | Sessions | Messages | Tokens In | Last Active |");
+      lines.push("|-------|----------|----------|-----------|-------------|");
       for (const a of ctx.config.agents.list) {
         const m = metrics.perNous[a.id];
         const u = metrics.usageByNous[a.id];
@@ -124,20 +158,9 @@ export function createDefaultRegistry(): CommandRegistry {
         const sessions = m?.activeSessions ?? 0;
         const msgs = m?.totalMessages ?? 0;
         const lastSeen = m?.lastActivity ? timeSince(new Date(m.lastActivity)) : "never";
-        const tokens = u ? `${Math.round(u.inputTokens / 1000)}k in` : "0k in";
-        lines.push(`  ${name}: ${sessions}s, ${msgs} msgs, ${tokens}, last ${lastSeen}`);
+        const tokens = u ? formatK(u.inputTokens) : "0";
+        lines.push(`| ${name} | ${sessions} | ${msgs} | ${tokens} | ${lastSeen} |`);
       }
-      lines.push("");
-
-      const cacheHitRate =
-        metrics.usage.totalInputTokens > 0
-          ? Math.round((metrics.usage.totalCacheReadTokens / metrics.usage.totalInputTokens) * 100)
-          : 0;
-      lines.push(
-        `Tokens: ${Math.round(metrics.usage.totalInputTokens / 1000)}k in, ${Math.round(metrics.usage.totalOutputTokens / 1000)}k out`,
-      );
-      lines.push(`Cache: ${cacheHitRate}% hit rate`);
-      lines.push(`Turns: ${metrics.usage.turnCount}`);
 
       return lines.join("\n");
     },
@@ -147,15 +170,16 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "sessions",
     description: "List active sessions for this sender",
     async execute(_args, ctx) {
-      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-      const sessions = ctx.store.findSessionsByKey(sessionKey);
+      const sessions = findSessionsByCtx(ctx);
       if (!sessions || sessions.length === 0) {
         return "No active sessions.";
       }
-      const lines = ["Active sessions:", ""];
+      const lines = [`**Active sessions** (${sessions.length})\n`];
+      lines.push("| Agent | Messages | Last Active |");
+      lines.push("|-------|----------|-------------|");
       for (const s of sessions.slice(0, 10)) {
         const age = timeSince(new Date(s.updatedAt));
-        lines.push(`  ${s.nousId} (${s.messageCount} msgs, ${age})`);
+        lines.push(`| ${s.nousId} | ${s.messageCount} | ${age} |`);
       }
       return lines.join("\n");
     },
@@ -165,8 +189,7 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "reset",
     description: "Archive current session and start fresh",
     async execute(_args, ctx) {
-      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-      const sessions = ctx.store.findSessionsByKey(sessionKey);
+      const sessions = findSessionsByCtx(ctx);
       if (!sessions || sessions.length === 0) {
         return "No active session to reset.";
       }
@@ -175,7 +198,7 @@ export function createDefaultRegistry(): CommandRegistry {
         ctx.store.archiveSession(s.id);
         count += s.messageCount;
       }
-      return `${sessions.length} session(s) archived (${count} messages). Next message starts fresh.`;
+      return `**Reset:** ${sessions.length} session(s) archived (${count} messages). Next message starts fresh.`;
     },
   });
 
@@ -184,13 +207,12 @@ export function createDefaultRegistry(): CommandRegistry {
     description: "Show which agent handles this conversation",
     async execute(args, ctx) {
       if (!args) {
-        const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-        const sessions = ctx.store.findSessionsByKey(sessionKey);
+        const sessions = findSessionsByCtx(ctx);
         const nousId = sessions?.[0]?.nousId ?? "default";
         const nous = ctx.config.agents.list.find((a) => a.id === nousId);
-        return `Current agent: ${nous?.name ?? nousId}`;
+        return `**Agent:** \`${nous?.name ?? nousId}\``;
       }
-      return `Agent routing is managed via config bindings. Current route would need a config change.`;
+      return "Agent routing is managed via config bindings. Current route would need a config change.";
     },
   });
 
@@ -201,9 +223,12 @@ export function createDefaultRegistry(): CommandRegistry {
       if (!ctx.skills || ctx.skills.size === 0) {
         return "No skills loaded.";
       }
-      const lines = ["Available skills:", ""];
-      for (const skill of ctx.skills.listAll()) {
-        lines.push(`  ${skill.name} — ${skill.description}`);
+      const all = ctx.skills.listAll();
+      const lines = [`**Available skills** (${all.length})\n`];
+      lines.push("| Skill | Description |");
+      lines.push("|-------|-------------|");
+      for (const skill of all) {
+        lines.push(`| \`${skill.name}\` | ${skill.description} |`);
       }
       return lines.join("\n");
     },
@@ -211,13 +236,12 @@ export function createDefaultRegistry(): CommandRegistry {
 
   registry.register({
     name: "model",
-    description: "Show or switch model — /model [name]",
+    description: "Show or switch model \u2014 /model [name]",
     async execute(args, ctx) {
-      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      const session = findSession(ctx);
       if (!args.trim()) {
-        const current = session?.model ?? ctx.config.agents.defaults.model ?? "default";
-        return `Current model: ${current}`;
+        const current = session?.model ?? ctx.config.agents.defaults.model.primary;
+        return `**Model:** \`${current}\``;
       }
       const modelName = args.trim().toLowerCase();
       const aliases: Record<string, string> = {
@@ -228,102 +252,104 @@ export function createDefaultRegistry(): CommandRegistry {
       const resolved = aliases[modelName] ?? modelName;
       if (session) {
         ctx.store.updateSessionModel(session.id, resolved);
-        return `Model switched to: ${resolved}`;
+        return `**Model switched to:** \`${resolved}\``;
       }
-      return `No active session. Model will be set when you send your next message.`;
+      return "No active session. Model will be set when you send your next message.";
     },
   });
 
   registry.register({
     name: "think",
-    description: "Toggle extended thinking — /think [on|off|budget]",
+    description: "Toggle extended thinking \u2014 /think [on|off|budget]",
     async execute(args, ctx) {
-      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      const session = findSession(ctx);
       if (!session) return "No active session.";
-      const config = ctx.store.getThinkingConfig(session.id);
+      const cfg = ctx.store.getThinkingConfig(session.id);
       const arg = args.trim().toLowerCase();
       if (!arg) {
-        const newState = !config.enabled;
-        ctx.store.setThinkingConfig(session.id, newState, config.budget);
-        return `Extended thinking: ${newState ? "ON" : "OFF"} (budget: ${config.budget} tokens)`;
+        const newState = !cfg.enabled;
+        ctx.store.setThinkingConfig(session.id, newState, cfg.budget);
+        return `**Extended thinking:** ${newState ? "ON" : "OFF"} \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`;
       }
       if (arg === "on") {
-        ctx.store.setThinkingConfig(session.id, true, config.budget);
-        return `Extended thinking: ON (budget: ${config.budget} tokens)`;
+        ctx.store.setThinkingConfig(session.id, true, cfg.budget);
+        return `**Extended thinking:** ON \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`;
       }
       if (arg === "off") {
-        ctx.store.setThinkingConfig(session.id, false, config.budget);
-        return "Extended thinking: OFF";
+        ctx.store.setThinkingConfig(session.id, false, cfg.budget);
+        return "**Extended thinking:** OFF";
       }
       const budget = parseInt(arg, 10);
       if (!isNaN(budget) && budget > 0) {
         ctx.store.setThinkingConfig(session.id, true, budget);
-        return `Extended thinking: ON (budget: ${budget} tokens)`;
+        return `**Extended thinking:** ON \u00b7 **Budget:** ${budget.toLocaleString()} tokens`;
       }
-      return "Usage: /think [on|off|<budget>]";
+      return "**Usage:** `/think [on|off|<budget>]`";
     },
   });
 
   registry.register({
     name: "distill",
     aliases: ["compact"],
-    description: "Compress context — distill older messages into memory",
+    description: "Compress context \u2014 distill older messages into memory",
     async execute(_args, ctx) {
-      const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-      const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+      const session = findSession(ctx);
       if (!session) return "No active session to distill.";
       try {
         await ctx.manager.triggerDistillation(session.id);
-        return "Context distilled. Older messages compressed into memory.";
+        return "**Context distilled.** Older messages compressed into memory.";
       } catch (err) {
-        return `Distillation failed: ${err instanceof Error ? err.message : String(err)}`;
+        return `**Distillation failed:** ${err instanceof Error ? err.message : String(err)}`;
       }
     },
   });
 
   registry.register({
     name: "blackboard",
-    description: "Cross-agent blackboard — /blackboard [list|read|write|delete] [key] [value]",
+    description: "Cross-agent blackboard \u2014 /blackboard [list|read|write|delete] [key] [value]",
     async execute(args, ctx) {
       const parts = args.trim().split(/\s+/);
       const sub = parts[0]?.toLowerCase();
       if (!sub || sub === "list") {
         const entries = ctx.store.blackboardList();
         if (entries.length === 0) return "Blackboard is empty.";
-        const lines = ["Blackboard:", ""];
+        const lines = ["**Blackboard**\n"];
+        lines.push("| Key | Entries | Authors |");
+        lines.push("|-----|---------|---------|");
         for (const e of entries) {
-          lines.push(`  ${e.key} (${e.count} entries, by ${e.authors.join(", ")})`);
+          lines.push(`| \`${e.key}\` | ${e.count} | ${e.authors.join(", ")} |`);
         }
         return lines.join("\n");
       }
       if (sub === "read") {
         const key = parts[1];
-        if (!key) return "Usage: /blackboard read <key>";
+        if (!key) return "**Usage:** `/blackboard read <key>`";
         const entries = ctx.store.blackboardRead(key);
-        if (entries.length === 0) return `No entries for key: ${key}`;
-        return entries.map((e) => `[${e.author}] ${e.value}`).join("\n");
+        if (entries.length === 0) return `No entries for key: \`${key}\``;
+        const lines = [`**Blackboard:** \`${key}\`\n`];
+        for (const e of entries) {
+          lines.push(`> **${e.author}:** ${e.value}`);
+        }
+        return lines.join("\n");
       }
       if (sub === "write") {
         const key = parts[1];
         const value = parts.slice(2).join(" ");
-        if (!key || !value) return "Usage: /blackboard write <key> <value>";
-        const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-        const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+        if (!key || !value) return "**Usage:** `/blackboard write <key> <value>`";
+        const session = findSession(ctx);
         const author = session?.nousId ?? "user";
         ctx.store.blackboardWrite(key, value, author);
-        return `Written to blackboard: ${key} = ${value}`;
+        return `**Written to blackboard:** \`${key}\` = ${value}`;
       }
       if (sub === "delete") {
         const key = parts[1];
-        if (!key) return "Usage: /blackboard delete <key>";
-        const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-        const session = ctx.store.findSession(ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+        if (!key) return "**Usage:** `/blackboard delete <key>`";
+        const session = findSession(ctx);
         const author = session?.nousId ?? "user";
         const count = ctx.store.blackboardDelete(key, author);
-        return count > 0 ? `Deleted ${count} entries for key: ${key}` : `No entries found for key: ${key}`;
+        return count > 0 ? `**Deleted** ${count} entries for key: \`${key}\`` : `No entries found for key: \`${key}\``;
       }
-      return "Usage: /blackboard [list|read|write|delete] [key] [value]";
+      return "**Usage:** `/blackboard [list|read|write|delete] [key] [value]`";
     },
   });
 
@@ -334,10 +360,10 @@ export function createDefaultRegistry(): CommandRegistry {
     description: "Approve a pending contact request by code",
     adminOnly: true,
     async execute(args, ctx) {
-      if (!args.trim()) return "Usage: !approve <code>";
+      if (!args.trim()) return "**Usage:** `!approve <code>`";
       const result = ctx.store.approveContactByCode(args.trim());
-      if (!result) return `No pending request found for code: ${args.trim()}`;
-      return `Approved contact: ${result.sender} (${result.channel})`;
+      if (!result) return `No pending request found for code: \`${args.trim()}\``;
+      return `**Approved contact:** ${result.sender} (${result.channel})`;
     },
   });
 
@@ -346,10 +372,10 @@ export function createDefaultRegistry(): CommandRegistry {
     description: "Deny a pending contact request by code",
     adminOnly: true,
     async execute(args, ctx) {
-      if (!args.trim()) return "Usage: !deny <code>";
+      if (!args.trim()) return "**Usage:** `!deny <code>`";
       const denied = ctx.store.denyContactByCode(args.trim());
-      if (!denied) return `No pending request found for code: ${args.trim()}`;
-      return `Denied contact request for code: ${args.trim()}`;
+      if (!denied) return `No pending request found for code: \`${args.trim()}\``;
+      return `**Denied** contact request for code: \`${args.trim()}\``;
     },
   });
 
@@ -360,16 +386,24 @@ export function createDefaultRegistry(): CommandRegistry {
     async execute(_args, ctx) {
       const pending = ctx.store.getPendingRequests();
       if (pending.length === 0) return "No pending contact requests.";
-      const lines = ["Pending contact requests:", ""];
+      const lines = [`**Pending contact requests** (${pending.length})\n`];
+      lines.push("| Name | Code | Requested |");
+      lines.push("|------|------|-----------|");
       for (const r of pending) {
         const age = timeSince(new Date(r.createdAt));
-        lines.push(`  ${r.senderName} — code: ${r.code} (${age})`);
+        lines.push(`| ${r.senderName} | \`${r.code}\` | ${age} |`);
       }
       return lines.join("\n");
     },
   });
 
   return registry;
+}
+
+function formatK(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
 }
 
 function timeSince(date: Date): string {
