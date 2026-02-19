@@ -357,7 +357,10 @@ function handleEnvelope(
   let lockKey: string | undefined;
   try {
     const store = manager.sessionStore;
-    const identity = store.getIdentityForSignalSender(sender, accountId);
+    // Groups share a thread per group (not per member). DMs share a thread per contact identity.
+    const identity = isGroup
+      ? `group:${groupId ?? peerId}`
+      : store.getIdentityForSignalSender(sender, accountId);
     const nousIdForThread = isGroup ? (groupId ?? "main") : peerId;
     const thread = store.resolveThread(nousIdForThread, identity);
     const binding = store.resolveBinding(thread.id, "signal", sessionKey);

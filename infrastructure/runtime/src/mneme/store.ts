@@ -62,6 +62,13 @@ export interface TransportBinding {
   lastSeenAt: string;
 }
 
+export interface ThreadSummary {
+  threadId: string;
+  summary: string;
+  keyFacts: string[];
+  updatedAt: string;
+}
+
 export class SessionStore {
   private db: Database.Database;
 
@@ -1240,6 +1247,111 @@ export class SessionStore {
 
     if (migrated > 0) log.info(`Migrated ${migrated} sessions to thread model`);
     return migrated;
+  }
+
+  getThreadSummary(threadId: string): ThreadSummary | null {
+    const row = this.db
+      .prepare("SELECT * FROM thread_summaries WHERE thread_id = ?")
+      .get(threadId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    let keyFacts: string[] = [];
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch { /* empty */ }
+    return {
+      threadId: row["thread_id"] as string,
+      summary: row["summary"] as string,
+      keyFacts,
+      updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  updateThreadSummary(threadId: string, summary: string, keyFacts: string[]): void {
+    this.db
+      .prepare(
+        `INSERT INTO thread_summaries (thread_id, summary, key_facts)
+         VALUES (?, ?, ?)
+         ON CONFLICT(thread_id)
+         DO UPDATE SET summary = excluded.summary, key_facts = excluded.key_facts,
+                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+      )
+      .run(threadId, summary, JSON.stringify(keyFacts));
+  }
+
+  getThreadForSession(sessionId: string): Thread | null {
+    const row = this.db
+      .prepare(
+        `SELECT t.* FROM threads t
+         JOIN sessions s ON s.thread_id = t.id
+         WHERE s.id = ?`,
+      )
+      .get(sessionId) as Record<string, unknown> | undefined;
+    return row ? this.mapThread(row) : null;
+  }
+
+  getSessionsByThread(threadId: string): Session[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM sessions WHERE thread_id = ? ORDER BY created_at ASC",
+      )
+      .all(threadId) as Record<string, unknown>[];
+    return rows.map((r) => this.mapSession(r));
+  }
+
+  listThreads(nousId?: string): Array<Thread & { sessionCount: number; messageCount: number; lastActivity: string | null; summary: string | null }> {
+    const query = nousId
+      ? `SELECT t.*,
+           COUNT(DISTINCT s.id) AS session_count,
+           COALESCE(SUM(s.message_count), 0) AS message_count,
+           MAX(s.updated_at) AS last_activity,
+           ts.summary AS summary
+         FROM threads t
+         LEFT JOIN sessions s ON s.thread_id = t.id
+         LEFT JOIN thread_summaries ts ON ts.thread_id = t.id
+         WHERE t.nous_id = ?
+         GROUP BY t.id
+         ORDER BY last_activity DESC`
+      : `SELECT t.*,
+           COUNT(DISTINCT s.id) AS session_count,
+           COALESCE(SUM(s.message_count), 0) AS message_count,
+           MAX(s.updated_at) AS last_activity,
+           ts.summary AS summary
+         FROM threads t
+         LEFT JOIN sessions s ON s.thread_id = t.id
+         LEFT JOIN thread_summaries ts ON ts.thread_id = t.id
+         GROUP BY t.id
+         ORDER BY last_activity DESC`;
+    const rows = (nousId ? this.db.prepare(query).all(nousId) : this.db.prepare(query).all()) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      ...this.mapThread(r),
+      sessionCount: r["session_count"] as number,
+      messageCount: r["message_count"] as number,
+      lastActivity: r["last_activity"] as string | null,
+      summary: r["summary"] as string | null,
+    }));
+  }
+
+  getThreadHistory(
+    threadId: string,
+    opts?: { before?: string; limit?: number },
+  ): Message[] {
+    const limit = opts?.limit ?? 50;
+    const params: (string | number)[] = [threadId];
+    let where = "s.thread_id = ? AND m.is_distilled = 0";
+    if (opts?.before) {
+      where += " AND m.created_at < ?";
+      params.push(opts.before);
+    }
+    // Return up to `limit` messages across all sessions in this thread, ordered by creation time
+    const rows = this.db
+      .prepare(
+        `SELECT m.* FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE ${where}
+         ORDER BY m.created_at DESC, m.seq DESC
+         LIMIT ?`,
+      )
+      .all(...params, limit) as Record<string, unknown>[];
+    // Return in chronological order
+    return rows.reverse().map((r) => this.mapMessage(r));
   }
 
   private mapThread(r: Record<string, unknown>): Thread {

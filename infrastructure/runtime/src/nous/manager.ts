@@ -205,6 +205,7 @@ export class NousManager {
     const nous = resolveNous(this.config, session.nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
 
+    const thread = this.store.getThreadForSession(sessionId);
     log.info(`Manual distillation triggered for session ${sessionId}`);
     await distillSession(this.store, this.router, sessionId, session.nousId, {
       triggerThreshold: distillThreshold,
@@ -215,6 +216,11 @@ export class NousManager {
       preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
+      ...(thread ? {
+        onThreadSummaryUpdate: (summary, keyFacts) => {
+          this.store.updateThreadSummary(thread.id, summary, keyFacts);
+        },
+      } : {}),
     });
   }
 }
