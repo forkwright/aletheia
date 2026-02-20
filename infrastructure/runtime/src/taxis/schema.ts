@@ -224,8 +224,25 @@ const GatewayConfig = z
       .default("lan"),
     auth: z
       .object({
-        mode: z.enum(["token", "password"]).default("token"),
+        mode: z.enum(["none", "token", "password", "session"]).default("token"),
         token: z.string().optional(),
+        users: z
+          .array(
+            z.object({
+              username: z.string(),
+              passwordHash: z.string(),
+              role: z.enum(["admin", "user", "readonly"]).default("admin"),
+            }),
+          )
+          .default([]),
+        session: z
+          .object({
+            accessTokenTtl: z.number().default(900),
+            refreshTokenTtl: z.number().default(2_592_000),
+            maxSessionsPerUser: z.number().default(10),
+            secureCookies: z.boolean().default(true),
+          })
+          .default({}),
       })
       .default({}),
     controlUi: z

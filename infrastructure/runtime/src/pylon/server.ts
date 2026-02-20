@@ -1,11 +1,14 @@
 // Hono HTTP gateway
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { timingSafeEqual, randomBytes, scryptSync, createCipheriv } from "node:crypto";
+import { randomBytes, scryptSync, createCipheriv } from "node:crypto";
 import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { createAuthMiddleware, createAuthRoutes, type AuthConfig, type AuthUser } from "../auth/middleware.js";
+import type { AuthSessionStore } from "../auth/sessions.js";
+import type { AuditLog } from "../auth/audit.js";
 import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
@@ -19,11 +22,8 @@ import { getVersion } from "../version.js";
 
 const log = createLogger("pylon");
 
-function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+function getUser(c: import("hono").Context): AuthUser | undefined {
+  return (c as unknown as { get(key: string): unknown }).get("user") as AuthUser | undefined;
 }
 
 // Set after gateway creation — avoids circular dependency
@@ -48,10 +48,17 @@ export function setCommandsRef(reg: import("../semeion/commands.js").CommandRegi
   commandsRef = reg;
 }
 
+export interface GatewayAuthDeps {
+  sessionStore: AuthSessionStore | null;
+  auditLog: AuditLog | null;
+  secret: string | null;
+}
+
 export function createGateway(
   config: AletheiaConfig,
   manager: NousManager,
   store: SessionStore,
+  authDeps?: GatewayAuthDeps,
 ): Hono {
   const app = new Hono();
 
@@ -112,37 +119,28 @@ export function createGateway(
     }
   }, 60_000);
 
-  // Auth middleware — skip /health and /ui
-  const authMode = config.gateway.auth.mode;
-  const authToken = config.gateway.auth.token;
+  // Auth middleware — multi-mode (none, token, password, session)
+  const authConfig: AuthConfig = {
+    mode: config.gateway.auth.mode as AuthConfig["mode"],
+    ...(config.gateway.auth.token ? { token: config.gateway.auth.token } : {}),
+    users: config.gateway.auth.users,
+    ...(authDeps?.secret ? {
+      session: {
+        secret: authDeps.secret,
+        accessTokenTtl: config.gateway.auth.session.accessTokenTtl,
+        refreshTokenTtl: config.gateway.auth.session.refreshTokenTtl,
+        maxSessions: config.gateway.auth.session.maxSessionsPerUser,
+        secureCookies: config.gateway.auth.session.secureCookies,
+      },
+    } : {}),
+  };
 
-  app.use("*", async (c, next) => {
-    if (c.req.path === "/health" || c.req.path === "/api/branding" || c.req.path === "/api/commands" || c.req.path === "/ui" || c.req.path.startsWith("/ui/")) return next();
+  const authSessionStore = authDeps?.sessionStore ?? null;
+  const auditLog = authDeps?.auditLog ?? null;
 
-    if (authMode === "token" && authToken) {
-      const header = c.req.header("Authorization");
-      const token = header?.startsWith("Bearer ")
-        ? header.slice(7)
-        : c.req.query("token");
+  app.use("*", createAuthMiddleware(authConfig, authSessionStore, auditLog));
 
-      if (!safeCompare(token ?? "", authToken)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-    } else if (authMode === "password" && authToken) {
-      const header = c.req.header("Authorization");
-      if (!header?.startsWith("Basic ")) {
-        c.header("WWW-Authenticate", `Basic realm="${config.branding?.name ?? "Aletheia"}"`);
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      const decoded = Buffer.from(header.slice(6), "base64").toString();
-      const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-      if (!safeCompare(password, authToken)) {
-        return c.json({ error: "Invalid credentials" }, 401);
-      }
-    }
-
-    return next();
-  });
+  const authRoutes = createAuthRoutes(authConfig, authSessionStore);
 
   // Global error handler — log details server-side, return generic message to client
   app.onError((err, c) => {
@@ -153,6 +151,157 @@ export function createGateway(
   app.get("/health", (c) =>
     c.json({ status: "ok", version: getVersion(), timestamp: new Date().toISOString() }),
   );
+
+  // --- Auth Routes ---
+
+  function getRefreshCookie(c: import("hono").Context): string | undefined {
+    const header = c.req.header("Cookie") ?? "";
+    const match = header.match(/(?:^|;\s*)aletheia_refresh=([^;]*)/);
+    return match?.[1];
+  }
+
+  function setRefreshCookie(
+    c: import("hono").Context,
+    token: string,
+    maxAge?: number,
+  ): void {
+    const secure = authConfig.session?.secureCookies ?? true;
+    const parts = [
+      `aletheia_refresh=${token}`,
+      "HttpOnly",
+      "SameSite=Strict",
+      "Path=/api/auth",
+    ];
+    if (secure) parts.push("Secure");
+    if (maxAge !== undefined) parts.push(`Max-Age=${maxAge}`);
+    c.header("Set-Cookie", parts.join("; "));
+  }
+
+  function clearRefreshCookie(c: import("hono").Context): void {
+    const secure = authConfig.session?.secureCookies ?? true;
+    const parts = [
+      "aletheia_refresh=",
+      "HttpOnly",
+      "SameSite=Strict",
+      "Path=/api/auth",
+      "Max-Age=0",
+    ];
+    if (secure) parts.push("Secure");
+    c.header("Set-Cookie", parts.join("; "));
+  }
+
+  app.get("/api/auth/mode", (c) => {
+    return c.json(authRoutes.mode());
+  });
+
+  app.post("/api/auth/login", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const username = body["username"] as string;
+    const password = body["password"] as string;
+    const rememberMe = body["rememberMe"] === true;
+
+    if (!username || !password) {
+      return c.json({ error: "username and password required" }, 400);
+    }
+
+    const ip =
+      c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ??
+      c.req.header("X-Real-IP") ??
+      "unknown";
+    const userAgent = c.req.header("User-Agent") ?? "";
+
+    const result = await authRoutes.login(username, password, ip, userAgent);
+    if (!result) {
+      return c.json({ error: "Invalid credentials" }, 401);
+    }
+
+    const maxAge = rememberMe
+      ? authConfig.session?.refreshTokenTtl
+      : undefined;
+    setRefreshCookie(c, result.refreshToken, maxAge);
+
+    return c.json({
+      accessToken: result.accessToken,
+      expiresIn: result.expiresIn,
+      username: result.username,
+      role: result.role,
+    });
+  });
+
+  app.post("/api/auth/refresh", async (c) => {
+    const refreshToken = getRefreshCookie(c);
+    if (!refreshToken) {
+      return c.json({ error: "No refresh token" }, 401);
+    }
+
+    const result = await authRoutes.refresh(refreshToken);
+    if (!result) {
+      clearRefreshCookie(c);
+      return c.json({ error: "Invalid or expired refresh token" }, 401);
+    }
+
+    setRefreshCookie(c, result.refreshToken, authConfig.session?.refreshTokenTtl);
+
+    return c.json({
+      accessToken: result.accessToken,
+      expiresIn: result.expiresIn,
+    });
+  });
+
+  app.post("/api/auth/logout", (c) => {
+    const user = getUser(c);
+    if (user?.sessionId) {
+      authRoutes.logout(user.sessionId);
+    }
+    clearRefreshCookie(c);
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/auth/sessions", (c) => {
+    const user = getUser(c);
+    if (!user || !authSessionStore) return c.json({ sessions: [] });
+    const sessions = authSessionStore.listForUser(user.username);
+    return c.json({
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        lastUsedAt: s.lastUsedAt,
+        expiresAt: s.expiresAt,
+        ipAddress: s.ipAddress,
+        userAgent: s.userAgent,
+        current: s.id === user.sessionId,
+      })),
+    });
+  });
+
+  app.post("/api/auth/revoke/:id", (c) => {
+    if (!authSessionStore) return c.json({ error: "Session auth not enabled" }, 400);
+    const id = c.req.param("id");
+    const revoked = authSessionStore.revoke(id);
+    if (!revoked) return c.json({ error: "Session not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  // --- Audit Log ---
+
+  app.get("/api/audit", (c) => {
+    if (!auditLog) return c.json({ entries: [] });
+    const actor = c.req.query("actor");
+    const since = c.req.query("since");
+    const limit = Math.min(parseInt(c.req.query("limit") ?? "100", 10), 500);
+    const entries = auditLog.query({
+      ...(actor ? { actor } : {}),
+      ...(since ? { since } : {}),
+      limit,
+    });
+    return c.json({ entries });
+  });
 
   app.get("/api/status", (c) =>
     c.json({

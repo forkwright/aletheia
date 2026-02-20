@@ -1,4 +1,3 @@
-// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // JWT signing/verification — HMAC-SHA256, zero external deps
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 

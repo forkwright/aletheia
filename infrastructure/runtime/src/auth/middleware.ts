@@ -1,4 +1,3 @@
-// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Multi-mode auth middleware for Hono
 import type { Context, Next } from "hono";
 import { timingSafeEqual } from "node:crypto";
@@ -57,6 +56,7 @@ export function createAuthMiddleware(
   const skipPaths = new Set([
     "/health",
     "/api/branding",
+    "/api/commands",
     "/api/auth/login",
     "/api/auth/refresh",
     "/api/auth/mode",

@@ -422,4 +422,104 @@ program
     },
   );
 
+// --- Auth Migration ---
+
+program
+  .command("migrate-auth")
+  .description("Migrate from token auth to session-based auth")
+  .option("-u, --username <name>", "Admin username")
+  .option("-p, --password <pass>", "Admin password")
+  .option("-c, --config <path>", "Config file path")
+  .action(async (opts: { username?: string; password?: string; config?: string }) => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const { paths } = await import("./taxis/paths.js");
+    const { hashPassword } = await import("./auth/passwords.js");
+    const { createInterface } = await import("node:readline");
+
+    const configPath = opts.config ?? paths.configFile();
+    let raw: string;
+    try {
+      raw = readFileSync(configPath, "utf-8");
+    } catch {
+      console.error(`Cannot read config: ${configPath}`);
+      process.exit(1);
+    }
+
+    let config: Record<string, unknown>;
+    try {
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      console.error("Invalid JSON in config file");
+      process.exit(1);
+    }
+
+    const gateway = (config["gateway"] ?? {}) as Record<string, unknown>;
+    const auth = (gateway["auth"] ?? {}) as Record<string, unknown>;
+    const currentMode = (auth["mode"] as string) ?? "token";
+
+    if (currentMode === "session") {
+      const users = auth["users"] as Array<unknown> | undefined;
+      console.log(`Auth mode is already 'session' with ${users?.length ?? 0} user(s).`);
+      process.exit(0);
+    }
+
+    console.log(`Current auth mode: ${currentMode}`);
+    console.log("Migrating to session-based auth.\n");
+
+    // Get username and password
+    let username = opts.username;
+    let password = opts.password;
+
+    if (!username || !password) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> =>
+        new Promise((resolve) => rl.question(q, resolve));
+
+      if (!username) username = await ask("Username: ");
+      if (!password) {
+        process.stdout.write("Password: ");
+        password = await ask("");
+      }
+      rl.close();
+    }
+
+    if (!username?.trim() || !password) {
+      console.error("Username and password are required.");
+      process.exit(1);
+    }
+
+    const passwordHash = hashPassword(password);
+
+    // Build the new auth config
+    auth["mode"] = "session";
+    auth["users"] = [
+      { username: username.trim(), passwordHash, role: "admin" },
+    ];
+    if (!auth["session"]) {
+      auth["session"] = {
+        accessTokenTtl: 900,
+        refreshTokenTtl: 2592000,
+        maxSessionsPerUser: 10,
+        secureCookies: true,
+      };
+    }
+    gateway["auth"] = auth;
+    config["gateway"] = gateway;
+
+    // Write config
+    try {
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    } catch (err) {
+      console.error(`Failed to write config: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+
+    console.log(`\nAuth migrated to session mode.`);
+    console.log(`  User: ${username.trim()} (admin)`);
+    if (auth["token"]) {
+      console.log(`  Old token preserved for API access.`);
+    }
+    console.log(`\nRestart the gateway to apply: systemctl restart aletheia`);
+  });
+
 program.parse();
