@@ -155,6 +155,7 @@ export class NousManager {
         })) {
           if (event.type === "turn_start") {
             this.turnMeta.set(turnId, { nousId, sessionId: event.sessionId, startedAt: Date.now() });
+            this.activeSessionsByLock.set(lockKey, event.sessionId);
           }
           channel.push(event);
         }
@@ -181,6 +182,7 @@ export class NousManager {
       this.trackTurnEnd(nousId);
       this.turnAbortControllers.delete(turnId);
       this.turnMeta.delete(turnId);
+      this.activeSessionsByLock.delete(lockKey);
     }
   }
 
@@ -206,6 +208,26 @@ export class NousManager {
     } finally {
       this.trackTurnEnd(nousId);
     }
+  }
+
+  // --- Message Queue ---
+
+  /** Check if a session has an active turn (use lockKey = `${nousId}:${sessionKey}`) */
+  isSessionActive(lockKey: string): boolean {
+    return this.activeSessionsByLock.has(lockKey);
+  }
+
+  /** Get the session ID for an active turn by lock key */
+  getActiveSessionId(lockKey: string): string | undefined {
+    return this.activeSessionsByLock.get(lockKey);
+  }
+
+  /** Queue a message for delivery during an active turn. Returns false if no active turn. */
+  queueMessageForSession(lockKey: string, text: string, sender?: string): boolean {
+    const sessionId = this.activeSessionsByLock.get(lockKey);
+    if (!sessionId) return false;
+    this.store.queueMessage(sessionId, text, sender);
+    return true;
   }
 
   private maybeScheduleDistillation(sessionId: string, nousId: string, lockKey: string): void {

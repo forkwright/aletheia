@@ -354,7 +354,7 @@ export async function* executeStreaming(
       for (const q of queued) {
         services.store.appendMessage(sessionId, "user", q.content, {
           tokenEstimate: estimateTokens(q.content),
-          meta: { queued: true, sender: q.sender },
+
         });
       }
       yield { type: "queue_drained", count: queued.length };
@@ -577,7 +577,7 @@ export async function executeBuffered(
       for (const q of queued) {
         services.store.appendMessage(sessionId, "user", q.content, {
           tokenEstimate: estimateTokens(q.content),
-          meta: { queued: true, sender: q.sender },
+
         });
       }
     } else {
