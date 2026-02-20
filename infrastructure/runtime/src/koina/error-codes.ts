@@ -17,13 +17,19 @@ export const ERROR_CODES = {
   SESSION_CORRUPTED: "Session data failed integrity check",
   STORE_INIT_FAILED: "SQLite database initialization failed",
 
-  // nous (agent management)
+  // nous (agent management + pipeline)
   AGENT_NOT_FOUND: "Agent ID not in configuration",
   BOOTSTRAP_FAILED: "Failed to assemble agent bootstrap context",
   BOOTSTRAP_OVER_BUDGET: "Bootstrap exceeds token budget",
   TURN_TIMEOUT: "Agent turn exceeded time limit",
+  TURN_REJECTED: "Turn rejected by runtime (draining or depth limit)",
+  PIPELINE_STAGE_FAILED: "A pipeline stage failed during execution",
+  PIPELINE_NO_OUTCOME: "Pipeline completed without producing an outcome",
+  PIPELINE_TOOL_LOOP: "Tool call loop detected",
+  PIPELINE_STREAM_INCOMPLETE: "Streaming pipeline ended without message_complete",
   TOOL_EXECUTION_FAILED: "Tool call returned an error",
   TOOL_NOT_FOUND: "Agent requested a tool that is not registered",
+  EPHEMERAL_LIMIT: "Maximum concurrent ephemeral agents reached",
 
   // organon (tools)
   EXEC_TIMEOUT: "Shell command timed out",

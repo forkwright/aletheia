@@ -4,6 +4,7 @@ import type { SessionStore } from "../mneme/store.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { ToolRegistry } from "../organon/registry.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { PipelineError, SessionError } from "../koina/errors.js";
 import { resolveNous, resolveWorkspace } from "../taxis/loader.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
@@ -188,12 +189,16 @@ export class NousManager {
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
     if (this.isDraining()) {
-      throw new Error("Runtime is shutting down — rejecting new messages");
+      throw new PipelineError("Runtime is shutting down — rejecting new messages", {
+        code: "TURN_REJECTED", context: { reason: "draining" },
+      });
     }
 
     const maxDepth = this.config.session.agentToAgent.maxPingPongTurns;
     if (msg.depth && msg.depth >= maxDepth) {
-      throw new Error(`Cross-agent depth limit (${maxDepth}) exceeded`);
+      throw new PipelineError(`Cross-agent depth limit (${maxDepth}) exceeded`, {
+        code: "TURN_REJECTED", context: { depth: msg.depth, maxDepth },
+      });
     }
 
     const services = this.buildServices();
@@ -279,7 +284,9 @@ export class NousManager {
     const distillModel = compaction.distillationModel;
 
     const session = this.store.findSessionById(sessionId);
-    if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (!session) throw new SessionError(`Session ${sessionId} not found`, {
+      code: "SESSION_NOT_FOUND", context: { sessionId },
+    });
 
     const nous = resolveNous(this.config, session.nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;

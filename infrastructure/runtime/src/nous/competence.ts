@@ -39,7 +39,8 @@ export class CompetenceModel {
     if (existsSync(this.filePath)) {
       try {
         this.data = JSON.parse(readFileSync(this.filePath, "utf-8"));
-      } catch {
+      } catch (err) {
+        log.warn(`Competence data corrupted, resetting: ${err instanceof Error ? err.message : err}`);
         this.data = {};
       }
     }

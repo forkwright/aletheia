@@ -97,3 +97,45 @@ export class ToolError extends AletheiaError {
     this.name = "ToolError";
   }
 }
+
+export class PipelineError extends AletheiaError {
+  constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode; recoverable?: boolean }) {
+    super({
+      code: opts?.code ?? "PIPELINE_STAGE_FAILED",
+      module: "nous",
+      message,
+      context: opts?.context,
+      recoverable: opts?.recoverable,
+      cause: opts?.cause,
+    });
+    this.name = "PipelineError";
+  }
+}
+
+export class StoreError extends AletheiaError {
+  constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode }) {
+    super({
+      code: opts?.code ?? "STORE_INIT_FAILED",
+      module: "mneme",
+      message,
+      context: opts?.context,
+      cause: opts?.cause,
+    });
+    this.name = "StoreError";
+  }
+}
+
+export class TransportError extends AletheiaError {
+  constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode; recoverable?: boolean; retryAfterMs?: number }) {
+    super({
+      code: opts?.code ?? "SIGNAL_SEND_FAILED",
+      module: "semeion",
+      message,
+      context: opts?.context,
+      recoverable: opts?.recoverable,
+      retryAfterMs: opts?.retryAfterMs,
+      cause: opts?.cause,
+    });
+    this.name = "TransportError";
+  }
+}

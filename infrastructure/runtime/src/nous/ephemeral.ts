@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
+import { PipelineError } from "../koina/errors.js";
 
 const log = createLogger("nous.ephemeral");
 
@@ -39,7 +40,9 @@ export function spawnEphemeral(spec: EphemeralSpec, sharedRoot: string): Ephemer
       }
     }
     if (activeEphemerals.size >= MAX_CONCURRENT) {
-      throw new Error(`Maximum ${MAX_CONCURRENT} concurrent ephemeral agents`);
+      throw new PipelineError(`Maximum ${MAX_CONCURRENT} concurrent ephemeral agents`, {
+        code: "EPHEMERAL_LIMIT", context: { active: activeEphemerals.size, max: MAX_CONCURRENT },
+      });
     }
   }
 
