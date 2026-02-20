@@ -318,25 +318,22 @@ export async function* executeStreaming(
         toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
       });
 
-      // Loop detection
+      // Loop detection — append to existing result (API requires exactly one result per tool_use)
       const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
+      const lastResult = toolResults[toolResults.length - 1] as { type: string; tool_use_id?: string; content?: string; is_error?: boolean } | undefined;
       if (loopCheck.verdict === "halt") {
-        toolResults.push({
-          type: "tool_result", tool_use_id: toolUse.id,
-          content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
-          is_error: true,
-        });
+        if (lastResult?.type === "tool_result" && lastResult.tool_use_id === toolUse.id) {
+          lastResult.content = (lastResult.content ?? "") + `\n\n[LOOP DETECTED — HALTING] ${loopCheck.reason}`;
+          lastResult.is_error = true;
+        }
         currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
         yield { type: "error", message: loopCheck.reason ?? "Tool loop detected" };
         state.totalToolCalls = totalToolCalls;
         state.currentMessages = currentMessages;
         return state;
       }
-      if (loopCheck.verdict === "warn") {
-        toolResults.push({
-          type: "tool_result", tool_use_id: toolUse.id,
-          content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
-        });
+      if (loopCheck.verdict === "warn" && lastResult?.type === "tool_result" && lastResult.tool_use_id === toolUse.id) {
+        lastResult.content = (lastResult.content ?? "") + `\n\n[WARNING: Possible loop detected] ${loopCheck.reason}`;
       }
     }
 
@@ -527,20 +524,18 @@ export async function executeBuffered(
         toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
       });
 
+      // Loop detection — append to existing result (API requires exactly one result per tool_use)
       const loopCheck = loopDetector.record(toolUse.name, toolUse.input, isError);
+      const lastResult = toolResults[toolResults.length - 1] as { type: string; tool_use_id?: string; content?: string; is_error?: boolean } | undefined;
       if (loopCheck.verdict === "halt") {
-        toolResults.push({
-          type: "tool_result", tool_use_id: toolUse.id,
-          content: `[LOOP DETECTED — HALTING] ${loopCheck.reason}`,
-          is_error: true,
-        });
+        if (lastResult?.type === "tool_result" && lastResult.tool_use_id === toolUse.id) {
+          lastResult.content = (lastResult.content ?? "") + `\n\n[LOOP DETECTED — HALTING] ${loopCheck.reason}`;
+          lastResult.is_error = true;
+        }
         throw new Error(loopCheck.reason ?? "Tool loop detected");
       }
-      if (loopCheck.verdict === "warn") {
-        toolResults.push({
-          type: "tool_result", tool_use_id: toolUse.id,
-          content: `[WARNING: Possible loop detected] ${loopCheck.reason}`,
-        });
+      if (loopCheck.verdict === "warn" && lastResult?.type === "tool_result" && lastResult.tool_use_id === toolUse.id) {
+        lastResult.content = (lastResult.content ?? "") + `\n\n[WARNING: Possible loop detected] ${loopCheck.reason}`;
       }
     }
 
