@@ -15,7 +15,7 @@ that evolve with the system.
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
-| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Runtime narration suppression filter, rich message components |
+| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-3 done | **Full-response narration suppression** (Phase 4), rich message components |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
 | 14 | [Development Workflow](14_development-workflow.md) | Phases 1-3, 6 done | CI zero-broken-windows (Phase 4), versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
