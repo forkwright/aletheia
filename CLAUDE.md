@@ -4,54 +4,41 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-All code must follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points:
+Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, typed errors (`AletheiaError`), never empty catch, test behavior not implementation.
 
-- **Self-documenting code.** No "what" comments. Only "why" comments where non-obvious.
-- **Typed errors.** All errors extend `AletheiaError`. Error codes in `koina/error-codes.ts`. Never throw strings or bare `Error`.
-- **Never empty catch.** Every catch logs, rethrows, or returns a meaningful value.
-- **Test behavior, not implementation.** One assertion per test. Descriptive names.
+## Structure
 
-## Project Structure
-
-- **Runtime:** `infrastructure/runtime/src/` — TypeScript, built with tsdown, tested with vitest
-- **UI:** `ui/` — Svelte 5, built with Vite
+- **Runtime:** `infrastructure/runtime/src/` — TypeScript, tsdown, vitest
+- **UI:** `ui/` — Svelte 5, Vite
 - **Memory sidecar:** `infrastructure/memory/sidecar/` — Python FastAPI
-- **Config:** `~/.aletheia/aletheia.json` — validated by Zod schema in `taxis/schema.ts`
+- **Config:** `~/.aletheia/aletheia.json` — validated by Zod in `taxis/schema.ts`
 - **Specs:** `docs/specs/` — design documents numbered by implementation order
 
 ## Commands
 
 ```bash
-# Run all tests
-cd infrastructure/runtime && npx vitest run
-
-# Run specific test file
-cd infrastructure/runtime && npx vitest run src/path/to/file.test.ts
-
-# Build runtime
-cd infrastructure/runtime && npm run build
-
-# Build UI
-cd ui && npm run build
-
-# Validate config
-aletheia doctor
-
-# Lint
-cd infrastructure/runtime && npx eslint src/
+cd infrastructure/runtime
+npx vitest run                        # All tests
+npx vitest run src/path/file.test.ts  # Specific test
+npx tsdown                            # Build runtime
+npx tsc --noEmit                      # Type check
+npx oxlint src/                       # Lint
+cd ../../ui && npm run build          # Build UI
+aletheia doctor                       # Validate config
 ```
 
-## Key Patterns
+## Patterns
 
-- **Module naming:** Greek names (koina, taxis, mneme, hermeneus, nous, organon, semeion, pylon, prostheke)
-- **Error handling:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts` for non-critical operations
-- **Logging:** `createLogger("module-name")` from `koina/logger.ts` — structured with AsyncLocalStorage context
-- **Events:** `eventBus` from `koina/event-bus.ts` — `noun:verb` naming pattern
-- **Config:** Zod schemas in `taxis/schema.ts`, loaded by `taxis/loader.ts`
+- **Modules:** Greek names — koina, taxis, mneme, hermeneus, nous, organon, semeion, pylon, prostheke
+- **Errors:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts`
+- **Logging:** `createLogger("module-name")` — structured with AsyncLocalStorage context
+- **Events:** `eventBus` — `noun:verb` naming (e.g., `turn:before`, `tool:called`)
+- **Config:** Zod schemas in `taxis/schema.ts`
+- **Imports:** `.js` extensions, order: node → external → internal → local
 
 ## Before Submitting
 
-1. Run tests for affected files
-2. Ensure no new empty catch blocks
-3. Check that new errors use typed error classes with codes
-4. Verify import order follows the convention (node → external → internal → local)
+1. Tests pass for affected files
+2. No new empty catch blocks
+3. New errors use typed error classes
+4. `npx tsc --noEmit` clean
