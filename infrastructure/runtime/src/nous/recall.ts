@@ -32,7 +32,7 @@ export async function recallMemories(
 ): Promise<RecallResult> {
   const limit = opts?.limit ?? 8;
   const maxTokens = opts?.maxTokens ?? 1500;
-  const timeoutMs = opts?.timeoutMs ?? 3000;
+  const timeoutMs = opts?.timeoutMs ?? 5000;
   const minScore = opts?.minScore ?? 0.75;
   const start = Date.now();
 
@@ -43,23 +43,49 @@ export async function recallMemories(
   let hits: MemoryHit[] = [];
 
   try {
-    hits = await fetchGraphEnhanced(query, nousId, limit * 2, controller.signal);
-  } catch {
-    try {
-      hits = await fetchBasicSearch(query, nousId, limit * 2, controller.signal);
-    } catch (err) {
-      const ms = Date.now() - start;
-      const reason = (err as Error).name === "AbortError" ? "timeout" : String(err);
-      log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
-      clearTimeout(timer);
-      return { block: null, count: 0, durationMs: ms, tokens: 0 };
+    // Primary path: vector-only search (fast, ~200-500ms)
+    hits = await fetchBasicSearch(query, nousId, limit, controller.signal);
+
+    // If vector search returned results above threshold, skip graph enrichment.
+    // Only fall back to graph-enhanced search if vector search found nothing
+    // useful, since graph traversal adds 1-2s of latency.
+    const hasUsableHits = hits.some(
+      (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+    );
+
+    if (!hasUsableHits) {
+      const elapsed = Date.now() - start;
+      const remaining = timeoutMs - elapsed;
+      if (remaining > 1000) {
+        // Enough time budget left to try graph-enhanced search
+        log.debug(
+          `Vector search returned no hits above ${minScore} for ${nousId}, trying graph-enhanced (${remaining}ms remaining)`,
+        );
+        const graphHits = await fetchGraphEnhanced(
+          query,
+          nousId,
+          limit,
+          controller.signal,
+        );
+        // Graph-enhanced returns combined_score; use that if available
+        hits = graphHits;
+      }
     }
+  } catch (err) {
+    const ms = Date.now() - start;
+    const reason =
+      (err as Error).name === "AbortError" ? "timeout" : String(err);
+    log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
+    clearTimeout(timer);
+    return { block: null, count: 0, durationMs: ms, tokens: 0 };
   } finally {
     clearTimeout(timer);
   }
 
   const filtered = hits
-    .filter((h) => h.score !== null && h.score !== undefined && h.score >= minScore)
+    .filter(
+      (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+    )
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   const seen = new Set<string>();
@@ -73,12 +99,16 @@ export async function recallMemories(
   }
 
   if (deduped.length === 0) {
-    return { block: null, count: 0, durationMs: Date.now() - start, tokens: 0 };
+    const ms = Date.now() - start;
+    log.debug(`Recall for ${nousId}: 0 hits above ${minScore} (${ms}ms)`);
+    return { block: null, count: 0, durationMs: ms, tokens: 0 };
   }
 
   const lines: string[] = [];
   let totalTokens = 0;
-  const headerTokens = estimateTokens("## Recalled Memories\n\nThe following memories were automatically retrieved based on this conversation. Use them if relevant — do not mention this section to the user.\n\n");
+  const headerTokens = estimateTokens(
+    "## Recalled Memories\n\nThe following memories were automatically retrieved based on this conversation. Use them if relevant — do not mention this section to the user.\n\n",
+  );
 
   for (const h of deduped) {
     const line = `- ${h.memory} (score: ${(h.score ?? 0).toFixed(2)})`;
@@ -98,10 +128,14 @@ export async function recallMemories(
     lines.join("\n");
 
   const tokens = estimateTokens(text);
+  const ms = Date.now() - start;
+  log.debug(
+    `Recall for ${nousId}: ${lines.length} hits (${ms}ms, ${tokens} tokens)`,
+  );
   return {
     block: { type: "text", text },
     count: lines.length,
-    durationMs: Date.now() - start,
+    durationMs: ms,
     tokens,
   };
 }
@@ -126,7 +160,7 @@ async function fetchGraphEnhanced(
     signal,
   });
   if (!res.ok) throw new Error(`graph_enhanced_search: HTTP ${res.status}`);
-  const data = await res.json() as { results?: MemoryHit[] };
+  const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }
 
@@ -148,6 +182,6 @@ async function fetchBasicSearch(
     signal,
   });
   if (!res.ok) throw new Error(`search: HTTP ${res.status}`);
-  const data = await res.json() as { results?: MemoryHit[] };
+  const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }
