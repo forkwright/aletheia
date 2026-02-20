@@ -10,11 +10,10 @@ that evolve with the system.
 
 | # | Spec | Status | Summary |
 |---|------|--------|---------|
-| 2 | [Webchat UX](02_webchat-ux.md) | Draft | SSE events, cross-agent notifications, refresh resilience, file editor with split pane |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Draft | Login page (user/pass + remember me), self-update CLI, GitHub Releases |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
-| 6 | [Code Quality](06_code-quality.md) | Phase 1 done | Error handling overhaul, dead code audit — CONTRIBUTING.md + CLAUDE.md in PR #37. Remaining: error sweep, dead code removal, ESLint rules |
+| 6 | [Code Quality](06_code-quality.md) | Phase 1-4 done | CONTRIBUTING.md + CLAUDE.md (#37), dead code audit + cleanup (#45). Remaining: error taxonomy, error boundaries |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Draft | Performance (fast vector-only recall), utility (search/edit UI, confidence decay), domain-scoped memory |
 | 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1-3 done | Expanded tail (#36), structured summaries (#43), context editing API (#44). Remaining: working state, agent notes |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default, progressive loading, named communities, semantic node cards, memory auditing, drift detection |
@@ -22,7 +21,6 @@ that evolve with the system.
 
 ### Priority order
 
-- **2 Webchat UX** — Daily usability. SSE endpoint fixes staleness, refresh resilience stops killing agent work.
 - **3 Auth & Updates** — Security. Login replaces insecure token, update CLI eliminates manual deploys.
 - **4 Cost-Aware Orchestration** — Economics. Sub-agents on cheaper models cut spend 40-60%.
 - **5 Plug-and-Play Onboarding** — Adoption. The capstone — ship last.
@@ -36,6 +34,7 @@ that evolve with the system.
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Webchat UX](archive/02_webchat-ux.md) | PR #47 | SSE notifications, refresh resilience, tool output fix, file editor (CodeMirror 6) |
 | [Turn Safety](archive/01_turn-safety.md) | PR #38 + #39 | Error propagation, distillation guards, orphan diagnostics, duplicate tool_result fix |
 | [Data Privacy](archive/spec-data-privacy.md) | PR #33 | File permissions hardening, retention policy, log sanitization, encrypted export, sidecar auth |
 | [Unified Thread Model](archive/spec-unified-thread-model.md) | PR #32 | Transport isolation, thread abstraction, thread summaries, topic branching (all 4 phases) |
