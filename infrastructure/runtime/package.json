@@ -21,7 +21,7 @@
     "test:file": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.78.0",
     "@hono/node-server": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^11.8.0",
