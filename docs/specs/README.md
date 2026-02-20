@@ -17,7 +17,7 @@ that evolve with the system.
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
 | 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Runtime narration suppression filter, rich message components |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
-| 14 | [Development Workflow](14_development-workflow.md) | Draft | Spec template, branch/PR/commit convention, CI cleanup, versioning, task dispatch |
+| 14 | [Development Workflow](14_development-workflow.md) | Phases 1-3, 6 done | CI zero-broken-windows (Phase 4), versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
 
 ### Priority order

@@ -56,6 +56,7 @@ function makeStore(overrides: Record<string, unknown> = {}) {
     appendMessage: vi.fn(),
     markMessagesDistilled: vi.fn(),
     recordDistillation: vi.fn(),
+    updateLastDistilledAt: vi.fn(),
     ...overrides,
   } as never;
 }

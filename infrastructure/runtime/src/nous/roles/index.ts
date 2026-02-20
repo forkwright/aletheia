@@ -111,6 +111,8 @@ export function parseStructuredResult(responseText: string): SubAgentResult | nu
       details: (parsed["details"] as Record<string, unknown>) ?? {},
       ...(filesChanged ? { filesChanged } : {}),
       ...(issues ? { issues } : {}),
+      ...(parsed["filesChanged"] ? { filesChanged: parsed["filesChanged"] as string[] } : {}),
+      ...(parsed["issues"] ? { issues: parsed["issues"] as SubAgentIssue[] } : {}),
       confidence: (parsed["confidence"] as number) ?? 0.5,
     };
   } catch {
