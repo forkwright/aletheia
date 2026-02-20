@@ -1,6 +1,6 @@
 # Spec: Development Workflow — How We Ship
 
-**Status:** Draft
+**Status:** Phases 1-3, 6 done
 **Author:** Syn
 **Date:** 2026-02-20
 **Spec:** 14
