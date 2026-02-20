@@ -62,6 +62,7 @@ export type TurnStreamEvent =
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "turn_abort"; reason: string }
+  | { type: "queue_drained"; count: number }
   | { type: "error"; message: string };
 
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };

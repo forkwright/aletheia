@@ -33,6 +33,14 @@ export interface WorkingState {
   updatedAt: string;
 }
 
+export interface QueuedMessage {
+  id: number;
+  sessionId: string;
+  content: string;
+  sender: string | null;
+  createdAt: string;
+}
+
 export interface AgentNote {
   id: number;
   sessionId: string;
@@ -1534,6 +1542,42 @@ export class SessionStore {
       content: r["content"] as string,
       createdAt: r["created_at"] as string,
     }));
+  }
+
+  // --- Message Queue ---
+
+  queueMessage(sessionId: string, content: string, sender?: string): number {
+    const result = this.db
+      .prepare("INSERT INTO message_queue (session_id, content, sender) VALUES (?, ?, ?)")
+      .run(sessionId, content, sender ?? null);
+    return result.lastInsertRowid as number;
+  }
+
+  drainQueue(sessionId: string): QueuedMessage[] {
+    const rows = this.db
+      .prepare("SELECT * FROM message_queue WHERE session_id = ? ORDER BY created_at ASC")
+      .all(sessionId) as Record<string, unknown>[];
+
+    if (rows.length === 0) return [];
+
+    this.db
+      .prepare("DELETE FROM message_queue WHERE session_id = ?")
+      .run(sessionId);
+
+    return rows.map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      content: r["content"] as string,
+      sender: r["sender"] as string | null,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  getQueueLength(sessionId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) as count FROM message_queue WHERE session_id = ?")
+      .get(sessionId) as { count: number } | undefined;
+    return row?.count ?? 0;
   }
 
   private mapThread(r: Record<string, unknown>): Thread {
