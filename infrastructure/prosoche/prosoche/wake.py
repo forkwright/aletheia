@@ -32,8 +32,10 @@ class WakeBudget:
         # Track which signal sets have already been delivered per nous
         # Maps nous_id -> (fingerprint, delivery_time)
         self._delivered: dict[str, tuple[str, float]] = {}
-        # Don't re-deliver the same signal set within this window (1 hour)
-        self._dedup_window = 3600.0
+        # Don't re-deliver the same signal set within this window (8 hours)
+        # Static overdue tasks don't change until a human acts — no point
+        # re-alerting hourly. New/changed signals get a fresh fingerprint.
+        self._dedup_window = 28800.0
 
     def can_wake(self, nous_id: str) -> bool:
         now = time.monotonic()
