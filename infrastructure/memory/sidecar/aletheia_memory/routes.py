@@ -16,7 +16,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
+from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
 from .temporal import _neo4j_driver, _extract_entities_for_episode
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
@@ -69,6 +69,36 @@ async def add_memory(req: AddRequest, request: Request):
                     f"agent={safe_agent})"
                 )
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
+
+        # Tier 3 (no LLM): skip extraction, just store raw text as embedding
+        backend = getattr(request.app.state, "backend", LLM_BACKEND)
+        if backend.get("tier", 1) >= 3:
+            logger.info("Tier 3: storing text as embedding only (no fact extraction)")
+            # Use Mem0's vector store directly for embedding-only storage
+            try:
+                from qdrant_client import QdrantClient
+                from qdrant_client.models import PointStruct
+                import uuid as _uuid
+                embedder = mem.embedding_model
+                vector = await asyncio.to_thread(embedder.embed, req.text)
+                point_id = str(_uuid.uuid4())
+                payload = {
+                    "memory": req.text[:500],
+                    "data": req.text,
+                    "user_id": req.user_id,
+                    "agent_id": req.agent_id,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    **(req.metadata or {}),
+                }
+                qclient = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+                qclient.upsert(
+                    collection_name="aletheia_memories",
+                    points=[PointStruct(id=point_id, vector=vector, payload=payload)],
+                )
+                return {"ok": True, "result": {"tier3_embed_only": True, "id": point_id}}
+            except Exception as e:
+                logger.exception("Tier 3 embedding failed")
+                raise HTTPException(status_code=500, detail=str(e))
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
 
@@ -220,8 +250,17 @@ async def health_check(request: Request):
     except Exception as e:
         checks["neo4j"] = f"error: {e}"
 
+    # LLM backend info
+    backend = getattr(request.app.state, "backend", LLM_BACKEND)
+    llm_info = {
+        "tier": backend.get("tier", 0),
+        "provider": backend.get("provider", "unknown"),
+        "model": backend.get("model"),
+        "extraction_enabled": backend.get("tier", 0) < 3,
+    }
+
     all_ok = all(v == "ok" for v in checks.values())
-    return {"ok": all_ok, "checks": checks}
+    return {"ok": all_ok, "version": "2.0.0", "llm": llm_info, "checks": checks}
 
 
 @router.get("/graph_stats")
