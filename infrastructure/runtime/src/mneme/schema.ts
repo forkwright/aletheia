@@ -264,4 +264,20 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_queue_session ON message_queue(session_id);
     `,
   },
+  {
+    version: 12,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN session_type TEXT DEFAULT 'primary';
+      ALTER TABLE sessions ADD COLUMN last_distilled_at TEXT;
+      ALTER TABLE sessions ADD COLUMN computed_context_tokens INTEGER DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(session_type);
+
+      -- Backfill session_type from key patterns
+      UPDATE sessions SET session_type = 'background'
+      WHERE session_key LIKE '%prosoche%' AND session_type = 'primary';
+      UPDATE sessions SET session_type = 'ephemeral'
+      WHERE (session_key LIKE 'ask:%' OR session_key LIKE 'spawn:%' OR session_key LIKE 'ephemeral:%')
+      AND session_type = 'primary';
+    `,
+  },
 ];

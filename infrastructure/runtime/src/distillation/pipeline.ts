@@ -28,6 +28,8 @@ export interface DistillationOpts {
   preserveRecentMessages?: number;
   preserveRecentMaxTokens?: number;
   workspace?: string;
+  /** Skip extraction and use single-sentence summary for background sessions. */
+  lightweight?: boolean;
   /** Called after successful distillation to update the thread-level running summary. */
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
 }
@@ -204,66 +206,89 @@ async function runDistillation(
   const { prunedMessages: simpleMessages, removedCount: pruneCount } = pruneBySimilarity(sanitized);
   if (pruneCount > 0) log.info(`Pruned ${pruneCount} low-information messages before distillation`);
 
-  // Pass 1: Extraction
-  log.info(`Extraction pass: ${simpleMessages.length} messages`);
-  const extraction = await extractFromMessages(
-    router,
-    simpleMessages,
-    opts.extractionModel,
-  );
+  // Lightweight mode: skip extraction + memory flush, use simple summary
+  const emptyExtraction = {
+    facts: [] as string[],
+    decisions: [] as string[],
+    openItems: [] as string[],
+    keyEntities: [] as string[],
+    contradictions: [] as string[],
+  };
+  let extraction = emptyExtraction;
+  let summary: string;
+  let summaryTokens: number;
 
-  log.info(
-    `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ` +
-      `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
-  );
-
-  // Memory flush with retry — non-blocking, don't fail distillation on flush failure
-  if (opts.memoryTarget) {
-    const flushResult = await flushToMemory(
-      opts.memoryTarget,
-      nousId,
-      extraction,
-    );
-    if (flushResult.errors > 0) {
-      log.warn(
-        `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
-      );
-    }
-  }
-
-  // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
-  log.info("Summary pass");
-  let summary = await summarizeInStages(
-    router,
-    simpleMessages,
-    extraction,
-    opts.summaryModel,
-    nousId,
-  );
-
-  let summaryTokens = estimateTokens(summary);
-
-  // Compression ratio check — if summary > 50% of input, run a tighter second pass
-  const compressionRatio = tokensBefore > 0 ? summaryTokens / tokensBefore : 0;
-  if (compressionRatio > 0.5 && tokensBefore > 5000) {
-    log.warn(
-      `Compression ratio ${Math.round(compressionRatio * 100)}% exceeds 50% — running second pass`,
-    );
-    const emptyExtraction = {
-      facts: [],
-      decisions: [],
-      openItems: [],
-      keyEntities: [],
-      contradictions: [],
-    };
-    summary = await summarizeMessages(
+  if (opts.lightweight) {
+    log.info(`Lightweight distillation: ${simpleMessages.length} messages — skipping extraction`);
+    const condensed = simpleMessages
+      .slice(-30)
+      .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+      .join("\n");
+    const result = await router.complete({
+      model: opts.summaryModel,
+      system: "Summarize this background session in 2-3 sentences. Focus on what happened and any state that matters.",
+      messages: [{ role: "user", content: condensed }],
+      maxTokens: 256,
+      temperature: 0,
+    });
+    const textBlock = result.content.find((b) => b.type === "text");
+    summary = textBlock && "text" in textBlock ? textBlock.text : "Session distilled (no summary generated).";
+    summaryTokens = estimateTokens(summary);
+  } else {
+    // Pass 1: Extraction
+    log.info(`Extraction pass: ${simpleMessages.length} messages`);
+    extraction = await extractFromMessages(
       router,
-      [{ role: "assistant", content: summary }],
-      emptyExtraction,
+      simpleMessages,
+      opts.extractionModel,
+    );
+
+    log.info(
+      `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ` +
+        `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
+    );
+
+    // Memory flush with retry — non-blocking, don't fail distillation on flush failure
+    if (opts.memoryTarget) {
+      const flushResult = await flushToMemory(
+        opts.memoryTarget,
+        nousId,
+        extraction,
+      );
+      if (flushResult.errors > 0) {
+        log.warn(
+          `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
+        );
+      }
+    }
+
+    // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
+    log.info("Summary pass");
+    summary = await summarizeInStages(
+      router,
+      simpleMessages,
+      extraction,
       opts.summaryModel,
       nousId,
     );
+
     summaryTokens = estimateTokens(summary);
+
+    // Compression ratio check — if summary > 50% of input, run a tighter second pass
+    const compressionRatio = tokensBefore > 0 ? summaryTokens / tokensBefore : 0;
+    if (compressionRatio > 0.5 && tokensBefore > 5000) {
+      log.warn(
+        `Compression ratio ${Math.round(compressionRatio * 100)}% exceeds 50% — running second pass`,
+      );
+      summary = await summarizeMessages(
+        router,
+        [{ role: "assistant", content: summary }],
+        emptyExtraction,
+        opts.summaryModel,
+        nousId,
+      );
+      summaryTokens = estimateTokens(summary);
+    }
   }
 
   // Tag repeated distillations so agents can see compression history

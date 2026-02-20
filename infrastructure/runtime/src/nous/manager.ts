@@ -242,6 +242,32 @@ export class NousManager {
 
     const session = this.store.findSessionById(sessionId);
     if (!session) return;
+
+    const nous = resolveNous(this.config, nousId);
+    const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
+    const distillModel = compaction.distillationModel;
+
+    // Background sessions distill earlier with lightweight settings
+    if (session.sessionType === "background") {
+      if (session.messageCount < 50 && session.tokenCountEstimate < 10000) return;
+      log.info(`Scheduling lightweight distillation for background session ${sessionId} (${session.messageCount} msgs, ${session.tokenCountEstimate} tokens)`);
+      withSessionLock(lockKey, async () => {
+        await distillSession(this.store, this.router, sessionId, nousId, {
+          triggerThreshold: 10000,
+          minMessages: 20,
+          extractionModel: distillModel,
+          summaryModel: distillModel,
+          preserveRecentMessages: 20,
+          lightweight: true,
+          ...(workspace ? { workspace } : {}),
+        });
+      }).catch((err) => {
+        log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+      });
+      return;
+    }
+
+    // Primary sessions: original threshold check
     const actualContext = session.lastInputTokens ?? session.tokenCountEstimate ?? 0;
     if (session.messageCount < 10 || actualContext < distillThreshold) return;
 
@@ -251,10 +277,7 @@ export class NousManager {
       `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
     );
 
-    const nous = resolveNous(this.config, nousId);
-    const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
     const thread = this.store.getThreadForSession(sessionId);
-    const distillModel = compaction.distillationModel;
 
     withSessionLock(lockKey, async () => {
       await distillSession(this.store, this.router, sessionId, nousId, {

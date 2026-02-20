@@ -19,6 +19,9 @@ export interface Session {
   lastInputTokens: number;
   bootstrapHash: string | null;
   distillationCount: number;
+  sessionType: "primary" | "background" | "ephemeral";
+  lastDistilledAt: string | null;
+  computedContextTokens: number;
   workingState: WorkingState | null;
   createdAt: string;
   updatedAt: string;
@@ -180,17 +183,23 @@ export class SessionStore {
   ): Session {
     const id = generateId("ses");
     const key = sessionKey ?? generateSessionKey();
+
+    // Auto-classify session type from key pattern
+    let sessionType: Session["sessionType"] = "primary";
+    if (key.includes("prosoche")) sessionType = "background";
+    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
+
     this.db
       .prepare(
-        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model, session_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, nousId, key, parentSessionId ?? null, model ?? null);
+      .run(id, nousId, key, parentSessionId ?? null, model ?? null, sessionType);
     const session = this.findSessionById(id);
     if (!session) throw new SessionError("Failed to create session", {
       code: "SESSION_CORRUPTED", context: { sessionId: id, nousId },
     });
-    log.info(`Created session ${id} for nous ${nousId} (key: ${key})`);
+    log.info(`Created session ${id} for nous ${nousId} (key: ${key}, type: ${sessionType})`);
     return session;
   }
 
@@ -437,6 +446,24 @@ export class SessionStore {
       .run(inputTokens, sessionId);
   }
 
+  updateSessionType(sessionId: string, sessionType: Session["sessionType"]): void {
+    this.db
+      .prepare("UPDATE sessions SET session_type = ? WHERE id = ?")
+      .run(sessionType, sessionId);
+  }
+
+  updateLastDistilledAt(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  updateComputedContextTokens(sessionId: string, tokens: number): void {
+    this.db
+      .prepare("UPDATE sessions SET computed_context_tokens = ? WHERE id = ?")
+      .run(tokens, sessionId);
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(
@@ -606,6 +633,38 @@ export class SessionStore {
     const count = result.changes;
     if (count > 0) {
       log.info(`Archived ${count} stale spawn sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
+    }
+    return count;
+  }
+
+  deleteEphemeralSessions(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const tx = this.db.transaction(() => {
+      const ids = this.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE session_type = 'ephemeral'
+             AND status = 'active'
+             AND updated_at < ?`,
+        )
+        .all(cutoff) as Array<{ id: string }>;
+
+      if (ids.length === 0) return 0;
+
+      const placeholders = ids.map(() => "?").join(",");
+      const sessionIds = ids.map((r) => r.id);
+
+      this.db.prepare(`DELETE FROM messages WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM usage WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM agent_notes WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM distillations WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      const result = this.db.prepare(`DELETE FROM sessions WHERE id IN (${placeholders})`).run(...sessionIds);
+      return result.changes;
+    });
+
+    const count = tx();
+    if (count > 0) {
+      log.info(`Deleted ${count} ephemeral sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
     }
     return count;
   }
@@ -918,6 +977,9 @@ export class SessionStore {
       lastInputTokens: (row['last_input_tokens'] as number) ?? 0,
       bootstrapHash: (row['bootstrap_hash'] as string) ?? null,
       distillationCount: (row['distillation_count'] as number) ?? 0,
+      sessionType: (row['session_type'] as Session["sessionType"]) ?? "primary",
+      lastDistilledAt: (row['last_distilled_at'] as string) ?? null,
+      computedContextTokens: (row['computed_context_tokens'] as number) ?? 0,
       workingState: this.parseWorkingState(row['working_state'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
