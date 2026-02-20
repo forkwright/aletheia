@@ -56,7 +56,7 @@ export const writeTool: ToolHandler = {
         flag: append ? "a" : "w",
         encoding: "utf-8",
       });
-      try { commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"); } catch {}
+      try { commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"); } catch { /* git sync, non-critical */ }
       return `Written to ${filePath}`;
     } catch (error) {
       const msg =

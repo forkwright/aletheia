@@ -43,6 +43,12 @@ function makeStore() {
     recordSignal: vi.fn(),
     getSignalHistory: vi.fn().mockReturnValue([]),
     blackboardReadPrefix: vi.fn().mockReturnValue([]),
+    getThreadForSession: vi.fn().mockReturnValue(null),
+    getHistory: vi.fn().mockReturnValue([]),
+    getThinkingConfig: vi.fn().mockReturnValue({ enabled: false, budget: 10000 }),
+    getRecentToolCalls: vi.fn().mockReturnValue([]),
+    getNotes: vi.fn().mockReturnValue([]),
+    getWorkingState: vi.fn().mockReturnValue(null),
   } as never;
 }
 

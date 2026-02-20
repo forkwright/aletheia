@@ -1,5 +1,8 @@
 // Mem0 memory search tool — query long-term extracted memories
 import type { ToolHandler, ToolContext } from "../registry.js";
+import { createLogger } from "../../koina/logger.js";
+
+const log = createLogger("tool:mem0-search");
 
 const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
 const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
@@ -74,8 +77,8 @@ export const mem0SearchTool: ToolHandler = {
         if (enhancedRes.ok) {
           results = await extract(enhancedRes);
         }
-      } catch {
-        // Fall through to tier 2
+      } catch (err) {
+        log.debug(`Tier 1 (enhanced) failed: ${err instanceof Error ? err.message : err}`);
       }
 
       // Tier 2: Graph-enhanced search (vector + graph neighbor expansion)
@@ -97,8 +100,8 @@ export const mem0SearchTool: ToolHandler = {
           if (graphRes.ok) {
             results = await extract(graphRes);
           }
-        } catch {
-          // Fall through to tier 3
+        } catch (err) {
+          log.debug(`Tier 2 (graph-enhanced) failed: ${err instanceof Error ? err.message : err}`);
         }
       }
 
@@ -129,8 +132,8 @@ export const mem0SearchTool: ToolHandler = {
           const agentResults = await extract(aRes);
           const globalResults = await extract(gRes);
           results = [...agentResults, ...globalResults];
-        } catch {
-          // All tiers failed
+        } catch (err) {
+          log.debug(`Tier 3 (basic) failed: ${err instanceof Error ? err.message : err}`);
         }
       }
 

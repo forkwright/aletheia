@@ -1,6 +1,6 @@
 # Spec: Login Authentication & Self-Update System
 
-**Status:** Draft  
+**Status:** Phase 1 done (PR #50)
 **Author:** Syn  
 **Date:** 2026-02-19  
 

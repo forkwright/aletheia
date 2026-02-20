@@ -12,7 +12,7 @@ export interface ServiceProbe {
 export interface WatchdogOpts {
   services: ServiceProbe[];
   intervalMs: number;
-  alertFn: (message: string) => Promise<void>;
+  alertFn?: (message: string) => Promise<void>;
 }
 
 const MAX_CONSECUTIVE_FAILURES = 100;
@@ -118,7 +118,7 @@ export class Watchdog {
       }
     }
 
-    if (alerts.length > 0) {
+    if (alerts.length > 0 && this.opts.alertFn) {
       const message = `Watchdog Alert\n${alerts.join("\n")}`;
       try {
         await this.opts.alertFn(message);

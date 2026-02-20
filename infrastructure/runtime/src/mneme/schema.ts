@@ -227,4 +227,27 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- Working state: structured task context that survives distillation
+      ALTER TABLE sessions ADD COLUMN working_state TEXT;
+    `,
+  },
+  {
+    version: 10,
+    sql: `
+      -- Agent notes: explicit agent-written context that survives distillation
+      CREATE TABLE IF NOT EXISTS agent_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        nous_id TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_notes_session ON agent_notes(session_id);
+      CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
+    `,
+  },
 ];

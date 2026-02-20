@@ -49,7 +49,7 @@ async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
     if (!cleaned) {
       cleaned = true;
       pageCount--;
-      page.close().catch(() => {});
+      page.close().catch(() => { /* page cleanup */ });
     }
   };
 

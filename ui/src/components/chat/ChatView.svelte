@@ -2,6 +2,7 @@
   import MessageList from "./MessageList.svelte";
   import InputBar from "./InputBar.svelte";
   import ToolPanel from "./ToolPanel.svelte";
+  import ThinkingPanel from "./ThinkingPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
@@ -283,6 +284,25 @@
     selectedTools = null;
   }
 
+  // Thinking panel state
+  let selectedThinking = $state<string | null>(null);
+  let thinkingIsLive = $state(false);
+
+  function handleThinkingClick(thinking?: string) {
+    if (thinking) {
+      selectedThinking = thinking;
+      thinkingIsLive = false;
+    } else {
+      selectedThinking = currentAgentId ? getThinkingText(currentAgentId) : "";
+      thinkingIsLive = true;
+    }
+  }
+
+  function closeThinkingPanel() {
+    selectedThinking = null;
+    thinkingIsLive = false;
+  }
+
   function handleAbort() {
     const id = getActiveAgentId();
     if (id) abortStream(id);
@@ -315,9 +335,17 @@
       agentName={agent?.name}
       agentEmoji={emoji}
       onToolClick={handleToolClick}
+      onThinkingClick={(thinking) => handleThinkingClick(thinking)}
     />
     {#if selectedTools}
       <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
+    {/if}
+    {#if selectedThinking !== null}
+      <ThinkingPanel
+        thinkingText={thinkingIsLive && currentAgentId ? getThinkingText(currentAgentId) : selectedThinking}
+        isStreaming={thinkingIsLive && (currentAgentId ? getIsStreaming(currentAgentId) : false)}
+        onClose={closeThinkingPanel}
+      />
     {/if}
   </div>
   {#if pendingApproval}

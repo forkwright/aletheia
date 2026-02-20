@@ -33,6 +33,7 @@ import { createCheckCalibrationTool } from "./organon/built-in/check-calibration
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
 import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
 import { createBlackboardTool } from "./organon/built-in/blackboard.js";
+import { createNoteTool } from "./organon/built-in/note.js";
 import { createContextCheckTool } from "./organon/built-in/context-check.js";
 import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
@@ -59,6 +60,8 @@ import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { startUpdateChecker } from "./daemon/update-check.js";
+import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
@@ -222,6 +225,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
+  tools.register(createNoteTool(store));
 
   // Meta-tools — composed pipelines
   const ctxCheckTool = createContextCheckTool(tools);
@@ -435,13 +439,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
 
   // --- Watchdog ---
+  // Always start for dashboard service health, even without Signal/alertRecipient.
+  // Alert function is optional — only wired when Signal is available + alertRecipient set.
   const wdConfig = config.watchdog;
-  if (wdConfig.enabled && wdConfig.alertRecipient && clients.size > 0) {
-    const alertClient = clients.values().next().value!;
-    const alertAccountId = clients.keys().next().value!;
-    const alertAccount = config.channels.signal.accounts[alertAccountId]!;
-    const alertAccountPhone = alertAccount.account ?? alertAccountId;
-
+  if (wdConfig.enabled) {
     const services: ServiceProbe[] = wdConfig.services.length > 0
       ? wdConfig.services
       : [
@@ -451,19 +452,26 @@ export async function startRuntime(configPath?: string): Promise<void> {
           { name: "ollama", url: "http://127.0.0.1:11434/api/tags" },
         ];
 
-    watchdog = new Watchdog({
-      services,
-      intervalMs: wdConfig.intervalMs,
-      alertFn: async (message) => {
+    // Wire alert function only when Signal + alertRecipient are configured
+    let alertFn: ((message: string) => Promise<void>) | undefined;
+    if (wdConfig.alertRecipient && clients.size > 0) {
+      const alertClient = clients.values().next().value!;
+      const alertAccountId = clients.keys().next().value!;
+      const alertAccount = config.channels.signal.accounts[alertAccountId]!;
+      const alertAccountPhone = alertAccount.account ?? alertAccountId;
+      alertFn = async (message) => {
         await sendMessage(alertClient, {
           account: alertAccountPhone,
           recipient: wdConfig.alertRecipient!,
         }, message, { markdown: false });
-      },
-    });
+      };
+    }
+
+    watchdog = new Watchdog({ services, intervalMs: wdConfig.intervalMs, ...(alertFn ? { alertFn } : {}) });
     watchdog.start();
     setWatchdogRef(watchdog);
     runtime.manager.setWatchdog(watchdog);
+    log.info(`Watchdog started: ${services.length} services${alertFn ? ", alerts → Signal" : ", no alert channel"}`);
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
@@ -481,6 +489,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Run once shortly after startup so stale data is cleared without waiting 24h
   setTimeout(() => runRetention(runtime.store, config.privacy), 60_000);
 
+  // --- Update checker ---
+  const updateCheckTimer = startUpdateChecker(runtime.store, getVersion());
+
   // --- Shutdown ---
   let draining = false;
   runtime.manager.isDraining = () => draining;
@@ -491,6 +502,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
     clearInterval(retentionTimer);
+    clearInterval(updateCheckTimer);
     watchdog?.stop();
     cron.stop();
 
