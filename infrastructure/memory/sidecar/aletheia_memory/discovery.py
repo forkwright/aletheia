@@ -1,6 +1,6 @@
 # Serendipity engine — cross-domain discovery and unexpected connection finding
 
-from __future__ import annotations
+# NOTE: Do NOT add future annotations — see routes.py comment.
 
 import asyncio
 import logging
