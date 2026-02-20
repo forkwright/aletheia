@@ -52,6 +52,7 @@ export class NousManager {
   private activeTurnsByNous = new Map<string, number>();
   private turnAbortControllers = new Map<string, AbortController>();
   private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
+  private activeSessionsByLock = new Map<string, string>(); // lockKey → sessionId
   readonly approvalGate = new ApprovalGate();
   isDraining: () => boolean = () => false;
 
