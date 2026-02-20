@@ -8,28 +8,23 @@ that evolve with the system.
 
 ## Active Specs
 
-| # | Spec | Status | Summary |
-|---|------|--------|---------|
-| 3 | [Auth & Updates](03_auth-and-updates.md) | Phase 1 done | Release workflow + `aletheia update` CLI with rollback (#50). Remaining: login page, session auth |
-| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
-| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
-| 6 | [Code Quality](06_code-quality.md) | Phase 1-5 done | CONTRIBUTING.md + CLAUDE.md (#37), dead code audit + cleanup (#45), error handling sweep (#52). Remaining: error taxonomy, ESLint rules |
-| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Vector-first recall (#49). Remaining: Neo4j optional, extraction quality, memory confidence, graph UI, domain scoping |
-| 8 | [Memory Continuity](08_memory-continuity.md) | Complete | Expanded tail (#36), structured summaries (#43), context editing API (#44), working state + agent notes (#55). All 5 phases delivered. |
-| 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | 2D default, lazy 3D, progressive loading (#56). Remaining: named communities, semantic node cards, memory auditing, drift detection |
-| 10 | [Thinking UI](10_thinking-ui.md) | Phase 1-4 done | Extended thinking enabled (#40), status pills + detail panel (#54). Remaining: collapsed reasoning in history |
-| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Thinking vs chat routing, formatting standards (prompt). Remaining: runtime narration filter, rich UI components |
+| # | Spec | Status | Remaining |
+|---|------|--------|-----------|
+| 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2 untouched: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI, update API |
+| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
+| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
+| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
+| 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search overhaul, edit capabilities, memory auditing, conversation archaeology, cross-agent visibility, drift detection (10 phases) |
+| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Runtime narration suppression filter, rich message components (status cards, diff views, progress checklists) |
 
 ### Priority order
 
-- **3 Auth & Updates** — Security. Login replaces insecure token, update CLI eliminates manual deploys.
-- **4 Cost-Aware Orchestration** — Economics. Sub-agents on cheaper models cut spend 40-60%.
-- **5 Plug-and-Play Onboarding** — Adoption. The capstone — ship last.
-- **6 Code Quality** — Parallel. Error sweep + dead code removal can happen alongside anything.
-- **7 Knowledge Graph** — Performance. Graph recall too slow. Depends on infrastructure stability (2-3).
-- **8 Memory Continuity** — Frontier. Structured summaries, context editing API, working state, agent notes.
-- **9 Graph Visualization** — Polish. Depends on knowledge graph backend (7).
-- **10 Thinking UI** — UX. Extended thinking pills + detail panel. Can be done alongside 2 (same UI domain).
+- **3 Auth & Updates** — Part 2 (updates) eliminates manual deploys. Session mgmt UI is polish.
+- **4 Cost-Aware Orchestration** — Core cost savings (40-60%) still unbuilt. Plan mode + model routing are the big wins.
+- **7 Knowledge Graph** — Making Neo4j optional reduces infrastructure burden. Extraction quality improves memory over time.
+- **11 Chat Output Quality** — Runtime narration filter is a safety net. Rich components are polish.
+- **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (7).
+- **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid.
 
 ## Implemented (Archived)
 
@@ -39,6 +34,9 @@ that evolve with the system.
 | [Turn Safety](archive/01_turn-safety.md) | PR #38 + #39 | Error propagation, distillation guards, orphan diagnostics, duplicate tool_result fix |
 | [Data Privacy](archive/spec-data-privacy.md) | PR #33 | File permissions hardening, retention policy, log sanitization, encrypted export, sidecar auth |
 | [Unified Thread Model](archive/spec-unified-thread-model.md) | PR #32 | Transport isolation, thread abstraction, thread summaries, topic branching (all 4 phases) |
+| [Code Quality](archive/06_code-quality.md) | PRs #37, #45, #52, #60, #62 | Error taxonomy, dead code audit, CONTRIBUTING.md, error handling sweep, oxlint enforcement |
+| [Memory Continuity](archive/08_memory-continuity.md) | PRs #36, #43, #44, #55 | Expanded tail, structured summaries, context editing API, working state, agent notes |
+| [Thinking UI](archive/10_thinking-ui.md) | PRs #40, #54, #63 | Extended thinking for Opus, status pills + detail panel, collapsed reasoning in history |
 | [Auth & Security](archive/spec-auth-and-security.md) | PR #26 + security commits | JWT, RBAC, sessions, audit, TLS, passwords (standalone modules; integration pending) |
 | [Modular Runtime Architecture](archive/spec-modular-runtime-architecture.md) | PR #21 | Pipeline decomposition, composable stages |
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
