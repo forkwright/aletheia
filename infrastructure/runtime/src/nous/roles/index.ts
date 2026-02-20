@@ -101,14 +101,16 @@ export function parseStructuredResult(responseText: string): SubAgentResult | nu
       return null;
     }
 
+    const filesChanged = parsed["filesChanged"] as string[] | undefined;
+    const issues = parsed["issues"] as SubAgentIssue[] | undefined;
     return {
       role: (parsed["role"] as string) ?? "unknown",
       task: (parsed["task"] as string) ?? "",
       status: parsed["status"] as SubAgentResult["status"],
       summary: parsed["summary"] as string,
       details: (parsed["details"] as Record<string, unknown>) ?? {},
-      filesChanged: parsed["filesChanged"] as string[] | undefined,
-      issues: parsed["issues"] as SubAgentIssue[] | undefined,
+      ...(filesChanged ? { filesChanged } : {}),
+      ...(issues ? { issues } : {}),
       confidence: (parsed["confidence"] as number) ?? 0.5,
     };
   } catch {

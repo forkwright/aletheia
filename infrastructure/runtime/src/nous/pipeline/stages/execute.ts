@@ -6,6 +6,7 @@ import { getReversibility, requiresSimulation } from "../../../organon/reversibi
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
 import { requiresApproval as checkApproval } from "../../../organon/approval.js";
 import { checkResponseQuality } from "../../circuit-breaker.js";
+import { NarrationFilter } from "../../narration-filter.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type {
   ContentBlock,
@@ -67,6 +68,10 @@ export async function* executeStreaming(
   const { turnToolCalls, loopDetector } = state;
   const seq = state.seq;
 
+  // Narration filter — suppresses internal monologue at start of response
+  const narrationEnabled = services.config.agents.defaults.narrationFilter !== false;
+  const narrationFilter = narrationEnabled ? new NarrationFilter() : null;
+
   for (let loop = 0; ; loop++) {
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
@@ -96,7 +101,13 @@ export async function* executeStreaming(
       switch (streamEvent.type) {
         case "text_delta":
           accumulatedText += streamEvent.text;
-          yield { type: "text_delta", text: streamEvent.text };
+          if (narrationFilter) {
+            for (const evt of narrationFilter.feed(streamEvent.text)) {
+              yield evt;
+            }
+          } else {
+            yield { type: "text_delta", text: streamEvent.text };
+          }
           break;
         case "thinking_delta":
           yield { type: "thinking_delta", text: streamEvent.text };
@@ -107,6 +118,13 @@ export async function* executeStreaming(
         case "message_complete":
           streamResult = streamEvent.result;
           break;
+      }
+    }
+
+    // Flush narration filter at end of LLM response
+    if (narrationFilter) {
+      for (const evt of narrationFilter.flush()) {
+        yield evt;
       }
     }
 

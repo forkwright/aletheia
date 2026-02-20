@@ -102,6 +102,7 @@ async def add_memory(req: AddRequest, request: Request):
                 raise HTTPException(status_code=500, detail=str(e))
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
+        graph_degraded = False
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
@@ -115,8 +116,15 @@ async def add_memory(req: AddRequest, request: Request):
         if neo4j_available():
             asyncio.create_task(_normalize_neo4j_relationships())
 
-        return {"ok": True, "result": result}
+        return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
+        # Neo4j failure during mem.add — vector write likely succeeded but graph write failed.
+        # Mem0 processes vector first, so partial success is common when Neo4j is down.
+        err_str = str(e).lower()
+        if "neo4j" in err_str or "ServiceUnavailable" in str(type(e).__name__) or "connection" in err_str:
+            mark_neo4j_down()
+            logger.warning("Neo4j failed during add, vector portion likely saved: %s", e)
+            return {"ok": True, "result": {"graph_degraded": True}, "warning": "Neo4j unavailable, stored vector only"}
         logger.exception("add_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
