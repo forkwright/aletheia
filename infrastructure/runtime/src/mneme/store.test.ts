@@ -538,6 +538,114 @@ describe("thread summary (Phase 3)", () => {
   });
 });
 
+describe("session classification", () => {
+  it("auto-classifies prosoche sessions as background", () => {
+    const session = store.createSession("syn", "prosoche");
+    expect(session.sessionType).toBe("background");
+  });
+
+  it("auto-classifies prosoche-variant keys as background", () => {
+    const session = store.createSession("syn", "main:prosoche:daily");
+    expect(session.sessionType).toBe("background");
+  });
+
+  it("auto-classifies spawn: sessions as ephemeral", () => {
+    const session = store.createSession("syn", "spawn:task123");
+    expect(session.sessionType).toBe("ephemeral");
+  });
+
+  it("auto-classifies ask: sessions as ephemeral", () => {
+    const session = store.createSession("syn", "ask:chiron:health");
+    expect(session.sessionType).toBe("ephemeral");
+  });
+
+  it("auto-classifies ephemeral: sessions as ephemeral", () => {
+    const session = store.createSession("syn", "ephemeral:temp");
+    expect(session.sessionType).toBe("ephemeral");
+  });
+
+  it("default session type is primary", () => {
+    const session = store.createSession("syn", "main");
+    expect(session.sessionType).toBe("primary");
+  });
+
+  it("webchat session type is primary", () => {
+    const session = store.createSession("syn", "web:cody:syn");
+    expect(session.sessionType).toBe("primary");
+  });
+
+  it("updateSessionType changes classification", () => {
+    const session = store.createSession("syn", "main");
+    store.updateSessionType(session.id, "background");
+    const updated = store.findSessionById(session.id)!;
+    expect(updated.sessionType).toBe("background");
+  });
+
+  it("updateLastDistilledAt sets timestamp", () => {
+    const session = store.createSession("syn", "main");
+    expect(session.lastDistilledAt).toBeNull();
+    store.updateLastDistilledAt(session.id);
+    const updated = store.findSessionById(session.id)!;
+    expect(updated.lastDistilledAt).not.toBeNull();
+  });
+
+  it("updateComputedContextTokens stores value", () => {
+    const session = store.createSession("syn", "main");
+    store.updateComputedContextTokens(session.id, 85000);
+    const updated = store.findSessionById(session.id)!;
+    expect(updated.computedContextTokens).toBe(85000);
+  });
+});
+
+describe("deleteEphemeralSessions", () => {
+  it("deletes ephemeral sessions older than cutoff", () => {
+    const session = store.createSession("syn", "spawn:old-task");
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET created_at = '2020-01-01T00:00:00.000Z', updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+
+    const deleted = store.deleteEphemeralSessions(1000);
+    expect(deleted).toBe(1);
+    expect(store.findSessionById(session.id)).toBeNull();
+  });
+
+  it("does not delete primary sessions", () => {
+    const session = store.createSession("syn", "main");
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET created_at = '2020-01-01T00:00:00.000Z', updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+
+    const deleted = store.deleteEphemeralSessions(1000);
+    expect(deleted).toBe(0);
+    expect(store.findSessionById(session.id)).not.toBeNull();
+  });
+
+  it("cascades delete to messages and related data", () => {
+    const session = store.createSession("syn", "spawn:task-with-data");
+    store.appendMessage(session.id, "user", "hello", { tokenEstimate: 10 });
+    store.appendMessage(session.id, "assistant", "hi", { tokenEstimate: 15 });
+
+    (store as unknown as { db: { prepare: (s: string) => { run: (...a: unknown[]) => void } } }).db
+      .prepare("UPDATE sessions SET created_at = '2020-01-01T00:00:00.000Z', updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?")
+      .run(session.id);
+
+    const deleted = store.deleteEphemeralSessions(1000);
+    expect(deleted).toBe(1);
+
+    // Messages should be gone too
+    const history = store.getHistory(session.id);
+    expect(history.length).toBe(0);
+  });
+
+  it("does not delete recent ephemeral sessions", () => {
+    const session = store.createSession("syn", "spawn:fresh-task");
+    // Default cutoff is 24h — session just created should survive
+    const deleted = store.deleteEphemeralSessions();
+    expect(deleted).toBe(0);
+    expect(store.findSessionById(session.id)).not.toBeNull();
+  });
+});
+
 describe("retention", () => {
   it("purgeDistilledMessages returns 0 when days=0 (disabled)", () => {
     const session = store.createSession("syn", "main");

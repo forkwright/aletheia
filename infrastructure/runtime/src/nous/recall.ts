@@ -18,6 +18,14 @@ interface MemoryHit {
   memory: string;
   score: number | null;
   agent_id?: string | null;
+  created_at?: string | null;
+}
+
+export function computeRecencyBoost(createdAt: string | null | undefined, now: number): number {
+  if (!createdAt) return 0;
+  const age = now - new Date(createdAt).getTime();
+  if (age < 0 || age > 24 * 3600 * 1000) return 0;
+  return 0.15 * (1 - age / (24 * 3600 * 1000));
 }
 
 export async function recallMemories(
@@ -82,10 +90,15 @@ export async function recallMemories(
     clearTimeout(timer);
   }
 
+  const now = Date.now();
   const filtered = hits
     .filter(
       (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
     )
+    .map((h) => ({
+      ...h,
+      score: (h.score ?? 0) + computeRecencyBoost(h.created_at, now),
+    }))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   const seen = new Set<string>();

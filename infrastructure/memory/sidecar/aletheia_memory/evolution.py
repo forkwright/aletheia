@@ -1,5 +1,5 @@
 # Memory evolution — A-Mem-inspired patterns for memory lifecycle management
-from __future__ import annotations
+# NOTE: Do NOT add 'from __future__ import annotations' — see routes.py comment.
 
 import asyncio
 import logging
@@ -49,7 +49,9 @@ async def check_evolution(req: EvolveRequest, request: Request):
     3. Replace old memory with evolved version
     4. If no match, return suggestion to add normally
     """
-    mem = request.app.state.memory
+    mem = getattr(request.app.state, 'memory', None)
+    if mem is None:
+        raise HTTPException(status_code=503, detail='Memory not initialized')
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": 5}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -165,7 +167,9 @@ async def decay_memories(req: DecayRequest, request: Request):
     Designed to run from nightly consolidation cron.
     Memories with MemoryAccess nodes accessed within days_inactive are exempt.
     """
-    mem = request.app.state.memory
+    mem = getattr(request.app.state, 'memory', None)
+    if mem is None:
+        raise HTTPException(status_code=503, detail='Memory not initialized')
 
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)

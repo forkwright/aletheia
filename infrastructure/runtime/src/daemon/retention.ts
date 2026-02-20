@@ -9,6 +9,7 @@ export interface RetentionResult {
   distilledMessagesDeleted: number;
   archivedMessagesDeleted: number;
   toolResultsTruncated: number;
+  ephemeralSessionsDeleted: number;
 }
 
 /**
@@ -24,6 +25,7 @@ export function runRetention(
     distilledMessagesDeleted: 0,
     archivedMessagesDeleted: 0,
     toolResultsTruncated: 0,
+    ephemeralSessionsDeleted: 0,
   };
 
   try {
@@ -50,15 +52,23 @@ export function runRetention(
     log.error(`Retention: tool result truncation failed: ${err instanceof Error ? err.message : err}`);
   }
 
+  try {
+    result.ephemeralSessionsDeleted = store.deleteEphemeralSessions();
+  } catch (err) {
+    log.error(`Retention: ephemeral cleanup failed: ${err instanceof Error ? err.message : err}`);
+  }
+
   const total =
     result.distilledMessagesDeleted +
     result.archivedMessagesDeleted +
-    result.toolResultsTruncated;
+    result.toolResultsTruncated +
+    result.ephemeralSessionsDeleted;
   if (total > 0) {
     log.info(
       `Retention cycle complete: ${result.distilledMessagesDeleted} distilled msgs deleted, ` +
       `${result.archivedMessagesDeleted} archived msgs deleted, ` +
-      `${result.toolResultsTruncated} tool results truncated`,
+      `${result.toolResultsTruncated} tool results truncated, ` +
+      `${result.ephemeralSessionsDeleted} ephemeral sessions deleted`,
     );
   }
 

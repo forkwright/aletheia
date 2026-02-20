@@ -242,19 +242,58 @@ export class NousManager {
 
     const session = this.store.findSessionById(sessionId);
     if (!session) return;
-    const actualContext = session.lastInputTokens ?? session.tokenCountEstimate ?? 0;
-    if (session.messageCount < 10 || actualContext < distillThreshold) return;
-
-    const utilization = Math.round((actualContext / contextTokens) * 100);
-    log.info(
-      `Scheduling deferred distillation for ${nousId} session=${sessionId} ` +
-      `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
-    );
 
     const nous = resolveNous(this.config, nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
-    const thread = this.store.getThreadForSession(sessionId);
     const distillModel = compaction.distillationModel;
+
+    // Background sessions distill earlier with lightweight settings
+    if (session.sessionType === "background") {
+      if (session.messageCount < 50 && session.tokenCountEstimate < 10000) return;
+      log.info(`Scheduling lightweight distillation for background session ${sessionId} (${session.messageCount} msgs, ${session.tokenCountEstimate} tokens)`);
+      withSessionLock(lockKey, async () => {
+        await distillSession(this.store, this.router, sessionId, nousId, {
+          triggerThreshold: 10000,
+          minMessages: 20,
+          extractionModel: distillModel,
+          summaryModel: distillModel,
+          preserveRecentMessages: 20,
+          lightweight: true,
+          ...(workspace ? { workspace } : {}),
+        });
+      }).catch((err) => {
+        log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+      });
+      return;
+    }
+
+    // Primary sessions: multi-signal trigger — fire if ANY condition is met
+    const actualContext = session.computedContextTokens || session.lastInputTokens || session.tokenCountEstimate || 0;
+    const lastDistilledMs = session.lastDistilledAt ? Date.now() - new Date(session.lastDistilledAt).getTime() : Infinity;
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+
+    let triggerReason: string | null = null;
+    if (actualContext >= 120_000) {
+      triggerReason = `context=${actualContext} >= 120K`;
+    } else if (session.messageCount >= 150) {
+      triggerReason = `messageCount=${session.messageCount} >= 150`;
+    } else if (lastDistilledMs > sevenDays && session.messageCount >= 20) {
+      triggerReason = `stale (${Math.round(lastDistilledMs / 86400000)}d since last distill) + ${session.messageCount} msgs`;
+    } else if (session.distillationCount === 0 && session.messageCount >= 30) {
+      triggerReason = `never distilled + ${session.messageCount} msgs`;
+    } else if (actualContext >= distillThreshold && session.messageCount >= 10) {
+      triggerReason = `legacy threshold (${actualContext} >= ${distillThreshold})`;
+    }
+
+    if (!triggerReason) return;
+
+    const utilization = Math.round((actualContext / contextTokens) * 100);
+    log.info(
+      `Scheduling distillation for ${nousId} session=${sessionId} ` +
+      `(${utilization}% context, trigger: ${triggerReason})`,
+    );
+
+    const thread = this.store.getThreadForSession(sessionId);
 
     withSessionLock(lockKey, async () => {
       await distillSession(this.store, this.router, sessionId, nousId, {

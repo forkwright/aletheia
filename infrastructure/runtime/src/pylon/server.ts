@@ -1,7 +1,7 @@
 // Hono HTTP gateway
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { createCipheriv, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
 import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";

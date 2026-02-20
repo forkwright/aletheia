@@ -49,6 +49,10 @@ function makeStore() {
     getRecentToolCalls: vi.fn().mockReturnValue([]),
     getNotes: vi.fn().mockReturnValue([]),
     getWorkingState: vi.fn().mockReturnValue(null),
+    updateComputedContextTokens: vi.fn(),
+    queueMessage: vi.fn(),
+    drainQueue: vi.fn().mockReturnValue([]),
+    getQueueLength: vi.fn().mockReturnValue(0),
   } as never;
 }
 

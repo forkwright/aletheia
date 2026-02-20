@@ -1,5 +1,5 @@
 # Temporal memory layer — Graphiti-inspired episode tracking and bi-temporal queries
-from __future__ import annotations
+# NOTE: Do NOT add future annotations — see routes.py comment.
 
 import logging
 import uuid

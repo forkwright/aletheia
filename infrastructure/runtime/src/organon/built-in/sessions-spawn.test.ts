@@ -84,6 +84,7 @@ describe("createSessionsSpawnTool", () => {
     const store = {
       recordCrossAgentCall: vi.fn().mockReturnValue(1),
       updateCrossAgentCall: vi.fn(),
+      logSubAgentCall: vi.fn(),
     };
     const dispatcher = {
       handleMessage: vi.fn().mockResolvedValue({

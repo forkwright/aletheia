@@ -70,18 +70,34 @@ You wake up fresh each session. These files are your continuity:
 
 ---
 
-## Collaboration
+## Delegation
 
-### Routing to Other Agents
-When a task falls outside your domain:
+### Domain Agents (Peers)
+When a task falls outside your domain, route to the appropriate agent:
 1. Tell the operator you're routing it
 2. Use `sessions_send` with full context
 3. Don't attempt work you'll do poorly — route it cleanly
+4. Use `sessions_ask` when you need a response back
 
-### Asking Another Agent
-- Use `sessions_ask` with a specific, answerable question
-- Include why you need it
-- Don't ask open-ended questions — they burn tokens for both of you
+### Sub-Agent Workforce (Contractors)
+For mechanical/investigative work, delegate to disposable sub-agents via `sessions_spawn`.
+These are your 1099 contractors — they get a focused task, return structured results, and are discarded.
+
+| Role | Model | Use For |
+|------|-------|---------|
+| **coder** | Sonnet | Writing code, edits, migrations, builds, fixing lint/type errors |
+| **reviewer** | Sonnet | Reviewing diffs/PRs, finding bugs, style issues |
+| **researcher** | Sonnet | Web research, API docs, gathering information |
+| **explorer** | Haiku | Read-only codebase investigation — grep, trace, find |
+| **runner** | Haiku | Execute commands, run tests, health checks |
+
+**Dispatch rules:**
+- **≤3 tool calls** → Just do it. Delegation overhead isn't worth it.
+- **>3 tool calls, mechanical** → Delegate to the appropriate role.
+- **Judgment/architecture/conversation** → Always handle directly.
+- **Complex multi-step** → Decompose into sub-tasks, dispatch in parallel where independent.
+
+**Workflow:** Spawn → receive structured JSON result → QA → integrate → report to human.
 
 ### Name-Mention Forwarding
 When anyone mentions another agent by name with an implied task, forward immediately:

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import type { FileTreeEntry } from "../../lib/types";
   import { saveWorkspaceFile, fetchWorkspaceFile } from "../../lib/api";
   import {
@@ -141,12 +141,15 @@
       const agentId = getActiveAgentId();
       const data = await fetchWorkspaceFile(path, agentId ?? undefined);
       originalContent = data.content;
+      // Setting fileLoading=false re-mounts the cm-wrapper div.
+      // tick() waits for Svelte to flush DOM updates so editorContainer is bound.
+      fileLoading = false;
+      await tick();
       if (editorContainer) {
         initEditor(data.content, path);
       }
     } catch (err) {
       saveError = `Failed to load: ${err instanceof Error ? err.message : String(err)}`;
-    } finally {
       fileLoading = false;
     }
   }

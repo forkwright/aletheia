@@ -1,6 +1,6 @@
 # Spec: Knowledge Graph — Performance, Utility, and Integration
 
-**Status:** Phase 1a done (PR #49)  
+**Status:** Phase 1a-1b done (PRs #49, #70)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 
@@ -66,7 +66,7 @@ For our usage patterns (entity storage, simple relationship queries, 1-2 hop tra
 - **Qdrant metadata** — Store entity relationships as metadata on vector entries. Eliminates Neo4j entirely. Limited query flexibility.
 - **Keep Neo4j but optimize** — Reduce memory allocation, add query caching, precompute common traversals. Keeps graph capabilities for future use.
 
-**Recommendation:** Start with making Neo4j optional (graceful degradation when it's not running), then evaluate SQLite replacement based on actual query patterns. Don't rip out Neo4j prematurely — the graph capabilities may matter as the system matures.
+**Recommendation:** Start with making Neo4j optional (graceful degradation when it's not running) ✅, then evaluate SQLite replacement based on actual query patterns. Don't rip out Neo4j prematurely — the graph capabilities may matter as the system matures.
 
 #### Reduce sidecar overhead
 

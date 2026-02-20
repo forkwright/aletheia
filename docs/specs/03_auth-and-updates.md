@@ -1,6 +1,6 @@
 # Spec: Login Authentication & Self-Update System
 
-**Status:** Phase 1 done (PR #50)
+**Status:** Phase 1 done (PR #50), Part 2 Phase 1b done (PR #70)
 **Author:** Syn  
 **Date:** 2026-02-19  
 
@@ -620,7 +620,7 @@ cd infrastructure/runtime && npm version minor -m "release: v%s" && cd ../.. && 
 | Phase | What | Effort | Dependencies |
 |-------|------|--------|--------------|
 | **1a** | Release workflow + first tag | Small | None |
-| **1b** | `aletheia-update` CLI script | Medium | 1a (needs tags to exist) |
+| **1b** ✅ | `aletheia-update` CLI script | Medium | 1a (needs tags to exist) |
 | **1c** | Update check daemon + blackboard | Small | 1a |
 | **2a** | Gateway auth schema expansion | Small | None |
 | **2b** | Wire existing auth modules into gateway | Medium | 2a |

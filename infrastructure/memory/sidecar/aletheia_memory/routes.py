@@ -1,6 +1,8 @@
 # API routes for Aletheia memory sidecar
-
-from __future__ import annotations
+# NOTE: Do NOT add 'from __future__ import annotations' here.
+# It causes intermittent TypeError in FastAPI's dependency injection
+# when routes accept both a Pydantic model and Request parameter.
+# Python 3.12+ supports all modern type syntax natively.
 
 import asyncio
 import json
@@ -23,6 +25,14 @@ from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
+
+
+def _get_memory(request: Request):
+    """Safely retrieve Memory instance from app state."""
+    mem = getattr(request.app.state, "memory", None)
+    if mem is None:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+    return mem
 
 
 class AddRequest(BaseModel):
@@ -49,7 +59,7 @@ DEDUP_THRESHOLD = 0.85
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -102,6 +112,7 @@ async def add_memory(req: AddRequest, request: Request):
                 raise HTTPException(status_code=500, detail=str(e))
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
+        graph_degraded = False
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
@@ -115,15 +126,22 @@ async def add_memory(req: AddRequest, request: Request):
         if neo4j_available():
             asyncio.create_task(_normalize_neo4j_relationships())
 
-        return {"ok": True, "result": result}
+        return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
+        # Neo4j failure during mem.add — vector write likely succeeded but graph write failed.
+        # Mem0 processes vector first, so partial success is common when Neo4j is down.
+        err_str = str(e).lower()
+        if "neo4j" in err_str or "ServiceUnavailable" in str(type(e).__name__) or "connection" in err_str:
+            mark_neo4j_down()
+            logger.warning("Neo4j failed during add, vector portion likely saved: %s", e)
+            return {"ok": True, "result": {"graph_degraded": True}, "warning": "Neo4j unavailable, stored vector only"}
         logger.exception("add_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/search")
 async def search_memory(req: SearchRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -131,6 +149,10 @@ async def search_memory(req: SearchRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        for r in results if isinstance(results, list) else []:
+            meta = r.get("metadata") or {}
+            if "created_at" in meta:
+                r["created_at"] = meta["created_at"]
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
@@ -139,7 +161,7 @@ async def search_memory(req: SearchRequest, request: Request):
 
 @router.post("/graph_search")
 async def graph_search(req: SearchRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -155,7 +177,7 @@ async def graph_search(req: SearchRequest, request: Request):
 
 @router.post("/import")
 async def import_facts(req: ImportRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     imported = 0
     errors = []
 
@@ -195,7 +217,7 @@ async def list_memories(
     agent_id: str | None = None,
     limit: int = 50,
 ):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": user_id}
     if agent_id:
         kwargs["agent_id"] = agent_id
@@ -212,7 +234,7 @@ async def list_memories(
 
 @router.delete("/memories/{memory_id}")
 async def delete_memory(memory_id: str, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     try:
         await asyncio.to_thread(mem.delete, memory_id)
         return {"ok": True}
@@ -233,7 +255,7 @@ async def health_check(request: Request):
             checks["qdrant"] = f"error: {e}"
 
     try:
-        mem = request.app.state.memory
+        mem = _get_memory(request)
         if mem and hasattr(mem, "embedding_model"):
             vec = mem.embedding_model.embed("health check")
             checks["embedder"] = "ok" if len(vec) > 0 else "empty vector"
@@ -453,7 +475,7 @@ def _extract_entities(text: str) -> list[str]:
 @router.post("/graph_enhanced_search")
 async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Request):
     """Vector search enhanced with graph neighborhood expansion."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Step 1: Standard vector search
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit * 2}
@@ -557,7 +579,7 @@ class MergeRequest(BaseModel):
 @router.post("/consolidate")
 async def consolidate_memories(req: ConsolidateRequest, request: Request):
     """Find and optionally merge near-duplicate memories."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
@@ -622,7 +644,7 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
 @router.post("/merge")
 async def merge_memories(req: MergeRequest, request: Request):
     """Merge two memories — keeps target, deletes source."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     try:
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
@@ -633,7 +655,7 @@ async def merge_memories(req: MergeRequest, request: Request):
 @router.get("/fact_stats")
 async def fact_stats(request: Request, user_id: str = "default"):
     """Memory corpus statistics."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
@@ -687,7 +709,7 @@ async def retract_memory(req: RetractRequest, request: Request):
     Finds matching memories, removes them from both stores,
     and logs the retraction for audit trail.
     """
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Find memories matching the retraction query
     try:
@@ -1216,7 +1238,7 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
     4. Run parallel vector searches on all variants
     5. Merge and deduplicate results
     """
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Skip rewriting for very short or very long queries
     if not req.rewrite or len(req.query) < 10 or len(req.query) > 500:
