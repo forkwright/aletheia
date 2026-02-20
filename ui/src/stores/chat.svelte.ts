@@ -287,12 +287,17 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         timestamp: msg.createdAt,
       });
     } else if (msg.role === "assistant") {
-      // Check if it's a JSON content block array (text + tool_use blocks)
+      // Check if it's a JSON content block array (text + tool_use + thinking blocks)
       try {
         const parsed = JSON.parse(msg.content);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
           const textBlocks = parsed.filter((b: { type: string }) => b.type === "text");
           const toolBlocks = parsed.filter((b: { type: string }) => b.type === "tool_use");
+          const thinkingBlocks = parsed.filter((b: { type: string }) => b.type === "thinking");
+
+          const thinkingText = thinkingBlocks.length > 0
+            ? thinkingBlocks.map((b: { thinking: string }) => b.thinking).join("\n\n")
+            : undefined;
 
           if (toolBlocks.length > 0) {
             currentToolCalls = toolBlocks.map((b: { id: string; name: string }) => ({
@@ -311,6 +316,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
+                ...(thinkingText ? { thinking: thinkingText } : {}),
               });
             }
           }
@@ -318,7 +324,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
           // If only tool_use blocks (no text), skip — tool calls attach to next assistant message
           if (toolBlocks.length > 0) continue;
 
-          // If only text blocks (no tool_use), fall through to normal text handling
+          // Text blocks (possibly with thinking, no tool_use)
           if (textBlocks.length > 0) {
             const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
             result.push({
@@ -327,8 +333,14 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
               content: text,
               timestamp: msg.createdAt,
               toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
+              ...(thinkingText ? { thinking: thinkingText } : {}),
             });
             currentToolCalls = [];
+            continue;
+          }
+
+          // Thinking-only blocks (no text, no tool_use) — unlikely but handle gracefully
+          if (thinkingBlocks.length > 0 && textBlocks.length === 0 && toolBlocks.length === 0) {
             continue;
           }
         }

@@ -1,6 +1,7 @@
 // JSON-RPC client for signal-cli HTTP daemon
 import { randomUUID } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
+import { TransportError } from "../koina/errors.js";
 
 const log = createLogger("semeion:rpc");
 
@@ -39,7 +40,9 @@ export class SignalClient {
     const json = (await res.json()) as RpcResponse;
 
     if (json.error) {
-      throw new Error(`Signal RPC ${json.error.code}: ${json.error.message}`);
+      throw new TransportError(`Signal RPC ${json.error.code}: ${json.error.message}`, {
+        code: "SIGNAL_RPC_ERROR", context: { rpcCode: json.error.code },
+      });
     }
 
     return json.result;

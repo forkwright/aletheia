@@ -963,8 +963,8 @@ export class SessionStore {
           "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
         )
         .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
-    } catch {
-      // Table may not exist yet if migration hasn't run — don't fail the turn
+    } catch (err) {
+      log.warn(`recordSignal failed (non-fatal): ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -988,7 +988,8 @@ export class SessionStore {
         confidence: r["confidence"] as number,
         createdAt: r["created_at"] as string,
       }));
-    } catch {
+    } catch (err) {
+      log.warn(`getSignalHistory failed (non-fatal): ${err instanceof Error ? err.message : err}`);
       return [];
     }
   }
@@ -1361,7 +1362,7 @@ export class SessionStore {
       .get(threadId) as Record<string, unknown> | undefined;
     if (!row) return null;
     let keyFacts: string[] = [];
-    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch { /* malformed JSON in key_facts column */ }
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (err) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${err instanceof Error ? err.message : err}`); }
     return {
       threadId: row["thread_id"] as string,
       summary: row["summary"] as string,

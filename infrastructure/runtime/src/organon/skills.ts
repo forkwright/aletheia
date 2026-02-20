@@ -26,7 +26,8 @@ export class SkillRegistry {
       entries = readdirSync(dir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name);
-    } catch {
+    } catch (err) {
+      log.warn(`Failed to read skills directory ${dir}: ${err instanceof Error ? err.message : err}`);
       return;
     }
 

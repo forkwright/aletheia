@@ -7,7 +7,7 @@
     onclick?: () => void;
   } = $props();
 
-  function extractSummary(text: string): string {
+  function extractLiveSummary(text: string): string {
     if (!text || text.length < 10) return "Thinking...";
 
     const tail = text.slice(-300);
@@ -27,7 +27,22 @@
     return "Thinking...";
   }
 
-  let summary = $derived(extractSummary(thinkingText));
+  function generateCompletedSummary(text: string): string {
+    if (!text || text.length < 10) return "Thought process";
+
+    const sentences = text.match(/[^.!?\n]+[.!?]+/g) ?? [];
+    if (sentences.length === 0) {
+      const firstLine = text.split("\n").filter(Boolean)[0];
+      return firstLine ? firstLine.trim().slice(0, 80) : "Thought process";
+    }
+    if (sentences.length === 1) return sentences[0]!.trim().slice(0, 80);
+
+    const first = sentences[0]!.trim().slice(0, 40);
+    const last = sentences[sentences.length - 1]!.trim().slice(0, 40);
+    return `${first}${first.length >= 40 ? "..." : ""} \u2192 ${last}${last.length >= 40 ? "..." : ""}`;
+  }
+
+  let summary = $derived(isStreaming ? extractLiveSummary(thinkingText) : generateCompletedSummary(thinkingText));
 </script>
 
 <button

@@ -1,5 +1,6 @@
 // Pass 1: Extract structured facts, decisions, and open items from conversation
 import { createLogger } from "../koina/logger.js";
+import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 
 const log = createLogger("distillation.extract");
@@ -47,7 +48,43 @@ const EMPTY_RESULT: ExtractionResult = {
   contradictions: [],
 };
 
+const MAX_CHUNK_TOKENS = 80000; // Leave room for system prompt + output within 200K context
+
 export async function extractFromMessages(
+  router: ProviderRouter,
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+): Promise<ExtractionResult> {
+  const totalTokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+
+  // If small enough, extract in one pass
+  if (totalTokens <= MAX_CHUNK_TOKENS) {
+    return extractChunk(router, messages, model);
+  }
+
+  // Split into chunks and extract each, then merge
+  const parts = Math.max(2, Math.ceil(totalTokens / MAX_CHUNK_TOKENS));
+  const chunks = splitMessagesByTokens(messages, parts);
+
+  log.info(
+    `Chunked extraction: ${chunks.length} chunks from ${messages.length} messages (${totalTokens} tokens)`,
+  );
+
+  const results: ExtractionResult[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    log.info(`Extracting chunk ${i + 1}/${chunks.length} (${chunk.length} messages)`);
+    const partial = await extractChunk(router, chunk, model);
+    results.push(partial);
+  }
+
+  return mergeExtractions(results);
+}
+
+async function extractChunk(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
@@ -81,6 +118,61 @@ export async function extractFromMessages(
     keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
     contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
   };
+}
+
+function splitMessagesByTokens(
+  messages: Array<{ role: string; content: string }>,
+  parts: number,
+): Array<Array<{ role: string; content: string }>> {
+  const totalTokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+  const targetPerChunk = Math.ceil(totalTokens / parts);
+  const chunks: Array<Array<{ role: string; content: string }>> = [];
+  let current: Array<{ role: string; content: string }> = [];
+  let currentTokens = 0;
+
+  for (const message of messages) {
+    const msgTokens = estimateTokens(message.content);
+    if (currentTokens + msgTokens > targetPerChunk && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      currentTokens = 0;
+    }
+    current.push(message);
+    currentTokens += msgTokens;
+  }
+  if (current.length > 0) chunks.push(current);
+
+  return chunks;
+}
+
+function mergeExtractions(results: ExtractionResult[]): ExtractionResult {
+  const merged: ExtractionResult = {
+    facts: [],
+    decisions: [],
+    openItems: [],
+    keyEntities: [],
+    contradictions: [],
+  };
+
+  for (const r of results) {
+    merged.facts.push(...r.facts);
+    merged.decisions.push(...r.decisions);
+    merged.openItems.push(...r.openItems);
+    merged.keyEntities.push(...r.keyEntities);
+    merged.contradictions.push(...r.contradictions);
+  }
+
+  // Deduplicate by exact match
+  merged.facts = [...new Set(merged.facts)];
+  merged.decisions = [...new Set(merged.decisions)];
+  merged.openItems = [...new Set(merged.openItems)];
+  merged.keyEntities = [...new Set(merged.keyEntities)];
+  merged.contradictions = [...new Set(merged.contradictions)];
+
+  return merged;
 }
 
 /** Extract first balanced JSON object from text, with repair fallbacks */

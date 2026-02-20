@@ -1,5 +1,6 @@
 // Distillation pipeline — multi-pass context compression with hardening
 import { createLogger } from "../koina/logger.js";
+import { AletheiaError } from "../koina/errors.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
@@ -67,9 +68,11 @@ export async function distillSession(
     log.info(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
-    throw new Error(
-      `Distillation already in progress for session ${sessionId}`,
-    );
+    throw new AletheiaError({
+      code: "SESSION_LOCKED", module: "distillation",
+      message: `Distillation already in progress for session ${sessionId}`,
+      context: { sessionId }, recoverable: true, retryAfterMs: 30_000,
+    });
   }
 
   activeDistillations.add(sessionId);
@@ -118,21 +121,27 @@ async function runDistillation(
           const unanswered = toolUses.filter((b: { id: string }) => !answeredIds.has(b.id));
           if (unanswered.length > 0) {
             log.warn(`Distillation blocked: ${unanswered.length} unanswered tool_use blocks at seq ${lastAssistant.seq}`);
-            throw new Error(`Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`);
+            throw new AletheiaError({
+              code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+              message: `Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`,
+              context: { sessionId, orphanedCount: unanswered.length },
+            });
           }
         }
       }
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith("Cannot distill")) throw e;
+      if (e instanceof AletheiaError) throw e;
     }
   }
 
   const undistilled = allMessages.filter((m) => !m.isDistilled);
 
   if (undistilled.length < opts.minMessages) {
-    throw new Error(
-      `Not enough messages to distill: ${undistilled.length} < ${opts.minMessages}`,
-    );
+    throw new AletheiaError({
+      code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+      message: `Not enough messages to distill: ${undistilled.length} < ${opts.minMessages}`,
+      context: { sessionId, undistilledCount: undistilled.length, minMessages: opts.minMessages },
+    });
   }
 
   // Split into messages to distill vs recent messages to preserve as raw context

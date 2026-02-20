@@ -16,8 +16,9 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
-from .temporal import _neo4j_driver, _extract_entities_for_episode
+from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
+from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .temporal import _extract_entities_for_episode
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
@@ -107,11 +108,11 @@ async def add_memory(req: AddRequest, request: Request):
             asyncio.create_task(_generate_links(mem, req.text, req.user_id))
 
         # Episode tracking — record this interaction as a temporal episode
-        if NEO4J_PASSWORD and req.agent_id:
+        if neo4j_available() and req.agent_id:
             asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
 
         # Normalize any non-vocab relationship types created by graph extraction
-        if NEO4J_PASSWORD:
+        if neo4j_available():
             asyncio.create_task(_normalize_neo4j_relationships())
 
         return {"ok": True, "result": result}
@@ -241,14 +242,10 @@ async def health_check(request: Request):
     except Exception as e:
         checks["embedder"] = f"error: {e}"
 
-    try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        driver.verify_connectivity()
-        driver.close()
+    if neo4j_available():
         checks["neo4j"] = "ok"
-    except Exception as e:
-        checks["neo4j"] = f"error: {e}"
+    else:
+        checks["neo4j"] = "unavailable"
 
     # LLM backend info
     backend = getattr(request.app.state, "backend", LLM_BACKEND)
@@ -265,10 +262,11 @@ async def health_check(request: Request):
 
 @router.get("/graph_stats")
 async def graph_stats():
-    from neo4j import GraphDatabase
+    if not neo4j_available():
+        return {"ok": False, "available": False}
 
     try:
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             node_count = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
             rel_count = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
@@ -283,6 +281,7 @@ async def graph_stats():
                 "MATCH ()-[r]->() WITH type(r) AS t, count(*) AS c WHERE c = 1 RETURN count(t) AS c"
             ).single()["c"]
         driver.close()
+        mark_neo4j_ok()
 
         return {
             "ok": True,
@@ -293,8 +292,9 @@ async def graph_stats():
             "top_connected_nodes": top_nodes,
         }
     except Exception as e:
-        logger.exception("graph_stats failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph_stats failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False}
 
 
 # --- Graph Export for Visualization ---
@@ -313,15 +313,13 @@ async def graph_export(
       community — All nodes in a specific community (requires community param).
       all       — Full graph export. Use with caution on large graphs.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
 
     try:
         from collections import defaultdict
 
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             # Total node count for "loaded X of Y" UI
             total_nodes = session.run(
@@ -420,8 +418,9 @@ async def graph_export(
             "total_nodes": total_nodes,
         }
     except Exception as e:
-        logger.exception("graph/export failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph/export failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
@@ -472,10 +471,9 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
     entities = _extract_entities(req.query)
     graph_neighbors: list[str] = []
 
-    if entities and NEO4J_PASSWORD:
+    if entities and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for entity in entities[:5]:
                     result = session.run(
@@ -490,7 +488,9 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
                         if name:
                             graph_neighbors.append(name)
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("graph_enhanced_search: Neo4j unavailable, falling back to vector-only")
 
     # Step 3: If graph found neighbors, do a supplementary vector search with expanded terms
@@ -707,16 +707,14 @@ async def retract_memory(req: RetractRequest, request: Request):
 
     # Neo4j cascade — find and remove connected entities
     neo4j_removed: list[str] = []
-    if req.cascade and NEO4J_PASSWORD:
+    if req.cascade and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for item in to_retract:
                     text = item.get("memory", "")
                     entities = _extract_entities(text)
                     for entity in entities[:5]:
-                        # Find and delete connected relationships
                         result = session.run(
                             "MATCH (n)-[r]-(m) "
                             "WHERE toLower(n.name) CONTAINS toLower($name) "
@@ -729,7 +727,9 @@ async def retract_memory(req: RetractRequest, request: Request):
                             neo4j_removed.extend(record["affected"])
                             logger.info(f"Retract cascade: removed {record['deleted']} rels for entity '{entity}'")
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("retract: Neo4j cascade failed, continuing with vector retraction")
 
     retracted: list[dict[str, Any]] = []
@@ -787,13 +787,15 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
 
 async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | None) -> None:
     """Fire-and-forget: create an Episode node for temporal tracking."""
+    if not neo4j_available():
+        return
     try:
         episode_id = f"ep_{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         session_id = (metadata or {}).get("sessionId", "")
         entities = _extract_entities_for_episode(text)
 
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         with driver.session() as session:
             session.run(
                 """
@@ -821,8 +823,10 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
                     name=entity_name, ep_id=episode_id, now=now,
                 )
         driver.close()
+        mark_neo4j_ok()
         logger.debug(f"Episode {episode_id}: {len(entities)} entities linked")
     except Exception:
+        mark_neo4j_down()
         logger.warning("Episode recording failed (non-fatal)", exc_info=True)
 
 
@@ -842,13 +846,11 @@ foresight_router = APIRouter(prefix="/foresight")
 
 @foresight_router.post("/add")
 async def add_foresight(req: ForesightAddRequest):
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             session.run(
                 """
@@ -870,21 +872,21 @@ async def add_foresight(req: ForesightAddRequest):
                 weight=req.weight,
             )
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "entity": req.entity, "signal": req.signal}
     except Exception as e:
-        logger.exception("add_foresight failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("add_foresight failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
 
 @foresight_router.get("/active")
 async def active_foresight():
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "signals": []}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         now = datetime.now(timezone.utc).isoformat()
         with driver.session() as session:
             result = session.run(
@@ -909,24 +911,23 @@ async def active_foresight():
                 for r in result
             ]
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "signals": signals}
     except Exception as e:
-        logger.exception("active_foresight failed")
-        return {"ok": True, "signals": [], "error": "Internal error"}
+        mark_neo4j_down()
+        logger.warning("active_foresight failed: %s", e)
+        return {"ok": True, "signals": []}
 
 
 @foresight_router.post("/decay")
 async def decay_foresight():
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "decayed": 0, "deleted": 0}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         now = datetime.now(timezone.utc).isoformat()
         with driver.session() as session:
-            # Decay expired signals
             decay_result = session.run(
                 """
                 MATCH (f:ForesightSignal)
@@ -938,7 +939,6 @@ async def decay_foresight():
             )
             decayed = decay_result.single()["decayed"]
 
-            # Delete fully decayed signals
             delete_result = session.run(
                 """
                 MATCH (e)-[r:HAS_FORESIGHT]->(f:ForesightSignal)
@@ -949,10 +949,12 @@ async def decay_foresight():
             )
             deleted = delete_result.single()["deleted"]
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "decayed": decayed, "deleted": deleted}
     except Exception as e:
-        logger.exception("decay_foresight failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("decay_foresight failed (Neo4j may be down): %s", e)
+        return {"ok": True, "decayed": 0, "deleted": 0}
 
 
 # --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
@@ -966,7 +968,7 @@ LINK_MAX_NEIGHBORS = 3
 
 async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[str, Any]]:
     """Generate LLM-described links between a new memory and its nearest neighbors."""
-    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not NEO4J_PASSWORD:
+    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not neo4j_available():
         return []
 
     # Find nearest neighbors
@@ -1040,9 +1042,7 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
     # Store links in Neo4j
     if links:
         try:
-            from neo4j import GraphDatabase
-
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for link in links:
                     session.run(
@@ -1061,8 +1061,10 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
                         score=link["score"],
                     )
             driver.close()
+            mark_neo4j_ok()
             logger.info(f"Generated {len(links)} memory links for new memory")
         except Exception:
+            mark_neo4j_down()
             logger.warning("Failed to store memory links in Neo4j")
 
     return links
@@ -1083,16 +1085,14 @@ async def analyze_graph(req: GraphAnalyzeRequest):
     Scores are optionally written back as node properties for retrieval weighting.
     Intended to be called from the nightly consolidation cron.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False}
 
     try:
         import networkx as nx
-        from neo4j import GraphDatabase
 
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
 
-        # Export graph to networkx
         G = nx.DiGraph()
         with driver.session() as session:
             nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
@@ -1189,8 +1189,9 @@ async def analyze_graph(req: GraphAnalyzeRequest):
     except ImportError:
         raise HTTPException(status_code=500, detail="networkx not installed")
     except Exception as e:
-        logger.exception("graph/analyze failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph/analyze failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False}
 
 
 # --- Enhanced Search with Query Rewriting ---
@@ -1226,10 +1227,9 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
 
     # Step 2: Resolve aliases via Neo4j
     canonical_names: dict[str, str] = {}
-    if entities and NEO4J_PASSWORD:
+    if entities and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for entity in entities[:5]:
                     result = session.run(
@@ -1241,7 +1241,9 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
                     if record and record["canonical"] != entity:
                         canonical_names[entity] = record["canonical"]
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("search_enhanced: Neo4j alias resolution failed")
 
     # Build alias-resolved query
@@ -1346,8 +1348,10 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
 
 async def _normalize_neo4j_relationships() -> None:
     """Normalize non-vocab relationship types to controlled vocabulary (fire-and-forget)."""
+    if not neo4j_available():
+        return
     try:
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         vocab_list = list(CONTROLLED_VOCAB)
         with driver.session() as session:
             non_vocab = session.run(
@@ -1371,15 +1375,20 @@ async def _normalize_neo4j_relationships() -> None:
             if non_vocab:
                 logger.info(f"Normalized {len(non_vocab)} non-vocab relationship types")
         driver.close()
+        mark_neo4j_ok()
     except Exception:
+        mark_neo4j_down()
         logger.warning("Relationship normalization failed (non-fatal)", exc_info=True)
 
 
 @router.post("/normalize_relationships")
 async def normalize_relationships():
     """Normalize all non-vocab relationship types and return stats."""
+    if not neo4j_available():
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
+
     try:
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         vocab_list = list(CONTROLLED_VOCAB)
         mappings: list[dict[str, Any]] = []
         total = 0
@@ -1408,9 +1417,11 @@ async def normalize_relationships():
                     total += count
 
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "normalized_count": total, "type_mappings": mappings}
-    except Exception:
-        logger.exception("normalize_relationships failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("normalize_relationships failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
 
