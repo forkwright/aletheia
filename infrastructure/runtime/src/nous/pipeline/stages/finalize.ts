@@ -1,8 +1,9 @@
-// Finalize stage — trace persistence, signal classification, skill extraction
+// Finalize stage — trace persistence, signal classification, skill extraction, working state
 import { join } from "node:path";
 import { persistTrace } from "../../trace.js";
 import { classifyInteraction } from "../../interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill } from "../../../organon/skill-learner.js";
+import { extractWorkingState } from "../../working-state.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type { TurnState, RuntimeServices } from "../types.js";
@@ -67,6 +68,21 @@ export async function finalize(
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
     extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
       .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
+      .catch(() => {});
+  }
+
+  // Working state extraction — async, non-blocking, on cheap model
+  // Only runs when there were tool calls (indicates active work, not just conversation)
+  if (totalToolCalls > 0) {
+    const wsModel = services.config.agents.defaults.compaction.distillationModel;
+    const toolSummary = turnToolCalls
+      .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 100)}) → ${t.output.slice(0, 100)}`)
+      .join("\n");
+    const previousState = services.store.getWorkingState(sessionId);
+    extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel)
+      .then((newState) => {
+        if (newState) services.store.updateWorkingState(sessionId, newState);
+      })
       .catch(() => {});
   }
 

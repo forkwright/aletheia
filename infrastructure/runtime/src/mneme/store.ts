@@ -19,7 +19,17 @@ export interface Session {
   lastInputTokens: number;
   bootstrapHash: string | null;
   distillationCount: number;
+  workingState: WorkingState | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkingState {
+  currentTask: string;
+  completedSteps: string[];
+  nextSteps: string[];
+  recentDecisions: string[];
+  openFiles: string[];
   updatedAt: string;
 }
 
@@ -891,9 +901,19 @@ export class SessionStore {
       lastInputTokens: (row['last_input_tokens'] as number) ?? 0,
       bootstrapHash: (row['bootstrap_hash'] as string) ?? null,
       distillationCount: (row['distillation_count'] as number) ?? 0,
+      workingState: this.parseWorkingState(row['working_state'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
     };
+  }
+
+  private parseWorkingState(raw: string | null): WorkingState | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as WorkingState;
+    } catch {
+      return null;
+    }
   }
 
   private mapMessage(row: Record<string, unknown>): Message {
@@ -1421,6 +1441,28 @@ export class SessionStore {
       .all(...params, limit) as Record<string, unknown>[];
     // Return in chronological order
     return rows.reverse().map((r) => this.mapMessage(r));
+  }
+
+  // --- Working State ---
+
+  getWorkingState(sessionId: string): WorkingState | null {
+    const row = this.db
+      .prepare("SELECT working_state FROM sessions WHERE id = ?")
+      .get(sessionId) as { working_state: string | null } | undefined;
+    if (!row?.working_state) return null;
+    return this.parseWorkingState(row.working_state);
+  }
+
+  updateWorkingState(sessionId: string, state: WorkingState): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(state), sessionId);
+  }
+
+  clearWorkingState(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
   }
 
   private mapThread(r: Record<string, unknown>): Thread {

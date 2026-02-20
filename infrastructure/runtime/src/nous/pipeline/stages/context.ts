@@ -4,6 +4,7 @@ import { estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
 import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
+import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import type { TurnState, RuntimeServices, SystemBlock } from "../types.js";
@@ -127,11 +128,19 @@ export async function buildContext(
     systemPrompt.push({ type: "text", text: `## Broadcasts\n\n${broadcastLines}` });
   }
 
-  // Working state injection
+  // Working state injection — semantic task context from post-turn extraction
   const currentSession = services.store.findSessionById(sessionId);
+  const workingState = currentSession?.workingState;
+  if (workingState) {
+    systemPrompt.push({
+      type: "text",
+      text: formatWorkingState(workingState),
+    });
+  }
+
+  // Session metrics — injected every 8th turn for self-awareness
   const msgCount = currentSession?.messageCount ?? 0;
   if (msgCount > 0 && msgCount % 8 === 0) {
-    const recentTools = services.store.getRecentToolCalls(sessionId, 6);
     const elapsed = currentSession?.createdAt
       ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
       : 0;
@@ -142,8 +151,7 @@ export async function buildContext(
     systemPrompt.push({
       type: "text",
       text:
-        `## Working State — Turn ${msgCount}\n\n` +
-        `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "none"}\n` +
+        `## Session Metrics — Turn ${msgCount}\n\n` +
         `Session duration: ${elapsed} min\n` +
         `Context utilization: ${utilization}%\n` +
         `Distillations: ${currentSession?.distillationCount ?? 0}`,

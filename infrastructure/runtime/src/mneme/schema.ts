@@ -227,4 +227,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- Working state: structured task context that survives distillation
+      ALTER TABLE sessions ADD COLUMN working_state TEXT;
+    `,
+  },
 ];
