@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER
+from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
 
 logger = logging.getLogger("aletheia_memory.evolution")
 evolution_router = APIRouter(prefix="/evolution")
@@ -104,7 +104,7 @@ async def check_evolution(req: EvolveRequest, request: Request):
         result = await asyncio.to_thread(mem.add, evolved_text, **add_kwargs)
 
         # Record evolution in Neo4j for lineage tracking
-        if NEO4J_PASSWORD:
+        if neo4j_available():
             asyncio.create_task(_record_evolution_graph(old_text, evolved_text, old_id))
 
         return {
@@ -127,14 +127,13 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
     Called when a memory is retrieved and used in a response.
     Tracks access count and last access time in Neo4j.
     """
-    if not NEO4J_PASSWORD:
-        return {"ok": True, "reinforced": False, "reason": "Neo4j not configured"}
+    if not neo4j_available():
+        return {"ok": True, "reinforced": False, "reason": "graph_unavailable"}
 
     now = datetime.now(timezone.utc).isoformat()
 
     try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             result = session.run(
                 """
@@ -179,13 +178,10 @@ async def decay_memories(req: DecayRequest, request: Request):
 
     # Get recently-accessed memory IDs from Neo4j
     recently_accessed: set[str] = set()
-    if NEO4J_PASSWORD:
+    if neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            cutoff = datetime.now(timezone.utc).isoformat()
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
-                # Get all memories accessed in the last N days (we store ISO timestamps)
                 result = session.run(
                     "MATCH (m:MemoryAccess) WHERE m.last_accessed IS NOT NULL "
                     "RETURN m.memory_id AS id, m.access_count AS count"
@@ -193,7 +189,9 @@ async def decay_memories(req: DecayRequest, request: Request):
                 for record in result:
                     recently_accessed.add(record["id"])
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("decay: Neo4j unavailable, proceeding without access data")
 
     # Identify memories that haven't been accessed
@@ -224,10 +222,9 @@ async def decay_memories(req: DecayRequest, request: Request):
         if not memory_id:
             continue
         # Record decay signal in Neo4j
-        if NEO4J_PASSWORD:
+        if neo4j_available():
             try:
-                from neo4j import GraphDatabase
-                driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+                driver = neo4j_driver()
                 with driver.session() as session:
                     session.run(
                         """
@@ -239,9 +236,10 @@ async def decay_memories(req: DecayRequest, request: Request):
                         id=memory_id, now=datetime.now(timezone.utc).isoformat(),
                     )
                 driver.close()
+                mark_neo4j_ok()
                 decayed += 1
             except Exception:
-                pass
+                mark_neo4j_down()
 
     return {
         "ok": True,
@@ -255,12 +253,11 @@ async def decay_memories(req: DecayRequest, request: Request):
 @evolution_router.get("/stats")
 async def evolution_stats():
     """Statistics on memory evolution and reinforcement."""
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "available": False}
 
     try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             total_tracked = session.run(
                 "MATCH (m:MemoryAccess) RETURN count(m) AS c"
@@ -278,6 +275,7 @@ async def evolution_stats():
                 "RETURN count(m) AS c"
             ).single()["c"]
         driver.close()
+        mark_neo4j_ok()
 
         return {
             "ok": True,
@@ -287,8 +285,9 @@ async def evolution_stats():
             "most_accessed": most_accessed,
         }
     except Exception as e:
-        logger.exception("evolution_stats failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("evolution_stats failed (Neo4j may be down): %s", e)
+        return {"ok": True, "available": False}
 
 
 # --- Internal helpers ---
@@ -336,9 +335,10 @@ async def _evolve_with_llm(old_text: str, new_text: str) -> str | None:
 
 async def _record_evolution_graph(old_text: str, evolved_text: str, old_id: str) -> None:
     """Record evolution lineage in Neo4j."""
+    if not neo4j_available():
+        return
     try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             session.run(
                 """
@@ -354,5 +354,7 @@ async def _record_evolution_graph(old_text: str, evolved_text: str, old_id: str)
                 old_id=old_id,
             )
         driver.close()
+        mark_neo4j_ok()
     except Exception:
+        mark_neo4j_down()
         logger.warning("Evolution graph recording failed", exc_info=True)
