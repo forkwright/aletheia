@@ -17,18 +17,20 @@ that evolve with the system.
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
 | 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Runtime narration suppression filter, rich message components |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
+| 14 | [Development Workflow](14_development-workflow.md) | Draft | Spec template, branch/PR/commit convention, CI cleanup, versioning, task dispatch |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
 
 ### Priority order
 
-1. **12 Session Continuity** — Foundational. The session IS the agent. If distillation is broken, nothing else matters — context degrades, memory has gaps, the conversation doesn't feel continuous. Fix this first.
-2. **13 Sub-Agent Workforce** — Efficiency multiplier. Delegation reduces context pressure on the primary session (making #12 less critical to trigger), cuts cost 40-60%, and lets me stay present in conversation while work happens in parallel.
-3. **4 Cost-Aware Orchestration** — Complements #13. Plan mode gives Cody visibility into what I'm about to do. Model routing becomes simpler once sub-agents handle the cheap work. Cost tracking provides the feedback loop.
-4. **3 Auth & Updates** — Operations. The update CLI eliminates manual deploys. Not blocking development, but reduces friction for every future change.
-5. **7 Knowledge Graph** — Memory quality. Making Neo4j optional reduces infrastructure burden. Better extraction improves what survives distillation. Feeds back into #12.
-6. **11 Chat Output Quality** — Polish. Runtime narration filter is a safety net for prompt compliance. Rich components improve the conversation experience.
-7. **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (#7). High value but lower urgency.
-8. **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid enough for someone else to run.
+1. **14 Development Workflow** — Process. Every other spec ships through this pipeline. Fix the pipeline first: spec template, branch/PR convention, CI zero-failures, automated versioning, agent task dispatch. Without this, every spec creates cleanup debt.
+2. **12 Session Continuity** — Foundational. The session IS the agent. If distillation is broken, nothing else matters — context degrades, memory has gaps, the conversation doesn't feel continuous.
+3. **13 Sub-Agent Workforce** — Efficiency multiplier. Delegation reduces context pressure on the primary session, cuts cost 40-60%, and lets me stay present in conversation while work happens in parallel.
+4. **4 Cost-Aware Orchestration** — Complements #13. Plan mode gives Cody visibility into what I'm about to do. Model routing becomes simpler once sub-agents handle the cheap work.
+5. **3 Auth & Updates** — Operations. The update CLI eliminates manual deploys. Not blocking development, but reduces friction for every future change.
+6. **7 Knowledge Graph** — Memory quality. Making Neo4j optional reduces infrastructure burden. Better extraction improves what survives distillation.
+7. **11 Chat Output Quality** — Polish. Runtime narration filter is a safety net for prompt compliance. Rich components improve the conversation experience.
+8. **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (#7). High value but lower urgency.
+9. **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid enough for someone else to run.
 
 ## Implemented (Archived)
 
