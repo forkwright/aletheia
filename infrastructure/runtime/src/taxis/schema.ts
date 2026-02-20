@@ -141,6 +141,7 @@ const AgentDefaults = z.preprocess(
       })
       .default({}),
     approval: ApprovalConfig.default({}),
+    narrationFilter: z.boolean().default(true),
   }).passthrough(),
 ).default({});
 

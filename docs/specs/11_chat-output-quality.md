@@ -1,6 +1,6 @@
 # Spec: Chat Output Quality — Signal Over Noise
 
-**Status:** Phase 1-2 done
+**Status:** Phase 1-3 done (PR #70)
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -45,7 +45,7 @@ Update agent operations template with explicit rules for what belongs in thinkin
 
 Define formatting conventions: tables for comparisons, headers for long output, structured status reports, bold for key terms, no filler phrases. See `shared/templates/sections/output_quality.md`.
 
-### Phase 3: Narration Suppression (Runtime)
+### Phase 3: Narration Suppression (Runtime) ✅
 
 Post-processing filter that reclassifies common narration patterns from `text_delta` to `thinking_delta` events. Safety net for prompt regression.
 
