@@ -1324,7 +1324,7 @@ export class SessionStore {
       .get(threadId) as Record<string, unknown> | undefined;
     if (!row) return null;
     let keyFacts: string[] = [];
-    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch { /* empty */ }
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch { /* malformed JSON in key_facts column */ }
     return {
       threadId: row["thread_id"] as string,
       summary: row["summary"] as string,

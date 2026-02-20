@@ -5,7 +5,10 @@ import { classifyInteraction } from "../../interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill } from "../../../organon/skill-learner.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
 import { eventBus } from "../../../koina/event-bus.js";
+import { createLogger } from "../../../koina/logger.js";
 import type { TurnState, RuntimeServices } from "../types.js";
+
+const log = createLogger("finalize");
 
 export async function finalize(
   state: TurnState,
@@ -67,7 +70,7 @@ export async function finalize(
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
     extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
       .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
-      .catch(() => {});
+      .catch((err) => { log.debug(`Skill extraction failed (non-fatal): ${err instanceof Error ? err.message : err}`); });
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

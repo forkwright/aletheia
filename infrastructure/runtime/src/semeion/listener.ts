@@ -503,7 +503,7 @@ async function processTurn(
       return;
     }
 
-    sendTyping(client, target, true).catch(() => {});
+    sendTyping(client, target, true).catch(() => { /* typing indicator, non-critical */ });
 
     if (outcome.text) {
       await sendMessage(client, target, outcome.text);
@@ -513,7 +513,7 @@ async function processTurn(
       `Turn complete: ${outcome.nousId} session=${outcome.sessionId} tools=${outcome.toolCalls} in=${outcome.inputTokens} out=${outcome.outputTokens}`,
     );
   } catch (err) {
-    sendTyping(client, target, true).catch(() => {});
+    sendTyping(client, target, true).catch(() => { /* typing indicator, non-critical */ });
     log.error(`Turn failed: ${err instanceof Error ? err.message : err}`);
     if (err instanceof Error && err.stack) log.error(err.stack);
 

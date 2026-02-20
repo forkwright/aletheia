@@ -81,7 +81,7 @@ async function synthesizeOpenAI(text: string, id: string, opts?: TtsOptions): Pr
   return {
     path: outPath,
     engine: "openai",
-    cleanup: () => { try { unlinkSync(outPath); } catch {} },
+    cleanup: () => { try { unlinkSync(outPath); } catch { /* file cleanup */ } },
   };
 }
 
@@ -107,7 +107,7 @@ function synthesizePiper(text: string, id: string, opts?: TtsOptions): TtsResult
   return {
     path: outPath,
     engine: "piper",
-    cleanup: () => { try { unlinkSync(outPath); } catch {} },
+    cleanup: () => { try { unlinkSync(outPath); } catch { /* file cleanup */ } },
   };
 }
 
@@ -124,7 +124,7 @@ export function cleanupTtsFiles(): void {
         if (now - st.mtimeMs > 3600_000) {
           unlinkSync(p);
         }
-      } catch {}
+      } catch { /* file may be locked or already removed */ }
     }
-  } catch {}
+  } catch { /* TTS dir may not exist yet */ }
 }
