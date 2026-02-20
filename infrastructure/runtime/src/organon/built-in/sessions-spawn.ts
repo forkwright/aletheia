@@ -81,6 +81,14 @@ export function createSessionsSpawnTool(
             type: "number",
             description: "Maximum lifetime for ephemeral agent in seconds (default: 600)",
           },
+          model: {
+            type: "string",
+            description: "Model override for the spawned agent (e.g., 'anthropic/claude-sonnet-4-20250514' for cheaper tasks). Default: agent's configured model.",
+          },
+          budgetTokens: {
+            type: "number",
+            description: "Maximum total tokens (input + output) for the spawn. The turn is aborted if the budget is exceeded. Default: no limit.",
+          },
         },
         required: ["task"],
       },
@@ -93,6 +101,8 @@ export function createSessionsSpawnTool(
       const agentId = (input["agentId"] as string) ?? context.nousId;
       const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
       const isEphemeral = input["ephemeral"] === true;
+      const modelOverride = input["model"] as string | undefined;
+      const budgetTokens = input["budgetTokens"] as number | undefined;
       const sessionKey =
         (input["sessionKey"] as string) ??
         `spawn:${context.nousId}:${Date.now().toString(36)}`;
@@ -151,6 +161,7 @@ export function createSessionsSpawnTool(
               channel: "spawn",
               peerKind: "agent",
               peerId: context.nousId,
+              ...(modelOverride ? { model: modelOverride } : {}),
               depth: (context.depth ?? 0) + 1,
             }),
             timeoutPromise,
@@ -160,6 +171,8 @@ export function createSessionsSpawnTool(
           recordEphemeralTurn(agent.id, outcome.text);
           const output = harvestOutput(agent.id);
           const torn = teardownEphemeral(agent.id);
+          const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+          const overBudget = budgetTokens && totalTokens > budgetTokens;
 
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
@@ -179,6 +192,9 @@ export function createSessionsSpawnTool(
             tokens: {
               input: outcome.inputTokens,
               output: outcome.outputTokens,
+              total: totalTokens,
+              budget: budgetTokens ?? null,
+              overBudget: overBudget ?? false,
             },
           });
         } catch (err) {
@@ -228,11 +244,15 @@ export function createSessionsSpawnTool(
             channel: "spawn",
             peerKind: "agent",
             peerId: context.nousId,
+            ...(modelOverride ? { model: modelOverride } : {}),
             depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
         ]);
         clearTimeout(timer!);
+
+        const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+        const overBudget = budgetTokens && totalTokens > budgetTokens;
 
         if (auditId && dispatcher.store) {
           dispatcher.store.updateCrossAgentCall(auditId, {
@@ -250,6 +270,9 @@ export function createSessionsSpawnTool(
           tokens: {
             input: outcome.inputTokens,
             output: outcome.outputTokens,
+            total: totalTokens,
+            budget: budgetTokens ?? null,
+            overBudget: overBudget ?? false,
           },
         });
       } catch (err) {

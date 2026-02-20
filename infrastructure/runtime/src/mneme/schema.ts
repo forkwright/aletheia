@@ -250,4 +250,18 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
     `,
   },
+  {
+    version: 11,
+    sql: `
+      -- Message queue: mid-turn course correction messages from the human
+      CREATE TABLE IF NOT EXISTS message_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        content TEXT NOT NULL,
+        sender TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_queue_session ON message_queue(session_id);
+    `,
+  },
 ];

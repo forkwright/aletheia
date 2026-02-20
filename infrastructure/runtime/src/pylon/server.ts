@@ -645,6 +645,28 @@ export function createGateway(
     }
   });
 
+  // --- Message Queue API ---
+
+  app.post("/api/sessions/:id/queue", async (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const body = await c.req.json<{ text?: string; sender?: string }>().catch(() => null);
+    if (!body?.text?.trim()) return c.json({ error: "text is required" }, 400);
+
+    store.queueMessage(id, body.text.trim(), body.sender);
+    return c.json({ ok: true, queued: true, queueLength: store.getQueueLength(id) });
+  });
+
+  app.get("/api/sessions/:id/queue", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    return c.json({ sessionId: id, queueLength: store.getQueueLength(id) });
+  });
+
   // --- Thread API ---
 
   app.get("/api/threads", (c) => {

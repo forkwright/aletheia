@@ -337,7 +337,30 @@ export async function* executeStreaming(
       }
     }
 
-    currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+    // Mid-turn message queue — check for human messages sent during tool execution
+    const queued = services.store.drainQueue(sessionId);
+    if (queued.length > 0) {
+      // Append tool results as one user message, then queued messages as a separate user message
+      currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+      const queuedContent = queued.map((q) => ({
+        type: "text" as const,
+        text: `[Mid-turn message from ${q.sender ?? "user"}]: ${q.content}`,
+      }));
+      currentMessages = [...currentMessages, {
+        role: "user" as const,
+        content: queuedContent,
+      }];
+      // Store the queued messages in history
+      for (const q of queued) {
+        services.store.appendMessage(sessionId, "user", q.content, {
+          tokenEstimate: estimateTokens(q.content),
+
+        });
+      }
+      yield { type: "queue_drained", count: queued.length };
+    } else {
+      currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+    }
   }
 }
 
@@ -539,6 +562,26 @@ export async function executeBuffered(
       }
     }
 
-    currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+    // Mid-turn message queue — check for human messages sent during tool execution
+    const queued = services.store.drainQueue(sessionId);
+    if (queued.length > 0) {
+      currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+      const queuedContent = queued.map((q) => ({
+        type: "text" as const,
+        text: `[Mid-turn message from ${q.sender ?? "user"}]: ${q.content}`,
+      }));
+      currentMessages = [...currentMessages, {
+        role: "user" as const,
+        content: queuedContent,
+      }];
+      for (const q of queued) {
+        services.store.appendMessage(sessionId, "user", q.content, {
+          tokenEstimate: estimateTokens(q.content),
+
+        });
+      }
+    } else {
+      currentMessages = [...currentMessages, { role: "user" as const, content: toolResults }];
+    }
   }
 }
