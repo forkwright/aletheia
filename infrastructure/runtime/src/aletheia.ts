@@ -33,6 +33,7 @@ import { createCheckCalibrationTool } from "./organon/built-in/check-calibration
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
 import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
 import { createBlackboardTool } from "./organon/built-in/blackboard.js";
+import { createNoteTool } from "./organon/built-in/note.js";
 import { createContextCheckTool } from "./organon/built-in/context-check.js";
 import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
@@ -222,6 +223,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
+  tools.register(createNoteTool(store));
 
   // Meta-tools — composed pipelines
   const ctxCheckTool = createContextCheckTool(tools);
