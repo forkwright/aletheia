@@ -13,7 +13,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER
+from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
 
 logger = logging.getLogger("aletheia_memory.discovery")
 discovery_router = APIRouter(prefix="/discovery")
@@ -52,19 +52,17 @@ async def discover(req: DiscoverRequest):
     5. Novelty: 1.0 if different community, boosted by low PageRank (obscure = more novel)
     6. Return ranked results with explanations
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "discoveries": []}
 
     try:
         import networkx as nx
-        from neo4j import GraphDatabase
-    except ImportError as e:
+    except ImportError:
         raise HTTPException(status_code=500, detail="Missing dependency")
 
-    driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    driver = neo4j_driver()
 
     try:
-        # Build networkx graph from Neo4j
         G = nx.Graph()
         with driver.session() as session:
             nodes = session.run(
@@ -193,8 +191,9 @@ async def discover(req: DiscoverRequest):
             "graph_size": {"nodes": G.number_of_nodes(), "edges": G.number_of_edges()},
         }
     except Exception as e:
-        logger.exception("discover failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("discover failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "discoveries": []}
     finally:
         driver.close()
 
@@ -206,16 +205,15 @@ async def explore_paths(req: ExplorePathsRequest):
     If target is provided: find all shortest paths and one random longer path.
     If target is None: find high-novelty entities reachable within max_depth and return paths.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "paths": []}
 
     try:
         import networkx as nx
-        from neo4j import GraphDatabase
-    except ImportError as e:
+    except ImportError:
         raise HTTPException(status_code=500, detail="Missing dependency")
 
-    driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    driver = neo4j_driver()
 
     try:
         G = nx.Graph()
@@ -322,8 +320,9 @@ async def explore_paths(req: ExplorePathsRequest):
             "paths": paths,
         }
     except Exception as e:
-        logger.exception("explore_paths failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("explore_paths failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "paths": []}
     finally:
         driver.close()
 
@@ -335,16 +334,15 @@ async def generate_discovery_candidates():
     Writes top discovery candidates as Neo4j DiscoveryCandidate nodes
     for later retrieval by prosoche or agents.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "candidates": 0}
 
     try:
         import networkx as nx
-        from neo4j import GraphDatabase
-    except ImportError as e:
+    except ImportError:
         raise HTTPException(status_code=500, detail="Missing dependency")
 
-    driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    driver = neo4j_driver()
 
     try:
         G = nx.Graph()
@@ -451,8 +449,9 @@ async def generate_discovery_candidates():
             "high_betweenness_hubs": [{"name": n, "centrality": round(c, 6)} for n, c in high_betweenness[:10]],
         }
     except Exception as e:
-        logger.exception("generate_discovery_candidates failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("generate_discovery_candidates failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "candidates": 0}
     finally:
         driver.close()
 
@@ -460,13 +459,11 @@ async def generate_discovery_candidates():
 @discovery_router.get("/candidates")
 async def get_discovery_candidates(limit: int = 20):
     """Retrieve stored discovery candidates for agents to act on."""
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "candidates": []}
 
     try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
-
+        driver = neo4j_driver()
         with driver.session() as session:
             result = session.run(
                 """
@@ -504,13 +501,11 @@ async def get_discovery_candidates(limit: int = 20):
 @discovery_router.get("/stats")
 async def discovery_stats():
     """Discovery engine statistics."""
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "available": False}
 
     try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
-
+        driver = neo4j_driver()
         with driver.session() as session:
             candidate_count = session.run(
                 "MATCH (d:DiscoveryCandidate) RETURN count(d) AS c"
@@ -526,6 +521,7 @@ async def discovery_stats():
                 "RETURN count(DISTINCT n.community) AS c"
             ).single()["c"]
         driver.close()
+        mark_neo4j_ok()
 
         return {
             "ok": True,
@@ -535,8 +531,9 @@ async def discovery_stats():
             "communities_in_graph": community_count,
         }
     except Exception as e:
-        logger.exception("discovery_stats failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("discovery_stats failed (Neo4j may be down): %s", e)
+        return {"ok": True, "available": False}
 
 
 # --- Internal helpers ---
