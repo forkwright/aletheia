@@ -439,13 +439,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
 
   // --- Watchdog ---
+  // Always start for dashboard service health, even without Signal/alertRecipient.
+  // Alert function is optional — only wired when Signal is available + alertRecipient set.
   const wdConfig = config.watchdog;
-  if (wdConfig.enabled && wdConfig.alertRecipient && clients.size > 0) {
-    const alertClient = clients.values().next().value!;
-    const alertAccountId = clients.keys().next().value!;
-    const alertAccount = config.channels.signal.accounts[alertAccountId]!;
-    const alertAccountPhone = alertAccount.account ?? alertAccountId;
-
+  if (wdConfig.enabled) {
     const services: ServiceProbe[] = wdConfig.services.length > 0
       ? wdConfig.services
       : [
@@ -455,19 +452,26 @@ export async function startRuntime(configPath?: string): Promise<void> {
           { name: "ollama", url: "http://127.0.0.1:11434/api/tags" },
         ];
 
-    watchdog = new Watchdog({
-      services,
-      intervalMs: wdConfig.intervalMs,
-      alertFn: async (message) => {
+    // Wire alert function only when Signal + alertRecipient are configured
+    let alertFn: ((message: string) => Promise<void>) | undefined;
+    if (wdConfig.alertRecipient && clients.size > 0) {
+      const alertClient = clients.values().next().value!;
+      const alertAccountId = clients.keys().next().value!;
+      const alertAccount = config.channels.signal.accounts[alertAccountId]!;
+      const alertAccountPhone = alertAccount.account ?? alertAccountId;
+      alertFn = async (message) => {
         await sendMessage(alertClient, {
           account: alertAccountPhone,
           recipient: wdConfig.alertRecipient!,
         }, message, { markdown: false });
-      },
-    });
+      };
+    }
+
+    watchdog = new Watchdog({ services, intervalMs: wdConfig.intervalMs, ...(alertFn ? { alertFn } : {}) });
     watchdog.start();
     setWatchdogRef(watchdog);
     runtime.manager.setWatchdog(watchdog);
+    log.info(`Watchdog started: ${services.length} services${alertFn ? ", alerts → Signal" : ", no alert channel"}`);
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
