@@ -1,44 +1,31 @@
-// Sub-agent role presets for sessions_spawn
+// Sub-agent role presets for sessions_spawn — delegates to nous/roles definitions
+import { ROLES, isValidRole, type RoleConfig, type RoleName } from "../../nous/roles/index.js";
+
 export interface SubAgentRole {
   model?: string;
   maxTurns: number;
   maxTokenBudget: number;
   systemPromptTemplate: string;
+  tools: string[];
 }
 
-export const SUB_AGENT_ROLES: Record<string, SubAgentRole> = {
-  researcher: {
-    model: "anthropic/claude-haiku-4-5-20251001",
-    maxTurns: 3,
-    maxTokenBudget: 50_000,
-    systemPromptTemplate: "You are a research specialist. Find and summarize information accurately. Return structured findings.",
-  },
-  analyzer: {
-    model: "anthropic/claude-sonnet-4-6",
-    maxTurns: 5,
-    maxTokenBudget: 100_000,
-    systemPromptTemplate: "You are an analysis specialist. Break down complex problems, identify patterns, and provide structured assessments.",
-  },
-  coder: {
-    model: "anthropic/claude-sonnet-4-6",
-    maxTurns: 10,
-    maxTokenBudget: 200_000,
-    systemPromptTemplate: "You are a coding specialist. Write, debug, and refactor code. Use tools to read, write, and test.",
-  },
-  writer: {
-    model: "anthropic/claude-haiku-4-5-20251001",
-    maxTurns: 3,
-    maxTokenBudget: 30_000,
-    systemPromptTemplate: "You are a writing specialist. Draft, edit, and format text content. Match the requested tone and style.",
-  },
-  validator: {
-    model: "anthropic/claude-haiku-4-5-20251001",
-    maxTurns: 5,
-    maxTokenBudget: 50_000,
-    systemPromptTemplate: "You are a validation specialist. Verify facts, check consistency, and report discrepancies.",
-  },
-};
+export const ROLE_NAMES: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner"];
+
+function toSubAgentRole(config: RoleConfig): SubAgentRole {
+  return {
+    model: config.model,
+    maxTurns: config.maxTurns,
+    maxTokenBudget: config.maxTokenBudget,
+    systemPromptTemplate: config.systemPrompt,
+    tools: config.tools,
+  };
+}
+
+export const SUB_AGENT_ROLES: Record<string, SubAgentRole> = Object.fromEntries(
+  ROLE_NAMES.map((name) => [name, toSubAgentRole(ROLES[name])]),
+);
 
 export function resolveRole(name: string): SubAgentRole | null {
+  if (!isValidRole(name)) return null;
   return SUB_AGENT_ROLES[name] ?? null;
 }

@@ -8,16 +8,11 @@ import {
   spawnEphemeral,
   teardownEphemeral,
 } from "../../nous/ephemeral.js";
-import { resolveRole } from "../config/sub-agent-roles.js";
+import { resolveRole, ROLE_NAMES } from "../config/sub-agent-roles.js";
+import { parseStructuredResult } from "../../nous/roles/index.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("organon.spawn");
-
-function parseStructuredResult(text: string): Record<string, unknown> | null {
-  const match = text.match(/```json\s*\n([\s\S]*?)\n```\s*$/);
-  if (!match?.[1]) return null;
-  try { return JSON.parse(match[1]) as Record<string, unknown>; } catch { return null; }
-}
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
@@ -98,8 +93,8 @@ export function createSessionsSpawnTool(
           },
           role: {
             type: "string",
-            enum: ["researcher", "analyzer", "coder", "writer", "validator"],
-            description: "Pre-configured role preset. Sets model, maxTurns, and token budget as defaults. Explicit params override role defaults.",
+            enum: ROLE_NAMES,
+            description: "Pre-configured role preset (coder/reviewer/researcher/explorer/runner). Sets model, system prompt, tools, maxTurns, and token budget. Explicit params override role defaults.",
           },
         },
         required: ["task"],
