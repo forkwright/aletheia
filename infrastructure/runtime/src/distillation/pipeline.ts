@@ -322,6 +322,8 @@ async function runDistillation(
   });
   store.updateLastDistilledAt(sessionId);
 
+  let flushSucceeded = true;
+  let flushErrors: string | undefined;
   if (opts.workspace) {
     const flushResult = flushToWorkspace({
       workspace: opts.workspace,
@@ -332,9 +334,26 @@ async function runDistillation(
       extraction,
     });
     if (!flushResult.written) {
+      flushSucceeded = false;
+      flushErrors = flushResult.error;
       log.warn(`Workspace memory flush failed: ${flushResult.error}`);
     }
   }
+
+  store.recordDistillationLog({
+    sessionId,
+    nousId,
+    messagesBefore: undistilled.length,
+    messagesAfter: 1 + toPreserve.length,
+    tokensBefore,
+    tokensAfter: markedTokens + preservedTokens,
+    factsExtracted: extraction.facts.length,
+    decisionsExtracted: extraction.decisions.length,
+    openItemsExtracted: extraction.openItems.length,
+    flushSucceeded,
+    ...(flushErrors ? { errors: flushErrors } : {}),
+    distillationNumber,
+  });
 
   const result: DistillationResult = {
     sessionId,

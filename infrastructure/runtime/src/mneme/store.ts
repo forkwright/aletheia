@@ -464,6 +464,63 @@ export class SessionStore {
       .run(tokens, sessionId);
   }
 
+  recordDistillationLog(record: {
+    sessionId: string;
+    nousId: string;
+    messagesBefore: number;
+    messagesAfter: number;
+    tokensBefore: number;
+    tokensAfter: number;
+    factsExtracted: number;
+    decisionsExtracted: number;
+    openItemsExtracted: number;
+    flushSucceeded: boolean;
+    errors?: string;
+    distillationNumber: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO distillation_log
+         (session_id, nous_id, messages_before, messages_after, tokens_before, tokens_after,
+          facts_extracted, decisions_extracted, open_items_extracted, flush_succeeded, errors, distillation_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.nousId,
+        record.messagesBefore, record.messagesAfter,
+        record.tokensBefore, record.tokensAfter,
+        record.factsExtracted, record.decisionsExtracted, record.openItemsExtracted,
+        record.flushSucceeded ? 1 : 0, record.errors ?? null, record.distillationNumber,
+      );
+  }
+
+  getDistillationLog(sessionId: string): Array<{
+    id: number; sessionId: string; nousId: string; distilledAt: string;
+    messagesBefore: number; messagesAfter: number; tokensBefore: number; tokensAfter: number;
+    factsExtracted: number; decisionsExtracted: number; openItemsExtracted: number;
+    flushSucceeded: boolean; errors: string | null; distillationNumber: number;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM distillation_log WHERE session_id = ? ORDER BY id DESC")
+      .all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      nousId: r['nous_id'] as string,
+      distilledAt: r['distilled_at'] as string,
+      messagesBefore: r['messages_before'] as number,
+      messagesAfter: r['messages_after'] as number,
+      tokensBefore: r['tokens_before'] as number,
+      tokensAfter: r['tokens_after'] as number,
+      factsExtracted: r['facts_extracted'] as number,
+      decisionsExtracted: r['decisions_extracted'] as number,
+      openItemsExtracted: r['open_items_extracted'] as number,
+      flushSucceeded: (r['flush_succeeded'] as number) === 1,
+      errors: r['errors'] as string | null,
+      distillationNumber: r['distillation_number'] as number,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(

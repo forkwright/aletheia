@@ -280,4 +280,26 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       AND session_type = 'primary';
     `,
   },
+  {
+    version: 13,
+    sql: `
+      CREATE TABLE IF NOT EXISTS distillation_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        nous_id TEXT NOT NULL,
+        distilled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        messages_before INTEGER NOT NULL,
+        messages_after INTEGER NOT NULL,
+        tokens_before INTEGER NOT NULL,
+        tokens_after INTEGER NOT NULL,
+        facts_extracted INTEGER DEFAULT 0,
+        decisions_extracted INTEGER DEFAULT 0,
+        open_items_extracted INTEGER DEFAULT 0,
+        flush_succeeded INTEGER DEFAULT 1,
+        errors TEXT,
+        distillation_number INTEGER DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_distill_log_session ON distillation_log(session_id);
+    `,
+  },
 ];

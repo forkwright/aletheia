@@ -131,6 +131,10 @@ async def search_memory(req: SearchRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        for r in results if isinstance(results, list) else []:
+            meta = r.get("metadata") or {}
+            if "created_at" in meta:
+                r["created_at"] = meta["created_at"]
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
