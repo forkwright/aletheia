@@ -321,6 +321,112 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 | **7** | Background session aggressive distillation | Small | Prosoche cleanup |
 | **8** | Ephemeral session retention/cleanup | Small | Cross-agent session cleanup |
 | **9** | Post-distillation verification | Small | Safety checks after every compression |
+| **10** | Distillation progress UI | Medium | Live visibility into what distillation is doing |
+
+### Phase 10: Distillation Progress UI
+
+Distillation is a multi-pass pipeline that can run 30-90 seconds. Currently the UI shows nothing — the user has no idea if it's stuck, progressing, or finished. The only feedback is a brief local message after `/distill` completes.
+
+#### Problem
+
+The pipeline has 6+ distinct stages: sanitization/pruning, extraction (LLM call), chunked summarization (1-N LLM calls per chunk), compression check (possible second LLM call), memory flush, workspace flush. Between `distill:before` and `distill:after`, there's silence.
+
+Auto-triggered distillation is worse — it happens between turns with zero UI indication. The context quietly shrinks and the next response comes from a compressed history with no visual marker that compression occurred.
+
+#### Design
+
+**1. Granular pipeline events**
+
+Add `distill:stage` events at each pipeline step:
+
+```typescript
+type DistillStageEvent = {
+  sessionId: string;
+  nousId: string;
+  stage: "sanitize" | "extract" | "summarize" | "compress" | "flush_memory" | "flush_workspace" | "verify";
+  detail: string;    // Human-readable: "Extracting facts from 847 messages..."
+  progress?: number; // 0-1 for multi-chunk stages (chunk 2/5 = 0.4)
+  chunkIndex?: number;
+  chunkTotal?: number;
+};
+
+eventBus.emit("distill:stage", { sessionId, stage: "extract", detail: "Extracting facts from 127 messages..." });
+eventBus.emit("distill:stage", { sessionId, stage: "summarize", detail: "Summarizing chunk 2/4...", progress: 0.5, chunkIndex: 2, chunkTotal: 4 });
+```
+
+Emit points in `pipeline.ts`:
+- After sanitization/pruning: message count, pruned count
+- Before extraction LLM call: message count being extracted
+- After extraction: facts/decisions/items found
+- Before each summary chunk: chunk N of M, token count
+- After each chunk summary: partial result size
+- Before merge summary: number of partials being merged
+- Before compression second pass: ratio that triggered it
+- Before memory flush: fact count being stored
+- After workspace flush: success/failure
+- Before verification: what's being checked
+
+**2. SSE stream event type**
+
+Add `distill_progress` to `TurnStreamEvent`:
+
+```typescript
+| { type: "distill_progress"; stage: string; detail: string; progress?: number; chunkIndex?: number; chunkTotal?: number }
+```
+
+The manager listens for `distill:stage` events during distillation and yields them on the active SSE stream. For auto-triggered distillation (which runs between turns), buffer the events and include them in the next turn's stream as a preamble.
+
+**3. UI component: `DistillationProgress.svelte`**
+
+A compact progress indicator that appears in the message area during distillation:
+
+```
+┌─────────────────────────────────────────┐
+│ 🔄 Distilling context...                │
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━░░░░░  3/5     │
+│ Summarizing chunk 3 of 5 (847 → ~200    │
+│ tokens)                                  │
+│ ✓ Extracted 12 facts, 4 decisions        │
+│ ✓ Pruned 23 redundant messages           │
+└─────────────────────────────────────────┘
+```
+
+States:
+- **Sanitize/prune:** "Preparing 274 messages (pruned 23 redundant)..."
+- **Extract:** "Extracting facts and decisions..." → "Found 12 facts, 4 decisions, 2 open items"
+- **Summarize:** Progress bar with chunk count: "Summarizing chunk 3 of 5..."
+- **Compress:** "Compression ratio 62% — running tighter pass..."
+- **Flush:** "Writing to long-term memory..." → "Flushing workspace..."
+- **Verify:** "Verifying post-distillation integrity..."
+- **Complete:** "Distilled: 847 → 24 messages, 180K → 12K tokens (93% reduction). 12 facts preserved."
+
+The component collapses into a single-line summary after completion, similar to how `ToolStatusLine` works.
+
+**4. Auto-distillation notification**
+
+When distillation triggers automatically (not via `/distill`), inject a system message into the chat:
+
+```
+⚡ Auto-distillation triggered (context at 92%, 274 messages)
+```
+
+Then show the progress component. After completion:
+
+```
+✓ Context compressed: 180K → 12K tokens. 12 facts, 4 decisions preserved.
+```
+
+This makes automatic distillation visible without requiring the user to initiate it.
+
+**5. Context utilization bar**
+
+The existing `contextPercent` derived value in ChatView.svelte is computed but not rendered. Surface it as a thin bar or badge in the header:
+
+```
+Syn 🌀  [━━━━━━━━━━━━░░░░░] 68%
+```
+
+Color coding: green (<60%), yellow (60-80%), orange (80-90%), red (>90%, distillation imminent). This gives constant ambient awareness of how full the context is, so distillation never surprises.
 
 ---
 
@@ -335,6 +441,9 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 - **Background cleanup:** Create a prosoche session with 60 messages. Verify distillation fires and reduces to 20.
 - **Ephemeral cleanup:** Create 10 ephemeral sessions. Wait 25 hours. Verify all are deleted.
 - **Continuity test:** Have a 100-turn conversation that triggers 3 distillations. After the third, ask "what did we discuss at the start?" Verify the agent can answer from its memory, not from preserved messages.
+- **Distillation progress:** Trigger distillation via `/distill`. Verify all stage events appear in the SSE stream in order. Verify the UI shows chunk progress (N/M) during multi-chunk summarization.
+- **Auto-distillation visibility:** Create a session at 90% context utilization. Send a message. Verify auto-distillation triggers and the UI shows the progress component without user initiation.
+- **Context utilization bar:** Verify the header shows current context percentage. Verify color changes at 60%, 80%, 90% thresholds.
 
 ---
 
@@ -347,3 +456,4 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 - **Background sessions stay under 50 messages.** Prosoche never accumulates 200+ messages again.
 - **Ephemeral sessions cleaned up within 24 hours.** No session table bloat.
 - **The conversation feels continuous.** The human doesn't notice distillation happened.
+- **Distillation is never a black box.** Every distillation shows progress stages, chunk counts, and a completion summary. The user always knows if it's working or stuck.

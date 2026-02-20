@@ -10,7 +10,7 @@ that evolve with the system.
 
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 12 | [Session Continuity](12_session-continuity.md) | Draft | Session classification, smart distillation triggers, token accounting, receipt logging, recall bridging, primary session enforcement, ephemeral cleanup |
+| 12 | [Session Continuity](12_session-continuity.md) | Draft | Session classification, smart distillation triggers, token accounting, receipt logging, recall bridging, primary session enforcement, ephemeral cleanup, **distillation progress UI** |
 | 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | Draft | Role definitions, enhanced spawn, structured result contracts, parallel dispatch, budget controls, routing guidelines |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
