@@ -19,6 +19,9 @@ export interface Session {
   lastInputTokens: number;
   bootstrapHash: string | null;
   distillationCount: number;
+  sessionType: "primary" | "background" | "ephemeral";
+  lastDistilledAt: string | null;
+  computedContextTokens: number;
   workingState: WorkingState | null;
   createdAt: string;
   updatedAt: string;
@@ -180,17 +183,23 @@ export class SessionStore {
   ): Session {
     const id = generateId("ses");
     const key = sessionKey ?? generateSessionKey();
+
+    // Auto-classify session type from key pattern
+    let sessionType: Session["sessionType"] = "primary";
+    if (key.includes("prosoche")) sessionType = "background";
+    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
+
     this.db
       .prepare(
-        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model, session_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, nousId, key, parentSessionId ?? null, model ?? null);
+      .run(id, nousId, key, parentSessionId ?? null, model ?? null, sessionType);
     const session = this.findSessionById(id);
     if (!session) throw new SessionError("Failed to create session", {
       code: "SESSION_CORRUPTED", context: { sessionId: id, nousId },
     });
-    log.info(`Created session ${id} for nous ${nousId} (key: ${key})`);
+    log.info(`Created session ${id} for nous ${nousId} (key: ${key}, type: ${sessionType})`);
     return session;
   }
 
@@ -437,6 +446,141 @@ export class SessionStore {
       .run(inputTokens, sessionId);
   }
 
+  updateSessionType(sessionId: string, sessionType: Session["sessionType"]): void {
+    this.db
+      .prepare("UPDATE sessions SET session_type = ? WHERE id = ?")
+      .run(sessionType, sessionId);
+  }
+
+  updateLastDistilledAt(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  updateComputedContextTokens(sessionId: string, tokens: number): void {
+    this.db
+      .prepare("UPDATE sessions SET computed_context_tokens = ? WHERE id = ?")
+      .run(tokens, sessionId);
+  }
+
+  recordDistillationLog(record: {
+    sessionId: string;
+    nousId: string;
+    messagesBefore: number;
+    messagesAfter: number;
+    tokensBefore: number;
+    tokensAfter: number;
+    factsExtracted: number;
+    decisionsExtracted: number;
+    openItemsExtracted: number;
+    flushSucceeded: boolean;
+    errors?: string;
+    distillationNumber: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO distillation_log
+         (session_id, nous_id, messages_before, messages_after, tokens_before, tokens_after,
+          facts_extracted, decisions_extracted, open_items_extracted, flush_succeeded, errors, distillation_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.nousId,
+        record.messagesBefore, record.messagesAfter,
+        record.tokensBefore, record.tokensAfter,
+        record.factsExtracted, record.decisionsExtracted, record.openItemsExtracted,
+        record.flushSucceeded ? 1 : 0, record.errors ?? null, record.distillationNumber,
+      );
+  }
+
+  getDistillationLog(sessionId: string): Array<{
+    id: number; sessionId: string; nousId: string; distilledAt: string;
+    messagesBefore: number; messagesAfter: number; tokensBefore: number; tokensAfter: number;
+    factsExtracted: number; decisionsExtracted: number; openItemsExtracted: number;
+    flushSucceeded: boolean; errors: string | null; distillationNumber: number;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM distillation_log WHERE session_id = ? ORDER BY id DESC")
+      .all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      nousId: r['nous_id'] as string,
+      distilledAt: r['distilled_at'] as string,
+      messagesBefore: r['messages_before'] as number,
+      messagesAfter: r['messages_after'] as number,
+      tokensBefore: r['tokens_before'] as number,
+      tokensAfter: r['tokens_after'] as number,
+      factsExtracted: r['facts_extracted'] as number,
+      decisionsExtracted: r['decisions_extracted'] as number,
+      openItemsExtracted: r['open_items_extracted'] as number,
+      flushSucceeded: (r['flush_succeeded'] as number) === 1,
+      errors: r['errors'] as string | null,
+      distillationNumber: r['distillation_number'] as number,
+    }));
+  }
+
+  logSubAgentCall(record: {
+    sessionId: string;
+    parentSessionId: string;
+    parentNousId: string;
+    role?: string;
+    agentId: string;
+    task: string;
+    model?: string;
+    inputTokens: number;
+    outputTokens: number;
+    toolCalls: number;
+    status: string;
+    error?: string;
+    durationMs: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sub_agent_log
+         (session_id, parent_session_id, parent_nous_id, role, agent_id, task, model,
+          input_tokens, output_tokens, total_cost_tokens, tool_calls, status, error, duration_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.parentSessionId, record.parentNousId,
+        record.role ?? null, record.agentId, record.task.slice(0, 2000),
+        record.model ?? null, record.inputTokens, record.outputTokens,
+        record.inputTokens + record.outputTokens, record.toolCalls,
+        record.status, record.error ?? null, record.durationMs,
+      );
+  }
+
+  getSubAgentLog(parentSessionId: string): Array<{
+    id: number; sessionId: string; parentNousId: string; role: string | null;
+    agentId: string; task: string; model: string | null;
+    inputTokens: number; outputTokens: number; totalCostTokens: number;
+    toolCalls: number; status: string; error: string | null; durationMs: number;
+    createdAt: string;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM sub_agent_log WHERE parent_session_id = ? ORDER BY id DESC")
+      .all(parentSessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      parentNousId: r['parent_nous_id'] as string,
+      role: r['role'] as string | null,
+      agentId: r['agent_id'] as string,
+      task: r['task'] as string,
+      model: r['model'] as string | null,
+      inputTokens: r['input_tokens'] as number,
+      outputTokens: r['output_tokens'] as number,
+      totalCostTokens: r['total_cost_tokens'] as number,
+      toolCalls: r['tool_calls'] as number,
+      status: r['status'] as string,
+      error: r['error'] as string | null,
+      durationMs: r['duration_ms'] as number,
+      createdAt: r['created_at'] as string,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(
@@ -606,6 +750,38 @@ export class SessionStore {
     const count = result.changes;
     if (count > 0) {
       log.info(`Archived ${count} stale spawn sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
+    }
+    return count;
+  }
+
+  deleteEphemeralSessions(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const tx = this.db.transaction(() => {
+      const ids = this.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE session_type = 'ephemeral'
+             AND status = 'active'
+             AND updated_at < ?`,
+        )
+        .all(cutoff) as Array<{ id: string }>;
+
+      if (ids.length === 0) return 0;
+
+      const placeholders = ids.map(() => "?").join(",");
+      const sessionIds = ids.map((r) => r.id);
+
+      this.db.prepare(`DELETE FROM messages WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM usage WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM agent_notes WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM distillations WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      const result = this.db.prepare(`DELETE FROM sessions WHERE id IN (${placeholders})`).run(...sessionIds);
+      return result.changes;
+    });
+
+    const count = tx();
+    if (count > 0) {
+      log.info(`Deleted ${count} ephemeral sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
     }
     return count;
   }
@@ -918,6 +1094,9 @@ export class SessionStore {
       lastInputTokens: (row['last_input_tokens'] as number) ?? 0,
       bootstrapHash: (row['bootstrap_hash'] as string) ?? null,
       distillationCount: (row['distillation_count'] as number) ?? 0,
+      sessionType: (row['session_type'] as Session["sessionType"]) ?? "primary",
+      lastDistilledAt: (row['last_distilled_at'] as string) ?? null,
+      computedContextTokens: (row['computed_context_tokens'] as number) ?? 0,
       workingState: this.parseWorkingState(row['working_state'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,

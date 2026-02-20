@@ -272,6 +272,42 @@ describe("distillSession", () => {
     expect(result.messagesAfter).toBeLessThanOrEqual(3); // 1 summary + up to 2 preserved
   });
 
+  it("runs lightweight distillation — skips extraction, uses router.complete", async () => {
+    const { extractFromMessages } = await import("./extract.js");
+    const { summarizeInStages } = await import("./chunked-summarize.js");
+    const { flushToMemory } = await import("./hooks.js");
+
+    vi.mocked(extractFromMessages).mockClear();
+    vi.mocked(summarizeInStages).mockClear();
+    vi.mocked(flushToMemory).mockClear();
+
+    const router = makeRouter();
+    vi.mocked(router.complete).mockResolvedValue({
+      content: [{ type: "text", text: "Background session summary." }],
+      stopReason: "end_turn",
+      usage: { inputTokens: 50, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      model: "claude-haiku",
+    } as never);
+
+    const store = makeStore();
+    const result = await distillSession(store, router, "ses_lightweight", "syn", {
+      triggerThreshold: 10000,
+      minMessages: 4,
+      extractionModel: "claude-haiku",
+      summaryModel: "claude-haiku",
+      lightweight: true,
+    });
+
+    expect(result.sessionId).toBe("ses_lightweight");
+    expect(result.factsExtracted).toBe(0); // no extraction
+    expect(extractFromMessages).not.toHaveBeenCalled();
+    expect(summarizeInStages).not.toHaveBeenCalled();
+    expect(flushToMemory).not.toHaveBeenCalled();
+    expect(router.complete).toHaveBeenCalled();
+    expect(store.appendMessage).toHaveBeenCalled();
+    expect(store.markMessagesDistilled).toHaveBeenCalled();
+  });
+
   describe("workspace memory flush", () => {
     const tmpDirs: string[] = [];
 
