@@ -4,6 +4,7 @@
   import Markdown from "./Markdown.svelte";
   import StreamingIndicator from "./StreamingIndicator.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
+  import ThinkingStatusLine from "./ThinkingStatusLine.svelte";
 
   let {
     messages,
@@ -14,6 +15,7 @@
     agentName,
     agentEmoji,
     onToolClick,
+    onThinkingClick,
   }: {
     messages: ChatMessage[];
     streamingText: string;
@@ -23,6 +25,7 @@
     agentName?: string | null;
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
+    onThinkingClick?: (thinking?: string) => void;
   } = $props();
 
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
@@ -67,7 +70,7 @@
     </div>
   {:else}
     {#each messages as message (message.id)}
-      <Message {message} {agentName} {agentEmoji} {onToolClick} />
+      <Message {message} {agentName} {agentEmoji} {onToolClick} onThinkingClick={(thinking) => onThinkingClick?.(thinking)} />
     {/each}
 
     {#if isStreaming}
@@ -81,10 +84,11 @@
         </div>
         <div class="chat-body">
           {#if thinkingText}
-            <details class="thinking-stream" open>
-              <summary class="thinking-summary">Thinking...</summary>
-              <div class="thinking-content">{thinkingText}</div>
-            </details>
+            <ThinkingStatusLine
+              {thinkingText}
+              isStreaming={true}
+              onclick={() => onThinkingClick?.()}
+            />
           {/if}
           {#if activeToolCalls.length > 0}
             <ToolStatusLine
@@ -150,38 +154,6 @@
     background: var(--accent);
     color: #fff;
     letter-spacing: 1px;
-  }
-
-  .thinking-stream {
-    margin-bottom: 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-  .thinking-summary {
-    padding: 6px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-    cursor: pointer;
-    user-select: none;
-    background: var(--surface);
-    animation: pulse 2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-  }
-  .thinking-content {
-    padding: 8px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 200px;
-    overflow-y: auto;
-    border-top: 1px solid var(--border);
-    font-family: var(--font-mono);
-    line-height: 1.5;
   }
 
   .scroll-btn {
