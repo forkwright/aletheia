@@ -13,7 +13,7 @@ All code must follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points:
 
 ## Project Structure
 
-- **Runtime:** `infrastructure/runtime/src/` — TypeScript, built with tsup, tested with vitest
+- **Runtime:** `infrastructure/runtime/src/` — TypeScript, built with tsdown, tested with vitest
 - **UI:** `ui/` — Svelte 5, built with Vite
 - **Memory sidecar:** `infrastructure/memory/sidecar/` — Python FastAPI
 - **Config:** `~/.aletheia/aletheia.json` — validated by Zod schema in `taxis/schema.ts`
@@ -44,7 +44,7 @@ cd infrastructure/runtime && npx eslint src/
 ## Key Patterns
 
 - **Module naming:** Greek names (koina, taxis, mneme, hermeneus, nous, organon, semeion, pylon, prostheke)
-- **Error handling:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`
+- **Error handling:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts` for non-critical operations
 - **Logging:** `createLogger("module-name")` from `koina/logger.ts` — structured with AsyncLocalStorage context
 - **Events:** `eventBus` from `koina/event-bus.ts` — `noun:verb` naming pattern
 - **Config:** Zod schemas in `taxis/schema.ts`, loaded by `taxis/loader.ts`

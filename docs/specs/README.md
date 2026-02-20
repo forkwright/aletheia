@@ -10,14 +10,14 @@ that evolve with the system.
 
 | # | Spec | Status | Summary |
 |---|------|--------|---------|
-| 3 | [Auth & Updates](03_auth-and-updates.md) | Draft | Login page (user/pass + remember me), self-update CLI, GitHub Releases |
+| 3 | [Auth & Updates](03_auth-and-updates.md) | Phase 1 done | Release workflow + `aletheia update` CLI with rollback (#50). Remaining: login page, session auth |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Draft | Sub-agents, message queue, plan mode, model routing, cost visibility |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | One-command setup, unified config, agent management CLI/UI |
-| 6 | [Code Quality](06_code-quality.md) | Phase 1-4 done | CONTRIBUTING.md + CLAUDE.md (#37), dead code audit + cleanup (#45). Remaining: error taxonomy, error boundaries |
+| 6 | [Code Quality](06_code-quality.md) | Phase 1-5 done | CONTRIBUTING.md + CLAUDE.md (#37), dead code audit + cleanup (#45), error handling sweep (#52). Remaining: error taxonomy, ESLint rules |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Vector-first recall (#49). Remaining: Neo4j optional, extraction quality, memory confidence, graph UI, domain scoping |
-| 8 | [Memory Continuity](08_memory-continuity.md) | Phase 1-5 done | Expanded tail (#36), structured summaries (#43), context editing API (#44), working state + agent notes (#53). All phases complete. |
-| 9 | [Graph Visualization](09_graph-visualization.md) | Draft | 2D default, progressive loading, named communities, semantic node cards, memory auditing, drift detection |
-| 10 | [Thinking UI](10_thinking-ui.md) | Phase 1 done | Extended thinking enabled for Opus (#40). Remaining: live summary pill, detail panel, collapsed reasoning |
+| 8 | [Memory Continuity](08_memory-continuity.md) | Complete | Expanded tail (#36), structured summaries (#43), context editing API (#44), working state + agent notes (#55). All 5 phases delivered. |
+| 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | 2D default, lazy 3D, progressive loading (#56). Remaining: named communities, semantic node cards, memory auditing, drift detection |
+| 10 | [Thinking UI](10_thinking-ui.md) | Phase 1-4 done | Extended thinking enabled (#40), status pills + detail panel (#54). Remaining: collapsed reasoning in history |
 
 ### Priority order
 

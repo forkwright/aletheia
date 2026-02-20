@@ -4,7 +4,7 @@
 
 Privacy-first. Runs on commodity hardware as a systemd service. No cloud dependencies beyond your LLM API key.
 
-**v0.9.0** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
+**v0.9.1** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
 
 ---
 
@@ -33,13 +33,13 @@ Privacy-first. Runs on commodity hardware as a systemd service. No cloud depende
          Claude     Claude    Claude   Claude
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~400KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
+**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~450KB bundle), Hono gateway on port 18789. Web UI at `/ui` (Svelte 5).
 
 **Communication**: Web chat UI (Svelte 5) with streaming responses, file upload, syntax highlighting, and real-time tool activity. Signal messenger via signal-cli as a secondary channel. 10 built-in `!` commands. Link preprocessing with SSRF guard. Image vision via Anthropic content blocks. Contact pairing with challenge codes.
 
-**Models**: Currently only piped for Anthropic oauth or API. Complexity-based routing with temperature selection. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure being built.
+**Models**: Anthropic (OAuth or API key). Complexity-based routing with temperature selection. Extended thinking support for reasoning models. Provider failover across Anthropic, OpenRouter, OpenAI, and Azure being built.
 
-**Memory**: Dual-layer: Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Self-observation tools (calibration, correction tracking).
+**Memory**: Dual-layer: Mem0 (AI extraction via Claude Haiku, Qdrant vectors, Neo4j graph) for automatic cross-agent long-term memory + sqlite-vec for fast local per-agent vector search. Cross-agent blackboard (SQLite, TTL-based). Working state extraction (structured task context that survives distillation). Agent notes tool for explicit persistent memory. Self-observation tools (calibration, correction tracking).
 
 **Observability**: Self-hosted Langfuse (port 3100) for session traces and metrics.
 
@@ -76,7 +76,7 @@ aletheia/
 │   │   │   ├── taxis/              Config loading + validation (Zod)
 │   │   │   ├── mneme/              Session store (better-sqlite3)
 │   │   │   ├── hermeneus/          Anthropic SDK + provider router
-│   │   │   ├── organon/            Tool registry + 28 built-in tools + skills
+│   │   │   ├── organon/            Tool registry + 33 built-in tools + skills
 │   │   │   ├── semeion/            Signal client, listener, commands, preprocessing
 │   │   │   ├── pylon/              Hono HTTP gateway, MCP, Web UI
 │   │   │   ├── prostheke/          Plugin system (lifecycle hooks)
@@ -169,6 +169,7 @@ At session start, bootstrap assembles: agent workspace files + recalled memories
 | `aletheia sessions [-a <agent>]` | List sessions |
 | `aletheia cron list` | List cron jobs |
 | `aletheia cron trigger <id>` | Trigger a cron job |
+| `aletheia update [version]` | Self-update (pull, build, restart, health-check with rollback) |
 | `aletheia doctor` | Connectivity checks |
 
 ### API Endpoints
@@ -298,9 +299,9 @@ Copy `.env.example` to `shared/config/aletheia.env` and fill in values. Must be 
 src/entry.ts          CLI entry point (Commander)
 src/aletheia.ts       Main orchestration, wires all modules
 src/taxis/            Config loading + Zod validation
-src/mneme/            Session store (better-sqlite3, 6 migrations)
+src/mneme/            Session store (better-sqlite3, 10 migrations)
 src/hermeneus/        Anthropic SDK, provider router, token counting
-src/organon/          Tool registry, 28 built-in tools, skills directory
+src/organon/          Tool registry, 33 built-in tools, skills directory
 src/semeion/          Signal client, SSE listener, commands, link preprocessing
 src/pylon/            Hono HTTP gateway, MCP, Web UI
 src/prostheke/        Plugin system (lifecycle hooks)

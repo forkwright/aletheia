@@ -4,6 +4,28 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.9.1] - 2026-02-20
+
+### Added
+- **Working state extraction** - Post-turn LLM extraction of structured task context (current task, completed steps, next steps, decisions, open files). Persisted on session, injected into system prompt, survives distillation.
+- **Agent notes tool** - Explicit `note` tool (add/list/delete) with categories (task, decision, preference, correction, context). Notes survive distillation and are injected into system prompt with 2K token cap.
+- **Release workflow** - GitHub Releases on tag push with auto-generated changelogs
+- **Self-update CLI** - `aletheia update [version]` with locking, rollback, and health-check. Supports `--edge` (latest main), `--check` (dry run), `--rollback`.
+- **Version tracking** - Build-time version injection, `/api/status` includes version, 6h periodic update check daemon
+- **Thinking UI** - Status pills showing thinking duration during streaming, expandable detail panel with full reasoning
+- **2D graph visualization** - Force-graph 2D as default (faster, more readable), lazy-loaded 3D via dynamic import, progressive node loading (batches of 200)
+- **Error handling sweep** - `trySafe`/`trySafeAsync` utilities in `koina/safe.ts`, catch block improvements across store, finalize, tools, listener, TTS
+
+### Fixed
+- **Duplicate tool_result blocks** - Loop detector was pushing additional `tool_result` blocks with the same `tool_use_id`, causing Anthropic API 400 errors. Now appends to existing result instead.
+- **Recall timeouts** - Vector-first search as primary path (~200-500ms), graph-enhanced only as fallback when no vector hits above threshold. Timeout bumped 3s to 5s.
+- **Manager test failures** - Restored 27 tests by adding missing store mocks (getThinkingConfig, getNotes, getWorkingState, etc.)
+
+### Changed
+- Session metrics (duration, context utilization, distillation count) moved to separate block, injected every 8th turn instead of replacing working state
+
+---
+
 ## [0.9.0] - 2026-02-18
 
 ### Added

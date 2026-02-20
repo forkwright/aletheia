@@ -8,7 +8,7 @@ Recovery guide for restoring Aletheia from scratch. For architecture and full do
 |------|-------|
 | Service | `systemctl status aletheia` |
 | Config | `~/.aletheia/aletheia.json` |
-| Runtime | `infrastructure/runtime/` (tsdown, ~400KB) |
+| Runtime | `infrastructure/runtime/` (tsdown, ~450KB) |
 | Web UI | `/ui` (Svelte 5, built from `ui/`) |
 | Sessions DB | `~/.aletheia/sessions.db` |
 | Memory sidecar | `systemctl status aletheia-memory` (port 8230) |

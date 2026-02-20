@@ -35,7 +35,7 @@ Build output lands in `dist/` as a single ESM bundle:
 
 ```
 dist/
-  entry.mjs        # ~400KB, single-file executable
+  entry.mjs        # ~450KB, single-file executable
   entry.mjs.map    # Source map
 ```
 
@@ -80,7 +80,7 @@ Files: `schema.ts` (Zod schemas + types), `loader.ts` (config loading + agent re
 
 `src/mneme/`
 
-SQLite-backed session store using `better-sqlite3`. Manages conversation history, message persistence, token counting, routing cache, contact approval (pairing), blackboard, interaction signals, and session archival. 6 embedded migrations.
+SQLite-backed session store using `better-sqlite3`. Manages conversation history, message persistence, token counting, routing cache, contact approval (pairing), blackboard, interaction signals, working state, agent notes, and session archival. 10 embedded migrations.
 
 Files: `store.ts` (SessionStore class), `schema.ts` (DB schema types).
 
@@ -96,7 +96,7 @@ Files: `anthropic.ts` (SDK wrapper + type definitions), `router.ts` (ProviderRou
 
 `src/organon/`
 
-Tool registry with dynamic loading, on-demand activation, and automatic expiry. 28 built-in tools (`built-in/`), the skill system (`skills.ts`), self-authoring tools (`self-author.ts`), reversibility tagging (`reversibility.ts`), and result truncation (`truncate.ts`).
+Tool registry with dynamic loading, on-demand activation, and automatic expiry. 33 built-in tools (`built-in/`), the skill system (`skills.ts`), self-authoring tools (`self-author.ts`), reversibility tagging (`reversibility.ts`), and result truncation (`truncate.ts`).
 
 Files: `registry.ts` (ToolRegistry class), `skills.ts` (SkillRegistry), `self-author.ts` (runtime tool creation by agents), `reversibility.ts` (action safety classification), `built-in/*.ts` (individual tools).
 
@@ -146,7 +146,7 @@ Files: `types.ts` (PluginDefinition, hooks, manifest types), `loader.ts` (filesy
 
 Cron job scheduler and service health watchdog. Cron triggers agent turns on schedule (heartbeat, consolidation, pattern extraction, adversarial testing). Watchdog monitors dependent services and alerts via Signal.
 
-Files: `cron.ts` (CronScheduler), `watchdog.ts` (Watchdog + ServiceProbe).
+Files: `cron.ts` (CronScheduler), `watchdog.ts` (Watchdog + ServiceProbe), `update-check.ts` (periodic update check against GitHub releases).
 
 ### koina -- Shared Utilities
 
@@ -154,7 +154,7 @@ Files: `cron.ts` (CronScheduler), `watchdog.ts` (Watchdog + ServiceProbe).
 
 Cross-cutting concerns: structured logging (tslog), cryptographic helpers, filesystem utilities, error codes, typed errors, and the event bus.
 
-Files: `logger.ts` (tslog wrapper), `crypto.ts`, `fs.ts`, `errors.ts`, `error-codes.ts`, `event-bus.ts`.
+Files: `logger.ts` (tslog wrapper), `crypto.ts`, `fs.ts`, `errors.ts`, `error-codes.ts`, `event-bus.ts`, `safe.ts` (non-fatal error boundaries via `trySafe`/`trySafeAsync`).
 
 ---
 
@@ -483,6 +483,7 @@ aletheia send -a <id> -m <text>       Send a message to an agent
 aletheia sessions [-a agent]          List sessions
 aletheia cron list                    List cron jobs
 aletheia cron trigger <id>            Manually trigger a cron job
+aletheia update [version] [--edge|--check|--rollback]  Self-update with rollback
 aletheia replay <session-id>          Replay session history (--live for re-execution)
 ```
 
