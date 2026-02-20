@@ -521,6 +521,66 @@ export class SessionStore {
     }));
   }
 
+  logSubAgentCall(record: {
+    sessionId: string;
+    parentSessionId: string;
+    parentNousId: string;
+    role?: string;
+    agentId: string;
+    task: string;
+    model?: string;
+    inputTokens: number;
+    outputTokens: number;
+    toolCalls: number;
+    status: string;
+    error?: string;
+    durationMs: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sub_agent_log
+         (session_id, parent_session_id, parent_nous_id, role, agent_id, task, model,
+          input_tokens, output_tokens, total_cost_tokens, tool_calls, status, error, duration_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.parentSessionId, record.parentNousId,
+        record.role ?? null, record.agentId, record.task.slice(0, 2000),
+        record.model ?? null, record.inputTokens, record.outputTokens,
+        record.inputTokens + record.outputTokens, record.toolCalls,
+        record.status, record.error ?? null, record.durationMs,
+      );
+  }
+
+  getSubAgentLog(parentSessionId: string): Array<{
+    id: number; sessionId: string; parentNousId: string; role: string | null;
+    agentId: string; task: string; model: string | null;
+    inputTokens: number; outputTokens: number; totalCostTokens: number;
+    toolCalls: number; status: string; error: string | null; durationMs: number;
+    createdAt: string;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM sub_agent_log WHERE parent_session_id = ? ORDER BY id DESC")
+      .all(parentSessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      parentNousId: r['parent_nous_id'] as string,
+      role: r['role'] as string | null,
+      agentId: r['agent_id'] as string,
+      task: r['task'] as string,
+      model: r['model'] as string | null,
+      inputTokens: r['input_tokens'] as number,
+      outputTokens: r['output_tokens'] as number,
+      totalCostTokens: r['total_cost_tokens'] as number,
+      toolCalls: r['tool_calls'] as number,
+      status: r['status'] as string,
+      error: r['error'] as string | null,
+      durationMs: r['duration_ms'] as number,
+      createdAt: r['created_at'] as string,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(

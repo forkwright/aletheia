@@ -8,9 +8,16 @@ import {
   spawnEphemeral,
   teardownEphemeral,
 } from "../../nous/ephemeral.js";
+import { resolveRole } from "../config/sub-agent-roles.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("organon.spawn");
+
+function parseStructuredResult(text: string): Record<string, unknown> | null {
+  const match = text.match(/```json\s*\n([\s\S]*?)\n```\s*$/);
+  if (!match?.[1]) return null;
+  try { return JSON.parse(match[1]) as Record<string, unknown>; } catch { return null; }
+}
 
 export interface AgentDispatcher {
   handleMessage(msg: InboundMessage): Promise<TurnOutcome>;
@@ -89,6 +96,11 @@ export function createSessionsSpawnTool(
             type: "number",
             description: "Maximum total tokens (input + output) for the spawn. The turn is aborted if the budget is exceeded. Default: no limit.",
           },
+          role: {
+            type: "string",
+            enum: ["researcher", "analyzer", "coder", "writer", "validator"],
+            description: "Pre-configured role preset. Sets model, maxTurns, and token budget as defaults. Explicit params override role defaults.",
+          },
         },
         required: ["task"],
       },
@@ -99,13 +111,17 @@ export function createSessionsSpawnTool(
     ): Promise<string> {
       const task = input["task"] as string;
       const agentId = (input["agentId"] as string) ?? context.nousId;
-      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
       const isEphemeral = input["ephemeral"] === true;
-      const modelOverride = input["model"] as string | undefined;
-      const budgetTokens = input["budgetTokens"] as number | undefined;
+      const roleName = input["role"] as string | undefined;
+      const role = roleName ? resolveRole(roleName) : null;
+
+      const modelOverride = (input["model"] as string | undefined) ?? role?.model;
+      const budgetTokens = (input["budgetTokens"] as number | undefined) ?? role?.maxTokenBudget;
+      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
       const sessionKey =
         (input["sessionKey"] as string) ??
         `spawn:${context.nousId}:${Date.now().toString(36)}`;
+      const startTime = Date.now();
 
       if (!dispatcher) {
         return JSON.stringify({ error: "Agent dispatch not available" });
@@ -262,10 +278,32 @@ export function createSessionsSpawnTool(
           });
         }
 
+        const durationMs = Date.now() - startTime;
+        const structured = parseStructuredResult(outcome.text);
+
+        if (dispatcher.store) {
+          dispatcher.store.logSubAgentCall({
+            sessionId: outcome.sessionId,
+            parentSessionId: context.sessionId,
+            parentNousId: context.nousId,
+            ...(roleName ? { role: roleName } : {}),
+            agentId,
+            task,
+            ...(modelOverride ? { model: modelOverride } : {}),
+            inputTokens: outcome.inputTokens ?? 0,
+            outputTokens: outcome.outputTokens ?? 0,
+            toolCalls: outcome.toolCalls ?? 0,
+            status: "completed",
+            durationMs,
+          });
+        }
+
         return JSON.stringify({
           agentId,
           sessionKey,
+          ...(roleName ? { role: roleName } : {}),
           result: outcome.text,
+          ...(structured ? { structuredResult: structured } : {}),
           toolCalls: outcome.toolCalls,
           tokens: {
             input: outcome.inputTokens,
@@ -274,22 +312,43 @@ export function createSessionsSpawnTool(
             budget: budgetTokens ?? null,
             overBudget: overBudget ?? false,
           },
+          durationMs,
         });
       } catch (err) {
         clearTimeout(timer!);
+        const durationMs = Date.now() - startTime;
+        const errMsg = err instanceof Error ? err.message : String(err);
 
         if (auditId && dispatcher.store) {
           const isTimeout = err instanceof Error && err.message.includes("Timeout");
           dispatcher.store.updateCrossAgentCall(auditId, {
             status: isTimeout ? "timeout" : "error",
-            response: err instanceof Error ? err.message : String(err),
+            response: errMsg,
+          });
+        }
+
+        if (dispatcher.store) {
+          dispatcher.store.logSubAgentCall({
+            sessionId: sessionKey,
+            parentSessionId: context.sessionId,
+            parentNousId: context.nousId,
+            ...(roleName ? { role: roleName } : {}),
+            agentId,
+            task,
+            ...(modelOverride ? { model: modelOverride } : {}),
+            inputTokens: 0,
+            outputTokens: 0,
+            toolCalls: 0,
+            status: "error",
+            error: errMsg,
+            durationMs,
           });
         }
 
         return JSON.stringify({
           agentId,
           sessionKey,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMsg,
         });
       }
     },

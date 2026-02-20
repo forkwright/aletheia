@@ -302,4 +302,28 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_distill_log_session ON distillation_log(session_id);
     `,
   },
+  {
+    version: 14,
+    sql: `
+      CREATE TABLE IF NOT EXISTS sub_agent_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        parent_session_id TEXT NOT NULL,
+        parent_nous_id TEXT NOT NULL,
+        role TEXT,
+        agent_id TEXT NOT NULL,
+        task TEXT NOT NULL,
+        model TEXT,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        total_cost_tokens INTEGER DEFAULT 0,
+        tool_calls INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'completed',
+        error TEXT,
+        duration_ms INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_sub_agent_parent ON sub_agent_log(parent_session_id);
+    `,
+  },
 ];
