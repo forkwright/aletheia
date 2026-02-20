@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "
 import { eventBus, type EventName } from "../koina/event-bus.js";
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
+import { getVersion } from "../version.js";
 
 const log = createLogger("pylon");
 
@@ -150,7 +151,7 @@ export function createGateway(
   });
 
   app.get("/health", (c) =>
-    c.json({ status: "ok", timestamp: new Date().toISOString() }),
+    c.json({ status: "ok", version: getVersion(), timestamp: new Date().toISOString() }),
   );
 
   app.get("/api/status", (c) =>

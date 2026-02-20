@@ -6,6 +6,7 @@ import { createLogger } from "../koina/logger.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
+import { getVersion } from "../version.js";
 
 const log = createLogger("pylon.mcp");
 
@@ -199,7 +200,7 @@ async function handleJsonRpc(
           },
           serverInfo: {
             name: "aletheia",
-            version: "0.2.0",
+            version: getVersion(),
           },
         },
       };

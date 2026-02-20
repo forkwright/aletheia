@@ -7,6 +7,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { ToolRegistry, ToolHandler, ToolContext } from "./registry.js";
 import { createLogger } from "../koina/logger.js";
+import { getVersion } from "../version.js";
 
 const log = createLogger("mcp-client");
 
@@ -84,7 +85,7 @@ export class McpClientManager {
     const transport = this.createTransport(name, config);
 
     const client = new Client(
-      { name: "aletheia", version: "0.1.0" },
+      { name: "aletheia", version: getVersion() },
       { capabilities: {} },
     );
 

@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# Self-update script — pulls, builds, restarts, health-checks with auto-rollback
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+RUNTIME_DIR="$ALETHEIA_ROOT/infrastructure/runtime"
+UI_DIR="$ALETHEIA_ROOT/ui"
+SERVICE_NAME="aletheia"
+BACKUP_DIR="$ALETHEIA_ROOT/.update-backups"
+LOCKFILE="/tmp/aletheia-update.lock"
+HEALTH_URL="http://localhost:18789/health"
+HEALTH_TIMEOUT=30
+HEALTH_INTERVAL=2
+
+usage() {
+  cat <<EOF
+Usage: aletheia-update [OPTIONS] [VERSION]
+
+Update Aletheia to a specific version or the latest release.
+
+Arguments:
+  VERSION          Tag to update to (e.g. v0.9.1). Default: latest release tag.
+
+Options:
+  --edge           Pull latest main (HEAD) instead of a release tag
+  --check          Check for updates without applying
+  --rollback       Roll back to previous version
+  --help           Show this help
+EOF
+}
+
+log() { echo ":: $*"; }
+err() { echo "ERROR: $*" >&2; }
+die() { err "$@"; exit 1; }
+
+# --- Locking ---
+
+acquire_lock() {
+  if [ -f "$LOCKFILE" ]; then
+    local pid
+    pid=$(cat "$LOCKFILE" 2>/dev/null || echo "")
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      die "Another update is running (PID $pid)"
+    fi
+    rm -f "$LOCKFILE"
+  fi
+  echo $$ > "$LOCKFILE"
+  trap 'rm -f "$LOCKFILE"' EXIT
+}
+
+# --- Version helpers ---
+
+current_version() {
+  node -e "console.log(require('$RUNTIME_DIR/package.json').version)" 2>/dev/null || echo "unknown"
+}
+
+current_commit() {
+  git -C "$ALETHEIA_ROOT" rev-parse --short HEAD
+}
+
+resolve_target() {
+  local target="${1:-}"
+  local edge="${2:-false}"
+
+  if [ "$edge" = "true" ]; then
+    echo "edge"
+    return
+  fi
+
+  if [ -n "$target" ]; then
+    if ! git -C "$ALETHEIA_ROOT" rev-parse "refs/tags/$target" &>/dev/null; then
+      die "Tag $target not found. Run 'git fetch --tags' first?"
+    fi
+    echo "$target"
+    return
+  fi
+
+  local latest
+  latest=$(git -C "$ALETHEIA_ROOT" tag -l 'v*' --sort=-v:refname | head -1)
+  if [ -z "$latest" ]; then
+    die "No release tags found. Use --edge for latest main."
+  fi
+  echo "$latest"
+}
+
+is_newer() {
+  local latest="$1" current="$2"
+  [ "$latest" != "$current" ] && [ "$(printf '%s\n%s' "$current" "$latest" | sort -V | tail -1)" = "$latest" ]
+}
+
+# --- Pre-flight ---
+
+preflight() {
+  [ -d "$ALETHEIA_ROOT/.git" ] || die "Not a git repo: $ALETHEIA_ROOT"
+
+  local branch
+  branch=$(git -C "$ALETHEIA_ROOT" branch --show-current)
+  [ "$branch" = "main" ] || die "Not on main branch (on '$branch'). Switch to main first."
+
+  if ! git -C "$ALETHEIA_ROOT" diff --quiet 2>/dev/null; then
+    die "Uncommitted changes in working tree. Commit or stash first."
+  fi
+
+  if ! git -C "$ALETHEIA_ROOT" diff --cached --quiet 2>/dev/null; then
+    die "Staged changes in index. Commit or stash first."
+  fi
+
+  log "Fetching from remote..."
+  if ! git -C "$ALETHEIA_ROOT" fetch --tags --quiet 2>/dev/null; then
+    die "Cannot reach git remote. Check network."
+  fi
+}
+
+# --- Health check ---
+
+health_check() {
+  local attempts=0
+  local max=$((HEALTH_TIMEOUT / HEALTH_INTERVAL))
+
+  while [ $attempts -lt $max ]; do
+    sleep "$HEALTH_INTERVAL"
+    if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
+# --- Backup ---
+
+backup_state() {
+  local commit="$1"
+  mkdir -p "$BACKUP_DIR"
+  local name="pre-update-$(date +%Y%m%d-%H%M%S)-$commit"
+  echo "$commit" > "$BACKUP_DIR/$name.ref"
+  cp "$RUNTIME_DIR/package.json" "$BACKUP_DIR/$name.package.json"
+  log "Backup: $name"
+}
+
+# --- Rollback ---
+
+do_rollback() {
+  local ref_file
+  ref_file=$(ls -t "$BACKUP_DIR"/*.ref 2>/dev/null | head -1)
+  if [ -z "$ref_file" ]; then
+    die "No backup found. Cannot rollback."
+  fi
+
+  local prev_commit
+  prev_commit=$(cat "$ref_file")
+  local cur=$(current_commit)
+
+  if [ "$prev_commit" = "$cur" ]; then
+    log "Already at backup commit ($prev_commit). Nothing to rollback."
+    return 0
+  fi
+
+  log "Rolling back: $cur -> $prev_commit"
+  git -C "$ALETHEIA_ROOT" checkout "$prev_commit"
+
+  log "Rebuilding..."
+  (cd "$RUNTIME_DIR" && npm run build) || die "Rollback build failed"
+
+  log "Restarting $SERVICE_NAME..."
+  sudo systemctl restart "$SERVICE_NAME"
+
+  if health_check; then
+    log "Rollback successful: now at $prev_commit"
+  else
+    err "Health check failed after rollback. Manual intervention required."
+    return 1
+  fi
+}
+
+# --- Check ---
+
+do_check() {
+  preflight
+
+  local cur_version
+  cur_version=$(current_version)
+  local target
+  target=$(resolve_target "" "false") || return 1
+  local target_version="${target#v}"
+
+  if is_newer "$target_version" "$cur_version"; then
+    log "Update available: $cur_version -> $target_version ($target)"
+    log "Run 'aletheia update' to install"
+    return 0
+  else
+    log "Up to date: $cur_version"
+    return 0
+  fi
+}
+
+# --- Update ---
+
+do_update() {
+  local target="$1"
+  local cur_version cur_commit
+
+  cur_version=$(current_version)
+  cur_commit=$(current_commit)
+
+  log "Current: $cur_version ($cur_commit)"
+
+  backup_state "$cur_commit"
+
+  if [ "$target" = "edge" ]; then
+    log "Pulling latest main (edge)..."
+    git -C "$ALETHEIA_ROOT" pull --ff-only origin main
+  else
+    log "Checking out $target..."
+    git -C "$ALETHEIA_ROOT" checkout "$target"
+  fi
+
+  local new_version new_commit
+  new_version=$(current_version)
+  new_commit=$(current_commit)
+
+  log "Target: $new_version ($new_commit)"
+
+  if [ "$cur_commit" = "$new_commit" ]; then
+    log "Already up to date."
+    return 0
+  fi
+
+  # Conditional npm ci — only if lockfile changed
+  if ! git -C "$ALETHEIA_ROOT" diff --quiet "$cur_commit" "$new_commit" -- infrastructure/runtime/package-lock.json 2>/dev/null; then
+    log "Dependencies changed — running npm ci..."
+    (cd "$RUNTIME_DIR" && npm ci --prefer-offline)
+  else
+    log "Dependencies unchanged — skipping npm ci."
+  fi
+
+  # Check if UI dependencies changed
+  if [ -f "$UI_DIR/package-lock.json" ] && ! git -C "$ALETHEIA_ROOT" diff --quiet "$cur_commit" "$new_commit" -- ui/package-lock.json 2>/dev/null; then
+    log "UI dependencies changed — running npm ci..."
+    (cd "$UI_DIR" && npm ci --prefer-offline)
+  fi
+
+  # Build runtime
+  log "Building runtime..."
+  if ! (cd "$RUNTIME_DIR" && npm run build); then
+    err "Runtime build failed. Rolling back..."
+    git -C "$ALETHEIA_ROOT" checkout "$cur_commit"
+    return 1
+  fi
+
+  # Build UI if it exists
+  if [ -f "$UI_DIR/package.json" ]; then
+    log "Building UI..."
+    if ! (cd "$UI_DIR" && npm run build); then
+      err "UI build failed. Rolling back..."
+      git -C "$ALETHEIA_ROOT" checkout "$cur_commit"
+      (cd "$RUNTIME_DIR" && npm run build)
+      return 1
+    fi
+  fi
+
+  # Fix ACLs on shared/bin
+  if command -v setfacl &>/dev/null; then
+    setfacl -m u:syn:rwx "$ALETHEIA_ROOT"/shared/bin/* 2>/dev/null || true
+  fi
+
+  # Restart service
+  log "Restarting $SERVICE_NAME..."
+  sudo systemctl restart "$SERVICE_NAME"
+
+  # Health check
+  log "Waiting for health check..."
+  if health_check; then
+    echo ""
+    log "Updated: $cur_version ($cur_commit) -> $new_version ($new_commit)"
+    echo "$new_commit $new_version $(date -Iseconds)" >> "$BACKUP_DIR/history.log"
+  else
+    err "Health check failed. Rolling back..."
+    git -C "$ALETHEIA_ROOT" checkout "$cur_commit"
+    (cd "$RUNTIME_DIR" && npm run build)
+    sudo systemctl restart "$SERVICE_NAME"
+    log "Rolled back to $cur_version ($cur_commit)"
+    return 1
+  fi
+}
+
+# --- Main ---
+
+main() {
+  local target=""
+  local edge=false
+  local check=false
+  local rollback=false
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --edge) edge=true; shift ;;
+      --check) check=true; shift ;;
+      --rollback) rollback=true; shift ;;
+      --help|-h) usage; exit 0 ;;
+      v*) target="$1"; shift ;;
+      *) die "Unknown argument: $1" ;;
+    esac
+  done
+
+  acquire_lock
+
+  if [ "$rollback" = "true" ]; then
+    do_rollback
+    return
+  fi
+
+  if [ "$check" = "true" ]; then
+    do_check
+    return
+  fi
+
+  preflight
+
+  local resolved
+  resolved=$(resolve_target "$target" "$edge") || exit 1
+  do_update "$resolved"
+}
+
+main "$@"
