@@ -60,6 +60,8 @@ import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { startUpdateChecker } from "./daemon/update-check.js";
+import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
@@ -483,6 +485,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Run once shortly after startup so stale data is cleared without waiting 24h
   setTimeout(() => runRetention(runtime.store, config.privacy), 60_000);
 
+  // --- Update checker ---
+  const updateCheckTimer = startUpdateChecker(runtime.store, getVersion());
+
   // --- Shutdown ---
   let draining = false;
   runtime.manager.isDraining = () => draining;
@@ -493,6 +498,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
     clearInterval(retentionTimer);
+    clearInterval(updateCheckTimer);
     watchdog?.stop();
     cron.stop();
 

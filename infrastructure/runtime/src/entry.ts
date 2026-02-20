@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { loadConfig } from "./taxis/loader.js";
 import { createLogger } from "./koina/logger.js";
+import { getVersion } from "./version.js";
 
 const log = createLogger("entry");
 
@@ -20,7 +21,7 @@ process.on("uncaughtException", (err) => {
 const program = new Command()
   .name("aletheia")
   .description("Aletheia distributed cognition runtime")
-  .version("0.1.0");
+  .version(getVersion());
 
 const gateway = program
   .command("gateway")
@@ -380,6 +381,43 @@ program
           `Failed: ${err instanceof Error ? err.message : err}`,
         );
         process.exit(1);
+      }
+    },
+  );
+
+// --- Update ---
+
+program
+  .command("update [version]")
+  .description("Update Aletheia to a release or latest main")
+  .option("--edge", "Pull latest main (HEAD) instead of a release tag")
+  .option("--check", "Check for updates without applying")
+  .option("--rollback", "Roll back to previous version")
+  .action(
+    async (
+      version: string | undefined,
+      opts: { edge?: boolean; check?: boolean; rollback?: boolean },
+    ) => {
+      const { execFileSync } = await import("node:child_process");
+      const { join, dirname } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+
+      // Resolve aletheia-update script relative to the repo root
+      const scriptDir = dirname(fileURLToPath(import.meta.url));
+      const repoRoot = join(scriptDir, "..", "..");
+      const script = join(repoRoot, "shared", "bin", "aletheia-update");
+
+      const args: string[] = [];
+      if (opts.edge) args.push("--edge");
+      if (opts.check) args.push("--check");
+      if (opts.rollback) args.push("--rollback");
+      if (version) args.push(version);
+
+      try {
+        execFileSync(script, args, { stdio: "inherit" });
+      } catch (err) {
+        const code = (err as { status?: number }).status ?? 1;
+        process.exit(code);
       }
     },
   );
