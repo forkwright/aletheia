@@ -150,8 +150,6 @@ export async function sendMessage(
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
-  let needsTextSeparator = false;
-
   try {
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
@@ -160,11 +158,6 @@ export async function sendMessage(
           break;
 
         case "text_delta":
-          // Insert separator when text follows tool results (new content block)
-          if (needsTextSeparator && state.streamingText) {
-            state.streamingText += "\n\n";
-            needsTextSeparator = false;
-          }
           state.streamingText += event.text;
           break;
 
@@ -186,7 +179,6 @@ export async function sendMessage(
                 }
               : tc,
           );
-          needsTextSeparator = true;
           break;
 
         case "tool_approval_required":
@@ -218,7 +210,6 @@ export async function sendMessage(
           state.thinkingText = "";
           state.activeToolCalls = [];
           state.isStreaming = false;
-          needsTextSeparator = false;
           break;
         }
 

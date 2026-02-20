@@ -41,6 +41,7 @@ export async function finalize(
   eventBus.emit("turn:after", {
     nousId, sessionId, toolCalls: totalToolCalls,
     inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
+    text: outcome.text.slice(0, 120),
   });
 
   // Interaction signal classification

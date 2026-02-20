@@ -11,7 +11,8 @@ import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
 import type { McpClientManager } from "../organon/mcp-client.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { eventBus, type EventName } from "../koina/event-bus.js";
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -174,6 +175,63 @@ export function createGateway(
     return c.json({ messages: history });
   });
 
+  // Global SSE event stream — bridges eventBus to clients for real-time updates
+  app.get("/api/events", (c) => {
+    const encoder = new TextEncoder();
+    let closed = false;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const activeTurns = manager.getActiveTurnsByNous();
+        controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify({ activeTurns })}\n\n`));
+
+        const forward = (eventName: string) => (data: unknown) => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`));
+          } catch { closed = true; }
+        };
+
+        const handlers: Array<[EventName, (data: unknown) => void]> = [
+          ["turn:before", forward("turn:before")],
+          ["turn:after", forward("turn:after")],
+          ["tool:called", forward("tool:called")],
+          ["tool:failed", forward("tool:failed")],
+          ["session:created", forward("session:created")],
+          ["session:archived", forward("session:archived")],
+        ];
+
+        for (const [event, handler] of handlers) {
+          eventBus.on(event, handler);
+        }
+
+        const pingInterval = setInterval(() => {
+          if (closed) return;
+          try { controller.enqueue(encoder.encode(`: ping\n\n`)); }
+          catch { closed = true; }
+        }, 15_000);
+
+        c.req.raw.signal.addEventListener("abort", () => {
+          closed = true;
+          clearInterval(pingInterval);
+          for (const [event, handler] of handlers) {
+            eventBus.off(event, handler);
+          }
+          try { controller.close(); } catch { /* already closed */ }
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  });
+
   app.post("/api/sessions/send", async (c) => {
     let body: Record<string, unknown>;
     try {
@@ -272,8 +330,6 @@ export function createGateway(
 
     const encoder = new TextEncoder();
     const resolvedSessionKey = sessionKey ?? "main";
-    const requestSignal = c.req.raw.signal;
-    let activeTurnId: string | null = null;
 
     // Thread resolution: webchat identity is "anonymous" until auth is wired
     let webchatThreadId: string | undefined;
@@ -331,17 +387,13 @@ export function createGateway(
                 ...(webchatLockKey ? { lockKey: webchatLockKey } : {}),
                 ...(validMedia.length > 0 ? { media: validMedia } : {}),
               })) {
-                if (event.type === "turn_start") {
-                  activeTurnId = event.turnId;
-                  requestSignal?.addEventListener("abort", () => {
-                    if (activeTurnId) {
-                      manager.abortTurn(activeTurnId);
-                      activeTurnId = null;
-                    }
-                  }, { once: true });
+                try {
+                  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+                  controller.enqueue(encoder.encode(payload));
+                } catch {
+                  // Client disconnected — stop sending but don't abort turn
+                  break;
                 }
-                const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-                controller.enqueue(encoder.encode(payload));
               }
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -1060,6 +1112,38 @@ export function createGateway(
       return c.json({ path: filePath, size: stat.size, content });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Read failed" }, 500);
+    }
+  });
+
+  app.put("/api/workspace/file", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const filePath = body["path"] as string;
+    const content = body["content"];
+    const agentId = body["agentId"] as string | undefined;
+
+    if (!filePath || typeof content !== "string") {
+      return c.json({ error: "path and content required" }, 400);
+    }
+
+    const workspace = resolveAgentWorkspace(agentId);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    const resolved = safeWorkspacePath(workspace, filePath);
+    if (!resolved) return c.json({ error: "Invalid path" }, 400);
+
+    try {
+      writeFileSync(resolved, content, "utf-8");
+      return c.json({ ok: true, path: filePath, size: Buffer.byteLength(content) });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`Workspace file write failed: ${msg}`);
+      return c.json({ error: msg }, 500);
     }
   });
 

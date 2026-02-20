@@ -188,6 +188,17 @@ export async function fetchWorkspaceFile(
   return fetchJson(`/api/workspace/file?${sp.toString()}`);
 }
 
+export async function saveWorkspaceFile(
+  path: string,
+  content: string,
+  agentId?: string,
+): Promise<void> {
+  await fetchJson("/api/workspace/file", {
+    method: "PUT",
+    body: JSON.stringify({ path, content, ...(agentId ? { agentId } : {}) }),
+  });
+}
+
 export async function fetchGitStatus(
   agentId?: string,
 ): Promise<{ files: GitFileStatus[] }> {

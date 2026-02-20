@@ -43,9 +43,12 @@
   import type { CommandInfo } from "../../lib/types";
   import { onGlobalEvent } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
+  import { addNotification } from "../../stores/notifications.svelte";
+  import { showToast } from "../../stores/toast.svelte";
 
   let distilling = $state(false);
   let serverCommands = $state<CommandInfo[]>([]);
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   // Recover streaming state after refresh
   let unsubEvents: (() => void) | null = null;
@@ -66,10 +69,9 @@
       }
 
       if (event === "turn:after") {
-        const turnData = data as { nousId?: string; sessionId?: string };
+        const turnData = data as { nousId?: string; sessionId?: string; text?: string };
         if (turnData.nousId === agentId) {
           setRemoteStreaming(agentId, false);
-          // Only reload from server if no local stream is managing messages
           if (!hasLocalStream(agentId)) {
             const sessionId = getActiveSessionId();
             if (sessionId) {
@@ -77,6 +79,16 @@
             }
           }
           refreshSessions(agentId);
+        }
+
+        // Notification for non-active agents
+        if (turnData.nousId && turnData.nousId !== agentId) {
+          const agent = getAgents().find((a) => a.id === turnData.nousId);
+          if (agent) {
+            const preview = turnData.text?.slice(0, 100) ?? "New message";
+            addNotification(turnData.nousId, agent.name, preview);
+            showToast(agent.name, agent.emoji, preview, turnData.nousId);
+          }
         }
       }
 
@@ -86,11 +98,29 @@
           setRemoteStreaming(agentId, true);
         }
       }
+
+      if (event === "connection") {
+        const { status } = data as { status: string };
+        if (status === "disconnected" && !pollInterval) {
+          pollInterval = setInterval(() => {
+            const id = getActiveAgentId();
+            const sid = getActiveSessionId();
+            if (id && sid) loadHistory(id, sid);
+          }, 30_000);
+        } else if (status === "connected" && pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          const id = getActiveAgentId();
+          const sid = getActiveSessionId();
+          if (id && sid) loadHistory(id, sid);
+        }
+      }
     });
   });
 
   onDestroy(() => {
     unsubEvents?.();
+    if (pollInterval) clearInterval(pollInterval);
   });
 
   // Load history when active session or agent changes
