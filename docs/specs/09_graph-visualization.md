@@ -1,6 +1,6 @@
 # Spec: Graph Visualization — From Demo to Tool
 
-**Status:** Draft  
+**Status:** Phase 1-3 done (PR #56)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 

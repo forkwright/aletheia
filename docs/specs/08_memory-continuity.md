@@ -1,6 +1,6 @@
 # Spec: Memory Continuity — Surviving Distillation Without Losing the Thread
 
-**Status:** Draft  
+**Status:** Complete (PRs #36, #43, #44, #55)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 

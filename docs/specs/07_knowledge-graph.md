@@ -1,6 +1,6 @@
 # Spec: Knowledge Graph — Performance, Utility, and Integration
 
-**Status:** Draft  
+**Status:** Phase 1a done (PR #49)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 

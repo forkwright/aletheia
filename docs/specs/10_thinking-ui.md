@@ -1,6 +1,6 @@
 # Spec: Thinking UI — Reasoning Visibility Without Noise
 
-**Status:** Draft  
+**Status:** Phase 1-4 done (PRs #40, #54)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 
