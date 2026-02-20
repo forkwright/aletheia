@@ -144,7 +144,10 @@ export async function* executeStreaming(
         trace.addToolCall({ name: "_circuit_breaker", input: { check: "response_quality" }, output: qualityCheck.reason ?? "quality check triggered", durationMs: 0, isError: true });
       }
 
-      services.store.appendMessage(sessionId, "assistant", text, { tokenEstimate: estimateTokens(text) });
+      // Store full ContentBlock[] when thinking blocks present, so history preserves reasoning
+      const hasThinking = streamResult.content.some((b) => b.type === "thinking");
+      const storeContent = hasThinking ? JSON.stringify(streamResult.content) : text;
+      services.store.appendMessage(sessionId, "assistant", storeContent, { tokenEstimate: estimateTokens(storeContent) });
 
       const outcome: TurnOutcome = {
         text, nousId, sessionId, toolCalls: totalToolCalls,
