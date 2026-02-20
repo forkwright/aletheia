@@ -68,7 +68,7 @@ export const editTool: ToolHandler = {
       const updated = content.slice(0, idx) + newText + content.slice(idx + oldText.length);
       writeFileSync(resolved, updated, "utf-8");
 
-      try { commitWorkspaceChange(context.workspace, resolved, "edit"); } catch {}
+      try { commitWorkspaceChange(context.workspace, resolved, "edit"); } catch { /* git sync, non-critical */ }
       return `Edited ${filePath}: replaced ${oldText.length} chars with ${newText.length} chars`;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
