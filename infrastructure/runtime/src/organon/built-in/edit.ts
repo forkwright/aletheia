@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import type { ToolHandler, ToolContext } from "../registry.js";
 import { safePath } from "./safe-path.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
+import { trySafe } from "../../koina/safe.js";
 
 export const editTool: ToolHandler = {
   definition: {
@@ -68,7 +69,7 @@ export const editTool: ToolHandler = {
       const updated = content.slice(0, idx) + newText + content.slice(idx + oldText.length);
       writeFileSync(resolved, updated, "utf-8");
 
-      try { commitWorkspaceChange(context.workspace, resolved, "edit"); } catch { /* git sync, non-critical */ }
+      trySafe("workspace git commit", () => commitWorkspaceChange(context.workspace, resolved, "edit"), undefined);
       return `Edited ${filePath}: replaced ${oldText.length} chars with ${newText.length} chars`;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

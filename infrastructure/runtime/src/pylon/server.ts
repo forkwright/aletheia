@@ -445,8 +445,8 @@ export function createGateway(
         name: parsedName,
         emoji: parsedEmoji,
       });
-    } catch {
-      // IDENTITY.md not found — fall back to config identity
+    } catch (err) {
+      log.debug(`IDENTITY.md read failed for ${id}: ${err instanceof Error ? err.message : err}`);
       return c.json({
         id: agent.id,
         name: agent.identity?.name ?? agent.name ?? agent.id,
@@ -1062,8 +1062,8 @@ export function createGateway(
               modified: stat.mtime.toISOString(),
             });
           }
-        } catch {
-          // skip unreadable entries
+        } catch (err) {
+          log.debug(`Skipping unreadable entry ${entry.name}: ${err instanceof Error ? err.message : err}`);
         }
       }
       // directories first, then files, alphabetical within each
@@ -1167,7 +1167,8 @@ export function createGateway(
         files.push({ status, path });
       }
       return c.json({ files });
-    } catch {
+    } catch (err) {
+      log.debug(`git-status failed: ${err instanceof Error ? err.message : err}`);
       return c.json({ files: [] });
     }
   });

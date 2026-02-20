@@ -1,5 +1,6 @@
 // Execute stage — LLM streaming + tool loop
 import { createLogger } from "../../../koina/logger.js";
+import { PipelineError } from "../../../koina/errors.js";
 import { estimateTokens } from "../../../hermeneus/token-counter.js";
 import { getReversibility, requiresSimulation } from "../../../organon/reversibility.js";
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
@@ -109,7 +110,7 @@ export async function* executeStreaming(
       }
     }
 
-    if (!streamResult) throw new Error("Stream ended without message_complete");
+    if (!streamResult) throw new PipelineError("Stream ended without message_complete", { code: "PIPELINE_STREAM_INCOMPLETE" });
 
     totalInputTokens += streamResult.usage.inputTokens;
     totalOutputTokens += streamResult.usage.outputTokens;
@@ -532,7 +533,7 @@ export async function executeBuffered(
           lastResult.content = (lastResult.content ?? "") + `\n\n[LOOP DETECTED — HALTING] ${loopCheck.reason}`;
           lastResult.is_error = true;
         }
-        throw new Error(loopCheck.reason ?? "Tool loop detected");
+        throw new PipelineError(loopCheck.reason ?? "Tool loop detected", { code: "PIPELINE_TOOL_LOOP" });
       }
       if (loopCheck.verdict === "warn" && lastResult?.type === "tool_result" && lastResult.tool_use_id === toolUse.id) {
         lastResult.content = (lastResult.content ?? "") + `\n\n[WARNING: Possible loop detected] ${loopCheck.reason}`;
