@@ -29,11 +29,12 @@ export async function fetchAuthMode(): Promise<AuthMode> {
 export async function login(
   username: string,
   password: string,
+  rememberMe = true,
 ): Promise<{ ok: boolean; error?: string; role?: string }> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, rememberMe }),
     credentials: "include",
   });
 

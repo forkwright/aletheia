@@ -1,4 +1,5 @@
 import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage } from "./types";
+import { getAccessToken, refresh } from "./auth";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -14,8 +15,12 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getEffectiveToken(): string | null {
+  return getAccessToken() || getToken();
+}
+
 function headers(): Record<string, string> {
-  const token = getToken();
+  const token = getEffectiveToken();
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     "Content-Type": "application/json",
@@ -24,10 +29,22 @@ function headers(): Record<string, string> {
 
 async function fetchJson<T>(path: string, opts?: RequestInit): Promise<T> {
   const base = import.meta.env.DEV ? "" : window.location.origin;
-  const res = await fetch(`${base}${path}`, {
+  let res = await fetch(`${base}${path}`, {
     ...opts,
     headers: { ...headers(), ...opts?.headers },
   });
+
+  // Auto-refresh on 401 when using session auth
+  if (res.status === 401 && getAccessToken()) {
+    const refreshed = await refresh();
+    if (refreshed) {
+      res = await fetch(`${base}${path}`, {
+        ...opts,
+        headers: { ...headers(), ...opts?.headers },
+      });
+    }
+  }
+
   if (res.status === 401) {
     throw new Error("Unauthorized — check your token");
   }

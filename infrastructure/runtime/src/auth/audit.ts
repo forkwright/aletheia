@@ -1,4 +1,3 @@
-// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Structured audit logging
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";

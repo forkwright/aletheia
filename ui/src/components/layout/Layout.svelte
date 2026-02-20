@@ -5,11 +5,14 @@
   import MetricsView from "../metrics/MetricsView.svelte";
   import SettingsView from "../settings/SettingsView.svelte";
   import FileEditor from "../files/FileEditor.svelte";
+  import Login from "../auth/Login.svelte";
   import { getToken, setToken } from "../../lib/api";
+  import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler, logout } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "settings";
+  type AuthState = "loading" | "login" | "token-setup" | "authenticated";
 
   const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
@@ -17,8 +20,38 @@
   let activeView = $state<ViewId>("chat");
   loadBranding();
 
-  let hasToken = $state(!!getToken());
+  let authState = $state<AuthState>("loading");
   let tokenValue = $state("");
+
+  // Determine auth mode on mount
+  (async () => {
+    try {
+      const mode = await fetchAuthMode();
+      if (mode.sessionAuth) {
+        // Try refreshing an existing session (httpOnly cookie may be valid)
+        const ok = await refresh();
+        authState = ok ? "authenticated" : "login";
+      } else if (mode.mode === "none" || mode.mode === "token" && !getToken() === false) {
+        // None mode or already have a static token
+        authState = getToken() || mode.mode === "none" ? "authenticated" : "token-setup";
+      } else {
+        authState = getToken() ? "authenticated" : "token-setup";
+      }
+    } catch {
+      // Can't reach server — fall back to token check
+      authState = getToken() ? "authenticated" : "token-setup";
+    }
+  })();
+
+  // Handle session expiry — redirect to login
+  setAuthFailureHandler(() => {
+    authState = "login";
+  });
+
+  function handleLoginSuccess() {
+    authState = "authenticated";
+    location.reload();
+  }
   let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
   let filePanelOpen = $state(false);
   let filePanelWidth = $state(Number(localStorage.getItem(FILE_PANEL_WIDTH_KEY)) || 520);
@@ -80,7 +113,16 @@
   }
 </script>
 
-{#if !hasToken}
+{#if authState === "loading"}
+  <div class="token-setup">
+    <div class="token-card">
+      <h1>{getBrandName()}</h1>
+      <p style="color: var(--text-muted)">Connecting...</p>
+    </div>
+  </div>
+{:else if authState === "login"}
+  <Login onSuccess={handleLoginSuccess} />
+{:else if authState === "token-setup"}
   <div class="token-setup">
     <div class="token-card">
       <h1>{getBrandName()}</h1>

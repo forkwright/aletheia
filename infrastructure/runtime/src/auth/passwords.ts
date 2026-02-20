@@ -1,4 +1,3 @@
-// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Password hashing — scrypt (node:crypto built-in, zero deps)
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 

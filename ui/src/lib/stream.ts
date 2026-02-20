@@ -1,4 +1,4 @@
-import { getToken } from "./api";
+import { getEffectiveToken } from "./api";
 import type { TurnStreamEvent, MediaItem } from "./types";
 
 export async function* streamMessage(
@@ -9,7 +9,7 @@ export async function* streamMessage(
   media?: MediaItem[],
 ): AsyncGenerator<TurnStreamEvent> {
   const base = import.meta.env.DEV ? "" : window.location.origin;
-  const token = getToken();
+  const token = getEffectiveToken();
 
   const res = await fetch(`${base}/api/sessions/stream`, {
     method: "POST",

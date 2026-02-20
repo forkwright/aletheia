@@ -41,7 +41,10 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
+import { createGateway, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway, type GatewayAuthDeps } from "./pylon/server.js";
+import { AuthSessionStore } from "./auth/sessions.js";
+import { AuditLog } from "./auth/audit.js";
+import { generateSecret } from "./auth/tokens.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
@@ -65,7 +68,8 @@ import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
-import { chmodSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
@@ -284,9 +288,39 @@ export async function startRuntime(configPath?: string): Promise<void> {
     await runtime.plugins.dispatchStart();
   }
 
+  // --- Auth ---
+  let gatewayAuth: GatewayAuthDeps | undefined;
+  {
+    const authDb = new Database(paths.sessionsDb());
+    authDb.pragma("journal_mode = WAL");
+    authDb.pragma("synchronous = NORMAL");
+
+    const auditLog = new AuditLog(authDb);
+    let authSessionStore: AuthSessionStore | null = null;
+    let sessionSecret: string | null = null;
+
+    if (config.gateway.auth.mode === "session") {
+      authSessionStore = new AuthSessionStore(authDb);
+      const secretPath = join(paths.configDir(), "session.key");
+      if (existsSync(secretPath)) {
+        sessionSecret = readFileSync(secretPath, "utf-8").trim();
+      } else {
+        sessionSecret = generateSecret();
+        writeFileSync(secretPath, sessionSecret, { mode: 0o600 });
+        log.info("Generated new session signing key");
+      }
+
+      if (config.gateway.auth.users.length === 0) {
+        log.warn("Auth mode is 'session' but no users configured — run 'aletheia migrate-auth' to create an admin account");
+      }
+    }
+
+    gatewayAuth = { sessionStore: authSessionStore, auditLog, secret: sessionSecret };
+  }
+
   // --- Gateway ---
   const port = config.gateway.port;
-  const app = createGateway(config, runtime.manager, runtime.store);
+  const app = createGateway(config, runtime.manager, runtime.store, gatewayAuth);
 
   // Mount MCP server routes
   const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
