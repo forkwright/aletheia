@@ -1,5 +1,5 @@
 // Cross-agent deliberation protocol tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createDeliberateTool } from "./deliberate.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 

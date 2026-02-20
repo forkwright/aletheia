@@ -1,5 +1,5 @@
 // Full command execution tests — covers !status, !help, !sessions, !reset, etc.
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultRegistry } from "./commands.js";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {

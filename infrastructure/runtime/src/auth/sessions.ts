@@ -2,7 +2,7 @@
 // Auth session CRUD — SQLite-backed
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { generateSessionId, generateRefreshToken } from "./tokens.js";
+import { generateRefreshToken, generateSessionId } from "./tokens.js";
 
 export interface AuthSession {
   id: string;

@@ -1,5 +1,5 @@
 // Extended watchdog tests — health check logic, alerts, state transitions
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Watchdog } from "./watchdog.js";
 
 describe("Watchdog health checks", () => {

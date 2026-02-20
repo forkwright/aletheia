@@ -1,5 +1,5 @@
 // Competence model — per-agent per-domain confidence tracking
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 

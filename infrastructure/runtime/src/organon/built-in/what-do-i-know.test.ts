@@ -1,5 +1,5 @@
 // What do I know tool tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createWhatDoIKnowTool } from "./what-do-i-know.js";
 import type { ToolContext } from "../registry.js";
 

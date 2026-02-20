@@ -1,5 +1,5 @@
 // Web fetch tool tests
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { webFetchTool } from "./web-fetch.js";
 
 // Mock SSRF guard to allow all URLs in tests

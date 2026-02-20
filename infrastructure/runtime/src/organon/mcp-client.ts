@@ -6,7 +6,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { ToolRegistry, ToolHandler, ToolContext } from "./registry.js";
+import type { ToolContext, ToolHandler, ToolRegistry } from "./registry.js";
 import { createLogger } from "../koina/logger.js";
 import { getVersion } from "../version.js";
 

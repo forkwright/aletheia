@@ -1,5 +1,5 @@
 // Command registry tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CommandRegistry, createDefaultRegistry } from "./commands.js";
 
 describe("CommandRegistry", () => {

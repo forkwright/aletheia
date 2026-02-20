@@ -1,7 +1,7 @@
 // Voice reply tool — synthesize speech and send as audio attachment via Signal
 import { createLogger } from "../../koina/logger.js";
 import { synthesize, type TtsOptions } from "../../semeion/tts.js";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.voice-reply");
 

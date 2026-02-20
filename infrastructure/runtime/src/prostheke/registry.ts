@@ -3,13 +3,13 @@ import { createLogger } from "../koina/logger.js";
 import type { ToolRegistry } from "../organon/registry.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type {
-  PluginDefinition,
-  PluginApi,
-  HookName,
-  TurnContext,
-  TurnResult,
   DistillContext,
   DistillResult,
+  HookName,
+  PluginApi,
+  PluginDefinition,
+  TurnContext,
+  TurnResult,
 } from "./types.js";
 
 const log = createLogger("prostheke");

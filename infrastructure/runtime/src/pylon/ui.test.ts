@@ -1,6 +1,6 @@
 // Web UI route tests
-import { describe, it, expect, vi } from "vitest";
-import { createUiRoutes, broadcastEvent } from "./ui.js";
+import { describe, expect, it, vi } from "vitest";
+import { broadcastEvent, createUiRoutes } from "./ui.js";
 
 function makeConfig() {
   return {

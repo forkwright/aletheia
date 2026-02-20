@@ -1,5 +1,5 @@
 // Config inspection tool — agents can read their own scoped config
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { AletheiaConfig } from "../../taxis/schema.js";
 import { resolveNous } from "../../taxis/loader.js";
 

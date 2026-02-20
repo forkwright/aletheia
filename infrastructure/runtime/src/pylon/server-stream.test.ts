@@ -1,5 +1,5 @@
 // Streaming endpoint tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGateway } from "./server.js";
 
 function makeConfig() {

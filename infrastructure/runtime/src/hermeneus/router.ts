@@ -6,8 +6,8 @@ import { ProviderError } from "../koina/errors.js";
 import {
   AnthropicProvider,
   type CompletionRequest,
-  type TurnResult,
   type StreamingEvent,
+  type TurnResult,
 } from "./anthropic.js";
 
 const log = createLogger("hermeneus.router");

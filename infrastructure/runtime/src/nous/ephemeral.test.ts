@@ -1,14 +1,14 @@
 // Ephemeral agent tests
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  spawnEphemeral,
-  recordEphemeralTurn,
-  teardownEphemeral,
   getEphemeral,
-  listEphemerals,
   harvestOutput,
+  listEphemerals,
+  recordEphemeralTurn,
+  spawnEphemeral,
+  teardownEphemeral,
 } from "./ephemeral.js";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

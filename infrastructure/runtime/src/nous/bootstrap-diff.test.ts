@@ -1,7 +1,7 @@
 // Bootstrap diff detection tests
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { detectBootstrapDiff, logBootstrapDiff } from "./bootstrap-diff.js";
-import { mkdtempSync, rmSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

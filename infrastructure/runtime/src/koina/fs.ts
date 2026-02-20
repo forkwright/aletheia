@@ -1,5 +1,5 @@
 // Filesystem utilities
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 export function readText(path: string): string | null {

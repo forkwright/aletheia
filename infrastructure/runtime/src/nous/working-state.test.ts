@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { formatWorkingState } from "./working-state.js";
 import type { WorkingState } from "../mneme/store.js";
 

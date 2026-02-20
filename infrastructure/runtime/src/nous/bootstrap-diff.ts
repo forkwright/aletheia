@@ -1,6 +1,6 @@
 // Bootstrap diff detection — file-level change tracking across sessions
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("nous.bootstrap-diff");

@@ -1,7 +1,7 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
-import { loadConfig, applyEnv } from "./taxis/loader.js";
+import { applyEnv, loadConfig } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -41,25 +41,25 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef, setCommandsRef } from "./pylon/server.js";
+import { createGateway, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
-import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
+import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
+  type DaemonHandle,
+  daemonOptsFromConfig,
   spawnDaemon,
   waitForReady,
-  daemonOptsFromConfig,
-  type DaemonHandle,
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
-import { sendMessage, parseTarget } from "./semeion/sender.js";
+import { parseTarget, sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runRetention } from "./daemon/retention.js";
-import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
 import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";

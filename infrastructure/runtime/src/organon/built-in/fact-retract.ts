@@ -1,6 +1,6 @@
 // Memory retraction tool — agents can request fact removal
 import { createLogger } from "../../koina/logger.js";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.fact-retract");
 const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";

@@ -1,5 +1,5 @@
 // Tests for handleMessageStreaming — real-time event delivery via AsyncChannel
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NousManager } from "./manager.js";
 import type { StreamingEvent } from "../hermeneus/anthropic.js";
 

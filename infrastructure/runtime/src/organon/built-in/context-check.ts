@@ -1,6 +1,5 @@
 // Meta-tool — context snapshot: session + competence + memory status
-import type { ToolHandler, ToolContext } from "../registry.js";
-import type { ToolRegistry } from "../registry.js";
+import type { ToolContext, ToolHandler, ToolRegistry } from "../registry.js";
 
 export function createContextCheckTool(registry: ToolRegistry): ToolHandler {
   return {

@@ -1,5 +1,5 @@
 // Session status tool tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSessionStatusTool } from "./session-status.js";
 
 const ctx = { nousId: "syn", sessionId: "ses_1", workspace: "/tmp" };

@@ -2,7 +2,7 @@
 import { createLogger } from "../../../koina/logger.js";
 import { estimateTokens } from "../../../hermeneus/token-counter.js";
 import { checkInputCircuitBreakers } from "../../circuit-breaker.js";
-import type { TurnState, RuntimeServices, TurnOutcome } from "../types.js";
+import type { RuntimeServices, TurnOutcome, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:guard");
 

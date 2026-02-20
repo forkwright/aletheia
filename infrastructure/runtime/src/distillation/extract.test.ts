@@ -1,5 +1,5 @@
 // Distillation extraction tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
 
 function mockRouter(responseText: string) {

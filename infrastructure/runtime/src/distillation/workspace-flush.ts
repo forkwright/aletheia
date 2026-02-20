@@ -1,6 +1,6 @@
 // Distillation workspace flush — write summary + extraction to agent memory file
 import { join } from "node:path";
-import { existsSync, mkdirSync, appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { createLogger } from "../koina/logger.js";
 import type { ExtractionResult } from "./extract.js";
 

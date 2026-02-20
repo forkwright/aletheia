@@ -1,6 +1,6 @@
 // File read tool
 import { readFileSync } from "node:fs";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
 
 export const readTool: ToolHandler = {

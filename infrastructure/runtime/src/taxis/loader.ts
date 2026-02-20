@@ -4,8 +4,8 @@ import { ConfigError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import { paths } from "./paths.js";
 import {
-  AletheiaConfigSchema,
   type AletheiaConfig,
+  AletheiaConfigSchema,
   type NousConfig,
 } from "./schema.js";
 

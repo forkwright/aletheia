@@ -1,6 +1,6 @@
 // Extended server tests — admin endpoints, costs, auth modes
-import { describe, it, expect, vi } from "vitest";
-import { createGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./server.js";
+import { describe, expect, it, vi } from "vitest";
+import { createGateway, setCronRef, setSkillsRef, setWatchdogRef } from "./server.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   return {

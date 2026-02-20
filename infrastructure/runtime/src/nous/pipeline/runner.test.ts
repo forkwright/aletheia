@@ -1,5 +1,5 @@
 // Pipeline runner tests — error boundaries, stage identification
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runBufferedPipeline, runStreamingPipeline } from "./runner.js";
 
 vi.mock("./stages/resolve.js", () => ({

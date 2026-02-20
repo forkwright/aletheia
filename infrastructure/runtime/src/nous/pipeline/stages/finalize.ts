@@ -7,7 +7,7 @@ import { extractWorkingState } from "../../working-state.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { createLogger } from "../../../koina/logger.js";
-import type { TurnState, RuntimeServices } from "../types.js";
+import type { RuntimeServices, TurnState } from "../types.js";
 
 const log = createLogger("finalize");
 

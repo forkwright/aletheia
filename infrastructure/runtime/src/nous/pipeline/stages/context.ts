@@ -1,13 +1,13 @@
 // Context stage — bootstrap assembly, recall, broadcasts, working state, notes injection
 import { createLogger, updateTurnContext } from "../../../koina/logger.js";
-import { estimateToolDefTokens, estimateTokens } from "../../../hermeneus/token-counter.js";
+import { estimateTokens, estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
 import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
 import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
-import type { TurnState, RuntimeServices, SystemBlock } from "../types.js";
+import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
 

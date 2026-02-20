@@ -6,14 +6,14 @@ import { resolveStage } from "./stages/resolve.js";
 import { checkGuards } from "./stages/guard.js";
 import { buildContext } from "./stages/context.js";
 import { prepareHistory } from "./stages/history.js";
-import { executeStreaming, executeBuffered } from "./stages/execute.js";
+import { executeBuffered, executeStreaming } from "./stages/execute.js";
 import { finalize } from "./stages/finalize.js";
 import type {
   InboundMessage,
+  RuntimeServices,
   TurnOutcome,
   TurnState,
   TurnStreamEvent,
-  RuntimeServices,
 } from "./types.js";
 
 const log = createLogger("pipeline:runner");

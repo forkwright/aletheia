@@ -1,5 +1,5 @@
 // Update check daemon tests
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Extract isNewer for testing by re-implementing the logic
 // (the actual function is private, so we test via the module's behavior)

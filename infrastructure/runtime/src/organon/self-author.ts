@@ -1,9 +1,9 @@
 // Self-authoring tools — agents create, test, and register custom tools at runtime
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, basename } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { execSync } from "node:child_process";
 import { createLogger } from "../koina/logger.js";
-import type { ToolHandler, ToolContext, ToolRegistry } from "./registry.js";
+import type { ToolContext, ToolHandler, ToolRegistry } from "./registry.js";
 
 const log = createLogger("organon.self-author");
 

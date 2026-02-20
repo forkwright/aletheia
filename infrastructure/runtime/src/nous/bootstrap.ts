@@ -1,5 +1,5 @@
 // Token-aware context assembly with cache boundary optimization
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { createLogger } from "../koina/logger.js";

@@ -1,9 +1,9 @@
 // Token counter tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  estimateMessageTokens,
   estimateTokens,
   estimateTokensSafe,
-  estimateMessageTokens,
   estimateToolDefTokens,
   SAFETY_MARGIN,
 } from "./token-counter.js";

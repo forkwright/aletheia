@@ -1,7 +1,7 @@
 // Workspace git tracking — auto-commit file changes for history and rollback
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, relative, basename } from "node:path";
+import { basename, join, relative } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("organon.workspace-git");

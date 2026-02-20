@@ -1,5 +1,5 @@
 // Uncertainty quantification — track calibration of agent confidence estimates
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 interface CalibrationPoint {

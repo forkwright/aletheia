@@ -1,6 +1,6 @@
 // Reversibility module tests
-import { describe, it, expect } from "vitest";
-import { getReversibility, requiresSimulation, buildSimulationPrompt } from "./reversibility.js";
+import { describe, expect, it } from "vitest";
+import { buildSimulationPrompt, getReversibility, requiresSimulation } from "./reversibility.js";
 
 describe("getReversibility", () => {
   it("returns reversible for read-only tools", () => {

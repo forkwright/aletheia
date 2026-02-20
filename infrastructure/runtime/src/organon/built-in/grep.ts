@@ -1,7 +1,7 @@
 // Content search tool — grep through files
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
 
 const execFileAsync = promisify(execFile);

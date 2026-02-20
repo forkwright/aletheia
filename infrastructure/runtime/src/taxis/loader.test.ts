@@ -1,6 +1,6 @@
 // Config loading unit tests
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadConfig, resolveNous, resolveModel, resolveWorkspace, resolveDefaultNous, allNousIds, applyEnv } from "./loader.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { allNousIds, applyEnv, loadConfig, resolveDefaultNous, resolveModel, resolveNous, resolveWorkspace } from "./loader.js";
 import { ConfigError } from "../koina/errors.js";
 import type { AletheiaConfig, NousConfig } from "./schema.js";
 

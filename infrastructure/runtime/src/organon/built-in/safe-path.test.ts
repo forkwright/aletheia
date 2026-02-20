@@ -1,5 +1,5 @@
 // Path resolution tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { safePath } from "./safe-path.js";
 
 describe("safePath", () => {

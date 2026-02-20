@@ -1,5 +1,5 @@
 // Agent notes tool — explicit persistent memory that survives distillation
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { SessionStore } from "../../mneme/store.js";
 
 const VALID_CATEGORIES = ["task", "decision", "preference", "correction", "context"] as const;

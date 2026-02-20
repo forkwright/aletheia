@@ -1,5 +1,5 @@
 // Signal daemon tests — config extraction, lifecycle
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { daemonOptsFromConfig } from "./daemon.js";
 
 describe("daemonOptsFromConfig", () => {

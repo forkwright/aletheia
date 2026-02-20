@@ -1,5 +1,5 @@
 // Extended cron tests — schedule parsing, tick execution, command jobs
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CronScheduler } from "./cron.js";
 
 // We need to access computeNextRun indirectly through the scheduler

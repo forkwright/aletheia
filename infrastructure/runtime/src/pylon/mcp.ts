@@ -1,6 +1,6 @@
 // MCP (Model Context Protocol) server — exposes Aletheia agents as MCP tools
 import { Hono } from "hono";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import type { AletheiaConfig } from "../taxis/schema.js";

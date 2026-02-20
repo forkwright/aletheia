@@ -1,5 +1,5 @@
 // Text-to-speech synthesis — OpenAI TTS primary, Piper local fallback
-import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";

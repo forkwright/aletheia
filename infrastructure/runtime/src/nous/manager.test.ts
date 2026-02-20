@@ -1,5 +1,5 @@
 // NousManager tests — orchestration, routing, turn execution
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NousManager } from "./manager.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}) {

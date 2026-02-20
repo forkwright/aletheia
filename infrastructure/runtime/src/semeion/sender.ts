@@ -1,6 +1,6 @@
 // Outbound message sending via signal-cli
 import { createLogger } from "../koina/logger.js";
-import { SignalClient } from "./client.js";
+import type { SignalClient } from "./client.js";
 import { formatForSignal, stylesToSignalParam } from "./format.js";
 
 const log = createLogger("semeion:send");

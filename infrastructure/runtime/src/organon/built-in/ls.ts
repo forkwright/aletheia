@@ -1,7 +1,7 @@
 // Directory listing tool
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
 
 export const lsTool: ToolHandler = {

@@ -1,5 +1,5 @@
 // Ephemeral agent spawning — Syn creates temporary specialists with bounded lifecycles
-import { mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { createLogger } from "../koina/logger.js";

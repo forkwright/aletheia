@@ -1,12 +1,12 @@
 // Sub-nous spawning — run a scoped task on a temporary agent (supports ephemeral specialists)
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 import {
-  spawnEphemeral,
-  recordEphemeralTurn,
-  teardownEphemeral,
   harvestOutput,
+  recordEphemeralTurn,
+  spawnEphemeral,
+  teardownEphemeral,
 } from "../../nous/ephemeral.js";
 import { createLogger } from "../../koina/logger.js";
 

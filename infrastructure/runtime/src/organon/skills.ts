@@ -1,5 +1,5 @@
 // Skills directory — loads SKILL.md files and exposes them for bootstrap/commands
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 

@@ -1,5 +1,5 @@
 // Self-observation tool — knowledge domain inventory
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { CompetenceModel } from "../../nous/competence.js";
 import type { SessionStore } from "../../mneme/store.js";
 

@@ -2,9 +2,9 @@
 // Multi-mode auth middleware for Hono
 import type { Context, Next } from "hono";
 import { timingSafeEqual } from "node:crypto";
-import { verifyToken, signToken } from "./tokens.js";
+import { signToken, verifyToken } from "./tokens.js";
 import { verifyPassword } from "./passwords.js";
-import { AuthSessionStore } from "./sessions.js";
+import type { AuthSessionStore } from "./sessions.js";
 import type { AuditLog } from "./audit.js";
 import { getRequiredPermission, hasPermission } from "./rbac.js";
 

@@ -1,7 +1,7 @@
 // Shell execution tool
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 
 const execAsync = promisify(exec);
 

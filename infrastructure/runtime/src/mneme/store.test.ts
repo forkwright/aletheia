@@ -1,5 +1,5 @@
 // Session store unit tests — uses :memory: SQLite
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionStore } from "./store.js";
 
 let store: SessionStore;

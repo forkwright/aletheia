@@ -1,6 +1,5 @@
 // Meta-tool — research pipeline: memory → web → synthesize
-import type { ToolHandler, ToolContext } from "../registry.js";
-import type { ToolRegistry } from "../registry.js";
+import type { ToolContext, ToolHandler, ToolRegistry } from "../registry.js";
 
 export function createResearchTool(registry: ToolRegistry): ToolHandler {
   return {

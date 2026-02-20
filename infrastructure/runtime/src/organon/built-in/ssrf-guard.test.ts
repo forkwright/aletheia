@@ -1,5 +1,5 @@
 // SSRF guard tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("node:dns/promises", () => ({
   lookup: vi.fn(),

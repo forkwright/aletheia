@@ -1,5 +1,5 @@
 // Mem0 memory search tool — query long-term extracted memories
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("tool:mem0-search");

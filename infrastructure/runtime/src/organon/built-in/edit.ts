@@ -1,6 +1,6 @@
 // File edit tool — find and replace
 import { readFileSync, writeFileSync } from "node:fs";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
 import { trySafe } from "../../koina/safe.js";

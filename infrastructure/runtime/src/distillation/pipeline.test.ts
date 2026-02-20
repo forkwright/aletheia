@@ -1,9 +1,9 @@
 // Distillation pipeline tests
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { shouldDistill, distillSession } from "./pipeline.js";
+import { distillSession, shouldDistill } from "./pipeline.js";
 
 // Mock extraction
 vi.mock("./extract.js", () => ({

@@ -15,8 +15,8 @@ import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
 import { resolveNousId } from "./pipeline/stages/resolve.js";
-import { runStreamingPipeline, runBufferedPipeline } from "./pipeline/runner.js";
-import type { RuntimeServices, InboundMessage, TurnStreamEvent, TurnOutcome } from "./pipeline/types.js";
+import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
+import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
