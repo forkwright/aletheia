@@ -1,6 +1,6 @@
 # Spec: Cost-Aware Orchestration & Interactive Turn Model
 
-**Status:** Draft
+**Status:** Phase 1 done, Phase 2 partial (PR #59)
 **Author:** Syn
 **Date:** 2026-02-19
 
