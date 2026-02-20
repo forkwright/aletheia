@@ -28,6 +28,7 @@ export async function finalize(
 
   // Update actual API-reported context for distillation triggering
   services.store.updateSessionActualTokens(sessionId, totalInputTokens);
+  services.store.updateComputedContextTokens(sessionId, totalInputTokens);
 
   // Plugin afterTurn
   if (services.plugins) {

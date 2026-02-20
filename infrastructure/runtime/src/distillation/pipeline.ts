@@ -320,6 +320,7 @@ async function runDistillation(
     factsExtracted: extraction.facts.length + extraction.decisions.length,
     model: opts.extractionModel,
   });
+  store.updateLastDistilledAt(sessionId);
 
   if (opts.workspace) {
     const flushResult = flushToWorkspace({
@@ -364,6 +365,21 @@ async function runDistillation(
       ...extraction.decisions.map((d) => `Decision: ${d}`).slice(0, 10),
     ];
     opts.onThreadSummaryUpdate(markedSummary, keyFacts);
+  }
+
+  // Post-distillation verification — log warnings, don't block
+  {
+    const postSession = store.findSessionById(sessionId);
+    if (postSession) {
+      if (postSession.tokenCountEstimate > 50_000) {
+        log.warn(`Post-distillation: token estimate still high (${postSession.tokenCountEstimate})`);
+      }
+    }
+    const postHistory = store.getHistory(sessionId, { excludeDistilled: true });
+    const hasSummary = postHistory.some((m) => m.role === "assistant" && m.content.includes("Distillation #"));
+    if (distillationNumber > 1 && !hasSummary) {
+      log.warn("Post-distillation: summary message not found in undistilled history");
+    }
   }
 
   eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });
