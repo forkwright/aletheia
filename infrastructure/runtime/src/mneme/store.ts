@@ -19,8 +19,27 @@ export interface Session {
   lastInputTokens: number;
   bootstrapHash: string | null;
   distillationCount: number;
+  workingState: WorkingState | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkingState {
+  currentTask: string;
+  completedSteps: string[];
+  nextSteps: string[];
+  recentDecisions: string[];
+  openFiles: string[];
+  updatedAt: string;
+}
+
+export interface AgentNote {
+  id: number;
+  sessionId: string;
+  nousId: string;
+  category: "task" | "decision" | "preference" | "correction" | "context";
+  content: string;
+  createdAt: string;
 }
 
 export interface Message {
@@ -891,9 +910,19 @@ export class SessionStore {
       lastInputTokens: (row['last_input_tokens'] as number) ?? 0,
       bootstrapHash: (row['bootstrap_hash'] as string) ?? null,
       distillationCount: (row['distillation_count'] as number) ?? 0,
+      workingState: this.parseWorkingState(row['working_state'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
     };
+  }
+
+  private parseWorkingState(raw: string | null): WorkingState | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as WorkingState;
+    } catch {
+      return null;
+    }
   }
 
   private mapMessage(row: Record<string, unknown>): Message {
@@ -1421,6 +1450,90 @@ export class SessionStore {
       .all(...params, limit) as Record<string, unknown>[];
     // Return in chronological order
     return rows.reverse().map((r) => this.mapMessage(r));
+  }
+
+  // --- Working State ---
+
+  getWorkingState(sessionId: string): WorkingState | null {
+    const row = this.db
+      .prepare("SELECT working_state FROM sessions WHERE id = ?")
+      .get(sessionId) as { working_state: string | null } | undefined;
+    if (!row?.working_state) return null;
+    return this.parseWorkingState(row.working_state);
+  }
+
+  updateWorkingState(sessionId: string, state: WorkingState): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(state), sessionId);
+  }
+
+  clearWorkingState(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  // --- Agent Notes ---
+
+  addNote(sessionId: string, nousId: string, category: AgentNote["category"], content: string): number {
+    const result = this.db
+      .prepare(
+        "INSERT INTO agent_notes (session_id, nous_id, category, content) VALUES (?, ?, ?, ?)",
+      )
+      .run(sessionId, nousId, category, content);
+    return result.lastInsertRowid as number;
+  }
+
+  getNotes(sessionId: string, opts?: { limit?: number; category?: AgentNote["category"] }): AgentNote[] {
+    const limit = opts?.limit ?? 20;
+    const conditions = ["session_id = ?"];
+    const params: (string | number)[] = [sessionId];
+
+    if (opts?.category) {
+      conditions.push("category = ?");
+      params.push(opts.category);
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM agent_notes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as Record<string, unknown>[];
+
+    return rows.reverse().map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      nousId: r["nous_id"] as string,
+      category: r["category"] as AgentNote["category"],
+      content: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  deleteNote(noteId: number, nousId: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM agent_notes WHERE id = ? AND nous_id = ?")
+      .run(noteId, nousId);
+    return result.changes > 0;
+  }
+
+  getNotesForNous(nousId: string, opts?: { limit?: number }): AgentNote[] {
+    const limit = opts?.limit ?? 20;
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM agent_notes WHERE nous_id = ? ORDER BY created_at DESC LIMIT ?",
+      )
+      .all(nousId, limit) as Record<string, unknown>[];
+
+    return rows.reverse().map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      nousId: r["nous_id"] as string,
+      category: r["category"] as AgentNote["category"],
+      content: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
   }
 
   private mapThread(r: Record<string, unknown>): Thread {
