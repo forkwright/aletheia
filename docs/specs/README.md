@@ -18,6 +18,7 @@ that evolve with the system.
 | 8 | [Memory Continuity](08_memory-continuity.md) | Complete | Expanded tail (#36), structured summaries (#43), context editing API (#44), working state + agent notes (#55). All 5 phases delivered. |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | 2D default, lazy 3D, progressive loading (#56). Remaining: named communities, semantic node cards, memory auditing, drift detection |
 | 10 | [Thinking UI](10_thinking-ui.md) | Phase 1-4 done | Extended thinking enabled (#40), status pills + detail panel (#54). Remaining: collapsed reasoning in history |
+| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-2 done | Thinking vs chat routing, formatting standards (prompt). Remaining: runtime narration filter, rich UI components |
 
 ### Priority order
 
