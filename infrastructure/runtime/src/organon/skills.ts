@@ -1,5 +1,5 @@
 // Skills directory — loads SKILL.md files and exposes them for bootstrap/commands
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
@@ -26,7 +26,8 @@ export class SkillRegistry {
       entries = readdirSync(dir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name);
-    } catch {
+    } catch (err) {
+      log.warn(`Failed to read skills directory ${dir}: ${err instanceof Error ? err.message : err}`);
       return;
     }
 

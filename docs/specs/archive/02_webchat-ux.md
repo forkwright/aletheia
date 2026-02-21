@@ -1,6 +1,6 @@
 # Spec: Webchat UX — Notifications, Resilience, and File Editor
 
-**Status:** Draft  
+**Status:** Implemented (PR #47)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 

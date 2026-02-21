@@ -1,6 +1,6 @@
 // Extended server tests — admin endpoints, costs, auth modes
-import { describe, it, expect, vi } from "vitest";
-import { createGateway, setCronRef, setWatchdogRef, setSkillsRef } from "./server.js";
+import { describe, expect, it, vi } from "vitest";
+import { createGateway, setCronRef, setSkillsRef, setWatchdogRef } from "./server.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -49,6 +49,8 @@ function makeStore(overrides: Record<string, unknown> = {}) {
     getCostsByAgent: vi.fn().mockReturnValue([
       { model: "claude-sonnet", inputTokens: 80000, outputTokens: 40000, cacheReadTokens: 15000, cacheWriteTokens: 4000, turns: 30 },
     ]),
+    getCanonicalSessionKey: vi.fn().mockReturnValue(null),
+    resolveRoute: vi.fn().mockReturnValue(null),
     ...overrides,
   } as never;
 }

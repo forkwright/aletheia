@@ -1,5 +1,5 @@
 // Distillation summarization tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { summarizeMessages } from "./summarize.js";
 
 function mockRouter(text: string) {

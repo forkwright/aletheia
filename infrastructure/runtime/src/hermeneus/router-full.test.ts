@@ -1,5 +1,5 @@
 // Extended router tests — createDefaultRouter credential loading
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultRouter } from "./router.js";
 
 // Mock the AnthropicProvider constructor to avoid real SDK usage

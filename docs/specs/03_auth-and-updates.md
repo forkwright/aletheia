@@ -1,6 +1,6 @@
 # Spec: Login Authentication & Self-Update System
 
-**Status:** Draft  
+**Status:** Phase 1 done (PR #50), Part 2 Phase 1b done (PR #70)
 **Author:** Syn  
 **Date:** 2026-02-19  
 
@@ -620,7 +620,7 @@ cd infrastructure/runtime && npm version minor -m "release: v%s" && cd ../.. && 
 | Phase | What | Effort | Dependencies |
 |-------|------|--------|--------------|
 | **1a** | Release workflow + first tag | Small | None |
-| **1b** | `aletheia-update` CLI script | Medium | 1a (needs tags to exist) |
+| **1b** ✅ | `aletheia-update` CLI script | Medium | 1a (needs tags to exist) |
 | **1c** | Update check daemon + blackboard | Small | 1a |
 | **2a** | Gateway auth schema expansion | Small | None |
 | **2b** | Wire existing auth modules into gateway | Medium | 2a |
@@ -630,6 +630,7 @@ cd infrastructure/runtime && npm version minor -m "release: v%s" && cd ../.. && 
 | **3a** | Session management UI (settings page) | Small | 2c |
 | **3b** | Update button in UI (calls API) | Small | 1b, 2c |
 | **3c** | `POST /api/system/update` endpoint | Medium | 1b, 2b |
+| **4a** | Auth credential failover (F-23) | Small | 2b — fallback credentials on 429/5xx from LLM providers |
 
 **Recommended start:** 1a → 1b → 1c (get updates working first, it's the bigger daily pain point), then 2a → 2b → 2c → 2d (auth).
 

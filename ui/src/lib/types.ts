@@ -42,22 +42,25 @@ export interface ChatMessage {
   isStreaming?: boolean;
   media?: MediaItem[];
   thinking?: string;
+  turnOutcome?: TurnOutcome;
 }
 
 export interface ToolCallState {
   id: string;
   name: string;
   status: "running" | "complete" | "error";
+  input?: Record<string, unknown>;
   result?: string;
   durationMs?: number;
+  tokenEstimate?: number;
 }
 
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId?: string }
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
-  | { type: "tool_start"; toolName: string; toolId: string }
-  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_start"; toolName: string; toolId: string; input?: Record<string, unknown> }
+  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number; tokenEstimate?: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
@@ -157,6 +160,27 @@ export interface GraphData {
   communities: number;
   community_meta: CommunityMeta[];
   total_nodes: number;
+}
+
+export interface EntityRelationship {
+  type: string;
+  target: string;
+  direction: "out" | "in";
+}
+
+export interface EntityMemory {
+  text: string;
+  score: number;
+}
+
+export interface EntityDetail {
+  name: string;
+  properties: Record<string, unknown>;
+  relationships: EntityRelationship[];
+  memories: EntityMemory[];
+  confidence: "high" | "medium" | "low";
+  relationship_count: number;
+  pagerank: number;
 }
 
 export interface CommandInfo {

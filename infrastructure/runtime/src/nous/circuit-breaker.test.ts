@@ -1,5 +1,5 @@
 // Circuit breaker tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { checkInputCircuitBreakers, checkResponseQuality } from "./circuit-breaker.js";
 
 describe("checkInputCircuitBreakers", () => {

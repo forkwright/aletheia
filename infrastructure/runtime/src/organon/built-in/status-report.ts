@@ -1,5 +1,5 @@
 // Meta-tool — status report: agent metrics + blackboard + recent activity
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { SessionStore } from "../../mneme/store.js";
 import type { CompetenceModel } from "../../nous/competence.js";
 

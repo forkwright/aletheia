@@ -1,18 +1,35 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript"],
+  "plugins": ["typescript", "import"],
   "categories": {
     "correctness": "error"
   },
   "rules": {
     "no-unused-vars": "warn",
-    "no-empty": "warn",
+    "no-empty": "error",
     "no-empty-function": "warn",
     "eqeqeq": "error",
     "require-await": "warn",
+    "sort-imports": [
+      "warn",
+      {
+        "ignoreDeclarationSort": true,
+        "ignoreCase": true,
+        "allowSeparatedGroups": true
+      }
+    ],
     "typescript/no-explicit-any": "warn",
     "typescript/no-floating-promises": "error",
-    "typescript/no-misused-promises": "error"
+    "typescript/no-misused-promises": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports",
+        "fixStyle": "separate-type-imports",
+        "disallowTypeAnnotations": false
+      }
+    ],
+    "import/no-duplicates": "error"
   },
   "settings": {},
   "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/"]

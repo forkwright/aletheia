@@ -1,5 +1,5 @@
 // Brave search tool tests
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { braveSearchTool } from "./brave-search.js";
 
 describe("braveSearchTool", () => {

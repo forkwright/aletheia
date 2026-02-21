@@ -1,20 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import * as THREE from "three";
+  import Graph2D from "./Graph2D.svelte";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getConnectedNodes, getCommunityIds,
     getHighlightedCommunity, getSearchQuery, getLoadedMode, getLoadedLimit,
-    getTotalNodes,
+    getTotalNodes, getEntityDetail, getEntityLoading,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
-    loadGraph,
+    loadGraph, loadEntityDetail, removeEntity, mergeEntityNodes,
   } from "../../stores/graph.svelte";
 
-  let container: HTMLDivElement;
-  let graph: any = null;
-  let hoverNode: string | null = $state(null);
+  type ViewMode = "2d" | "3d";
 
-  // Community color palette — 20 distinct hues
+  let viewMode = $state<ViewMode>("2d");
+  let graph2d = $state<Graph2D | null>(null);
+  let graph3d = $state<any>(null);
+  let progressivePhase = $state<"initial" | "full">("initial");
+
   const PALETTE = [
     "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
     "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
@@ -27,181 +29,34 @@
     return PALETTE[community % PALETTE.length]!;
   }
 
-  function pagerankSize(pr: number): number {
-    const clamped = Math.max(pr, 0.0001);
-    const scaled = (Math.log(clamped) + 10) / 10;
-    return Math.max(2, Math.min(14, scaled * 12));
+  // --- Progressive loading ---
+  async function initialLoad() {
+    progressivePhase = "initial";
+    await loadGraph({ mode: "top", limit: 20 });
+    progressivePhase = "full";
+    await loadGraph({ mode: "top", limit: 200 });
   }
 
-  function edgeColor(relType: string): string {
-    const social = ["KNOWS", "LIVES_WITH", "FAMILY_OF", "WORKS_WITH", "COMMUNICATES_WITH"];
-    const structural = ["PART_OF", "CONTAINS", "DEPENDS_ON", "INSTANCE_OF", "LOCATED_AT"];
-    const temporal = ["PRECEDES", "FOLLOWS", "OCCURRED_AT", "MENTIONS"];
-
-    if (social.includes(relType)) return "rgba(63, 185, 80, 0.35)";
-    if (structural.includes(relType)) return "rgba(88, 166, 255, 0.35)";
-    if (temporal.includes(relType)) return "rgba(210, 153, 34, 0.35)";
-    return "rgba(139, 148, 158, 0.25)";
-  }
-
-  // --- Community Cloud System ---
-
-  const CLOUD_GEOMETRY = new THREE.SphereGeometry(1, 24, 16);
-  const cloudMeshes = new Map<number, THREE.Mesh>();
-  const cloudLabels = new Map<number, THREE.Sprite>();
-  let cloudScene: THREE.Scene | null = null;
-
-  function createCloudMaterial(color: string, opacity: number): THREE.MeshBasicMaterial {
-    return new THREE.MeshBasicMaterial({
-      color: new THREE.Color(color),
-      transparent: true,
-      opacity,
-      depthWrite: false,
-      side: THREE.BackSide,
-    });
-  }
-
-  function createLabelSprite(text: string, color: string): THREE.Sprite {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d")!;
-    canvas.width = 512;
-    canvas.height = 64;
-    ctx.font = "bold 28px system-ui, -apple-system, sans-serif";
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.8;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const label = text.length > 30 ? text.slice(0, 27) + "..." : text;
-    ctx.fillText(label, 256, 32);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(60, 8, 1);
-    sprite.renderOrder = 10;
-    return sprite;
-  }
-
-  function updateClouds(runtimeNodes: any[]) {
-    if (!cloudScene) return;
-
-    // Group runtime nodes by community (only those with positions)
-    const byCommunity = new Map<number, any[]>();
-    for (const node of runtimeNodes) {
-      if (node.community == null || node.community < 0) continue;
-      if (node.x == null) continue;
-      const list = byCommunity.get(node.community) || [];
-      list.push(node);
-      byCommunity.set(node.community, list);
-    }
-
-    // Remove stale meshes
-    for (const [cid, mesh] of cloudMeshes) {
-      if (!byCommunity.has(cid)) {
-        cloudScene.remove(mesh);
-        (mesh.material as THREE.Material).dispose();
-        cloudMeshes.delete(cid);
-      }
-    }
-    for (const [cid, sprite] of cloudLabels) {
-      if (!byCommunity.has(cid)) {
-        cloudScene.remove(sprite);
-        (sprite.material as THREE.SpriteMaterial).map?.dispose();
-        sprite.material.dispose();
-        cloudLabels.delete(cid);
-      }
-    }
-
-    const hl = getHighlightedCommunity();
-
-    for (const [cid, members] of byCommunity) {
-      if (members.length < 3) continue;
-
-      // Compute centroid
-      let cx = 0, cy = 0, cz = 0;
-      for (const m of members) { cx += m.x; cy += m.y; cz += m.z; }
-      cx /= members.length; cy /= members.length; cz /= members.length;
-
-      // Compute radius: 1.5 * stddev of distances from centroid
-      let sumSqDist = 0;
-      for (const m of members) {
-        const dx = m.x - cx, dy = m.y - cy, dz = m.z - cz;
-        sumSqDist += dx * dx + dy * dy + dz * dz;
-      }
-      const stddev = Math.sqrt(sumSqDist / members.length);
-      const radius = Math.max(stddev * 1.5, 25);
-
-      // Cloud mesh
-      let mesh = cloudMeshes.get(cid);
-      if (!mesh) {
-        const color = communityColor(cid);
-        mesh = new THREE.Mesh(CLOUD_GEOMETRY, createCloudMaterial(color, 0.06));
-        mesh.renderOrder = -1;
-        cloudScene.add(mesh);
-        cloudMeshes.set(cid, mesh);
-      }
-      mesh.position.set(cx, cy, cz);
-      mesh.scale.setScalar(radius);
-
-      // Adjust opacity based on highlight
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      if (hl === null) {
-        mat.opacity = 0.06;
-      } else if (cid === hl) {
-        mat.opacity = 0.12;
-      } else {
-        mat.opacity = 0.02;
-      }
-
-      // Label sprite — positioned above the cloud
-      let sprite = cloudLabels.get(cid);
-      if (!sprite) {
-        // Use the highest-pagerank node name as label
-        const topNode = members.reduce((a: any, b: any) =>
-          (a.pagerank || 0) > (b.pagerank || 0) ? a : b
-        );
-        sprite = createLabelSprite(topNode.id, communityColor(cid));
-        cloudScene.add(sprite);
-        cloudLabels.set(cid, sprite);
-      }
-      sprite.position.set(cx, cy + radius * 0.9, cz);
-      // Fade label with highlight
-      (sprite.material as THREE.SpriteMaterial).opacity = hl === null ? 0.6 : (cid === hl ? 0.9 : 0.15);
-    }
-  }
-
-  function disposeClouds() {
-    if (!cloudScene) return;
-    for (const [, mesh] of cloudMeshes) {
-      cloudScene.remove(mesh);
-      (mesh.material as THREE.Material).dispose();
-    }
-    for (const [, sprite] of cloudLabels) {
-      cloudScene.remove(sprite);
-      (sprite.material as THREE.SpriteMaterial).map?.dispose();
-      sprite.material.dispose();
-    }
-    cloudMeshes.clear();
-    cloudLabels.clear();
-    cloudScene = null;
-  }
-
-  // --- Graph initialization ---
-
+  // --- Handlers ---
   function focusOnNode(nodeId: string) {
-    if (!graph) return;
-    const gd = graph.graphData();
-    const runtimeNode = gd.nodes.find((n: any) => n.id === nodeId);
-    if (!runtimeNode) return;
-
-    const distance = 120;
-    const distRatio = 1 + distance / Math.hypot(runtimeNode.x || 0, runtimeNode.y || 0, runtimeNode.z || 0);
-    graph.cameraPosition(
-      { x: (runtimeNode.x || 0) * distRatio, y: (runtimeNode.y || 0) * distRatio, z: (runtimeNode.z || 0) * distRatio },
-      runtimeNode,
-      1000,
-    );
     setSelectedNodeId(nodeId);
+    if (viewMode === "2d" && graph2d) {
+      graph2d.focusOnNode(nodeId);
+    } else if (viewMode === "3d" && graph3d) {
+      graph3d.focusOnNode(nodeId);
+    }
+  }
+
+  function handleNodeClick(nodeId: string) {
+    focusOnNode(nodeId);
+    loadEntityDetail(nodeId);
+    confirmDelete = false;
+    mergeTarget = "";
+  }
+
+  function handleBackgroundClick() {
+    setSelectedNodeId(null);
+    setHighlightedCommunity(null);
   }
 
   function handleSearch(e: Event) {
@@ -239,126 +94,26 @@
   }
 
   async function reloadGraph(params?: { mode?: "top" | "community" | "all"; limit?: number; community?: number }) {
-    // Clear stale clouds before reload
-    disposeClouds();
-
     await loadGraph(params);
-
-    if (!graph || !container) return;
-
-    const data = getGraphData();
-    const graphInput = {
-      nodes: data.nodes.map((n) => ({ ...n })),
-      links: data.edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
-    };
-    graph.graphData(graphInput);
-
-    // Re-init clouds with the fresh scene
-    cloudScene = graph.scene();
-
-    setTimeout(() => {
-      if (graph) graph.zoomToFit(500, 50);
-    }, 2000);
   }
 
-  async function initGraph() {
-    await loadGraph();
-    if (!container) return;
-
-    const ForceGraph3D = (await import("3d-force-graph")).default;
-    const data = getGraphData();
-
-    const graphInput = {
-      nodes: data.nodes.map((n) => ({ ...n })),
-      links: data.edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
-    };
-
-    graph = new ForceGraph3D(container)
-      .backgroundColor("#0a0a0f")
-      .showNavInfo(false)
-      .width(container.clientWidth)
-      .height(container.clientHeight)
-      .graphData(graphInput)
-      .nodeId("id")
-      .nodeVal((node: any) => pagerankSize(node.pagerank || 0.001))
-      .nodeColor((node: any) => {
-        if (hoverNode && node.id === hoverNode) return "#ffffff";
-        if (getSelectedNodeId() === node.id) return "#ffffff";
-        const hl = getHighlightedCommunity();
-        if (hl !== null && node.community !== hl) return "rgba(48, 54, 61, 0.4)";
-        return communityColor(node.community ?? -1);
-      })
-      .nodeLabel((node: any) => {
-        const pr = node.pagerank ? node.pagerank.toFixed(4) : "—";
-        const comm = node.community >= 0 ? node.community : "—";
-        return `<span style="color:#e6edf3;font-family:system-ui;font-size:12px">
-          <b>${node.id}</b><br/>
-          Community ${comm} · PR ${pr}
-        </span>`;
-      })
-      .nodeOpacity(0.9)
-      .linkSource("source")
-      .linkTarget("target")
-      .linkColor((link: any) => edgeColor(link.rel_type))
-      .linkWidth(0.5)
-      .linkOpacity(0.6)
-      .linkDirectionalArrowLength(3)
-      .linkDirectionalArrowRelPos(1)
-      .linkLabel((link: any) => `<span style="color:#8b949e;font-size:11px">${link.rel_type}</span>`)
-      .onNodeClick((node: any) => {
-        setSelectedNodeId(node.id);
-        focusOnNode(node.id);
-      })
-      .onNodeHover((node: any) => {
-        hoverNode = node?.id ?? null;
-        container.style.cursor = node ? "pointer" : "default";
-      })
-      .onBackgroundClick(() => {
-        setSelectedNodeId(null);
-        setHighlightedCommunity(null);
-      })
-      .warmupTicks(100)
-      .cooldownTime(3000)
-      .onEngineTick(() => {
-        const gd = graph.graphData();
-        updateClouds(gd.nodes);
-      });
-
-    // Init cloud system
-    cloudScene = graph.scene();
-
-    // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
-      if (graph && container) {
-        graph.width(container.clientWidth).height(container.clientHeight);
-      }
-    });
-    resizeObserver.observe(container);
-
-    // Fit to view after simulation settles
-    setTimeout(() => {
-      if (graph) graph.zoomToFit(500, 50);
-    }, 3500);
-
-    return () => {
-      resizeObserver.disconnect();
-      disposeClouds();
-      CLOUD_GEOMETRY.dispose();
-      if (graph) graph._destructor();
-    };
+  function switchView(mode: ViewMode) {
+    viewMode = mode;
   }
 
   onMount(() => {
-    let cleanup: (() => void) | undefined;
-    initGraph().then((c) => { cleanup = c; });
-    return () => cleanup?.();
+    initialLoad();
   });
 
   // Reactive helpers
+  let graphData = $derived(getGraphData());
   let selectedNode = $derived(getSelectedNode());
   let selectedEdges = $derived(getSelectedNodeId() ? getNodeEdges(getSelectedNodeId()!) : []);
   let connectedNodes = $derived(getSelectedNodeId() ? getConnectedNodes(getSelectedNodeId()!) : []);
   let communityIds = $derived(getCommunityIds());
+  let hoverNodeId = $state<string | null>(null);
+  let confirmDelete = $state(false);
+  let mergeTarget = $state("");
 </script>
 
 <div class="graph-view">
@@ -371,6 +126,10 @@
       oninput={handleSearch}
       onkeydown={handleKeydown}
     />
+    <div class="view-toggle">
+      <button class="toggle-btn" class:active={viewMode === "2d"} onclick={() => switchView("2d")}>2D</button>
+      <button class="toggle-btn" class:active={viewMode === "3d"} onclick={() => switchView("3d")}>3D</button>
+    </div>
     <div class="community-pills">
       <button
         class="pill"
@@ -404,29 +163,60 @@
       title="Reload graph data"
     >{getLoading() ? "..." : "Refresh"}</button>
     <span class="graph-stats">
-      {getGraphData().nodes.length}{getTotalNodes() > 0 ? ` of ${getTotalNodes()}` : ""} nodes · {getGraphData().edges.length} edges
+      {graphData.nodes.length}{getTotalNodes() > 0 ? ` of ${getTotalNodes()}` : ""} nodes · {graphData.edges.length} edges
     </span>
   </div>
 
-  <div class="graph-container" bind:this={container}>
-    {#if getLoading()}
+  <div class="graph-container">
+    {#if getLoading() && graphData.nodes.length === 0}
       <div class="graph-loading">Loading graph...</div>
     {/if}
     {#if getError()}
       <div class="graph-error">{getError()}</div>
     {/if}
+
+    {#if viewMode === "2d"}
+      <Graph2D
+        bind:this={graph2d}
+        {graphData}
+        selectedNodeId={getSelectedNodeId()}
+        highlightedCommunity={getHighlightedCommunity()}
+        bind:hoverNodeId
+        onNodeClick={handleNodeClick}
+        onBackgroundClick={handleBackgroundClick}
+      />
+    {:else}
+      {#await import("./Graph3D.svelte") then { default: Graph3D }}
+        <Graph3D
+          bind:this={graph3d}
+          {graphData}
+          selectedNodeId={getSelectedNodeId()}
+          highlightedCommunity={getHighlightedCommunity()}
+          bind:hoverNodeId
+          onNodeClick={handleNodeClick}
+          onBackgroundClick={handleBackgroundClick}
+        />
+      {:catch}
+        <div class="graph-error">Failed to load 3D renderer</div>
+      {/await}
+    {/if}
   </div>
 
   {#if selectedNode}
+    {@const detail = getEntityDetail()}
+    {@const detailLoading = getEntityLoading()}
     <div class="info-panel">
       <div class="info-header">
         <span class="info-dot" style="background: {communityColor(selectedNode.community)}"></span>
         <strong>{selectedNode.id}</strong>
+        {#if detail}
+          <span class="confidence-dot confidence-{detail.confidence}" title="Confidence: {detail.confidence}"></span>
+        {/if}
         <span class="info-meta">
-          Community {selectedNode.community >= 0 ? selectedNode.community : "—"} ·
+          Community {selectedNode.community >= 0 ? selectedNode.community : "\u2014"} ·
           PR {selectedNode.pagerank.toFixed(4)}
         </span>
-        <button class="info-close" onclick={() => setSelectedNodeId(null)}>✕</button>
+        <button class="info-close" onclick={() => { setSelectedNodeId(null); confirmDelete = false; mergeTarget = ""; }}>&times;</button>
       </div>
       {#if selectedNode.labels.length > 0}
         <div class="info-labels">
@@ -435,14 +225,20 @@
           {/each}
         </div>
       {/if}
+
+      {#if detailLoading}
+        <div class="detail-loading">Loading details...</div>
+      {/if}
+
       {#if connectedNodes.length > 0}
+        <div class="info-section-title">Relationships ({selectedEdges.length})</div>
         <div class="info-connections">
           {#each selectedEdges.slice(0, 20) as edge}
             <div class="connection-row">
               <span class="rel-type">{edge.rel_type}</span>
               <button
                 class="connection-target"
-                onclick={() => focusOnNode(edge.source === selectedNode?.id ? edge.target : edge.source)}
+                onclick={() => { handleNodeClick(edge.source === selectedNode?.id ? edge.target : edge.source); }}
               >
                 {edge.source === selectedNode?.id ? edge.target : edge.source}
               </button>
@@ -453,6 +249,39 @@
           {/if}
         </div>
       {/if}
+
+      {#if detail?.memories && detail.memories.length > 0}
+        <div class="info-section-title">Memories ({detail.memories.length})</div>
+        <div class="info-memories">
+          {#each detail.memories.slice(0, 5) as mem}
+            <div class="memory-row">
+              <span class="memory-score">{(mem.score * 100).toFixed(0)}%</span>
+              <span class="memory-text">{mem.text}</span>
+            </div>
+          {/each}
+          {#if detail.memories.length > 5}
+            <div class="connection-overflow">+{detail.memories.length - 5} more</div>
+          {/if}
+        </div>
+      {/if}
+
+      <div class="info-actions">
+        {#if confirmDelete}
+          <span class="confirm-label">Delete this entity?</span>
+          <button class="action-btn danger" onclick={async () => { await removeEntity(selectedNode!.id); confirmDelete = false; }}>Confirm</button>
+          <button class="action-btn" onclick={() => { confirmDelete = false; }}>Cancel</button>
+        {:else}
+          <button class="action-btn danger" onclick={() => { confirmDelete = true; }}>Delete</button>
+        {/if}
+        <div class="merge-row">
+          <input class="merge-input" type="text" placeholder="Merge into..." bind:value={mergeTarget} />
+          <button
+            class="action-btn"
+            disabled={!mergeTarget.trim()}
+            onclick={async () => { const ok = await mergeEntityNodes(selectedNode!.id, mergeTarget.trim()); if (ok) mergeTarget = ""; }}
+          >Merge</button>
+        </div>
+      </div>
     </div>
   {/if}
 </div>
@@ -492,6 +321,32 @@
   .graph-search:focus {
     outline: none;
     border-color: var(--accent);
+  }
+
+  .view-toggle {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .toggle-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .toggle-btn:hover {
+    color: var(--text);
+  }
+  .toggle-btn.active {
+    background: var(--accent);
+    color: #fff;
   }
 
   .community-pills {
@@ -559,9 +414,6 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
-  }
-  .graph-container :global(canvas) {
-    display: block;
   }
 
   .graph-loading, .graph-error {
@@ -674,6 +526,105 @@
     font-size: 11px;
     padding-top: 4px;
   }
+
+  .confidence-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .confidence-high { background: #3fb950; }
+  .confidence-medium { background: #d29922; }
+  .confidence-low { background: #f85149; }
+
+  .detail-loading {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 0;
+  }
+
+  .info-section-title {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .info-memories {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .memory-row {
+    display: flex;
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .memory-score {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    flex-shrink: 0;
+    min-width: 30px;
+  }
+  .memory-text {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .info-actions {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .confirm-label {
+    font-size: 12px;
+    color: var(--red);
+    font-weight: 600;
+  }
+  .action-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .action-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .action-btn:disabled { opacity: 0.4; cursor: default; }
+  .action-btn.danger { border-color: var(--red); color: var(--red); }
+  .action-btn.danger:hover { background: var(--red); color: #fff; }
+
+  .merge-row {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    margin-top: 4px;
+  }
+  .merge-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: var(--font-sans);
+  }
+  .merge-input:focus { outline: none; border-color: var(--accent); }
 
   @media (max-width: 768px) {
     .info-panel {

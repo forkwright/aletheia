@@ -227,4 +227,157 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- Working state: structured task context that survives distillation
+      ALTER TABLE sessions ADD COLUMN working_state TEXT;
+    `,
+  },
+  {
+    version: 10,
+    sql: `
+      -- Agent notes: explicit agent-written context that survives distillation
+      CREATE TABLE IF NOT EXISTS agent_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        nous_id TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_notes_session ON agent_notes(session_id);
+      CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
+    `,
+  },
+  {
+    version: 11,
+    sql: `
+      -- Message queue: mid-turn course correction messages from the human
+      CREATE TABLE IF NOT EXISTS message_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        content TEXT NOT NULL,
+        sender TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_queue_session ON message_queue(session_id);
+    `,
+  },
+  {
+    version: 12,
+    sql: `
+      ALTER TABLE sessions ADD COLUMN session_type TEXT DEFAULT 'primary';
+      ALTER TABLE sessions ADD COLUMN last_distilled_at TEXT;
+      ALTER TABLE sessions ADD COLUMN computed_context_tokens INTEGER DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(session_type);
+
+      -- Backfill session_type from key patterns
+      UPDATE sessions SET session_type = 'background'
+      WHERE session_key LIKE '%prosoche%' AND session_type = 'primary';
+      UPDATE sessions SET session_type = 'ephemeral'
+      WHERE (session_key LIKE 'ask:%' OR session_key LIKE 'spawn:%' OR session_key LIKE 'ephemeral:%')
+      AND session_type = 'primary';
+    `,
+  },
+  {
+    version: 13,
+    sql: `
+      CREATE TABLE IF NOT EXISTS distillation_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        nous_id TEXT NOT NULL,
+        distilled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        messages_before INTEGER NOT NULL,
+        messages_after INTEGER NOT NULL,
+        tokens_before INTEGER NOT NULL,
+        tokens_after INTEGER NOT NULL,
+        facts_extracted INTEGER DEFAULT 0,
+        decisions_extracted INTEGER DEFAULT 0,
+        open_items_extracted INTEGER DEFAULT 0,
+        flush_succeeded INTEGER DEFAULT 1,
+        errors TEXT,
+        distillation_number INTEGER DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_distill_log_session ON distillation_log(session_id);
+    `,
+  },
+  {
+    version: 14,
+    sql: `
+      CREATE TABLE IF NOT EXISTS sub_agent_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        parent_session_id TEXT NOT NULL,
+        parent_nous_id TEXT NOT NULL,
+        role TEXT,
+        agent_id TEXT NOT NULL,
+        task TEXT NOT NULL,
+        model TEXT,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        total_cost_tokens INTEGER DEFAULT 0,
+        tool_calls INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'completed',
+        error TEXT,
+        duration_ms INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_sub_agent_parent ON sub_agent_log(parent_session_id);
+    `,
+  },
+  {
+    version: 15,
+    sql: `
+      -- Reflection log: nightly sleep-time compute results
+      CREATE TABLE IF NOT EXISTS reflection_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nous_id TEXT NOT NULL,
+        reflected_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        sessions_reviewed INTEGER NOT NULL DEFAULT 0,
+        messages_reviewed INTEGER NOT NULL DEFAULT 0,
+        patterns_found INTEGER NOT NULL DEFAULT 0,
+        contradictions_found INTEGER NOT NULL DEFAULT 0,
+        corrections_found INTEGER NOT NULL DEFAULT 0,
+        preferences_found INTEGER NOT NULL DEFAULT 0,
+        relationships_found INTEGER NOT NULL DEFAULT 0,
+        unresolved_threads_found INTEGER NOT NULL DEFAULT 0,
+        memories_stored INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        model TEXT,
+        findings TEXT NOT NULL DEFAULT '{}',
+        errors TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_reflection_nous ON reflection_log(nous_id);
+      CREATE INDEX IF NOT EXISTS idx_reflection_date ON reflection_log(reflected_at);
+    `,
+  },
+  {
+    version: 16,
+    sql: `
+      -- Post-distillation priming: extracted context injected into the first turn after distillation
+      ALTER TABLE sessions ADD COLUMN distillation_priming TEXT;
+    `,
+  },
+  {
+    version: 17,
+    sql: `
+      -- Content hash for cross-agent message idempotency
+      ALTER TABLE cross_agent_messages ADD COLUMN content_hash TEXT;
+      CREATE INDEX IF NOT EXISTS idx_xagent_hash ON cross_agent_messages(content_hash, created_at);
+
+      -- Tool usage stats for memory/analytics
+      CREATE TABLE IF NOT EXISTS tool_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nous_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        error_message TEXT,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tool_stats_lookup ON tool_stats(nous_id, tool_name, created_at);
+    `,
+  },
 ];

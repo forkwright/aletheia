@@ -1,6 +1,6 @@
 // Plan tool tests — create, status, step complete, step fail
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createPlanTools } from "./plan.js";
 

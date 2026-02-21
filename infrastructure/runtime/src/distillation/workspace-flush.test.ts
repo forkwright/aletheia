@@ -1,6 +1,6 @@
 // Workspace flush tests — distillation memory file writer
-import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { flushToWorkspace } from "./workspace-flush.js";

@@ -1,10 +1,10 @@
 // Error hierarchy unit tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   AletheiaError,
   ConfigError,
-  SessionError,
   ProviderError,
+  SessionError,
   ToolError,
 } from "./errors.js";
 import { ERROR_CODES, type ErrorCode } from "./error-codes.js";

@@ -2,7 +2,7 @@
 import type { AletheiaConfig, NousConfig } from "../../taxis/schema.js";
 import type { SessionStore } from "../../mneme/store.js";
 import type { ProviderRouter } from "../../hermeneus/router.js";
-import type { ToolRegistry, ToolContext } from "../../organon/registry.js";
+import type { ToolContext, ToolRegistry } from "../../organon/registry.js";
 import type { PluginRegistry } from "../../prostheke/registry.js";
 import type { Watchdog } from "../../daemon/watchdog.js";
 import type { CompetenceModel } from "../competence.js";
@@ -15,6 +15,7 @@ import type {
 import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
+import type { MemoryFlushTarget } from "../../distillation/hooks.js";
 
 export interface MediaAttachment {
   contentType: string;
@@ -38,6 +39,7 @@ export interface InboundMessage {
   threadId?: string;
   bindingId?: string;
   lockKey?: string;
+  toolFilter?: string[];
 }
 
 export interface TurnOutcome {
@@ -56,12 +58,13 @@ export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId: string }
   | { type: "text_delta"; text: string }
   | { type: "thinking_delta"; text: string }
-  | { type: "tool_start"; toolName: string; toolId: string }
-  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number }
+  | { type: "tool_start"; toolName: string; toolId: string; input?: Record<string, unknown> }
+  | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number; tokenEstimate?: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "turn_abort"; reason: string }
+  | { type: "queue_drained"; count: number }
   | { type: "error"; message: string };
 
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -117,6 +120,7 @@ export interface RuntimeServices {
   skillsSection?: string;
   approvalGate?: ApprovalGate;
   approvalMode?: ApprovalMode;
+  memoryTarget?: MemoryFlushTarget;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */

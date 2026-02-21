@@ -1,5 +1,5 @@
 // Crypto utilities tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { generateId, generateSessionKey } from "./crypto.js";
 
 describe("generateId", () => {

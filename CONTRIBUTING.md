@@ -1,252 +1,214 @@
 # Contributing to Aletheia
 
-## Getting Started
-
-1. Fork the repository
-2. Clone your fork and set up the dev environment:
-   ```bash
-   cd infrastructure/runtime
-   npm install
-   git config core.hooksPath .githooks
-   ```
-3. Create a branch from `main`
-
-## Development
-
-### Build
+## Setup
 
 ```bash
+git clone https://github.com/forkwright/aletheia.git
 cd infrastructure/runtime
-npx tsdown
-```
-
-### Test
-
-```bash
-npm test                    # Unit tests
-npm run test:coverage       # With coverage thresholds
-npm run test:integration    # Integration tests (30s timeout)
-```
-
-### Lint & Type Check
-
-```bash
-npm run typecheck           # tsc --noEmit
-npm run lint:check          # oxlint
-npm run precommit           # All checks (typecheck + lint + test)
-```
-
-### Pre-commit Hook
-
-The hook runs `typecheck` and `lint:check` automatically. Enable it with:
-
-```bash
+npm install
 git config core.hooksPath .githooks
 ```
 
+## Development
+
+```bash
+npx tsdown                  # Build
+npm run typecheck           # tsc --noEmit
+npm run lint:check          # oxlint
+npm run precommit           # Typecheck + lint (pre-commit gate)
+```
+
+### Local Validation
+
+Run **only** typecheck and lint during development:
+
+```bash
+npm run typecheck && npm run lint:check
+```
+
+For targeted testing of specific functionality:
+
+```bash
+npx vitest run src/path/to/specific.test.ts
+```
+
+**Never run `npm test` or the full suite locally.** CI handles full test runs. Local
+full-suite runs are slow (84+ seconds), frequently time out agent sessions, and
+duplicate what CI already does.
+
+### Pre-commit Hook
+
+The `.githooks/pre-commit` hook runs typecheck + lint automatically. It does not
+run tests — that's CI's job.
+
+## Git
+
+### Authorship
+
+All commits use Alice's author identity:
+
+```
+git config user.name "Alice Johnson"
+git config user.email "alice@example.com"
+```
+
+Agents are tooling, not contributors. The git log reads like one person built
+this — because one person directed it.
+
+### Branch Convention
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Spec work | `spec<NN>/<description>` | `spec14/dev-workflow` |
+| Bug fix | `fix/<description>` | `fix/distillation-overflow` |
+| Feature (non-spec) | `feat/<description>` | `feat/gcal-rebuild` |
+| Chore/docs | `chore/<description>` | `chore/readme-update` |
+
+Rules:
+- Always branch from `main`
+- Always `git pull --rebase origin main` before pushing
+- Never commit directly to `main` (except docs-only or trivial config changes)
+
+### Commit Messages
+
+Format:
+
+```
+<type>: <concise description>
+
+[optional body — what and why, not how]
+
+[optional footer — Spec: NN, Closes #NN, Breaking: description]
+```
+
+**Types:** `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
+
+Rules:
+- Present tense, imperative mood: "add X" not "added X"
+- First line ≤72 characters
+- Body wraps at 80 characters
+- Reference spec number for spec work: `Spec: 14`
+- One logical change per commit
+
+Examples:
+
+```
+feat: add message queue for mid-turn course correction
+
+Human messages sent during an active turn are queued and injected after
+the current tool call completes. Queue lives on SessionStore, checked
+between tool executions in both streaming and buffered paths.
+
+Spec: 04
+```
+
+```
+fix: remove future annotations from memory sidecar routes
+
+Caused intermittent TypeError on graph_enhanced_search. Python 3.12
+supports modern type syntax natively — the import was unnecessary.
+```
+
+### Squash Policy
+
+**Always squash merge.** No merge commits, no rebase-merge.
+
+Every PR becomes a single commit on `main`. The squash commit message = PR title
+\+ summary from the PR description. The branch preserves detailed work history
+for anyone who cares.
+
 ## Pull Requests
 
-- Keep PRs focused — one feature or fix per PR
-- Include tests for new functionality
-- Ensure `npm run precommit` passes
-- Write a clear description of what changed and why
-- Reference the spec number for spec work
-- Reference related issues with `Fixes #123` or `Closes #123`
+### Workflow
 
----
+```
+1. Create branch from main
+2. Make changes, commit, push
+3. Create PR with structured description
+4. CI must pass — no merging red PRs
+5. Review (Syn reviews agent work, Alice reviews when needed)
+6. Squash merge with clean commit message
+7. Branch auto-deleted after merge
+```
+
+### PR Description
+
+Use the template (`.github/pull_request_template.md`). Every PR needs:
+
+- **What:** One-paragraph summary
+- **Why:** Problem solved or spec phase implemented
+- **Changes:** Bullet list of significant changes
+- **Spec:** Reference (`Spec: NN Phase N`) if applicable
+- **Testing:** How it was tested
+
+### Branch Cleanup
+
+- Branches deleted automatically after merge (GitHub setting)
+- Local branches pruned with `git fetch --prune`
+- Stale branches (>7 days with no PR) flagged during weekly maintenance
+
+## Agent Task Dispatch
+
+When dispatching work to Claude Code or sub-agents, every task uses this template:
+
+```markdown
+# Task: <title>
+
+## Branch
+`<branch-name>` (create from main)
+
+## Scope
+<what to do — specific files, functions, behaviors>
+
+## Constraints
+- Git author: Alice Johnson <alice@example.com>
+- ONE squashed commit before pushing
+- Commit message: `<type>: <description>\n\nSpec: <NN>`
+- Push the branch. Do NOT create a PR.
+- Do NOT modify files outside scope.
+- Do NOT add dependencies without noting in commit body.
+- Run `npm run typecheck && npm run lint:check` before pushing.
+  Fix any errors your changes introduce.
+- Do NOT run the full test suite.
+
+## Acceptance Criteria
+- [ ] <specific, testable conditions>
+
+## Context
+<relevant background — link to specs/files, keep minimal>
+```
+
+The dispatching agent (typically Syn) creates the PR after reviewing the pushed
+branch. This separates execution from review.
 
 ## Code Standards
 
-### Self-Documenting Code Over Comments
+Full reference: [DEVELOPMENT.md](docs/DEVELOPMENT.md#code-style-conventions). Summary:
 
-**File headers:** Each file gets one header comment — a single line explaining what the module is:
+**Self-documenting code.** One-line file headers. Inline comments only for
+*why*, never *what*.
 
-```typescript
-// Pipeline runner — composes stages for streaming and non-streaming turn execution
-```
+**Typed errors.** All errors extend `AletheiaError`. Error codes in
+`koina/error-codes.ts`. Never throw strings or bare `Error`. Non-critical ops
+use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 
-**Inline comments:** Only where the *why* is non-obvious. Never comment *what* the code does.
+**Never empty catch.** Every catch logs, rethrows, or returns a meaningful value.
 
-Good:
-```typescript
-// SQLCipher 4 format — must be set before any other pragma
-this.db.pragma(`key = '${encryptionKey}'`);
-```
+**Naming:** Files `kebab-case`, classes `PascalCase`, functions `camelCase`
+verb-first, constants `UPPER_SNAKE`, events `noun:verb`.
 
-Bad:
-```typescript
-// Get the session
-const session = store.findSessionById(sessionId);
-```
+**TypeScript:** Strict mode, `.js` import extensions, bracket notation for index
+access.
 
-If the code needs a "what" comment to be understood, rename the variables and functions until it doesn't.
-
-### Naming
-
-| Thing | Convention | Example |
-|-------|-----------|---------|
-| Files | kebab-case | `build-messages.ts`, `session-store.ts` |
-| Classes | PascalCase | `SessionStore`, `ToolRegistry` |
-| Functions | camelCase, verb-first | `resolveThread`, `buildContext`, `parseConfig` |
-| Constants | UPPER_SNAKE | `MAX_CONCURRENT_TURNS`, `SIDECAR_URL` |
-| Types/Interfaces | PascalCase | `TurnState`, `DistillationOpts` |
-| Booleans | `is`/`has`/`should` prefix | `isStreaming`, `hasToken`, `shouldDistill` |
-| Event names | `noun:verb` or `noun:adjective` | `turn:before`, `distill:after`, `tool:called` |
-
-### TypeScript
-
-- **Strict mode** — all strict flags enabled, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
-- **Imports** — use `.js` extensions (NodeNext resolution)
-- **Index access** — bracket notation for string-keyed records (`record["key"]`, not `record.key`)
-
-### Function Design
-
-- **Single responsibility.** If a function needs a comment explaining its sections, split it.
-- **Early returns over nested ifs.** Guard clauses at the top, happy path below.
-- **Explicit over clever.** The next person reading this code is a tired engineer at 2am.
-- **Right tool for the job.** Don't use `reduce` when a `for` loop is clearer. Don't use a class when a function suffices. Don't use generics when the type is always the same.
-
-### Import Order
-
-```typescript
-// 1. Node built-ins
-import { join } from "node:path";
-import { readFileSync } from "node:fs";
-
-// 2. External packages
-import { Hono } from "hono";
-
-// 3. Internal absolute imports (by module)
-import { createLogger } from "../koina/logger.js";
-import type { SessionStore } from "../mneme/store.js";
-
-// 4. Local relative imports
-import { buildMessages } from "./utils/build-messages.js";
-import type { TurnState } from "./types.js";
-```
-
----
-
-## Error Handling
-
-### Never Empty Catch
-
-Every `catch` block either logs, rethrows, or returns a meaningful value. No exceptions.
-
-```typescript
-// ❌ Never
-try { doThing(); } catch {}
-promise.catch(() => {});
-
-// ✅ Always
-try { doThing(); } catch (err) {
-  log.warn(`doThing failed (non-fatal): ${err instanceof Error ? err.message : err}`);
-}
-```
-
-### Use Typed Errors
-
-All errors extend `AletheiaError` from `koina/errors.ts`. Error codes are defined in `koina/error-codes.ts`.
-
-```typescript
-import { PipelineError } from "../koina/errors.js";
-
-throw new PipelineError("Stage failed", {
-  code: "PIPELINE_STAGE_FAILED",
-  context: { stage: "context", sessionId },
-  recoverable: true,
-});
-```
-
-Never throw strings. Never throw bare `Error`.
-
-### Error Boundaries for Non-Critical Operations
-
-Optional operations (skill learning, interaction signals, workspace flush) use `trySafe` / `trySafeAsync`:
-
-```typescript
-import { trySafe, trySafeAsync } from "../koina/safe.js";
-
-// Sync
-const result = trySafe("skill extraction", () => extractSkill(data), null);
-
-// Async
-const mem = await trySafeAsync("memory flush", () => flushToMemory(target), { errors: 0 });
-```
-
-The intent is explicit: "this operation is optional and must not crash the caller."
-
-### Log at the Boundary
-
-The function that catches the error logs it. Inner functions let errors propagate.
-
----
-
-## Testing
-
-- **Test behavior, not implementation.** Tests break when the contract changes, not when internals refactor.
-- **One assertion per test** where practical. Name describes the assertion.
-- **Test names:** `it("returns null when session not found")` — not `it("test 1")`.
-- **No internal state access.** If you need `(store as any).db.prepare(...)`, the store needs a method for that.
-- **Test files:** Same directory as the module, named `module.test.ts` (vitest with `describe`/`it`).
-
----
-
-## Module Architecture
-
-The runtime is organized by Greek-named subsystems:
-
-| Module | Domain | Examples |
-|--------|--------|---------|
-| `koina` | Shared infrastructure | Logger, errors, event bus, crypto, filesystem |
-| `taxis` | Configuration | Schema, loader, paths |
-| `mneme` | Memory/storage | Session store, message persistence |
-| `hermeneus` | LLM providers | Anthropic client, router, pricing, complexity |
-| `nous` | Agent management | Bootstrap, pipeline, manager |
-| `organon` | Tools | Built-in tools, tool registry |
-| `semeion` | Signal transport | Listener, sender, TTS |
-| `pylon` | Gateway/HTTP | Server, routes, middleware |
-| `prostheke` | Plugins | Loader, registry, hooks |
-| `distillation` | Context compression | Pipeline, extraction, summarization |
-| `daemon` | Background tasks | Cron, watchdog, retention |
-| `auth` | Authentication | JWT, RBAC, sessions (partially wired) |
-
-New code goes in the appropriate subsystem. If none fits, it probably belongs in `koina` (shared) or needs a new subsystem.
-
-### Adding Tools
-
-Tools live in `src/organon/built-in/`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#adding-new-tools) for the full guide.
-
-### Adding Commands
-
-Signal commands (`!command`) are registered in `src/semeion/commands.ts`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#adding-new-built-in-commands).
-
----
-
-## Architecture Principles
-
-1. **Pipeline stages are composable.** Each stage gets TurnState in, returns TurnState out. Side effects are explicit.
-2. **Config is the source of truth.** Runtime behavior comes from `aletheia.json` via Zod-validated schema. No magic environment variables for core config.
-3. **Events over callbacks.** Use the `eventBus` for cross-cutting concerns. Don't pass callback chains through 5 layers.
-4. **Errors carry context.** Every error has a code, a module, and enough context to debug without reading the source.
-5. **Agents are independent.** Each nous has its own workspace, identity, and config. Shared state goes through the store or event bus.
-
----
-
-## Git Conventions
-
-- **Commits:** Descriptive, present tense. `fix: prevent orphan messages on pipeline error`
-- **Branches:** `spec<N>-<description>` for spec work, `fix/<description>` for bugs
-- **Always push after commit.** `git commit && git push` — never leave commits local.
-
----
+**Testing:** Behavior not implementation, one assertion per test, descriptive
+names, same-directory `*.test.ts` files.
 
 ## Reporting Issues
 
-- **Bugs** — use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
-- **Features** — use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
-- **Security** — see [SECURITY.md](.github/SECURITY.md). Do not open public issues for vulnerabilities.
+- **Bugs:** [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+- **Features:** [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
+- **Security:** [SECURITY.md](.github/SECURITY.md) — do not open public issues
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [AGPL-3.0](LICENSE).
+By contributing, you agree to [AGPL-3.0](LICENSE).

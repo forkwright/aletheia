@@ -1,5 +1,5 @@
 // Competence model — per-agent per-domain confidence tracking
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
@@ -39,7 +39,8 @@ export class CompetenceModel {
     if (existsSync(this.filePath)) {
       try {
         this.data = JSON.parse(readFileSync(this.filePath, "utf-8"));
-      } catch {
+      } catch (err) {
+        log.warn(`Competence data corrupted, resetting: ${err instanceof Error ? err.message : err}`);
         this.data = {};
       }
     }

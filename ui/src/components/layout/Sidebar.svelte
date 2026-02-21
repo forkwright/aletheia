@@ -6,6 +6,7 @@
     setActiveAgent,
   } from "../../stores/agents.svelte";
   import { loadSessions } from "../../stores/sessions.svelte";
+  import { getUnreadCount, markRead } from "../../stores/notifications.svelte";
 
   let { collapsed = false, onAgentSelect }: {
     collapsed?: boolean;
@@ -15,6 +16,7 @@
   function handleAgentClick(id: string) {
     setActiveAgent(id);
     loadSessions(id);
+    markRead(id);
     onAgentSelect?.();
   }
 
@@ -32,6 +34,7 @@
       <AgentCard
         {agent}
         isActive={agent.id === getActiveAgentId()}
+        unreadCount={getUnreadCount(agent.id)}
         onclick={() => handleAgentClick(agent.id)}
       />
     {/each}

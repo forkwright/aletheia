@@ -1,6 +1,6 @@
 // Event bus tests
-import { describe, it, expect, vi } from "vitest";
-import { eventBus, type EventName, type EventHandler } from "./event-bus.js";
+import { describe, expect, it, vi } from "vitest";
+import { eventBus, type EventHandler, type EventName } from "./event-bus.js";
 
 vi.mock("./logger.js", () => ({
   createLogger: () => ({

@@ -1,6 +1,6 @@
 // Transcription module tests
-import { describe, it, expect } from "vitest";
-import { transcribeAudio, isWhisperAvailable } from "./transcribe.js";
+import { describe, expect, it } from "vitest";
+import { isWhisperAvailable, transcribeAudio } from "./transcribe.js";
 
 describe("transcribe", () => {
   it("isWhisperAvailable returns false without WHISPER_MODEL_PATH", () => {

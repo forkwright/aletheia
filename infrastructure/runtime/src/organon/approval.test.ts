@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { requiresApproval, ApprovalGate } from "./approval.js";
+import { describe, expect, it } from "vitest";
+import { ApprovalGate, requiresApproval } from "./approval.js";
 
 describe("requiresApproval", () => {
   it("autonomous mode never requires approval", () => {

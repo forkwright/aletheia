@@ -1,5 +1,5 @@
 // Voice reply tool tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createVoiceReplyTool } from "./voice-reply.js";
 
 // Mock TTS to avoid actual synthesis

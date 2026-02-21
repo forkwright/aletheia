@@ -1,5 +1,5 @@
 // Mem0 search tool tests
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mem0SearchTool } from "./mem0-search.js";
 
 const ctx = { nousId: "syn", sessionId: "ses_1", workspace: "/tmp" };

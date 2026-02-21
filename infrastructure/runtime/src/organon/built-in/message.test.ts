@@ -1,5 +1,5 @@
 // Message tool tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMessageTool } from "./message.js";
 
 describe("createMessageTool", () => {

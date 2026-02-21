@@ -1,5 +1,5 @@
 // Sessions ask tool tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSessionsAskTool } from "./sessions-ask.js";
 
 const ctx = { nousId: "syn", sessionId: "ses_1", workspace: "/tmp" };

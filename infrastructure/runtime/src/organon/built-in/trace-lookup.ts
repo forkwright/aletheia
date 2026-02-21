@@ -1,7 +1,7 @@
 // Introspective debugging — agents inspect their own reasoning provenance
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 
 export const traceLookupTool: ToolHandler = {
   definition: {

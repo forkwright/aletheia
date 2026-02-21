@@ -1,10 +1,10 @@
 // Timeout wrapper tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_TOOL_TIMEOUTS,
   executeWithTimeout,
   resolveTimeout,
   ToolTimeoutError,
-  DEFAULT_TOOL_TIMEOUTS,
 } from "./timeout.js";
 
 describe("resolveTimeout", () => {

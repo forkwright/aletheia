@@ -1,6 +1,6 @@
 // Cross-agent deliberation — structured multi-turn dialectic protocol
 import { createLogger } from "../../koina/logger.js";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 

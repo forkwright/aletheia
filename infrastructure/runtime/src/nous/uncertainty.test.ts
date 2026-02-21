@@ -1,5 +1,5 @@
 // Uncertainty tracker tests
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { UncertaintyTracker } from "./uncertainty.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";

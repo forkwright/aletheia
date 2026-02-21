@@ -1,20 +1,20 @@
 // Resolve stage — route to nous, create/find session, select model
 import { createLogger } from "../../../koina/logger.js";
 import {
-  resolveNous,
-  resolveModel,
-  resolveWorkspace,
   resolveDefaultNous,
+  resolveModel,
+  resolveNous,
+  resolveWorkspace,
 } from "../../../taxis/loader.js";
 import {
+  type ComplexityTier,
   scoreComplexity,
   selectModel,
   selectTemperature,
-  type ComplexityTier,
 } from "../../../hermeneus/complexity.js";
 import { paths } from "../../../taxis/paths.js";
 import type { ToolContext } from "../../../organon/registry.js";
-import type { InboundMessage, RuntimeServices, TurnState, SystemBlock } from "../types.js";
+import type { InboundMessage, RuntimeServices, SystemBlock, TurnState } from "../types.js";
 import { TraceBuilder } from "../../trace.js";
 import { LoopDetector } from "../../loop-detector.js";
 

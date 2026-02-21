@@ -1,5 +1,5 @@
 // Streaming endpoint tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGateway } from "./server.js";
 
 function makeConfig() {
@@ -32,6 +32,8 @@ function makeStore() {
     approveContactByCode: vi.fn().mockReturnValue(null),
     denyContactByCode: vi.fn().mockReturnValue(false),
     getCostsBySession: vi.fn().mockReturnValue([]),
+    getCanonicalSessionKey: vi.fn().mockReturnValue(null),
+    resolveRoute: vi.fn().mockReturnValue(null),
   } as never;
 }
 

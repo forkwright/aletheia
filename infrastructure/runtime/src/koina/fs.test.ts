@@ -1,6 +1,6 @@
 // Filesystem utility tests
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { readText, readJson, writeText, writeJson, exists } from "./fs.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { exists, readJson, readText, writeJson, writeText } from "./fs.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

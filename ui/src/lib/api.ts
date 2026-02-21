@@ -1,4 +1,5 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage, EntityDetail } from "./types";
+import { getAccessToken, refresh } from "./auth";
 
 const TOKEN_KEY = "aletheia_token";
 
@@ -14,8 +15,12 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getEffectiveToken(): string | null {
+  return getAccessToken() || getToken();
+}
+
 function headers(): Record<string, string> {
-  const token = getToken();
+  const token = getEffectiveToken();
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     "Content-Type": "application/json",
@@ -24,10 +29,22 @@ function headers(): Record<string, string> {
 
 async function fetchJson<T>(path: string, opts?: RequestInit): Promise<T> {
   const base = import.meta.env.DEV ? "" : window.location.origin;
-  const res = await fetch(`${base}${path}`, {
+  let res = await fetch(`${base}${path}`, {
     ...opts,
     headers: { ...headers(), ...opts?.headers },
   });
+
+  // Auto-refresh on 401 when using session auth
+  if (res.status === 401 && getAccessToken()) {
+    const refreshed = await refresh();
+    if (refreshed) {
+      res = await fetch(`${base}${path}`, {
+        ...opts,
+        headers: { ...headers(), ...opts?.headers },
+      });
+    }
+  }
+
   if (res.status === 401) {
     throw new Error("Unauthorized — check your token");
   }
@@ -188,10 +205,47 @@ export async function fetchWorkspaceFile(
   return fetchJson(`/api/workspace/file?${sp.toString()}`);
 }
 
+export async function saveWorkspaceFile(
+  path: string,
+  content: string,
+  agentId?: string,
+): Promise<void> {
+  await fetchJson("/api/workspace/file", {
+    method: "PUT",
+    body: JSON.stringify({ path, content, ...(agentId ? { agentId } : {}) }),
+  });
+}
+
 export async function fetchGitStatus(
   agentId?: string,
 ): Promise<{ files: GitFileStatus[] }> {
   const sp = new URLSearchParams();
   if (agentId) sp.set("agentId", agentId);
   return fetchJson(`/api/workspace/git-status?${sp.toString()}`);
+}
+
+// --- Graph Entity Management ---
+
+export async function fetchEntityDetail(name: string): Promise<EntityDetail> {
+  return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}`);
+}
+
+export async function deleteEntity(name: string): Promise<{ deleted: boolean; relationships_removed: number }> {
+  return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export async function mergeEntities(source: string, target: string): Promise<{ merged: boolean; message: string }> {
+  return fetchJson("/api/memory/entity/merge", {
+    method: "POST",
+    body: JSON.stringify({ source, target }),
+  });
+}
+
+// --- Tool Stats ---
+
+export async function fetchToolStats(agentId?: string, window = "7d"): Promise<unknown> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  sp.set("window", window);
+  return fetchJson(`/api/tool-stats?${sp.toString()}`);
 }

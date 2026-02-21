@@ -1,6 +1,7 @@
 // Signal-cli daemon spawn and lifecycle management
 import { spawn } from "node:child_process";
 import { createLogger } from "../koina/logger.js";
+import { TransportError } from "../koina/errors.js";
 import type { SignalAccount } from "../taxis/schema.js";
 
 const log = createLogger("semeion:daemon");
@@ -111,7 +112,7 @@ export function spawnDaemon(opts: DaemonOpts): DaemonHandle {
     });
 
     if (!child.pid) {
-      throw new Error("Failed to spawn signal-cli daemon — no PID");
+      throw new TransportError("Failed to spawn signal-cli daemon — no PID", { code: "SIGNAL_DAEMON_DOWN" });
     }
 
     handle.pid = child.pid;
@@ -153,7 +154,10 @@ export async function waitForReady(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 
-  throw new Error(`signal-cli daemon not ready after ${timeoutMs}ms`);
+  throw new TransportError(`signal-cli daemon not ready after ${timeoutMs}ms`, {
+    code: "SIGNAL_DAEMON_DOWN", recoverable: true, retryAfterMs: 10_000,
+    context: { timeoutMs },
+  });
 }
 
 export function daemonOptsFromConfig(

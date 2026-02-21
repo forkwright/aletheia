@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { SessionError } from "../koina/errors.js";
 import { generateId, generateSessionKey } from "../koina/crypto.js";
-import { DDL, SCHEMA_VERSION, MIGRATIONS } from "./schema.js";
+import { DDL, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 const log = createLogger("mneme");
 
@@ -19,8 +19,48 @@ export interface Session {
   lastInputTokens: number;
   bootstrapHash: string | null;
   distillationCount: number;
+  sessionType: "primary" | "background" | "ephemeral";
+  lastDistilledAt: string | null;
+  computedContextTokens: number;
+  workingState: WorkingState | null;
+  distillationPriming: DistillationPriming | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkingState {
+  currentTask: string;
+  completedSteps: string[];
+  nextSteps: string[];
+  recentDecisions: string[];
+  openFiles: string[];
+  updatedAt: string;
+}
+
+export interface DistillationPriming {
+  facts: string[];
+  decisions: string[];
+  openItems: string[];
+  summary: string;
+  distillationNumber: number;
+  distilledAt: string;
+}
+
+export interface QueuedMessage {
+  id: number;
+  sessionId: string;
+  content: string;
+  sender: string | null;
+  createdAt: string;
+}
+
+export interface AgentNote {
+  id: number;
+  sessionId: string;
+  nousId: string;
+  category: "task" | "decision" | "preference" | "correction" | "context";
+  content: string;
+  createdAt: string;
 }
 
 export interface Message {
@@ -44,6 +84,35 @@ export interface UsageRecord {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   model: string | null;
+}
+
+export interface ReflectionLog {
+  id: number;
+  nousId: string;
+  reflectedAt: string;
+  sessionsReviewed: number;
+  messagesReviewed: number;
+  patternsFound: number;
+  contradictionsFound: number;
+  correctionsFound: number;
+  preferencesFound: number;
+  relationshipsFound: number;
+  unresolvedThreadsFound: number;
+  memoriesStored: number;
+  tokensUsed: number;
+  durationMs: number;
+  model: string | null;
+  findings: ReflectionFindings;
+  errors: string | null;
+}
+
+export interface ReflectionFindings {
+  patterns: string[];
+  contradictions: string[];
+  corrections: string[];
+  preferences: string[];
+  relationships: string[];
+  unresolvedThreads: string[];
 }
 
 export interface Thread {
@@ -153,17 +222,23 @@ export class SessionStore {
   ): Session {
     const id = generateId("ses");
     const key = sessionKey ?? generateSessionKey();
+
+    // Auto-classify session type from key pattern
+    let sessionType: Session["sessionType"] = "primary";
+    if (key.includes("prosoche")) sessionType = "background";
+    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("dispatch:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
+
     this.db
       .prepare(
-        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model, session_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, nousId, key, parentSessionId ?? null, model ?? null);
+      .run(id, nousId, key, parentSessionId ?? null, model ?? null, sessionType);
     const session = this.findSessionById(id);
     if (!session) throw new SessionError("Failed to create session", {
       code: "SESSION_CORRUPTED", context: { sessionId: id, nousId },
     });
-    log.info(`Created session ${id} for nous ${nousId} (key: ${key})`);
+    log.info(`Created session ${id} for nous ${nousId} (key: ${key}, type: ${sessionType})`);
     return session;
   }
 
@@ -173,10 +248,27 @@ export class SessionStore {
     model?: string,
     parentSessionId?: string,
   ): Session {
-    return (
-      this.findSession(nousId, sessionKey) ??
-      this.createSession(nousId, sessionKey, parentSessionId, model)
-    );
+    const active = this.findSession(nousId, sessionKey);
+    if (active) return active;
+
+    // Check for archived/distilled session with same key — reactivate instead of
+    // creating a duplicate (UNIQUE constraint on nous_id + session_key spans all statuses)
+    const archived = this.db
+      .prepare(
+        "SELECT * FROM sessions WHERE nous_id = ? AND session_key = ? AND status != 'active' ORDER BY updated_at DESC LIMIT 1",
+      )
+      .get(nousId, sessionKey) as Record<string, unknown> | undefined;
+
+    if (archived) {
+      const id = archived["id"] as string;
+      this.db
+        .prepare("UPDATE sessions SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+        .run(id);
+      log.info(`Reactivated archived session ${id} for nous ${nousId} (key: ${sessionKey})`);
+      return this.findSessionById(id)!;
+    }
+
+    return this.createSession(nousId, sessionKey, parentSessionId, model);
   }
 
   findSessionsByKey(sessionKey: string): Session[] {
@@ -410,6 +502,204 @@ export class SessionStore {
       .run(inputTokens, sessionId);
   }
 
+  updateSessionType(sessionId: string, sessionType: Session["sessionType"]): void {
+    this.db
+      .prepare("UPDATE sessions SET session_type = ? WHERE id = ?")
+      .run(sessionType, sessionId);
+  }
+
+  updateLastDistilledAt(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  updateComputedContextTokens(sessionId: string, tokens: number): void {
+    this.db
+      .prepare("UPDATE sessions SET computed_context_tokens = ? WHERE id = ?")
+      .run(tokens, sessionId);
+  }
+
+  recordDistillationLog(record: {
+    sessionId: string;
+    nousId: string;
+    messagesBefore: number;
+    messagesAfter: number;
+    tokensBefore: number;
+    tokensAfter: number;
+    factsExtracted: number;
+    decisionsExtracted: number;
+    openItemsExtracted: number;
+    flushSucceeded: boolean;
+    errors?: string;
+    distillationNumber: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO distillation_log
+         (session_id, nous_id, messages_before, messages_after, tokens_before, tokens_after,
+          facts_extracted, decisions_extracted, open_items_extracted, flush_succeeded, errors, distillation_number)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.nousId,
+        record.messagesBefore, record.messagesAfter,
+        record.tokensBefore, record.tokensAfter,
+        record.factsExtracted, record.decisionsExtracted, record.openItemsExtracted,
+        record.flushSucceeded ? 1 : 0, record.errors ?? null, record.distillationNumber,
+      );
+  }
+
+  getDistillationLog(sessionId: string): Array<{
+    id: number; sessionId: string; nousId: string; distilledAt: string;
+    messagesBefore: number; messagesAfter: number; tokensBefore: number; tokensAfter: number;
+    factsExtracted: number; decisionsExtracted: number; openItemsExtracted: number;
+    flushSucceeded: boolean; errors: string | null; distillationNumber: number;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM distillation_log WHERE session_id = ? ORDER BY id DESC")
+      .all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      nousId: r['nous_id'] as string,
+      distilledAt: r['distilled_at'] as string,
+      messagesBefore: r['messages_before'] as number,
+      messagesAfter: r['messages_after'] as number,
+      tokensBefore: r['tokens_before'] as number,
+      tokensAfter: r['tokens_after'] as number,
+      factsExtracted: r['facts_extracted'] as number,
+      decisionsExtracted: r['decisions_extracted'] as number,
+      openItemsExtracted: r['open_items_extracted'] as number,
+      flushSucceeded: (r['flush_succeeded'] as number) === 1,
+      errors: r['errors'] as string | null,
+      distillationNumber: r['distillation_number'] as number,
+    }));
+  }
+
+  logSubAgentCall(record: {
+    sessionId: string;
+    parentSessionId: string;
+    parentNousId: string;
+    role?: string;
+    agentId: string;
+    task: string;
+    model?: string;
+    inputTokens: number;
+    outputTokens: number;
+    toolCalls: number;
+    status: string;
+    error?: string;
+    durationMs: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO sub_agent_log
+         (session_id, parent_session_id, parent_nous_id, role, agent_id, task, model,
+          input_tokens, output_tokens, total_cost_tokens, tool_calls, status, error, duration_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.sessionId, record.parentSessionId, record.parentNousId,
+        record.role ?? null, record.agentId, record.task.slice(0, 2000),
+        record.model ?? null, record.inputTokens, record.outputTokens,
+        record.inputTokens + record.outputTokens, record.toolCalls,
+        record.status, record.error ?? null, record.durationMs,
+      );
+  }
+
+  getSubAgentLog(parentSessionId: string): Array<{
+    id: number; sessionId: string; parentNousId: string; role: string | null;
+    agentId: string; task: string; model: string | null;
+    inputTokens: number; outputTokens: number; totalCostTokens: number;
+    toolCalls: number; status: string; error: string | null; durationMs: number;
+    createdAt: string;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM sub_agent_log WHERE parent_session_id = ? ORDER BY id DESC")
+      .all(parentSessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r['id'] as number,
+      sessionId: r['session_id'] as string,
+      parentNousId: r['parent_nous_id'] as string,
+      role: r['role'] as string | null,
+      agentId: r['agent_id'] as string,
+      task: r['task'] as string,
+      model: r['model'] as string | null,
+      inputTokens: r['input_tokens'] as number,
+      outputTokens: r['output_tokens'] as number,
+      totalCostTokens: r['total_cost_tokens'] as number,
+      toolCalls: r['tool_calls'] as number,
+      status: r['status'] as string,
+      error: r['error'] as string | null,
+      durationMs: r['duration_ms'] as number,
+      createdAt: r['created_at'] as string,
+    }));
+  }
+
+  recordToolStat(record: {
+    nousId: string;
+    toolName: string;
+    success: boolean;
+    errorMessage?: string;
+    durationMs?: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO tool_stats (nous_id, tool_name, success, error_message, duration_ms)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.toolName,
+        record.success ? 1 : 0,
+        record.errorMessage ?? null,
+        record.durationMs ?? null,
+      );
+  }
+
+  getToolStats(opts: {
+    nousId?: string;
+    windowHours?: number;
+  } = {}): Array<{
+    toolName: string;
+    totalCalls: number;
+    successCount: number;
+    failureCount: number;
+    failureRate: number;
+    avgDurationMs: number;
+  }> {
+    const windowHours = opts.windowHours ?? 168; // 7 days
+    const cutoff = new Date(Date.now() - windowHours * 3600_000).toISOString();
+    const nousFilter = opts.nousId ? "AND nous_id = ?" : "";
+    const params: unknown[] = [cutoff];
+    if (opts.nousId) params.push(opts.nousId);
+
+    const rows = this.db
+      .prepare(
+        `SELECT tool_name,
+                count(*) AS total_calls,
+                sum(success) AS success_count,
+                count(*) - sum(success) AS failure_count,
+                ROUND(1.0 - (CAST(sum(success) AS REAL) / count(*)), 3) AS failure_rate,
+                ROUND(avg(duration_ms), 0) AS avg_duration_ms
+         FROM tool_stats
+         WHERE created_at > ? ${nousFilter}
+         GROUP BY tool_name
+         ORDER BY total_calls DESC`,
+      )
+      .all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => ({
+      toolName: r['tool_name'] as string,
+      totalCalls: r['total_calls'] as number,
+      successCount: r['success_count'] as number,
+      failureCount: r['failure_count'] as number,
+      failureRate: r['failure_rate'] as number,
+      avgDurationMs: r['avg_duration_ms'] as number,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(
@@ -482,11 +772,32 @@ export class SessionStore {
     targetSessionId?: string;
     kind: "send" | "ask" | "spawn";
     content: string;
+    idempotencyWindowMs?: number;
   }): number {
+    const hash = this.hashCrossAgentContent(
+      record.sourceNousId ?? "",
+      record.targetNousId,
+      record.kind,
+      record.content,
+    );
+
+    // Dedup: check for identical call within window (default 5 minutes)
+    const windowMs = record.idempotencyWindowMs ?? 300_000;
+    const cutoff = new Date(Date.now() - windowMs).toISOString();
+    const existing = this.db
+      .prepare(
+        `SELECT id FROM cross_agent_messages
+         WHERE content_hash = ? AND created_at > ?
+         LIMIT 1`,
+      )
+      .get(hash, cutoff) as { id: number } | undefined;
+
+    if (existing) return existing.id;
+
     const result = this.db
       .prepare(
-        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status, content_hash)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
       )
       .run(
         record.sourceSessionId,
@@ -495,8 +806,25 @@ export class SessionStore {
         record.targetSessionId ?? null,
         record.kind,
         record.content,
+        hash,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  private hashCrossAgentContent(source: string, target: string, kind: string, content: string): string {
+    const input = `${source}:${target}:${kind}:${content}`;
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < input.length; i++) {
+      const ch = input.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
 
   getUnsurfacedMessages(nousId: string): Array<{
@@ -579,6 +907,38 @@ export class SessionStore {
     const count = result.changes;
     if (count > 0) {
       log.info(`Archived ${count} stale spawn sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
+    }
+    return count;
+  }
+
+  deleteEphemeralSessions(maxAgeMs: number = 24 * 60 * 60 * 1000): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const tx = this.db.transaction(() => {
+      const ids = this.db
+        .prepare(
+          `SELECT id FROM sessions
+           WHERE session_type = 'ephemeral'
+             AND status = 'active'
+             AND updated_at < ?`,
+        )
+        .all(cutoff) as Array<{ id: string }>;
+
+      if (ids.length === 0) return 0;
+
+      const placeholders = ids.map(() => "?").join(",");
+      const sessionIds = ids.map((r) => r.id);
+
+      this.db.prepare(`DELETE FROM messages WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM usage WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM agent_notes WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      this.db.prepare(`DELETE FROM distillations WHERE session_id IN (${placeholders})`).run(...sessionIds);
+      const result = this.db.prepare(`DELETE FROM sessions WHERE id IN (${placeholders})`).run(...sessionIds);
+      return result.changes;
+    });
+
+    const count = tx();
+    if (count > 0) {
+      log.info(`Deleted ${count} ephemeral sessions (older than ${Math.round(maxAgeMs / 3600000)}h)`);
     }
     return count;
   }
@@ -891,9 +1251,32 @@ export class SessionStore {
       lastInputTokens: (row['last_input_tokens'] as number) ?? 0,
       bootstrapHash: (row['bootstrap_hash'] as string) ?? null,
       distillationCount: (row['distillation_count'] as number) ?? 0,
+      sessionType: (row['session_type'] as Session["sessionType"]) ?? "primary",
+      lastDistilledAt: (row['last_distilled_at'] as string) ?? null,
+      computedContextTokens: (row['computed_context_tokens'] as number) ?? 0,
+      workingState: this.parseWorkingState(row['working_state'] as string | null),
+      distillationPriming: this.parseJSON<DistillationPriming>(row['distillation_priming'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
     };
+  }
+
+  private parseWorkingState(raw: string | null): WorkingState | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as WorkingState;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseJSON<T>(raw: string | null): T | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
   }
 
   private mapMessage(row: Record<string, unknown>): Message {
@@ -926,8 +1309,8 @@ export class SessionStore {
           "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
         )
         .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
-    } catch {
-      // Table may not exist yet if migration hasn't run — don't fail the turn
+    } catch (err) {
+      log.warn(`recordSignal failed (non-fatal): ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -951,7 +1334,8 @@ export class SessionStore {
         confidence: r["confidence"] as number,
         createdAt: r["created_at"] as string,
       }));
-    } catch {
+    } catch (err) {
+      log.warn(`getSignalHistory failed (non-fatal): ${err instanceof Error ? err.message : err}`);
       return [];
     }
   }
@@ -1220,6 +1604,34 @@ export class SessionStore {
     return rows.map((r) => this.mapSession(r));
   }
 
+  /**
+   * For a given agent, find the canonical DM session key.
+   * This enables webchat to converge with Signal DM into a single session
+   * rather than creating isolated parallel conversations.
+   *
+   * Priority: Signal DM session with most distillations (deepest context),
+   * then most messages, then most recently active.
+   */
+  getCanonicalSessionKey(nousId: string): string | null {
+    // Find DM bindings for this agent (Signal DMs, not groups)
+    const row = this.db
+      .prepare(
+        `SELECT s.session_key
+         FROM sessions s
+         WHERE s.nous_id = ?
+           AND s.session_key LIKE 'signal:%'
+           AND s.status = 'active'
+           AND s.session_key NOT IN (
+             SELECT 'signal:' || rc.peer_id FROM routing_cache rc
+             WHERE rc.channel = 'signal' AND rc.peer_kind = 'group'
+           )
+         ORDER BY s.distillation_count DESC, s.message_count DESC, s.updated_at DESC
+         LIMIT 1`,
+      )
+      .get(nousId) as { session_key: string } | undefined;
+    return row?.session_key ?? null;
+  }
+
   // --- Thread Model (Phase 1 + 2) ---
 
   resolveThread(nousId: string, identity: string): Thread {
@@ -1324,7 +1736,7 @@ export class SessionStore {
       .get(threadId) as Record<string, unknown> | undefined;
     if (!row) return null;
     let keyFacts: string[] = [];
-    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch { /* empty */ }
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (err) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${err instanceof Error ? err.message : err}`); }
     return {
       threadId: row["thread_id"] as string,
       summary: row["summary"] as string,
@@ -1423,6 +1835,148 @@ export class SessionStore {
     return rows.reverse().map((r) => this.mapMessage(r));
   }
 
+  // --- Working State ---
+
+  getWorkingState(sessionId: string): WorkingState | null {
+    const row = this.db
+      .prepare("SELECT working_state FROM sessions WHERE id = ?")
+      .get(sessionId) as { working_state: string | null } | undefined;
+    if (!row?.working_state) return null;
+    return this.parseWorkingState(row.working_state);
+  }
+
+  updateWorkingState(sessionId: string, state: WorkingState): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(state), sessionId);
+  }
+
+  clearWorkingState(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET working_state = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  // --- Distillation Priming ---
+
+  setDistillationPriming(sessionId: string, priming: DistillationPriming): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(priming), sessionId);
+  }
+
+  getDistillationPriming(sessionId: string): DistillationPriming | null {
+    const row = this.db
+      .prepare("SELECT distillation_priming FROM sessions WHERE id = ?")
+      .get(sessionId) as { distillation_priming: string | null } | undefined;
+    if (!row?.distillation_priming) return null;
+    return this.parseJSON<DistillationPriming>(row.distillation_priming);
+  }
+
+  clearDistillationPriming(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  // --- Agent Notes ---
+
+  addNote(sessionId: string, nousId: string, category: AgentNote["category"], content: string): number {
+    const result = this.db
+      .prepare(
+        "INSERT INTO agent_notes (session_id, nous_id, category, content) VALUES (?, ?, ?, ?)",
+      )
+      .run(sessionId, nousId, category, content);
+    return result.lastInsertRowid as number;
+  }
+
+  getNotes(sessionId: string, opts?: { limit?: number; category?: AgentNote["category"] }): AgentNote[] {
+    const limit = opts?.limit ?? 20;
+    const conditions = ["session_id = ?"];
+    const params: (string | number)[] = [sessionId];
+
+    if (opts?.category) {
+      conditions.push("category = ?");
+      params.push(opts.category);
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM agent_notes WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as Record<string, unknown>[];
+
+    return rows.reverse().map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      nousId: r["nous_id"] as string,
+      category: r["category"] as AgentNote["category"],
+      content: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  deleteNote(noteId: number, nousId: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM agent_notes WHERE id = ? AND nous_id = ?")
+      .run(noteId, nousId);
+    return result.changes > 0;
+  }
+
+  getNotesForNous(nousId: string, opts?: { limit?: number }): AgentNote[] {
+    const limit = opts?.limit ?? 20;
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM agent_notes WHERE nous_id = ? ORDER BY created_at DESC LIMIT ?",
+      )
+      .all(nousId, limit) as Record<string, unknown>[];
+
+    return rows.reverse().map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      nousId: r["nous_id"] as string,
+      category: r["category"] as AgentNote["category"],
+      content: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  // --- Message Queue ---
+
+  queueMessage(sessionId: string, content: string, sender?: string): number {
+    const result = this.db
+      .prepare("INSERT INTO message_queue (session_id, content, sender) VALUES (?, ?, ?)")
+      .run(sessionId, content, sender ?? null);
+    return result.lastInsertRowid as number;
+  }
+
+  drainQueue(sessionId: string): QueuedMessage[] {
+    const rows = this.db
+      .prepare("SELECT * FROM message_queue WHERE session_id = ? ORDER BY created_at ASC")
+      .all(sessionId) as Record<string, unknown>[];
+
+    if (rows.length === 0) return [];
+
+    this.db
+      .prepare("DELETE FROM message_queue WHERE session_id = ?")
+      .run(sessionId);
+
+    return rows.map((r) => ({
+      id: r["id"] as number,
+      sessionId: r["session_id"] as string,
+      content: r["content"] as string,
+      sender: r["sender"] as string | null,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  getQueueLength(sessionId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) as count FROM message_queue WHERE session_id = ?")
+      .get(sessionId) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
   private mapThread(r: Record<string, unknown>): Thread {
     return {
       id: r["id"] as string,
@@ -1440,6 +1994,151 @@ export class SessionStore {
       transport: r["transport"] as string,
       channelKey: r["channel_key"] as string,
       lastSeenAt: r["last_seen_at"] as string,
+    };
+  }
+
+  /**
+   * Get distillation summaries for a nous within a time range.
+   * Summaries are assistant messages containing "Distillation #" in their content.
+   */
+  getDistillationSummaries(
+    nousId: string,
+    since: string,
+    limit = 50,
+  ): Array<{ sessionId: string; summary: string; createdAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.session_id, m.content, m.created_at
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.nous_id = ? AND m.role = 'assistant'
+           AND m.content LIKE '%Distillation #%'
+           AND m.created_at >= ?
+         ORDER BY m.id DESC
+         LIMIT ?`,
+      )
+      .all(nousId, since, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      sessionId: r["session_id"] as string,
+      summary: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  // --- Reflection Log ---
+
+  recordReflection(record: {
+    nousId: string;
+    sessionsReviewed: number;
+    messagesReviewed: number;
+    findings: ReflectionFindings;
+    memoriesStored: number;
+    tokensUsed: number;
+    durationMs: number;
+    model: string;
+    errors?: string;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO reflection_log
+         (nous_id, sessions_reviewed, messages_reviewed,
+          patterns_found, contradictions_found, corrections_found,
+          preferences_found, relationships_found, unresolved_threads_found,
+          memories_stored, tokens_used, duration_ms, model, findings, errors)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.sessionsReviewed,
+        record.messagesReviewed,
+        record.findings.patterns.length,
+        record.findings.contradictions.length,
+        record.findings.corrections.length,
+        record.findings.preferences.length,
+        record.findings.relationships.length,
+        record.findings.unresolvedThreads.length,
+        record.memoriesStored,
+        record.tokensUsed,
+        record.durationMs,
+        record.model,
+        JSON.stringify(record.findings),
+        record.errors ?? null,
+      );
+    return result.lastInsertRowid as number;
+  }
+
+  getReflectionLog(nousId: string, opts?: { limit?: number }): ReflectionLog[] {
+    const limit = opts?.limit ?? 30;
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT ?",
+      )
+      .all(nousId, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => this.mapReflectionLog(r));
+  }
+
+  getLastReflection(nousId: string): ReflectionLog | null {
+    const row = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(nousId) as Record<string, unknown> | undefined;
+    return row ? this.mapReflectionLog(row) : null;
+  }
+
+  /**
+   * Get sessions with meaningful human activity since a given time.
+   * "Meaningful" = at least minMessages human messages, primary or standard sessions only.
+   */
+  getActiveSessionsSince(
+    nousId: string,
+    since: string,
+    minMessages: number,
+  ): Session[] {
+    const rows = this.db
+      .prepare(
+        `SELECT s.*, COUNT(m.id) AS human_msg_count
+         FROM sessions s
+         JOIN messages m ON m.session_id = s.id AND m.role = 'user' AND m.is_distilled = 0 AND m.created_at >= ?
+         WHERE s.nous_id = ? AND s.session_type = 'primary'
+         GROUP BY s.id
+         HAVING human_msg_count >= ?
+         ORDER BY s.updated_at DESC`,
+      )
+      .all(since, nousId, minMessages) as Record<string, unknown>[];
+    return rows.map((r) => this.mapSession(r));
+  }
+
+  private mapReflectionLog(r: Record<string, unknown>): ReflectionLog {
+    let findings: ReflectionFindings = {
+      patterns: [], contradictions: [], corrections: [],
+      preferences: [], relationships: [], unresolvedThreads: [],
+    };
+    try {
+      findings = JSON.parse(r["findings"] as string) as ReflectionFindings;
+    } catch {
+      log.warn(`Malformed findings JSON in reflection ${r["id"]}`);
+    }
+    return {
+      id: r["id"] as number,
+      nousId: r["nous_id"] as string,
+      reflectedAt: r["reflected_at"] as string,
+      sessionsReviewed: r["sessions_reviewed"] as number,
+      messagesReviewed: r["messages_reviewed"] as number,
+      patternsFound: r["patterns_found"] as number,
+      contradictionsFound: r["contradictions_found"] as number,
+      correctionsFound: r["corrections_found"] as number,
+      preferencesFound: r["preferences_found"] as number,
+      relationshipsFound: r["relationships_found"] as number,
+      unresolvedThreadsFound: r["unresolved_threads_found"] as number,
+      memoriesStored: r["memories_stored"] as number,
+      tokensUsed: r["tokens_used"] as number,
+      durationMs: r["duration_ms"] as number,
+      model: r["model"] as string | null,
+      findings,
+      errors: r["errors"] as string | null,
     };
   }
 }

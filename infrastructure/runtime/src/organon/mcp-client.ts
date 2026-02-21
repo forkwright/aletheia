@@ -1,12 +1,14 @@
 // MCP client manager — connects to configured MCP servers, discovers tools, registers into ToolRegistry
 
+import { ConfigError } from "../koina/errors.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { ToolRegistry, ToolHandler, ToolContext } from "./registry.js";
+import type { ToolContext, ToolHandler, ToolRegistry } from "./registry.js";
 import { createLogger } from "../koina/logger.js";
+import { getVersion } from "../version.js";
 
 const log = createLogger("mcp-client");
 
@@ -84,7 +86,7 @@ export class McpClientManager {
     const transport = this.createTransport(name, config);
 
     const client = new Client(
-      { name: "aletheia", version: "0.1.0" },
+      { name: "aletheia", version: getVersion() },
       { capabilities: {} },
     );
 
@@ -128,7 +130,9 @@ export class McpClientManager {
     switch (config.transport) {
       case "stdio": {
         if (!config.command) {
-          throw new Error(`MCP server "${name}": stdio transport requires "command"`);
+          throw new ConfigError(`MCP server "${name}": stdio transport requires "command"`, {
+            code: "CONFIG_MISSING_REQUIRED", context: { server: name, transport: "stdio" },
+          });
         }
         const env = { ...process.env, ...resolveEnvVars(config.env) };
         return new StdioClientTransport({
@@ -140,7 +144,9 @@ export class McpClientManager {
       }
       case "sse": {
         if (!config.url) {
-          throw new Error(`MCP server "${name}": sse transport requires "url"`);
+          throw new ConfigError(`MCP server "${name}": sse transport requires "url"`, {
+            code: "CONFIG_MISSING_REQUIRED", context: { server: name, transport: "sse" },
+          });
         }
         return new SSEClientTransport(new URL(config.url), {
           requestInit: {
@@ -150,7 +156,9 @@ export class McpClientManager {
       }
       case "http": {
         if (!config.url) {
-          throw new Error(`MCP server "${name}": http transport requires "url"`);
+          throw new ConfigError(`MCP server "${name}": http transport requires "url"`, {
+            code: "CONFIG_MISSING_REQUIRED", context: { server: name, transport: "http" },
+          });
         }
         // Cast needed: StreamableHTTPClientTransport.sessionId is string|undefined
         // but Transport interface with exactOptionalPropertyTypes expects string
@@ -161,7 +169,9 @@ export class McpClientManager {
         }) as unknown as Transport;
       }
       default:
-        throw new Error(`MCP server "${name}": unknown transport "${config.transport}"`);
+        throw new ConfigError(`MCP server "${name}": unknown transport "${config.transport}"`, {
+          code: "CONFIG_VALIDATION_FAILED", context: { server: name, transport: config.transport },
+        });
     }
   }
 

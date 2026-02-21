@@ -1,5 +1,5 @@
 // Competence model tests
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CompetenceModel } from "./competence.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";

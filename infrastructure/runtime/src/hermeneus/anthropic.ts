@@ -105,6 +105,7 @@ export type StreamingEvent =
 
 export class AnthropicProvider {
   private client: Anthropic;
+  private isOAuth: boolean;
 
   constructor(opts?: { apiKey?: string; authToken?: string }) {
     // Support both API key (x-api-key) and OAuth token (Bearer auth)
@@ -112,6 +113,7 @@ export class AnthropicProvider {
     const authToken = opts?.authToken ?? process.env["ANTHROPIC_AUTH_TOKEN"];
     const apiKey = opts?.apiKey ?? process.env["ANTHROPIC_API_KEY"];
 
+    this.isOAuth = !!authToken;
     if (authToken) {
       this.client = new Anthropic({
         apiKey: null,
@@ -125,6 +127,16 @@ export class AnthropicProvider {
       this.client = new Anthropic({ apiKey: apiKey ?? null });
       log.info("Anthropic provider initialized (API key)");
     }
+  }
+
+  // Build anthropic-beta header — merges OAuth beta with any feature betas.
+  // Per-request headers override defaultHeaders, so we must include oauth
+  // beta explicitly whenever we set per-request headers.
+  private buildBetaHeader(contextManagement?: unknown): string | undefined {
+    const betas: string[] = [];
+    if (this.isOAuth) betas.push("oauth-2025-04-20");
+    if (contextManagement) betas.push("context-management-2025-06-27");
+    return betas.length > 0 ? betas.join(",") : undefined;
   }
 
   // Inject cache_control breakpoints on tools and conversation history
@@ -188,13 +200,12 @@ export class AnthropicProvider {
     if (thinking) params["thinking"] = thinking;
     if (contextManagement) params["context_management"] = contextManagement;
 
-    // Beta header for context management
-    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
+    const betaHeader = this.buildBetaHeader(contextManagement);
 
     try {
       const response = await this.client.messages.create(params, {
         ...(signal ? { signal } : {}),
-        ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+        ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
       });
 
       const usage = response.usage;
@@ -259,12 +270,11 @@ export class AnthropicProvider {
     if (thinking) streamParams["thinking"] = thinking;
     if (contextManagement) streamParams["context_management"] = contextManagement;
 
-    // Beta header for context management
-    const betas = contextManagement ? ["context-management-2025-06-27"] : undefined;
+    const betaHeader = this.buildBetaHeader(contextManagement);
 
     const stream = await this.client.messages.create(streamParams, {
       ...(signal ? { signal } : {}),
-      ...(betas ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+      ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
     });
 
     const contentBlocks: ContentBlock[] = [];

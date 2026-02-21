@@ -4,16 +4,14 @@ Production setup for running Aletheia as a persistent service.
 
 ## Service Account
 
-Create a dedicated service account:
-
 ```bash
 sudo useradd -r -m -s /bin/bash aletheia
 sudo -u aletheia mkdir -p ~/.aletheia/credentials
 ```
 
-## Systemd Service
+## Gateway Service
 
-Create `/etc/systemd/system/aletheia.service`:
+`/etc/systemd/system/aletheia.service`:
 
 ```ini
 [Unit]
@@ -36,11 +34,10 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now aletheia
+sudo systemctl daemon-reload && sudo systemctl enable --now aletheia
 ```
 
-## Signal Integration
+## Signal
 
 ### Container (recommended)
 
@@ -48,31 +45,22 @@ sudo systemctl enable --now aletheia
 docker compose up -d    # Uses docker-compose.yml in repo root
 ```
 
-### Native Install
-
-Install signal-cli and run in JSON-RPC mode:
+### Native
 
 ```bash
 signal-cli -u +1XXXXXXXXXX daemon --http --receive-mode=on-start
 ```
 
-Configure the gateway to connect via `channels.signal.accounts.default.httpPort` (default: 8080).
+Configure via `channels.signal.accounts.default.httpPort` in gateway config.
 
 ## Memory Sidecar
 
-The Mem0 sidecar handles automatic memory extraction and retrieval.
-
-### Setup
-
 ```bash
 cd infrastructure/memory/sidecar
-uv venv && source .venv/bin/activate
-uv pip install -e .
+uv venv && source .venv/bin/activate && uv pip install -e .
 ```
 
-### Systemd Service
-
-Create `/etc/systemd/system/aletheia-memory.service`:
+`/etc/systemd/system/aletheia-memory.service`:
 
 ```ini
 [Unit]
@@ -84,125 +72,67 @@ Type=simple
 User=aletheia
 WorkingDirectory=/path/to/aletheia/infrastructure/memory/sidecar
 EnvironmentFile=/path/to/aletheia/shared/config/aletheia.env
-ExecStart=/path/to/aletheia/infrastructure/memory/sidecar/.venv/bin/uvicorn aletheia_memory.app:app --host 127.0.0.1 --port 8230
+ExecStart=/path/to/sidecar/.venv/bin/uvicorn aletheia_memory.app:app --host 127.0.0.1 --port 8230
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-### Dependencies
+Dependencies: `cd infrastructure/memory && docker compose up -d` (Qdrant + Neo4j).
 
-```bash
-cd infrastructure/memory
-docker compose up -d    # Qdrant (:6333) + Neo4j (:7474/:7687)
-```
-
-### Memory Plugin
-
-Enable in gateway config:
+Enable the memory plugin in gateway config:
 
 ```json
 {
   "plugins": {
     "enabled": true,
-    "load": {
-      "paths": ["infrastructure/memory/aletheia-memory"]
-    }
+    "load": { "paths": ["infrastructure/memory/aletheia-memory"] }
   }
 }
 ```
 
-The plugin hooks into agent lifecycle:
-- `before_agent_start` - recalls relevant memories into context
-- `agent_end` - extracts new memories from the conversation
-
-## Langfuse (Observability)
-
-Optional session tracing and metrics.
-
-```bash
-cd infrastructure/langfuse
-docker compose up -d    # Langfuse on :3100
-```
-
-Configure API keys via the Langfuse dashboard. Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `aletheia.env`.
-
 ## Web UI
 
-Build and deploy the Svelte 5 chat interface:
-
 ```bash
-cd ui
-npm install
-npm run build    # Outputs to ui/dist/
+cd ui && npm install && npm run build
 ```
 
-The gateway serves `ui/dist/` as static files at `/ui` with SPA fallback. Hashed assets get immutable cache headers. `index.html` gets `no-cache` for instant updates on rebuild.
+Served at `/ui` by the gateway. Hashed assets get immutable cache headers.
 
-If `ui/dist/` doesn't exist, the gateway falls back to a minimal inline status dashboard.
+## Langfuse (optional)
 
-## Prosoche (Adaptive Attention)
+```bash
+cd infrastructure/langfuse && docker compose up -d    # Port 3100
+```
 
-Optional daemon that generates directed awareness signals for agents.
+Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `aletheia.env`.
+
+## Prosoche (optional)
+
+Adaptive attention daemon:
 
 ```bash
 cd infrastructure/prosoche
-cp config.yaml.example config.yaml    # Configure signals and weights
-python3 prosoche.py
+cp config.yaml.example config.yaml && python3 prosoche.py
 ```
-
-Can also run as a systemd service.
-
-## Services Summary
-
-| Service | Port | Required |
-|---------|------|----------|
-| aletheia | 18789 | Yes |
-| signal-cli | 8080 | Yes |
-| aletheia-memory | 8230 | Recommended |
-| qdrant | 6333 | If using Mem0 |
-| neo4j | 7474/7687 | If using Mem0 |
-| langfuse | 3100 | Optional |
 
 ## Health Checks
 
 ```bash
-# Gateway
-curl -s http://localhost:18789/health
-
-# Memory sidecar
-curl -s http://localhost:8230/health
-
-# Qdrant
-curl -s http://localhost:6333/healthz
-
-# Neo4j
-curl -s http://localhost:7474
-
-# Full metrics
-curl -s http://localhost:18789/api/metrics
+curl -s http://localhost:18789/health     # Gateway
+curl -s http://localhost:8230/health      # Memory sidecar
+curl -s http://localhost:6333/healthz     # Qdrant
+curl -s http://localhost:7474             # Neo4j
+curl -s http://localhost:18789/api/metrics  # Full metrics
 ```
 
 ## Troubleshooting
 
-### Service won't start
-```bash
-journalctl -u aletheia -n 50 --no-pager
-```
+**Service won't start:** `journalctl -u aletheia -n 50 --no-pager`
 
-### Signal not receiving messages
-- Verify signal-cli is running: `curl -s http://localhost:8080/v1/about`
-- Check the registered number matches config
-- Verify DM policy allows the sender
+**Signal not receiving:** Check signal-cli (`curl localhost:8080/v1/about`), verify phone number matches config, check DM policy.
 
-### Memory extraction failing
-- Check sidecar logs: `journalctl -u aletheia-memory -f`
-- Verify Qdrant and Neo4j are running
-- Test sidecar directly: `curl -s http://localhost:8230/health`
+**Memory extraction failing:** Check sidecar (`journalctl -u aletheia-memory -f`), verify Qdrant/Neo4j running.
 
-### Config changes not taking effect
-Config requires a service restart:
-```bash
-sudo systemctl restart aletheia
-```
+**Config changes:** Require `sudo systemctl restart aletheia`.

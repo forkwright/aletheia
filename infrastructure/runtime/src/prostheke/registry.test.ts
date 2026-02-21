@@ -1,7 +1,7 @@
 // Plugin registry tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PluginRegistry } from "./registry.js";
-import type { PluginDefinition, PluginApi } from "./types.js";
+import type { PluginApi, PluginDefinition } from "./types.js";
 
 function makeConfig(): never {
   return { agents: { list: [] }, gateway: { port: 18789, auth: { mode: "none" } } } as never;

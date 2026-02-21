@@ -1,5 +1,5 @@
 // Self-observation tool — recent correction patterns
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { SessionStore } from "../../mneme/store.js";
 
 export function createRecentCorrectionsTool(store?: SessionStore): ToolHandler {

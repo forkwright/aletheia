@@ -1,10 +1,9 @@
-// TODO(unused): scaffolded for spec 3 (Auth & Updates) — not yet integrated into gateway
 // Multi-mode auth middleware for Hono
 import type { Context, Next } from "hono";
 import { timingSafeEqual } from "node:crypto";
-import { verifyToken, signToken } from "./tokens.js";
+import { signToken, verifyToken } from "./tokens.js";
 import { verifyPassword } from "./passwords.js";
-import { AuthSessionStore } from "./sessions.js";
+import type { AuthSessionStore } from "./sessions.js";
 import type { AuditLog } from "./audit.js";
 import { getRequiredPermission, hasPermission } from "./rbac.js";
 
@@ -57,6 +56,7 @@ export function createAuthMiddleware(
   const skipPaths = new Set([
     "/health",
     "/api/branding",
+    "/api/commands",
     "/api/auth/login",
     "/api/auth/refresh",
     "/api/auth/mode",

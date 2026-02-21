@@ -1,13 +1,15 @@
 // Sub-nous spawning — run a scoped task on a temporary agent (supports ephemeral specialists)
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { InboundMessage, TurnOutcome } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 import {
-  spawnEphemeral,
-  recordEphemeralTurn,
-  teardownEphemeral,
   harvestOutput,
+  recordEphemeralTurn,
+  spawnEphemeral,
+  teardownEphemeral,
 } from "../../nous/ephemeral.js";
+import { resolveRole, ROLE_NAMES } from "../config/sub-agent-roles.js";
+import { parseStructuredResult } from "../../nous/roles/index.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("organon.spawn");
@@ -81,21 +83,70 @@ export function createSessionsSpawnTool(
             type: "number",
             description: "Maximum lifetime for ephemeral agent in seconds (default: 600)",
           },
+          tools: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Glob patterns restricting which tools the spawned agent can use " +
+              "(e.g. ['read', 'write', 'exec', 'grep*']). Omit for all tools. " +
+              "Patterns support * as wildcard (e.g. 'mem0_*' matches mem0_search).",
+          },
+          model: {
+            type: "string",
+            description: "Model override for the spawned agent (e.g., 'anthropic/claude-sonnet-4-20250514' for cheaper tasks). Default: agent's configured model.",
+          },
+          budgetTokens: {
+            type: "number",
+            description: "Maximum total tokens (input + output) for the spawn. The turn is aborted if the budget is exceeded. Default: no limit.",
+          },
+          role: {
+            type: "string",
+            enum: ROLE_NAMES,
+            description: "Pre-configured role preset (coder/reviewer/researcher/explorer/runner). Sets model, system prompt, tools, maxTurns, and token budget. Explicit params override role defaults.",
+          },
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                task: { type: "string", description: "Task description" },
+                role: { type: "string", enum: ROLE_NAMES, description: "Role preset" },
+                agentId: { type: "string", description: "Agent to run as" },
+                model: { type: "string", description: "Model override" },
+              },
+              required: ["task"],
+            },
+            description: "Array of tasks for parallel dispatch (max 3 concurrent). When provided, 'task' field is ignored.",
+          },
         },
-        required: ["task"],
+        required: [],
       },
     },
     async execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
+      // Parallel dispatch path
+      const tasksArray = input["tasks"] as Array<Record<string, unknown>> | undefined;
+      if (tasksArray && tasksArray.length > 0) {
+        return executeParallel(tasksArray, input, context, dispatcher, sharedRoot);
+      }
+
       const task = input["task"] as string;
+      if (!task) return JSON.stringify({ error: "Either 'task' or 'tasks' is required" });
       const agentId = (input["agentId"] as string) ?? context.nousId;
-      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
       const isEphemeral = input["ephemeral"] === true;
+      const roleName = input["role"] as string | undefined;
+      const role = roleName ? resolveRole(roleName) : null;
+
+      const modelOverride = (input["model"] as string | undefined) ?? role?.model;
+      const budgetTokens = (input["budgetTokens"] as number | undefined) ?? role?.maxTokenBudget;
+      const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
+      const toolFilter = input["tools"] as string[] | undefined;
       const sessionKey =
         (input["sessionKey"] as string) ??
         `spawn:${context.nousId}:${Date.now().toString(36)}`;
+      const startTime = Date.now();
 
       if (!dispatcher) {
         return JSON.stringify({ error: "Agent dispatch not available" });
@@ -151,6 +202,8 @@ export function createSessionsSpawnTool(
               channel: "spawn",
               peerKind: "agent",
               peerId: context.nousId,
+              ...(modelOverride ? { model: modelOverride } : {}),
+              ...(toolFilter ? { toolFilter } : {}),
               depth: (context.depth ?? 0) + 1,
             }),
             timeoutPromise,
@@ -160,6 +213,8 @@ export function createSessionsSpawnTool(
           recordEphemeralTurn(agent.id, outcome.text);
           const output = harvestOutput(agent.id);
           const torn = teardownEphemeral(agent.id);
+          const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+          const overBudget = budgetTokens && totalTokens > budgetTokens;
 
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
@@ -179,6 +234,9 @@ export function createSessionsSpawnTool(
             tokens: {
               input: outcome.inputTokens,
               output: outcome.outputTokens,
+              total: totalTokens,
+              budget: budgetTokens ?? null,
+              overBudget: overBudget ?? false,
             },
           });
         } catch (err) {
@@ -228,11 +286,16 @@ export function createSessionsSpawnTool(
             channel: "spawn",
             peerKind: "agent",
             peerId: context.nousId,
+            ...(modelOverride ? { model: modelOverride } : {}),
+            ...(toolFilter ? { toolFilter } : {}),
             depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
         ]);
         clearTimeout(timer!);
+
+        const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+        const overBudget = budgetTokens && totalTokens > budgetTokens;
 
         if (auditId && dispatcher.store) {
           dispatcher.store.updateCrossAgentCall(auditId, {
@@ -242,35 +305,181 @@ export function createSessionsSpawnTool(
           });
         }
 
-        return JSON.stringify({
-          agentId,
-          sessionKey,
-          result: outcome.text,
-          toolCalls: outcome.toolCalls,
-          tokens: {
-            input: outcome.inputTokens,
-            output: outcome.outputTokens,
-          },
-        });
-      } catch (err) {
-        clearTimeout(timer!);
+        const durationMs = Date.now() - startTime;
+        const structured = parseStructuredResult(outcome.text);
 
-        if (auditId && dispatcher.store) {
-          const isTimeout = err instanceof Error && err.message.includes("Timeout");
-          dispatcher.store.updateCrossAgentCall(auditId, {
-            status: isTimeout ? "timeout" : "error",
-            response: err instanceof Error ? err.message : String(err),
+        if (dispatcher.store) {
+          dispatcher.store.logSubAgentCall({
+            sessionId: outcome.sessionId,
+            parentSessionId: context.sessionId,
+            parentNousId: context.nousId,
+            ...(roleName ? { role: roleName } : {}),
+            agentId,
+            task,
+            ...(modelOverride ? { model: modelOverride } : {}),
+            inputTokens: outcome.inputTokens ?? 0,
+            outputTokens: outcome.outputTokens ?? 0,
+            toolCalls: outcome.toolCalls ?? 0,
+            status: "completed",
+            durationMs,
           });
         }
 
         return JSON.stringify({
           agentId,
           sessionKey,
-          error: err instanceof Error ? err.message : String(err),
+          ...(roleName ? { role: roleName } : {}),
+          result: outcome.text,
+          ...(structured ? { structuredResult: structured } : {}),
+          toolCalls: outcome.toolCalls,
+          tokens: {
+            input: outcome.inputTokens,
+            output: outcome.outputTokens,
+            total: totalTokens,
+            budget: budgetTokens ?? null,
+            overBudget: overBudget ?? false,
+          },
+          durationMs,
+        });
+      } catch (err) {
+        clearTimeout(timer!);
+        const durationMs = Date.now() - startTime;
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        if (auditId && dispatcher.store) {
+          const isTimeout = err instanceof Error && err.message.includes("Timeout");
+          dispatcher.store.updateCrossAgentCall(auditId, {
+            status: isTimeout ? "timeout" : "error",
+            response: errMsg,
+          });
+        }
+
+        if (dispatcher.store) {
+          dispatcher.store.logSubAgentCall({
+            sessionId: sessionKey,
+            parentSessionId: context.sessionId,
+            parentNousId: context.nousId,
+            ...(roleName ? { role: roleName } : {}),
+            agentId,
+            task,
+            ...(modelOverride ? { model: modelOverride } : {}),
+            inputTokens: 0,
+            outputTokens: 0,
+            toolCalls: 0,
+            status: "error",
+            error: errMsg,
+            durationMs,
+          });
+        }
+
+        return JSON.stringify({
+          agentId,
+          sessionKey,
+          error: errMsg,
         });
       }
     },
   };
+}
+
+const MAX_PARALLEL = 3;
+
+async function executeParallel(
+  tasks: Array<Record<string, unknown>>,
+  parentInput: Record<string, unknown>,
+  context: ToolContext,
+  dispatcher?: AgentDispatcher,
+  _sharedRoot?: string,
+): Promise<string> {
+  if (!dispatcher) return JSON.stringify({ error: "Agent dispatch not available" });
+
+  const capped = tasks.slice(0, MAX_PARALLEL);
+  if (tasks.length > MAX_PARALLEL) {
+    log.warn(`Parallel dispatch capped at ${MAX_PARALLEL} (${tasks.length} requested)`);
+  }
+
+  const timeoutSeconds = (parentInput["timeoutSeconds"] as number) ?? 180;
+  const startTime = Date.now();
+
+  const promises = capped.map(async (taskDef, idx) => {
+    const task = taskDef["task"] as string;
+    const roleName = (taskDef["role"] as string | undefined) ?? (parentInput["role"] as string | undefined);
+    const role = roleName ? resolveRole(roleName) : null;
+    const agentId = (taskDef["agentId"] as string | undefined) ?? (parentInput["agentId"] as string | undefined) ?? context.nousId;
+    const modelOverride = (taskDef["model"] as string | undefined) ?? (parentInput["model"] as string | undefined) ?? role?.model;
+    const budgetTokens = role?.maxTokenBudget;
+    const toolFilter = parentInput["tools"] as string[] | undefined;
+    const sessionKey = `spawn:${context.nousId}:${Date.now().toString(36)}:${idx}`;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Spawn timeout after ${timeoutSeconds}s`)), timeoutSeconds * 1000);
+    });
+
+    try {
+      const outcome = await Promise.race([
+        dispatcher.handleMessage({
+          text: task,
+          nousId: agentId,
+          sessionKey,
+          parentSessionId: context.sessionId,
+          channel: "spawn",
+          peerKind: "agent",
+          peerId: context.nousId,
+          ...(modelOverride ? { model: modelOverride } : {}),
+          ...(toolFilter ? { toolFilter } : {}),
+          depth: (context.depth ?? 0) + 1,
+        }),
+        timeoutPromise,
+      ]);
+      clearTimeout(timer!);
+
+      const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+      const structured = parseStructuredResult(outcome.text);
+      const durationMs = Date.now() - startTime;
+
+      if (dispatcher.store) {
+        dispatcher.store.logSubAgentCall({
+          sessionId: outcome.sessionId,
+          parentSessionId: context.sessionId,
+          parentNousId: context.nousId,
+          ...(roleName ? { role: roleName } : {}),
+          agentId,
+          task,
+          ...(modelOverride ? { model: modelOverride } : {}),
+          inputTokens: outcome.inputTokens ?? 0,
+          outputTokens: outcome.outputTokens ?? 0,
+          toolCalls: outcome.toolCalls ?? 0,
+          status: "completed",
+          durationMs,
+        });
+      }
+
+      return {
+        index: idx,
+        task: task.slice(0, 200),
+        ...(roleName ? { role: roleName } : {}),
+        result: outcome.text,
+        ...(structured ? { structuredResult: structured } : {}),
+        tokens: { input: outcome.inputTokens, output: outcome.outputTokens, total: totalTokens, budget: budgetTokens ?? null },
+        durationMs,
+      };
+    } catch (err) {
+      clearTimeout(timer!);
+      return {
+        index: idx,
+        task: task.slice(0, 200),
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  const results = await Promise.allSettled(promises);
+  const output = results.map((r) =>
+    r.status === "fulfilled" ? r.value : { error: String(r.reason) },
+  );
+
+  return JSON.stringify({ parallel: true, count: output.length, results: output, totalDurationMs: Date.now() - startTime });
 }
 
 export const sessionsSpawnTool = createSessionsSpawnTool();

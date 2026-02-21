@@ -1,6 +1,6 @@
 // Pricing module tests
-import { describe, it, expect } from "vitest";
-import { calculateTurnCost, calculateCostBreakdown } from "./pricing.js";
+import { describe, expect, it } from "vitest";
+import { calculateCostBreakdown, calculateTurnCost } from "./pricing.js";
 
 const baseUsage = {
   inputTokens: 1_000_000,

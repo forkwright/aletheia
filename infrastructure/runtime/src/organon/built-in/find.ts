@@ -1,10 +1,23 @@
 // File search tool — find files by name pattern
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
 
 const execFileAsync = promisify(execFile);
+
+// Ubuntu installs fd-find as 'fdfind'; resolve once at module load
+let fdBinary: string | undefined;
+async function getFdBinary(): Promise<string> {
+  if (fdBinary) return fdBinary;
+  try {
+    await execFileAsync("fd", ["--version"], { timeout: 2000 });
+    fdBinary = "fd";
+  } catch {
+    fdBinary = "fdfind";
+  }
+  return fdBinary;
+}
 
 export const findTool: ToolHandler = {
   definition: {
@@ -71,7 +84,8 @@ export const findTool: ToolHandler = {
     args.push(pattern, searchPath);
 
     try {
-      const { stdout } = await execFileAsync("fd", args, {
+      const binary = await getFdBinary();
+      const { stdout } = await execFileAsync(binary, args, {
         timeout: 10000,
         maxBuffer: 512 * 1024,
       });

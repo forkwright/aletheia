@@ -55,7 +55,8 @@ const marked = new Marked({
 export function renderMarkdown(text: string): string {
   const raw = marked.parse(text, { async: false }) as string;
   return DOMPurify.sanitize(raw, {
-    ADD_ATTR: ["class"],
+    ADD_ATTR: ["class", "type", "checked", "disabled"],
+    ADD_TAGS: ["input"],
   });
 }
 

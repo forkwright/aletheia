@@ -128,10 +128,11 @@ export async function sendMessage(
   text: string,
   sessionKey: string,
   media?: MediaItem[],
-): Promise<void> {
+): Promise<string | null> {
   const state = writeState(agentId);
-  if (state.isStreaming) return;
+  if (state.isStreaming) return null;
   state.error = null;
+  let resolvedSessionId: string | null = null;
 
   // Add user message optimistically
   const userMsg: ChatMessage = {
@@ -150,28 +151,25 @@ export async function sendMessage(
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
-  let needsTextSeparator = false;
-
   try {
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
+        case "turn_start":
+          resolvedSessionId = event.sessionId;
+          break;
+
         case "thinking_delta":
           state.thinkingText += event.text;
           break;
 
         case "text_delta":
-          // Insert separator when text follows tool results (new content block)
-          if (needsTextSeparator && state.streamingText) {
-            state.streamingText += "\n\n";
-            needsTextSeparator = false;
-          }
           state.streamingText += event.text;
           break;
 
         case "tool_start":
           state.activeToolCalls = [
             ...state.activeToolCalls,
-            { id: event.toolId, name: event.toolName, status: "running" },
+            { id: event.toolId, name: event.toolName, status: "running", input: event.input },
           ];
           break;
 
@@ -183,10 +181,10 @@ export async function sendMessage(
                   status: event.isError ? "error" as const : "complete" as const,
                   result: event.result,
                   durationMs: event.durationMs,
+                  tokenEstimate: event.tokenEstimate,
                 }
               : tc,
           );
-          needsTextSeparator = true;
           break;
 
         case "tool_approval_required":
@@ -212,13 +210,13 @@ export async function sendMessage(
             timestamp: new Date().toISOString(),
             toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
             ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
+            turnOutcome: event.outcome,
           };
           state.messages = [...state.messages, assistantMsg];
           state.streamingText = "";
           state.thinkingText = "";
           state.activeToolCalls = [];
           state.isStreaming = false;
-          needsTextSeparator = false;
           break;
         }
 
@@ -269,6 +267,7 @@ export async function sendMessage(
     state.abortController = null;
     state.pendingApproval = null;
   }
+  return resolvedSessionId;
 }
 
 export function hasLocalStream(agentId: string): boolean {
@@ -296,18 +295,24 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         timestamp: msg.createdAt,
       });
     } else if (msg.role === "assistant") {
-      // Check if it's a JSON content block array (text + tool_use blocks)
+      // Check if it's a JSON content block array (text + tool_use + thinking blocks)
       try {
         const parsed = JSON.parse(msg.content);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
           const textBlocks = parsed.filter((b: { type: string }) => b.type === "text");
           const toolBlocks = parsed.filter((b: { type: string }) => b.type === "tool_use");
+          const thinkingBlocks = parsed.filter((b: { type: string }) => b.type === "thinking");
+
+          const thinkingText = thinkingBlocks.length > 0
+            ? thinkingBlocks.map((b: { thinking: string }) => b.thinking).join("\n\n")
+            : undefined;
 
           if (toolBlocks.length > 0) {
-            currentToolCalls = toolBlocks.map((b: { id: string; name: string }) => ({
+            currentToolCalls = toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
               id: b.id,
               name: b.name,
               status: "complete" as const,
+              input: b.input,
             }));
           }
 
@@ -320,6 +325,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
+                ...(thinkingText ? { thinking: thinkingText } : {}),
               });
             }
           }
@@ -327,7 +333,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
           // If only tool_use blocks (no text), skip — tool calls attach to next assistant message
           if (toolBlocks.length > 0) continue;
 
-          // If only text blocks (no tool_use), fall through to normal text handling
+          // Text blocks (possibly with thinking, no tool_use)
           if (textBlocks.length > 0) {
             const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
             result.push({
@@ -336,8 +342,14 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
               content: text,
               timestamp: msg.createdAt,
               toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
+              ...(thinkingText ? { thinking: thinkingText } : {}),
             });
             currentToolCalls = [];
+            continue;
+          }
+
+          // Thinking-only blocks (no text, no tool_use) — unlikely but handle gracefully
+          if (thinkingBlocks.length > 0 && textBlocks.length === 0 && toolBlocks.length === 0) {
             continue;
           }
         }

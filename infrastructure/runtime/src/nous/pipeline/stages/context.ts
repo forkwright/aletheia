@@ -1,12 +1,13 @@
-// Context stage — bootstrap assembly, recall, broadcasts, working state injection
+// Context stage — bootstrap assembly, recall, broadcasts, working state, notes injection
 import { createLogger, updateTurnContext } from "../../../koina/logger.js";
-import { estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
+import { estimateTokens, estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
 import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
+import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
-import type { TurnState, RuntimeServices, SystemBlock } from "../types.js";
+import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
 
@@ -92,9 +93,11 @@ export async function buildContext(
   ];
 
   // Thread-level relationship context (injected before recall so it primes memory search)
+  let threadSummaryText: string | undefined;
   if (msg.threadId) {
     const threadSummary = services.store.getThreadSummary(msg.threadId);
     if (threadSummary?.summary) {
+      threadSummaryText = threadSummary.summary;
       const factsText = threadSummary.keyFacts.length > 0
         ? `\n\n**Key facts:**\n${threadSummary.keyFacts.slice(0, 20).map((f) => `- ${f}`).join("\n")}`
         : "";
@@ -108,7 +111,10 @@ export async function buildContext(
   // Pre-turn memory recall
   let recallTokens = 0;
   if (!degradedServices.includes("mem0-sidecar")) {
-    const recall = await recallMemories(msg.text, nousId);
+    const recall = await recallMemories(msg.text, nousId, {
+      ...(state.nous.domains ? { domains: state.nous.domains } : {}),
+      ...(threadSummaryText ? { threadSummary: threadSummaryText } : {}),
+    });
     if (recall.block) systemPrompt.push(recall.block);
     recallTokens = recall.tokens;
     if (recall.count > 0) {
@@ -127,11 +133,68 @@ export async function buildContext(
     systemPrompt.push({ type: "text", text: `## Broadcasts\n\n${broadcastLines}` });
   }
 
-  // Working state injection
+  // Working state injection — semantic task context from post-turn extraction
   const currentSession = services.store.findSessionById(sessionId);
+  const workingState = currentSession?.workingState;
+  if (workingState) {
+    systemPrompt.push({
+      type: "text",
+      text: formatWorkingState(workingState),
+    });
+  }
+
+  // Post-distillation priming — inject extracted context from the most recent distillation.
+  // This ensures the agent's first turn after distillation has full awareness of what was
+  // compressed, independent of recall similarity matching. Consumed once and cleared.
+  const priming = services.store.getDistillationPriming(sessionId);
+  if (priming) {
+    const sections: string[] = [];
+    sections.push(`Context was distilled (compression #${priming.distillationNumber}). Key extracted context below.`);
+    if (priming.facts.length > 0) {
+      sections.push(`**Facts:**\n${priming.facts.map(f => `- ${f}`).join("\n")}`);
+    }
+    if (priming.decisions.length > 0) {
+      sections.push(`**Decisions:**\n${priming.decisions.map(d => `- ${d}`).join("\n")}`);
+    }
+    if (priming.openItems.length > 0) {
+      sections.push(`**Open items:**\n${priming.openItems.map(o => `- ${o}`).join("\n")}`);
+    }
+    systemPrompt.push({
+      type: "text",
+      text: `## Post-Distillation Context\n\n${sections.join("\n\n")}`,
+    });
+    // Clear after injection — one-shot priming
+    services.store.clearDistillationPriming(sessionId);
+    log.info(`Injected post-distillation priming for ${nousId} (${priming.facts.length} facts, ${priming.decisions.length} decisions, ${priming.openItems.length} open items)`);
+  }
+
+  // Agent notes injection — explicit notes written by the agent that survive distillation
+  const notes = services.store.getNotes(sessionId, { limit: 20 });
+  if (notes.length > 0) {
+    const NOTE_TOKEN_CAP = 2000;
+    const header = "## Agent Notes\n\nNotes you wrote during this session. These survive context distillation.\n\n";
+    let tokenCount = estimateTokens(header);
+    const noteLines: string[] = [];
+
+    for (const note of notes) {
+      const line = `- [${note.category}] ${note.content}`;
+      const lineTokens = estimateTokens(line + "\n");
+      if (tokenCount + lineTokens > NOTE_TOKEN_CAP) break;
+      noteLines.push(line);
+      tokenCount += lineTokens;
+    }
+
+    if (noteLines.length > 0) {
+      systemPrompt.push({
+        type: "text",
+        text: header + noteLines.join("\n"),
+      });
+    }
+  }
+
+  // Session metrics + cost — injected every 8th turn for self-awareness
   const msgCount = currentSession?.messageCount ?? 0;
   if (msgCount > 0 && msgCount % 8 === 0) {
-    const recentTools = services.store.getRecentToolCalls(sessionId, 6);
     const elapsed = currentSession?.createdAt
       ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
       : 0;
@@ -139,14 +202,25 @@ export async function buildContext(
     const utilization = contextTokens > 0
       ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / contextTokens) * 100)
       : 0;
+
+    // Cost summary from usage records
+    const usageRecords = services.store.getUsageForSession(sessionId);
+    const totalInput = usageRecords.reduce((s, u) => s + u.inputTokens, 0);
+    const totalOutput = usageRecords.reduce((s, u) => s + u.outputTokens, 0);
+    const totalCache = usageRecords.reduce((s, u) => s + u.cacheReadTokens, 0);
+    const lastTurn = usageRecords[usageRecords.length - 1];
+    const lastTurnTokens = lastTurn ? `${lastTurn.inputTokens}in/${lastTurn.outputTokens}out` : "n/a";
+    const cacheRate = totalInput > 0 ? Math.round((totalCache / totalInput) * 100) : 0;
+
     systemPrompt.push({
       type: "text",
       text:
-        `## Working State — Turn ${msgCount}\n\n` +
-        `Recent tools: ${recentTools.length > 0 ? recentTools.join(", ") : "none"}\n` +
+        `## Session Metrics — Turn ${msgCount}\n\n` +
         `Session duration: ${elapsed} min\n` +
         `Context utilization: ${utilization}%\n` +
-        `Distillations: ${currentSession?.distillationCount ?? 0}`,
+        `Distillations: ${currentSession?.distillationCount ?? 0}\n` +
+        `Total tokens: ${totalInput}in / ${totalOutput}out (cache hit: ${cacheRate}%)\n` +
+        `Last turn: ${lastTurnTokens}`,
     });
   }
 
@@ -156,6 +230,7 @@ export async function buildContext(
     sessionId,
     ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
     ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
+    ...(msg.toolFilter?.length ? { toolFilter: msg.toolFilter } : {}),
   });
 
   state.systemPrompt = systemPrompt;

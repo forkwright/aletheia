@@ -1,5 +1,5 @@
 // Anthropic provider tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AnthropicProvider } from "./anthropic.js";
 
 // Mock the Anthropic SDK

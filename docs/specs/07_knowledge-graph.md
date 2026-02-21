@@ -1,6 +1,6 @@
 # Spec: Knowledge Graph — Performance, Utility, and Integration
 
-**Status:** Draft  
+**Status:** Phases 1a-1b, 2a-2b, 3a-3e done. Phases 2c, 3f remaining.  
 **Author:** Syn  
 **Date:** 2026-02-19  
 
@@ -66,7 +66,7 @@ For our usage patterns (entity storage, simple relationship queries, 1-2 hop tra
 - **Qdrant metadata** — Store entity relationships as metadata on vector entries. Eliminates Neo4j entirely. Limited query flexibility.
 - **Keep Neo4j but optimize** — Reduce memory allocation, add query caching, precompute common traversals. Keeps graph capabilities for future use.
 
-**Recommendation:** Start with making Neo4j optional (graceful degradation when it's not running), then evaluate SQLite replacement based on actual query patterns. Don't rip out Neo4j prematurely — the graph capabilities may matter as the system matures.
+**Recommendation:** Start with making Neo4j optional (graceful degradation when it's not running) ✅, then evaluate SQLite replacement based on actual query patterns. Don't rip out Neo4j prematurely — the graph capabilities may matter as the system matures.
 
 #### Reduce sidecar overhead
 
@@ -174,11 +174,15 @@ Instead of only recalling on user message, surface memories when they become rel
 |-------|--------|--------|
 | **1a: Vector-only fast path** | Small | Recall drops from 3s → 500ms |
 | **1b: Neo4j optional mode** | Medium | System works without Neo4j running |
-| **2a: Extraction prompt improvement** | Small | Better memory quality |
-| **2b: Memory confidence/decay** | Medium | Prevents stale memory accumulation |
+| **2a: Extraction prompt improvement** ✅ | Small | Better memory quality |
+| **2b: Memory confidence/decay** ✅ | Medium | ✅ Done — Neo4j access/decay weighting in sidecar search, penalty for decayed, boost for accessed (PR #75) |
 | **2c: Graph UI search + edit** | Medium | User can see and correct the knowledge base |
-| **3a: Domain-scoped memory** | Medium | Clean agent separation |
+| **3a: Domain-scoped memory** ✅ | Medium | ✅ Done — `domains` field on NousConfig, sidecar filters by domain metadata (PR #75) |
 | **3b: Thread-aware recall** | Small | Better relevance |
+| **3c: MMR diversity re-ranking (F-10)** | Small | Post-processing on search results — Jaccard overlap penalty to reduce redundant recalls |
+| **3d: Sufficiency gates (F-14)** | Small | Tiered retrieval — category summaries first, full items only if top results insufficient |
+| **3e: Self-editing memory tools (F-22)** | Small | `memory_update`/`memory_forget` tools — agents directly modify their own knowledge |
+| **3f: Tool memory / usage stats (F-31)** | Small | Track success/failure rates per tool per agent — inform tool selection and detect degradation |
 
 ---
 

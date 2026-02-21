@@ -1,5 +1,6 @@
 // Pass 1: Extract structured facts, decisions, and open items from conversation
 import { createLogger } from "../koina/logger.js";
+import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 
 const log = createLogger("distillation.extract");
@@ -19,16 +20,57 @@ const EXTRACTION_PROMPT = `You are extracting durable knowledge from a conversat
 - Extract DECISIONS with their rationale — the "why" matters as much as the "what".
 - Extract OPEN ITEMS that require future action — include who owns them if stated.
 - Extract KEY ENTITIES: people, projects, tools, services, locations referenced.
-- For tool results: extract the factual findings, not the tool invocation details.
 - NEVER extract: greetings, acknowledgments, timestamps of the conversation itself, meta-commentary about the conversation.
 - Each item: one clear sentence. No duplicates. No hedging language.
 - If a fact contradicts a previously known fact, note BOTH versions and flag the contradiction.
 
+## Context-Dependent Filtering
+Detect the conversation type and extract accordingly:
+
+**Tool-heavy turns** — extract CONCLUSIONS and OUTCOMES, not tool invocations.
+  - Bad: "User ran grep to search for imports"
+  - Good: "The auth module has 6 unused exports that should be removed"
+
+**Discussion turns** — extract OPINIONS, PREFERENCES, and DECISIONS.
+  - Bad: "User and agent discussed leather options"
+  - Good: "User prefers polymer leather for belts due to durability; rejects veg-tan for this use case"
+
+**Planning turns** — extract PLANS, TIMELINES, and COMMITMENTS.
+  - Bad: "User asked about schedule"
+  - Good: "MBA final project due March 15, needs 3 weeks of work, starting after midterms"
+
+**Debugging turns** — extract ROOT CAUSES and FIXES, not the investigation steps.
+  - Bad: "Checked logs, found error, restarted service"
+  - Good: "Session convergence bug caused by UNIQUE constraint on archived rows; fixed by reactivating instead of re-creating"
+
+**Correction turns** — extract the CORRECTED fact, flag the old one.
+  - Bad: "User said the previous answer was wrong"
+  - Good: "CORRECTION: Widget torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+
 ## Quality Filters
-- Skip facts that are obvious from context (e.g., "The user asked a question")
-- Skip facts that are purely temporal ("We discussed this at 3pm")
-- Prefer specific over vague: "Honda Passport needs brake pads replaced" over "vehicle maintenance discussed"
-- Include confidence: prefix uncertain facts with [UNCERTAIN]
+- Skip facts obvious from context (e.g., "The user asked a question")
+- Skip purely temporal facts ("We discussed this at 3pm")
+- Prefer specific over vague: "Honda Passport needs brake pads replaced" > "vehicle maintenance discussed"
+- Prefix uncertain facts with [UNCERTAIN]
+- For CORRECTIONS: include both the wrong and right versions
+
+## Real Examples from Corpus Audit
+
+BAD (actual noise that was extracted — don't produce these):
+- "Uses grep" — tool invocation, not knowledge
+- "Familiar with confabulation guards" — too generic, no actionable content
+- "Works with a system called Aletheia" — obvious from context
+- "Manages agent systems" — vague and implied
+- "The user asked about configuration" — meta-commentary
+- "Ran git status to check repository" — ephemeral action
+
+GOOD (actual high-value extractions):
+- "ALETHEIA_MEMORY_USER must be set in aletheia.env or all extractions default to user_id='default'"
+- "Prefers polymer leather for belts; rejects veg-tan for durability reasons"
+- "CORRECTION: Widget torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+- "Prosoche dedup window set to 8 hours to reduce alert fatigue from static overdue tasks"
+- "Project Alpha due October 2026"
+- "memoryTarget interface exists in hooks.ts but was never wired — distillation drops all extracted facts"
 
 Return ONLY valid JSON:
 {
@@ -47,7 +89,71 @@ const EMPTY_RESULT: ExtractionResult = {
   contradictions: [],
 };
 
+const MAX_CHUNK_TOKENS = 80000; // Leave room for system prompt + output within 200K context
+
+/**
+ * Post-extraction noise filters — catches garbage the prompt doesn't filter.
+ * Based on actual noise patterns observed in Qdrant corpus audit (2026-02-21).
+ */
+const NOISE_PATTERNS = [
+  /^(Uses|Familiar with|Works with|Has experience|Has access|Knows about)\b/i,
+  /^(The user|User|They|He|She) (is|was|has|had|does|did|can|could|will|would|asked|mentioned|said|wants|wanted|needs|needed)\b/i,
+  /^(Runs?|Ran|Executed|Checked|Opened|Closed|Searched|Grepped|Found|Looked at)\b/i,
+  /^(Asked about|Discussed|Mentioned|Talked about|Referred to|Agreed to|Noted that)\b/i,
+  /^(Manages|Works on|Involved in|Participates in|Contributes to) (a |an |the |some )/i,
+];
+
+const MIN_ITEM_LENGTH = 15;
+const MAX_ITEM_LENGTH = 300;
+
+/** Filter out noise from extracted items. */
+function filterNoise(items: string[]): string[] {
+  return items.filter((item) => {
+    const trimmed = item.trim();
+    if (trimmed.length < MIN_ITEM_LENGTH || trimmed.length > MAX_ITEM_LENGTH) return false;
+    if (NOISE_PATTERNS.some((p) => p.test(trimmed))) {
+      log.debug(`Filtered noise: "${trimmed.slice(0, 60)}"`);
+      return false;
+    }
+    return true;
+  });
+}
+
 export async function extractFromMessages(
+  router: ProviderRouter,
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+): Promise<ExtractionResult> {
+  const totalTokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+
+  // If small enough, extract in one pass
+  if (totalTokens <= MAX_CHUNK_TOKENS) {
+    return extractChunk(router, messages, model);
+  }
+
+  // Split into chunks and extract each, then merge
+  const parts = Math.max(2, Math.ceil(totalTokens / MAX_CHUNK_TOKENS));
+  const chunks = splitMessagesByTokens(messages, parts);
+
+  log.info(
+    `Chunked extraction: ${chunks.length} chunks from ${messages.length} messages (${totalTokens} tokens)`,
+  );
+
+  const results: ExtractionResult[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    log.info(`Extracting chunk ${i + 1}/${chunks.length} (${chunk.length} messages)`);
+    const partial = await extractChunk(router, chunk, model);
+    results.push(partial);
+  }
+
+  return mergeExtractions(results);
+}
+
+async function extractChunk(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
@@ -74,13 +180,83 @@ export async function extractFromMessages(
     return { ...EMPTY_RESULT };
   }
 
-  return {
+  const raw = {
     facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
     decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
     openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
     keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
     contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
   };
+
+  // Apply post-extraction noise filtering to facts and decisions
+  // (openItems, keyEntities, and contradictions are kept as-is)
+  const filteredFacts = filterNoise(raw.facts);
+  const filteredDecisions = filterNoise(raw.decisions);
+  const removed = (raw.facts.length - filteredFacts.length) + (raw.decisions.length - filteredDecisions.length);
+  if (removed > 0) {
+    log.info(`Post-extraction filter removed ${removed} noise items`);
+  }
+
+  return {
+    ...raw,
+    facts: filteredFacts,
+    decisions: filteredDecisions,
+  };
+}
+
+function splitMessagesByTokens(
+  messages: Array<{ role: string; content: string }>,
+  parts: number,
+): Array<Array<{ role: string; content: string }>> {
+  const totalTokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+  const targetPerChunk = Math.ceil(totalTokens / parts);
+  const chunks: Array<Array<{ role: string; content: string }>> = [];
+  let current: Array<{ role: string; content: string }> = [];
+  let currentTokens = 0;
+
+  for (const message of messages) {
+    const msgTokens = estimateTokens(message.content);
+    if (currentTokens + msgTokens > targetPerChunk && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      currentTokens = 0;
+    }
+    current.push(message);
+    currentTokens += msgTokens;
+  }
+  if (current.length > 0) chunks.push(current);
+
+  return chunks;
+}
+
+function mergeExtractions(results: ExtractionResult[]): ExtractionResult {
+  const merged: ExtractionResult = {
+    facts: [],
+    decisions: [],
+    openItems: [],
+    keyEntities: [],
+    contradictions: [],
+  };
+
+  for (const r of results) {
+    merged.facts.push(...r.facts);
+    merged.decisions.push(...r.decisions);
+    merged.openItems.push(...r.openItems);
+    merged.keyEntities.push(...r.keyEntities);
+    merged.contradictions.push(...r.contradictions);
+  }
+
+  // Deduplicate by exact match
+  merged.facts = [...new Set(merged.facts)];
+  merged.decisions = [...new Set(merged.decisions)];
+  merged.openItems = [...new Set(merged.openItems)];
+  merged.keyEntities = [...new Set(merged.keyEntities)];
+  merged.contradictions = [...new Set(merged.contradictions)];
+
+  return merged;
 }
 
 /** Extract first balanced JSON object from text, with repair fallbacks */

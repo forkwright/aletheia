@@ -1,5 +1,5 @@
 // Context check meta-tool tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createContextCheckTool } from "./context-check.js";
 import { ToolRegistry } from "../registry.js";
 import type { ToolContext } from "../registry.js";

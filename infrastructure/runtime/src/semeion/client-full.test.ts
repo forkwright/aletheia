@@ -1,5 +1,5 @@
 // Extended Signal client tests — sendTyping, sendReceipt, sendReaction, getAttachment, retry edge cases
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignalClient } from "./client.js";
 
 describe("SignalClient extended", () => {

@@ -1,5 +1,5 @@
 // build-messages tests — thinking block handling, orphan repair, message construction
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMessages } from "./build-messages.js";
 
 vi.mock("../../../koina/event-bus.js", () => ({

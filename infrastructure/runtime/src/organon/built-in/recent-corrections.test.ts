@@ -1,5 +1,5 @@
 // Recent corrections tool tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createRecentCorrectionsTool } from "./recent-corrections.js";
 import type { ToolContext } from "../registry.js";
 

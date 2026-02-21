@@ -1,5 +1,5 @@
 // Provider router tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ProviderRouter } from "./router.js";
 
 function mockProvider(result = { content: [{ type: "text" as const, text: "ok" }], stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 }, model: "test" }) {

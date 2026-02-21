@@ -1,11 +1,12 @@
 // Distillation pipeline — multi-pass context compression with hardening
 import { createLogger } from "../koina/logger.js";
+import { AletheiaError } from "../koina/errors.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
-import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
+import { flushToMemory, type FlushOptions, type MemoryFlushTarget } from "./hooks.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
@@ -27,6 +28,10 @@ export interface DistillationOpts {
   preserveRecentMessages?: number;
   preserveRecentMaxTokens?: number;
   workspace?: string;
+  /** Skip extraction and use single-sentence summary for background sessions. */
+  lightweight?: boolean;
+  /** PII config for memory flush redaction. */
+  piiConfig?: FlushOptions["piiConfig"];
   /** Called after successful distillation to update the thread-level running summary. */
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
 }
@@ -67,9 +72,11 @@ export async function distillSession(
     log.info(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
-    throw new Error(
-      `Distillation already in progress for session ${sessionId}`,
-    );
+    throw new AletheiaError({
+      code: "SESSION_LOCKED", module: "distillation",
+      message: `Distillation already in progress for session ${sessionId}`,
+      context: { sessionId }, recoverable: true, retryAfterMs: 30_000,
+    });
   }
 
   activeDistillations.add(sessionId);
@@ -118,21 +125,27 @@ async function runDistillation(
           const unanswered = toolUses.filter((b: { id: string }) => !answeredIds.has(b.id));
           if (unanswered.length > 0) {
             log.warn(`Distillation blocked: ${unanswered.length} unanswered tool_use blocks at seq ${lastAssistant.seq}`);
-            throw new Error(`Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`);
+            throw new AletheiaError({
+              code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+              message: `Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`,
+              context: { sessionId, orphanedCount: unanswered.length },
+            });
           }
         }
       }
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith("Cannot distill")) throw e;
+      if (e instanceof AletheiaError) throw e;
     }
   }
 
   const undistilled = allMessages.filter((m) => !m.isDistilled);
 
   if (undistilled.length < opts.minMessages) {
-    throw new Error(
-      `Not enough messages to distill: ${undistilled.length} < ${opts.minMessages}`,
-    );
+    throw new AletheiaError({
+      code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+      message: `Not enough messages to distill: ${undistilled.length} < ${opts.minMessages}`,
+      context: { sessionId, undistilledCount: undistilled.length, minMessages: opts.minMessages },
+    });
   }
 
   // Split into messages to distill vs recent messages to preserve as raw context
@@ -188,6 +201,8 @@ async function runDistillation(
       return { role: m.role, content: m.content };
     });
 
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "sanitize", progress: 1, total: 6 });
+
   // Sanitize tool results — truncate verbose payloads before LLM-facing operations
   const sanitized = sanitizeToolResults(rawMessages);
 
@@ -195,66 +210,92 @@ async function runDistillation(
   const { prunedMessages: simpleMessages, removedCount: pruneCount } = pruneBySimilarity(sanitized);
   if (pruneCount > 0) log.info(`Pruned ${pruneCount} low-information messages before distillation`);
 
-  // Pass 1: Extraction
-  log.info(`Extraction pass: ${simpleMessages.length} messages`);
-  const extraction = await extractFromMessages(
-    router,
-    simpleMessages,
-    opts.extractionModel,
-  );
+  // Lightweight mode: skip extraction + memory flush, use simple summary
+  const emptyExtraction = {
+    facts: [] as string[],
+    decisions: [] as string[],
+    openItems: [] as string[],
+    keyEntities: [] as string[],
+    contradictions: [] as string[],
+  };
+  let extraction = emptyExtraction;
+  let summary: string;
+  let summaryTokens: number;
 
-  log.info(
-    `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ` +
-      `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
-  );
-
-  // Memory flush with retry — non-blocking, don't fail distillation on flush failure
-  if (opts.memoryTarget) {
-    const flushResult = await flushToMemory(
-      opts.memoryTarget,
-      nousId,
-      extraction,
-    );
-    if (flushResult.errors > 0) {
-      log.warn(
-        `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
-      );
-    }
-  }
-
-  // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
-  log.info("Summary pass");
-  let summary = await summarizeInStages(
-    router,
-    simpleMessages,
-    extraction,
-    opts.summaryModel,
-    nousId,
-  );
-
-  let summaryTokens = estimateTokens(summary);
-
-  // Compression ratio check — if summary > 50% of input, run a tighter second pass
-  const compressionRatio = tokensBefore > 0 ? summaryTokens / tokensBefore : 0;
-  if (compressionRatio > 0.5 && tokensBefore > 5000) {
-    log.warn(
-      `Compression ratio ${Math.round(compressionRatio * 100)}% exceeds 50% — running second pass`,
-    );
-    const emptyExtraction = {
-      facts: [],
-      decisions: [],
-      openItems: [],
-      keyEntities: [],
-      contradictions: [],
-    };
-    summary = await summarizeMessages(
+  if (opts.lightweight) {
+    log.info(`Lightweight distillation: ${simpleMessages.length} messages — skipping extraction`);
+    const condensed = simpleMessages
+      .slice(-30)
+      .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+      .join("\n");
+    const result = await router.complete({
+      model: opts.summaryModel,
+      system: "Summarize this background session in 2-3 sentences. Focus on what happened and any state that matters.",
+      messages: [{ role: "user", content: condensed }],
+      maxTokens: 256,
+      temperature: 0,
+    });
+    const textBlock = result.content.find((b) => b.type === "text");
+    summary = textBlock && "text" in textBlock ? textBlock.text : "Session distilled (no summary generated).";
+    summaryTokens = estimateTokens(summary);
+  } else {
+    // Pass 1: Extraction
+    eventBus.emit("distill:stage", { sessionId, nousId, stage: "extract", progress: 2, total: 6 });
+    log.info(`Extraction pass: ${simpleMessages.length} messages`);
+    extraction = await extractFromMessages(
       router,
-      [{ role: "assistant", content: summary }],
-      emptyExtraction,
+      simpleMessages,
+      opts.extractionModel,
+    );
+
+    log.info(
+      `Extracted: ${extraction.facts.length} facts, ${extraction.decisions.length} decisions, ` +
+        `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
+    );
+
+    // Memory flush with retry — non-blocking, don't fail distillation on flush failure
+    if (opts.memoryTarget) {
+      const flushResult = await flushToMemory(
+        opts.memoryTarget,
+        nousId,
+        extraction,
+        opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
+      );
+      if (flushResult.errors > 0) {
+        log.warn(
+          `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
+        );
+      }
+    }
+
+    // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
+    eventBus.emit("distill:stage", { sessionId, nousId, stage: "summarize", progress: 3, total: 6 });
+    log.info("Summary pass");
+    summary = await summarizeInStages(
+      router,
+      simpleMessages,
+      extraction,
       opts.summaryModel,
       nousId,
     );
+
     summaryTokens = estimateTokens(summary);
+
+    // Compression ratio check — if summary > 50% of input, run a tighter second pass
+    const compressionRatio = tokensBefore > 0 ? summaryTokens / tokensBefore : 0;
+    if (compressionRatio > 0.5 && tokensBefore > 5000) {
+      log.warn(
+        `Compression ratio ${Math.round(compressionRatio * 100)}% exceeds 50% — running second pass`,
+      );
+      summary = await summarizeMessages(
+        router,
+        [{ role: "assistant", content: summary }],
+        emptyExtraction,
+        opts.summaryModel,
+        nousId,
+      );
+      summaryTokens = estimateTokens(summary);
+    }
   }
 
   // Tag repeated distillations so agents can see compression history
@@ -286,7 +327,12 @@ async function runDistillation(
     factsExtracted: extraction.facts.length + extraction.decisions.length,
     model: opts.extractionModel,
   });
+  store.updateLastDistilledAt(sessionId);
 
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "flush", progress: 4, total: 6 });
+
+  let flushSucceeded = true;
+  let flushErrors: string | undefined;
   if (opts.workspace) {
     const flushResult = flushToWorkspace({
       workspace: opts.workspace,
@@ -297,9 +343,26 @@ async function runDistillation(
       extraction,
     });
     if (!flushResult.written) {
+      flushSucceeded = false;
+      flushErrors = flushResult.error;
       log.warn(`Workspace memory flush failed: ${flushResult.error}`);
     }
   }
+
+  store.recordDistillationLog({
+    sessionId,
+    nousId,
+    messagesBefore: undistilled.length,
+    messagesAfter: 1 + toPreserve.length,
+    tokensBefore,
+    tokensAfter: markedTokens + preservedTokens,
+    factsExtracted: extraction.facts.length,
+    decisionsExtracted: extraction.decisions.length,
+    openItemsExtracted: extraction.openItems.length,
+    flushSucceeded,
+    ...(flushErrors ? { errors: flushErrors } : {}),
+    distillationNumber,
+  });
 
   const result: DistillationResult = {
     sessionId,
@@ -330,6 +393,64 @@ async function runDistillation(
       ...extraction.decisions.map((d) => `Decision: ${d}`).slice(0, 10),
     ];
     opts.onThreadSummaryUpdate(markedSummary, keyFacts);
+  }
+
+  // Store priming data for the next turn — ensures the agent's first turn after
+  // distillation has full awareness of what was just compressed, independent of
+  // recall similarity matching. Consumed and cleared by context.ts on next turn.
+  if (!opts.lightweight) {
+    store.setDistillationPriming(sessionId, {
+      facts: extraction.facts.slice(0, 20),
+      decisions: extraction.decisions.slice(0, 10),
+      openItems: extraction.openItems.slice(0, 10),
+      summary: markedSummary.slice(0, 2000),
+      distillationNumber,
+      distilledAt: new Date().toISOString(),
+    });
+    log.info(`Stored distillation priming for session ${sessionId} (${extraction.facts.length} facts, ${extraction.decisions.length} decisions)`);
+  }
+
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "verify", progress: 5, total: 6 });
+
+  // Post-distillation verification — log warnings, don't block
+  {
+    const warnings: string[] = [];
+    const postSession = store.findSessionById(sessionId);
+    if (postSession) {
+      if (postSession.tokenCountEstimate > 50_000) {
+        warnings.push(`token estimate still high (${postSession.tokenCountEstimate})`);
+      }
+    }
+    const postHistory = store.getHistory(sessionId, { excludeDistilled: true });
+    const hasSummary = postHistory.some((m) => m.role === "assistant" && m.content.includes("Distillation #"));
+    if (distillationNumber > 1 && !hasSummary) {
+      warnings.push("summary message not found in undistilled history");
+    }
+
+    // Verify working state survived (primary sessions only)
+    const ws = store.getWorkingState(sessionId);
+    if (!ws && !opts.lightweight) {
+      warnings.push("working state missing after distillation");
+    }
+
+    // Verify agent notes survived
+    const notes = store.getNotes(sessionId);
+    if (notes.length === 0 && !opts.lightweight) {
+      warnings.push("all agent notes cleared during distillation");
+    }
+
+    // Verify compression ratio is meaningful
+    if (result.tokensAfter > result.tokensBefore * 0.8) {
+      warnings.push(`poor compression ratio: ${result.tokensBefore} → ${result.tokensAfter} (${Math.round((1 - result.tokensAfter / result.tokensBefore) * 100)}%)`);
+    }
+
+    if (warnings.length > 0) {
+      for (const w of warnings) {
+        log.warn(`Post-distillation: ${w}`);
+      }
+    } else {
+      log.debug("Post-distillation verification passed");
+    }
   }
 
   eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });

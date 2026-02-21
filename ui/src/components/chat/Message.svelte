@@ -1,14 +1,16 @@
 <script lang="ts">
-  import type { ChatMessage, ToolCallState } from "../../lib/types";
+  import type { ChatMessage, ToolCallState, TurnOutcome } from "../../lib/types";
   import { formatTimestamp, formatDuration } from "../../lib/format";
   import Markdown from "./Markdown.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
+  import ThinkingStatusLine from "./ThinkingStatusLine.svelte";
 
-  let { message, agentName, agentEmoji, onToolClick }: {
+  let { message, agentName, agentEmoji, onToolClick, onThinkingClick }: {
     message: ChatMessage;
     agentName?: string | null;
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
+    onThinkingClick?: (thinking: string) => void;
   } = $props();
 
   let isUser = $derived(message.role === "user");
@@ -32,6 +34,15 @@
       ? (message.content.match(/\[Distillation #(\d+)\]/)?.[0] ?? "Memory consolidated")
       : "",
   );
+
+  let hasCostData = $derived(
+    !isUser && message.turnOutcome && (message.turnOutcome.inputTokens > 0 || message.turnOutcome.outputTokens > 0)
+  );
+
+  function formatTokens(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return String(n);
+  }
 
   let expandedImage = $state<string | null>(null);
   let summaryExpanded = $state(false);
@@ -105,10 +116,10 @@
       </div>
     {/if}
     {#if message.thinking}
-      <details class="thinking-block">
-        <summary class="thinking-summary">Thought process</summary>
-        <div class="thinking-content">{message.thinking}</div>
-      </details>
+      <ThinkingStatusLine
+        thinkingText={message.thinking}
+        onclick={() => onThinkingClick?.(message.thinking!)}
+      />
     {/if}
     {#if message.content}
       <div class="chat-content">
@@ -119,7 +130,15 @@
         {/if}
       </div>
     {/if}
-    <div class="timestamp">{formatTimestamp(message.timestamp)}</div>
+    <div class="msg-footer">
+      <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
+      {#if hasCostData}
+        {@const o = message.turnOutcome!}
+        <span class="cost-badge" title="Input: {o.inputTokens} · Output: {o.outputTokens} · Cache read: {o.cacheReadTokens} · Cache write: {o.cacheWriteTokens}">
+          {formatTokens(o.inputTokens)} in · {formatTokens(o.outputTokens)} out{o.cacheReadTokens > 0 ? ` · ${formatTokens(o.cacheReadTokens)} cached` : ""}
+        </span>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -191,43 +210,33 @@
     border: 1px solid var(--border);
   }
 
-  .thinking-block {
-    margin-bottom: 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-  .thinking-summary {
-    padding: 6px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-    cursor: pointer;
-    user-select: none;
-    background: var(--surface);
-  }
-  .thinking-summary:hover {
-    color: var(--text-secondary);
-  }
-  .thinking-content {
-    padding: 8px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 300px;
-    overflow-y: auto;
-    border-top: 1px solid var(--border);
-    font-family: var(--font-mono);
-    line-height: 1.5;
-  }
   .user-text {
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .msg-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
   .timestamp {
     font-size: 11px;
     color: var(--text-muted);
-    margin-top: 4px;
+  }
+  .cost-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
+    opacity: 0.7;
+    cursor: default;
+  }
+  .cost-badge:hover {
+    opacity: 1;
   }
 
   /* Media in messages */

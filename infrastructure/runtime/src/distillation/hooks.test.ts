@@ -1,5 +1,5 @@
 // Distillation hooks tests
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
 
 function makeTarget(addResult = { added: 5, errors: 0 }): MemoryFlushTarget {

@@ -1,18 +1,19 @@
 // Pipeline runner — composes stages for streaming and non-streaming turn execution
 import { createLogger } from "../../koina/logger.js";
+import { PipelineError } from "../../koina/errors.js";
 import { eventBus } from "../../koina/event-bus.js";
 import { resolveStage } from "./stages/resolve.js";
 import { checkGuards } from "./stages/guard.js";
 import { buildContext } from "./stages/context.js";
 import { prepareHistory } from "./stages/history.js";
-import { executeStreaming, executeBuffered } from "./stages/execute.js";
+import { executeBuffered, executeStreaming } from "./stages/execute.js";
 import { finalize } from "./stages/finalize.js";
 import type {
   InboundMessage,
+  RuntimeServices,
   TurnOutcome,
   TurnState,
   TurnStreamEvent,
-  RuntimeServices,
 } from "./types.js";
 
 const log = createLogger("pipeline:runner");
@@ -88,7 +89,9 @@ export async function runBufferedPipeline(
   // Stage 1: Resolve
   const state = resolveStage(msg, services);
   if (!state) {
-    throw new Error(`Unknown nous: ${msg.nousId ?? "default"}`);
+    throw new PipelineError(`Unknown nous: ${msg.nousId ?? "default"}`, {
+      code: "AGENT_NOT_FOUND", context: { nousId: msg.nousId },
+    });
   }
 
   // Stage 2: Guard
@@ -113,7 +116,7 @@ export async function runBufferedPipeline(
     }
 
     if (!finalState.outcome) {
-      throw new Error("Turn produced no outcome");
+      throw new PipelineError("Turn produced no outcome", { code: "PIPELINE_NO_OUTCOME" });
     }
 
     return finalState.outcome;

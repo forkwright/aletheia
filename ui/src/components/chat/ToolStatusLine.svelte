@@ -7,10 +7,47 @@
     onclick?: () => void;
   } = $props();
 
+  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
+    read: { icon: "\u{1F4C1}", label: "fs" },
+    write: { icon: "\u{1F4C1}", label: "fs" },
+    edit: { icon: "\u{1F4C1}", label: "fs" },
+    ls: { icon: "\u{1F4C1}", label: "fs" },
+    find: { icon: "\u{1F50D}", label: "search" },
+    grep: { icon: "\u{1F50D}", label: "search" },
+    web_search: { icon: "\u{1F50D}", label: "search" },
+    mem0_search: { icon: "\u{1F50D}", label: "search" },
+    exec: { icon: "\u26A1", label: "exec" },
+    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
+    message: { icon: "\u{1F4AC}", label: "comms" },
+    blackboard: { icon: "\u{1F9E0}", label: "system" },
+    note: { icon: "\u{1F9E0}", label: "system" },
+    enable_tool: { icon: "\u{1F9E0}", label: "system" },
+    web_fetch: { icon: "\u{1F310}", label: "web" },
+  };
+
+  function getCategory(name: string): string {
+    return TOOL_CATEGORIES[name]?.label ?? "other";
+  }
+
   let running = $derived(tools.filter(t => t.status === "running"));
   let completed = $derived(tools.filter(t => t.status !== "running").length);
   let errors = $derived(tools.filter(t => t.status === "error").length);
   let total = $derived(tools.length);
+
+  let categoryBreakdown = $derived.by(() => {
+    if (running.length > 0 || total < 2) return "";
+    const counts = new Map<string, { icon: string; count: number }>();
+    for (const t of tools) {
+      const cat = getCategory(t.name);
+      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
+      const existing = counts.get(cat);
+      if (existing) existing.count++;
+      else counts.set(cat, { icon: entry.icon, count: 1 });
+    }
+    return [...counts.values()].map(c => `${c.icon}${c.count}`).join(" ");
+  });
 
   /** Humanize a tool name into a readable activity label */
   function humanizeTool(name: string): string {
@@ -36,12 +73,69 @@
     }
   }
 
+  /** Get a short input summary for a running tool */
+  function inputHint(tool: ToolCallState): string {
+    if (!tool.input) return "";
+    const inp = tool.input;
+    switch (tool.name) {
+      case "exec": {
+        const cmd = String(inp.command ?? "");
+        return cmd.length > 40 ? cmd.slice(0, 37) + "..." : cmd;
+      }
+      case "read":
+      case "write":
+      case "edit":
+      case "ls": {
+        const p = String(inp.path ?? inp.file ?? "");
+        const parts = p.split("/");
+        return parts.length > 1 ? parts.slice(-2).join("/") : p;
+      }
+      case "grep":
+        return `/${inp.pattern ?? ""}/`;
+      case "web_search":
+      case "mem0_search":
+        return String(inp.query ?? "").slice(0, 40);
+      default:
+        return "";
+    }
+  }
+
+  let elapsed = $state(0);
+  let runStart = $state(0);
+
+  $effect(() => {
+    if (running.length > 0) {
+      if (!runStart) runStart = Date.now();
+      elapsed = Math.floor((Date.now() - runStart) / 1000);
+      const iv = setInterval(() => {
+        elapsed = Math.floor((Date.now() - runStart) / 1000);
+      }, 1000);
+      return () => clearInterval(iv);
+    } else {
+      runStart = 0;
+      elapsed = 0;
+    }
+  });
+
+  function formatElapsed(s: number): string {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m${s % 60}s`;
+  }
+
   let statusText = $derived.by(() => {
     if (running.length > 0) {
-      return humanizeTool(running[running.length - 1]!.name);
+      const current = running[running.length - 1]!;
+      const icon = TOOL_CATEGORIES[current.name]?.icon ?? "\u2699";
+      const hint = inputHint(current);
+      const label = humanizeTool(current.name);
+      const time = elapsed > 0 ? ` (${formatElapsed(elapsed)})` : "";
+      return hint ? `${icon} ${label}: ${hint}${time}` : `${icon} ${label}${time}`;
     }
     if (errors > 0) {
       return `${total} tool${total === 1 ? '' : 's'} · ${errors} failed`;
+    }
+    if (categoryBreakdown) {
+      return categoryBreakdown;
     }
     return `${total} tool${total === 1 ? '' : 's'} completed`;
   });

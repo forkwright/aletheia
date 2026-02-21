@@ -1,4 +1,4 @@
-import { getToken } from "./api";
+import { getEffectiveToken } from "./api";
 
 type EventCallback = (event: string, data: unknown) => void;
 
@@ -33,7 +33,7 @@ export function closeEventSource(): void {
 }
 
 function connect() {
-  const token = getToken();
+  const token = getEffectiveToken();
   const base = import.meta.env.DEV ? "" : window.location.origin;
   const url = `${base}/api/events${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
@@ -61,6 +61,7 @@ function connect() {
   const eventTypes = [
     "turn:before", "turn:after", "turn:text_delta", "turn:tool_start", "turn:tool_result",
     "tool:called", "tool:failed", "session:created", "session:archived",
+    "distill:before", "distill:stage", "distill:after",
   ];
   for (const type of eventTypes) {
     source.addEventListener(type, (e) => {

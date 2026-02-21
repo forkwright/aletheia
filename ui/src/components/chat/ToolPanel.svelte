@@ -42,6 +42,37 @@
     tools.reduce((sum, t) => sum + (t.durationMs ?? 0), 0)
   );
 
+  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
+    read: { icon: "\u{1F4C1}", label: "fs" },
+    write: { icon: "\u{1F4C1}", label: "fs" },
+    edit: { icon: "\u{1F4C1}", label: "fs" },
+    ls: { icon: "\u{1F4C1}", label: "fs" },
+    find: { icon: "\u{1F50D}", label: "search" },
+    grep: { icon: "\u{1F50D}", label: "search" },
+    web_search: { icon: "\u{1F50D}", label: "search" },
+    mem0_search: { icon: "\u{1F50D}", label: "search" },
+    exec: { icon: "\u26A1", label: "exec" },
+    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
+    message: { icon: "\u{1F4AC}", label: "comms" },
+    blackboard: { icon: "\u{1F9E0}", label: "system" },
+    note: { icon: "\u{1F9E0}", label: "system" },
+    enable_tool: { icon: "\u{1F9E0}", label: "system" },
+    web_fetch: { icon: "\u{1F310}", label: "web" },
+  };
+
+  let categoryStats = $derived.by(() => {
+    const counts = new Map<string, { icon: string; count: number }>();
+    for (const t of tools) {
+      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
+      const existing = counts.get(entry.label);
+      if (existing) existing.count++;
+      else counts.set(entry.label, { icon: entry.icon, count: 1 });
+    }
+    return [...counts.values()];
+  });
+
   /** Humanize a tool name */
   function humanize(name: string): string {
     switch (name) {
@@ -62,6 +93,42 @@
       case "message": return "Send message";
       case "enable_tool": return "Enable tool";
       default: return name;
+    }
+  }
+
+  /** Summarize tool input for inline display */
+  function getInputSummary(tool: ToolCallState): string {
+    if (!tool.input) return "";
+    const inp = tool.input;
+    switch (tool.name) {
+      case "exec": {
+        const cmd = String(inp.command ?? "");
+        return cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd;
+      }
+      case "read":
+      case "write":
+      case "edit":
+      case "ls":
+        return String(inp.path ?? inp.file ?? "");
+      case "grep": {
+        const pattern = String(inp.pattern ?? "");
+        const path = String(inp.path ?? "");
+        return path ? `/${pattern}/ in ${path}` : `/${pattern}/`;
+      }
+      case "find":
+        return `${inp.pattern ?? ""} in ${inp.path ?? ""}`;
+      case "web_search":
+      case "mem0_search":
+        return String(inp.query ?? "");
+      case "web_fetch":
+        return String(inp.url ?? "");
+      case "sessions_send":
+      case "sessions_ask":
+        return `\u2192 ${inp.agentId ?? inp.targetAgent ?? ""}`;
+      case "blackboard":
+        return `${inp.action ?? ""} ${inp.key ?? ""}`;
+      default:
+        return "";
     }
   }
 
@@ -173,6 +240,13 @@
       <button class="toggle-btn" onclick={expandAll} title="Expand all">⊞</button>
       <button class="toggle-btn" onclick={collapseAll} title="Collapse all">⊟</button>
     </div>
+    {#if categoryStats.length > 1}
+      <div class="header-categories">
+        {#each categoryStats as cat}
+          <span class="cat-badge">{cat.icon}{cat.count}</span>
+        {/each}
+      </div>
+    {/if}
   </div>
   <div class="panel-body">
     {#each tools as tool, i (tool.id)}
@@ -193,18 +267,28 @@
           </span>
           <span class="tool-label">
             <span class="tool-name">{humanize(tool.name)}</span>
-            {#if tool.name !== humanize(tool.name)}
+            {#if getInputSummary(tool)}
+              <span class="tool-input-summary">{getInputSummary(tool)}</span>
+            {:else if tool.name !== humanize(tool.name)}
               <span class="tool-raw">{tool.name}</span>
             {/if}
           </span>
           {#if tool.durationMs != null}
             <span class="tool-time">{formatDuration(tool.durationMs)}</span>
           {/if}
+          {#if tool.tokenEstimate}
+            <span class="tool-tokens">~{tool.tokenEstimate > 999 ? `${(tool.tokenEstimate / 1000).toFixed(1)}k` : tool.tokenEstimate} tok</span>
+          {/if}
           <span class="tool-chevron">{expandedIds.has(tool.id) ? "−" : "+"}</span>
         </button>
-        {#if expandedIds.has(tool.id) && tool.result}
+        {#if expandedIds.has(tool.id) && (tool.result || tool.input)}
           <div class="tool-detail">
-            <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
+            {#if tool.input}
+              <pre class="tool-input-json">{JSON.stringify(tool.input, null, 2)}</pre>
+            {/if}
+            {#if tool.result}
+              <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
+            {/if}
             {#if isCollapsible(tool)}
               <button class="collapse-toggle" onclick={() => toggleCollapse(tool.id)}>
                 {isCollapsed(tool) ? `Show all ${resultLineCount(tool.result)} lines` : "Show less"}
@@ -282,6 +366,17 @@
   .stat.running { color: var(--accent); }
   .stat.time { color: var(--text-muted); font-family: var(--font-mono); }
   .stat-spacer { flex: 1; }
+  .header-categories {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0 0;
+    flex-wrap: wrap;
+  }
+  .cat-badge {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: -0.5px;
+  }
   .toggle-btn {
     background: transparent;
     border: none;
@@ -372,11 +467,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .tool-input-summary {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
   .tool-time {
     color: var(--text-muted);
     font-size: 10px;
     font-family: var(--font-mono);
     flex-shrink: 0;
+  }
+  .tool-tokens {
+    color: var(--text-muted);
+    font-size: 9px;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    opacity: 0.7;
   }
   .tool-chevron {
     color: var(--text-muted);
@@ -403,6 +514,20 @@
     padding: 4px 14px 8px 52px;
     max-height: 300px;
     overflow: auto;
+  }
+  .tool-input-json {
+    margin: 0 0 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-muted);
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    border-left: 2px solid var(--accent);
+    opacity: 0.8;
   }
   .tool-result {
     margin: 0;

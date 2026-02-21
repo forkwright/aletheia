@@ -1,8 +1,9 @@
 // File write tool
-import { writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import { safePath } from "./safe-path.js";
+import { trySafe } from "../../koina/safe.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
 
 export const writeTool: ToolHandler = {
@@ -56,7 +57,7 @@ export const writeTool: ToolHandler = {
         flag: append ? "a" : "w",
         encoding: "utf-8",
       });
-      try { commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"); } catch {}
+      trySafe("workspace git commit", () => commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"), undefined);
       return `Written to ${filePath}`;
     } catch (error) {
       const msg =

@@ -2,8 +2,9 @@
 // CLI entry point
 import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
-import { loadConfig } from "./taxis/loader.js";
 import { createLogger } from "./koina/logger.js";
+import { getVersion } from "./version.js";
+import { runDiagnostics, applyFixes, formatResults } from "./koina/diagnostics.js";
 
 const log = createLogger("entry");
 
@@ -20,7 +21,7 @@ process.on("uncaughtException", (err) => {
 const program = new Command()
   .name("aletheia")
   .description("Aletheia distributed cognition runtime")
-  .version("0.1.0");
+  .version(getVersion());
 
 const gateway = program
   .command("gateway")
@@ -45,25 +46,48 @@ gateway
 
 program
   .command("doctor")
-  .description("Validate configuration")
+  .description("Validate configuration and check system health")
   .option("-c, --config <path>", "Config file path")
-  .action((opts: { config?: string }) => {
-    try {
-      const config = loadConfig(opts.config);
-      console.log("Config valid.");
-      console.log(`  Nous: ${config.agents.list.map((a) => a.id).join(", ")}`);
-      console.log(`  Bindings: ${config.bindings.length}`);
-      console.log(`  Gateway port: ${config.gateway.port}`);
-      console.log(`  Signal accounts: ${Object.keys(config.channels.signal.accounts).length}`);
-      console.log(`  Plugins: ${Object.keys(config.plugins.entries).length}`);
-      console.log(`  Plugin paths: ${config.plugins.load.paths.length}`);
-    } catch (error) {
-      console.error(
-        "Config invalid:",
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+  .option("--fix", "Apply automatic fixes for fixable issues")
+  .option("--dry-run", "Show what --fix would do without applying")
+  .action((opts: { config?: string; fix?: boolean; dryRun?: boolean }) => {
+    const { results, config } = runDiagnostics();
+
+    if (config) {
+      console.log(`Aletheia Doctor — ${config.agents.list.length} agents\n`);
+    } else {
+      console.log("Aletheia Doctor\n");
     }
+
+    console.log(formatResults(results, opts.dryRun || opts.fix));
+
+    if (opts.dryRun) {
+      const fixable = results.filter((r) => r.fix);
+      if (fixable.length > 0) {
+        console.log(`\nDry run: ${fixable.length} fix(es) would be applied.`);
+      }
+    } else if (opts.fix) {
+      const fixable = results.filter((r) => r.fix);
+      if (fixable.length === 0) {
+        console.log("\nNothing to fix.");
+      } else {
+        console.log(`\nApplying ${fixable.length} fix(es)...`);
+        const { applied, failed } = applyFixes(results);
+        console.log(`  Applied: ${applied}`);
+        if (failed.length > 0) {
+          console.log(`  Failed: ${failed.length}`);
+          for (const f of failed) console.log(`    X ${f}`);
+        }
+
+        // Re-run to verify
+        console.log("\nRe-checking...");
+        const { results: recheck } = runDiagnostics();
+        console.log(formatResults(recheck));
+      }
+    }
+
+    const errors = results.filter((r) => r.status === "error").length;
+    if (errors > 0) process.exit(1);
   });
 
 program
@@ -383,5 +407,153 @@ program
       }
     },
   );
+
+// --- Update ---
+
+program
+  .command("update [version]")
+  .description("Update Aletheia to a release or latest main")
+  .option("--edge", "Pull latest main (HEAD) instead of a release tag")
+  .option("--check", "Check for updates without applying")
+  .option("--rollback", "Roll back to previous version")
+  .action(
+    async (
+      version: string | undefined,
+      opts: { edge?: boolean; check?: boolean; rollback?: boolean },
+    ) => {
+      const { execFileSync } = await import("node:child_process");
+      const { join, dirname } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+
+      // Resolve aletheia-update script relative to the repo root
+      const scriptDir = dirname(fileURLToPath(import.meta.url));
+      const repoRoot = join(scriptDir, "..", "..");
+      const script = join(repoRoot, "shared", "bin", "aletheia-update");
+
+      const args: string[] = [];
+      if (opts.edge) args.push("--edge");
+      if (opts.check) args.push("--check");
+      if (opts.rollback) args.push("--rollback");
+      if (version) args.push(version);
+
+      try {
+        execFileSync(script, args, { stdio: "inherit" });
+      } catch (err) {
+        const code = (err as { status?: number }).status ?? 1;
+        process.exit(code);
+      }
+    },
+  );
+
+// --- Token Audit ---
+
+program
+  .command("audit-tokens [agent-id]")
+  .description("Show per-section bootstrap token breakdown for an agent")
+  .action(async (agentId: string | undefined) => {
+    const { auditTokens } = await import("./nous/audit.js");
+    const id = agentId ?? "main";
+    await auditTokens(id);
+  });
+
+// --- Auth Migration ---
+
+program
+  .command("migrate-auth")
+  .description("Migrate from token auth to session-based auth")
+  .option("-u, --username <name>", "Admin username")
+  .option("-p, --password <pass>", "Admin password")
+  .option("-c, --config <path>", "Config file path")
+  .action(async (opts: { username?: string; password?: string; config?: string }) => {
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const { paths } = await import("./taxis/paths.js");
+    const { hashPassword } = await import("./auth/passwords.js");
+    const { createInterface } = await import("node:readline");
+
+    const configPath = opts.config ?? paths.configFile();
+    let raw: string;
+    try {
+      raw = readFileSync(configPath, "utf-8");
+    } catch {
+      console.error(`Cannot read config: ${configPath}`);
+      process.exit(1);
+    }
+
+    let config: Record<string, unknown>;
+    try {
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      console.error("Invalid JSON in config file");
+      process.exit(1);
+    }
+
+    const gateway = (config["gateway"] ?? {}) as Record<string, unknown>;
+    const auth = (gateway["auth"] ?? {}) as Record<string, unknown>;
+    const currentMode = (auth["mode"] as string) ?? "token";
+
+    if (currentMode === "session") {
+      const users = auth["users"] as Array<unknown> | undefined;
+      console.log(`Auth mode is already 'session' with ${users?.length ?? 0} user(s).`);
+      process.exit(0);
+    }
+
+    console.log(`Current auth mode: ${currentMode}`);
+    console.log("Migrating to session-based auth.\n");
+
+    // Get username and password
+    let username = opts.username;
+    let password = opts.password;
+
+    if (!username || !password) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> =>
+        new Promise((resolve) => rl.question(q, resolve));
+
+      if (!username) username = await ask("Username: ");
+      if (!password) {
+        process.stdout.write("Password: ");
+        password = await ask("");
+      }
+      rl.close();
+    }
+
+    if (!username?.trim() || !password) {
+      console.error("Username and password are required.");
+      process.exit(1);
+    }
+
+    const passwordHash = hashPassword(password);
+
+    // Build the new auth config
+    auth["mode"] = "session";
+    auth["users"] = [
+      { username: username.trim(), passwordHash, role: "admin" },
+    ];
+    if (!auth["session"]) {
+      auth["session"] = {
+        accessTokenTtl: 900,
+        refreshTokenTtl: 2592000,
+        maxSessionsPerUser: 10,
+        secureCookies: true,
+      };
+    }
+    gateway["auth"] = auth;
+    config["gateway"] = gateway;
+
+    // Write config
+    try {
+      writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    } catch (err) {
+      console.error(`Failed to write config: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+
+    console.log(`\nAuth migrated to session mode.`);
+    console.log(`  User: ${username.trim()} (admin)`);
+    if (auth["token"]) {
+      console.log(`  Old token preserved for API access.`);
+    }
+    console.log(`\nRestart the gateway to apply: systemctl restart aletheia`);
+  });
 
 program.parse();

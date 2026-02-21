@@ -1,15 +1,16 @@
-// Finalize stage — trace persistence, signal classification, skill extraction, distillation
+// Finalize stage — trace persistence, signal classification, skill extraction, working state, memory
 import { join } from "node:path";
-import { createLogger } from "../../../koina/logger.js";
 import { persistTrace } from "../../trace.js";
 import { classifyInteraction } from "../../interaction-signals.js";
 import { extractSkillCandidate, saveLearnedSkill } from "../../../organon/skill-learner.js";
+import { extractWorkingState } from "../../working-state.js";
+import { extractTurnFacts } from "../../turn-facts.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
-import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
-import type { TurnState, RuntimeServices } from "../types.js";
+import { createLogger } from "../../../koina/logger.js";
+import type { RuntimeServices, TurnState } from "../types.js";
 
-const log = createLogger("pipeline:finalize");
+const log = createLogger("finalize");
 
 export async function finalize(
   state: TurnState,
@@ -28,6 +29,7 @@ export async function finalize(
 
   // Update actual API-reported context for distillation triggering
   services.store.updateSessionActualTokens(sessionId, totalInputTokens);
+  services.store.updateComputedContextTokens(sessionId, totalInputTokens);
 
   // Plugin afterTurn
   if (services.plugins) {
@@ -45,6 +47,7 @@ export async function finalize(
   eventBus.emit("turn:after", {
     nousId, sessionId, toolCalls: totalToolCalls,
     inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
+    text: outcome.text.slice(0, 120),
   });
 
   // Interaction signal classification
@@ -70,42 +73,64 @@ export async function finalize(
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
     extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
       .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
+      .catch((err) => { log.debug(`Skill extraction failed (non-fatal): ${err instanceof Error ? err.message : err}`); });
+  }
+
+  // Working state extraction — async, non-blocking, on cheap model
+  // Only runs when there were tool calls (indicates active work, not just conversation)
+  if (totalToolCalls > 0) {
+    const wsModel = services.config.agents.defaults.compaction.distillationModel;
+    const toolSummary = turnToolCalls
+      .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 100)}) → ${t.output.slice(0, 100)}`)
+      .join("\n");
+    const previousState = services.store.getWorkingState(sessionId);
+    extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel)
+      .then((newState) => {
+        if (newState) services.store.updateWorkingState(sessionId, newState);
+      })
       .catch(() => {});
   }
 
-  // Auto-trigger distillation
-  const contextTokens = services.config.agents.defaults.contextTokens;
-  const compaction = services.config.agents.defaults.compaction;
-  const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
-  try {
-    const session = services.store.findSessionById(sessionId);
-    const actualContext = session?.lastInputTokens ?? session?.tokenCountEstimate ?? 0;
-    if (session && session.messageCount >= 10 && actualContext >= distillThreshold) {
-      const utilization = Math.round((actualContext / contextTokens) * 100);
-      log.info(
-        `Distillation triggered for ${nousId} session=${sessionId} ` +
-        `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%, ` +
-        `actual=${actualContext} tokens)`,
-      );
-      const distillModel = compaction.distillationModel;
-      const thread = services.store.getThreadForSession(sessionId);
-      await distillSession(services.store, services.router, sessionId, nousId, {
-        triggerThreshold: distillThreshold,
-        minMessages: 10,
-        extractionModel: distillModel,
-        summaryModel: distillModel,
-        preserveRecentMessages: compaction.preserveRecentMessages,
-        preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-        ...(workspace ? { workspace } : {}),
-        ...(services.plugins ? { plugins: services.plugins } : {}),
-        ...(thread ? {
-          onThreadSummaryUpdate: (summary, keyFacts) => {
-            services.store.updateThreadSummary(thread.id, summary, keyFacts);
-          },
-        } : {}),
-      });
-    }
-  } catch (err) {
-    log.warn(`Distillation failed: ${err instanceof Error ? err.message : err}`);
+  // After-turn memory extraction — lightweight, non-blocking, on cheap model
+  // Extracts 0-3 durable facts and stores them immediately via sidecar
+  if (services.memoryTarget && outcome.text.length > 150) {
+    const factModel = services.config.agents.defaults.compaction.distillationModel;
+    const toolSummary = turnToolCalls
+      .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 80)}) → ${t.output.slice(0, 80)}`)
+      .join("\n");
+
+    extractTurnFacts(services.router, outcome.text, toolSummary, factModel)
+      .then(async (result) => {
+        if (result.facts.length > 0) {
+          const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+          const userId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+          try {
+            const res = await fetch(`${sidecarUrl}/add_batch`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                texts: result.facts,
+                user_id: userId,
+                agent_id: nousId,
+                source: "turn",
+                session_id: sessionId,
+                confidence: 0.7, // Lower than distillation — single-turn context
+              }),
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (res.ok) {
+              const data = await res.json() as { added?: number; skipped?: number };
+              if ((data.added ?? 0) > 0) {
+                log.info(`Turn facts: ${data.added} stored, ${data.skipped ?? 0} deduped (${nousId}, ${result.durationMs}ms)`);
+              }
+            }
+          } catch (err) {
+            log.debug(`Turn fact storage failed: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+      })
+      .catch(() => {}); // Non-blocking, never fail the turn
   }
+
+  // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)
 }

@@ -1,5 +1,5 @@
 // NousManager tests — orchestration, routing, turn execution
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NousManager } from "./manager.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
@@ -45,6 +45,14 @@ function makeStore() {
     blackboardReadPrefix: vi.fn().mockReturnValue([]),
     getThreadForSession: vi.fn().mockReturnValue(null),
     getHistory: vi.fn().mockReturnValue([]),
+    getThinkingConfig: vi.fn().mockReturnValue({ enabled: false, budget: 10000 }),
+    getRecentToolCalls: vi.fn().mockReturnValue([]),
+    getNotes: vi.fn().mockReturnValue([]),
+    getWorkingState: vi.fn().mockReturnValue(null),
+    updateComputedContextTokens: vi.fn(),
+    queueMessage: vi.fn(),
+    drainQueue: vi.fn().mockReturnValue([]),
+    getQueueLength: vi.fn().mockReturnValue(0),
   } as never;
 }
 

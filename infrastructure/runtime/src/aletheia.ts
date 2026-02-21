@@ -1,7 +1,7 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
-import { loadConfig, applyEnv } from "./taxis/loader.js";
+import { applyEnv, loadConfig } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -18,6 +18,8 @@ import { webSearchTool } from "./organon/built-in/web-search.js";
 import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
+import { memoryCorrectTool } from "./organon/built-in/memory-correct.js";
+import { memoryForgetTool } from "./organon/built-in/memory-forget.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
@@ -25,6 +27,7 @@ import { cleanupTtsFiles } from "./semeion/tts.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
+import { createSessionsDispatchTool } from "./organon/built-in/sessions-dispatch.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
@@ -33,6 +36,7 @@ import { createCheckCalibrationTool } from "./organon/built-in/check-calibration
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
 import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
 import { createBlackboardTool } from "./organon/built-in/blackboard.js";
+import { createNoteTool } from "./organon/built-in/note.js";
 import { createContextCheckTool } from "./organon/built-in/context-check.js";
 import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
@@ -40,29 +44,36 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, startGateway, setCronRef, setWatchdogRef, setSkillsRef, setMcpRef, setCommandsRef } from "./pylon/server.js";
+import { createGateway, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway, type GatewayAuthDeps } from "./pylon/server.js";
+import { AuthSessionStore } from "./auth/sessions.js";
+import { AuditLog } from "./auth/audit.js";
+import { generateSecret } from "./auth/tokens.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
-import { createUiRoutes, broadcastEvent } from "./pylon/ui.js";
+import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
 import {
+  type DaemonHandle,
+  daemonOptsFromConfig,
   spawnDaemon,
   waitForReady,
-  daemonOptsFromConfig,
-  type DaemonHandle,
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
-import { sendMessage, parseTarget } from "./semeion/sender.js";
+import { initSenderPii, parseTarget, sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
 import { runRetention } from "./daemon/retention.js";
-import { Watchdog, type ServiceProbe } from "./daemon/watchdog.js";
+import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
+import { startUpdateChecker } from "./daemon/update-check.js";
+import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
-import { chmodSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
@@ -74,6 +85,7 @@ export interface AletheiaRuntime {
   tools: ToolRegistry;
   manager: NousManager;
   plugins: PluginRegistry;
+  memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget;
   shutdown: () => void;
 }
 
@@ -128,6 +140,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...memoryCorrectTool, category: "available" as const });
+  tools.register({ ...memoryForgetTool, category: "available" as const });
   tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
@@ -201,6 +215,40 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Memory flush target — connects distillation/reflection extraction to memory sidecar
+  const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+  const memoryUserId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+  const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
+    async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
+      try {
+        const res = await fetch(`${sidecarUrl}/add_batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            texts: memories,
+            user_id: memoryUserId,
+            agent_id: agentId,
+            source: "distillation",
+            confidence: 0.8,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          log.warn(`Memory flush HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+          return { added: 0, errors: memories.length };
+        }
+        const data = await res.json() as { added?: number; errors?: number; skipped?: number };
+        log.info(`Memory flush: ${data.added ?? 0} added, ${data.skipped ?? 0} deduped, ${data.errors ?? 0} errors (agent=${agentId})`);
+        return { added: data.added ?? 0, errors: data.errors ?? 0 };
+      } catch (err) {
+        log.warn(`Memory flush failed: ${err instanceof Error ? err.message : err}`);
+        return { added: 0, errors: memories.length };
+      }
+    },
+  };
+  manager.setMemoryTarget(memoryTarget);
+  log.info("Memory flush target configured (sidecar /add_batch)");
+
   // Competence model + uncertainty tracker — wired into manager for runtime use
   const sharedRoot = paths.root;
   const competence = new CompetenceModel(sharedRoot);
@@ -222,6 +270,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
+  tools.register(createNoteTool(store));
 
   // Meta-tools — composed pipelines
   const ctxCheckTool = createContextCheckTool(tools);
@@ -244,6 +293,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const spawnTool = createSessionsSpawnTool(auditDispatcher, sharedRoot);
   spawnTool.category = "available";
   tools.register(spawnTool);
+  const dispatchTool = createSessionsDispatchTool(auditDispatcher, sharedRoot);
+  dispatchTool.category = "available";
+  tools.register(dispatchTool);
   tools.register(createDeliberateTool(auditDispatcher));
 
   return {
@@ -253,6 +305,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     tools,
     manager,
     plugins,
+    memoryTarget,
     shutdown: () => {
       store.close();
       log.info("Runtime shutdown complete");
@@ -280,9 +333,39 @@ export async function startRuntime(configPath?: string): Promise<void> {
     await runtime.plugins.dispatchStart();
   }
 
+  // --- Auth ---
+  let gatewayAuth: GatewayAuthDeps | undefined;
+  {
+    const authDb = new Database(paths.sessionsDb());
+    authDb.pragma("journal_mode = WAL");
+    authDb.pragma("synchronous = NORMAL");
+
+    const auditLog = new AuditLog(authDb);
+    let authSessionStore: AuthSessionStore | null = null;
+    let sessionSecret: string | null = null;
+
+    if (config.gateway.auth.mode === "session") {
+      authSessionStore = new AuthSessionStore(authDb);
+      const secretPath = join(paths.configDir(), "session.key");
+      if (existsSync(secretPath)) {
+        sessionSecret = readFileSync(secretPath, "utf-8").trim();
+      } else {
+        sessionSecret = generateSecret();
+        writeFileSync(secretPath, sessionSecret, { mode: 0o600 });
+        log.info("Generated new session signing key");
+      }
+
+      if (config.gateway.auth.users.length === 0) {
+        log.warn("Auth mode is 'session' but no users configured — run 'aletheia migrate-auth' to create an admin account");
+      }
+    }
+
+    gatewayAuth = { sessionStore: authSessionStore, auditLog, secret: sessionSecret };
+  }
+
   // --- Gateway ---
   const port = config.gateway.port;
-  const app = createGateway(config, runtime.manager, runtime.store);
+  const app = createGateway(config, runtime.manager, runtime.store, gatewayAuth);
 
   // Mount MCP server routes
   const mcpRoutes = createMcpRoutes(config, runtime.manager, runtime.store);
@@ -298,6 +381,23 @@ export async function startRuntime(configPath?: string): Promise<void> {
     "session:created", "session:archived",
   ] as const) {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
+  }
+
+  // Record tool stats for usage analytics
+  for (const eventName of ["tool:called", "tool:failed"] as const) {
+    eventBus.on(eventName, (payload: Record<string, unknown>) => {
+      try {
+        const errMsg = eventName === "tool:failed" ? (payload["error"] as string)?.slice(0, 500) : undefined;
+        const durMs = payload["durationMs"] as number | undefined;
+        runtime.store.recordToolStat({
+          nousId: (payload["nousId"] as string) ?? "unknown",
+          toolName: (payload["name"] as string) ?? "unknown",
+          success: eventName === "tool:called",
+          ...(errMsg ? { errorMessage: errMsg } : {}),
+          ...(durMs !== null && durMs !== undefined ? { durationMs: durMs } : {}),
+        });
+      } catch { /* non-fatal */ }
+    });
   }
 
   startGateway(app, port);
@@ -343,6 +443,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
       boundGroupIds.add(binding.match.peer.id);
     }
   }
+
+  initSenderPii(config.privacy?.pii);
 
   if (config.channels.signal.enabled) {
     for (const [accountId, account] of Object.entries(
@@ -430,18 +532,46 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Cron ---
   const cron = new CronScheduler(config, runtime.manager);
   setCronRef(cron);
+
+  // Register built-in reflection command for cron
+  cron.registerCommand("reflection:nightly", async () => {
+    const result = await runNightlyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        minHumanMessages: 10,
+        lookbackHours: 24,
+        memoryTarget: runtime.memoryTarget,
+      },
+    );
+    return `Reflected: ${result.agentsReflected} agents, ${result.totalFindings} findings, ${result.totalMemoriesStored} memories stored` +
+      (result.errors.length > 0 ? ` (${result.errors.length} errors)` : "");
+  });
+
+  cron.registerCommand("reflection:weekly", async () => {
+    const result = await runWeeklyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        lookbackDays: 7,
+      },
+    );
+    return `Weekly reflection: ${result.agentsReflected} agents, ${result.totalFindings} findings`;
+  });
+
   if (config.cron.enabled) {
     cron.start();
   }
 
   // --- Watchdog ---
+  // Always start for dashboard service health, even without Signal/alertRecipient.
+  // Alert function is optional — only wired when Signal is available + alertRecipient set.
   const wdConfig = config.watchdog;
-  if (wdConfig.enabled && wdConfig.alertRecipient && clients.size > 0) {
-    const alertClient = clients.values().next().value!;
-    const alertAccountId = clients.keys().next().value!;
-    const alertAccount = config.channels.signal.accounts[alertAccountId]!;
-    const alertAccountPhone = alertAccount.account ?? alertAccountId;
-
+  if (wdConfig.enabled) {
     const services: ServiceProbe[] = wdConfig.services.length > 0
       ? wdConfig.services
       : [
@@ -451,19 +581,26 @@ export async function startRuntime(configPath?: string): Promise<void> {
           { name: "ollama", url: "http://127.0.0.1:11434/api/tags" },
         ];
 
-    watchdog = new Watchdog({
-      services,
-      intervalMs: wdConfig.intervalMs,
-      alertFn: async (message) => {
+    // Wire alert function only when Signal + alertRecipient are configured
+    let alertFn: ((message: string) => Promise<void>) | undefined;
+    if (wdConfig.alertRecipient && clients.size > 0) {
+      const alertClient = clients.values().next().value!;
+      const alertAccountId = clients.keys().next().value!;
+      const alertAccount = config.channels.signal.accounts[alertAccountId]!;
+      const alertAccountPhone = alertAccount.account ?? alertAccountId;
+      alertFn = async (message) => {
         await sendMessage(alertClient, {
           account: alertAccountPhone,
           recipient: wdConfig.alertRecipient!,
         }, message, { markdown: false });
-      },
-    });
+      };
+    }
+
+    watchdog = new Watchdog({ services, intervalMs: wdConfig.intervalMs, ...(alertFn ? { alertFn } : {}) });
     watchdog.start();
     setWatchdogRef(watchdog);
     runtime.manager.setWatchdog(watchdog);
+    log.info(`Watchdog started: ${services.length} services${alertFn ? ", alerts → Signal" : ", no alert channel"}`);
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
@@ -471,6 +608,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Retention — enforce data lifecycle policy every 24h (with immediate first run)
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    runtime.store.deleteEphemeralSessions(24 * 60 * 60 * 1000); // 24h
     cleanupTtsFiles();
     runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);
@@ -480,6 +618,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }, 24 * 60 * 60 * 1000);
   // Run once shortly after startup so stale data is cleared without waiting 24h
   setTimeout(() => runRetention(runtime.store, config.privacy), 60_000);
+
+  // --- Update checker ---
+  const updateCheckTimer = startUpdateChecker(runtime.store, getVersion());
 
   // --- Shutdown ---
   let draining = false;
@@ -491,6 +632,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.info("Shutting down — draining active turns (max 10s)...");
     clearInterval(spawnCleanupTimer);
     clearInterval(retentionTimer);
+    clearInterval(updateCheckTimer);
     watchdog?.stop();
     cron.stop();
 

@@ -1,5 +1,5 @@
 // Complexity scoring tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { scoreComplexity, selectModel, selectTemperature } from "./complexity.js";
 
 const base = { messageText: "Hello", messageCount: 5, depth: 0 };

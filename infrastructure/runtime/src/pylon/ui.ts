@@ -1,6 +1,6 @@
 // Web UI — Svelte SPA served at /ui, SSE events at /api/events
 import { existsSync, readFileSync } from "node:fs";
-import { join, extname } from "node:path";
+import { extname, join } from "node:path";
 import { Hono } from "hono";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";

@@ -89,7 +89,7 @@ function findManifest(pluginPath: string): string | null {
     const files = readdirSync(pluginPath);
     const pluginJson = files.find((f) => f.endsWith(".plugin.json"));
     if (pluginJson) return join(pluginPath, pluginJson);
-  } catch {}
+  } catch { /* directory may not exist */ }
 
   return null;
 }

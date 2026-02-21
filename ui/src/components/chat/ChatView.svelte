@@ -2,7 +2,9 @@
   import MessageList from "./MessageList.svelte";
   import InputBar from "./InputBar.svelte";
   import ToolPanel from "./ToolPanel.svelte";
+  import ThinkingPanel from "./ThinkingPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
+  import DistillationProgress from "./DistillationProgress.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
   import {
@@ -35,6 +37,7 @@
     getActiveSessionId,
     getActiveSessionKey,
     getActiveSession,
+    setActiveSession,
     refreshSessions,
     createNewSession,
     loadSessions,
@@ -43,9 +46,12 @@
   import type { CommandInfo } from "../../lib/types";
   import { onGlobalEvent } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
+  import { addNotification } from "../../stores/notifications.svelte";
+  import { showToast } from "../../stores/toast.svelte";
 
   let distilling = $state(false);
   let serverCommands = $state<CommandInfo[]>([]);
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   // Recover streaming state after refresh
   let unsubEvents: (() => void) | null = null;
@@ -66,10 +72,9 @@
       }
 
       if (event === "turn:after") {
-        const turnData = data as { nousId?: string; sessionId?: string };
+        const turnData = data as { nousId?: string; sessionId?: string; text?: string };
         if (turnData.nousId === agentId) {
           setRemoteStreaming(agentId, false);
-          // Only reload from server if no local stream is managing messages
           if (!hasLocalStream(agentId)) {
             const sessionId = getActiveSessionId();
             if (sessionId) {
@@ -77,6 +82,16 @@
             }
           }
           refreshSessions(agentId);
+        }
+
+        // Notification for non-active agents
+        if (turnData.nousId && turnData.nousId !== agentId) {
+          const agent = getAgents().find((a) => a.id === turnData.nousId);
+          if (agent) {
+            const preview = turnData.text?.slice(0, 100) ?? "New message";
+            addNotification(turnData.nousId, agent.name, preview);
+            showToast(agent.name, agent.emoji, preview, turnData.nousId);
+          }
         }
       }
 
@@ -86,11 +101,29 @@
           setRemoteStreaming(agentId, true);
         }
       }
+
+      if (event === "connection") {
+        const { status } = data as { status: string };
+        if (status === "disconnected" && !pollInterval) {
+          pollInterval = setInterval(() => {
+            const id = getActiveAgentId();
+            const sid = getActiveSessionId();
+            if (id && sid) loadHistory(id, sid);
+          }, 30_000);
+        } else if (status === "connected" && pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          const id = getActiveAgentId();
+          const sid = getActiveSessionId();
+          if (id && sid) loadHistory(id, sid);
+        }
+      }
     });
   });
 
   onDestroy(() => {
     unsubEvents?.();
+    if (pollInterval) clearInterval(pollInterval);
   });
 
   // Load history when active session or agent changes
@@ -217,7 +250,12 @@
     const currentAgentId = getActiveAgentId();
     if (!currentAgentId) return;
     const sessionKey = getActiveSessionKey();
-    sendMessage(currentAgentId, text, sessionKey, media).then(() => {
+    sendMessage(currentAgentId, text, sessionKey, media).then((resolvedSessionId) => {
+      // If the server redirected to a different session (e.g., signal key ownership mismatch),
+      // switch the UI to the server's session before refreshing the list.
+      if (resolvedSessionId && resolvedSessionId !== getActiveSessionId()) {
+        setActiveSession(resolvedSessionId);
+      }
       skipNextHistoryLoad = true;
       refreshSessions(currentAgentId);
     });
@@ -253,6 +291,40 @@
     selectedTools = null;
   }
 
+  // Thinking panel state
+  let selectedThinking = $state<string | null>(null);
+  let thinkingIsLive = $state(false);
+
+  function handleThinkingClick(thinking?: string) {
+    if (thinking) {
+      selectedThinking = thinking;
+      thinkingIsLive = false;
+    } else {
+      selectedThinking = currentAgentId ? getThinkingText(currentAgentId) : "";
+      thinkingIsLive = true;
+    }
+  }
+
+  function closeThinkingPanel() {
+    selectedThinking = null;
+    thinkingIsLive = false;
+  }
+
+  // Thinking panel persistence — capture thinking content when turn completes
+  let previouslyLive = false;
+  $effect(() => {
+    const isLive = thinkingIsLive && currentAgentId ? getIsStreaming(currentAgentId) : false;
+    if (previouslyLive && !isLive && currentAgentId) {
+      const msgs = getMessages(currentAgentId);
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg?.thinking) {
+        selectedThinking = lastMsg.thinking;
+      }
+      thinkingIsLive = false;
+    }
+    previouslyLive = isLive;
+  });
+
   function handleAbort() {
     const id = getActiveAgentId();
     if (id) abortStream(id);
@@ -285,14 +357,23 @@
       agentName={agent?.name}
       agentEmoji={emoji}
       onToolClick={handleToolClick}
+      onThinkingClick={(thinking) => handleThinkingClick(thinking)}
     />
     {#if selectedTools}
       <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
+    {/if}
+    {#if selectedThinking !== null}
+      <ThinkingPanel
+        thinkingText={thinkingIsLive && currentAgentId ? getThinkingText(currentAgentId) : selectedThinking}
+        isStreaming={thinkingIsLive && (currentAgentId ? getIsStreaming(currentAgentId) : false)}
+        onClose={closeThinkingPanel}
+      />
     {/if}
   </div>
   {#if pendingApproval}
     <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
   {/if}
+  <DistillationProgress />
   <InputBar
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}

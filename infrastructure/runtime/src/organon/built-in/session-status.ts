@@ -1,5 +1,5 @@
 // Session status tool — usage and model info
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { SessionStore } from "../../mneme/store.js";
 
 export function createSessionStatusTool(store?: SessionStore): ToolHandler {

@@ -4,18 +4,20 @@ import type { SessionStore } from "../mneme/store.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { ToolRegistry } from "../organon/registry.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { PipelineError, SessionError } from "../koina/errors.js";
 import { resolveNous, resolveWorkspace } from "../taxis/loader.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
 import { distillSession } from "../distillation/pipeline.js";
+import type { MemoryFlushTarget } from "../distillation/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
 import { resolveNousId } from "./pipeline/stages/resolve.js";
-import { runStreamingPipeline, runBufferedPipeline } from "./pipeline/runner.js";
-import type { RuntimeServices, InboundMessage, TurnStreamEvent, TurnOutcome } from "./pipeline/types.js";
+import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
+import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
@@ -45,6 +47,7 @@ let turnCounter = 0;
 export class NousManager {
   private plugins?: PluginRegistry;
   private watchdog?: Watchdog;
+  private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
@@ -52,6 +55,7 @@ export class NousManager {
   private activeTurnsByNous = new Map<string, number>();
   private turnAbortControllers = new Map<string, AbortController>();
   private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
+  private activeSessionsByLock = new Map<string, string>(); // lockKey → sessionId
   readonly approvalGate = new ApprovalGate();
   isDraining: () => boolean = () => false;
 
@@ -68,6 +72,7 @@ export class NousManager {
 
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
+  setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
@@ -107,6 +112,7 @@ export class NousManager {
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
       approvalGate: this.approvalGate,
       approvalMode,
+      ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
     };
   }
 
@@ -154,6 +160,7 @@ export class NousManager {
         })) {
           if (event.type === "turn_start") {
             this.turnMeta.set(turnId, { nousId, sessionId: event.sessionId, startedAt: Date.now() });
+            this.activeSessionsByLock.set(lockKey, event.sessionId);
           }
           channel.push(event);
         }
@@ -180,17 +187,22 @@ export class NousManager {
       this.trackTurnEnd(nousId);
       this.turnAbortControllers.delete(turnId);
       this.turnMeta.delete(turnId);
+      this.activeSessionsByLock.delete(lockKey);
     }
   }
 
   async handleMessage(msg: InboundMessage): Promise<TurnOutcome> {
     if (this.isDraining()) {
-      throw new Error("Runtime is shutting down — rejecting new messages");
+      throw new PipelineError("Runtime is shutting down — rejecting new messages", {
+        code: "TURN_REJECTED", context: { reason: "draining" },
+      });
     }
 
     const maxDepth = this.config.session.agentToAgent.maxPingPongTurns;
     if (msg.depth && msg.depth >= maxDepth) {
-      throw new Error(`Cross-agent depth limit (${maxDepth}) exceeded`);
+      throw new PipelineError(`Cross-agent depth limit (${maxDepth}) exceeded`, {
+        code: "TURN_REJECTED", context: { depth: msg.depth, maxDepth },
+      });
     }
 
     const services = this.buildServices();
@@ -207,6 +219,26 @@ export class NousManager {
     }
   }
 
+  // --- Message Queue ---
+
+  /** Check if a session has an active turn (use lockKey = `${nousId}:${sessionKey}`) */
+  isSessionActive(lockKey: string): boolean {
+    return this.activeSessionsByLock.has(lockKey);
+  }
+
+  /** Get the session ID for an active turn by lock key */
+  getActiveSessionId(lockKey: string): string | undefined {
+    return this.activeSessionsByLock.get(lockKey);
+  }
+
+  /** Queue a message for delivery during an active turn. Returns false if no active turn. */
+  queueMessageForSession(lockKey: string, text: string, sender?: string): boolean {
+    const sessionId = this.activeSessionsByLock.get(lockKey);
+    if (!sessionId) return false;
+    this.store.queueMessage(sessionId, text, sender);
+    return true;
+  }
+
   private maybeScheduleDistillation(sessionId: string, nousId: string, lockKey: string): void {
     const compaction = this.config.agents.defaults.compaction;
     const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
@@ -214,19 +246,59 @@ export class NousManager {
 
     const session = this.store.findSessionById(sessionId);
     if (!session) return;
-    const actualContext = session.lastInputTokens ?? session.tokenCountEstimate ?? 0;
-    if (session.messageCount < 10 || actualContext < distillThreshold) return;
-
-    const utilization = Math.round((actualContext / contextTokens) * 100);
-    log.info(
-      `Scheduling deferred distillation for ${nousId} session=${sessionId} ` +
-      `(${utilization}% context, threshold=${Math.round(compaction.maxHistoryShare * 100)}%)`,
-    );
 
     const nous = resolveNous(this.config, nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
-    const thread = this.store.getThreadForSession(sessionId);
     const distillModel = compaction.distillationModel;
+
+    // Background sessions distill earlier with lightweight settings
+    if (session.sessionType === "background") {
+      if (session.messageCount < 50 && session.tokenCountEstimate < 10000) return;
+      log.info(`Scheduling lightweight distillation for background session ${sessionId} (${session.messageCount} msgs, ${session.tokenCountEstimate} tokens)`);
+      withSessionLock(lockKey, async () => {
+        await distillSession(this.store, this.router, sessionId, nousId, {
+          triggerThreshold: 10000,
+          minMessages: 20,
+          extractionModel: distillModel,
+          summaryModel: distillModel,
+          preserveRecentMessages: 20,
+          lightweight: true,
+          ...(workspace ? { workspace } : {}),
+          ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+        });
+      }).catch((err) => {
+        log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+      });
+      return;
+    }
+
+    // Primary sessions: multi-signal trigger — fire if ANY condition is met
+    const actualContext = session.computedContextTokens || session.lastInputTokens || session.tokenCountEstimate || 0;
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+
+    let triggerReason: string | null = null;
+    if (actualContext >= 120_000) {
+      triggerReason = `context=${actualContext} >= 120K`;
+    } else if (session.messageCount >= 150) {
+      triggerReason = `messageCount=${session.messageCount} >= 150`;
+    } else if (session.lastDistilledAt && (Date.now() - new Date(session.lastDistilledAt).getTime()) > sevenDays && session.messageCount >= 20) {
+      const lastDistilledMs = Date.now() - new Date(session.lastDistilledAt).getTime();
+      triggerReason = `stale (${Math.round(lastDistilledMs / 86400000)}d since last distill) + ${session.messageCount} msgs`;
+    } else if (session.distillationCount === 0 && session.messageCount >= 30) {
+      triggerReason = `never distilled + ${session.messageCount} msgs`;
+    } else if (actualContext >= distillThreshold && session.messageCount >= 10) {
+      triggerReason = `legacy threshold (${actualContext} >= ${distillThreshold})`;
+    }
+
+    if (!triggerReason) return;
+
+    const utilization = Math.round((actualContext / contextTokens) * 100);
+    log.info(
+      `Scheduling distillation for ${nousId} session=${sessionId} ` +
+      `(${utilization}% context, trigger: ${triggerReason})`,
+    );
+
+    const thread = this.store.getThreadForSession(sessionId);
 
     withSessionLock(lockKey, async () => {
       await distillSession(this.store, this.router, sessionId, nousId, {
@@ -238,6 +310,7 @@ export class NousManager {
         preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
         ...(workspace ? { workspace } : {}),
         ...(this.plugins ? { plugins: this.plugins } : {}),
+        ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
         ...(thread ? {
           onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
             this.store.updateThreadSummary(thread.id, summary, keyFacts);
@@ -256,7 +329,9 @@ export class NousManager {
     const distillModel = compaction.distillationModel;
 
     const session = this.store.findSessionById(sessionId);
-    if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (!session) throw new SessionError(`Session ${sessionId} not found`, {
+      code: "SESSION_NOT_FOUND", context: { sessionId },
+    });
 
     const nous = resolveNous(this.config, session.nousId);
     const workspace = nous ? resolveWorkspace(this.config, nous) : undefined;
@@ -272,6 +347,7 @@ export class NousManager {
       preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
+      ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
       ...(thread ? {
         onThreadSummaryUpdate: (summary, keyFacts) => {
           this.store.updateThreadSummary(thread.id, summary, keyFacts);

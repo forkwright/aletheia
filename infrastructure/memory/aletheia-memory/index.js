@@ -36,7 +36,15 @@ module.exports = {
         parts.push(`user: ${result.messageText.slice(0, 2000)}`);
       }
       parts.push(`assistant: ${result.responseText.slice(0, 10000)}`);
-      const transcript = parts.join("\n");
+      let transcript = parts.join("\n");
+
+      if (api.scanPii) {
+        const scan = api.scanPii(transcript);
+        if (scan.redacted > 0) {
+          api.log("info", `[aletheia-memory] PII redacted from transcript: ${scan.redacted} match(es)`);
+          transcript = scan.text;
+        }
+      }
 
       const p = mem0Fetch("/add", {
         text: transcript,

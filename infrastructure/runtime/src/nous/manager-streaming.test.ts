@@ -1,5 +1,5 @@
 // Tests for handleMessageStreaming — real-time event delivery via AsyncChannel
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NousManager } from "./manager.js";
 import type { StreamingEvent } from "../hermeneus/anthropic.js";
 
@@ -15,6 +15,7 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
         contextTokens: 200000,
         maxOutputTokens: 4096,
         bootstrapMaxTokens: 30000,
+        narrationFilter: false,
         routing: { enabled: false, tiers: {}, agentOverrides: {} },
         compaction: { maxHistoryShare: 0.7, distillationModel: "claude-haiku" },
       },
@@ -43,6 +44,16 @@ function makeStore() {
     recordSignal: vi.fn(),
     getSignalHistory: vi.fn().mockReturnValue([]),
     blackboardReadPrefix: vi.fn().mockReturnValue([]),
+    getThreadForSession: vi.fn().mockReturnValue(null),
+    getHistory: vi.fn().mockReturnValue([]),
+    getThinkingConfig: vi.fn().mockReturnValue({ enabled: false, budget: 10000 }),
+    getRecentToolCalls: vi.fn().mockReturnValue([]),
+    getNotes: vi.fn().mockReturnValue([]),
+    getWorkingState: vi.fn().mockReturnValue(null),
+    updateComputedContextTokens: vi.fn(),
+    queueMessage: vi.fn(),
+    drainQueue: vi.fn().mockReturnValue([]),
+    getQueueLength: vi.fn().mockReturnValue(0),
   } as never;
 }
 

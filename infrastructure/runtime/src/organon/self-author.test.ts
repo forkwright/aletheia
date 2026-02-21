@@ -1,10 +1,10 @@
 // Self-authoring tool tests
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadAuthoredTools, createSelfAuthorTools } from "./self-author.js";
-import type { ToolRegistry, ToolHandler } from "./registry.js";
+import { createSelfAuthorTools, loadAuthoredTools } from "./self-author.js";
+import type { ToolHandler, ToolRegistry } from "./registry.js";
 
 let tmpDir: string;
 let workspace: string;

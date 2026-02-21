@@ -1,5 +1,5 @@
 // Signal text formatting tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { formatForSignal, stylesToSignalParam } from "./format.js";
 
 describe("formatForSignal", () => {

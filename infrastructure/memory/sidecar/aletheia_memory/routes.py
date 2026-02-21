@@ -1,8 +1,11 @@
 # API routes for Aletheia memory sidecar
-
-from __future__ import annotations
+# NOTE: Do NOT add 'from __future__ import annotations' here.
+# It causes intermittent TypeError in FastAPI's dependency injection
+# when routes accept both a Pydantic model and Request parameter.
+# Python 3.12+ supports all modern type syntax natively.
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -15,13 +18,31 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 
-from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT
-from .temporal import _neo4j_driver, _extract_entities_for_episode
+from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
+from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .temporal import _extract_entities_for_episode
+from .entity_resolver import (
+    resolve_entity,
+    is_valid_entity,
+    get_canonical_entities,
+    merge_duplicate_entities,
+    cleanup_orphan_entities,
+)
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
+
+
+def _get_memory(request: Request):
+    """Safely retrieve Memory instance from app state."""
+    mem = getattr(request.app.state, "memory", None)
+    if mem is None:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+    return mem
 
 
 class AddRequest(BaseModel):
@@ -36,6 +57,7 @@ class SearchRequest(BaseModel):
     user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
+    domains: list[str] | None = None
 
 
 class ImportRequest(BaseModel):
@@ -43,12 +65,34 @@ class ImportRequest(BaseModel):
     user_id: str = "default"
 
 
+class AddDirectRequest(BaseModel):
+    """Store a pre-extracted fact directly — bypass Mem0 LLM extraction."""
+    text: str
+    user_id: str = "default"
+    agent_id: str | None = None
+    source: str = "direct"
+    session_id: str | None = None
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class AddBatchRequest(BaseModel):
+    """Store multiple pre-extracted facts directly — bypass Mem0 LLM extraction."""
+    texts: list[str]
+    user_id: str = "default"
+    agent_id: str | None = None
+    source: str = "distillation"
+    session_id: str | None = None
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
 DEDUP_THRESHOLD = 0.85
+DIRECT_DEDUP_THRESHOLD = 0.90  # Higher threshold for pre-extracted facts (more specific)
+COLLECTION_NAME = "aletheia_memories"
 
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -70,29 +114,303 @@ async def add_memory(req: AddRequest, request: Request):
                 )
                 return {"ok": True, "result": {"deduplicated": True, "existing_id": top.get("id"), "score": score}}
 
+        # Tier 3 (no LLM): skip extraction, just store raw text as embedding
+        backend = getattr(request.app.state, "backend", LLM_BACKEND)
+        if backend.get("tier", 1) >= 3:
+            logger.info("Tier 3: storing text as embedding only (no fact extraction)")
+            # Use Mem0's vector store directly for embedding-only storage
+            try:
+                from qdrant_client import QdrantClient
+                from qdrant_client.models import PointStruct
+                import uuid as _uuid
+                embedder = mem.embedding_model
+                vector = await asyncio.to_thread(embedder.embed, req.text)
+                point_id = str(_uuid.uuid4())
+                payload = {
+                    "memory": req.text[:500],
+                    "data": req.text,
+                    "user_id": req.user_id,
+                    "agent_id": req.agent_id,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    **(req.metadata or {}),
+                }
+                qclient = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+                qclient.upsert(
+                    collection_name="aletheia_memories",
+                    points=[PointStruct(id=point_id, vector=vector, payload=payload)],
+                )
+                return {"ok": True, "result": {"tier3_embed_only": True, "id": point_id}}
+            except Exception as e:
+                logger.exception("Tier 3 embedding failed")
+                raise HTTPException(status_code=500, detail=str(e))
+
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
+        graph_degraded = False
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
             asyncio.create_task(_generate_links(mem, req.text, req.user_id))
 
         # Episode tracking — record this interaction as a temporal episode
-        if NEO4J_PASSWORD and req.agent_id:
+        if neo4j_available() and req.agent_id:
             asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
 
         # Normalize any non-vocab relationship types created by graph extraction
-        if NEO4J_PASSWORD:
+        if neo4j_available():
             asyncio.create_task(_normalize_neo4j_relationships())
 
-        return {"ok": True, "result": result}
+        return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
+        # Neo4j failure during mem.add — vector write likely succeeded but graph write failed.
+        # Mem0 processes vector first, so partial success is common when Neo4j is down.
+        err_str = str(e).lower()
+        if "neo4j" in err_str or "ServiceUnavailable" in str(type(e).__name__) or "connection" in err_str:
+            mark_neo4j_down()
+            logger.warning("Neo4j failed during add, vector portion likely saved: %s", e)
+            return {"ok": True, "result": {"graph_degraded": True}, "warning": "Neo4j unavailable, stored vector only"}
         logger.exception("add_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
+    """Boost scores for recently created memories (linear decay over window)."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    for r in results:
+        created = r.get("created_at") or (r.get("metadata") or {}).get("created_at")
+        if not created:
+            continue
+        try:
+            if isinstance(created, str):
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            else:
+                continue
+            age_hours = (now - dt).total_seconds() / 3600
+            if age_hours < window_hours:
+                boost = max_boost * (1.0 - age_hours / window_hours)
+                r["score"] = (r.get("score") or 0.0) + boost
+        except (ValueError, TypeError):
+            pass
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return results
+
+
+def _apply_confidence_weight(results: list, max_penalty: float = 0.10) -> list:
+    """Penalize search scores for memories with high decay counts (frequently unreferenced)."""
+    if not neo4j_available() or not results:
+        return results
+    memory_ids = [r.get("id") for r in results if r.get("id")]
+    if not memory_ids:
+        return results
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            records = session.run(
+                "UNWIND $ids AS mid "
+                "OPTIONAL MATCH (m:MemoryAccess {memory_id: mid}) "
+                "RETURN mid, m.access_count AS accesses, m.decay_count AS decays",
+                ids=memory_ids,
+            ).data()
+        driver.close()
+        mark_neo4j_ok()
+        access_map: dict[str, tuple[int, int]] = {}
+        for rec in records:
+            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("decays") or 0)
+        for r in results:
+            mid = r.get("id")
+            if mid and mid in access_map:
+                accesses, decays = access_map[mid]
+                # Decay penalty: up to max_penalty for heavily decayed memories
+                if decays > 0 and accesses == 0:
+                    penalty = min(max_penalty, decays * 0.02)
+                    r["score"] = max(0, (r.get("score") or 0.0) - penalty)
+                # Access boost: small boost for frequently accessed memories
+                elif accesses > 2:
+                    boost = min(0.05, accesses * 0.01)
+                    r["score"] = (r.get("score") or 0.0) + boost
+        results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("confidence weighting failed: %s", e)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Direct storage endpoints — bypass Mem0 LLM extraction
+# These accept pre-extracted facts and embed + store them directly in Qdrant.
+# ---------------------------------------------------------------------------
+
+def _content_hash(text: str) -> str:
+    """Deterministic hash for content dedup."""
+    return hashlib.md5(text.strip().lower().encode()).hexdigest()
+
+
+async def _embed_texts(mem, texts: list[str]) -> list[list[float]]:
+    """Embed a list of texts using the Mem0 embedding model."""
+    embedder = mem.embedding_model
+    vectors = []
+    for text in texts:
+        vec = await asyncio.to_thread(embedder.embed, text)
+        vectors.append(vec)
+    return vectors
+
+
+async def _semantic_dedup_check(
+    client: QdrantClient,
+    vector: list[float],
+    user_id: str,
+    threshold: float = DIRECT_DEDUP_THRESHOLD,
+) -> bool:
+    """Check if a semantically similar memory already exists. Returns True if duplicate."""
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=1,
+            with_payload=False,
+        )
+        if results.points and results.points[0].score >= threshold:
+            return True
+    except Exception as e:
+        logger.warning("Semantic dedup check failed (proceeding with add): %s", e)
+    return False
+
+
+# NOTE: /add_direct is defined below (Phase 5) with contradiction detection + entity resolution
+
+
+@router.post("/add_batch")
+async def add_batch(req: AddBatchRequest, request: Request):
+    """Store multiple pre-extracted facts directly in Qdrant.
+
+    Same as /add_direct but batched for efficiency. Used by distillation
+    and reflection pipelines to flush extracted facts.
+    """
+    mem = _get_memory(request)
+    texts = [t.strip() for t in req.texts if t.strip()]
+    if not texts:
+        return {"ok": True, "added": 0, "skipped": 0, "errors": 0}
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Content hash dedup — batch check existing hashes
+        hashes = {_content_hash(t): t for t in texts}
+        existing_hashes: set[str] = set()
+        for h in hashes:
+            results = client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="hash", match=MatchValue(value=h)),
+                        FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if results[0]:
+                existing_hashes.add(h)
+
+        # Filter to new-only
+        new_texts = []
+        new_hashes = []
+        for h, t in hashes.items():
+            if h not in existing_hashes:
+                new_texts.append(t)
+                new_hashes.append(h)
+
+        if not new_texts:
+            return {"ok": True, "added": 0, "skipped": len(texts), "errors": 0}
+
+        # Embed all new texts
+        vectors = await _embed_texts(mem, new_texts)
+
+        # Pre-fetch canonical entities for resolution
+        canonical_list = await asyncio.to_thread(get_canonical_entities)
+
+        # Semantic dedup + contradiction check + entity resolution + build points
+        points = []
+        skipped_semantic = 0
+        all_contradictions = []
+        for text, vector, content_hash in zip(new_texts, vectors, new_hashes):
+            if await _semantic_dedup_check(client, vector, req.user_id):
+                skipped_semantic += 1
+                continue
+
+            # Contradiction detection
+            contradictions = await _check_contradictions(client, vector, text, req.user_id)
+            if contradictions:
+                all_contradictions.extend(contradictions)
+
+            # Entity resolution
+            entities = _extract_entities(text)
+            resolved_entities = []
+            for entity in entities[:5]:
+                resolved = resolve_entity(entity, canonical_list)
+                if resolved:
+                    resolved_entities.append(resolved)
+
+            payload = {
+                "memory": text[:500],
+                "data": text,
+                "source": req.source,
+                "hash": content_hash,
+                "user_id": req.user_id,
+                "created_at": now,
+                "confidence": req.confidence,
+            }
+            if req.agent_id:
+                payload["agent_id"] = req.agent_id
+            if req.session_id:
+                payload["session_id"] = req.session_id
+            if resolved_entities:
+                payload["entities"] = resolved_entities
+            if contradictions:
+                payload["contradicts"] = [c["id"] for c in contradictions]
+
+            points.append(PointStruct(
+                id=str(uuid.uuid4()),
+                vector=vector,
+                payload=payload,
+            ))
+
+        # Upsert in batches of 100
+        added = 0
+        errors = 0
+        for i in range(0, len(points), 100):
+            batch = points[i : i + 100]
+            try:
+                client.upsert(collection_name=COLLECTION_NAME, points=batch)
+                added += len(batch)
+            except Exception as e:
+                logger.error(f"add_batch upsert failed for batch {i}: {e}")
+                errors += len(batch)
+
+        total_skipped = len(existing_hashes) + skipped_semantic
+        logger.info(
+            f"add_batch: {added} added, {total_skipped} skipped "
+            f"({len(existing_hashes)} hash, {skipped_semantic} semantic), "
+            f"{errors} errors (source={req.source}, agent={req.agent_id})"
+        )
+        result: dict[str, Any] = {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
+        if all_contradictions:
+            result["contradictions"] = all_contradictions[:10]  # Cap at 10 for response size
+        return result
+
+    except Exception as e:
+        logger.exception("add_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/search")
 async def search_memory(req: SearchRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -100,6 +418,26 @@ async def search_memory(req: SearchRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        for r in results if isinstance(results, list) else []:
+            meta = r.get("metadata") or {}
+            if "created_at" in meta:
+                r["created_at"] = meta["created_at"]
+        if isinstance(results, list):
+            # Exclude forgotten and superseded memories
+            results = [
+                r for r in results
+                if not (r.get("metadata") or r).get("forgotten")
+                and not (r.get("metadata") or r).get("superseded_by")
+            ]
+            if req.domains:
+                allowed = set(req.domains)
+                results = [
+                    r for r in results
+                    if not (r.get("metadata") or {}).get("domain")
+                    or (r.get("metadata") or {}).get("domain") in allowed
+                ]
+            results = _apply_recency_boost(results)
+            results = _apply_confidence_weight(results)
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")
@@ -108,7 +446,7 @@ async def search_memory(req: SearchRequest, request: Request):
 
 @router.post("/graph_search")
 async def graph_search(req: SearchRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
@@ -124,7 +462,7 @@ async def graph_search(req: SearchRequest, request: Request):
 
 @router.post("/import")
 async def import_facts(req: ImportRequest, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     imported = 0
     errors = []
 
@@ -164,7 +502,7 @@ async def list_memories(
     agent_id: str | None = None,
     limit: int = 50,
 ):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": user_id}
     if agent_id:
         kwargs["agent_id"] = agent_id
@@ -181,7 +519,7 @@ async def list_memories(
 
 @router.delete("/memories/{memory_id}")
 async def delete_memory(memory_id: str, request: Request):
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     try:
         await asyncio.to_thread(mem.delete, memory_id)
         return {"ok": True}
@@ -202,7 +540,7 @@ async def health_check(request: Request):
             checks["qdrant"] = f"error: {e}"
 
     try:
-        mem = request.app.state.memory
+        mem = _get_memory(request)
         if mem and hasattr(mem, "embedding_model"):
             vec = mem.embedding_model.embed("health check")
             checks["embedder"] = "ok" if len(vec) > 0 else "empty vector"
@@ -211,25 +549,31 @@ async def health_check(request: Request):
     except Exception as e:
         checks["embedder"] = f"error: {e}"
 
-    try:
-        from neo4j import GraphDatabase
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        driver.verify_connectivity()
-        driver.close()
+    if neo4j_available():
         checks["neo4j"] = "ok"
-    except Exception as e:
-        checks["neo4j"] = f"error: {e}"
+    else:
+        checks["neo4j"] = "unavailable"
+
+    # LLM backend info
+    backend = getattr(request.app.state, "backend", LLM_BACKEND)
+    llm_info = {
+        "tier": backend.get("tier", 0),
+        "provider": backend.get("provider", "unknown"),
+        "model": backend.get("model"),
+        "extraction_enabled": backend.get("tier", 0) < 3,
+    }
 
     all_ok = all(v == "ok" for v in checks.values())
-    return {"ok": all_ok, "checks": checks}
+    return {"ok": all_ok, "version": "2.0.0", "llm": llm_info, "checks": checks}
 
 
 @router.get("/graph_stats")
 async def graph_stats():
-    from neo4j import GraphDatabase
+    if not neo4j_available():
+        return {"ok": False, "available": False}
 
     try:
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             node_count = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
             rel_count = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
@@ -244,6 +588,7 @@ async def graph_stats():
                 "MATCH ()-[r]->() WITH type(r) AS t, count(*) AS c WHERE c = 1 RETURN count(t) AS c"
             ).single()["c"]
         driver.close()
+        mark_neo4j_ok()
 
         return {
             "ok": True,
@@ -254,8 +599,9 @@ async def graph_stats():
             "top_connected_nodes": top_nodes,
         }
     except Exception as e:
-        logger.exception("graph_stats failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph_stats failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False}
 
 
 # --- Graph Export for Visualization ---
@@ -274,15 +620,13 @@ async def graph_export(
       community — All nodes in a specific community (requires community param).
       all       — Full graph export. Use with caution on large graphs.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
 
     try:
         from collections import defaultdict
 
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             # Total node count for "loaded X of Y" UI
             total_nodes = session.run(
@@ -381,8 +725,9 @@ async def graph_export(
             "total_nodes": total_nodes,
         }
     except Exception as e:
-        logger.exception("graph/export failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph/export failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
@@ -415,7 +760,7 @@ def _extract_entities(text: str) -> list[str]:
 @router.post("/graph_enhanced_search")
 async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Request):
     """Vector search enhanced with graph neighborhood expansion."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Step 1: Standard vector search
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit * 2}
@@ -433,10 +778,9 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
     entities = _extract_entities(req.query)
     graph_neighbors: list[str] = []
 
-    if entities and NEO4J_PASSWORD:
+    if entities and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for entity in entities[:5]:
                     result = session.run(
@@ -451,13 +795,15 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
                         if name:
                             graph_neighbors.append(name)
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("graph_enhanced_search: Neo4j unavailable, falling back to vector-only")
 
     # Step 3: If graph found neighbors, do a supplementary vector search with expanded terms
     graph_results: list[dict[str, Any]] = []
     if graph_neighbors:
-        expanded_query = req.query + " " + " ".join(set(graph_neighbors)[:5])
+        expanded_query = req.query + " " + " ".join(list(set(graph_neighbors))[:5])
         try:
             raw2 = await asyncio.to_thread(mem.search, expanded_query, **kwargs)
             graph_results = raw2.get("results", raw2) if isinstance(raw2, dict) else raw2
@@ -518,7 +864,7 @@ class MergeRequest(BaseModel):
 @router.post("/consolidate")
 async def consolidate_memories(req: ConsolidateRequest, request: Request):
     """Find and optionally merge near-duplicate memories."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
@@ -583,7 +929,7 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
 @router.post("/merge")
 async def merge_memories(req: MergeRequest, request: Request):
     """Merge two memories — keeps target, deletes source."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
     try:
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
@@ -594,7 +940,7 @@ async def merge_memories(req: MergeRequest, request: Request):
 @router.get("/fact_stats")
 async def fact_stats(request: Request, user_id: str = "default"):
     """Memory corpus statistics."""
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
@@ -648,7 +994,7 @@ async def retract_memory(req: RetractRequest, request: Request):
     Finds matching memories, removes them from both stores,
     and logs the retraction for audit trail.
     """
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Find memories matching the retraction query
     try:
@@ -668,16 +1014,14 @@ async def retract_memory(req: RetractRequest, request: Request):
 
     # Neo4j cascade — find and remove connected entities
     neo4j_removed: list[str] = []
-    if req.cascade and NEO4J_PASSWORD:
+    if req.cascade and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for item in to_retract:
                     text = item.get("memory", "")
                     entities = _extract_entities(text)
                     for entity in entities[:5]:
-                        # Find and delete connected relationships
                         result = session.run(
                             "MATCH (n)-[r]-(m) "
                             "WHERE toLower(n.name) CONTAINS toLower($name) "
@@ -690,7 +1034,9 @@ async def retract_memory(req: RetractRequest, request: Request):
                             neo4j_removed.extend(record["affected"])
                             logger.info(f"Retract cascade: removed {record['deleted']} rels for entity '{entity}'")
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("retract: Neo4j cascade failed, continuing with vector retraction")
 
     retracted: list[dict[str, Any]] = []
@@ -748,13 +1094,15 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
 
 async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | None) -> None:
     """Fire-and-forget: create an Episode node for temporal tracking."""
+    if not neo4j_available():
+        return
     try:
         episode_id = f"ep_{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         session_id = (metadata or {}).get("sessionId", "")
         entities = _extract_entities_for_episode(text)
 
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         with driver.session() as session:
             session.run(
                 """
@@ -782,8 +1130,10 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
                     name=entity_name, ep_id=episode_id, now=now,
                 )
         driver.close()
+        mark_neo4j_ok()
         logger.debug(f"Episode {episode_id}: {len(entities)} entities linked")
     except Exception:
+        mark_neo4j_down()
         logger.warning("Episode recording failed (non-fatal)", exc_info=True)
 
 
@@ -803,13 +1153,11 @@ foresight_router = APIRouter(prefix="/foresight")
 
 @foresight_router.post("/add")
 async def add_foresight(req: ForesightAddRequest):
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         with driver.session() as session:
             session.run(
                 """
@@ -831,21 +1179,21 @@ async def add_foresight(req: ForesightAddRequest):
                 weight=req.weight,
             )
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "entity": req.entity, "signal": req.signal}
     except Exception as e:
-        logger.exception("add_foresight failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("add_foresight failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
 
 @foresight_router.get("/active")
 async def active_foresight():
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "signals": []}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         now = datetime.now(timezone.utc).isoformat()
         with driver.session() as session:
             result = session.run(
@@ -870,24 +1218,23 @@ async def active_foresight():
                 for r in result
             ]
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "signals": signals}
     except Exception as e:
-        logger.exception("active_foresight failed")
-        return {"ok": True, "signals": [], "error": "Internal error"}
+        mark_neo4j_down()
+        logger.warning("active_foresight failed: %s", e)
+        return {"ok": True, "signals": []}
 
 
 @foresight_router.post("/decay")
 async def decay_foresight():
-    if not NEO4J_PASSWORD:
+    if not neo4j_available():
         return {"ok": True, "decayed": 0, "deleted": 0}
 
     try:
-        from neo4j import GraphDatabase
-
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
         now = datetime.now(timezone.utc).isoformat()
         with driver.session() as session:
-            # Decay expired signals
             decay_result = session.run(
                 """
                 MATCH (f:ForesightSignal)
@@ -899,7 +1246,6 @@ async def decay_foresight():
             )
             decayed = decay_result.single()["decayed"]
 
-            # Delete fully decayed signals
             delete_result = session.run(
                 """
                 MATCH (e)-[r:HAS_FORESIGHT]->(f:ForesightSignal)
@@ -910,10 +1256,12 @@ async def decay_foresight():
             )
             deleted = delete_result.single()["deleted"]
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "decayed": decayed, "deleted": deleted}
     except Exception as e:
-        logger.exception("decay_foresight failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("decay_foresight failed (Neo4j may be down): %s", e)
+        return {"ok": True, "decayed": 0, "deleted": 0}
 
 
 # --- Phase C2: Autonomous Link Generation (A-Mem Pattern) ---
@@ -927,7 +1275,7 @@ LINK_MAX_NEIGHBORS = 3
 
 async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[str, Any]]:
     """Generate LLM-described links between a new memory and its nearest neighbors."""
-    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not NEO4J_PASSWORD:
+    if not LINK_GENERATION_ENABLED or not ANTHROPIC_API_KEY or not neo4j_available():
         return []
 
     # Find nearest neighbors
@@ -1001,9 +1349,7 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
     # Store links in Neo4j
     if links:
         try:
-            from neo4j import GraphDatabase
-
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for link in links:
                     session.run(
@@ -1022,8 +1368,10 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
                         score=link["score"],
                     )
             driver.close()
+            mark_neo4j_ok()
             logger.info(f"Generated {len(links)} memory links for new memory")
         except Exception:
+            mark_neo4j_down()
             logger.warning("Failed to store memory links in Neo4j")
 
     return links
@@ -1044,16 +1392,14 @@ async def analyze_graph(req: GraphAnalyzeRequest):
     Scores are optionally written back as node properties for retrieval weighting.
     Intended to be called from the nightly consolidation cron.
     """
-    if not NEO4J_PASSWORD:
-        raise HTTPException(status_code=503, detail="Neo4j not configured")
+    if not neo4j_available():
+        return {"ok": False, "available": False}
 
     try:
         import networkx as nx
-        from neo4j import GraphDatabase
 
-        driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver = neo4j_driver()
 
-        # Export graph to networkx
         G = nx.DiGraph()
         with driver.session() as session:
             nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
@@ -1150,8 +1496,9 @@ async def analyze_graph(req: GraphAnalyzeRequest):
     except ImportError:
         raise HTTPException(status_code=500, detail="networkx not installed")
     except Exception as e:
-        logger.exception("graph/analyze failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        mark_neo4j_down()
+        logger.warning("graph/analyze failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False}
 
 
 # --- Enhanced Search with Query Rewriting ---
@@ -1176,7 +1523,7 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
     4. Run parallel vector searches on all variants
     5. Merge and deduplicate results
     """
-    mem = request.app.state.memory
+    mem = _get_memory(request)
 
     # Skip rewriting for very short or very long queries
     if not req.rewrite or len(req.query) < 10 or len(req.query) > 500:
@@ -1187,10 +1534,9 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
 
     # Step 2: Resolve aliases via Neo4j
     canonical_names: dict[str, str] = {}
-    if entities and NEO4J_PASSWORD:
+    if entities and neo4j_available():
         try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+            driver = neo4j_driver()
             with driver.session() as session:
                 for entity in entities[:5]:
                     result = session.run(
@@ -1202,7 +1548,9 @@ async def search_enhanced(req: EnhancedSearchRequest, request: Request):
                     if record and record["canonical"] != entity:
                         canonical_names[entity] = record["canonical"]
             driver.close()
+            mark_neo4j_ok()
         except Exception:
+            mark_neo4j_down()
             logger.warning("search_enhanced: Neo4j alias resolution failed")
 
     # Build alias-resolved query
@@ -1307,8 +1655,10 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
 
 async def _normalize_neo4j_relationships() -> None:
     """Normalize non-vocab relationship types to controlled vocabulary (fire-and-forget)."""
+    if not neo4j_available():
+        return
     try:
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         vocab_list = list(CONTROLLED_VOCAB)
         with driver.session() as session:
             non_vocab = session.run(
@@ -1332,15 +1682,20 @@ async def _normalize_neo4j_relationships() -> None:
             if non_vocab:
                 logger.info(f"Normalized {len(non_vocab)} non-vocab relationship types")
         driver.close()
+        mark_neo4j_ok()
     except Exception:
+        mark_neo4j_down()
         logger.warning("Relationship normalization failed (non-fatal)", exc_info=True)
 
 
 @router.post("/normalize_relationships")
 async def normalize_relationships():
     """Normalize all non-vocab relationship types and return stats."""
+    if not neo4j_available():
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
+
     try:
-        driver = _neo4j_driver()
+        driver = neo4j_driver()
         vocab_list = list(CONTROLLED_VOCAB)
         mappings: list[dict[str, Any]] = []
         total = 0
@@ -1369,9 +1724,593 @@ async def normalize_relationships():
                     total += count
 
         driver.close()
+        mark_neo4j_ok()
         return {"ok": True, "normalized_count": total, "type_mappings": mappings}
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("normalize_relationships failed (Neo4j may be down): %s", e)
+        return {"ok": False, "available": False, "reason": "graph_unavailable"}
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 4b: Entity Resolution Endpoints
+# ---------------------------------------------------------------------------
+
+
+class ResolveEntityRequest(BaseModel):
+    """Resolve entity names to canonical forms."""
+    names: list[str]
+
+
+@router.post("/entities/resolve")
+async def resolve_entities(req: ResolveEntityRequest):
+    """Resolve a list of entity names to their canonical forms.
+
+    Uses the alias table, fuzzy matching, and Neo4j canonical registry
+    to deduplicate entity names before creation.
+    """
+    existing = await asyncio.to_thread(get_canonical_entities)
+    results: list[dict[str, Any]] = []
+
+    for name in req.names[:50]:  # Cap at 50 per request
+        resolved = resolve_entity(name, existing)
+        if resolved is None:
+            results.append({"input": name, "canonical": None, "action": "skip", "reason": "invalid"})
+        elif resolved != name.strip().lower():
+            results.append({"input": name, "canonical": resolved, "action": "alias"})
+        else:
+            results.append({"input": name, "canonical": resolved, "action": "new"})
+
+    return {"ok": True, "results": results}
+
+
+@router.post("/entities/merge_duplicates")
+async def merge_duplicates():
+    """Find and merge duplicate entity nodes in Neo4j using alias table + fuzzy matching."""
+    result = await asyncio.to_thread(merge_duplicate_entities)
+    return result
+
+
+@router.post("/entities/cleanup_orphans")
+async def cleanup_orphans():
+    """Remove entity nodes with no relationships."""
+    result = await asyncio.to_thread(cleanup_orphan_entities)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Entity Detail / Edit / Delete — Graph UI support
+# ---------------------------------------------------------------------------
+
+
+class EntityMergeRequest(BaseModel):
+    source: str
+    target: str
+
+
+@router.get("/entity/{name}")
+async def entity_detail(name: str, request: Request):
+    """Full entity detail: relationships, memory mentions, timestamps, confidence."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    relationships: list[dict[str, Any]] = []
+    properties: dict[str, Any] = {}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            # Node properties
+            node = session.run(
+                "MATCH (n {name: $name}) "
+                "RETURN n.name AS name, labels(n) AS labels, n.pagerank AS pagerank, "
+                "n.community AS community, properties(n) AS props",
+                name=name,
+            ).single()
+            if not node:
+                raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+            properties = dict(node["props"] or {})
+            properties["labels"] = node["labels"]
+
+            # Relationships (both directions)
+            rels = session.run(
+                "MATCH (n {name: $name})-[r]-(m) "
+                "RETURN type(r) AS rel_type, m.name AS target, "
+                "startNode(r) = n AS outgoing, properties(r) AS props "
+                "ORDER BY type(r) LIMIT 50",
+                name=name,
+            ).data()
+            for rel in rels:
+                relationships.append({
+                    "type": rel["rel_type"],
+                    "target": rel["target"],
+                    "direction": "outgoing" if rel["outgoing"] else "incoming",
+                    **({"props": rel["props"]} if rel["props"] else {}),
+                })
+
+        driver.close()
+        mark_neo4j_ok()
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("entity_detail failed: %s", e)
+        return {"ok": False, "available": False}
+
+    # Memory mentions (Qdrant search by entity name)
+    memories: list[dict[str, Any]] = []
+    try:
+        mem = _get_memory(request)
+        raw = await asyncio.to_thread(mem.search, name, user_id="default", limit=5)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        if isinstance(results, list):
+            for r in results:
+                if r.get("score", 0) > 0.5:
+                    memories.append({
+                        "id": r.get("id"),
+                        "text": r.get("memory", "")[:200],
+                        "score": round(r.get("score", 0), 3),
+                    })
     except Exception:
-        logger.exception("normalize_relationships failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        pass  # Non-fatal — graph data still returned
+
+    # Confidence indicator: green (>0.01 pagerank + 5+ rels), yellow (either), red (neither)
+    pagerank = properties.get("pagerank", 0) or 0
+    rel_count = len(relationships)
+    confidence = "high" if pagerank > 0.01 and rel_count >= 5 else "medium" if pagerank > 0.005 or rel_count >= 3 else "low"
+
+    return {
+        "ok": True,
+        "name": name,
+        "properties": properties,
+        "relationships": relationships,
+        "relationship_count": rel_count,
+        "memories": memories,
+        "confidence": confidence,
+    }
 
 
+@router.delete("/entity/{name}")
+async def delete_entity(name: str):
+    """Delete an entity node and all its connected edges from Neo4j."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (n {name: $name}) "
+                "OPTIONAL MATCH (n)-[r]-() "
+                "WITH n, count(r) AS rels "
+                "DETACH DELETE n "
+                "RETURN rels",
+                name=name,
+            ).single()
+        driver.close()
+        mark_neo4j_ok()
+
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+
+        logger.info(f"Deleted entity '{name}' ({result['rels']} relationships removed)")
+        return {"ok": True, "deleted": name, "relationships_removed": result["rels"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("delete_entity failed: %s", e)
+        return {"ok": False, "available": False}
+
+
+@router.post("/entity/merge")
+async def merge_entities(req: EntityMergeRequest):
+    """Merge source entity into target — redirects all relationships, deletes source."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        driver = neo4j_driver()
+        redirected = 0
+        with driver.session() as session:
+            # Verify both exist
+            source = session.run("MATCH (n {name: $name}) RETURN n", name=req.source).single()
+            target = session.run("MATCH (n {name: $name}) RETURN n", name=req.target).single()
+            if not source:
+                raise HTTPException(status_code=404, detail=f"Source entity '{req.source}' not found")
+            if not target:
+                raise HTTPException(status_code=404, detail=f"Target entity '{req.target}' not found")
+
+            # Redirect outgoing relationships
+            out_result = session.run(
+                "MATCH (s {name: $source})-[r]->(m) "
+                "WHERE m.name <> $target "
+                "WITH s, r, m, type(r) AS rtype, properties(r) AS props "
+                "MATCH (t {name: $target}) "
+                "CALL apoc.create.relationship(t, rtype, props, m) YIELD rel "
+                "DELETE r "
+                "RETURN count(r) AS count",
+                source=req.source, target=req.target,
+            ).single()
+
+            # Redirect incoming relationships
+            in_result = session.run(
+                "MATCH (m)-[r]->(s {name: $source}) "
+                "WHERE m.name <> $target "
+                "WITH s, r, m, type(r) AS rtype, properties(r) AS props "
+                "MATCH (t {name: $target}) "
+                "CALL apoc.create.relationship(m, rtype, props, t) YIELD rel "
+                "DELETE r "
+                "RETURN count(r) AS count",
+                source=req.source, target=req.target,
+            ).single()
+
+            redirected = (out_result["count"] if out_result else 0) + (in_result["count"] if in_result else 0)
+
+            # Delete source node
+            session.run("MATCH (n {name: $name}) DETACH DELETE n", name=req.source)
+
+        driver.close()
+        mark_neo4j_ok()
+        logger.info(f"Merged entity '{req.source}' → '{req.target}' ({redirected} relationships redirected)")
+        return {"ok": True, "source": req.source, "target": req.target, "relationships_redirected": redirected}
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        # APOC might not be available — fall back to simple merge (just delete source, lose rels)
+        if "apoc" in str(e).lower() or "Unknown function" in str(e):
+            try:
+                driver = neo4j_driver()
+                with driver.session() as session:
+                    session.run("MATCH (n {name: $name}) DETACH DELETE n", name=req.source)
+                driver.close()
+                mark_neo4j_ok()
+                logger.info(f"Merged (fallback, rels lost) entity '{req.source}' → '{req.target}'")
+                return {"ok": True, "source": req.source, "target": req.target,
+                        "relationships_redirected": 0, "warning": "APOC not available, relationships not redirected"}
+            except Exception as e2:
+                mark_neo4j_down()
+                logger.warning("merge_entities fallback failed: %s", e2)
+        else:
+            logger.warning("merge_entities failed: %s", e)
+        return {"ok": False, "available": False}
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Memory Lifecycle — Confidence, Contradiction, Correction
+# ---------------------------------------------------------------------------
+
+CONTRADICTION_THRESHOLD = 0.80  # Cosine similarity to check for contradictions
+
+
+class CorrectMemoryRequest(BaseModel):
+    """Correct an existing memory — supersedes old version."""
+    query: str  # Semantic search to find the memory to correct
+    corrected_text: str  # The corrected version
+    reason: str  # Audit trail
+    user_id: str = "default"
+    agent_id: str | None = None
+
+
+class ForgetMemoryRequest(BaseModel):
+    """Soft-delete memories matching a semantic query."""
+    query: str
+    reason: str
+    user_id: str = "default"
+    max_deletions: int = Field(default=3, ge=1, le=10)
+    min_score: float = Field(default=0.85, ge=0.5, le=1.0)
+    dry_run: bool = False
+
+
+async def _check_contradictions(
+    client: QdrantClient,
+    vector: list[float],
+    text: str,
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """Check if a new fact contradicts existing memories.
+
+    Returns list of potentially contradicting memories with scores.
+    Contradiction detection is heuristic — high similarity + different content.
+    """
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=5,
+            with_payload=True,
+        )
+
+        contradictions = []
+        text_lower = text.lower()
+        negation_words = {"not", "no", "never", "don't", "doesn't", "isn't", "wasn't",
+                          "aren't", "weren't", "won't", "can't", "shouldn't", "incorrect",
+                          "wrong", "false", "correction", "actually", "instead", "rather"}
+
+        for point in results.points:
+            if point.score < CONTRADICTION_THRESHOLD:
+                continue
+
+            existing_text = (point.payload or {}).get("memory", "") or (point.payload or {}).get("data", "")
+            if not existing_text:
+                continue
+
+            existing_lower = existing_text.lower()
+
+            # Skip if texts are near-identical (reinforcement, not contradiction)
+            if point.score >= DIRECT_DEDUP_THRESHOLD:
+                continue
+
+            # Heuristic: high similarity but with negation markers suggests contradiction
+            new_has_negation = any(w in text_lower.split() for w in negation_words)
+            old_has_negation = any(w in existing_lower.split() for w in negation_words)
+            has_correction = "correction" in text_lower or text_lower.startswith("correction:")
+
+            # Flag if one has negation and the other doesn't, or if it's an explicit correction
+            if new_has_negation != old_has_negation or has_correction:
+                contradictions.append({
+                    "id": str(point.id),
+                    "memory": existing_text[:300],
+                    "score": round(point.score, 4),
+                    "reason": "correction_marker" if has_correction else "negation_asymmetry",
+                })
+
+        return contradictions
+
+    except Exception as e:
+        logger.warning(f"Contradiction check failed: {e}")
+        return []
+
+
+@router.post("/add_direct")
+async def add_direct_v2(req: AddDirectRequest, request: Request):
+    """Store a single pre-extracted fact directly in Qdrant.
+
+    Bypasses Mem0's LLM extraction entirely. The caller is responsible
+    for fact quality — this endpoint embeds and stores as-is.
+    Includes contradiction detection (Phase 5).
+    """
+    mem = _get_memory(request)
+    text = req.text.strip()
+    if not text:
+        return {"ok": False, "error": "empty text"}
+
+    try:
+        content_hash = _content_hash(text)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Content hash dedup (exact match)
+        existing = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(key="hash", match=MatchValue(value=content_hash)),
+                    FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                ]
+            ),
+            limit=1,
+            with_payload=False,
+            with_vectors=False,
+        )
+        if existing[0]:
+            return {"ok": True, "result": "deduplicated", "reason": "content_hash"}
+
+        # Embed
+        vectors = await _embed_texts(mem, [text])
+        vector = vectors[0]
+
+        # Semantic dedup (cosine similarity)
+        if await _semantic_dedup_check(client, vector, req.user_id):
+            return {"ok": True, "result": "deduplicated", "reason": "semantic"}
+
+        # Contradiction detection
+        contradictions = await _check_contradictions(client, vector, text, req.user_id)
+
+        # Entity resolution — resolve entities in the text before storage
+        entities = _extract_entities(text)
+        resolved_entities = []
+        if entities:
+            canonical_list = await asyncio.to_thread(get_canonical_entities)
+            for entity in entities[:5]:
+                resolved = resolve_entity(entity, canonical_list)
+                if resolved:
+                    resolved_entities.append(resolved)
+
+        # Store
+        now = datetime.now(timezone.utc).isoformat()
+        point_id = str(uuid.uuid4())
+        payload = {
+            "memory": text[:500],
+            "data": text,
+            "source": req.source,
+            "hash": content_hash,
+            "user_id": req.user_id,
+            "created_at": now,
+            "confidence": req.confidence,
+        }
+        if req.agent_id:
+            payload["agent_id"] = req.agent_id
+        if req.session_id:
+            payload["session_id"] = req.session_id
+        if resolved_entities:
+            payload["entities"] = resolved_entities
+        if contradictions:
+            payload["contradicts"] = [c["id"] for c in contradictions]
+
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[PointStruct(id=point_id, vector=vector, payload=payload)],
+        )
+
+        result: dict[str, Any] = {"ok": True, "result": "added", "id": point_id}
+        if contradictions:
+            result["contradictions"] = contradictions
+            logger.info(f"add_direct: stored '{text[:80]}' with {len(contradictions)} contradiction(s)")
+        else:
+            logger.info(f"add_direct: stored '{text[:80]}' (source={req.source}, agent={req.agent_id})")
+
+        return result
+
+    except Exception as e:
+        logger.exception("add_direct failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/correct")
+async def correct_memory(req: CorrectMemoryRequest, request: Request):
+    """Correct an existing memory — finds it by semantic search, supersedes it, stores the correction.
+
+    The old memory gets a 'superseded_by' field and its confidence drops to 0.1.
+    The new memory gets a 'corrects' field linking to the old ID.
+    """
+    mem = _get_memory(request)
+    corrected_text = req.corrected_text.strip()
+    if not corrected_text:
+        return {"ok": False, "error": "empty corrected_text"}
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Find the memory to correct via semantic search
+        query_vector = (await _embed_texts(mem, [req.query]))[0]
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=req.user_id))]
+            ),
+            limit=3,
+            with_payload=True,
+        )
+
+        if not results.points or results.points[0].score < 0.80:
+            return {"ok": False, "error": "no matching memory found", "top_score": results.points[0].score if results.points else 0}
+
+        old_point = results.points[0]
+        old_id = str(old_point.id)
+        old_text = (old_point.payload or {}).get("memory", "?")
+
+        # Mark old memory as superseded (drop confidence, add metadata)
+        old_payload = dict(old_point.payload or {})
+        old_payload["confidence"] = 0.1
+        old_payload["superseded_by"] = None  # Will be filled after new point is created
+        old_payload["superseded_at"] = datetime.now(timezone.utc).isoformat()
+        old_payload["superseded_reason"] = f"[{req.agent_id or 'user'}] {req.reason}"
+
+        # Store the corrected version
+        new_vector = (await _embed_texts(mem, [corrected_text]))[0]
+        new_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        new_payload = {
+            "memory": corrected_text[:500],
+            "data": corrected_text,
+            "source": "correction",
+            "hash": _content_hash(corrected_text),
+            "user_id": req.user_id,
+            "created_at": now,
+            "confidence": 0.95,  # Corrections are high-confidence
+            "corrects": old_id,
+            "correction_reason": req.reason,
+        }
+        if req.agent_id:
+            new_payload["agent_id"] = req.agent_id
+
+        # Update old point to reference new one
+        old_payload["superseded_by"] = new_id
+
+        # Write both
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[
+                PointStruct(id=old_id, vector=old_point.vector or query_vector, payload=old_payload),
+                PointStruct(id=new_id, vector=new_vector, payload=new_payload),
+            ],
+        )
+
+        logger.info(f"memory/correct: '{old_text[:60]}' → '{corrected_text[:60]}' (reason: {req.reason})")
+
+        return {
+            "ok": True,
+            "old_id": old_id,
+            "old_text": old_text[:200],
+            "new_id": new_id,
+            "new_text": corrected_text[:200],
+        }
+
+    except Exception as e:
+        logger.exception("memory/correct failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/forget")
+async def forget_memory(req: ForgetMemoryRequest, request: Request):
+    """Soft-delete memories matching a semantic query.
+
+    Doesn't physically remove — sets confidence to 0.0 and adds 'forgotten' flag.
+    This way the memory is excluded from recall but recoverable if needed.
+    """
+    mem = _get_memory(request)
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Search for matching memories
+        query_vector = (await _embed_texts(mem, [req.query]))[0]
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=req.user_id))]
+            ),
+            limit=req.max_deletions * 2,
+            with_payload=True,
+        )
+
+        # Filter to high-confidence matches only
+        matches = [p for p in results.points if p.score >= req.min_score][:req.max_deletions]
+
+        if not matches:
+            return {"ok": True, "forgotten": 0, "reason": "no matches above threshold"}
+
+        if req.dry_run:
+            previews = [
+                {"id": str(p.id), "memory": ((p.payload or {}).get("memory", ""))[:200], "score": round(p.score, 4)}
+                for p in matches
+            ]
+            return {"ok": True, "dry_run": True, "would_forget": len(matches), "matches": previews}
+
+        # Soft-delete: set confidence=0, add forgotten flag
+        now = datetime.now(timezone.utc).isoformat()
+        points_to_update = []
+        forgotten_texts = []
+        for point in matches:
+            payload = dict(point.payload or {})
+            payload["confidence"] = 0.0
+            payload["forgotten"] = True
+            payload["forgotten_at"] = now
+            payload["forgotten_reason"] = req.reason
+            points_to_update.append(
+                PointStruct(id=point.id, vector=point.vector or query_vector, payload=payload)
+            )
+            forgotten_texts.append(((point.payload or {}).get("memory", ""))[:100])
+
+        client.upsert(collection_name=COLLECTION_NAME, points=points_to_update)
+
+        logger.info(f"memory/forget: {len(matches)} memories forgotten (reason: {req.reason})")
+
+        return {
+            "ok": True,
+            "forgotten": len(matches),
+            "memories": forgotten_texts,
+        }
+
+    except Exception as e:
+        logger.exception("memory/forget failed")
+        raise HTTPException(status_code=500, detail=str(e))

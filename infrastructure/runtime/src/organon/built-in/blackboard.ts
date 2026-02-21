@@ -1,5 +1,5 @@
 // Cross-agent blackboard — persistent shared state with auto-expiry
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import type { SessionStore } from "../../mneme/store.js";
 
 export function createBlackboardTool(store: SessionStore): ToolHandler {
