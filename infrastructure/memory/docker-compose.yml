@@ -11,7 +11,7 @@ services:
     mem_limit: 256m
 
   neo4j:
-    image: neo4j:2025-community
+    image: neo4j:2026-community
     container_name: neo4j
     restart: unless-stopped
     ports:
