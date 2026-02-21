@@ -253,6 +253,13 @@ export async function deleteEntity(name: string): Promise<{ deleted: boolean; re
   return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
+export async function flagEntity(name: string, flagged: boolean): Promise<{ ok: boolean; entity: string; flagged: boolean }> {
+  return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}/flag`, {
+    method: "PATCH",
+    body: JSON.stringify({ flagged }),
+  });
+}
+
 export async function mergeEntities(source: string, target: string): Promise<{ merged: boolean; message: string }> {
   return fetchJson("/api/memory/entity/merge", {
     method: "POST",

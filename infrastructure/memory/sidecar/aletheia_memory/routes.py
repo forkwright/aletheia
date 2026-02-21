@@ -820,12 +820,33 @@ class GraphEnhancedSearchRequest(BaseModel):
     graph_depth: int = Field(default=1, ge=1, le=3)
 
 
+_ENTITY_STOP_WORDS = frozenset({
+    "top", "plus", "maybe", "phase", "done", "let", "ready", "first", "new",
+    "well", "even", "made", "also", "back", "next", "last", "here", "just",
+    "good", "now", "set", "run", "got", "yes", "use", "key", "note", "need",
+    "see", "add", "fix", "test", "end", "big", "old", "few", "get", "try",
+    "two", "one", "all", "way", "day", "part", "full", "sure", "real", "open",
+    "high", "low", "main", "stop", "take", "left", "right", "make", "like",
+    "look", "check", "still", "going", "point", "thing", "plan", "work",
+    "start", "about", "think", "know", "want", "move", "find", "keep", "help",
+    "call", "come", "give", "tell", "turn", "pull", "push", "hold", "send",
+    "drop", "update", "change", "build", "break", "clear", "reset", "clean",
+    "points", "both", "second", "third", "only", "some", "much", "many",
+    "most", "more", "less", "same", "other", "before", "after", "already",
+    "available", "current", "actually", "completely", "quickly", "easily",
+    "however", "therefore", "because", "although", "since", "while", "every",
+    "each", "above", "below", "between", "through", "during", "without",
+})
+
+
 def _extract_entities(text: str) -> list[str]:
     """Heuristic entity extraction — capitalize words, proper nouns, known patterns."""
     entities: list[str] = []
     # Capitalized words (likely proper nouns)
     for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text):
-        entities.append(match.group())
+        word = match.group()
+        if word.lower() not in _ENTITY_STOP_WORDS:
+            entities.append(word)
     # Technical terms (lowercase with hyphens/underscores)
     for match in re.finditer(r"\b[a-z]+[-_][a-z]+(?:[-_][a-z]+)*\b", text):
         entities.append(match.group())
@@ -1988,6 +2009,44 @@ async def delete_entity(name: str):
     except Exception as e:
         mark_neo4j_down()
         logger.warning("delete_entity failed: %s", e)
+        return {"ok": False, "available": False}
+
+
+@router.patch("/entity/{name}/flag")
+async def flag_entity(name: str, request: Request):
+    """Toggle flagged state on an entity node."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        body = await request.json()
+        flagged = bool(body.get("flagged", True))
+    except Exception:
+        flagged = True
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (n {name: $name}) "
+                "SET n.flagged = $flagged "
+                "RETURN n.name AS name, n.flagged AS flagged",
+                name=name,
+                flagged=flagged,
+            ).single()
+        driver.close()
+        mark_neo4j_ok()
+
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+
+        logger.info(f"{'Flagged' if flagged else 'Unflagged'} entity '{name}'")
+        return {"ok": True, "entity": result["name"], "flagged": result["flagged"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("flag_entity failed: %s", e)
         return {"ok": False, "available": False}
 
 

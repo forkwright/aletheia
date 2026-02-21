@@ -1271,6 +1271,17 @@ export function createGateway(
     return c.json(await res.json(), res.status as 200);
   });
 
+  app.patch("/api/memory/entity/:name/flag", async (c) => {
+    const name = c.req.param("name");
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}/flag`, {
+      method: "PATCH",
+      headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
   app.post("/api/memory/entity/merge", async (c) => {
     const body = await c.req.text();
     const res = await fetch(`${memoryUrl}/entity/merge`, {

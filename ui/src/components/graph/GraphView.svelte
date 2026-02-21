@@ -156,8 +156,12 @@
   }
 
   async function handleFlag(name: string, flagged: boolean) {
-    // TODO: Wire to sidecar flag endpoint when available
-    console.log(`Flag ${name}: ${flagged}`);
+    const { flagEntity } = await import("../../lib/api");
+    try {
+      await flagEntity(name, flagged);
+    } catch (e) {
+      console.error("Flag failed:", e);
+    }
   }
 
   function handleTimelineApply(since: string, until: string) {
@@ -386,6 +390,7 @@
         loading={driftLoading}
         onNodeClick={handleNodeClick}
         onRefresh={() => loadDriftData()}
+        onDeleteEntity={async (name) => { await removeEntity(name); }}
       />
     {/if}
   </div>
