@@ -117,3 +117,30 @@ export function classifyInteraction(
 
   return { signal: "neutral", confidence: 0.4 };
 }
+
+// Domain keyword classification — lightweight regex matching for competence routing
+const DOMAIN_KEYWORDS: [string, RegExp][] = [
+  ["health", /\b(health|symptom|medication|doctor|appointment|diet|exercise|sleep|pain|sick|therapy|weight|blood\s*pressure|heart\s*rate|calories|supplement|prescription|dosage)\b/i],
+  ["scheduling", /\b(schedule|calendar|reminder|meeting|appointment|deadline|timer|alarm|event|booking|reschedule|cancel\s+(meeting|appointment)|availability|time\s*slot)\b/i],
+  ["code", /\b(code|program|function|variable|debug|compile|deploy|commit|merge|branch|refactor|typescript|python|api|endpoint|bug|error|stack\s*trace|lint|test|CI)\b/i],
+  ["writing", /\b(write|draft|essay|blog|article|edit|proofread|paragraph|outline|thesis|narrative|poem|story|copyedit)\b/i],
+  ["research", /\b(research|study|paper|journal|citation|source|evidence|analysis|literature|review|findings|methodology)\b/i],
+  ["finance", /\b(budget|expense|invoice|payment|cost|price|tax|accounting|financial|revenue|savings|investment|receipt)\b/i],
+  ["vehicle", /\b(car|truck|vehicle|engine|tire|oil\s*change|maintenance|mileage|brake|transmission|mechanic)\b/i],
+  ["academic", /\b(coursework|assignment|exam|grade|lecture|syllabus|MBA|class|homework|midterm|final|GPA|professor)\b/i],
+];
+
+export function classifyDomain(text: string): string | undefined {
+  let bestDomain: string | undefined;
+  let bestCount = 0;
+
+  for (const [domain, pattern] of DOMAIN_KEYWORDS) {
+    const matches = text.match(new RegExp(pattern, "gi"));
+    if (matches && matches.length > bestCount) {
+      bestCount = matches.length;
+      bestDomain = domain;
+    }
+  }
+
+  return bestDomain;
+}

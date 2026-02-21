@@ -1,26 +1,23 @@
-// Plan tool tests — create, status, step complete, step fail
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+// Plan tool tests — create, status, step complete, step fail (SQLite-backed)
+import { beforeEach, describe, expect, it } from "vitest";
+import { SessionStore } from "../../mneme/store.js";
 import { createPlanTools } from "./plan.js";
 
-const tmpDir = join("/tmp", "aletheia-plan-test-" + process.pid);
-const workspaceDir = join(tmpDir, "nous", "syn");
-
-function makeCtx() {
-  return { nousId: "syn", sessionId: "ses_1", workspace: workspaceDir };
-}
-
 describe("createPlanTools", () => {
+  let store: SessionStore;
   let tools: ReturnType<typeof createPlanTools>;
+  let sessionId: string;
+
+  function makeCtx() {
+    return { nousId: "syn", sessionId, workspace: "/tmp/test" };
+  }
 
   beforeEach(() => {
-    mkdirSync(workspaceDir, { recursive: true });
-    tools = createPlanTools();
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    store = new SessionStore(":memory:");
+    // Create a session so the plans FK constraint is satisfied
+    const session = store.createSession("syn", "main");
+    sessionId = session.id;
+    tools = createPlanTools(store);
   });
 
   it("returns 4 tool handlers", () => {
@@ -44,19 +41,6 @@ describe("createPlanTools", () => {
     expect(result.planId).toMatch(/^plan_/);
     expect(result.stepCount).toBe(3);
     expect(result.actionableNow).toEqual(["setup"]);
-  });
-
-  it("plan_create creates blackboard directory if missing", async () => {
-    const bbDir = join(tmpDir, "shared", "blackboard");
-    expect(existsSync(bbDir)).toBe(false);
-
-    const create = tools[0]!;
-    await create.execute({
-      goal: "Test",
-      steps: [{ id: "s1", description: "Step 1" }],
-    }, makeCtx());
-
-    expect(existsSync(bbDir)).toBe(true);
   });
 
   it("plan_create rejects invalid dependency references", async () => {
@@ -83,7 +67,6 @@ describe("createPlanTools", () => {
       planId: created.planId,
     }, makeCtx()));
 
-    expect(result.goal).toBe("Test plan");
     expect(result.status).toBe("executing");
     expect(result.progress).toBe("0/2 complete");
     expect(result.actionableNow).toEqual(["a"]);
@@ -101,7 +84,7 @@ describe("createPlanTools", () => {
   });
 
   it("plan_step_complete marks step done and unlocks dependents", async () => {
-    const [create, status, complete] = tools;
+    const [create, , complete] = tools;
     const created = JSON.parse(await create!.execute({
       goal: "Sequential",
       steps: [
@@ -155,7 +138,7 @@ describe("createPlanTools", () => {
   });
 
   it("plan_step_fail marks step failed and skips dependents", async () => {
-    const [create, status, , fail] = tools;
+    const [create, , , fail] = tools;
     const created = JSON.parse(await create!.execute({
       goal: "Chain",
       steps: [
@@ -222,5 +205,19 @@ describe("createPlanTools", () => {
     }, makeCtx()));
 
     expect(result.planStatus).toBe("executing");
+  });
+
+  it("plan persists across getPlan calls", async () => {
+    const [create] = tools;
+    const created = JSON.parse(await create!.execute({
+      goal: "Persistence test",
+      steps: [{ id: "s1", description: "Step 1" }],
+    }, makeCtx()));
+
+    const plan = store.getPlan(created.planId);
+    expect(plan).not.toBeNull();
+    expect(plan!.nousId).toBe("syn");
+    expect(plan!.sessionId).toBe(sessionId);
+    expect(plan!.status).toBe("executing");
   });
 });

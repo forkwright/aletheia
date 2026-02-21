@@ -7,6 +7,7 @@ import { recallMemories } from "../../recall.js";
 import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
+import { classifyDomain } from "../../interaction-signals.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
@@ -222,6 +223,28 @@ export async function buildContext(
         `Total tokens: ${totalInput}in / ${totalOutput}out (cache hit: ${cacheRate}%)\n` +
         `Last turn: ${lastTurnTokens}`,
     });
+  }
+
+  // Pre-turn competence suggestion — if this agent scores low in the detected domain
+  // and another agent scores high, suggest delegation
+  if (services.competence) {
+    const domain = classifyDomain(msg.text);
+    if (domain) {
+      const agentScore = services.competence.getScore(nousId, domain);
+      if (agentScore < 0.3) {
+        const better = services.competence.bestAgentForDomain(domain, [nousId]);
+        if (better && better.score > 0.6) {
+          systemPrompt.push({
+            type: "text",
+            text:
+              `## Competence Advisory\n\n` +
+              `Agent **${better.nousId}** has higher competence in **${domain}** ` +
+              `(score: ${better.score.toFixed(2)} vs your ${agentScore.toFixed(2)}).\n` +
+              `Consider delegating via \`sessions_ask\` if this task requires domain expertise.`,
+          });
+        }
+      }
+    }
   }
 
   // Tool definitions
