@@ -3,6 +3,8 @@
   import type { GraphData as AppGraphData, GraphNode } from "../../lib/types";
   import { getFilteredEdges } from "../../stores/graph.svelte";
 
+  import type { AgentOverlayData, DriftData } from "../../lib/api";
+
   let {
     graphData,
     selectedNodeId = null,
@@ -10,6 +12,10 @@
     hoverNodeId = $bindable(null),
     onNodeClick,
     onBackgroundClick,
+    agentOverlay = null,
+    agentFilter = null,
+    agentColors = {},
+    driftData = null,
   }: {
     graphData: AppGraphData;
     selectedNodeId?: string | null;
@@ -17,7 +23,15 @@
     hoverNodeId?: string | null;
     onNodeClick?: (nodeId: string) => void;
     onBackgroundClick?: () => void;
+    agentOverlay?: AgentOverlayData | null;
+    agentFilter?: string | null;
+    agentColors?: Record<string, string>;
+    driftData?: DriftData | null;
   } = $props();
+
+  // Build lookup sets for drift visualization
+  let orphanedSet = $derived(new Set(driftData?.orphaned_nodes?.map(n => n.name) ?? []));
+  let staleSet = $derived(new Set(driftData?.stale_entities?.map(e => e.name) ?? []));
 
   const PALETTE = [
     "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
@@ -89,6 +103,22 @@
       .nodeColor((node: any) => {
         if (hoverNodeId && node.id === hoverNodeId) return "#ffffff";
         if (selectedNodeId === node.id) return "#ffffff";
+
+        // Agent overlay mode
+        if (agentOverlay) {
+          const nodeInfo = agentOverlay.node_agents[node.id];
+          if (!nodeInfo) return "rgba(48, 54, 61, 0.3)"; // Unowned node — dim
+          if (agentFilter && nodeInfo.primary !== agentFilter) return "rgba(48, 54, 61, 0.25)";
+          return agentColors[nodeInfo.primary] ?? "#8b949e";
+        }
+
+        // Drift overlay mode
+        if (driftData) {
+          if (orphanedSet.has(node.id)) return "#f85149"; // Red for orphaned
+          if (staleSet.has(node.id)) return "#d29922"; // Yellow for stale
+          return communityColor(node.community ?? -1);
+        }
+
         const hl = highlightedCommunity;
         if (hl !== null && node.community !== hl) return "rgba(48, 54, 61, 0.4)";
         return communityColor(node.community ?? -1);
@@ -96,7 +126,17 @@
       .nodeLabel((node: any) => {
         const pr = node.pagerank ? node.pagerank.toFixed(4) : "\u2014";
         const comm = node.community >= 0 ? node.community : "\u2014";
-        return `${node.id}\nCommunity ${comm} \u00b7 PR ${pr}`;
+        let label = `${node.id}\nCommunity ${comm} \u00b7 PR ${pr}`;
+        if (agentOverlay) {
+          const info = agentOverlay.node_agents[node.id];
+          if (info) label += `\nAgent: ${info.primary} (${info.total_mentions} mentions)`;
+          else label += "\nNo agent ownership";
+        }
+        if (driftData) {
+          if (orphanedSet.has(node.id)) label += "\n⚠ Orphaned (no relationships)";
+          if (staleSet.has(node.id)) label += "\n⚠ Stale (>30d)";
+        }
+        return label;
       })
       .nodeCanvasObjectMode(() => "after")
       .nodeCanvasObject((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -108,6 +148,39 @@
         ctx.textBaseline = "top";
         const size = pagerankSize(node.pagerank || 0.001);
         ctx.fillText(node.id, node.x, node.y + size / 2 + fontSize * 0.3);
+
+        // Drift indicators: ring around orphaned/stale nodes
+        if (driftData) {
+          if (orphanedSet.has(node.id)) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, size / 2 + 2, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#f85149";
+            ctx.lineWidth = 1.5 / globalScale;
+            ctx.setLineDash([3 / globalScale, 2 / globalScale]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else if (staleSet.has(node.id)) {
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, size / 2 + 2, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#d29922";
+            ctx.lineWidth = 1 / globalScale;
+            ctx.setLineDash([2 / globalScale, 2 / globalScale]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+
+        // Agent overlay: small dot indicator for primary agent
+        if (agentOverlay) {
+          const nodeInfo = agentOverlay.node_agents[node.id];
+          if (nodeInfo) {
+            const dotSize = Math.max(2, size / 4);
+            ctx.beginPath();
+            ctx.arc(node.x + size / 2 + 1, node.y - size / 2 - 1, dotSize, 0, 2 * Math.PI);
+            ctx.fillStyle = agentColors[nodeInfo.primary] ?? "#8b949e";
+            ctx.fill();
+          }
+        }
       })
       .linkSource("source")
       .linkTarget("target")

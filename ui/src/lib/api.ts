@@ -260,6 +260,67 @@ export async function mergeEntities(source: string, target: string): Promise<{ m
   });
 }
 
+// --- Graph Intelligence (Spec 09 Phases 8-13) ---
+
+export interface MemoryHealth {
+  ok: boolean;
+  total: number;
+  sampled: number;
+  stale: number;
+  conflicts: number;
+  flagged: number;
+  forgotten: number;
+  avg_confidence: number;
+  by_agent: Record<string, number>;
+  date_range: { oldest: string | null; newest: string | null };
+}
+
+export async function fetchMemoryHealth(): Promise<MemoryHealth> {
+  return fetchJson("/api/memory/health");
+}
+
+export interface TimelineData {
+  ok: boolean;
+  nodes: Array<import("./types").GraphNode & { created_at?: string | null }>;
+  edges: import("./types").GraphEdge[];
+  total_nodes: number;
+  date_range: { since: string | null; until: string | null };
+}
+
+export async function fetchGraphTimeline(since?: string, until?: string): Promise<TimelineData> {
+  const sp = new URLSearchParams();
+  if (since) sp.set("since", since);
+  if (until) sp.set("until", until);
+  const qs = sp.toString();
+  return fetchJson(`/api/memory/graph/timeline${qs ? `?${qs}` : ""}`);
+}
+
+export interface AgentOverlayData {
+  ok: boolean;
+  node_agents: Record<string, { primary: string; agents: Record<string, number>; total_mentions: number }>;
+  all_agents: string[];
+  total_entities: number;
+}
+
+export async function fetchAgentOverlay(): Promise<AgentOverlayData> {
+  return fetchJson("/api/memory/graph/agent-overlay");
+}
+
+export interface DriftData {
+  ok: boolean;
+  total_nodes: number;
+  orphaned_nodes: Array<{ name: string; pagerank: number; community: number }>;
+  low_connectivity: Array<{ name: string; pagerank: number; degree: number }>;
+  small_clusters: Array<{ comm: number; members: string[]; size: number }>;
+  stale_entities: Array<{ name: string; last_seen: string; age_days: number }>;
+  suggestions: Array<{ type: string; entity: string; reason: string }>;
+  suggestion_count: number;
+}
+
+export async function fetchDriftData(): Promise<DriftData> {
+  return fetchJson("/api/memory/graph/drift");
+}
+
 // --- Tool Stats ---
 
 export async function fetchToolStats(agentId?: string, window = "7d"): Promise<unknown> {

@@ -1281,6 +1281,32 @@ export function createGateway(
     return c.json(await res.json(), res.status as 200);
   });
 
+  // --- Spec 09 Phases 8-13: Graph Intelligence Endpoints ---
+
+  app.get("/api/memory/health", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/memory/health${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/timeline", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/timeline${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/agent-overlay", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/agent-overlay${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/drift", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/drift${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
   // --- Export / Analytics API ---
 
   app.get("/api/export/stats", (c) => {

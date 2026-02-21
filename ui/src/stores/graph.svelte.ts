@@ -1,5 +1,9 @@
 // Graph visualization store
-import { fetchGraphExport, fetchEntityDetail, deleteEntity, mergeEntities, type GraphExportParams } from "../lib/api";
+import {
+  fetchGraphExport, fetchEntityDetail, deleteEntity, mergeEntities,
+  fetchMemoryHealth, fetchAgentOverlay, fetchDriftData, fetchGraphTimeline,
+  type GraphExportParams, type MemoryHealth, type AgentOverlayData, type DriftData,
+} from "../lib/api";
 import type { GraphData, GraphNode, GraphEdge, CommunityMeta, EntityDetail } from "../lib/types";
 
 const EMPTY: GraphData = { nodes: [], edges: [], communities: 0, community_meta: [], total_nodes: 0 };
@@ -17,6 +21,17 @@ let entityLoading = $state(false);
 let hiddenEdgeTypes = $state<Set<string>>(new Set());
 let searchResults = $state<Array<{ id: string; labels: string[]; pagerank: number; community: number }>>([]);
 let searchLoading = $state(false);
+
+// --- Graph Intelligence State ---
+let memoryHealth = $state<MemoryHealth | null>(null);
+let healthLoading = $state(false);
+let agentOverlay = $state<AgentOverlayData | null>(null);
+let agentOverlayLoading = $state(false);
+let driftData = $state<DriftData | null>(null);
+let driftLoading = $state(false);
+let timelineRange = $state<{ since?: string; until?: string }>({});
+let activeOverlay = $state<"none" | "agents" | "drift" | "timeline">("none");
+let selectedAgentFilter = $state<string | null>(null);
 
 export function getGraphData(): GraphData {
   return graphData;
@@ -232,4 +247,76 @@ export async function searchGraph(query: string, filters?: { community?: number;
 
 export function clearSearchResults(): void {
   searchResults = [];
+}
+
+// --- Graph Intelligence ---
+
+export function getMemoryHealth(): MemoryHealth | null { return memoryHealth; }
+export function getHealthLoading(): boolean { return healthLoading; }
+export function getAgentOverlay(): AgentOverlayData | null { return agentOverlay; }
+export function getAgentOverlayLoading(): boolean { return agentOverlayLoading; }
+export function getDriftData(): DriftData | null { return driftData; }
+export function getDriftLoading(): boolean { return driftLoading; }
+export function getActiveOverlay(): "none" | "agents" | "drift" | "timeline" { return activeOverlay; }
+export function setActiveOverlay(v: "none" | "agents" | "drift" | "timeline"): void { activeOverlay = v; }
+export function getSelectedAgentFilter(): string | null { return selectedAgentFilter; }
+export function setSelectedAgentFilter(v: string | null): void { selectedAgentFilter = v; }
+export function getTimelineRange(): { since?: string; until?: string } { return timelineRange; }
+export function setTimelineRange(r: { since?: string; until?: string }): void { timelineRange = r; }
+
+export async function loadMemoryHealth(): Promise<void> {
+  healthLoading = true;
+  try {
+    memoryHealth = await fetchMemoryHealth();
+  } catch (e) {
+    console.error("Failed to load memory health:", e);
+    memoryHealth = null;
+  } finally {
+    healthLoading = false;
+  }
+}
+
+export async function loadAgentOverlay(): Promise<void> {
+  agentOverlayLoading = true;
+  try {
+    agentOverlay = await fetchAgentOverlay();
+  } catch (e) {
+    console.error("Failed to load agent overlay:", e);
+    agentOverlay = null;
+  } finally {
+    agentOverlayLoading = false;
+  }
+}
+
+export async function loadDriftData(): Promise<void> {
+  driftLoading = true;
+  try {
+    driftData = await fetchDriftData();
+  } catch (e) {
+    console.error("Failed to load drift data:", e);
+    driftData = null;
+  } finally {
+    driftLoading = false;
+  }
+}
+
+export async function loadTimeline(since?: string, until?: string): Promise<void> {
+  loading = true;
+  try {
+    const data = await fetchGraphTimeline(since, until);
+    if (data.ok) {
+      graphData = {
+        nodes: data.nodes,
+        edges: data.edges,
+        communities: 0,
+        community_meta: [],
+        total_nodes: data.total_nodes,
+      };
+      timelineRange = { since, until };
+    }
+  } catch (e) {
+    console.error("Failed to load timeline:", e);
+  } finally {
+    loading = false;
+  }
 }
