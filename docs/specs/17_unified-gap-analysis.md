@@ -1,279 +1,390 @@
-# Unified Gap Analysis: Aletheia vs Claude Code vs OpenClaw
+# Unified Gap Analysis: Aletheia vs the Field
 
 ## Context
 
-Three multi-agent systems compared to identify features worth adopting into Aletheia.
+Eight systems compared to identify features worth adopting into Aletheia. Deep dives on Claude Code, OpenClaw, Letta, CrewAI, and AgentScope. Targeted reviews of memU (memory patterns), LangGraph (state management), and OwnPilot (security architecture).
 
 **Aletheia** — Self-hosted multi-agent system. 6 persistent nous + ephemeral spawns. Signal + webchat + MCP channels. Mem0 + Qdrant + Neo4j + sqlite-vec memory. Prosoche daemon (proactive attention). Self-observation (competence model, uncertainty tracker, calibration). Distillation pipeline. 28 built-in tools + dynamic loading. Event bus (15 events). Cron, watchdog. Gateway with 50+ endpoints. ~328KB runtime. Stack: Hono, better-sqlite3, @anthropic-ai/sdk, Zod, Commander.
 
-**Claude Code** — Anthropic's official CLI agent (Apache 2.0). Single agent + ephemeral subagents. Terminal-only. Session JSONL + file history. Declarative hook system (15+ events). Plugin marketplace. Purely reactive. No persistent memory, no proactive behavior, no self-observation.
+**Claude Code** — Anthropic's CLI agent (Apache 2.0). Single agent + ephemeral subagents. Terminal-only. Declarative hook system (15+ events). Plugin marketplace.
 
-**OpenClaw** — Multi-channel agent framework (MIT). Single agent, multi-session. 17+ channels (Telegram, Discord, Signal, Slack, WhatsApp, iMessage, Matrix, etc.). 38 extension plugins. Docker sandbox. ACP IDE bridge. Playwright browser automation. Auth profile rotation. MMR memory search. 56 bundled skills. iOS/macOS/Android companion apps. ~406K LOC TypeScript.
+**OpenClaw** — Multi-channel agent framework (MIT). Single agent, multi-session. 17+ channels. 38 extension plugins. Docker sandbox. ACP IDE bridge. Auth profile rotation. ~406K LOC TypeScript.
+
+**Letta** (MemGPT) — Stateful agent platform (Apache 2.0). Self-editing memory (agents modify their own memory blocks via tools). Sleep-time compute. Agent File (.af) serialization. Three-tier memory (core/archival/recall). ~40k stars.
+
+**CrewAI** — Multi-agent orchestration (MIT). Role-based agents with Crews (autonomous teams) + Flows (deterministic workflows). Unified memory with composite scoring. A2A protocol. 40+ event types. ~57k stars.
+
+**AgentScope** — Production agent framework (Apache 2.0, Alibaba). "Agent as API" pattern. A2A + MCP dual protocol. Pub/Sub MsgHub. Dual-layer memory. Realtime voice. Finetuning/RL. ~12k stars.
+
+**memU** — Memory infrastructure for always-on agents. Hierarchical filesystem memory (Category → Item → Resource). Salience scoring. Tiered retrieval with sufficiency gates. Rust + Python hybrid.
+
+**LangGraph** — State graph orchestration (MIT, LangChain). Checkpointing with version-based triggers. Time-travel debugging. Reducer pattern. Human-in-the-loop interrupts.
+
+**OwnPilot** — Privacy-first personal AI assistant. AES-256-GCM encrypted memory. Tamper-evident hash chain audit. PII detection/redaction. 4-layer sandboxed execution.
 
 **Constraints:**
 - Channels: Signal + webchat only (no new channel integrations)
 - Tools: ALL agents get ALL tools (persistent nous — no per-agent restrictions)
-- Evaluate: Docker sandbox, ACP/IDE integration, Android app as webui port
-- Skip: WhatsApp, Telegram, Discord, Slack, Matrix, iOS/macOS apps
+- Evaluate: Docker sandbox, ACP/IDE integration, Android app as webui port, sleep-time compute, A2A protocol, deterministic workflows, full security hardening
+- Skip: WhatsApp, Telegram, Discord, Slack, Matrix, iOS/macOS apps, voice/realtime agents
 
 ---
 
 ## Architecture Comparison
 
-| Dimension | Claude Code | OpenClaw | Aletheia |
-|-----------|-------------|----------|----------|
-| **Deployment** | Local CLI per-user | Server + CLI + mobile apps | Self-hosted server, multi-user |
-| **Agent model** | Single + ephemeral subagents | Single agent, multi-session | 6 persistent nous + ephemeral spawns |
-| **Channels** | Terminal only | 17+ (Telegram, Discord, Signal, Slack, WhatsApp, iMessage, web, etc.) | Signal, webchat, MCP, cron |
-| **Memory** | Session JSONL + file history | sqlite-vec + MMR + temporal decay + LanceDB (optional) | Mem0 + Qdrant + Neo4j + sqlite-vec + blackboard |
-| **Config format** | JSON settings + Markdown files + hooks.json | JSON5 + env overrides + profiles | Zod-validated JSON + workspace Markdown |
-| **Extension model** | Plugin marketplace + hooks (15+ events) | 38 extensions + plugin SDK + 5 hook types | Plugin loader + event bus (15 events) + lifecycle hooks (7 types) |
-| **Context mgmt** | Compaction + file snapshots | Prompt cache stability + session file sync | Distillation pipeline (facts/decisions/summary) |
-| **Sandbox** | None | Docker containers (config-hash, env sanitization, fs bridge, non-root) | None |
-| **IDE integration** | Native (is a CLI agent) | ACP (Agent Code Protocol) server | None |
-| **Mobile** | None | Android + iOS/Watch + macOS companion apps | Web UI (Svelte, planned) |
-| **Auth** | OAuth/API key (Anthropic only) | Multi-account failover, OAuth chains, pairing per channel | Token/password/JWT/pairing (Signal challenge-code) |
-| **Browser** | None | Playwright + CDP + profiles + downloads + session persistence (~90 files) | Playwright-core + browser_use (Python subprocess), 4 actions |
-| **Proactivity** | None (reactive only) | Heartbeat cron + wake | Prosoche daemon, cron, foresight signals, attention scoring |
-| **Self-observation** | None | None | Competence model, uncertainty tracker, calibration, interaction signals |
-| **Cost control** | User selects model | Usage tracking + cost estimation per session/model | Temperature routing, dynamic tool loading, pricing engine per-turn |
-| **Streaming** | Terminal native | Draft stream (live message editing in channels) | SSE to webchat; complete responses via Signal |
-| **Loop detection** | None | Tool loop detection module | LoopDetector (sliding window, warn/halt, consecutive error detection) |
-| **Spawn depth** | Not tracked | maxSpawnDepth=2 | depth propagated, checked against maxPingPongTurns (5) |
-| **Tool restrictions** | Glob patterns per command/agent | ownerOnly + ActionGate per tool | ALL tools for persistent nous; `tools?: string[]` on ephemeral spec (unwired) |
-| **Onboarding** | `claude setup` | `openclaw onboard` interactive wizard | `aletheia doctor` (validation only) |
-| **Skills** | SKILL.md files, auto-load | SKILL.md + npm/git installable + 56 bundled | SKILL.md + skill learner (auto-extract from trajectories) |
-| **Testing** | Internal suite | Vitest, V8 coverage (70% threshold), live + Docker E2E | Vitest, 733+ tests, 75 test files |
-| **Observability** | None | TSLog structured + OpenTelemetry extension | createLogger + AsyncLocalStorage context + Langfuse |
-| **Security** | Permission modes | SSRF guard, symlink prevention, non-root containers, timing-safe auth | Circuit breakers (input+response), SSRF guard, rate limiting, pairing auth |
-| **Cron** | None | Cron expressions + heartbeat + active hours + session reaper | 4 cron jobs (heartbeat, consolidation, pattern extraction, adversarial test) |
-| **Gateway/API** | None (CLI only) | Hono HTTP/WS, 100+ RPC methods, OpenAI-compatible API | Hono HTTP, 50+ REST endpoints, SSE streaming, MCP server |
-| **Build** | Internal | tsdown, 6 entry points, ~293KB | tsdown, single entry, ~328KB |
+### Core Architecture
+
+| Dimension | Claude Code | OpenClaw | Letta | CrewAI | AgentScope | Aletheia |
+|-----------|-------------|----------|-------|--------|------------|----------|
+| **Deployment** | Local CLI | Server + CLI + mobile | Server (FastAPI) | Library/Framework | Library/Framework | Self-hosted server |
+| **Agent model** | Single + subagents | Single, multi-session | Multi-agent groups | Role-based crews | Agent-as-API | 6 persistent nous + ephemeral |
+| **Language** | TypeScript | TypeScript | Python | Python | Python | TypeScript |
+| **Memory** | Session JSONL | sqlite-vec + MMR | Core blocks + archival + recall | Unified (semantic+recency+importance) | Working + long-term (Mem0/ReMe) | Mem0 + Qdrant + Neo4j + sqlite-vec |
+| **Proactivity** | None | Heartbeat + wake | Sleep-time compute | None | None | Prosoche daemon + cron + foresight |
+| **Self-observation** | None | None | None | None | None | Competence model, calibration, signals |
+| **Sandbox** | None | Docker | Tool execution sandbox | None | None | None |
+| **Protocols** | None | None | MCP client | A2A + MCP | A2A + MCP | MCP server |
+
+### Memory Systems
+
+| Dimension | OpenClaw | Letta | CrewAI | AgentScope | memU | Aletheia |
+|-----------|----------|-------|--------|------------|------|----------|
+| **Vector search** | sqlite-vec + MMR | Embedding + BM25 hybrid | LanceDB + composite scoring | Qdrant/Pinecone | SQLite + pgvector | Qdrant (Voyage-3-large) |
+| **Graph** | None | None | Neo4j (entity) | Neo4j (ReMe) | None | Neo4j (28 rel types, PageRank) |
+| **Self-editing** | None | Agent modifies own blocks | LLM-analyzed save/recall | None | None | Extraction via Haiku |
+| **Diversity** | MMR re-ranking | None | LLM exploration rounds | None | Tiered sufficiency gates | Query rewriting |
+| **Scoring** | Cosine + temporal decay | Cosine + BM25 | Semantic + recency + importance | Cosine | Similarity × reinforcement × decay | Cosine + dedup (0.92) |
+| **Consolidation** | None | Summary on overflow | Auto-dedup (0.85 threshold) | None | Content hash + reinforcement | Consolidation daemon + decay |
+| **Cross-agent** | None | Shared blocks in groups | Crew-level shared | MsgHub broadcast | None | Blackboard + shared Qdrant/Neo4j |
+
+### Orchestration & Workflows
+
+| Dimension | Claude Code | CrewAI | AgentScope | LangGraph | Aletheia |
+|-----------|-------------|--------|------------|-----------|----------|
+| **Workflow model** | None | Flows (event-driven, persistent) | MsgHub (pub/sub) + pipelines | State graph (checkpointed) | Event bus + cron |
+| **State persistence** | None | SQLite (flow state) | JSON/Redis/SQLAlchemy sessions | Checkpointer (PG/SQLite/memory) | SQLite sessions.db |
+| **Human-in-loop** | Permission modes | Flow pause + resume | Approval callbacks | Interrupt before/after nodes | Approval gate API |
+| **Deterministic routing** | None | start → listen → router → branch | Sequential/fanout pipelines | Graph edges + conditions | Cron schedules |
+| **Time-travel** | None | None | None | Checkpoint history browsing | None |
+| **A2A protocol** | None | Remote agent delegation | A2A server + client | None | None |
+
+### Security
+
+| Dimension | OpenClaw | OwnPilot | Aletheia |
+|-----------|----------|----------|----------|
+| **Memory encryption** | None | AES-256-GCM at rest, PBKDF2 key derivation | None |
+| **Audit trail** | None | Hash chain (SHA-256 linked events) | Audit log table (no integrity chain) |
+| **PII handling** | None | 15+ detectors, confidence scoring, redaction modes | None |
+| **Code sandbox** | Docker (config-hash, env sanitization, non-root) | 4-layer (patterns → permissions → approval → isolation) | None |
+| **Path safety** | Symlink prevention, env sanitization | Directory traversal prevention, workspace isolation | SSRF guard only |
 
 ---
 
 ## Deconflicted Gaps
 
-Where both Claude Code and OpenClaw have a feature Aletheia lacks, the better approach is selected.
+Where multiple systems have a feature Aletheia lacks, the best approach is selected.
 
 ### DECONF-1: Hook System
 
-**Claude Code:** Declarative `hooks.json` config, 15+ event types (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, etc.). Shell/Python handlers receive JSON via stdin, control flow via exit codes (0=allow, 2=deny). Output fields: `permissionDecision`, `additionalContext`, `decision`+`reason`.
+**Claude Code:** Declarative `hooks.json`, 15+ events, shell handlers via JSON stdin/stdout, exit code semantics.
+**OpenClaw:** TypeScript `registerInternalHook()` with `type:action` naming, 5 lifecycle types.
+**AgentScope:** 6 hook types on agent base class (pre/post reply/print/observe), class + instance registration.
 
-**OpenClaw:** TypeScript `registerInternalHook(eventKey, handler)` with `type:action` naming (e.g., `command:new`, `message:received`). Plugin hooks: 5 lifecycle types. Handlers receive context objects, can transform messages or block processing.
-
-**Aletheia now:** Internal event bus (15 events: `turn:before`, `turn:after`, `tool:called`, etc.). Plugin lifecycle hooks (7 types: `onStart`, `onShutdown`, `onBeforeTurn`, `onAfterTurn`, etc.). Neither is user-facing.
-
-**Recommendation: Hybrid.** Keep Aletheia's event bus + plugin lifecycle as internal foundation. Add user-facing hook layer configured in `aletheia.json` that maps to the event bus. Use Claude Code's JSON stdin/stdout protocol for shell interop (proven, language-agnostic). Use OpenClaw's `noun:verb` event naming (already matches Aletheia's convention). Hook handlers: shell commands receiving JSON stdin, exit codes controlling flow.
-
-**Why:** CC's protocol is a portable standard. OC's naming is more systematic. Aletheia's bus provides the wiring.
+**Recommendation: Hybrid (CC protocol + OC naming + AgentScope granularity).** CC's JSON stdin/stdout protocol for shell interop. OC's `noun:verb` naming (matches Aletheia's existing convention). AgentScope's pre/post pattern for per-stage hooks. Wire into existing event bus.
 
 ---
 
 ### DECONF-2: Command Definitions
 
-**Claude Code:** `.md` files with YAML frontmatter (`description`, `argument-hint`, `allowed-tools`, `model`), `$ARGUMENTS` substitution, inline bash execution.
+**Claude Code:** `.md` files with YAML frontmatter, `$ARGUMENTS` substitution.
+**OpenClaw:** Code-registered via `registerCommand()`.
+**CrewAI:** Decorator-based (`@agent`, `@task`, `@crew`) with YAML config files.
 
-**OpenClaw:** Slash command parsing in gateway. Plugin-contributed commands via `registerCommand()`. Code-registered, not file-based.
-
-**Aletheia now:** `CommandRegistry` in `semeion/commands.ts` with 15 TypeScript handlers (`!ping`, `!help`, `!status`, etc.). Skills from `SKILL.md` are knowledge-injection only.
-
-**Recommendation: Claude Code.** Extend `CommandRegistry` to scan `shared/commands/*.md` for file-based commands with frontmatter. Aletheia already uses workspace Markdown extensively. `SKILL.md` demonstrates the file-based pattern. OpenClaw's code-registered approach requires rebuilds.
+**Recommendation: Claude Code.** `.md` with frontmatter fits Aletheia's workspace Markdown patterns. Extend existing `CommandRegistry` to scan `shared/commands/*.md`.
 
 ---
 
 ### DECONF-3: Tool Restrictions
 
-**Claude Code:** `allowed-tools` with glob patterns per command/agent. `"Read"` (exact), `"Bash(git:*)"` (prefix with glob on args).
+**Claude Code:** Glob patterns per command/agent.
+**OpenClaw:** `ownerOnly` + `ActionGate`.
+**CrewAI:** Per-task tool lists, agent-level tool binding.
 
-**OpenClaw:** `ownerOnly` boolean per tool. `ActionGate` for channel-specific policies. `tool-policy.ts` in sandbox context.
-
-**Aletheia now:** ALL agents get ALL tools (user directive, absolute). `EphemeralSpec` has `tools?: string[]` but it's not wired through the pipeline.
-
-**Recommendation: Claude Code's glob patterns, ephemeral-only.** Wire `EphemeralSpec.tools` through the pipeline's resolve stage to filter `ToolRegistry.getDefinitions()`. Support patterns: `"exec"` (exact), `"web_*"` (prefix glob), `"*"` (all). Never apply to persistent nous.
+**Recommendation: Claude Code globs, ephemeral-only.** Wire `EphemeralSpec.tools` through pipeline resolve. Never apply to persistent nous.
 
 ---
 
-### DECONF-4: Plugin Layout
+### DECONF-4: Memory Search Quality
 
-**Claude Code:** Standard directory layout (`commands/`, `agents/`, `skills/`, `hooks/`, `.mcp.json`). Auto-discovery. `${CLAUDE_PLUGIN_ROOT}` env var. Marketplace manifest.
+**OpenClaw:** MMR re-ranking with Jaccard overlap, temporal decay.
+**CrewAI:** Composite scoring (semantic 0.5 + recency 0.3 + importance 0.2), LLM-driven exploration rounds, consolidation.
+**memU:** Tiered retrieval with sufficiency gates, salience scoring (similarity × reinforcement × recency_decay), content hash dedup.
+**Letta:** Hybrid semantic + BM25 full-text, tag filtering, temporal range queries.
 
-**OpenClaw:** 38 extensions in `extensions/` dir, each with own `package.json` and build. Heavy plugin SDK with HTTP route registration, service lifecycle, CLI registrars.
-
-**Aletheia now:** Plugin loader accepts `manifest.json` or `*.plugin.json`. Only 1 plugin exists (aletheia-memory).
-
-**Recommendation: Claude Code.** Standard directory layout is right-sized. OC's 38-extension architecture is over-engineered for Aletheia's needs. Define: `manifest.json`, `tools/`, `hooks/`, `skills/`, `commands/`. Set `ALETHEIA_PLUGIN_ROOT` env var. Auto-discover components.
-
----
-
-### DECONF-5: Memory Search Quality
-
-**Claude Code:** No persistent memory. N/A.
-
-**OpenClaw:** MMR (Maximal Marginal Relevance) re-ranking with Jaccard word overlap. Lambda parameter (0=diversity, 1=relevance, default 0.7). Temporal decay with exponential half-life (30 days default).
-
-**Aletheia now:** Mem0 cosine similarity. Sidecar `/search_enhanced` with query rewriting. No diversity re-ranking. Consolidation daemon has Neo4j decay but not vector search decay.
-
-**Recommendation: OpenClaw's MMR.** Port MMR as post-processing on Mem0 search results. Addresses a real problem: when multiple memories about the same topic are returned, they crowd out diverse relevant context. Clean ~120 LOC module. Temporal decay in search scoring is a separate lower-priority addition.
+**Recommendation: Hybrid (CrewAI scoring + memU gates + OpenClaw MMR).**
+1. **Composite scoring** (CrewAI) — add recency and importance weights to Mem0 results. ~80 LOC in sidecar.
+2. **Sufficiency gates** (memU) — stop searching after category-level results if enough context. ~50 LOC.
+3. **MMR diversity** (OpenClaw) — re-rank final results for diversity. ~120 LOC.
+4. **Content hash dedup** (memU) — prevent near-identical extraction at write time. ~30 LOC.
 
 ---
 
-### DECONF-6: Browser Automation
+### DECONF-5: Multi-Agent Coordination Patterns
 
-**Claude Code:** No browser capability.
+**CrewAI:** Crews (autonomous teams) + Flows (deterministic event-driven workflows with persistence).
+**AgentScope:** MsgHub (pub/sub auto-broadcast) + sequential/fanout pipelines.
+**LangGraph:** State graph with checkpointing, reducers for concurrent writes, time-travel debugging.
+**Letta:** Sleep-time multi-agent groups (background participant processing).
 
-**OpenClaw:** Sophisticated Playwright-based system (~90 files). CDP direct access, profile management, persistent contexts, download handling with file chooser, screenshot with element targeting, auth token injection, role snapshots.
-
-**Aletheia now:** `organon/built-in/browser.ts` — Playwright-core with 4 actions (navigate, screenshot, extract, browser_use). Max 3 concurrent pages. SSRF guard. 30s timeout. No CDP, no profiles, no downloads, no session persistence.
-
-**Recommendation: Incremental upgrade.** OC's 90-file browser system would be a multi-week port. Aletheia's browser is functional for most tasks. Highest-value additions: (1) CDP for connecting to existing browser instances, (2) download capture, (3) cookie/session persistence between calls. Target ~200 LOC additions, not a rewrite.
-
----
-
-## New Gaps from OpenClaw
-
-Features only OpenClaw has that are worth evaluating. Not covered by Claude Code comparison.
-
-### OC-1: Docker Sandbox (HIGH — evaluate)
-
-**What:** Containerized agent execution. Config-hash recreation (rebuild only when config changes). Env var sanitization (strip secrets from container). Filesystem bridging (mount specific paths, controlled read/write). Non-root hardening.
-
-**Why it matters:** Tools like `exec` and `browser_use` run with full `syn` user permissions. A hallucinated `rm -rf` could damage the system. Docker isolates tool execution. Critical for ephemeral spawns running untrusted tasks.
-
-**Approach:** Start with sandboxing `exec` tool only. Docker image with minimal runtime. Mount workspace read-only except ephemeral workspace. Sanitize env vars. ~300 LOC for sandbox runner + Dockerfile.
-
-**Evaluation needed:** Performance overhead of Docker exec per tool call? Which tools need sandboxing (exec only? browser too?)? Docker availability on worker-node?
+**Recommendation: CrewAI Flows pattern adapted to Aletheia's event bus.** Aletheia already has the event bus and cron. What's missing is declarative workflow definitions with state persistence and conditional routing. Implement as a `WorkflowEngine` that reads workflow definitions (YAML or JSON) and maps steps to event bus listeners. LangGraph's reducer pattern is valuable for merging parallel agent outputs — add to `sessions_dispatch`. Time-travel is interesting but low-priority.
 
 ---
 
-### OC-2: ACP / IDE Integration (MEDIUM — evaluate)
+### DECONF-6: Security Hardening
 
-**What:** Agent Code Protocol server bridging IDE extensions (VS Code, JetBrains) to the gateway. Session management with idle reaping, rate limiting, prompt prefix preservation, ndjson stream transport.
+**OpenClaw:** Docker sandbox (exec isolation), non-root containers, env sanitization.
+**OwnPilot:** AES-256-GCM memory encryption, hash chain audit, PII detection, 4-layer sandbox.
 
-**Why it matters:** Would allow interaction with Aletheia agents from within an editor. ACP connects via WebSocket to the existing gateway — additive, not replacing Signal/webchat.
+**Recommendation: OwnPilot's approach is more comprehensive.** Adopt all three security layers:
+1. **Encrypted memory** — AES-256-GCM for Mem0 vectors and Neo4j properties. ~200 LOC.
+2. **Hash chain audit** — Add checksum + previousChecksum to audit log table. ~100 LOC.
+3. **PII detection** — Run detector on memories before storage and on Signal outbound. ~300 LOC.
 
-**Approach:** Aletheia already has gateway + WebSocket infrastructure. ACP adapter translates protocol messages to/from the existing session model. ~200-300 LOC for adapter layer.
-
----
-
-### OC-3: Auth Profile Rotation (LOW)
-
-**What:** Multi-account failover per provider. Cooldown tracking on failures. Exponential backoff before retry. OAuth refresh chains. Last-used preference tracking.
-
-**Why it matters:** Aletheia uses a single Anthropic credential. If it's rate-limited, everything stops. A second credential as failover is straightforward.
-
-**Approach:** `ModelSpec` already has `primary` + `fallbacks`. Extend `hermeneus/anthropic.ts` to try fallback credentials on 429/5xx. Track cooldown per credential. ~100 LOC.
+Docker sandbox (OpenClaw) is complementary — addresses execution isolation, not data protection.
 
 ---
 
-### OC-4: Spawn Depth Enforcement (HIGH — trivial)
+### DECONF-7: Agent State Serialization
 
-**What:** `maxSpawnDepth` config. When spawn creates sub-spawn, depth is tracked. Exceeding limit rejects the spawn.
+**Letta:** Agent File (.af) — JSON export of agent + memory blocks + message history + tools + MCP configs. ID remapping on import.
+**LangGraph:** Checkpointing with thread_id + namespace hierarchy. Fork conversations.
+**AgentScope:** `state_dict()` / `load_state_dict()` pattern (PyTorch-inspired).
 
-**Why it matters:** `sessions_spawn` propagates `depth: (context.depth ?? 0) + 1`. `maxPingPongTurns` (5) limits back-and-forth but not spawn chains. A recursive A→B→C→D→... could exhaust resources.
-
-**Approach:** Add `maxSpawnDepth` to config (default 3). Check at top of `sessions_spawn` handler. ~15 LOC.
-
----
-
-### OC-5: Stream Preview / Typing Indicators (MEDIUM)
-
-**What:** As LLM generates tokens, channel message is progressively edited to show partial content. Throttled at 1s intervals. Min-chars debounce to avoid notification spam.
-
-**Why it matters:** Signal doesn't support message editing, so webchat-only for true streaming. But Signal users wait with no feedback during long turns. Even a status indicator helps.
-
-**Approach:** Webchat: SSE streaming already works. Signal: send brief placeholder ("Thinking...") via typing indicator or placeholder message, replace with final response. ~50-100 LOC.
+**Recommendation: Letta's Agent File adapted for nous.** Export a nous as a portable JSON file containing: identity, SOUL.md, memory blocks (from Neo4j + Qdrant), tool configs, workspace files, recent session history. Import creates a new nous with remapped IDs. Enables backup, migration, and cloning. ~300 LOC.
 
 ---
 
-### OC-6: Onboarding Wizard (LOW)
+## New Gaps by Source
 
-**What:** `openclaw onboard` — interactive CLI wizard. Guides through API key, channel config, gateway setup. Writes config.
+### From Letta
 
-**Why it matters:** `aletheia doctor` validates but doesn't create config. First-time setup requires manually writing `aletheia.json`.
+#### LT-1: Sleep-Time Compute (HIGH — evaluate)
 
-**Approach:** `aletheia init` subcommand. Prompts for: API key, gateway port, Signal account, agent list. Writes template config. ~150 LOC.
+**What:** Background agents reprocess conversation history during idle time, rewriting their memory blocks. Multi-agent group where participant agents get transcripts of recent main agent messages and run `.step()` async.
 
----
+**Why it matters:** Prosoche monitors external signals (calendar, tasks, health) but doesn't reprocess conversations for deeper memory extraction. Sleep-time compute would let nous refine their understanding of past interactions, consolidate conflicting memories, and extract patterns that weren't obvious in real-time.
 
-### OC-7: Config Doctor with Repair (LOW)
-
-**What:** Detects permission issues, symlink traversal, missing directories, and repairs them. Creates backups before modifying.
-
-**Why it matters:** The ACL bug on 2026-02-13 required manual `setfacl`. Doctor could have auto-fixed it. Adding `--fix` flag is high value relative to effort.
-
-**Approach:** Extend doctor to emit `{check, ok, fixable, action}` tuples. With `--fix`, execute repair actions (chmod, setfacl, mkdir, remove broken symlinks). ~100 LOC.
+**Approach:** Extend the consolidation cron job. Currently it runs nightly for distillation. Add a second phase: for each nous, re-send the last N undistilled messages through Haiku for deeper memory extraction, fact revision, and pattern detection. Use existing `mneme` pipeline. ~200 LOC.
 
 ---
 
-### OC-8: Prompt Cache Stability (MEDIUM)
+#### LT-2: Self-Editing Memory Blocks (MEDIUM)
 
-**What:** System prompt assembly ensures deterministic ordering. Per-message metadata (IDs, timestamps) moved to dynamic context blocks that don't invalidate the Anthropic prompt cache.
+**What:** Agents call `core_memory_replace` / `core_memory_append` to modify their own persistent memory (persona, facts, preferences). Memory is compiled into the system prompt each turn.
 
-**Why it matters:** Aletheia's bootstrap has `static`, `semi-static`, `dynamic` cache groups with `cache_control: { type: "ephemeral" }` breakpoints. But `bootstrap-diff.ts` may change cache-stable blocks when semi-static content updates, wasting cache hits.
+**Why it matters:** Aletheia's memory extraction is done by Haiku externally (Mem0 sidecar). The agent itself doesn't explicitly decide what to remember or forget. Self-editing gives agents agency over their own knowledge.
 
-**Approach:** Audit bootstrap assembly. Ensure `contentHash` uses correct granularity. Move per-turn data out of `semi-static` into `dynamic`. ~50 LOC.
-
----
-
-### OC-9: Plugin Path Safety (LOW)
-
-**What:** `realpath()` check prevents symlink traversal. Env var sanitization for plugin execution.
-
-**Why it matters:** `prostheke/loader.ts` doesn't validate for symlink traversal. Only 1 plugin exists, but third-party plugins would make this a real vector.
-
-**Approach:** Add `realpath()` check to loader. Ensure loaded paths don't escape plugin root. ~30 LOC.
+**Approach:** Add `memory_update` and `memory_forget` tools that let a nous directly modify its workspace memory files or Neo4j entities. Guard with confirmation for high-impact changes. ~150 LOC.
 
 ---
 
-### OC-10: Announcement Idempotency (LOW)
+#### LT-3: Agent File Export/Import (MEDIUM)
 
-**What:** UUID-based dedup on broadcast chains. Prevents duplicate delivery on retry.
+**What:** Portable JSON format serializing agent state: identity, memory blocks, message history, tools, MCP configs. ID remapping on import.
 
-**Why it matters:** `sessions_send` has no dedup. If Syn sends the same message twice (retry, heartbeat race), the target processes it twice.
+**Why it matters:** No way to backup, clone, or migrate a nous today. Git-tracked workspaces capture files but not memory state (Qdrant vectors, Neo4j graph, session history).
 
-**Approach:** Hash message content + target + timestamp window. Check `cross_agent_calls` for recent duplicates (30s). ~30 LOC.
-
----
-
-### OC-11: Android Companion App (EVALUATE)
-
-**What:** Kotlin/Gradle native Android app. OpenClaw's a2ui renderer for mobile canvas.
-
-**Why it matters:** Could serve as a native port of Aletheia's Svelte web UI for mobile. Better than browser-based access for notifications, offline, and native gestures.
-
-**Evaluation needed:** Can the a2ui architecture wrap a Svelte webview? Or is a standalone Kotlin app wrapping the webchat API more practical? PWA as alternative?
+**Approach:** `aletheia export <nous-id>` → JSON with identity, workspace files, Neo4j subgraph, Qdrant vectors, recent sessions. `aletheia import <file>` creates new nous with remapped IDs. ~300 LOC.
 
 ---
 
-## What Aletheia Has That Neither Has
+#### LT-4: Tool Rules System (LOW)
 
-### Cross-Agent Memory System
-Neither Claude Code nor OpenClaw has cross-agent semantic memory with graph relationships. OpenClaw has embeddings + MMR but no graph, no entity resolution, no community detection (PageRank/Louvain), no autonomous link generation (A-Mem pattern). Claude Code has session JSONL only.
+**What:** Declarative rules governing tool availability per agent step. `TerminalToolRule` (ends chain), `InitToolRule` (forces first call), `ContinueToolRule` (requests next step).
+
+**Why it matters:** Aletheia's dynamic tool loading uses essential/available categories with 5-turn expiry. Tool rules would add finer control over tool sequencing (e.g., "always call `context_check` first").
+
+**Approach:** Add optional `toolRules` to config schema. Evaluate in pipeline resolve stage. ~100 LOC.
+
+---
+
+### From CrewAI
+
+#### CR-1: Deterministic Workflow Engine (MEDIUM — evaluate)
+
+**What:** Flows — event-driven workflows with `@start()`, `@listen()`, `@router()` decorators. State persistence (SQLite). Conditional routing (`or_()`, `and_()`). Human feedback (pause/resume).
+
+**Why it matters:** Aletheia's cron handles scheduled triggers. Event bus handles reactive events. But there's no way to define "if Chiron detects a health anomaly AND Syn confirms priority > 0.8, THEN wake user via Signal." Flows would add deterministic multi-step coordination.
+
+**Approach:** Implement workflow definitions as JSON/YAML files in `shared/workflows/`. Engine reads definition, registers event bus listeners for triggers, manages state in SQLite. Start simple: trigger → condition → action. ~400 LOC.
+
+---
+
+#### CR-2: Composite Memory Scoring (MEDIUM)
+
+**What:** Unified scoring: `semantic_weight (0.5) × similarity + recency_weight (0.3) × decay + importance_weight (0.2) × priority`. LLM-driven exploration rounds when confidence is low.
+
+**Why it matters:** Mem0 returns results ranked by cosine similarity only. A memory from 6 months ago with 0.95 cosine beats a memory from yesterday with 0.90. Composite scoring balances relevance, freshness, and importance.
+
+**Approach:** Add scoring layer to sidecar `/search` endpoint. Configurable weights. Recency from memory timestamps, importance from reinforcement count. ~80 LOC.
+
+---
+
+#### CR-3: A2A Protocol Support (MEDIUM)
+
+**What:** Agent-to-Agent protocol (Google/Linux Foundation standard). JSON-RPC 2.0 over HTTP. Agent cards describe capabilities. Delegation with reasoning. Polling/push/streaming update mechanisms.
+
+**Why it matters:** Aletheia's nous talk to each other via `sessions_send`/`sessions_ask` (internal). A2A would let them communicate with external agent systems — other Aletheia instances, CrewAI agents, AgentScope agents. Forward-looking interop standard.
+
+**Approach:** Expose each nous as an A2A agent card via the gateway. Implement A2A client for outbound delegation. Map A2A messages to/from Aletheia's `InboundMessage`. ~400 LOC.
+
+---
+
+#### CR-4: Event Bus Dependency Ordering (LOW)
+
+**What:** Event handlers declare dependencies on other handlers. Graph validation prevents circular deps. Ordered execution.
+
+**Why it matters:** Aletheia's event bus fires handlers in registration order. If handler B depends on handler A's side effects, ordering is fragile.
+
+**Approach:** Add optional `after: string[]` field to event listener registration. Topological sort before dispatch. ~50 LOC.
+
+---
+
+### From AgentScope
+
+#### AS-1: Pub/Sub MsgHub Pattern (LOW)
+
+**What:** Agents subscribe to hubs. When one agent replies, message auto-broadcasts to all subscribers. Dynamic add/remove participants.
+
+**Why it matters:** Aletheia's cross-agent messaging is explicit (`sessions_send`). A pub/sub model would simplify group coordination — e.g., all nous automatically see Syn's announcements.
+
+**Approach:** Add `broadcast` channel to blackboard or event bus. Agents subscribe by topic. ~100 LOC.
+
+---
+
+#### AS-2: Agent Hooks (pre/post reply/observe) (LOW)
+
+**What:** 6 hook types on agent base class. Class-level (all instances) or instance-level (single agent). Hooks can modify args or output.
+
+**Why it matters:** Aletheia's plugin hooks (`onBeforeTurn`/`onAfterTurn`) apply globally. Per-nous hooks would enable agent-specific behavior (e.g., Eiron always cites sources).
+
+**Approach:** Add optional `hooks` to per-agent config. Evaluate in pipeline stages. ~100 LOC.
+
+---
+
+### From memU
+
+#### MU-1: Tiered Retrieval with Sufficiency Gates (MEDIUM)
+
+**What:** Query categories first. If sufficient context gathered (LLM check), stop. Otherwise fetch items. If still insufficient, fetch full resources. Early termination saves tokens.
+
+**Why it matters:** Aletheia's `mem0-search` always returns N results regardless. For simple queries, category-level summaries might be enough. For complex queries, full resources are needed. Adaptive depth reduces cost.
+
+**Approach:** Add sufficiency check to sidecar `/search_enhanced`. First pass: return category summaries. If LLM deems insufficient, second pass with full items. ~100 LOC.
+
+---
+
+#### MU-2: Tool Memory (LOW)
+
+**What:** Tracks tool calls, success rates, "when_to_use" hints extracted from trajectories. Agent learns which tools work for which tasks.
+
+**Why it matters:** Aletheia's skill learner extracts SKILL.md from trajectories. Tool Memory is complementary — tracking per-tool success/failure rates to inform future tool selection.
+
+**Approach:** Add `tool_usage_stats` table (tool_name, success_count, failure_count, avg_duration, last_used). Update after each tool execution. Inject stats into `enable_tool` suggestions. ~80 LOC.
+
+---
+
+### From LangGraph
+
+#### LG-1: Checkpoint-Based Time-Travel (LOW — evaluate)
+
+**What:** Every agent step creates a checkpoint. User can browse history and resume from any past state. Fork conversations from historical points.
+
+**Why it matters:** When a nous makes a wrong turn, the only recovery is manual. Time-travel would let you "rewind" a session to before the mistake and try again.
+
+**Approach:** Aletheia already stores full session history in SQLite. Add `aletheia replay <session-id> --from <message-id>` to create a new session branching from a historical point. ~150 LOC.
+
+---
+
+#### LG-2: Reducer Pattern for Parallel Outputs (LOW)
+
+**What:** When multiple agents write to the same state key concurrently, a reducer function aggregates results. `Annotated[list, operator.add]` concatenates, custom reducers for complex merging.
+
+**Why it matters:** `sessions_dispatch` runs parallel sub-agents. Currently results are concatenated. Reducer pattern would allow structured merging (e.g., dedup, priority-based selection, voting).
+
+**Approach:** Add optional `reducer` field to `sessions_dispatch` tool schema. Built-in reducers: `concat`, `vote`, `best_score`. ~80 LOC.
+
+---
+
+### From OwnPilot
+
+#### OP-1: Encrypted Memory at Rest (HIGH)
+
+**What:** AES-256-GCM encryption for all stored memories. PBKDF2 key derivation (600K iterations). Unique IV per entry. Master key in OS keychain. `secureClear()` wipes memory.
+
+**Why it matters:** Mem0 vectors, Neo4j graph, and sqlite-vec all store plaintext. If the server is compromised, all memories are readable. Encryption at rest is a baseline security expectation.
+
+**Approach:** Encrypt Qdrant payloads and Neo4j property values before storage. Decrypt on read. Master key stored in `/home/syn/.aletheia/keychain`. Key rotation support. ~200 LOC in sidecar + ~100 LOC in runtime.
+
+---
+
+#### OP-2: Tamper-Evident Audit Trail (HIGH)
+
+**What:** Append-only JSONL. Each event includes SHA-256 hash of the previous event. Chain verification detects any modification.
+
+**Why it matters:** Aletheia has an audit log table but no integrity verification. A compromised agent could alter its own audit trail. Hash chain makes tampering detectable.
+
+**Approach:** Add `checksum` and `previous_checksum` columns to audit log. Compute SHA-256 of event JSON (excluding checksum fields) + previous checksum. `aletheia audit verify` walks the chain. ~100 LOC.
+
+---
+
+#### OP-3: PII Detection & Redaction (HIGH)
+
+**What:** 15+ pattern categories (SSN, credit cards, emails, phone, IP, API keys). Confidence scoring with validators (Luhn for cards). Severity levels. Redaction modes: mask, label, remove.
+
+**Why it matters:** Agents process personal conversations. Memories may contain sensitive data. Signal messages go through Aletheia unfiltered. PII detection protects against accidental leakage.
+
+**Approach:** PII detector module in runtime (`koina/pii.ts`). Run on: (1) memories before Mem0 storage, (2) Signal outbound messages, (3) LLM context if containing user data. Configurable severity threshold. ~300 LOC.
+
+---
+
+#### OP-4: 4-Layer Execution Sandbox (MEDIUM)
+
+**What:** Layer 1: Critical pattern blocking (100+ regex). Layer 2: Permission matrix per category. Layer 3: Real-time user approval. Layer 4: Docker/VM isolation with resource limits.
+
+**Why it matters:** Complements OC-1 (Docker sandbox). OwnPilot's approach adds pre-execution pattern screening before even reaching Docker. The 4-layer model is defense-in-depth.
+
+**Approach:** Layer 1 (pattern blocking) is ~50 LOC. Layer 2 (permission matrix) maps to existing approval gate. Layer 3 (approval callback) exists for webchat. Layer 4 (Docker) is OC-1. Implement Layer 1 first as the highest-value, lowest-effort addition.
+
+---
+
+## What Aletheia Has That No One Else Has
+
+Updated to reflect all 8 comparisons.
+
+### Persistent Named Agents with Domain Specialization
+No other system has persistent agents with individual identities, workspaces, domain expertise, and memory that persists across sessions. CrewAI has role-based agents but they're ephemeral per-task. Letta has persistent state but single-purpose agents. Aletheia's 6 nous each have distinct domains (health, academic, work, creative, technical, general).
 
 ### Proactive Attention (Prosoche)
-Neither has anything comparable. OpenClaw has heartbeat cron and wake triggers but no attention scoring, no foresight signals, no activity prediction model, no dynamic workspace injection.
+Letta's sleep-time compute is the closest analogue but is simpler (reprocess history during idle). Prosoche monitors external signals (calendar, tasks, health), scores attention needs on 60s intervals, predicts activity patterns, and generates dynamic workspace files. No other system approaches this.
 
 ### Self-Observation & Calibration
-Neither has competence models, uncertainty tracking (Brier score, ECE), interaction signal classification, or mid-session eval feedback injection. Unique to Aletheia.
+None of the 7 comparison systems has competence models, uncertainty tracking (Brier score, ECE), interaction signal classification, or mid-session eval feedback injection.
 
 ### Multi-Phase Distillation
-Claude Code has simple compaction. OpenClaw has session file sync. Neither extracts structured facts/decisions/open items from conversation history. Neither has similarity pruning on distillation output.
-
-### Persistent Named Agents
-Claude Code has ephemeral subagents. OpenClaw has a single agent with multiple sessions. Neither has persistent agents with individual identities, workspaces, memory, and domain expertise that persist across sessions.
+All systems have some form of context management (compaction, summarization). Only Aletheia extracts structured facts/decisions/open items with similarity pruning.
 
 ### Skill Learning from Trajectories
-Claude Code loads SKILL.md files. OpenClaw installs skills from npm/git. Neither auto-extracts skills from successful multi-tool-call trajectories (Aletheia's `skill-learner.ts` via Haiku, rate-limited 1/hr/agent).
+CrewAI has training/replay. AgentScope has finetuning. But neither auto-extracts SKILL.md files from successful multi-tool-call trajectories at runtime.
 
 ### Cross-Agent Blackboard
-SQLite-based shared state with TTL expiry. Neither Claude Code nor OpenClaw has a cross-agent coordination primitive.
+SQLite-based shared state with TTL expiry. No other system has a lightweight cross-agent coordination primitive. CrewAI's crew-level memory is closest but is task-scoped, not persistent.
 
 ### Circuit Breakers
-Input quality + response quality circuit breakers preventing harmful prompts from reaching the LLM and catching low-quality responses. Neither has this.
+Input quality + response quality circuit breakers. No other system pre-screens inputs before LLM or post-screens responses.
 
 ### Reversibility Tagging
-Tools tagged as reversible/irreversible for informed approval decisions. Neither has this.
+Tools tagged as reversible/irreversible for informed approval decisions. Unique.
 
 ---
 
@@ -283,62 +394,96 @@ Tools tagged as reversible/irreversible for informed approval decisions. Neither
 
 | ID | Feature | LOC | Source | Deps | Approach |
 |----|---------|-----|--------|------|----------|
-| F-1 | Spawn depth limits | ~15 | OpenClaw | None | Add `maxSpawnDepth` to config schema, check in `sessions_spawn` handler |
-| F-2 | User-facing hooks | ~400 | Hybrid CC+OC | None | New `koina/hooks.ts`, JSON stdin/stdout protocol, `noun:verb` event names, config in `aletheia.json` hooks section |
-| F-3 | Hot-reload config | ~150 | Claude Code | None | New `taxis/watcher.ts`, fs.watch on aletheia.json, diff + swap safe fields, emit `config:reload` event |
-| F-4 | Docker sandbox for exec | ~300 | OpenClaw | Docker on server | Sandbox runner for `exec` tool, env sanitization, workspace mounting, Dockerfile. Evaluation item E-1 first. |
-| F-5 | Wire loop detection into guard | ~30 | OpenClaw | None | LoopDetector exists but guard stage only checks circuit breakers. Wire depth check into guard.ts |
+| F-1 | Spawn depth limits | ~15 | OpenClaw | None | Add `maxSpawnDepth` to config, check in `sessions_spawn` |
+| F-2 | User-facing hooks | ~400 | Hybrid CC+OC+AS | None | `koina/hooks.ts`, JSON stdin/stdout, `noun:verb` events |
+| F-3 | Hot-reload config | ~150 | Claude Code | None | `taxis/watcher.ts`, fs.watch, diff + hot-swap safe fields |
+| F-4 | Docker sandbox for exec | ~300 | OpenClaw+OwnPilot | Docker | Sandbox runner + critical pattern pre-screen (OP Layer 1) |
+| F-5 | Wire loop detection into guard | ~30 | OpenClaw | None | LoopDetector exists, wire into guard.ts |
+| F-6 | Encrypted memory at rest | ~300 | OwnPilot | None | AES-256-GCM for Qdrant payloads + Neo4j properties |
+| F-7 | Tamper-evident audit trail | ~100 | OwnPilot | None | SHA-256 hash chain on audit log events |
+| F-8 | PII detection & redaction | ~300 | OwnPilot | None | `koina/pii.ts`, run on memories + Signal outbound + LLM context |
 
 ### Tier 2: MEDIUM Priority
 
 | ID | Feature | LOC | Source | Deps | Approach |
 |----|---------|-----|--------|------|----------|
-| F-6 | MMR diversity re-ranking | ~120 | OpenClaw | None | Port MMR algorithm to sidecar `/search` or apply in `mem0-search` tool as post-processing |
-| F-7 | Markdown command definitions | ~200 | Claude Code | None | Extend `CommandRegistry` to scan `shared/commands/*.md`, parse YAML frontmatter, `$ARGUMENTS` substitution |
-| F-8 | Tool restrictions for ephemeral spawns | ~100 | Hybrid CC+OC | None | Wire `EphemeralSpec.tools` through pipeline resolve. Glob patterns: `"exec"`, `"web_*"`, `"*"` |
-| F-9 | Prompt cache stability audit | ~50 | OpenClaw | None | Audit `bootstrap.ts` + `bootstrap-diff.ts`. Move per-turn data from `semi-static` to `dynamic` |
-| F-10 | Stream preview / typing indicators | ~100 | OpenClaw | None | Signal: placeholder message. Webchat: already SSE. Signal typing indicator if supported. |
-| F-11 | ACP / IDE integration | ~300 | OpenClaw | F-2 | ACP adapter translating protocol to gateway sessions. WebSocket bridge. |
-| F-12 | Doctor with --fix | ~100 | OpenClaw | None | Extend doctor to emit fixable actions. Execute with `--fix` (chmod, setfacl, mkdir, fix symlinks) |
+| F-9 | Composite memory scoring | ~80 | CrewAI+memU | None | Semantic + recency + importance weights in sidecar `/search` |
+| F-10 | MMR diversity re-ranking | ~120 | OpenClaw | None | Post-processing on Mem0 search results |
+| F-11 | Sleep-time compute | ~200 | Letta | None | Extend consolidation cron: re-send undistilled messages through Haiku for deeper extraction |
+| F-12 | Markdown command definitions | ~200 | Claude Code | None | Extend `CommandRegistry` to scan `shared/commands/*.md` |
+| F-13 | Tool restrictions for ephemeral | ~100 | Hybrid CC+OC | None | Wire `EphemeralSpec.tools` through pipeline, glob patterns |
+| F-14 | Tiered retrieval with sufficiency gates | ~100 | memU | None | Category summaries first, full items only if needed |
+| F-15 | Agent File export/import | ~300 | Letta | None | `aletheia export/import <nous-id>`, JSON with memory + sessions |
+| F-16 | A2A protocol support | ~400 | CrewAI+AgentScope | None | Expose nous as A2A agent cards, implement A2A client |
+| F-17 | Deterministic workflow engine | ~400 | CrewAI | F-2 | YAML workflow definitions, event bus listeners, state persistence |
+| F-18 | Prompt cache stability audit | ~50 | OpenClaw | None | Audit bootstrap-diff for cache invalidation |
+| F-19 | Stream preview / typing indicators | ~100 | OpenClaw | None | Signal placeholder, webchat SSE already works |
+| F-20 | ACP / IDE integration | ~300 | OpenClaw | F-2 | ACP adapter translating to gateway sessions |
+| F-21 | Doctor with --fix | ~100 | OpenClaw | None | Fixable action tuples, execute with --fix flag |
 
 ### Tier 3: LOW Priority
 
 | ID | Feature | LOC | Source | Deps | Approach |
 |----|---------|-----|--------|------|----------|
-| F-13 | Auth credential failover | ~100 | OpenClaw | None | Try fallback credentials on 429/5xx. Cooldown tracking per credential. |
-| F-14 | Plugin standard layout | ~100 | Claude Code | None | Standard dirs in plugin root. Auto-discover. `ALETHEIA_PLUGIN_ROOT` env var. |
-| F-15 | Plugin path safety | ~30 | OpenClaw | None | `realpath()` validation in `prostheke/loader.ts` |
-| F-16 | Onboarding wizard | ~150 | OpenClaw | None | `aletheia init` command with prompts. Write template config. |
-| F-17 | Self-referential loop pattern | ~50 | Claude Code | F-2 | Stop hook + state file, or `loop_until` built-in tool |
-| F-18 | Announcement idempotency | ~30 | OpenClaw | None | Content hash dedup in `cross_agent_calls` (30s window) |
-| F-19 | Parallel validation pattern | ~50 | Claude Code | None | Document as skill (`shared/skills/parallel-review/SKILL.md`), not infrastructure |
-| F-20 | Temporal decay in search scoring | ~80 | OpenClaw | None | Exponential decay on search scores based on memory age |
+| F-22 | Self-editing memory tools | ~150 | Letta | None | `memory_update`/`memory_forget` tools for nous |
+| F-23 | Auth credential failover | ~100 | OpenClaw | None | Fallback credentials on 429/5xx |
+| F-24 | Plugin standard layout | ~100 | Claude Code | None | Standard dirs, auto-discover, `ALETHEIA_PLUGIN_ROOT` |
+| F-25 | Plugin path safety | ~30 | OpenClaw+OwnPilot | None | `realpath()` validation in loader |
+| F-26 | Onboarding wizard | ~150 | OpenClaw | None | `aletheia init` with prompts |
+| F-27 | Self-referential loop pattern | ~50 | Claude Code | F-2 | Stop hook + state file |
+| F-28 | Announcement idempotency | ~30 | OpenClaw | None | Content hash dedup in cross_agent_calls |
+| F-29 | Parallel validation pattern | ~50 | Claude Code | None | Skill, not infrastructure |
+| F-30 | Temporal decay in search | ~80 | OpenClaw+memU | None | Exponential decay on search scores |
+| F-31 | Tool Memory (usage stats) | ~80 | memU | None | Track success/failure rates per tool |
+| F-32 | Tool rules system | ~100 | Letta | None | Declarative tool sequencing rules |
+| F-33 | Event bus dependency ordering | ~50 | CrewAI | None | `after: string[]` on listeners, topological sort |
+| F-34 | Checkpoint time-travel | ~150 | LangGraph | None | Branch sessions from historical points |
+| F-35 | Reducer for parallel outputs | ~80 | LangGraph | None | Structured merging for `sessions_dispatch` results |
+| F-36 | Pub/Sub hub pattern | ~100 | AgentScope | None | Auto-broadcast topics for cross-agent coordination |
+| F-37 | Per-nous hooks | ~100 | AgentScope | F-2 | Agent-specific hook configs |
 
-### Evaluation Items (research before committing)
+### Evaluation Items
 
 | ID | Question | Source | What to determine |
 |----|----------|--------|-------------------|
-| E-1 | Docker sandbox scope | OpenClaw | Which tools need sandboxing? Performance cost per tool call? Docker available on worker-node? |
-| E-2 | Android app as webui port | OpenClaw | Wrap Svelte webview in Kotlin? PWA alternative? a2ui architecture portability? |
-| E-3 | Browser automation upgrade | OpenClaw | CDP for existing browsers? Download handling? Session persistence? LOC estimate? |
-| E-4 | Skill installation from npm/git | OpenClaw | Does skill learner + SKILL.md cover enough? Worth the attack surface? |
+| E-1 | Docker sandbox scope | OpenClaw | Which tools? Performance cost? Docker on worker-node? |
+| E-2 | Android app as webui port | OpenClaw | Kotlin webview vs PWA? |
+| E-3 | Browser automation upgrade | OpenClaw | CDP + downloads + session persistence scope? |
+| E-4 | Skill installation from npm/git | OpenClaw | Worth the attack surface? |
+| E-5 | Workflow engine complexity | CrewAI | YAML vs code definitions? How many workflow types needed? |
+| E-6 | A2A adoption timeline | CrewAI+AgentScope | Is the spec stable enough to implement? |
+| E-7 | Memory encryption performance | OwnPilot | Overhead on search latency? Key management complexity? |
 
 ### Recommended Implementation Order
 
-1. **F-1** (spawn depth) — 15 min, prevents crash scenario
-2. **F-5** (wire loop detection) — 15 min, complements F-1
-3. **F-3** (hot-reload config) — eliminates restart friction
-4. **F-2** (user-facing hooks) — foundational, enables F-11 and F-17
-5. **F-7** (markdown commands) — extensible commands without rebuilds
-6. **F-8** (tool restrictions) — safer ephemeral spawns
-7. **F-6** (MMR) — immediate memory search quality improvement
-8. **F-9** (cache stability) — token cost reduction
-9. **F-12** (doctor --fix) — operational quality of life
-10. **F-10** (stream preview) — UX for long-running tasks
+**Phase 1 — Safety & foundations (quick wins):**
+1. F-1 (spawn depth) — 15 min
+2. F-5 (loop detection wiring) — 15 min
+3. F-7 (hash chain audit) — 1-2 hours
+4. F-3 (hot-reload config) — half day
 
-Items F-4 (Docker), F-11 (ACP), and E-1 through E-4 require evaluation before implementation commitment.
+**Phase 2 — Security hardening:**
+5. F-8 (PII detection) — 1-2 days
+6. F-6 (encrypted memory) — 1-2 days
+7. F-4 (Docker sandbox + pattern pre-screen) — 1-2 days
 
-**Total estimated new code:** ~1,825 LOC across Tiers 1-2 (the actionable tiers). Tier 3 adds ~590 LOC.
+**Phase 3 — Memory intelligence:**
+8. F-9 (composite scoring) — half day
+9. F-10 (MMR diversity) — half day
+10. F-14 (sufficiency gates) — half day
+11. F-11 (sleep-time compute) — 1 day
+
+**Phase 4 — Extensibility:**
+12. F-2 (user-facing hooks) — 1-2 days
+13. F-12 (markdown commands) — half day
+14. F-13 (ephemeral tool restrictions) — half day
+
+**Phase 5 — Interop & workflows:**
+15. F-16 (A2A protocol) — 2-3 days
+16. F-17 (workflow engine) — 2-3 days
+17. F-15 (agent file export) — 1-2 days
+
+**Total estimated:** ~4,795 LOC across Tiers 1-2. ~1,300 LOC for Tier 3.
 
 ---
 
@@ -346,38 +491,59 @@ Items F-4 (Docker), F-11 (ACP), and E-1 through E-4 require evaluation before im
 
 | Feature | Overlapping Spec | Relationship |
 |---------|-----------------|--------------|
-| F-3 (hot-reload) | IMPROVEMENTS.md | Direct overlap — implement per that design |
-| F-4 (Docker sandbox) | Spec 13 (Sub-Agent Workforce) | Sandbox enhances ephemeral agent safety |
-| F-6 (MMR) | Spec 07 (Knowledge Graph) | MMR applies to vector search, not graph queries |
-| F-8 (tool restrictions) | Spec 13 (Sub-Agent Workforce) | Spec 13 proposes role-specific tool sets — F-8 provides the mechanism |
-| F-9 (cache stability) | Spec 16 (Efficiency) | Cache stability is part of token economy optimization |
-| F-10 (stream preview) | Spec 15 (UI Interaction Quality) | Stream preview is webchat UX improvement |
-| F-11 (ACP) | None | New capability |
+| F-3 (hot-reload) | IMPROVEMENTS.md | Direct overlap |
+| F-4 (Docker sandbox) | Spec 13 (Sub-Agent Workforce) | Enhances ephemeral safety |
+| F-9, F-10, F-14 (memory scoring) | Spec 07 (Knowledge Graph) | Extends vector search quality |
+| F-11 (sleep-time) | Spec 12 (Memory Evolution) | Background memory improvement |
+| F-13 (tool restrictions) | Spec 13 (Sub-Agent Workforce) | Mechanism for role-specific tools |
+| F-16 (A2A) | None | New capability |
+| F-17 (workflows) | Spec 14 (Development Workflow) | Generalizes workflow patterns |
+| F-18 (cache stability) | Spec 16 (Efficiency) | Token economy optimization |
+| F-19 (stream preview) | Spec 15 (UI Quality) | Webchat UX |
+| F-20 (ACP) | None | New capability |
 
 ---
 
 ## Verification
 
-- Cross-reference each gap against OpenClaw source in `openclaw-ref/src/`
-- Cross-reference each gap against Claude Code source in `claude-code/`
-- Cross-reference each Aletheia capability against runtime source in `infrastructure/runtime/src/`
-- Validate no canonical feature violates user directives (ALL tools for persistent nous, Signal+webchat only)
-- Validate against IMPROVEMENTS.md for overlap
+- Cross-reference against source in: `openclaw-ref/`, `claude-code/`, `letta-ref/`, `crewai-ref/`, `agentscope-ref/`, `memu-ref/`, `langgraph-ref/`, `ownpilot-ref/`
+- Cross-reference Aletheia capabilities against `infrastructure/runtime/src/`
+- Validate no feature violates user directives
+- Validate against IMPROVEMENTS.md and existing specs for overlap
 
 ### Key Implementation Files
 
 | File | Relevant Features |
 |------|-------------------|
-| `src/nous/pipeline/stages/guard.ts` | F-1 (spawn depth), F-5 (loop wiring) |
-| `src/koina/event-bus.ts` | F-2 (hook foundation) |
-| `src/semeion/commands.ts` | F-7 (markdown commands) |
-| `src/taxis/schema.ts` | F-1, F-2, F-3 (config schema additions) |
-| `src/taxis/loader.ts` | F-3 (hot-reload) |
-| `src/organon/registry.ts` | F-8 (tool filtering for ephemeral) |
-| `src/organon/built-in/sessions-spawn.ts` | F-1 (depth check), F-8 (tool passthrough) |
-| `src/organon/built-in/browser.ts` | E-3 (browser upgrade) |
-| `src/hermeneus/anthropic.ts` | F-13 (auth failover) |
-| `src/prostheke/loader.ts` | F-14 (standard layout), F-15 (path safety) |
-| `src/nous/bootstrap.ts` | F-9 (cache stability audit) |
-| `entry.ts` | F-12 (doctor --fix), F-16 (onboarding) |
-| `infrastructure/memory/sidecar/` | F-6 (MMR), F-20 (temporal decay) |
+| `src/nous/pipeline/stages/guard.ts` | F-1, F-5 |
+| `src/koina/event-bus.ts` | F-2, F-33 |
+| `src/koina/pii.ts` (new) | F-8 |
+| `src/semeion/commands.ts` | F-12 |
+| `src/taxis/schema.ts` | F-1, F-2, F-3, F-4, F-17 |
+| `src/taxis/loader.ts` | F-3 |
+| `src/taxis/watcher.ts` (new) | F-3 |
+| `src/koina/hooks.ts` (new) | F-2 |
+| `src/organon/registry.ts` | F-13, F-32 |
+| `src/organon/built-in/sessions-spawn.ts` | F-1, F-13 |
+| `src/organon/built-in/browser.ts` | E-3 |
+| `src/hermeneus/anthropic.ts` | F-23 |
+| `src/prostheke/loader.ts` | F-24, F-25 |
+| `src/nous/bootstrap.ts` | F-18 |
+| `src/pylon/server.ts` | F-16 (A2A endpoints), F-20 (ACP) |
+| `entry.ts` | F-15, F-21, F-26 |
+| `infrastructure/memory/sidecar/` | F-6, F-9, F-10, F-14, F-30 |
+
+### Reference Implementations
+
+| Feature | Reference Source | File |
+|---------|-----------------|------|
+| F-6 (encryption) | OwnPilot | `ownpilot-ref/packages/core/src/crypto/vault.ts` |
+| F-7 (hash chain) | OwnPilot | `ownpilot-ref/packages/core/src/audit/logger.ts` |
+| F-8 (PII) | OwnPilot | `ownpilot-ref/packages/core/src/privacy/detector.ts` |
+| F-10 (MMR) | OpenClaw | `openclaw-ref/src/memory/mmr.ts` |
+| F-11 (sleep-time) | Letta | `letta-ref/letta/groups/sleeptime_multi_agent.py` |
+| F-15 (agent file) | Letta | `letta-ref/letta/schemas/agent_file.py` |
+| F-16 (A2A) | AgentScope | `agentscope-ref/src/agentscope/a2a/` |
+| F-17 (flows) | CrewAI | `crewai-ref/lib/crewai/src/crewai/flow/flow.py` |
+| F-9 (composite) | CrewAI | `crewai-ref/lib/crewai/src/crewai/memory/unified_memory.py` |
+| F-14 (sufficiency) | memU | `memu-ref/src/memu/app/retrieve.py` |
