@@ -1,6 +1,6 @@
 # Spec: Session Continuity — The Never-Ending Conversation
 
-**Status:** Draft
+**Status:** Phase 1-3 done. Phase 4 next.
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -59,7 +59,7 @@ For the conversation to feel continuous:
 
 ## Design
 
-### Session Classification
+### Session Classification ✅
 
 Introduce a `session_type` field that determines lifecycle behavior:
 
@@ -88,7 +88,7 @@ UPDATE sessions SET session_type = 'background' WHERE session_key LIKE '%prosoch
 UPDATE sessions SET session_type = 'ephemeral' WHERE session_key LIKE 'ask:%' OR session_key LIKE 'spawn:%';
 ```
 
-### Smart Distillation Triggers
+### Smart Distillation Triggers ✅
 
 Replace the single `last_input_tokens >= 140,000` check with a multi-signal trigger:
 
@@ -152,7 +152,7 @@ ALTER TABLE sessions ADD COLUMN message_count INTEGER DEFAULT 0;
 
 Update `message_count` on every message insert (atomic increment). Update `computed_context_tokens` before each turn. Update `last_distilled_at` after each distillation.
 
-### Distillation Pipeline Hardening
+### Distillation Pipeline Hardening ✅
 
 The pipeline itself (Spec 08) is mostly sound. What's broken is reliability:
 
@@ -312,9 +312,9 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 
 | Phase | What | Effort | Impact |
 |-------|------|--------|--------|
-| **1** | Session classification schema + backfill | Small | Foundation for everything else |
-| **2** | Smart triggers (multi-signal) + context size computation | Medium | Fixes the "never fires" problem |
-| **3** | Distillation receipts + logging | Small | Auditability — know when distillation happens and what it produces |
+| **1** ✅ | Session classification schema + backfill | Small | Foundation for everything else |
+| **2** ✅ | Smart triggers (multi-signal) + context size computation | Medium | Fixes the "never fires" problem |
+| **3** ✅ | Distillation receipts + logging | Small | Auditability — know when distillation happens and what it produces |
 | **4** | Pre-compaction flush hardening | Small | Ensures daily memory files actually get written |
 | **5** | Recency-boosted recall + post-distillation priming | Medium | Bridges the extraction→recall gap |
 | **6** | Primary session enforcement | Medium | One session per agent, all channels route to it |

@@ -1,6 +1,6 @@
 # Spec: Efficiency — Parallel Execution & Token Economy
 
-**Status:** Draft
+**Status:** Phase 1 done. Phase 2 next.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -65,7 +65,7 @@ Spec 13 (Sub-Agent Workforce) defines delegation to sub-agents. Currently, sub-a
 
 ## Design
 
-### Phase 1: Parallel Tool Execution
+### Phase 1: Parallel Tool Execution ✅
 
 **Goal:** Execute independent tool calls concurrently when the model returns multiple `tool_use` blocks.
 
@@ -341,7 +341,7 @@ When users see that a single `exec` result consumed 2,400 tokens of context, the
 
 | Phase | What | Effort | Impact |
 |-------|------|--------|--------|
-| **1** | Parallel tool execution | Medium | High — 2-5x faster tool-heavy turns |
+| **1** ✅ | Parallel tool execution | Medium | High — 2-5x faster tool-heavy turns |
 | **2a** | Token audit tooling | Small | Foundation — measurement before optimization |
 | **2b** | Bootstrap density audit | Small-Medium | Medium — trim redundant prompt content |
 | **2c** | Tool result truncation | Small | Medium — reduces context bloat over time |

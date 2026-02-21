@@ -164,7 +164,7 @@ export async function sendMessage(
         case "tool_start":
           state.activeToolCalls = [
             ...state.activeToolCalls,
-            { id: event.toolId, name: event.toolName, status: "running" },
+            { id: event.toolId, name: event.toolName, status: "running", input: event.input },
           ];
           break;
 
@@ -300,10 +300,11 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
             : undefined;
 
           if (toolBlocks.length > 0) {
-            currentToolCalls = toolBlocks.map((b: { id: string; name: string }) => ({
+            currentToolCalls = toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
               id: b.id,
               name: b.name,
               status: "complete" as const,
+              input: b.input,
             }));
           }
 

@@ -303,6 +303,21 @@
     thinkingIsLive = false;
   }
 
+  // Thinking panel persistence — capture thinking content when turn completes
+  let previouslyLive = false;
+  $effect(() => {
+    const isLive = thinkingIsLive && currentAgentId ? getIsStreaming(currentAgentId) : false;
+    if (previouslyLive && !isLive && currentAgentId) {
+      const msgs = getMessages(currentAgentId);
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg?.thinking) {
+        selectedThinking = lastMsg.thinking;
+      }
+      thinkingIsLive = false;
+    }
+    previouslyLive = isLive;
+  });
+
   function handleAbort() {
     const id = getActiveAgentId();
     if (id) abortStream(id);
