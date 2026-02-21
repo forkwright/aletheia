@@ -388,16 +388,42 @@ async function runDistillation(
 
   // Post-distillation verification — log warnings, don't block
   {
+    const warnings: string[] = [];
     const postSession = store.findSessionById(sessionId);
     if (postSession) {
       if (postSession.tokenCountEstimate > 50_000) {
-        log.warn(`Post-distillation: token estimate still high (${postSession.tokenCountEstimate})`);
+        warnings.push(`token estimate still high (${postSession.tokenCountEstimate})`);
       }
     }
     const postHistory = store.getHistory(sessionId, { excludeDistilled: true });
     const hasSummary = postHistory.some((m) => m.role === "assistant" && m.content.includes("Distillation #"));
     if (distillationNumber > 1 && !hasSummary) {
-      log.warn("Post-distillation: summary message not found in undistilled history");
+      warnings.push("summary message not found in undistilled history");
+    }
+
+    // Verify working state survived (primary sessions only)
+    const ws = store.getWorkingState(sessionId);
+    if (!ws && !opts.lightweight) {
+      warnings.push("working state missing after distillation");
+    }
+
+    // Verify agent notes survived
+    const notes = store.getNotes(sessionId);
+    if (notes.length === 0 && !opts.lightweight) {
+      warnings.push("all agent notes cleared during distillation");
+    }
+
+    // Verify compression ratio is meaningful
+    if (result.tokensAfter > result.tokensBefore * 0.8) {
+      warnings.push(`poor compression ratio: ${result.tokensBefore} → ${result.tokensAfter} (${Math.round((1 - result.tokensAfter / result.tokensBefore) * 100)}%)`);
+    }
+
+    if (warnings.length > 0) {
+      for (const w of warnings) {
+        log.warn(`Post-distillation: ${w}`);
+      }
+    } else {
+      log.debug("Post-distillation verification passed");
     }
   }
 

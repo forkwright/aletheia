@@ -517,6 +517,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Retention — enforce data lifecycle policy every 24h (with immediate first run)
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    runtime.store.deleteEphemeralSessions(24 * 60 * 60 * 1000); // 24h
     cleanupTtsFiles();
     runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);

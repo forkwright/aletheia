@@ -1,6 +1,6 @@
 # Spec: Session Continuity — The Never-Ending Conversation
 
-**Status:** Phases 1-3, 6 done. Phase 4 next.
+**Status:** Phases 1-4, 6-9 done. Phase 5 (recall boost) and 10 (UI) remaining.
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -315,12 +315,12 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 | **1** ✅ | Session classification schema + backfill | Small | Foundation for everything else |
 | **2** ✅ | Smart triggers (multi-signal) + context size computation | Medium | Fixes the "never fires" problem |
 | **3** ✅ | Distillation receipts + logging | Small | Auditability — know when distillation happens and what it produces |
-| **4** | Pre-compaction flush hardening | Small | Ensures daily memory files actually get written |
+| **4** ✅ | Pre-compaction flush hardening | Small | ✅ Done — workspace-flush.ts working, 16/16 distillations flushed successfully |
 | **5** | Recency-boosted recall + post-distillation priming | Medium | Bridges the extraction→recall gap |
 | **6** ✅ | Primary session enforcement | Medium | One session per agent, all channels route to it (PR #74) |
-| **7** | Background session aggressive distillation | Small | Prosoche cleanup |
-| **8** | Ephemeral session retention/cleanup | Small | Cross-agent session cleanup |
-| **9** | Post-distillation verification | Small | Safety checks after every compression |
+| **7** ✅ | Background session aggressive distillation | Small | ✅ Done — trigger at 50 msgs/10K tokens, lightweight mode, in manager.ts |
+| **8** ✅ | Ephemeral session retention/cleanup | Small | ✅ Done — 24h auto-delete, dispatch:/spawn:/ask: prefixes → ephemeral type |
+| **9** ✅ | Post-distillation verification | Small | ✅ Done — checks token estimate, summary, working state, notes, compression ratio |
 | **10** | Distillation progress UI | Medium | Live visibility into what distillation is doing |
 
 ### Phase 10: Distillation Progress UI

@@ -187,7 +187,7 @@ export class SessionStore {
     // Auto-classify session type from key pattern
     let sessionType: Session["sessionType"] = "primary";
     if (key.includes("prosoche")) sessionType = "background";
-    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
+    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("dispatch:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
 
     this.db
       .prepare(
