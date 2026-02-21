@@ -380,4 +380,22 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_tool_stats_lookup ON tool_stats(nous_id, tool_name, created_at);
     `,
   },
+  {
+    version: 18,
+    sql: `
+      -- Plans: multi-step execution proposals awaiting human approval
+      CREATE TABLE IF NOT EXISTS plans (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        nous_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'awaiting_approval',
+        steps TEXT NOT NULL,
+        total_estimated_cost_cents REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        resolved_at TEXT,
+        FOREIGN KEY (session_id) REFERENCES sessions(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id, status);
+    `,
+  },
 ];

@@ -31,6 +31,7 @@ import { createSessionsDispatchTool } from "./organon/built-in/sessions-dispatch
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { createPlanProposeHandler } from "./organon/built-in/plan-propose.js";
 import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
@@ -163,6 +164,10 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     planTool.category = "available";
     tools.register(planTool);
   }
+
+  // Plan proposal tool (always available)
+  const planProposeHandler = createPlanProposeHandler();
+  tools.register(planProposeHandler);
 
   // Self-authoring tools (available on-demand)
   const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";

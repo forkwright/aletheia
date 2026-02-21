@@ -22,6 +22,33 @@ import type {
   TurnStreamEvent,
 } from "../types.js";
 import { truncateToolResult } from "./truncate.js";
+import { PLAN_PROPOSED_MARKER } from "../../../organon/built-in/plan-propose.js";
+import type { Plan } from "../types.js";
+
+interface PlanProposalData {
+  id: string;
+  goal: string;
+  steps: Plan["steps"];
+  totalEstimatedCostCents: number;
+  createdAt: string;
+}
+
+/** Format a plan proposal into a human-readable summary. */
+function formatPlanSummary(plan: PlanProposalData): string {
+  return `**Plan proposed** (${plan.steps.length} steps, ~$${(plan.totalEstimatedCostCents / 100).toFixed(2)}):\n` +
+    plan.steps.map((s, i) => `${i + 1}. ${s.label} *(${s.role})*`).join("\n") +
+    "\n\nAwaiting approval.";
+}
+
+/** Check if a tool result is a plan proposal. Returns the plan data or null. */
+function detectPlanProposal(toolName: string, toolResult: string, isError: boolean): PlanProposalData | null {
+  if (isError || toolName !== "plan_propose" || !toolResult.includes(PLAN_PROPOSED_MARKER)) return null;
+  try {
+    const parsed = JSON.parse(toolResult) as { __marker: string; plan: PlanProposalData };
+    if (parsed.__marker === PLAN_PROPOSED_MARKER && parsed.plan) return parsed.plan;
+  } catch { /* not valid */ }
+  return null;
+}
 
 /** Dynamic thinking budget based on message complexity. */
 function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
@@ -380,6 +407,28 @@ export async function* executeStreaming(
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
 
+        // Plan proposal — pause turn for human approval
+        const planData = detectPlanProposal(toolUse.name, toolResult, isError);
+        if (planData) {
+          services.store.createPlan({
+            id: planData.id, sessionId, nousId,
+            steps: planData.steps, totalEstimatedCostCents: planData.totalEstimatedCostCents,
+          });
+          const planSummary = formatPlanSummary(planData);
+          yield { type: "plan_proposed", plan: { ...planData, sessionId, nousId, status: "awaiting_approval" as const } };
+          yield { type: "text_delta", text: planSummary };
+          services.store.appendMessage(sessionId, "assistant", planSummary, { tokenEstimate: estimateTokens(planSummary) });
+          state.totalToolCalls = totalToolCalls;
+          state.currentMessages = currentMessages;
+          state.outcome = {
+            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
+            cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
+          };
+          yield { type: "turn_complete", outcome: state.outcome };
+          return state;
+        }
+
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
           services.competence.recordCorrection(nousId, domain);
@@ -635,7 +684,7 @@ export async function executeBuffered(
         if (savedMs > 50) log.info(`Parallel batch: ${batch.length} tools in ${batchMs}ms (saved ~${savedMs}ms vs sequential)`);
       }
 
-      // Process execution results — shared between sequential and parallel paths
+      // Process execution results — shared between sequential and parallel paths (buffered)
       for (const { toolUse, result: toolResult, isError, durationMs } of execResults) {
         const reversibility = getReversibility(toolUse.name);
         const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
@@ -663,6 +712,25 @@ export async function executeBuffered(
         services.store.appendMessage(sessionId, "tool_result", storedResult, {
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
+
+        // Plan proposal — store plan and return early (buffered path, no SSE)
+        const planData = detectPlanProposal(toolUse.name, toolResult, isError);
+        if (planData) {
+          services.store.createPlan({
+            id: planData.id, sessionId, nousId,
+            steps: planData.steps, totalEstimatedCostCents: planData.totalEstimatedCostCents,
+          });
+          const planSummary = formatPlanSummary(planData);
+          services.store.appendMessage(sessionId, "assistant", planSummary, { tokenEstimate: estimateTokens(planSummary) });
+          state.totalToolCalls = totalToolCalls;
+          state.currentMessages = currentMessages;
+          state.outcome = {
+            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
+            cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
+          };
+          return state;
+        }
 
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";

@@ -182,6 +182,25 @@ export async function fetchApprovalMode(): Promise<string> {
   return data.mode;
 }
 
+// --- Plans ---
+
+export async function approvePlan(planId: string, skip?: number[]): Promise<void> {
+  await fetchJson(`/api/plans/${encodeURIComponent(planId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify(skip?.length ? { skip } : {}),
+  });
+}
+
+export async function cancelPlan(planId: string): Promise<void> {
+  await fetchJson(`/api/plans/${encodeURIComponent(planId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function fetchPlan(planId: string): Promise<import("./types").PlanProposal> {
+  return fetchJson<import("./types").PlanProposal>(`/api/plans/${encodeURIComponent(planId)}`);
+}
+
 // --- Workspace File Explorer ---
 
 export async function fetchWorkspaceTree(

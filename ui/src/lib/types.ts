@@ -55,6 +55,27 @@ export interface ToolCallState {
   tokenEstimate?: number;
 }
 
+export interface PlanStep {
+  id: number;
+  label: string;
+  role: "coder" | "reviewer" | "researcher" | "explorer" | "runner" | "self";
+  estimatedCostCents: number;
+  parallel?: number[];
+  status: "pending" | "approved" | "skipped" | "running" | "done" | "failed";
+  result?: string;
+}
+
+export interface PlanProposal {
+  id: string;
+  sessionId: string;
+  nousId: string;
+  steps: PlanStep[];
+  totalEstimatedCostCents: number;
+  status: "awaiting_approval" | "executing" | "completed" | "cancelled";
+  createdAt: string;
+  goal?: string;
+}
+
 export type TurnStreamEvent =
   | { type: "turn_start"; sessionId: string; nousId: string; turnId?: string }
   | { type: "text_delta"; text: string }
@@ -63,6 +84,10 @@ export type TurnStreamEvent =
   | { type: "tool_result"; toolName: string; toolId: string; result: string; isError: boolean; durationMs: number; tokenEstimate?: number }
   | { type: "tool_approval_required"; turnId: string; toolName: string; toolId: string; input: unknown; risk: string; reason: string }
   | { type: "tool_approval_resolved"; toolId: string; decision: string }
+  | { type: "plan_proposed"; plan: PlanProposal }
+  | { type: "plan_step_start"; planId: string; stepId: number }
+  | { type: "plan_step_complete"; planId: string; stepId: number; status: "done" | "failed"; result?: string }
+  | { type: "plan_complete"; planId: string; status: "completed" | "cancelled" }
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "turn_abort"; reason: string }
   | { type: "error"; message: string };
