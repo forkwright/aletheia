@@ -1,6 +1,6 @@
 # Spec: Chat Output Quality — Signal Over Noise
 
-**Status:** Phase 1-4 done. Phase 5 next.
+**Status:** Complete — All 5 phases implemented. (PR #86)
 **Author:** Syn
 **Date:** 2026-02-20
 
