@@ -7,7 +7,7 @@ import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import { tryReloadConfig } from "../taxis/loader.js";
-import { createAuthMiddleware, createAuthRoutes, type AuthConfig, type AuthUser } from "../auth/middleware.js";
+import { type AuthConfig, type AuthUser, createAuthMiddleware, createAuthRoutes } from "../auth/middleware.js";
 import type { AuthSessionStore } from "../auth/sessions.js";
 import type { AuditLog } from "../auth/audit.js";
 import type { CronScheduler } from "../daemon/cron.js";

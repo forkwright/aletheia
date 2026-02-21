@@ -1,11 +1,10 @@
 // Sub-agent role definitions and result parsing tests
 import { describe, expect, it } from "vitest";
 import {
-  ROLES,
   isValidRole,
   parseStructuredResult,
   type RoleName,
-  type SubAgentResult,
+  ROLES,
 } from "./index.js";
 
 describe("ROLES", () => {

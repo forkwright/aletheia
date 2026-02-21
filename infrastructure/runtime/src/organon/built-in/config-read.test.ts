@@ -1,5 +1,5 @@
 // Config read tool tests
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createConfigReadTool } from "./config-read.js";
 
 function makeConfig() {

@@ -118,7 +118,7 @@ describe("deliberate", () => {
   it("continues when critique phase fails", async () => {
     let callCount = 0;
     const dispatcher = {
-      handleMessage: async (msg: InboundMessage): Promise<TurnOutcome> => {
+      handleMessage: async (_msg: InboundMessage): Promise<TurnOutcome> => {
         callCount++;
         // Second call (critique) times out
         if (callCount === 2) {
@@ -161,7 +161,7 @@ describe("deliberate", () => {
     const auditCalls: unknown[] = [];
     const { dispatcher } = makeDispatcher({ eiron: "my position" });
     dispatcher.store = {
-      blackboardWrite: (key: string, value: string, author: string, ttl: number) => {
+      blackboardWrite: (key: string, value: string, _author: string, _ttl: number) => {
         written.push({ key, value });
         return "bb_1";
       },

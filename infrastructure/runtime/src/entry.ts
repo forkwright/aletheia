@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
-import { runDiagnostics, applyFixes, formatResults } from "./koina/diagnostics.js";
+import { applyFixes, formatResults, runDiagnostics } from "./koina/diagnostics.js";
 
 const log = createLogger("entry");
 

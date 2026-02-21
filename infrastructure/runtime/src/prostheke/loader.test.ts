@@ -1,6 +1,6 @@
 // Plugin loader tests
-import { describe, expect, it, vi, afterAll, beforeEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 vi.mock("../koina/logger.js", () => ({

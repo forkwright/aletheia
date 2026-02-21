@@ -235,7 +235,7 @@ describe("recallMemories", () => {
   it("uses 5s default timeout", async () => {
     // Verify the default timeout is 5000ms, not 3000ms
     mockFetch.mockImplementation(
-      (_url: string, init: { signal: AbortSignal }) => {
+      (_url: string, _init: { signal: AbortSignal }) => {
         // The signal should not be aborted at 3s
         return new Promise((resolve) => {
           setTimeout(() => {

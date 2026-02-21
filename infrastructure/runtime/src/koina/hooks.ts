@@ -14,7 +14,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, extname } from "node:path";
+import { extname, join } from "node:path";
 import { z } from "zod";
 import { createLogger } from "./logger.js";
 import { eventBus, type EventName, type EventPayload } from "./event-bus.js";

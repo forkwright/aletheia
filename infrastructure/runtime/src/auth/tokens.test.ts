@@ -1,12 +1,12 @@
 // JWT token tests
 import { describe, expect, it } from "vitest";
 import {
+  type AccessTokenPayload,
   generateRefreshToken,
   generateSecret,
   generateSessionId,
   signToken,
   verifyToken,
-  type AccessTokenPayload,
 } from "./tokens.js";
 
 const SECRET = "test-secret-key-for-unit-tests";

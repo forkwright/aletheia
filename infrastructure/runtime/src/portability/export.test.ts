@@ -1,6 +1,6 @@
 // Agent export tests
-import { describe, expect, it, vi, beforeEach, afterAll } from "vitest";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Fixed test root — created in beforeEach, cleaned in afterAll

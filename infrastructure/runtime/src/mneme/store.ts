@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { SessionError } from "../koina/errors.js";
 import { generateId, generateSessionKey } from "../koina/crypto.js";
-import { encryptIfEnabled, decryptIfNeeded } from "../koina/encryption.js";
+import { decryptIfNeeded, encryptIfEnabled } from "../koina/encryption.js";
 import { DDL, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 const log = createLogger("mneme");

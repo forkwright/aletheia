@@ -1,5 +1,5 @@
 // Sub-agent role presets for sessions_spawn — delegates to nous/roles definitions
-import { ROLES, isValidRole, type RoleConfig, type RoleName } from "../../nous/roles/index.js";
+import { isValidRole, type RoleConfig, type RoleName, ROLES } from "../../nous/roles/index.js";
 
 export interface SubAgentRole {
   model?: string;

@@ -5,7 +5,7 @@
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
-import type { SessionStore, ReflectionFindings } from "../mneme/store.js";
+import type { ReflectionFindings, SessionStore } from "../mneme/store.js";
 import type { MemoryFlushTarget } from "./hooks.js";
 import { extractJson } from "./extract.js";
 import { sanitizeToolResults } from "./chunked-summarize.js";

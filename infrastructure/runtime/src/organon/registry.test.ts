@@ -1,6 +1,6 @@
 // Tool registry tests
 import { describe, expect, it } from "vitest";
-import { type ToolContext, type ToolHandler, ToolRegistry, matchesToolFilter } from "./registry.js";
+import { matchesToolFilter, type ToolContext, type ToolHandler, ToolRegistry } from "./registry.js";
 
 function makeHandler(name: string, result = "ok"): ToolHandler {
   return {

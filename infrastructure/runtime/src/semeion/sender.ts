@@ -1,6 +1,6 @@
 // Outbound message sending via signal-cli
 import { createLogger } from "../koina/logger.js";
-import { scanText, type PiiScanConfig } from "../koina/pii.js";
+import { type PiiScanConfig, scanText } from "../koina/pii.js";
 import { trySafe } from "../koina/safe.js";
 import type { SignalClient } from "./client.js";
 import { formatForSignal, stylesToSignalParam } from "./format.js";

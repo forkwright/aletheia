@@ -100,7 +100,7 @@ describe("mem0SearchTool", () => {
 
   it("falls back to standard search when graph-enhanced fails", async () => {
     let callCount = 0;
-    (fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url: string) => {
       callCount++;
       if (callCount === 1) {
         // Graph-enhanced fails

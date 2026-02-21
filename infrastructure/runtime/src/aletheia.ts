@@ -79,10 +79,10 @@ import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { initEncryption, getKeySalt } from "./koina/encryption.js";
+import { getKeySalt, initEncryption } from "./koina/encryption.js";
 import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
-import { registerHooks, type HookRegistry } from "./koina/hooks.js";
+import { type HookRegistry, registerHooks } from "./koina/hooks.js";
 
 const log = createLogger("aletheia");
 

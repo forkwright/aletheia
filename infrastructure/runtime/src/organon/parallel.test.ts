@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { groupForParallelExecution } from "./parallel.js";
 import type { ToolUseBlock } from "../hermeneus/anthropic.js";
 

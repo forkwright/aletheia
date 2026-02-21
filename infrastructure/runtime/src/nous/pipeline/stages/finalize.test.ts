@@ -1,6 +1,6 @@
 // Finalize stage tests
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TurnState, RuntimeServices, TurnOutcome } from "../types.js";
+import type { RuntimeServices, TurnOutcome, TurnState } from "../types.js";
 
 vi.mock("../../trace.js", () => ({
   persistTrace: vi.fn(),

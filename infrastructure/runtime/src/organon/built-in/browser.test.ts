@@ -1,5 +1,5 @@
 // Browser tool tests — definition and error handling
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { browserTool, closeBrowser } from "./browser.js";
 
 // Mock SSRF guard

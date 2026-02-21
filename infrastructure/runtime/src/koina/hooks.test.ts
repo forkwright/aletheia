@@ -1,15 +1,15 @@
 // Hook system tests
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  substituteTemplateVars,
-  parseSimpleYaml,
-  loadHookDefinitions,
   executeShellHook,
-  registerHooks,
   type HookDefinition,
+  loadHookDefinitions,
+  parseSimpleYaml,
+  registerHooks,
+  substituteTemplateVars,
 } from "./hooks.js";
 
 vi.mock("./logger.js", () => ({

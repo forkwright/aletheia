@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractTurnFacts } from "./turn-facts.js";
 
 function mockRouter(response: string) {
@@ -90,7 +90,7 @@ describe("extractTurnFacts", () => {
 
   it("includes tool summary in extraction context", async () => {
     const router = mockRouter('["Steering box replacement requires 185 ft-lbs torque on the pitman arm"]');
-    const result = await extractTurnFacts(
+    await extractTurnFacts(
       router,
       "x".repeat(200),
       'exec(grep "pitman" manual.txt) → Pitman arm: 185 ft-lbs',

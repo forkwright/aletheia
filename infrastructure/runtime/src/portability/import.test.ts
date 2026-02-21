@@ -1,5 +1,5 @@
 // Agent import tests
-import { describe, expect, it, vi, beforeEach, afterAll } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
@@ -27,7 +27,7 @@ vi.mock("../taxis/paths.js", () => {
   };
 });
 
-import { importAgent, type ImportResult } from "./import.js";
+import { importAgent } from "./import.js";
 import type { AgentFile } from "./export.js";
 
 function makeAgentFile(overrides: Partial<AgentFile> = {}): AgentFile {

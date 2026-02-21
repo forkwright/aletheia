@@ -1,7 +1,7 @@
 // Bootstrap assembly tests
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assembleBootstrap } from "./bootstrap.js";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

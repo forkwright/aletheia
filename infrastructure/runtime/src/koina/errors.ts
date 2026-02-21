@@ -112,19 +112,6 @@ export class PipelineError extends AletheiaError {
   }
 }
 
-export class StoreError extends AletheiaError {
-  constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode }) {
-    super({
-      code: opts?.code ?? "STORE_INIT_FAILED",
-      module: "mneme",
-      message,
-      context: opts?.context,
-      cause: opts?.cause,
-    });
-    this.name = "StoreError";
-  }
-}
-
 export class TransportError extends AletheiaError {
   constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode; recoverable?: boolean; retryAfterMs?: number }) {
     super({
