@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { readJson } from "../koina/fs.js";
 import type { PluginDefinition, PluginManifest } from "./types.js";
 
 const log = createLogger("prostheke:loader");
@@ -44,7 +45,6 @@ async function loadPlugin(
     return null;
   }
 
-  const { readJson } = await import("../koina/fs.js");
   const manifest = (await readJson(manifestPath)) as PluginManifest | null;
 
   if (!manifest) {

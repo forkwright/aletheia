@@ -5,6 +5,7 @@ import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
 import { applyFixes, formatResults, runDiagnostics } from "./koina/diagnostics.js";
+import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
 
@@ -441,7 +442,6 @@ pluginsCmd
     for (const p of config.plugins.load.paths) {
       const exists = existsSync(p);
       if (exists) {
-        const { readJson } = await import("./koina/fs.js");
         const manifestPath = join(p, "manifest.json");
         const manifest = readJson(manifestPath) as { id?: string; version?: string } | null;
         if (manifest?.id) {
