@@ -29,22 +29,32 @@ export function computeRecencyBoost(createdAt: string | null | undefined, now: n
   return 0.15 * (1 - age / (24 * 3600 * 1000));
 }
 
+export interface RecallOpts {
+  limit?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  minScore?: number;
+  /** Score threshold at which vector results are considered "sufficient" — skips graph fallback. */
+  sufficiencyThreshold?: number;
+  /** Minimum number of hits above sufficiencyThreshold to skip graph fallback. */
+  sufficiencyMinHits?: number;
+  domains?: string[];
+  threadSummary?: string;
+}
+
 export async function recallMemories(
   messageText: string,
   nousId: string,
-  opts?: {
-    limit?: number;
-    maxTokens?: number;
-    timeoutMs?: number;
-    minScore?: number;
-    domains?: string[];
-    threadSummary?: string;
-  },
+  opts?: RecallOpts,
 ): Promise<RecallResult> {
   const limit = opts?.limit ?? 8;
   const maxTokens = opts?.maxTokens ?? 1500;
   const timeoutMs = opts?.timeoutMs ?? 5000;
   const minScore = opts?.minScore ?? 0.75;
+  // Sufficiency gates: if N hits score above this threshold, vector search alone
+  // is sufficient — skip the expensive graph-enhanced fallback entirely.
+  const sufficiencyThreshold = opts?.sufficiencyThreshold ?? 0.85;
+  const sufficiencyMinHits = opts?.sufficiencyMinHits ?? 3;
   const start = Date.now();
 
   // Thread-aware query: combine current message (70%) with thread summary (30%)
@@ -59,32 +69,44 @@ export async function recallMemories(
   let hits: MemoryHit[] = [];
 
   try {
-    // Primary path: vector-only search (fast, ~200-500ms)
+    // Tier 1: Vector-only search (fast, ~200-500ms)
     hits = await fetchBasicSearch(query, nousId, limit, controller.signal, opts?.domains);
 
-    // If vector search returned results above threshold, skip graph enrichment.
-    // Only fall back to graph-enhanced search if vector search found nothing
-    // useful, since graph traversal adds 1-2s of latency.
-    const hasUsableHits = hits.some(
-      (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+    // Sufficiency gate: count hits that score above the high-confidence threshold.
+    // If enough strong hits exist, vector search alone is sufficient — no need for
+    // the expensive graph traversal (1-2s). This is the "tiered retrieval" pattern
+    // from memU: only escalate to deeper retrieval when shallow results are weak.
+    const strongHits = hits.filter(
+      (h) => h.score !== null && h.score !== undefined && h.score >= sufficiencyThreshold,
     );
+    const isSufficient = strongHits.length >= sufficiencyMinHits;
 
-    if (!hasUsableHits) {
-      const elapsed = Date.now() - start;
-      const remaining = timeoutMs - elapsed;
-      if (remaining > 1000) {
-        // Enough time budget left to try graph-enhanced search
-        log.debug(
-          `Vector search returned no hits above ${minScore} for ${nousId}, trying graph-enhanced (${remaining}ms remaining)`,
-        );
-        const graphHits = await fetchGraphEnhanced(
-          query,
-          nousId,
-          limit,
-          controller.signal,
-        );
-        // Graph-enhanced returns combined_score; use that if available
-        hits = graphHits;
+    if (isSufficient) {
+      log.debug(
+        `Recall sufficiency gate passed for ${nousId}: ${strongHits.length} hits above ${sufficiencyThreshold} — skipping graph fallback`,
+      );
+    } else {
+      // Check if we have ANY usable hits (above minScore but below sufficiency)
+      const hasUsableHits = hits.some(
+        (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+      );
+
+      if (!hasUsableHits) {
+        // Tier 2: Graph-enhanced search — only when vector search found nothing useful
+        const elapsed = Date.now() - start;
+        const remaining = timeoutMs - elapsed;
+        if (remaining > 1000) {
+          log.debug(
+            `Vector search returned no hits above ${minScore} for ${nousId}, trying graph-enhanced (${remaining}ms remaining)`,
+          );
+          const graphHits = await fetchGraphEnhanced(
+            query,
+            nousId,
+            limit,
+            controller.signal,
+          );
+          hits = graphHits;
+        }
       }
     }
   } catch (err) {
