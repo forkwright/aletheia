@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# aletheia-export — Export an agent to a portable AgentFile
+#
+# Usage:
+#   aletheia-export <nous-id> [options]
+#   aletheia-export syn --memory --graph -o syn-backup.agent.json
+#
+# Options:
+#   --output, -o    Output file path
+#   --memory        Include memory vectors
+#   --graph         Include knowledge graph
+#   --archived      Include archived sessions
+#   --compact       Compact JSON
+#   --sidecar-url   Memory sidecar URL
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+RUNTIME="$ALETHEIA_ROOT/infrastructure/runtime"
+
+cd "$RUNTIME"
+exec npx tsx src/portability/cli.ts export "$@"
