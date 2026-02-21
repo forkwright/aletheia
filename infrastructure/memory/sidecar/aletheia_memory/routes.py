@@ -24,6 +24,13 @@ from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
 from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
 from .temporal import _extract_entities_for_episode
+from .entity_resolver import (
+    resolve_entity,
+    is_valid_entity,
+    get_canonical_entities,
+    merge_duplicate_entities,
+    cleanup_orphan_entities,
+)
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
@@ -272,74 +279,7 @@ async def _semantic_dedup_check(
     return False
 
 
-@router.post("/add_direct")
-async def add_direct(req: AddDirectRequest, request: Request):
-    """Store a single pre-extracted fact directly in Qdrant.
-
-    Bypasses Mem0's LLM extraction entirely. The caller is responsible
-    for fact quality — this endpoint embeds and stores as-is.
-    """
-    mem = _get_memory(request)
-    text = req.text.strip()
-    if not text:
-        return {"ok": False, "error": "empty text"}
-
-    try:
-        content_hash = _content_hash(text)
-        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-
-        # Content hash dedup (exact match)
-        existing = client.scroll(
-            collection_name=COLLECTION_NAME,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(key="hash", match=MatchValue(value=content_hash)),
-                    FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
-                ]
-            ),
-            limit=1,
-            with_payload=False,
-            with_vectors=False,
-        )
-        if existing[0]:
-            return {"ok": True, "result": "deduplicated", "reason": "content_hash"}
-
-        # Embed
-        vectors = await _embed_texts(mem, [text])
-        vector = vectors[0]
-
-        # Semantic dedup (cosine similarity)
-        if await _semantic_dedup_check(client, vector, req.user_id):
-            return {"ok": True, "result": "deduplicated", "reason": "semantic"}
-
-        # Store
-        now = datetime.now(timezone.utc).isoformat()
-        point_id = str(uuid.uuid4())
-        payload = {
-            "memory": text[:500],
-            "data": text,
-            "source": req.source,
-            "hash": content_hash,
-            "user_id": req.user_id,
-            "created_at": now,
-            "confidence": req.confidence,
-        }
-        if req.agent_id:
-            payload["agent_id"] = req.agent_id
-        if req.session_id:
-            payload["session_id"] = req.session_id
-
-        client.upsert(
-            collection_name=COLLECTION_NAME,
-            points=[PointStruct(id=point_id, vector=vector, payload=payload)],
-        )
-
-        logger.info(f"add_direct: stored '{text[:80]}' (source={req.source}, agent={req.agent_id})")
-        return {"ok": True, "result": "added", "id": point_id}
-
-    except Exception as e:
-        logger.exception("add_direct failed")
-        raise HTTPException(status_code=500, detail=str(e))
+# NOTE: /add_direct is defined below (Phase 5) with contradiction detection + entity resolution
 
 
 @router.post("/add_batch")
@@ -391,13 +331,30 @@ async def add_batch(req: AddBatchRequest, request: Request):
         # Embed all new texts
         vectors = await _embed_texts(mem, new_texts)
 
-        # Semantic dedup + build points
+        # Pre-fetch canonical entities for resolution
+        canonical_list = await asyncio.to_thread(get_canonical_entities)
+
+        # Semantic dedup + contradiction check + entity resolution + build points
         points = []
         skipped_semantic = 0
+        all_contradictions = []
         for text, vector, content_hash in zip(new_texts, vectors, new_hashes):
             if await _semantic_dedup_check(client, vector, req.user_id):
                 skipped_semantic += 1
                 continue
+
+            # Contradiction detection
+            contradictions = await _check_contradictions(client, vector, text, req.user_id)
+            if contradictions:
+                all_contradictions.extend(contradictions)
+
+            # Entity resolution
+            entities = _extract_entities(text)
+            resolved_entities = []
+            for entity in entities[:5]:
+                resolved = resolve_entity(entity, canonical_list)
+                if resolved:
+                    resolved_entities.append(resolved)
 
             payload = {
                 "memory": text[:500],
@@ -412,6 +369,10 @@ async def add_batch(req: AddBatchRequest, request: Request):
                 payload["agent_id"] = req.agent_id
             if req.session_id:
                 payload["session_id"] = req.session_id
+            if resolved_entities:
+                payload["entities"] = resolved_entities
+            if contradictions:
+                payload["contradicts"] = [c["id"] for c in contradictions]
 
             points.append(PointStruct(
                 id=str(uuid.uuid4()),
@@ -437,7 +398,10 @@ async def add_batch(req: AddBatchRequest, request: Request):
             f"({len(existing_hashes)} hash, {skipped_semantic} semantic), "
             f"{errors} errors (source={req.source}, agent={req.agent_id})"
         )
-        return {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
+        result: dict[str, Any] = {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
+        if all_contradictions:
+            result["contradictions"] = all_contradictions[:10]  # Cap at 10 for response size
+        return result
 
     except Exception as e:
         logger.exception("add_batch failed")
@@ -459,6 +423,12 @@ async def search_memory(req: SearchRequest, request: Request):
             if "created_at" in meta:
                 r["created_at"] = meta["created_at"]
         if isinstance(results, list):
+            # Exclude forgotten and superseded memories
+            results = [
+                r for r in results
+                if not (r.get("metadata") or r).get("forgotten")
+                and not (r.get("metadata") or r).get("superseded_by")
+            ]
             if req.domains:
                 allowed = set(req.domains)
                 results = [
@@ -1762,3 +1732,386 @@ async def normalize_relationships():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
 
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 4b: Entity Resolution Endpoints
+# ---------------------------------------------------------------------------
+
+
+class ResolveEntityRequest(BaseModel):
+    """Resolve entity names to canonical forms."""
+    names: list[str]
+
+
+@router.post("/entities/resolve")
+async def resolve_entities(req: ResolveEntityRequest):
+    """Resolve a list of entity names to their canonical forms.
+
+    Uses the alias table, fuzzy matching, and Neo4j canonical registry
+    to deduplicate entity names before creation.
+    """
+    existing = await asyncio.to_thread(get_canonical_entities)
+    results: list[dict[str, Any]] = []
+
+    for name in req.names[:50]:  # Cap at 50 per request
+        resolved = resolve_entity(name, existing)
+        if resolved is None:
+            results.append({"input": name, "canonical": None, "action": "skip", "reason": "invalid"})
+        elif resolved != name.strip().lower():
+            results.append({"input": name, "canonical": resolved, "action": "alias"})
+        else:
+            results.append({"input": name, "canonical": resolved, "action": "new"})
+
+    return {"ok": True, "results": results}
+
+
+@router.post("/entities/merge_duplicates")
+async def merge_duplicates():
+    """Find and merge duplicate entity nodes in Neo4j using alias table + fuzzy matching."""
+    result = await asyncio.to_thread(merge_duplicate_entities)
+    return result
+
+
+@router.post("/entities/cleanup_orphans")
+async def cleanup_orphans():
+    """Remove entity nodes with no relationships."""
+    result = await asyncio.to_thread(cleanup_orphan_entities)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Memory Lifecycle — Confidence, Contradiction, Correction
+# ---------------------------------------------------------------------------
+
+CONTRADICTION_THRESHOLD = 0.80  # Cosine similarity to check for contradictions
+
+
+class CorrectMemoryRequest(BaseModel):
+    """Correct an existing memory — supersedes old version."""
+    query: str  # Semantic search to find the memory to correct
+    corrected_text: str  # The corrected version
+    reason: str  # Audit trail
+    user_id: str = "default"
+    agent_id: str | None = None
+
+
+class ForgetMemoryRequest(BaseModel):
+    """Soft-delete memories matching a semantic query."""
+    query: str
+    reason: str
+    user_id: str = "default"
+    max_deletions: int = Field(default=3, ge=1, le=10)
+    min_score: float = Field(default=0.85, ge=0.5, le=1.0)
+    dry_run: bool = False
+
+
+async def _check_contradictions(
+    client: QdrantClient,
+    vector: list[float],
+    text: str,
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """Check if a new fact contradicts existing memories.
+
+    Returns list of potentially contradicting memories with scores.
+    Contradiction detection is heuristic — high similarity + different content.
+    """
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=5,
+            with_payload=True,
+        )
+
+        contradictions = []
+        text_lower = text.lower()
+        negation_words = {"not", "no", "never", "don't", "doesn't", "isn't", "wasn't",
+                          "aren't", "weren't", "won't", "can't", "shouldn't", "incorrect",
+                          "wrong", "false", "correction", "actually", "instead", "rather"}
+
+        for point in results.points:
+            if point.score < CONTRADICTION_THRESHOLD:
+                continue
+
+            existing_text = (point.payload or {}).get("memory", "") or (point.payload or {}).get("data", "")
+            if not existing_text:
+                continue
+
+            existing_lower = existing_text.lower()
+
+            # Skip if texts are near-identical (reinforcement, not contradiction)
+            if point.score >= DIRECT_DEDUP_THRESHOLD:
+                continue
+
+            # Heuristic: high similarity but with negation markers suggests contradiction
+            new_has_negation = any(w in text_lower.split() for w in negation_words)
+            old_has_negation = any(w in existing_lower.split() for w in negation_words)
+            has_correction = "correction" in text_lower or text_lower.startswith("correction:")
+
+            # Flag if one has negation and the other doesn't, or if it's an explicit correction
+            if new_has_negation != old_has_negation or has_correction:
+                contradictions.append({
+                    "id": str(point.id),
+                    "memory": existing_text[:300],
+                    "score": round(point.score, 4),
+                    "reason": "correction_marker" if has_correction else "negation_asymmetry",
+                })
+
+        return contradictions
+
+    except Exception as e:
+        logger.warning(f"Contradiction check failed: {e}")
+        return []
+
+
+@router.post("/add_direct")
+async def add_direct_v2(req: AddDirectRequest, request: Request):
+    """Store a single pre-extracted fact directly in Qdrant.
+
+    Bypasses Mem0's LLM extraction entirely. The caller is responsible
+    for fact quality — this endpoint embeds and stores as-is.
+    Includes contradiction detection (Phase 5).
+    """
+    mem = _get_memory(request)
+    text = req.text.strip()
+    if not text:
+        return {"ok": False, "error": "empty text"}
+
+    try:
+        content_hash = _content_hash(text)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Content hash dedup (exact match)
+        existing = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(key="hash", match=MatchValue(value=content_hash)),
+                    FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                ]
+            ),
+            limit=1,
+            with_payload=False,
+            with_vectors=False,
+        )
+        if existing[0]:
+            return {"ok": True, "result": "deduplicated", "reason": "content_hash"}
+
+        # Embed
+        vectors = await _embed_texts(mem, [text])
+        vector = vectors[0]
+
+        # Semantic dedup (cosine similarity)
+        if await _semantic_dedup_check(client, vector, req.user_id):
+            return {"ok": True, "result": "deduplicated", "reason": "semantic"}
+
+        # Contradiction detection
+        contradictions = await _check_contradictions(client, vector, text, req.user_id)
+
+        # Entity resolution — resolve entities in the text before storage
+        entities = _extract_entities(text)
+        resolved_entities = []
+        if entities:
+            canonical_list = await asyncio.to_thread(get_canonical_entities)
+            for entity in entities[:5]:
+                resolved = resolve_entity(entity, canonical_list)
+                if resolved:
+                    resolved_entities.append(resolved)
+
+        # Store
+        now = datetime.now(timezone.utc).isoformat()
+        point_id = str(uuid.uuid4())
+        payload = {
+            "memory": text[:500],
+            "data": text,
+            "source": req.source,
+            "hash": content_hash,
+            "user_id": req.user_id,
+            "created_at": now,
+            "confidence": req.confidence,
+        }
+        if req.agent_id:
+            payload["agent_id"] = req.agent_id
+        if req.session_id:
+            payload["session_id"] = req.session_id
+        if resolved_entities:
+            payload["entities"] = resolved_entities
+        if contradictions:
+            payload["contradicts"] = [c["id"] for c in contradictions]
+
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[PointStruct(id=point_id, vector=vector, payload=payload)],
+        )
+
+        result: dict[str, Any] = {"ok": True, "result": "added", "id": point_id}
+        if contradictions:
+            result["contradictions"] = contradictions
+            logger.info(f"add_direct: stored '{text[:80]}' with {len(contradictions)} contradiction(s)")
+        else:
+            logger.info(f"add_direct: stored '{text[:80]}' (source={req.source}, agent={req.agent_id})")
+
+        return result
+
+    except Exception as e:
+        logger.exception("add_direct failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/correct")
+async def correct_memory(req: CorrectMemoryRequest, request: Request):
+    """Correct an existing memory — finds it by semantic search, supersedes it, stores the correction.
+
+    The old memory gets a 'superseded_by' field and its confidence drops to 0.1.
+    The new memory gets a 'corrects' field linking to the old ID.
+    """
+    mem = _get_memory(request)
+    corrected_text = req.corrected_text.strip()
+    if not corrected_text:
+        return {"ok": False, "error": "empty corrected_text"}
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Find the memory to correct via semantic search
+        query_vector = (await _embed_texts(mem, [req.query]))[0]
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=req.user_id))]
+            ),
+            limit=3,
+            with_payload=True,
+        )
+
+        if not results.points or results.points[0].score < 0.80:
+            return {"ok": False, "error": "no matching memory found", "top_score": results.points[0].score if results.points else 0}
+
+        old_point = results.points[0]
+        old_id = str(old_point.id)
+        old_text = (old_point.payload or {}).get("memory", "?")
+
+        # Mark old memory as superseded (drop confidence, add metadata)
+        old_payload = dict(old_point.payload or {})
+        old_payload["confidence"] = 0.1
+        old_payload["superseded_by"] = None  # Will be filled after new point is created
+        old_payload["superseded_at"] = datetime.now(timezone.utc).isoformat()
+        old_payload["superseded_reason"] = f"[{req.agent_id or 'user'}] {req.reason}"
+
+        # Store the corrected version
+        new_vector = (await _embed_texts(mem, [corrected_text]))[0]
+        new_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        new_payload = {
+            "memory": corrected_text[:500],
+            "data": corrected_text,
+            "source": "correction",
+            "hash": _content_hash(corrected_text),
+            "user_id": req.user_id,
+            "created_at": now,
+            "confidence": 0.95,  # Corrections are high-confidence
+            "corrects": old_id,
+            "correction_reason": req.reason,
+        }
+        if req.agent_id:
+            new_payload["agent_id"] = req.agent_id
+
+        # Update old point to reference new one
+        old_payload["superseded_by"] = new_id
+
+        # Write both
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[
+                PointStruct(id=old_id, vector=old_point.vector or query_vector, payload=old_payload),
+                PointStruct(id=new_id, vector=new_vector, payload=new_payload),
+            ],
+        )
+
+        logger.info(f"memory/correct: '{old_text[:60]}' → '{corrected_text[:60]}' (reason: {req.reason})")
+
+        return {
+            "ok": True,
+            "old_id": old_id,
+            "old_text": old_text[:200],
+            "new_id": new_id,
+            "new_text": corrected_text[:200],
+        }
+
+    except Exception as e:
+        logger.exception("memory/correct failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memory/forget")
+async def forget_memory(req: ForgetMemoryRequest, request: Request):
+    """Soft-delete memories matching a semantic query.
+
+    Doesn't physically remove — sets confidence to 0.0 and adds 'forgotten' flag.
+    This way the memory is excluded from recall but recoverable if needed.
+    """
+    mem = _get_memory(request)
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Search for matching memories
+        query_vector = (await _embed_texts(mem, [req.query]))[0]
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=req.user_id))]
+            ),
+            limit=req.max_deletions * 2,
+            with_payload=True,
+        )
+
+        # Filter to high-confidence matches only
+        matches = [p for p in results.points if p.score >= req.min_score][:req.max_deletions]
+
+        if not matches:
+            return {"ok": True, "forgotten": 0, "reason": "no matches above threshold"}
+
+        if req.dry_run:
+            previews = [
+                {"id": str(p.id), "memory": ((p.payload or {}).get("memory", ""))[:200], "score": round(p.score, 4)}
+                for p in matches
+            ]
+            return {"ok": True, "dry_run": True, "would_forget": len(matches), "matches": previews}
+
+        # Soft-delete: set confidence=0, add forgotten flag
+        now = datetime.now(timezone.utc).isoformat()
+        points_to_update = []
+        forgotten_texts = []
+        for point in matches:
+            payload = dict(point.payload or {})
+            payload["confidence"] = 0.0
+            payload["forgotten"] = True
+            payload["forgotten_at"] = now
+            payload["forgotten_reason"] = req.reason
+            points_to_update.append(
+                PointStruct(id=point.id, vector=point.vector or query_vector, payload=payload)
+            )
+            forgotten_texts.append(((point.payload or {}).get("memory", ""))[:100])
+
+        client.upsert(collection_name=COLLECTION_NAME, points=points_to_update)
+
+        logger.info(f"memory/forget: {len(matches)} memories forgotten (reason: {req.reason})")
+
+        return {
+            "ok": True,
+            "forgotten": len(matches),
+            "memories": forgotten_texts,
+        }
+
+    except Exception as e:
+        logger.exception("memory/forget failed")
+        raise HTTPException(status_code=500, detail=str(e))

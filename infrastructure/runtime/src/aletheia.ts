@@ -18,6 +18,8 @@ import { webSearchTool } from "./organon/built-in/web-search.js";
 import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
+import { memoryCorrectTool } from "./organon/built-in/memory-correct.js";
+import { memoryForgetTool } from "./organon/built-in/memory-forget.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
@@ -138,6 +140,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...memoryCorrectTool, category: "available" as const });
+  tools.register({ ...memoryForgetTool, category: "available" as const });
   tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)

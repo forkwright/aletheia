@@ -38,6 +38,7 @@ export async function recallMemories(
     timeoutMs?: number;
     minScore?: number;
     domains?: string[];
+    threadSummary?: string;
   },
 ): Promise<RecallResult> {
   const limit = opts?.limit ?? 8;
@@ -46,7 +47,12 @@ export async function recallMemories(
   const minScore = opts?.minScore ?? 0.75;
   const start = Date.now();
 
-  const query = messageText.slice(0, 500);
+  // Thread-aware query: combine current message (70%) with thread summary (30%)
+  // Thread summary provides broader context so recall isn't limited to the last message
+  const msgQuery = messageText.slice(0, 500);
+  const query = opts?.threadSummary
+    ? `${msgQuery}\n\nThread context: ${opts.threadSummary.slice(0, 300)}`
+    : msgQuery;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
