@@ -62,6 +62,7 @@ import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { runNightlyReflection } from "./daemon/reflection-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -472,6 +473,23 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Cron ---
   const cron = new CronScheduler(config, runtime.manager);
   setCronRef(cron);
+
+  // Register built-in reflection command for cron
+  cron.registerCommand("reflection:nightly", async () => {
+    const result = await runNightlyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        minHumanMessages: 10,
+        lookbackHours: 24,
+      },
+    );
+    return `Reflected: ${result.agentsReflected} agents, ${result.totalFindings} findings, ${result.totalMemoriesStored} memories stored` +
+      (result.errors.length > 0 ? ` (${result.errors.length} errors)` : "");
+  });
+
   if (config.cron.enabled) {
     cron.start();
   }

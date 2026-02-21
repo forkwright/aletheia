@@ -841,6 +841,22 @@ export function createGateway(
     }
   });
 
+  // --- Reflection API ---
+
+  app.get("/api/reflection/:nousId", (c) => {
+    const nousId = c.req.param("nousId");
+    const limit = parseInt(c.req.query("limit") ?? "10", 10);
+    const logs = store.getReflectionLog(nousId, { limit });
+    return c.json({ nousId, reflections: logs });
+  });
+
+  app.get("/api/reflection/:nousId/latest", (c) => {
+    const nousId = c.req.param("nousId");
+    const last = store.getLastReflection(nousId);
+    if (!last) return c.json({ nousId, reflection: null });
+    return c.json({ nousId, reflection: last });
+  });
+
   app.post("/api/sessions/:id/archive", (c) => {
     const id = c.req.param("id");
     const session = store.findSessionById(id);
