@@ -1,7 +1,7 @@
 // Execute stage — LLM streaming + tool loop
 import { createLogger } from "../../../koina/logger.js";
 import { PipelineError } from "../../../koina/errors.js";
-import { estimateTokens, truncateToolResult, dynamicThinkingBudget } from "../../../hermeneus/token-counter.js";
+import { estimateTokens } from "../../../hermeneus/token-counter.js";
 import { getReversibility, requiresSimulation } from "../../../organon/reversibility.js";
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
 import { requiresApproval as checkApproval } from "../../../organon/approval.js";
@@ -21,6 +21,18 @@ import type {
   TurnState,
   TurnStreamEvent,
 } from "../types.js";
+import { truncateToolResult } from "./truncate.js";
+
+/** Dynamic thinking budget based on message complexity. */
+function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
+  const lastUser = [...messages].reverse().find(m => m.role === "user");
+  const userLen = lastUser ? (typeof lastUser.content === "string" ? lastUser.content.length : JSON.stringify(lastUser.content).length) : 0;
+
+  if (userLen < 100 && toolCount === 0) return Math.min(baseBudget, 2000);
+  if (userLen < 500 && toolCount <= 2) return Math.min(baseBudget, 6000);
+  if (userLen > 1000 || toolCount > 5) return Math.max(baseBudget, 16000);
+  return baseBudget;
+}
 
 const log = createLogger("pipeline:execute");
 
@@ -84,13 +96,6 @@ export async function* executeStreaming(
     const supportsThinking = /opus|sonnet-4/i.test(model);
     const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
 
-    // Dynamic thinking budget — reduce for simple messages and tool loop iterations
-    const userContent = currentMessages.filter(m => m.role === "user").pop()?.content;
-    const userText = typeof userContent === "string" ? userContent : JSON.stringify(userContent ?? "");
-    const effectiveThinkingBudget = useThinking
-      ? dynamicThinkingBudget(userText, { baseBudget: thinkingConfig.budget, toolLoopIteration: loop })
-      : 0;
-
     // Build context management — clears old tool results and thinking blocks server-side
     const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
     const contextManagement = buildContextManagement(contextTokens, useThinking);
@@ -103,7 +108,7 @@ export async function* executeStreaming(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
-      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: effectiveThinkingBudget } } : {}),
+      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: computeThinkingBudget(currentMessages, totalToolCalls, thinkingConfig.budget) } } : {}),
       ...(contextManagement ? { contextManagement } : {}),
     })) {
       switch (streamEvent.type) {
@@ -345,9 +350,10 @@ export async function* executeStreaming(
         const reversibility = getReversibility(toolUse.name);
         const needsSim = requiresSimulation(toolUse.name, toolUse.input as Record<string, unknown>);
 
+        const tokenEstimate = estimateTokens(toolResult);
         yield {
           type: "tool_result", toolName: toolUse.name, toolId: toolUse.id,
-          result: toolResult.slice(0, 2000), isError, durationMs,
+          result: toolResult.slice(0, 2000), isError, durationMs, tokenEstimate,
         };
 
         if (!isError) turnToolCalls.push({ name: toolUse.name, input: toolUse.input as Record<string, unknown>, output: toolResult.slice(0, 500) });
@@ -369,8 +375,6 @@ export async function* executeStreaming(
           ...(isError ? { is_error: true } : {}),
         });
 
-        // Truncate for storage — model sees full result for current turn,
-        // but future turns see truncated version to reduce context bloat
         const storedResult = truncateToolResult(toolUse.name, toolResult);
         services.store.appendMessage(sessionId, "tool_result", storedResult, {
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
@@ -655,11 +659,9 @@ export async function executeBuffered(
           ...(isError ? { is_error: true } : {}),
         });
 
-        // Truncate for storage — model sees full result for current turn,
-        // but future turns see truncated version to reduce context bloat
-        const storedResultBuf = truncateToolResult(toolUse.name, toolResult);
-        services.store.appendMessage(sessionId, "tool_result", storedResultBuf, {
-          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResultBuf),
+        const storedResult = truncateToolResult(toolUse.name, toolResult);
+        services.store.appendMessage(sessionId, "tool_result", storedResult, {
+          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
 
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {

@@ -181,6 +181,7 @@ export async function sendMessage(
                   status: event.isError ? "error" as const : "complete" as const,
                   result: event.result,
                   durationMs: event.durationMs,
+                  tokenEstimate: event.tokenEstimate,
                 }
               : tc,
           );
