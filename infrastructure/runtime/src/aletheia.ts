@@ -45,7 +45,7 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
-import { createGateway, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway, type GatewayAuthDeps } from "./pylon/server.js";
+import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
 import { AuditLog } from "./auth/audit.js";
 import { generateSecret } from "./auth/tokens.js";
