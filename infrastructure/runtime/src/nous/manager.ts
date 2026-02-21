@@ -112,6 +112,7 @@ export class NousManager {
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
       approvalGate: this.approvalGate,
       approvalMode,
+      ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
     };
   }
 
