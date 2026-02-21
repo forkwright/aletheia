@@ -61,10 +61,10 @@ export function substituteTemplateVars(
     const parts = path.split(".");
     let value: unknown = payload;
     for (const part of parts) {
-      if (value == null || typeof value !== "object") return "";
+      if (value === null || value === undefined || typeof value !== "object") return "";
       value = (value as Record<string, unknown>)[part];
     }
-    if (value == null) return "";
+    if (value === null || value === undefined) return "";
     if (typeof value === "object") return JSON.stringify(value);
     return String(value);
   });
