@@ -592,7 +592,7 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
     # Step 3: If graph found neighbors, do a supplementary vector search with expanded terms
     graph_results: list[dict[str, Any]] = []
     if graph_neighbors:
-        expanded_query = req.query + " " + " ".join(set(graph_neighbors)[:5])
+        expanded_query = req.query + " " + " ".join(list(set(graph_neighbors))[:5])
         try:
             raw2 = await asyncio.to_thread(mem.search, expanded_query, **kwargs)
             graph_results = raw2.get("results", raw2) if isinstance(raw2, dict) else raw2

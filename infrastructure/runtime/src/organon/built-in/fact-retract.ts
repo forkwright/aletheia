@@ -3,8 +3,9 @@ import { createLogger } from "../../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.fact-retract");
-const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+// Lazy reads — env vars may be set by taxis config after module import
+const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const factRetractTool: ToolHandler = {
   definition: {
@@ -58,12 +59,12 @@ export const factRetractTool: ToolHandler = {
     log.info(`Retraction requested by ${context.nousId}: "${query}" (reason: ${reason}, dry_run: ${dryRun})`);
 
     try {
-      const res = await fetch(`${SIDECAR_URL}/retract`, {
+      const res = await fetch(`${getSidecarUrl()}/retract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query,
-          user_id: USER_ID,
+          user_id: getUserId(),
           cascade,
           dry_run: dryRun,
           reason: `[${context.nousId}] ${reason}`,
