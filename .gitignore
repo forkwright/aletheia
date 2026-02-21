@@ -1,7 +1,7 @@
 # === Personal / Vault ===
 theke/
 projects/
-archive/
+/archive/
 
 # === Secrets ===
 *.env
