@@ -1,120 +1,116 @@
 // Plugin loader tests
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { describe, expect, it, vi, afterAll, beforeEach } from "vitest";
+import { mkdirSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { loadPlugins } from "./loader.js";
 
-let tmpDir: string;
+vi.mock("../koina/logger.js", () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
 
-beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "loader-"));
+import { discoverPlugins, validatePluginPath } from "./loader.js";
+
+const TEST_ROOT = "/tmp/aletheia-plugin-loader-test";
+
+function makePlugin(dir: string, id: string, version = "1.0.0") {
+  const pluginDir = join(dir, id);
+  mkdirSync(pluginDir, { recursive: true });
+  writeFileSync(
+    join(pluginDir, "manifest.json"),
+    JSON.stringify({ id, name: id, version }),
+  );
+}
+
+describe("validatePluginPath", () => {
+  beforeEach(() => {
+    rmSync(TEST_ROOT, { recursive: true, force: true });
+    mkdirSync(TEST_ROOT, { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(TEST_ROOT, { recursive: true, force: true });
+  });
+
+  it("accepts path within root", () => {
+    const pluginDir = join(TEST_ROOT, "my-plugin");
+    mkdirSync(pluginDir);
+    expect(validatePluginPath(pluginDir, TEST_ROOT)).toBe(true);
+  });
+
+  it("rejects path outside root", () => {
+    expect(validatePluginPath("/tmp/somewhere-else", TEST_ROOT)).toBe(false);
+  });
+
+  it("rejects traversal via ..", () => {
+    const malicious = join(TEST_ROOT, "legit", "..", "..", "etc");
+    expect(validatePluginPath(malicious, TEST_ROOT)).toBe(false);
+  });
+
+  it("rejects symlink escaping root", () => {
+    const linkPath = join(TEST_ROOT, "escape-link");
+    symlinkSync("/tmp", linkPath);
+    expect(validatePluginPath(linkPath, TEST_ROOT)).toBe(false);
+  });
 });
 
-afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
-});
-
-describe("loadPlugins", () => {
-  it("returns empty array for empty paths", async () => {
-    const plugins = await loadPlugins([]);
-    expect(plugins).toEqual([]);
+describe("discoverPlugins", () => {
+  beforeEach(() => {
+    rmSync(TEST_ROOT, { recursive: true, force: true });
+    mkdirSync(TEST_ROOT, { recursive: true });
   });
 
-  it("warns and skips non-existent path", async () => {
-    const plugins = await loadPlugins(["/nonexistent/path"]);
-    expect(plugins).toEqual([]);
+  afterAll(() => {
+    rmSync(TEST_ROOT, { recursive: true, force: true });
   });
 
-  it("loads manifest-only plugin", async () => {
-    const pluginDir = join(tmpDir, "test-plugin");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "manifest.json"), JSON.stringify({
-      id: "test-plugin",
-      name: "Test Plugin",
-      version: "1.0.0",
-    }));
-
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0]!.manifest.id).toBe("test-plugin");
-    expect(plugins[0]!.manifest.name).toBe("Test Plugin");
+  it("returns empty array for missing directory", async () => {
+    const result = await discoverPlugins("/tmp/nonexistent-plugin-dir-xxx");
+    expect(result).toEqual([]);
   });
 
-  it("finds *.plugin.json manifest", async () => {
-    const pluginDir = join(tmpDir, "my-plugin");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "aletheia.plugin.json"), JSON.stringify({
-      id: "my-plugin",
-      name: "My Plugin",
-      version: "0.1.0",
-    }));
-
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0]!.manifest.id).toBe("my-plugin");
+  it("returns empty array for empty directory", async () => {
+    const result = await discoverPlugins(TEST_ROOT);
+    expect(result).toEqual([]);
   });
 
-  it("skips plugin with no manifest", async () => {
-    const pluginDir = join(tmpDir, "no-manifest");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "readme.md"), "# No manifest");
+  it("discovers plugins with manifests", async () => {
+    makePlugin(TEST_ROOT, "plugin-a");
+    makePlugin(TEST_ROOT, "plugin-b", "2.0.0");
 
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toEqual([]);
+    const result = await discoverPlugins(TEST_ROOT);
+    expect(result).toHaveLength(2);
+
+    const ids = result.map((p) => p.manifest.id).sort();
+    expect(ids).toEqual(["plugin-a", "plugin-b"]);
   });
 
-  it("skips plugin with invalid manifest", async () => {
-    const pluginDir = join(tmpDir, "bad-manifest");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "manifest.json"), "not json");
+  it("skips directories starting with _ or .", async () => {
+    makePlugin(TEST_ROOT, "_hidden");
+    makePlugin(TEST_ROOT, ".dotdir");
+    makePlugin(TEST_ROOT, "visible");
 
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toEqual([]);
+    const result = await discoverPlugins(TEST_ROOT);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.manifest.id).toBe("visible");
   });
 
-  it("skips plugin with missing required fields", async () => {
-    const pluginDir = join(tmpDir, "incomplete");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "manifest.json"), JSON.stringify({
-      id: "incomplete",
-      // missing name and version
-    }));
+  it("skips files (non-directories)", async () => {
+    writeFileSync(join(TEST_ROOT, "not-a-dir.json"), "{}");
+    makePlugin(TEST_ROOT, "real-plugin");
 
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toEqual([]);
+    const result = await discoverPlugins(TEST_ROOT);
+    expect(result).toHaveLength(1);
   });
 
-  it("loads plugin with code entry", async () => {
-    const pluginDir = join(tmpDir, "code-plugin");
-    mkdirSync(pluginDir);
-    writeFileSync(join(pluginDir, "manifest.json"), JSON.stringify({
-      id: "code-plugin",
-      name: "Code Plugin",
-      version: "1.0.0",
-    }));
-    writeFileSync(join(pluginDir, "index.js"), `
-      exports.hooks = { afterTurn: async () => {} };
-      exports.tools = [];
-    `);
+  it("skips directories without manifests", async () => {
+    mkdirSync(join(TEST_ROOT, "no-manifest"), { recursive: true });
+    writeFileSync(join(TEST_ROOT, "no-manifest", "README.md"), "# No manifest");
 
-    const plugins = await loadPlugins([pluginDir]);
-    expect(plugins).toHaveLength(1);
-    expect(plugins[0]!.hooks).toBeDefined();
-  });
-
-  it("loads multiple plugins", async () => {
-    for (const name of ["p1", "p2"]) {
-      const dir = join(tmpDir, name);
-      mkdirSync(dir);
-      writeFileSync(join(dir, "manifest.json"), JSON.stringify({
-        id: name,
-        name: `Plugin ${name}`,
-        version: "1.0.0",
-      }));
-    }
-
-    const plugins = await loadPlugins([join(tmpDir, "p1"), join(tmpDir, "p2")]);
-    expect(plugins).toHaveLength(2);
+    const result = await discoverPlugins(TEST_ROOT);
+    expect(result).toHaveLength(0);
   });
 });

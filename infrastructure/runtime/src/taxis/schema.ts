@@ -484,6 +484,14 @@ const EncryptionConfig = z
   })
   .default({});
 
+const BackupConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    destination: z.string().default("/mnt/ssd/aletheia/backups"),
+    retentionDays: z.number().int().min(1).default(30),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -503,6 +511,7 @@ export const AletheiaConfigSchema = z.object({
   privacy: PrivacyConfig,
   sandbox: SandboxConfig,
   updates: UpdatesConfig,
+  backup: BackupConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
@@ -514,3 +523,4 @@ export type PiiSettings = z.infer<typeof PiiConfig>;
 export type SandboxSettings = z.infer<typeof SandboxConfig>;
 export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
 export type EncryptionSettings = z.infer<typeof EncryptionConfig>;
+export type BackupSettings = z.infer<typeof BackupConfig>;

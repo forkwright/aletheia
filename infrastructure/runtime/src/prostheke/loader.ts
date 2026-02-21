@@ -1,6 +1,6 @@
 // Plugin loader — discover and load plugins from configured paths
-import { existsSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import type { PluginDefinition, PluginManifest } from "./types.js";
 
@@ -108,4 +108,64 @@ function findEntry(pluginPath: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * Validate that a plugin path resolves within the allowed root directory.
+ * Prevents path traversal and symlink escapes. Only applied to auto-discovered
+ * plugins — explicitly configured paths (config.plugins.load.paths) bypass this.
+ */
+export function validatePluginPath(pluginPath: string, pluginRoot: string): boolean {
+  try {
+    const resolved = realpathSync(resolve(pluginPath));
+    const normalizedRoot = pluginRoot.endsWith(sep) ? pluginRoot : pluginRoot + sep;
+    return resolved === pluginRoot || resolved.startsWith(normalizedRoot);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Auto-discover plugins by scanning a root directory for subdirectories
+ * containing valid plugin manifests. Applies path safety validation.
+ */
+export async function discoverPlugins(rootDir: string): Promise<PluginDefinition[]> {
+  if (!existsSync(rootDir)) {
+    log.debug(`Plugin root not found: ${rootDir}`);
+    return [];
+  }
+
+  const plugins: PluginDefinition[] = [];
+  let entries: import("node:fs").Dirent[];
+
+  try {
+    entries = readdirSync(rootDir, { withFileTypes: true });
+  } catch (err) {
+    log.warn(`Cannot read plugin root ${rootDir}: ${err instanceof Error ? err.message : err}`);
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith("_") || entry.name.startsWith(".")) continue;
+
+    const pluginPath = join(rootDir, entry.name);
+
+    if (!validatePluginPath(pluginPath, rootDir)) {
+      log.warn(`Plugin path validation failed for ${entry.name}, skipping`);
+      continue;
+    }
+
+    try {
+      const plugin = await loadPlugin(pluginPath);
+      if (plugin) {
+        plugins.push(plugin);
+        log.info(`Discovered plugin: ${plugin.manifest.id} v${plugin.manifest.version}`);
+      }
+    } catch (err) {
+      log.warn(`Failed to load discovered plugin ${entry.name}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  return plugins;
 }
