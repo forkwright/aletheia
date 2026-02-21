@@ -381,6 +381,37 @@ Every task dispatched to Claude Code or a sub-agent includes:
 
 ---
 
+### Phase 7: Doctor with --fix (F-21)
+
+**Problem:** `aletheia doctor` diagnoses issues but can't fix them. Every fixable issue requires manual intervention.
+
+**Design:** Each diagnostic check returns a fixable action tuple when the issue is auto-correctable:
+
+```typescript
+interface DiagnosticResult {
+  status: "ok" | "warn" | "error";
+  message: string;
+  fix?: {
+    description: string;
+    action: () => Promise<void>;
+  };
+}
+```
+
+`aletheia doctor` — diagnose only (current behavior)
+`aletheia doctor --fix` — diagnose and apply all available fixes
+`aletheia doctor --fix --dry-run` — show what would be fixed without applying
+
+Fixable issues: missing directories, stale config entries, broken symlinks, missing git config, permission issues (via setfacl), stale PID files.
+
+**Acceptance Criteria:**
+- [ ] At least 5 diagnostic checks have fixable actions
+- [ ] `--fix` applies all fixes and re-runs diagnostics to confirm
+- [ ] `--dry-run` shows fixes without applying
+- [ ] Non-fixable issues clearly labeled as manual
+
+---
+
 ## Resolved Questions
 
 1. **PR approval flow.** Syn has standing merge authority. The constraint isn't approval — it's coordination: wait until all agents (Syn, Claude Code on metis, Claude Code on work PC) are done before merging to avoid conflicts. Deployment currently requires Claude Code due to system nuances; Spec 03's update system will resolve this.
