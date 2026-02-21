@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   langfuse-server:
-    image: docker.io/langfuse/langfuse:2
+    image: docker.io/langfuse/langfuse:3
     container_name: langfuse
     restart: unless-stopped
     depends_on:
