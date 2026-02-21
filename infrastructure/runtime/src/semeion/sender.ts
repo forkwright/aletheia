@@ -1,9 +1,23 @@
 // Outbound message sending via signal-cli
 import { createLogger } from "../koina/logger.js";
+import { scanText, type PiiScanConfig } from "../koina/pii.js";
+import { trySafe } from "../koina/safe.js";
 import type { SignalClient } from "./client.js";
 import { formatForSignal, stylesToSignalParam } from "./format.js";
 
 const log = createLogger("semeion:send");
+
+let activePiiConfig: PiiScanConfig | null = null;
+
+export function initSenderPii(config: { enabled: boolean; mode: string; surfaces: { outbound: boolean }; allowlist: string[]; detectors?: string[] | undefined } | undefined): void {
+  if (config?.enabled && config.surfaces?.outbound !== false) {
+    activePiiConfig = {
+      mode: (config.mode as PiiScanConfig["mode"]) ?? "mask",
+      allowlist: config.allowlist,
+      detectors: config.detectors as PiiScanConfig["detectors"],
+    };
+  }
+}
 
 export interface SendTarget {
   recipient?: string;
@@ -24,6 +38,14 @@ export async function sendMessage(
   opts?: SendOpts,
 ): Promise<void> {
   const useMarkdown = opts?.markdown !== false;
+
+  if (activePiiConfig) {
+    const scan = trySafe("pii-outbound", () => scanText(text, activePiiConfig!), { text, matches: [], redacted: 0 });
+    if (scan.redacted > 0) {
+      log.warn(`PII redacted from outbound: ${scan.redacted} match(es)`);
+      text = scan.text;
+    }
+  }
 
   const chunks = splitMessage(text, 2000);
 

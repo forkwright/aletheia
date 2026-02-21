@@ -43,9 +43,16 @@ export interface DistillResult {
   tokensAfter: number;
 }
 
+export interface PiiScanResult {
+  text: string;
+  matches: unknown[];
+  redacted: number;
+}
+
 export interface PluginApi {
   config: AletheiaConfig;
   log: (level: string, message: string) => void;
+  scanPii?: (text: string) => PiiScanResult;
 }
 
 export interface PluginManifest {

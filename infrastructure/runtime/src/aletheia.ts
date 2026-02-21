@@ -58,7 +58,7 @@ import {
   waitForReady,
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
-import { parseTarget, sendMessage } from "./semeion/sender.js";
+import { initSenderPii, parseTarget, sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
@@ -426,6 +426,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
       boundGroupIds.add(binding.match.peer.id);
     }
   }
+
+  initSenderPii(config.privacy?.pii);
 
   if (config.channels.signal.enabled) {
     for (const [accountId, account] of Object.entries(

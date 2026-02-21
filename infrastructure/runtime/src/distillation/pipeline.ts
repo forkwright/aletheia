@@ -6,7 +6,7 @@ import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
-import { flushToMemory, type MemoryFlushTarget } from "./hooks.js";
+import { flushToMemory, type FlushOptions, type MemoryFlushTarget } from "./hooks.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
@@ -30,6 +30,8 @@ export interface DistillationOpts {
   workspace?: string;
   /** Skip extraction and use single-sentence summary for background sessions. */
   lightweight?: boolean;
+  /** PII config for memory flush redaction. */
+  piiConfig?: FlushOptions["piiConfig"];
   /** Called after successful distillation to update the thread-level running summary. */
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
 }
@@ -257,6 +259,7 @@ async function runDistillation(
         opts.memoryTarget,
         nousId,
         extraction,
+        opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
       );
       if (flushResult.errors > 0) {
         log.warn(

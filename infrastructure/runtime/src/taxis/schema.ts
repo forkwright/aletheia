@@ -428,11 +428,29 @@ const RetentionPolicy = z
   })
   .default({});
 
+const PiiConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    mode: z.enum(["mask", "hash", "warn"]).default("mask"),
+    surfaces: z
+      .object({
+        memory: z.boolean().default(true),
+        outbound: z.boolean().default(true),
+        context: z.boolean().default(false),
+      })
+      .default({}),
+    allowlist: z.array(z.string()).default([]),
+    detectors: z
+      .array(z.enum(["phone", "email", "ssn", "credit_card", "api_key", "address"]))
+      .optional(),
+  })
+  .default({});
+
 const PrivacyConfig = z
   .object({
     retention: RetentionPolicy,
-    // If true, session DB file permissions are hardened to 0o600 on startup.
     hardenFilePermissions: z.boolean().default(true),
+    pii: PiiConfig,
   })
   .default({});
 
@@ -468,4 +486,5 @@ export type NousConfig = z.infer<typeof NousDefinition>;
 export type BindingConfig = z.infer<typeof Binding>;
 export type SignalAccount = z.infer<typeof SignalAccountConfig>;
 export type PrivacySettings = z.infer<typeof PrivacyConfig>;
+export type PiiSettings = z.infer<typeof PiiConfig>;
 export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
