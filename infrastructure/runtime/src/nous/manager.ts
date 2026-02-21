@@ -77,6 +77,26 @@ export class NousManager {
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
 
+  reloadConfig(newConfig: AletheiaConfig): { added: string[]; removed: string[] } {
+    const oldIds = new Set(this.config.agents.list.map((n) => n.id));
+    const newIds = new Set(newConfig.agents.list.map((n) => n.id));
+
+    const added = [...newIds].filter((id) => !oldIds.has(id));
+    const removed = [...oldIds].filter((id) => !newIds.has(id));
+
+    this.config = newConfig;
+
+    if (added.length > 0) log.info(`Config reload: added agents ${added.join(", ")}`);
+    if (removed.length > 0) log.info(`Config reload: removed agents ${removed.join(", ")}`);
+
+    const updated = [...newIds].filter((id) => oldIds.has(id));
+    if (updated.length > 0) log.info(`Config reload: updated ${updated.length} existing agents`);
+
+    return { added, removed };
+  }
+
+  getConfig(): AletheiaConfig { return this.config; }
+
   getActiveTurnsByNous(): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [nousId, count] of this.activeTurnsByNous) {

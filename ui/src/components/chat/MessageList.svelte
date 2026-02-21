@@ -174,4 +174,16 @@
   .scroll-btn:hover {
     background: var(--accent-hover);
   }
+
+  @media (max-width: 768px) {
+    .scroll-btn {
+      bottom: 8px;
+      padding: 8px 20px;
+      font-size: 13px;
+    }
+    .empty-state {
+      padding: 0 20px;
+      text-align: center;
+    }
+  }
 </style>

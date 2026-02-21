@@ -456,6 +456,53 @@ program
     await auditTokens(id);
   });
 
+// --- Audit Chain ---
+
+const auditCmd = program.command("audit").description("Audit log management");
+
+auditCmd
+  .command("verify")
+  .description("Verify audit trail hash chain integrity")
+  .action(async () => {
+    const Database = (await import("better-sqlite3")).default;
+    const { paths } = await import("./taxis/paths.js");
+    const { verifyAuditChain } = await import("./auth/audit-verify.js");
+
+    const dbPath = paths.sessionsDb();
+    let db: InstanceType<typeof Database>;
+    try {
+      db = new Database(dbPath, { readonly: true });
+    } catch (err) {
+      console.error(`Cannot open database: ${dbPath}`);
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+
+    try {
+      const result = verifyAuditChain(db);
+
+      if (result.totalEntries === 0) {
+        console.log("Audit log is empty — nothing to verify.");
+        process.exit(0);
+      }
+
+      console.log(`Audit chain verification:`);
+      console.log(`  Entries: ${result.totalEntries} total, ${result.checkedEntries} with checksums`);
+      console.log(`  Range: ${result.firstEntry} → ${result.lastEntry}`);
+
+      if (result.valid) {
+        console.log(`  Status: VALID`);
+        process.exit(0);
+      } else {
+        console.log(`  Status: TAMPERED`);
+        console.log(`  Detail: ${result.tamperDetails}`);
+        process.exit(1);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
 // --- Auth Migration ---
 
 program

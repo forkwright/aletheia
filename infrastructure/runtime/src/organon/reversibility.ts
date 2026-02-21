@@ -32,6 +32,7 @@ const TOOL_REVERSIBILITY: Record<string, Reversibility> = {
 
   // Planning — state changes but recoverable
   plan_create: "reversible",
+  plan_propose: "reversible",
   plan_status: "reversible",
   plan_step_complete: "irreversible",
   plan_step_fail: "irreversible",

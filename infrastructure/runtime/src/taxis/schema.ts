@@ -462,6 +462,20 @@ const UpdatesConfig = z
   })
   .default({});
 
+const SandboxConfig = z
+  .object({
+    denyPatterns: z.array(z.string()).default([]),
+    auditDenied: z.boolean().default(true),
+  })
+  .default({});
+
+const EncryptionConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    keyEnvVar: z.string().default("ALETHEIA_ENCRYPTION_KEY"),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -477,7 +491,9 @@ export const AletheiaConfigSchema = z.object({
   watchdog: WatchdogConfig.default({}),
   branding: BrandingConfig,
   mcp: McpConfig.default({}),
+  encryption: EncryptionConfig,
   privacy: PrivacyConfig,
+  sandbox: SandboxConfig,
   updates: UpdatesConfig,
 }).passthrough();
 
@@ -487,4 +503,6 @@ export type BindingConfig = z.infer<typeof Binding>;
 export type SignalAccount = z.infer<typeof SignalAccountConfig>;
 export type PrivacySettings = z.infer<typeof PrivacyConfig>;
 export type PiiSettings = z.infer<typeof PiiConfig>;
+export type SandboxSettings = z.infer<typeof SandboxConfig>;
 export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
+export type EncryptionSettings = z.infer<typeof EncryptionConfig>;

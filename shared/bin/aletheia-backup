@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# aletheia-backup — Create a timestamped backup of all Aletheia state.
+#
+# Backs up: config, sessions DB, agent workspaces, shared config/bin.
+# Optionally includes Qdrant and Neo4j data (--full).
+#
+# Usage:
+#   aletheia-backup              # Core backup (~50MB)
+#   aletheia-backup --full       # Core + vector/graph data (~600MB)
+#   aletheia-backup --dest /path # Custom destination
+#   aletheia-backup --list       # List existing backups
+
+set -euo pipefail
+
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
+BACKUP_DIR="${ALETHEIA_BACKUP_DIR:-$ALETHEIA_ROOT/backups}"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+FULL=false
+
+# --- Parse args ---
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --full)  FULL=true; shift ;;
+    --dest)  BACKUP_DIR="$2"; shift 2 ;;
+    --list)
+      if [[ -d "$BACKUP_DIR" ]]; then
+        echo "Backups in $BACKUP_DIR:"
+        ls -lh "$BACKUP_DIR"/*.tar.gz 2>/dev/null || echo "  (none)"
+      else
+        echo "No backup directory at $BACKUP_DIR"
+      fi
+      exit 0
+      ;;
+    -h|--help)
+      echo "Usage: aletheia-backup [--full] [--dest DIR] [--list]"
+      echo ""
+      echo "Options:"
+      echo "  --full   Include Qdrant + Neo4j data (~600MB vs ~50MB)"
+      echo "  --dest   Custom backup destination (default: $ALETHEIA_ROOT/backups)"
+      echo "  --list   List existing backups"
+      exit 0
+      ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
+mkdir -p "$BACKUP_DIR"
+
+BACKUP_NAME="aletheia-${TIMESTAMP}"
+if $FULL; then
+  BACKUP_NAME="aletheia-full-${TIMESTAMP}"
+fi
+BACKUP_FILE="$BACKUP_DIR/${BACKUP_NAME}.tar.gz"
+
+echo "=== Aletheia Backup ==="
+echo "Timestamp: $TIMESTAMP"
+echo "Mode:      $($FULL && echo 'full (core + data)' || echo 'core')"
+echo "Dest:      $BACKUP_FILE"
+echo ""
+
+# --- Safely copy SQLite (checkpoint WAL first) ---
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+DB_FILE="$CONFIG_DIR/sessions.db"
+if [[ -f "$DB_FILE" ]]; then
+  echo "→ Checkpointing SQLite WAL..."
+  sqlite3 "$DB_FILE" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+  cp "$DB_FILE" "$TEMP_DIR/sessions.db"
+  echo "  sessions.db: $(du -h "$TEMP_DIR/sessions.db" | cut -f1)"
+else
+  echo "⚠ sessions.db not found at $DB_FILE"
+fi
+
+# --- Stage files into a clean tree ---
+STAGE_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR" "$STAGE_DIR"' EXIT
+
+# Config files
+mkdir -p "$STAGE_DIR/config"
+if [[ -f "$CONFIG_DIR/aletheia.json" ]]; then
+  cp "$CONFIG_DIR/aletheia.json" "$STAGE_DIR/config/"
+  echo "→ Config: aletheia.json"
+fi
+if [[ -f "$TEMP_DIR/sessions.db" ]]; then
+  cp "$TEMP_DIR/sessions.db" "$STAGE_DIR/config/"
+fi
+for f in aletheia.env tools.yaml; do
+  [[ -f "$CONFIG_DIR/$f" ]] && cp "$CONFIG_DIR/$f" "$STAGE_DIR/config/"
+done
+if [[ -d "$CONFIG_DIR/credentials" ]]; then
+  cp -r "$CONFIG_DIR/credentials" "$STAGE_DIR/config/"
+  echo "→ Credentials"
+fi
+
+# Agent workspaces (symlink to avoid copy)
+if [[ -d "$ALETHEIA_ROOT/nous" ]]; then
+  SIZE=$(du -sh "$ALETHEIA_ROOT/nous" | cut -f1)
+  echo "→ Agent workspaces: $SIZE"
+  ln -s "$ALETHEIA_ROOT/nous" "$STAGE_DIR/nous"
+fi
+
+# Shared config + bin
+if [[ -d "$ALETHEIA_ROOT/shared" ]]; then
+  SIZE=$(du -sh "$ALETHEIA_ROOT/shared" | cut -f1)
+  echo "→ Shared (config/bin): $SIZE"
+  ln -s "$ALETHEIA_ROOT/shared" "$STAGE_DIR/shared"
+fi
+
+# Full mode: vector + graph data
+if $FULL; then
+  mkdir -p "$STAGE_DIR/data"
+  if [[ -d "$ALETHEIA_ROOT/data/qdrant" ]]; then
+    SIZE=$(du -sh "$ALETHEIA_ROOT/data/qdrant" | cut -f1)
+    echo "→ Qdrant data: $SIZE"
+    ln -s "$ALETHEIA_ROOT/data/qdrant" "$STAGE_DIR/data/qdrant"
+  fi
+  if [[ -d "$ALETHEIA_ROOT/data/neo4j" ]]; then
+    SIZE=$(du -sh "$ALETHEIA_ROOT/data/neo4j" | cut -f1)
+    echo "→ Neo4j data: $SIZE"
+    ln -s "$ALETHEIA_ROOT/data/neo4j" "$STAGE_DIR/data/neo4j"
+  fi
+fi
+
+echo ""
+echo "→ Creating archive..."
+tar czf "$BACKUP_FILE" -C "$STAGE_DIR" --dereference .
+
+SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+echo ""
+echo "✓ Backup complete: $BACKUP_FILE ($SIZE)"
+
+# --- Retention: keep last 10 backups ---
+BACKUP_COUNT=$(ls -1 "$BACKUP_DIR"/aletheia*.tar.gz 2>/dev/null | wc -l)
+if [[ $BACKUP_COUNT -gt 10 ]]; then
+  EXCESS=$((BACKUP_COUNT - 10))
+  echo ""
+  echo "→ Pruning $EXCESS old backup(s) (keeping last 10)..."
+  ls -1t "$BACKUP_DIR"/aletheia*.tar.gz | tail -n "$EXCESS" | xargs rm -f
+fi
+
+echo ""
+echo "Restore with:"
+echo "  tar xzf $BACKUP_FILE -C /mnt/ssd/aletheia"
+echo "  cp /mnt/ssd/aletheia/config/sessions.db ~/.aletheia/"
+echo "  cp /mnt/ssd/aletheia/config/aletheia.json ~/.aletheia/"

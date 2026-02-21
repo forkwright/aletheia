@@ -151,8 +151,21 @@
     cursor: not-allowed;
   }
   @media (max-width: 768px) {
+    .login-page {
+      height: 100dvh;
+      padding: var(--safe-top) 0 var(--safe-bottom);
+    }
     .login-card {
       margin: 0 16px;
+      padding: 24px 20px;
+    }
+    .input {
+      font-size: 16px; /* Prevents iOS zoom */
+      padding: 12px 14px;
+    }
+    .submit {
+      padding: 12px 14px;
+      font-size: 15px;
     }
   }
 </style>

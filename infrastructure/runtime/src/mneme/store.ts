@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { SessionError } from "../koina/errors.js";
 import { generateId, generateSessionKey } from "../koina/crypto.js";
+import { encryptIfEnabled, decryptIfNeeded } from "../koina/encryption.js";
 import { DDL, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 const log = createLogger("mneme");
@@ -84,6 +85,27 @@ export interface UsageRecord {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   model: string | null;
+}
+
+export interface PlanStep {
+  id: number;
+  label: string;
+  role: "coder" | "reviewer" | "researcher" | "explorer" | "runner" | "self";
+  estimatedCostCents: number;
+  parallel?: number[];
+  status: "pending" | "approved" | "skipped" | "running" | "done" | "failed";
+  result?: string;
+}
+
+export interface StoredPlan {
+  id: string;
+  sessionId: string;
+  nousId: string;
+  status: string;
+  steps: PlanStep[];
+  totalEstimatedCostCents: number;
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 export interface ReflectionLog {
@@ -312,6 +334,7 @@ export class SessionStore {
   ): number {
     // Atomic: SELECT + INSERT + UPDATE in a single transaction
     const tokenEstimate = opts?.tokenEstimate ?? 0;
+    const storedContent = encryptIfEnabled(content);
     const appendTx = this.db.transaction(() => {
       const nextSeq = this.db
         .prepare(
@@ -328,7 +351,7 @@ export class SessionStore {
           sessionId,
           nextSeq.next,
           role,
-          content,
+          storedContent,
           opts?.toolCallId ?? null,
           opts?.toolName ?? null,
           tokenEstimate,
@@ -1285,7 +1308,7 @@ export class SessionStore {
       sessionId: row['session_id'] as string,
       seq: row['seq'] as number,
       role: row['role'] as Message["role"],
-      content: row['content'] as string,
+      content: decryptIfNeeded(row['content'] as string),
       toolCallId: row['tool_call_id'] as string | null,
       toolName: row['tool_name'] as string | null,
       tokenEstimate: row['token_estimate'] as number,
@@ -1975,6 +1998,56 @@ export class SessionStore {
       .prepare("SELECT COUNT(*) as count FROM message_queue WHERE session_id = ?")
       .get(sessionId) as { count: number } | undefined;
     return row?.count ?? 0;
+  }
+
+  // --- Plans ---
+
+  createPlan(plan: { id: string; sessionId: string; nousId: string; steps: PlanStep[]; totalEstimatedCostCents: number }): void {
+    this.db
+      .prepare("INSERT INTO plans (id, session_id, nous_id, steps, total_estimated_cost_cents) VALUES (?, ?, ?, ?, ?)")
+      .run(plan.id, plan.sessionId, plan.nousId, JSON.stringify(plan.steps), plan.totalEstimatedCostCents);
+  }
+
+  getPlan(planId: string): StoredPlan | null {
+    const row = this.db
+      .prepare("SELECT * FROM plans WHERE id = ?")
+      .get(planId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return this.mapPlan(row);
+  }
+
+  getActivePlan(sessionId: string): StoredPlan | null {
+    const row = this.db
+      .prepare("SELECT * FROM plans WHERE session_id = ? AND status IN ('awaiting_approval', 'executing') ORDER BY created_at DESC LIMIT 1")
+      .get(sessionId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return this.mapPlan(row);
+  }
+
+  updatePlanStatus(planId: string, status: string): void {
+    const resolvedAt = status === "completed" || status === "cancelled" ? new Date().toISOString() : null;
+    this.db
+      .prepare("UPDATE plans SET status = ?, resolved_at = COALESCE(?, resolved_at) WHERE id = ?")
+      .run(status, resolvedAt, planId);
+  }
+
+  updatePlanSteps(planId: string, steps: PlanStep[]): void {
+    this.db
+      .prepare("UPDATE plans SET steps = ? WHERE id = ?")
+      .run(JSON.stringify(steps), planId);
+  }
+
+  private mapPlan(r: Record<string, unknown>): StoredPlan {
+    return {
+      id: r["id"] as string,
+      sessionId: r["session_id"] as string,
+      nousId: r["nous_id"] as string,
+      status: r["status"] as string,
+      steps: JSON.parse(r["steps"] as string) as PlanStep[],
+      totalEstimatedCostCents: r["total_estimated_cost_cents"] as number,
+      createdAt: r["created_at"] as string,
+      resolvedAt: r["resolved_at"] as string | null,
+    };
   }
 
   private mapThread(r: Record<string, unknown>): Thread {

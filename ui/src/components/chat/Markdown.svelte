@@ -167,10 +167,16 @@
     border-left: 3px solid var(--border);
     color: var(--text-secondary);
   }
+  /* Wrap tables in scrollable container for mobile */
+  .markdown-body :global(.table-wrapper) {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 8px 0;
+  }
   .markdown-body :global(table) {
     width: 100%;
     border-collapse: collapse;
-    margin: 8px 0;
     font-size: 13px;
   }
   .markdown-body :global(th),
@@ -178,6 +184,7 @@
     padding: 6px 12px;
     border: 1px solid var(--border);
     text-align: left;
+    white-space: nowrap;
   }
   .markdown-body :global(th) {
     background: var(--surface);
@@ -197,6 +204,34 @@
   }
   .markdown-body :global(strong) {
     font-weight: 600;
+  }
+
+  @media (max-width: 768px) {
+    .markdown-body :global(pre) {
+      padding: 10px 12px;
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+      /* Ensure horizontal scroll works on touch */
+      -webkit-overflow-scrolling: touch;
+    }
+    .markdown-body :global(pre code) {
+      font-size: 12px;
+    }
+    .markdown-body :global(pre .copy-btn) {
+      /* Always visible on mobile — no hover */
+      opacity: 0.7;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .markdown-body :global(th),
+    .markdown-body :global(td) {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .markdown-body :global(ul),
+    .markdown-body :global(ol) {
+      padding-left: 20px;
+    }
   }
   /* Task list checkboxes (GFM) */
   .markdown-body :global(li:has(> input[type="checkbox"])) {

@@ -1,6 +1,6 @@
 # Spec: Knowledge Graph — Performance, Utility, and Integration
 
-**Status:** Phases 1a-1b, 2a-2b, 3a-3e done. Phases 2c, 3f remaining.  
+**Status:** Complete — All phases implemented. (PRs #85, #86)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 

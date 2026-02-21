@@ -1,7 +1,7 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
-import { applyEnv, loadConfig } from "./taxis/loader.js";
+import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -31,6 +31,7 @@ import { createSessionsDispatchTool } from "./organon/built-in/sessions-dispatch
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
+import { createPlanProposeHandler } from "./organon/built-in/plan-propose.js";
 import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
@@ -77,6 +78,18 @@ import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
+
+type RoutingEntry = { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string };
+
+function extractBindings(config: AletheiaConfig): RoutingEntry[] {
+  return config.bindings.map((b) => {
+    const entry: RoutingEntry = { channel: b.match.channel, nousId: b.agentId };
+    if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+    if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+    if (b.match.accountId) entry.accountId = b.match.accountId;
+    return entry;
+  });
+}
 
 export interface AletheiaRuntime {
   config: AletheiaConfig;
@@ -164,6 +177,10 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     tools.register(planTool);
   }
 
+  // Plan proposal tool (always available)
+  const planProposeHandler = createPlanProposeHandler();
+  tools.register(planProposeHandler);
+
   // Self-authoring tools (available on-demand)
   const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
   for (const authorTool of createSelfAuthorTools(defaultWorkspace, tools)) {
@@ -199,17 +216,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   log.info(`Registered ${tools.size} tools`);
 
-  const bindings = config.bindings.map((b) => {
-    const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
-      channel: b.match.channel,
-      nousId: b.agentId,
-    };
-    if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
-    if (b.match.peer?.id) entry.peerId = b.match.peer.id;
-    if (b.match.accountId) entry.accountId = b.match.accountId;
-    return entry;
-  });
-  store.rebuildRoutingCache(bindings);
+  store.rebuildRoutingCache(extractBindings(config));
   store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
@@ -378,7 +385,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Wire event bus → SSE push for real-time UI updates
   for (const eventName of [
     "turn:before", "turn:after", "tool:called", "tool:failed",
-    "session:created", "session:archived",
+    "session:created", "session:archived", "config:reloaded",
   ] as const) {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
   }
@@ -391,7 +398,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
         const durMs = payload["durationMs"] as number | undefined;
         runtime.store.recordToolStat({
           nousId: (payload["nousId"] as string) ?? "unknown",
-          toolName: (payload["name"] as string) ?? "unknown",
+          toolName: (payload["tool"] as string) ?? "unknown",
           success: eventName === "tool:called",
           ...(errMsg ? { errorMessage: errMsg } : {}),
           ...(durMs !== null && durMs !== undefined ? { durationMs: durMs } : {}),
@@ -622,6 +629,18 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Update checker ---
   const updateCheckTimer = startUpdateChecker(runtime.store, getVersion());
 
+  // --- Config hot-reload ---
+  const configWatcher = watchConfig(configPath, (newConfig) => {
+    const diff = runtime.manager.reloadConfig(newConfig);
+
+    // Rebuild routing cache with new bindings
+    const newBindings = extractBindings(newConfig);
+    runtime.store.rebuildRoutingCache(newBindings);
+
+    eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
+    log.info(`Config reloaded: +${diff.added.length} -${diff.removed.length} agents, ${newBindings.length} bindings`);
+  });
+
   // --- Shutdown ---
   let draining = false;
   runtime.manager.isDraining = () => draining;
@@ -633,6 +652,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     clearInterval(spawnCleanupTimer);
     clearInterval(retentionTimer);
     clearInterval(updateCheckTimer);
+    configWatcher?.close();
     watchdog?.stop();
     cron.stop();
 

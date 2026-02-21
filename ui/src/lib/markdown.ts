@@ -49,6 +49,9 @@ const marked = new Marked({
       const label = language ? `<span class="code-lang">${language}</span>` : "";
       return `<pre class="code-block">${label}<code class="hljs">${highlighted}</code></pre>`;
     },
+    table({ header, body }: { header: string; body: string }) {
+      return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+    },
   },
 });
 

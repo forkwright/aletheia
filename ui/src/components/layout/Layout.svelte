@@ -294,7 +294,7 @@
       display: block;
       position: fixed;
       inset: 0;
-      top: var(--topbar-height);
+      top: calc(var(--topbar-height) + var(--safe-top));
       background: rgba(0, 0, 0, 0.5);
       z-index: 99;
       border: none;

@@ -6,6 +6,7 @@ import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { tryReloadConfig } from "../taxis/loader.js";
 import { createAuthMiddleware, createAuthRoutes, type AuthConfig, type AuthUser } from "../auth/middleware.js";
 import type { AuthSessionStore } from "../auth/sessions.js";
 import type { AuditLog } from "../auth/audit.js";
@@ -317,6 +318,30 @@ export function createGateway(
   app.get("/api/system/update-channel", (c) =>
     c.json({ channel: config.updates?.channel ?? "stable" }),
   );
+
+  app.post("/api/config/reload", (c) => {
+    const newConfig = tryReloadConfig();
+    if (!newConfig) {
+      return c.json({ ok: false, error: "Config validation failed — check logs" }, 400);
+    }
+    const diff = manager.reloadConfig(newConfig);
+
+    // Rebuild routing cache with new bindings
+    const bindings = newConfig.bindings.map((b) => {
+      const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
+        channel: b.match.channel,
+        nousId: b.agentId,
+      };
+      if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+      if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+      if (b.match.accountId) entry.accountId = b.match.accountId;
+      return entry;
+    });
+    store.rebuildRoutingCache(bindings);
+
+    eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
+    return c.json({ ok: true, added: diff.added, removed: diff.removed, bindings: bindings.length });
+  });
 
   app.get("/api/sessions", (c) => {
     const nousId = c.req.query("nousId");
@@ -934,6 +959,80 @@ export function createGateway(
     return c.json({ sessionId: id, queueLength: store.getQueueLength(id) });
   });
 
+  // --- Plans API ---
+
+  app.get("/api/plans/:id", (c) => {
+    const plan = store.getPlan(c.req.param("id"));
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+    return c.json(plan);
+  });
+
+  app.get("/api/sessions/:id/plan", (c) => {
+    const plan = store.getActivePlan(c.req.param("id"));
+    if (!plan) return c.json({ error: "No active plan" }, 404);
+    return c.json(plan);
+  });
+
+  app.post("/api/plans/:id/approve", async (c) => {
+    const planId = c.req.param("id");
+    const plan = store.getPlan(planId);
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+    if (plan.status !== "awaiting_approval") {
+      return c.json({ error: `Plan is ${plan.status}, not awaiting_approval` }, 400);
+    }
+
+    let body: Record<string, unknown> = {};
+    try { body = await c.req.json(); } catch { /* no body is fine — approve all */ }
+
+    // Optional: skip specific steps by index
+    const skipSteps = (body["skip"] as number[] | undefined) ?? [];
+    const steps = plan.steps.map((step) =>
+      skipSteps.includes(step.id) ? { ...step, status: "skipped" as const } : { ...step, status: "approved" as const },
+    );
+
+    store.updatePlanSteps(planId, steps);
+    store.updatePlanStatus(planId, "executing");
+
+    // Trigger plan execution by sending a message to the agent's session
+    const approvedCount = steps.filter(s => s.status === "approved").length;
+    const skippedCount = steps.filter(s => s.status === "skipped").length;
+    const summary = `Plan approved (${approvedCount} steps${skippedCount ? `, ${skippedCount} skipped` : ""}). Executing now.`;
+
+    // Queue the execution trigger as a user message
+    store.queueMessage(plan.sessionId, `[PLAN_APPROVED:${planId}] ${summary}`, "system");
+
+    // If there's no active turn, send a message to start one
+    const lockKey = `${plan.nousId}:${plan.sessionId}`;
+    if (!manager.isSessionActive(lockKey)) {
+      // Fire a new turn to pick up the plan
+      const triggerMsg = `Execute the approved plan ${planId}. The plan steps are already stored — retrieve them and execute each approved step in order.`;
+      // Use streaming endpoint internally
+      setImmediate(() => {
+        const gen = manager.handleMessageStreaming({
+          text: triggerMsg,
+          nousId: plan.nousId,
+          sessionKey: plan.sessionId.includes(":") ? plan.sessionId : "main",
+        });
+        // Consume the generator (fire-and-forget)
+        (async () => { for await (const _ of gen) { /* drain */ } })().catch(() => {});
+      });
+    }
+
+    return c.json({ ok: true, planId, approved: approvedCount, skipped: skippedCount });
+  });
+
+  app.post("/api/plans/:id/cancel", (c) => {
+    const planId = c.req.param("id");
+    const plan = store.getPlan(planId);
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+    if (plan.status !== "awaiting_approval" && plan.status !== "executing") {
+      return c.json({ error: `Plan is ${plan.status}, cannot cancel` }, 400);
+    }
+
+    store.updatePlanStatus(planId, "cancelled");
+    return c.json({ ok: true, planId, status: "cancelled" });
+  });
+
   // --- Thread API ---
 
   app.get("/api/threads", (c) => {
@@ -1151,6 +1250,12 @@ export function createGateway(
     return c.json(await res.json(), res.status as 200);
   });
 
+  app.get("/api/memory/graph/search", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/search${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
   app.get("/api/memory/graph_stats", async (c) => {
     const res = await fetch(`${memoryUrl}/graph_stats`, { headers: memorySidecarHeaders() });
     return c.json(await res.json(), res.status as 200);
@@ -1181,6 +1286,17 @@ export function createGateway(
     return c.json(await res.json(), res.status as 200);
   });
 
+  app.patch("/api/memory/entity/:name/flag", async (c) => {
+    const name = c.req.param("name");
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}/flag`, {
+      method: "PATCH",
+      headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
   app.post("/api/memory/entity/merge", async (c) => {
     const body = await c.req.text();
     const res = await fetch(`${memoryUrl}/entity/merge`, {
@@ -1188,6 +1304,32 @@ export function createGateway(
       headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
       body,
     });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  // --- Spec 09 Phases 8-13: Graph Intelligence Endpoints ---
+
+  app.get("/api/memory/health", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/memory/health${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/timeline", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/timeline${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/agent-overlay", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/agent-overlay${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/drift", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/drift${qs}`, { headers: memorySidecarHeaders() });
     return c.json(await res.json(), res.status as 200);
   });
 

@@ -70,12 +70,14 @@
   @media (max-width: 768px) {
     .sidebar {
       position: fixed;
-      top: var(--topbar-height);
+      top: calc(var(--topbar-height) + var(--safe-top));
       left: 0;
       bottom: 0;
       z-index: 100;
       width: var(--sidebar-width);
       box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      padding-bottom: var(--safe-bottom);
     }
     .sidebar.collapsed {
       width: var(--sidebar-width);

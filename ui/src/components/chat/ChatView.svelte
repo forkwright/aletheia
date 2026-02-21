@@ -4,6 +4,7 @@
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
+  import PlanCard from "./PlanCard.svelte";
   import DistillationProgress from "./DistillationProgress.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
@@ -24,6 +25,8 @@
     setRemoteStreaming,
     getPendingApproval,
     clearPendingApproval,
+    getPendingPlan,
+    clearPendingPlan,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -275,9 +278,14 @@
 
   // Pending tool approval
   let pendingApproval = $derived(currentAgentId ? getPendingApproval(currentAgentId) : null);
+  let pendingPlan = $derived(currentAgentId ? getPendingPlan(currentAgentId) : null);
 
   function handleApprovalResolved() {
     if (currentAgentId) clearPendingApproval(currentAgentId);
+  }
+
+  function handlePlanResolved() {
+    if (currentAgentId) clearPendingPlan(currentAgentId);
   }
 
   // Tool panel state
@@ -370,6 +378,9 @@
       />
     {/if}
   </div>
+  {#if pendingPlan}
+    <PlanCard plan={pendingPlan} onResolved={handlePlanResolved} />
+  {/if}
   {#if pendingApproval}
     <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
   {/if}

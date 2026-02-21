@@ -1,4 +1,5 @@
 // Load, validate, and resolve config
+import { type FSWatcher, watch } from "node:fs";
 import { readJson } from "../koina/fs.js";
 import { ConfigError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
@@ -111,6 +112,52 @@ const KNOWN_NOUS_KEYS = new Set([
   "id", "default", "name", "workspace", "model", "subagents",
   "tools", "heartbeat", "identity",
 ]);
+
+export function tryReloadConfig(configPath?: string): AletheiaConfig | null {
+  const file = configPath ?? paths.configFile();
+  const raw = readJson(file);
+  if (raw === null) {
+    log.error(`Config reload failed: file not found ${file}`);
+    return null;
+  }
+
+  const result = AletheiaConfigSchema.safeParse(raw);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    log.error(`Config reload failed — invalid config:\n${issues}`);
+    return null;
+  }
+
+  log.info(`Config reloaded: ${result.data.agents.list.length} nous, ${result.data.bindings.length} bindings`);
+  return result.data;
+}
+
+export function watchConfig(
+  configPath: string | undefined,
+  onReload: (config: AletheiaConfig) => void,
+): FSWatcher | null {
+  const file = configPath ?? paths.configFile();
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const watcher = watch(file, () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        log.info("Config file changed — attempting reload");
+        const newConfig = tryReloadConfig(file);
+        if (newConfig) onReload(newConfig);
+      }, 1000);
+    });
+
+    log.info(`Watching config file for changes: ${file}`);
+    return watcher;
+  } catch (err) {
+    log.warn(`Cannot watch config file: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
 
 function warnUnknownKeys(
   raw: Record<string, unknown>,

@@ -17,6 +17,29 @@ import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
 import type { MemoryFlushTarget } from "../../distillation/hooks.js";
 
+// --- Plans ---
+
+export interface PlanStep {
+  id: number;
+  label: string;
+  role: "coder" | "reviewer" | "researcher" | "explorer" | "runner" | "self";
+  estimatedCostCents: number;
+  parallel?: number[];
+  status: "pending" | "approved" | "skipped" | "running" | "done" | "failed";
+  result?: string;
+}
+
+export interface Plan {
+  id: string;
+  sessionId: string;
+  nousId: string;
+  steps: PlanStep[];
+  totalEstimatedCostCents: number;
+  status: "awaiting_approval" | "executing" | "completed" | "cancelled";
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface MediaAttachment {
   contentType: string;
   data: string;
@@ -65,6 +88,10 @@ export type TurnStreamEvent =
   | { type: "turn_complete"; outcome: TurnOutcome }
   | { type: "turn_abort"; reason: string }
   | { type: "queue_drained"; count: number }
+  | { type: "plan_proposed"; plan: Plan }
+  | { type: "plan_step_start"; planId: string; stepId: number }
+  | { type: "plan_step_complete"; planId: string; stepId: number; status: "done" | "failed"; result?: string }
+  | { type: "plan_complete"; planId: string; status: "completed" | "cancelled" }
   | { type: "error"; message: string };
 
 export type SystemBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };

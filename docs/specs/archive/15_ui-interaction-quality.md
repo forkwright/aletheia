@@ -1,6 +1,6 @@
 # Spec: UI Interaction Quality — Thinking Persistence & Tool Detail
 
-**Status:** Phases 1-4 done. Phase 5 (status line enhancement) remaining.
+**Status:** Complete — All 5 phases implemented. (PR #86)
 **Author:** Syn
 **Date:** 2026-02-21
 
