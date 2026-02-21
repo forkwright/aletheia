@@ -1,6 +1,6 @@
 # Spec: UI Interaction Quality — Thinking Persistence & Tool Detail
 
-**Status:** Phase 1-3 done. Phase 4 next.
+**Status:** Phases 1-4 done. Phase 5 (status line enhancement) remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -483,7 +483,7 @@ let statusText = $derived.by(() => {
 | **1** ✅ | Thinking panel persistence across turn completion | Small | High — eliminates jarring panel close |
 | **2** ✅ | Thinking panel Markdown rendering | Small | Medium — makes thinking content actually readable |
 | **3** ✅ | Tool input display (event stream → UI) | Medium | High — the single biggest tool panel improvement |
-| **4** | Tool categorization & grouping | Medium | Medium — scales tool-heavy turns |
+| **4** ✅ | Tool categorization & grouping | Medium | ✅ Done — category badges in ToolPanel header + ToolStatusLine breakdown, per-tool token estimates (PR #75) |
 | **5** | Tool status line enhancement | Small | Medium — better at-a-glance value |
 
 ---
