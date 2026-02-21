@@ -261,4 +261,31 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  @media (max-width: 768px) {
+    .plan-card {
+      margin: 6px 0;
+      padding: 10px 12px;
+    }
+    .plan-step {
+      padding: 8px 6px;
+      font-size: 13px;
+    }
+    .plan-actions {
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .plan-summary {
+      text-align: center;
+    }
+    .plan-buttons {
+      justify-content: stretch;
+    }
+    .btn-approve, .btn-cancel {
+      flex: 1;
+      justify-content: center;
+      padding: 8px 14px;
+    }
+  }
 </style>

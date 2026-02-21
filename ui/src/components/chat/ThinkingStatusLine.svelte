@@ -120,4 +120,12 @@
     transform: translateX(1px);
     color: var(--amber);
   }
+
+  @media (max-width: 768px) {
+    .thinking-status-line {
+      font-size: 11px;
+      padding: 4px 8px;
+      max-width: calc(100vw - 80px);
+    }
+  }
 </style>

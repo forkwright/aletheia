@@ -306,12 +306,14 @@
   .lightbox {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 32px;
+    padding-top: calc(32px + var(--safe-top));
+    padding-bottom: calc(32px + var(--safe-bottom));
   }
   .lightbox img {
     max-width: 90vw;
@@ -323,10 +325,10 @@
     position: absolute;
     top: 16px;
     right: 16px;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.15);
     border: none;
     color: #fff;
     font-size: 24px;
@@ -337,6 +339,37 @@
     transition: background 0.15s;
   }
   .lightbox-close:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  @media (max-width: 768px) {
+    .lightbox {
+      padding: 16px;
+      padding-top: calc(16px + var(--safe-top));
+      padding-bottom: calc(16px + var(--safe-bottom));
+    }
+    .lightbox-close {
+      top: calc(12px + var(--safe-top));
+      right: 12px;
+    }
+    .msg-media.single {
+      max-width: 100%;
+    }
+    .msg-media.grid {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      max-width: 100%;
+    }
+    .media-thumb img {
+      max-height: 240px;
+    }
+    .msg-footer {
+      flex-wrap: wrap;
+    }
+    .cost-badge {
+      font-size: 9px;
+    }
+    .segment-summary {
+      padding: 8px 12px;
+    }
   }
 </style>

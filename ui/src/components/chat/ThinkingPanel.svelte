@@ -153,6 +153,13 @@
       position: absolute;
       inset: 0;
       z-index: 20;
+      border-left: none;
+    }
+    .panel-body {
+      padding: 10px;
+    }
+    .thinking-content {
+      font-size: 13px;
     }
   }
 </style>

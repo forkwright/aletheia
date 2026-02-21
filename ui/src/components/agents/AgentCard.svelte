@@ -113,4 +113,11 @@
     justify-content: center;
     line-height: 1;
   }
+
+  @media (max-width: 768px) {
+    .agent-card {
+      padding: 10px 14px;
+      min-height: 44px; /* Apple HIG minimum touch target */
+    }
+  }
 </style>
