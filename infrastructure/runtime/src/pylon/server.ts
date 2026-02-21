@@ -306,9 +306,15 @@ export function createGateway(
   app.get("/api/status", (c) =>
     c.json({
       status: "ok",
+      version: getVersion(),
+      updateChannel: config.updates?.channel ?? "stable",
       agents: config.agents.list.map((a) => a.id),
       timestamp: new Date().toISOString(),
     }),
+  );
+
+  app.get("/api/system/update-channel", (c) =>
+    c.json({ channel: config.updates?.channel ?? "stable" }),
   );
 
   app.get("/api/sessions", (c) => {

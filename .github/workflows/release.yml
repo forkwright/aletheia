@@ -1,14 +1,14 @@
-name: Release
+name: Release Build Verification
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,33 +22,16 @@ jobs:
           cache-dependency-path: infrastructure/runtime/package-lock.json
 
       - run: cd infrastructure/runtime && npm ci
-      - run: cd infrastructure/runtime && npm run check
+      - run: cd infrastructure/runtime && npm run typecheck
+      - run: cd infrastructure/runtime && npm run lint:check
       - run: cd infrastructure/runtime && npm run build
 
-      - name: Generate changelog
-        id: changelog
+      - name: Verify version matches tag
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            CHANGES=$(git log --oneline --no-merges ${PREV_TAG}..HEAD | head -50)
-          else
-            CHANGES=$(git log --oneline --no-merges -20)
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG=$(node -e "console.log(require('./infrastructure/runtime/package.json').version)")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "ERROR: Tag v$TAG does not match package.json version $PKG"
+            exit 1
           fi
-          echo "CHANGES<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          body: |
-            ## Changes
-
-            ${{ steps.changelog.outputs.CHANGES }}
-
-            ## Install / Update
-
-            ```bash
-            aletheia update
-            ```
+          echo "Version verified: $PKG"
