@@ -1,8 +1,5 @@
 // Sessions spawn tool tests
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, expect, it, vi } from "vitest";
 import { createSessionsSpawnTool } from "./sessions-spawn.js";
 
 const ctx = { nousId: "syn", sessionId: "ses_1", workspace: "/tmp" };
@@ -11,7 +8,7 @@ describe("createSessionsSpawnTool", () => {
   it("has valid definition", () => {
     const tool = createSessionsSpawnTool();
     expect(tool.definition.name).toBe("sessions_spawn");
-    expect(tool.definition.input_schema.required).toContain("task");
+    expect(tool.definition.input_schema.properties).toHaveProperty("task");
   });
 
   it("returns error without dispatcher", async () => {
@@ -78,6 +75,31 @@ describe("createSessionsSpawnTool", () => {
       ephemeralSoul: "You are a specialist",
     }, ctx);
     expect(JSON.parse(result).error).toContain("not available");
+  });
+
+  it("passes toolFilter to handleMessage for standard spawn", async () => {
+    const dispatcher = {
+      handleMessage: vi.fn().mockResolvedValue({
+        text: "done", sessionId: "ses_2", toolCalls: 0, inputTokens: 0, outputTokens: 0,
+      }),
+    };
+    const tool = createSessionsSpawnTool(dispatcher as never);
+    await tool.execute({ task: "research", tools: ["read", "grep*"] }, ctx);
+    expect(dispatcher.handleMessage).toHaveBeenCalledWith(expect.objectContaining({
+      toolFilter: ["read", "grep*"],
+    }));
+  });
+
+  it("omits toolFilter when tools not provided", async () => {
+    const dispatcher = {
+      handleMessage: vi.fn().mockResolvedValue({
+        text: "done", sessionId: "ses_2", toolCalls: 0, inputTokens: 0, outputTokens: 0,
+      }),
+    };
+    const tool = createSessionsSpawnTool(dispatcher as never);
+    await tool.execute({ task: "research" }, ctx);
+    const call = dispatcher.handleMessage.mock.calls[0][0];
+    expect(call).not.toHaveProperty("toolFilter");
   });
 
   it("records audit trail when store available", async () => {

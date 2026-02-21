@@ -383,6 +383,23 @@ export async function startRuntime(configPath?: string): Promise<void> {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
   }
 
+  // Record tool stats for usage analytics
+  for (const eventName of ["tool:called", "tool:failed"] as const) {
+    eventBus.on(eventName, (payload: Record<string, unknown>) => {
+      try {
+        const errMsg = eventName === "tool:failed" ? (payload["error"] as string)?.slice(0, 500) : undefined;
+        const durMs = payload["durationMs"] as number | undefined;
+        runtime.store.recordToolStat({
+          nousId: (payload["nousId"] as string) ?? "unknown",
+          toolName: (payload["name"] as string) ?? "unknown",
+          success: eventName === "tool:called",
+          ...(errMsg ? { errorMessage: errMsg } : {}),
+          ...(durMs != null ? { durationMs: durMs } : {}),
+        });
+      } catch { /* non-fatal */ }
+    });
+  }
+
   startGateway(app, port);
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);

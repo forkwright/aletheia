@@ -39,6 +39,7 @@ export interface InboundMessage {
   threadId?: string;
   bindingId?: string;
   lockKey?: string;
+  toolFilter?: string[];
 }
 
 export interface TurnOutcome {

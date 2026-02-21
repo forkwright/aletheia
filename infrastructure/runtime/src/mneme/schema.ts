@@ -360,4 +360,24 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN distillation_priming TEXT;
     `,
   },
+  {
+    version: 17,
+    sql: `
+      -- Content hash for cross-agent message idempotency
+      ALTER TABLE cross_agent_messages ADD COLUMN content_hash TEXT;
+      CREATE INDEX IF NOT EXISTS idx_xagent_hash ON cross_agent_messages(content_hash, created_at);
+
+      -- Tool usage stats for memory/analytics
+      CREATE TABLE IF NOT EXISTS tool_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nous_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        error_message TEXT,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tool_stats_lookup ON tool_stats(nous_id, tool_name, created_at);
+    `,
+  },
 ];

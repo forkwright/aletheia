@@ -83,6 +83,14 @@ export function createSessionsSpawnTool(
             type: "number",
             description: "Maximum lifetime for ephemeral agent in seconds (default: 600)",
           },
+          tools: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Glob patterns restricting which tools the spawned agent can use " +
+              "(e.g. ['read', 'write', 'exec', 'grep*']). Omit for all tools. " +
+              "Patterns support * as wildcard (e.g. 'mem0_*' matches mem0_search).",
+          },
           model: {
             type: "string",
             description: "Model override for the spawned agent (e.g., 'anthropic/claude-sonnet-4-20250514' for cheaper tasks). Default: agent's configured model.",
@@ -134,6 +142,7 @@ export function createSessionsSpawnTool(
       const modelOverride = (input["model"] as string | undefined) ?? role?.model;
       const budgetTokens = (input["budgetTokens"] as number | undefined) ?? role?.maxTokenBudget;
       const timeoutSeconds = (input["timeoutSeconds"] as number) ?? 180;
+      const toolFilter = input["tools"] as string[] | undefined;
       const sessionKey =
         (input["sessionKey"] as string) ??
         `spawn:${context.nousId}:${Date.now().toString(36)}`;
@@ -194,6 +203,7 @@ export function createSessionsSpawnTool(
               peerKind: "agent",
               peerId: context.nousId,
               ...(modelOverride ? { model: modelOverride } : {}),
+              ...(toolFilter ? { toolFilter } : {}),
               depth: (context.depth ?? 0) + 1,
             }),
             timeoutPromise,
@@ -277,6 +287,7 @@ export function createSessionsSpawnTool(
             peerKind: "agent",
             peerId: context.nousId,
             ...(modelOverride ? { model: modelOverride } : {}),
+            ...(toolFilter ? { toolFilter } : {}),
             depth: (context.depth ?? 0) + 1,
           }),
           timeoutPromise,
@@ -397,6 +408,7 @@ async function executeParallel(
     const agentId = (taskDef["agentId"] as string | undefined) ?? (parentInput["agentId"] as string | undefined) ?? context.nousId;
     const modelOverride = (taskDef["model"] as string | undefined) ?? (parentInput["model"] as string | undefined) ?? role?.model;
     const budgetTokens = role?.maxTokenBudget;
+    const toolFilter = parentInput["tools"] as string[] | undefined;
     const sessionKey = `spawn:${context.nousId}:${Date.now().toString(36)}:${idx}`;
 
     let timer: ReturnType<typeof setTimeout>;
@@ -415,6 +427,7 @@ async function executeParallel(
           peerKind: "agent",
           peerId: context.nousId,
           ...(modelOverride ? { model: modelOverride } : {}),
+          ...(toolFilter ? { toolFilter } : {}),
           depth: (context.depth ?? 0) + 1,
         }),
         timeoutPromise,

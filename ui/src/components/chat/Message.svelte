@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChatMessage, ToolCallState } from "../../lib/types";
+  import type { ChatMessage, ToolCallState, TurnOutcome } from "../../lib/types";
   import { formatTimestamp, formatDuration } from "../../lib/format";
   import Markdown from "./Markdown.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
@@ -34,6 +34,15 @@
       ? (message.content.match(/\[Distillation #(\d+)\]/)?.[0] ?? "Memory consolidated")
       : "",
   );
+
+  let hasCostData = $derived(
+    !isUser && message.turnOutcome && (message.turnOutcome.inputTokens > 0 || message.turnOutcome.outputTokens > 0)
+  );
+
+  function formatTokens(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return String(n);
+  }
 
   let expandedImage = $state<string | null>(null);
   let summaryExpanded = $state(false);
@@ -121,7 +130,15 @@
         {/if}
       </div>
     {/if}
-    <div class="timestamp">{formatTimestamp(message.timestamp)}</div>
+    <div class="msg-footer">
+      <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
+      {#if hasCostData}
+        {@const o = message.turnOutcome!}
+        <span class="cost-badge" title="Input: {o.inputTokens} · Output: {o.outputTokens} · Cache read: {o.cacheReadTokens} · Cache write: {o.cacheWriteTokens}">
+          {formatTokens(o.inputTokens)} in · {formatTokens(o.outputTokens)} out{o.cacheReadTokens > 0 ? ` · ${formatTokens(o.cacheReadTokens)} cached` : ""}
+        </span>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -197,10 +214,29 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .msg-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
   .timestamp {
     font-size: 11px;
     color: var(--text-muted);
-    margin-top: 4px;
+  }
+  .cost-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
+    opacity: 0.7;
+    cursor: default;
+  }
+  .cost-badge:hover {
+    opacity: 1;
   }
 
   /* Media in messages */

@@ -1782,6 +1782,205 @@ async def cleanup_orphans():
 
 
 # ---------------------------------------------------------------------------
+# Entity Detail / Edit / Delete — Graph UI support
+# ---------------------------------------------------------------------------
+
+
+class EntityMergeRequest(BaseModel):
+    source: str
+    target: str
+
+
+@router.get("/entity/{name}")
+async def entity_detail(name: str, request: Request):
+    """Full entity detail: relationships, memory mentions, timestamps, confidence."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    relationships: list[dict[str, Any]] = []
+    properties: dict[str, Any] = {}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            # Node properties
+            node = session.run(
+                "MATCH (n {name: $name}) "
+                "RETURN n.name AS name, labels(n) AS labels, n.pagerank AS pagerank, "
+                "n.community AS community, properties(n) AS props",
+                name=name,
+            ).single()
+            if not node:
+                raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+            properties = dict(node["props"] or {})
+            properties["labels"] = node["labels"]
+
+            # Relationships (both directions)
+            rels = session.run(
+                "MATCH (n {name: $name})-[r]-(m) "
+                "RETURN type(r) AS rel_type, m.name AS target, "
+                "startNode(r) = n AS outgoing, properties(r) AS props "
+                "ORDER BY type(r) LIMIT 50",
+                name=name,
+            ).data()
+            for rel in rels:
+                relationships.append({
+                    "type": rel["rel_type"],
+                    "target": rel["target"],
+                    "direction": "outgoing" if rel["outgoing"] else "incoming",
+                    **({"props": rel["props"]} if rel["props"] else {}),
+                })
+
+        driver.close()
+        mark_neo4j_ok()
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("entity_detail failed: %s", e)
+        return {"ok": False, "available": False}
+
+    # Memory mentions (Qdrant search by entity name)
+    memories: list[dict[str, Any]] = []
+    try:
+        mem = _get_memory(request)
+        raw = await asyncio.to_thread(mem.search, name, user_id="default", limit=5)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+        if isinstance(results, list):
+            for r in results:
+                if r.get("score", 0) > 0.5:
+                    memories.append({
+                        "id": r.get("id"),
+                        "text": r.get("memory", "")[:200],
+                        "score": round(r.get("score", 0), 3),
+                    })
+    except Exception:
+        pass  # Non-fatal — graph data still returned
+
+    # Confidence indicator: green (>0.01 pagerank + 5+ rels), yellow (either), red (neither)
+    pagerank = properties.get("pagerank", 0) or 0
+    rel_count = len(relationships)
+    confidence = "high" if pagerank > 0.01 and rel_count >= 5 else "medium" if pagerank > 0.005 or rel_count >= 3 else "low"
+
+    return {
+        "ok": True,
+        "name": name,
+        "properties": properties,
+        "relationships": relationships,
+        "relationship_count": rel_count,
+        "memories": memories,
+        "confidence": confidence,
+    }
+
+
+@router.delete("/entity/{name}")
+async def delete_entity(name: str):
+    """Delete an entity node and all its connected edges from Neo4j."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (n {name: $name}) "
+                "OPTIONAL MATCH (n)-[r]-() "
+                "WITH n, count(r) AS rels "
+                "DETACH DELETE n "
+                "RETURN rels",
+                name=name,
+            ).single()
+        driver.close()
+        mark_neo4j_ok()
+
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+
+        logger.info(f"Deleted entity '{name}' ({result['rels']} relationships removed)")
+        return {"ok": True, "deleted": name, "relationships_removed": result["rels"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("delete_entity failed: %s", e)
+        return {"ok": False, "available": False}
+
+
+@router.post("/entity/merge")
+async def merge_entities(req: EntityMergeRequest):
+    """Merge source entity into target — redirects all relationships, deletes source."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        driver = neo4j_driver()
+        redirected = 0
+        with driver.session() as session:
+            # Verify both exist
+            source = session.run("MATCH (n {name: $name}) RETURN n", name=req.source).single()
+            target = session.run("MATCH (n {name: $name}) RETURN n", name=req.target).single()
+            if not source:
+                raise HTTPException(status_code=404, detail=f"Source entity '{req.source}' not found")
+            if not target:
+                raise HTTPException(status_code=404, detail=f"Target entity '{req.target}' not found")
+
+            # Redirect outgoing relationships
+            out_result = session.run(
+                "MATCH (s {name: $source})-[r]->(m) "
+                "WHERE m.name <> $target "
+                "WITH s, r, m, type(r) AS rtype, properties(r) AS props "
+                "MATCH (t {name: $target}) "
+                "CALL apoc.create.relationship(t, rtype, props, m) YIELD rel "
+                "DELETE r "
+                "RETURN count(r) AS count",
+                source=req.source, target=req.target,
+            ).single()
+
+            # Redirect incoming relationships
+            in_result = session.run(
+                "MATCH (m)-[r]->(s {name: $source}) "
+                "WHERE m.name <> $target "
+                "WITH s, r, m, type(r) AS rtype, properties(r) AS props "
+                "MATCH (t {name: $target}) "
+                "CALL apoc.create.relationship(m, rtype, props, t) YIELD rel "
+                "DELETE r "
+                "RETURN count(r) AS count",
+                source=req.source, target=req.target,
+            ).single()
+
+            redirected = (out_result["count"] if out_result else 0) + (in_result["count"] if in_result else 0)
+
+            # Delete source node
+            session.run("MATCH (n {name: $name}) DETACH DELETE n", name=req.source)
+
+        driver.close()
+        mark_neo4j_ok()
+        logger.info(f"Merged entity '{req.source}' → '{req.target}' ({redirected} relationships redirected)")
+        return {"ok": True, "source": req.source, "target": req.target, "relationships_redirected": redirected}
+    except HTTPException:
+        raise
+    except Exception as e:
+        mark_neo4j_down()
+        # APOC might not be available — fall back to simple merge (just delete source, lose rels)
+        if "apoc" in str(e).lower() or "Unknown function" in str(e):
+            try:
+                driver = neo4j_driver()
+                with driver.session() as session:
+                    session.run("MATCH (n {name: $name}) DETACH DELETE n", name=req.source)
+                driver.close()
+                mark_neo4j_ok()
+                logger.info(f"Merged (fallback, rels lost) entity '{req.source}' → '{req.target}'")
+                return {"ok": True, "source": req.source, "target": req.target,
+                        "relationships_redirected": 0, "warning": "APOC not available, relationships not redirected"}
+            except Exception as e2:
+                mark_neo4j_down()
+                logger.warning("merge_entities fallback failed: %s", e2)
+        else:
+            logger.warning("merge_entities failed: %s", e)
+        return {"ok": False, "available": False}
+
+
+# ---------------------------------------------------------------------------
 # Phase 5: Memory Lifecycle — Confidence, Contradiction, Correction
 # ---------------------------------------------------------------------------
 

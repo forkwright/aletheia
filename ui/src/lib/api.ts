@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage, EntityDetail } from "./types";
 import { getAccessToken, refresh } from "./auth";
 
 const TOKEN_KEY = "aletheia_token";
@@ -222,4 +222,30 @@ export async function fetchGitStatus(
   const sp = new URLSearchParams();
   if (agentId) sp.set("agentId", agentId);
   return fetchJson(`/api/workspace/git-status?${sp.toString()}`);
+}
+
+// --- Graph Entity Management ---
+
+export async function fetchEntityDetail(name: string): Promise<EntityDetail> {
+  return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}`);
+}
+
+export async function deleteEntity(name: string): Promise<{ deleted: boolean; relationships_removed: number }> {
+  return fetchJson(`/api/memory/entity/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export async function mergeEntities(source: string, target: string): Promise<{ merged: boolean; message: string }> {
+  return fetchJson("/api/memory/entity/merge", {
+    method: "POST",
+    body: JSON.stringify({ source, target }),
+  });
+}
+
+// --- Tool Stats ---
+
+export async function fetchToolStats(agentId?: string, window = "7d"): Promise<unknown> {
+  const sp = new URLSearchParams();
+  if (agentId) sp.set("agentId", agentId);
+  sp.set("window", window);
+  return fetchJson(`/api/tool-stats?${sp.toString()}`);
 }

@@ -230,6 +230,7 @@ export async function buildContext(
     sessionId,
     ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
     ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
+    ...(msg.toolFilter?.length ? { toolFilter: msg.toolFilter } : {}),
   });
 
   state.systemPrompt = systemPrompt;

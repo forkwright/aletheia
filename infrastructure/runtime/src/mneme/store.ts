@@ -637,6 +637,69 @@ export class SessionStore {
     }));
   }
 
+  recordToolStat(record: {
+    nousId: string;
+    toolName: string;
+    success: boolean;
+    errorMessage?: string;
+    durationMs?: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO tool_stats (nous_id, tool_name, success, error_message, duration_ms)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.toolName,
+        record.success ? 1 : 0,
+        record.errorMessage ?? null,
+        record.durationMs ?? null,
+      );
+  }
+
+  getToolStats(opts: {
+    nousId?: string;
+    windowHours?: number;
+  } = {}): Array<{
+    toolName: string;
+    totalCalls: number;
+    successCount: number;
+    failureCount: number;
+    failureRate: number;
+    avgDurationMs: number;
+  }> {
+    const windowHours = opts.windowHours ?? 168; // 7 days
+    const cutoff = new Date(Date.now() - windowHours * 3600_000).toISOString();
+    const nousFilter = opts.nousId ? "AND nous_id = ?" : "";
+    const params: unknown[] = [cutoff];
+    if (opts.nousId) params.push(opts.nousId);
+
+    const rows = this.db
+      .prepare(
+        `SELECT tool_name,
+                count(*) AS total_calls,
+                sum(success) AS success_count,
+                count(*) - sum(success) AS failure_count,
+                ROUND(1.0 - (CAST(sum(success) AS REAL) / count(*)), 3) AS failure_rate,
+                ROUND(avg(duration_ms), 0) AS avg_duration_ms
+         FROM tool_stats
+         WHERE created_at > ? ${nousFilter}
+         GROUP BY tool_name
+         ORDER BY total_calls DESC`,
+      )
+      .all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => ({
+      toolName: r['tool_name'] as string,
+      totalCalls: r['total_calls'] as number,
+      successCount: r['success_count'] as number,
+      failureCount: r['failure_count'] as number,
+      failureRate: r['failure_rate'] as number,
+      avgDurationMs: r['avg_duration_ms'] as number,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(
@@ -709,11 +772,32 @@ export class SessionStore {
     targetSessionId?: string;
     kind: "send" | "ask" | "spawn";
     content: string;
+    idempotencyWindowMs?: number;
   }): number {
+    const hash = this.hashCrossAgentContent(
+      record.sourceNousId ?? "",
+      record.targetNousId,
+      record.kind,
+      record.content,
+    );
+
+    // Dedup: check for identical call within window (default 5 minutes)
+    const windowMs = record.idempotencyWindowMs ?? 300_000;
+    const cutoff = new Date(Date.now() - windowMs).toISOString();
+    const existing = this.db
+      .prepare(
+        `SELECT id FROM cross_agent_messages
+         WHERE content_hash = ? AND created_at > ?
+         LIMIT 1`,
+      )
+      .get(hash, cutoff) as { id: number } | undefined;
+
+    if (existing) return existing.id;
+
     const result = this.db
       .prepare(
-        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status, content_hash)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
       )
       .run(
         record.sourceSessionId,
@@ -722,8 +806,25 @@ export class SessionStore {
         record.targetSessionId ?? null,
         record.kind,
         record.content,
+        hash,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  private hashCrossAgentContent(source: string, target: string, kind: string, content: string): string {
+    const input = `${source}:${target}:${kind}:${content}`;
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < input.length; i++) {
+      const ch = input.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
 
   getUnsurfacedMessages(nousId: string): Array<{
