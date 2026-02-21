@@ -394,7 +394,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
           toolName: (payload["name"] as string) ?? "unknown",
           success: eventName === "tool:called",
           ...(errMsg ? { errorMessage: errMsg } : {}),
-          ...(durMs != null ? { durationMs: durMs } : {}),
+          ...(durMs !== null && durMs !== undefined ? { durationMs: durMs } : {}),
         });
       } catch { /* non-fatal */ }
     });
