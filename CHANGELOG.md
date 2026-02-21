@@ -4,6 +4,31 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.0] - 2026-02-20
+
+### Added
+- **Session continuity hardening** (Spec 12) — pre-compaction memory flush with distillation log, background session aggressive distillation (50 msg / 10K token triggers), ephemeral session cleanup (nightly purge), post-distillation verification checks
+- **Sub-agent workforce** (Spec 13) — 5 typed roles (coder, reviewer, researcher, explorer, runner) with structured JSON result contracts, parallel dispatch via `sessions_dispatch`, per-agent budget controls (turns, tokens, timeout)
+- **Domain-scoped memory** — agents filter recall by configured domains, backwards-compatible (unscoped memories always included)
+- **Memory confidence scoring** — Neo4j MemoryAccess decay/access counts weight search results, frequently accessed memories boosted, decayed memories penalized
+- **Tool categorization UI** — 28 tools mapped to 6 categories (filesystem, search, execute, communication, system, web) with category badges in tool panel header and status line
+- **Per-tool token estimates** — token consumption estimated per tool result, displayed in tool panel
+- **Distillation progress indicator** — live progress bar in webchat showing pipeline stage (sanitize, extract, summarize, flush, verify)
+- **Dynamic thinking budget** — thinking token budget scales with message complexity (2K-16K range)
+- **Tool result truncation** — per-tool-type storage limits with head/tail preservation
+- **Bootstrap token audit** — `aletheia audit-tokens [agent-id]` CLI command for per-section token breakdown
+- **Release automation** — release-please for versioned releases with auto-generated changelogs
+
+### Changed
+- Release workflow switched from manual tag-push to release-please managed releases
+- Cost injection now runs every 8th turn with session cost, sub-agent costs, budget remaining
+
+### Fixed
+- Auth mode "none" not recognized in UI auth flow
+- TypeScript errors in audit.ts constructor and sessions-spawn unused parameter
+
+---
+
 ## [0.9.1] - 2026-02-20
 
 ### Added

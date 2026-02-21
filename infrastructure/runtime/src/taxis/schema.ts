@@ -436,6 +436,14 @@ const PrivacyConfig = z
   })
   .default({});
 
+const UpdatesConfig = z
+  .object({
+    channel: z.enum(["stable", "edge"]).default("stable"),
+    autoCheck: z.boolean().default(true),
+    checkIntervalHours: z.number().default(6),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -452,6 +460,7 @@ export const AletheiaConfigSchema = z.object({
   branding: BrandingConfig,
   mcp: McpConfig.default({}),
   privacy: PrivacyConfig,
+  updates: UpdatesConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
@@ -459,3 +468,4 @@ export type NousConfig = z.infer<typeof NousDefinition>;
 export type BindingConfig = z.infer<typeof Binding>;
 export type SignalAccount = z.infer<typeof SignalAccountConfig>;
 export type PrivacySettings = z.infer<typeof PrivacyConfig>;
+export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
