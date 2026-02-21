@@ -36,6 +36,7 @@
     getActiveSessionId,
     getActiveSessionKey,
     getActiveSession,
+    setActiveSession,
     refreshSessions,
     createNewSession,
     loadSessions,
@@ -248,7 +249,12 @@
     const currentAgentId = getActiveAgentId();
     if (!currentAgentId) return;
     const sessionKey = getActiveSessionKey();
-    sendMessage(currentAgentId, text, sessionKey, media).then(() => {
+    sendMessage(currentAgentId, text, sessionKey, media).then((resolvedSessionId) => {
+      // If the server redirected to a different session (e.g., signal key ownership mismatch),
+      // switch the UI to the server's session before refreshing the list.
+      if (resolvedSessionId && resolvedSessionId !== getActiveSessionId()) {
+        setActiveSession(resolvedSessionId);
+      }
       skipNextHistoryLoad = true;
       refreshSessions(currentAgentId);
     });

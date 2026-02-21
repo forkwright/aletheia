@@ -503,7 +503,7 @@ export function createGateway(
       const routedOwner = store.resolveRoute("signal", "group", signalPeerId)
         ?? store.resolveRoute("signal", "dm", signalPeerId);
       if (routedOwner && routedOwner !== agentId) {
-        resolvedSessionKey = `web:${Date.now()}`;
+        resolvedSessionKey = `web:${agentId}`;
         log.warn(
           `Session key ownership mismatch: "${rawSessionKey}" belongs to ${routedOwner}, ` +
           `not ${agentId}. Reassigned to "${resolvedSessionKey}".`,
