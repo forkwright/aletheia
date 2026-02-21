@@ -17,6 +17,7 @@ const TOOL_PARALLELISM: Record<string, ToolParallelism> = {
   sessions_send: "always",
   sessions_ask: "always",
   sessions_spawn: "always",
+  sessions_dispatch: "never",  // Long-running, blocks until all tasks complete
   check_calibration: "always",
   what_do_i_know: "always",
   recent_corrections: "always",

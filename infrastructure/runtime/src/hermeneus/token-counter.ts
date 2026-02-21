@@ -51,6 +51,7 @@ const TOOL_RESULT_CHAR_LIMITS: Record<string, number> = {
   web_search: 4000,
   mem0_search: 4000,
   sessions_spawn: 6000,
+  sessions_dispatch: 10000,
   sessions_ask: 4000,
 };
 const DEFAULT_RESULT_CHAR_LIMIT = 5000;

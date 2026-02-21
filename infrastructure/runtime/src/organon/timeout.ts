@@ -13,6 +13,7 @@ export const DEFAULT_TOOL_TIMEOUTS: ToolTimeoutConfig = {
     exec: 0,           // exec has its own timeout param
     sessions_ask: 0,   // sessions_ask has its own timeout
     sessions_spawn: 0, // long-running by design
+    sessions_dispatch: 0, // long-running, handles own timeouts per task
     browser: 180_000,
     web_fetch: 60_000,
     web_search: 60_000,

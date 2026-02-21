@@ -395,7 +395,7 @@ The QA step is judgment — exactly what Opus is for.
 | **1** | Role definitions + system prompts | Medium | ✅ Done — 5 roles with typed prompts in `nous/roles/` |
 | **2** | Enhanced sessions_spawn with role parameter | Small | ✅ Done — `role` param auto-configures model, tools, budget |
 | **3** | Structured result contract + parsing | Medium | ✅ Done — `parseStructuredResult()` + `SubAgentResult` interface |
-| **4** | Parallel dispatch support | Medium | Multiple sub-agents simultaneously |
+| **4** | Parallel dispatch support | Medium | ✅ Done — `sessions_dispatch` tool (Spec 16 Phase 3) |
 | **5** | Budget controls + cost tracking | Small | ✅ Done — `logSubAgentCall()` + `budgetTokens` + `maxTurns` limits |
 | **6** | Routing guidelines in AGENTS.md | Small | ✅ Done — decision tree + routing rules in Syn AGENTS.md |
 | **7** | QA workflow patterns | Small | ✅ Done — confidence-based integration rules in AGENTS.md + template |

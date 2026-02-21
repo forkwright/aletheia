@@ -11,13 +11,13 @@ that evolve with the system.
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
 | 12 | [Session Continuity](12_session-continuity.md) | Phases 1-3, 6 done | Pre-compaction flush hardening, recency-boosted recall, background session cleanup, ephemeral retention, post-distillation verification, **distillation progress UI** |
-| 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | Phases 1-3, 5-7 done | Parallel dispatch (Phase 4) |
+| 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | ✅ Complete | All 7 phases done |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a-1b, 2a done | Memory confidence/decay, graph UI search+edit, domain scoping, thread-aware recall |
 | 11 | [Chat Output Quality](11_chat-output-quality.md) | Phases 1-4 done | Rich message components (Phase 5) |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
-| 16 | [Efficiency](16_efficiency.md) | Phases 1, 2a-2d done | Parallel sub-agent dispatch (3), cost visibility (4) |
+| 16 | [Efficiency](16_efficiency.md) | Phases 1-3 done | Cost visibility (4) |
 | 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Phases 1-3 done | Tool categorization & grouping (Phase 4), status line enhancement (Phase 5) |
 | 14 | [Development Workflow](14_development-workflow.md) | Phases 1-3, 6 done | CI zero-broken-windows (Phase 4), versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
