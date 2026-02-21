@@ -5,7 +5,9 @@
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getConnectedNodes, getCommunityIds,
     getHighlightedCommunity, getSearchQuery, getLoadedMode, getLoadedLimit,
-    getTotalNodes, getEntityDetail, getEntityLoading,
+    getTotalNodes, getEntityDetail, getEntityLoading, getCommunityMeta,
+    getHiddenEdgeTypes, getEdgeTypes, toggleEdgeType, getFilteredEdges,
+    searchGraph, getSearchResults, getSearchLoading, clearSearchResults,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
     loadGraph, loadEntityDetail, removeEntity, mergeEntityNodes,
   } from "../../stores/graph.svelte";
@@ -114,6 +116,15 @@
   let hoverNodeId = $state<string | null>(null);
   let confirmDelete = $state(false);
   let mergeTarget = $state("");
+  let edgeTypes = $derived(getEdgeTypes());
+  let hiddenEdges = $derived(getHiddenEdgeTypes());
+  let communityMeta = $derived(getCommunityMeta());
+
+  function communityLabel(cid: number): string {
+    const meta = communityMeta.find((m) => m.id === cid);
+    if (meta && "name" in meta) return (meta as unknown as { name: string }).name;
+    return String(cid);
+  }
 </script>
 
 <div class="graph-view">
@@ -142,7 +153,7 @@
           class:active={getHighlightedCommunity() === cid}
           style="--pill-color: {communityColor(cid)}"
           onclick={() => handleCommunityClick(cid)}
-        >{cid}</button>
+        >{communityLabel(cid)}</button>
       {/each}
     </div>
     <div class="load-controls">
@@ -282,6 +293,19 @@
           >Merge</button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  {#if edgeTypes.length > 0}
+    <div class="edge-filter-panel">
+      <h4 class="panel-heading">Edge Types</h4>
+      {#each edgeTypes as type}
+        {@const hidden = hiddenEdges.has(type)}
+        <label class="edge-toggle">
+          <input type="checkbox" checked={!hidden} onchange={() => toggleEdgeType(type)} />
+          <span class:muted={hidden}>{type}</span>
+        </label>
+      {/each}
     </div>
   {/if}
 </div>
@@ -625,6 +649,38 @@
     font-family: var(--font-sans);
   }
   .merge-input:focus { outline: none; border-color: var(--accent); }
+
+  .edge-filter-panel {
+    position: absolute;
+    top: 60px;
+    right: 12px;
+    width: 180px;
+    max-height: 280px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 20;
+  }
+  .panel-heading {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .edge-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 2px 0;
+  }
+  .edge-toggle .muted {
+    opacity: 0.4;
+    text-decoration: line-through;
+  }
 
   @media (max-width: 768px) {
     .info-panel {

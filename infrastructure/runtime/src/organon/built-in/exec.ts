@@ -2,6 +2,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { ToolContext, ToolHandler } from "../registry.js";
+import { screenCommand } from "../sandbox.js";
 
 const execAsync = promisify(exec);
 
@@ -44,6 +45,12 @@ export const execTool: ToolHandler = {
   ): Promise<string> {
     const command = input["command"] as string;
     const timeout = (input["timeout"] as number) ?? 30000;
+
+    // Pre-screen against deny patterns
+    const screen = screenCommand(command);
+    if (!screen.allowed) {
+      return `Error: Command blocked by security policy. Matched pattern: "${screen.matchedPattern}". This command is not allowed.`;
+    }
 
     try {
       const { stdout, stderr } = await execAsync(command, {

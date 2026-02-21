@@ -18,6 +18,8 @@ export type EventName =
   | "signal:received"
   | "boot:start"
   | "boot:ready"
+  | "config:reloaded"
+  | "exec:denied"
   | "pipeline:error"
   | "history:orphan_repair";
 

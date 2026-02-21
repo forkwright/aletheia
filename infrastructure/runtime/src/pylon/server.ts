@@ -6,6 +6,7 @@ import { createLogger, withTurnAsync } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { tryReloadConfig } from "../taxis/loader.js";
 import { createAuthMiddleware, createAuthRoutes, type AuthConfig, type AuthUser } from "../auth/middleware.js";
 import type { AuthSessionStore } from "../auth/sessions.js";
 import type { AuditLog } from "../auth/audit.js";
@@ -317,6 +318,15 @@ export function createGateway(
   app.get("/api/system/update-channel", (c) =>
     c.json({ channel: config.updates?.channel ?? "stable" }),
   );
+
+  app.post("/api/config/reload", (c) => {
+    const newConfig = tryReloadConfig();
+    if (!newConfig) {
+      return c.json({ ok: false, error: "Config validation failed — check logs" }, 400);
+    }
+    const diff = manager.reloadConfig(newConfig);
+    return c.json({ ok: true, added: diff.added, removed: diff.removed });
+  });
 
   app.get("/api/sessions", (c) => {
     const nousId = c.req.query("nousId");
@@ -1148,6 +1158,12 @@ export function createGateway(
   app.get("/api/memory/graph/export", async (c) => {
     const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
     const res = await fetch(`${memoryUrl}/graph/export${qs}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/graph/search", async (c) => {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const res = await fetch(`${memoryUrl}/graph/search${qs}`, { headers: memorySidecarHeaders() });
     return c.json(await res.json(), res.status as 200);
   });
 

@@ -14,6 +14,9 @@ let loadedMode = $state<"top" | "community" | "all">("top");
 let loadedLimit = $state(200);
 let entityDetail = $state<EntityDetail | null>(null);
 let entityLoading = $state(false);
+let hiddenEdgeTypes = $state<Set<string>>(new Set());
+let searchResults = $state<Array<{ id: string; labels: string[]; pagerank: number; community: number }>>([]);
+let searchLoading = $state(false);
 
 export function getGraphData(): GraphData {
   return graphData;
@@ -161,4 +164,72 @@ export async function loadGraph(params?: GraphExportParams): Promise<void> {
   } finally {
     loading = false;
   }
+}
+
+export function getHiddenEdgeTypes(): Set<string> {
+  return hiddenEdgeTypes;
+}
+
+export function getEdgeTypes(): string[] {
+  const data = graphData;
+  if (!data) return [];
+  const types = new Set<string>();
+  for (const e of data.edges) {
+    if (e.rel_type) types.add(e.rel_type);
+  }
+  return [...types].sort();
+}
+
+export function toggleEdgeType(type: string): void {
+  const next = new Set(hiddenEdgeTypes);
+  if (next.has(type)) {
+    next.delete(type);
+  } else {
+    next.add(type);
+  }
+  hiddenEdgeTypes = next;
+}
+
+export function getFilteredEdges(): Array<{ source: string; target: string; rel_type: string }> {
+  const data = graphData;
+  if (!data) return [];
+  if (hiddenEdgeTypes.size === 0) return data.edges;
+  return data.edges.filter((e) => !hiddenEdgeTypes.has(e.rel_type));
+}
+
+export function getSearchResults() {
+  return searchResults;
+}
+
+export function getSearchLoading() {
+  return searchLoading;
+}
+
+export async function searchGraph(query: string, filters?: { community?: number; relationship?: string }): Promise<void> {
+  searchLoading = true;
+  try {
+    const sp = new URLSearchParams();
+    if (query) sp.set("q", query);
+    if (filters?.community !== undefined) sp.set("community", String(filters.community));
+    if (filters?.relationship) sp.set("relationship", filters.relationship);
+    sp.set("limit", "50");
+
+    const base = import.meta.env.DEV ? "" : window.location.origin;
+    const token = localStorage.getItem("aletheia_token");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${base}/api/memory/graph/search?${sp.toString()}`, { headers });
+    const data = await res.json();
+    searchResults = data.results ?? [];
+  } catch (err) {
+    console.error("Graph search failed:", err);
+    searchResults = [];
+  } finally {
+    searchLoading = false;
+  }
+}
+
+export function clearSearchResults(): void {
+  searchResults = [];
 }

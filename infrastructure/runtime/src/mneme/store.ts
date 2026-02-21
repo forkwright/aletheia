@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { SessionError } from "../koina/errors.js";
 import { generateId, generateSessionKey } from "../koina/crypto.js";
+import { encryptIfEnabled, decryptIfNeeded } from "../koina/encryption.js";
 import { DDL, MIGRATIONS, SCHEMA_VERSION } from "./schema.js";
 
 const log = createLogger("mneme");
@@ -312,6 +313,7 @@ export class SessionStore {
   ): number {
     // Atomic: SELECT + INSERT + UPDATE in a single transaction
     const tokenEstimate = opts?.tokenEstimate ?? 0;
+    const storedContent = encryptIfEnabled(content);
     const appendTx = this.db.transaction(() => {
       const nextSeq = this.db
         .prepare(
@@ -328,7 +330,7 @@ export class SessionStore {
           sessionId,
           nextSeq.next,
           role,
-          content,
+          storedContent,
           opts?.toolCallId ?? null,
           opts?.toolName ?? null,
           tokenEstimate,
@@ -1285,7 +1287,7 @@ export class SessionStore {
       sessionId: row['session_id'] as string,
       seq: row['seq'] as number,
       role: row['role'] as Message["role"],
-      content: row['content'] as string,
+      content: decryptIfNeeded(row['content'] as string),
       toolCallId: row['tool_call_id'] as string | null,
       toolName: row['tool_name'] as string | null,
       tokenEstimate: row['token_estimate'] as number,

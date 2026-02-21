@@ -707,11 +707,19 @@ async def graph_export(
 
             community_meta = []
             for cid, members in sorted(comm_nodes.items(), key=lambda x: -len(x[1])):
-                centroid = max(members, key=lambda m: m["pagerank"])
+                ranked = sorted(members, key=lambda m: m["pagerank"], reverse=True)
+                centroid = ranked[0]
+                # Name from top 2-3 nodes
+                top_names = [m["id"] for m in ranked[:3]]
+                name = " & ".join(top_names[:2])
+                if len(top_names) > 2:
+                    name += f" +{len(members) - 2}"
                 community_meta.append({
                     "id": cid,
                     "size": len(members),
                     "centroid_node": centroid["id"],
+                    "name": name,
+                    "top_nodes": top_names,
                 })
 
         driver.close()
@@ -728,6 +736,76 @@ async def graph_export(
         mark_neo4j_down()
         logger.warning("graph/export failed (Neo4j may be down): %s", e)
         return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
+
+
+@router.get("/graph/search")
+async def graph_search(
+    q: str = "",
+    community: int | None = None,
+    node_type: str | None = None,
+    relationship: str | None = None,
+    limit: int = 50,
+):
+    """Search graph nodes with filters."""
+    if not neo4j_available():
+        return {"ok": False, "results": []}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            conditions = ["n.name IS NOT NULL"]
+            params: dict[str, Any] = {"lim": limit}
+
+            if q:
+                conditions.append("toLower(n.name) CONTAINS toLower($query)")
+                params["query"] = q
+
+            if community is not None:
+                conditions.append("n.community = $community")
+                params["community"] = community
+
+            if node_type:
+                conditions.append("$node_type IN labels(n)")
+                params["node_type"] = node_type
+
+            where = " AND ".join(conditions)
+            cypher = (
+                f"MATCH (n) WHERE {where} "
+                "RETURN n.name AS name, labels(n) AS labels, "
+                "n.pagerank AS pagerank, n.community AS community "
+                "ORDER BY n.pagerank DESC LIMIT $lim"
+            )
+            records = session.run(cypher, **params).data()
+
+            results = []
+            for r in records:
+                node = {
+                    "id": r["name"],
+                    "labels": r["labels"],
+                    "pagerank": r["pagerank"] if r["pagerank"] is not None else 0.001,
+                    "community": r["community"] if r["community"] is not None else -1,
+                }
+
+                # If relationship filter, check connectivity
+                if relationship:
+                    rel_check = session.run(
+                        "MATCH (n {name: $name})-[r]-() "
+                        "WHERE type(r) = $rel "
+                        "RETURN count(r) AS c",
+                        name=r["name"],
+                        rel=relationship,
+                    ).single()
+                    if rel_check and rel_check["c"] > 0:
+                        results.append(node)
+                else:
+                    results.append(node)
+
+        driver.close()
+        return {"ok": True, "results": results, "total": len(results)}
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("graph/search failed: %s", e)
+        return {"ok": False, "results": [], "error": str(e)}
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---

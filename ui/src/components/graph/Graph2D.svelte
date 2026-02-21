@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { GraphData as AppGraphData, GraphNode } from "../../lib/types";
+  import { getFilteredEdges } from "../../stores/graph.svelte";
 
   let {
     graphData,
@@ -52,9 +53,10 @@
   let resizeObserver: ResizeObserver | null = null;
 
   function buildGraphInput(data: AppGraphData) {
+    const edges = getFilteredEdges();
     return {
       nodes: data.nodes.map((n) => ({ ...n })),
-      links: data.edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
+      links: edges.map((e) => ({ source: e.source, target: e.target, rel_type: e.rel_type })),
     };
   }
 
@@ -150,6 +152,16 @@
         if (graph) graph.zoomToFit(500, 50);
       }, 1500);
     }
+  });
+
+  // Re-render when edge filters change
+  let prevFilteredCount = -1;
+  $effect(() => {
+    const filtered = getFilteredEdges();
+    if (graph && filtered.length !== prevFilteredCount && prevFilteredCount !== -1) {
+      graph.graphData(buildGraphInput(graphData));
+    }
+    prevFilteredCount = filtered.length;
   });
 
   onMount(() => {

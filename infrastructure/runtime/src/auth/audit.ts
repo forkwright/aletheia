@@ -1,4 +1,5 @@
 // Structured audit logging
+import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 
@@ -33,19 +34,42 @@ export class AuditLog {
         ip TEXT,
         user_agent TEXT,
         status INTEGER NOT NULL,
-        duration_ms INTEGER
+        duration_ms INTEGER,
+        checksum TEXT,
+        previous_checksum TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor);
       CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
     `);
+
+    // Add hash chain columns (idempotent for existing DBs)
+    try { this.db.exec("ALTER TABLE audit_log ADD COLUMN checksum TEXT"); } catch { /* already exists */ }
+    try { this.db.exec("ALTER TABLE audit_log ADD COLUMN previous_checksum TEXT"); } catch { /* already exists */ }
   }
 
   record(entry: AuditEntry): void {
     try {
+      const prev = this.db
+        .prepare("SELECT checksum FROM audit_log ORDER BY id DESC LIMIT 1")
+        .get() as { checksum: string | null } | undefined;
+      const previousChecksum = prev?.checksum ?? "GENESIS";
+
+      const payload = [
+        entry.timestamp,
+        entry.actor,
+        entry.role,
+        entry.action,
+        entry.target ?? "",
+        entry.ip,
+        entry.status.toString(),
+        previousChecksum,
+      ].join("|");
+      const checksum = createHash("sha256").update(payload).digest("hex");
+
       this.db
         .prepare(
-          `INSERT INTO audit_log (timestamp, actor, role, action, target, ip, user_agent, status, duration_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO audit_log (timestamp, actor, role, action, target, ip, user_agent, status, duration_ms, checksum, previous_checksum)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           entry.timestamp,
@@ -57,6 +81,8 @@ export class AuditLog {
           entry.userAgent ?? null,
           entry.status,
           entry.durationMs,
+          checksum,
+          previousChecksum,
         );
     } catch (err) {
       log.error(`Failed to write audit entry: ${err}`);

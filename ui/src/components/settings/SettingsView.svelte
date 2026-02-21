@@ -4,6 +4,7 @@
   import { getAgents } from "../../stores/agents.svelte";
   import { onMount } from "svelte";
   import type { Agent, MetricsData } from "../../lib/types";
+  import CostDashboard from "../CostDashboard.svelte";
 
   const THEME_KEY = "aletheia_theme";
   const FONT_SIZE_KEY = "aletheia_font_size";
@@ -164,6 +165,10 @@
           <span class="setting-label">Cache hit rate</span>
           <span class="setting-value mono">{metrics.usage.cacheHitRate}%</span>
         </div>
+      </section>
+
+      <section class="settings-section cost-section">
+        <CostDashboard />
       </section>
 
       {#if metrics.services.length > 0}
@@ -351,5 +356,10 @@
   }
   .btn-danger:hover {
     background: rgba(248, 81, 73, 0.1);
+  }
+  .cost-section :global(.cost-dashboard) {
+    padding: 0;
+    height: auto;
+    overflow: visible;
   }
 </style>

@@ -1,7 +1,7 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
-import { applyEnv, loadConfig } from "./taxis/loader.js";
+import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
 import { paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -622,6 +622,13 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Update checker ---
   const updateCheckTimer = startUpdateChecker(runtime.store, getVersion());
 
+  // --- Config hot-reload ---
+  const configWatcher = watchConfig(configPath, (newConfig) => {
+    const diff = runtime.manager.reloadConfig(newConfig);
+    eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
+    log.info(`Config reloaded: +${diff.added.length} -${diff.removed.length} agents`);
+  });
+
   // --- Shutdown ---
   let draining = false;
   runtime.manager.isDraining = () => draining;
@@ -633,6 +640,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     clearInterval(spawnCleanupTimer);
     clearInterval(retentionTimer);
     clearInterval(updateCheckTimer);
+    configWatcher?.close();
     watchdog?.stop();
     cron.stop();
 
