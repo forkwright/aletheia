@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ChatMessage, ToolCallState, TurnOutcome } from "../../lib/types";
-  import { formatTimestamp, formatDuration } from "../../lib/format";
+  import { formatTimestamp, formatDuration, formatCost, calculateMessageCost } from "../../lib/format";
   import Markdown from "./Markdown.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
   import ThinkingStatusLine from "./ThinkingStatusLine.svelte";
@@ -134,8 +134,9 @@
       <span class="timestamp">{formatTimestamp(message.timestamp)}</span>
       {#if hasCostData}
         {@const o = message.turnOutcome!}
-        <span class="cost-badge" title="Input: {o.inputTokens} · Output: {o.outputTokens} · Cache read: {o.cacheReadTokens} · Cache write: {o.cacheWriteTokens}">
-          {formatTokens(o.inputTokens)} in · {formatTokens(o.outputTokens)} out{o.cacheReadTokens > 0 ? ` · ${formatTokens(o.cacheReadTokens)} cached` : ""}
+        {@const cost = calculateMessageCost(o)}
+        <span class="cost-badge" title="Input: {o.inputTokens} ({formatCost((o.inputTokens / 1_000_000) * 3)}) · Output: {o.outputTokens} ({formatCost((o.outputTokens / 1_000_000) * 15)}) · Cache read: {o.cacheReadTokens} · Cache write: {o.cacheWriteTokens}">
+          {formatCost(cost)} · {formatTokens(o.inputTokens + o.outputTokens)} tok
         </span>
       {/if}
     </div>

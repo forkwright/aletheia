@@ -1,7 +1,11 @@
 <script lang="ts">
   import { getConnectionStatus } from "../../stores/connection.svelte";
-  import { getActiveAgent } from "../../stores/agents.svelte";
+  import { getActiveAgent, getActiveAgentId } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
+  import { getAccessToken, logout } from "../../lib/auth";
+  import { clearToken } from "../../lib/api";
+  import { getMessages } from "../../stores/chat.svelte";
+  import { formatCost, calculateMessageCost } from "../../lib/format";
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
@@ -13,11 +17,40 @@
   } = $props();
 
   let agent = $derived(getActiveAgent());
+  let hasSession = $derived(!!getAccessToken());
   let showMobileMenu = $state(false);
+
+  let sessionCost = $derived(() => {
+    const agentId = getActiveAgentId();
+    if (!agentId) return 0;
+    const msgs = getMessages(agentId);
+    let total = 0;
+    for (const m of msgs) {
+      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
+    }
+    return total;
+  });
 
   function handleMobileNav(view: ViewId) {
     onSetView(view);
     showMobileMenu = false;
+  }
+
+  let sessionCost = $derived(() => {
+    const agentId = getActiveAgentId();
+    if (!agentId) return 0;
+    const msgs = getMessages(agentId);
+    let total = 0;
+    for (const m of msgs) {
+      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
+    }
+    return total;
+  });
+
+  async function handleLogout() {
+    await logout();
+    clearToken();
+    location.reload();
   }
 </script>
 
@@ -45,6 +78,9 @@
         <span class="agent-name">{agent.name}</span>
       </span>
     {/if}
+    {#if sessionCost() > 0}
+      <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
+    {/if}
   </div>
   <div class="right desktop-nav">
     <button class="topbar-btn" class:active={activeView === "files"} onclick={() => onSetView(activeView === "files" ? "chat" : "files")}>
@@ -59,6 +95,11 @@
     <button class="topbar-btn" class:active={activeView === "settings"} onclick={() => onSetView(activeView === "settings" ? "chat" : "settings")}>
       Settings
     </button>
+    {#if hasSession}
+      <button class="topbar-btn logout-btn" onclick={handleLogout}>
+        Logout
+      </button>
+    {/if}
   </div>
   <div class="right mobile-nav">
     <button
@@ -183,6 +224,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .session-cost {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
+  }
   .right {
     display: flex;
     gap: 4px;
@@ -209,6 +259,13 @@
     color: var(--accent);
     border-color: var(--border);
     background: var(--surface);
+  }
+  .logout-btn {
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+  .logout-btn:hover {
+    color: var(--red);
   }
 
   /* Mobile menu button */

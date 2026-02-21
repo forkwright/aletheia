@@ -16,6 +16,7 @@ import type {
   UserContentBlock,
 } from "../../../hermeneus/anthropic.js";
 import type {
+  Plan,
   RuntimeServices,
   TurnOutcome,
   TurnState,
@@ -23,7 +24,6 @@ import type {
 } from "../types.js";
 import { truncateToolResult } from "./truncate.js";
 import { PLAN_PROPOSED_MARKER } from "../../../organon/built-in/plan-propose.js";
-import type { Plan } from "../types.js";
 
 interface PlanProposalData {
   id: string;

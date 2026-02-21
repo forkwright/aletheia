@@ -27,6 +27,28 @@ export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
+// Per-million-token pricing (mirrors hermeneus/pricing.ts)
+const PRICING = {
+  input: 3,
+  output: 15,
+  cacheRead: 0.3,
+  cacheWrite: 3.75,
+};
+
+export function calculateMessageCost(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}): number {
+  return (
+    (usage.inputTokens / 1_000_000) * PRICING.input +
+    (usage.outputTokens / 1_000_000) * PRICING.output +
+    (usage.cacheReadTokens / 1_000_000) * PRICING.cacheRead +
+    (usage.cacheWriteTokens / 1_000_000) * PRICING.cacheWrite
+  );
+}
+
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;

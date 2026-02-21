@@ -258,3 +258,10 @@ export interface AgentCost {
   cost: number;
   turns: number;
 }
+
+export interface DailyCost {
+  date: string;
+  cost: number;
+  tokens: number;
+  turns: number;
+}

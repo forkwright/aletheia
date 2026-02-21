@@ -5,6 +5,8 @@
   import { onMount } from "svelte";
   import type { Agent, MetricsData } from "../../lib/types";
   import CostDashboard from "../CostDashboard.svelte";
+  import SessionManager from "./SessionManager.svelte";
+  import { fetchAuthMode, getAccessToken, logout as sessionLogout } from "../../lib/auth";
 
   const THEME_KEY = "aletheia_theme";
   const FONT_SIZE_KEY = "aletheia_font_size";
@@ -12,6 +14,7 @@
   let tokenInput = $state(getToken() ?? "");
   let agents = $state<Agent[]>([]);
   let metrics = $state<MetricsData | null>(null);
+  let isSessionAuth = $state(false);
   let theme = $state<"dark" | "light">(
     (localStorage.getItem(THEME_KEY) as "dark" | "light") ?? "dark",
   );
@@ -22,7 +25,9 @@
   onMount(async () => {
     agents = getAgents();
     try {
-      metrics = await fetchMetrics();
+      const [m, mode] = await Promise.all([fetchMetrics(), fetchAuthMode()]);
+      metrics = m;
+      isSessionAuth = mode.sessionAuth;
     } catch {
       // metrics unavailable
     }
@@ -35,7 +40,10 @@
     }
   }
 
-  function logout() {
+  async function logout() {
+    if (getAccessToken()) {
+      await sessionLogout();
+    }
     clearToken();
     location.reload();
   }
@@ -129,21 +137,28 @@
 
     <section class="settings-section">
       <h3 class="section-title">Authentication</h3>
-      <div class="auth-form">
-        <label class="settings-label">
-          Gateway Token
-          <input
-            type="password"
-            class="settings-input"
-            bind:value={tokenInput}
-            placeholder="Enter gateway auth token"
-          />
-        </label>
-        <div class="auth-actions">
-          <button class="btn-primary" onclick={saveToken}>Save Token</button>
+      {#if isSessionAuth}
+        <div class="auth-actions" style="margin-bottom: 8px">
           <button class="btn-danger" onclick={logout}>Logout</button>
         </div>
-      </div>
+        <SessionManager />
+      {:else}
+        <div class="auth-form">
+          <label class="settings-label">
+            Gateway Token
+            <input
+              type="password"
+              class="settings-input"
+              bind:value={tokenInput}
+              placeholder="Enter gateway auth token"
+            />
+          </label>
+          <div class="auth-actions">
+            <button class="btn-primary" onclick={saveToken}>Save Token</button>
+            <button class="btn-danger" onclick={logout}>Logout</button>
+          </div>
+        </div>
+      {/if}
     </section>
 
     {#if metrics}
