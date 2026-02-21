@@ -53,7 +53,7 @@ jobs:
         run: cd infrastructure/runtime && npm run lint:check
       - name: Build
         run: cd infrastructure/runtime && npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: dist
           path: infrastructure/runtime/dist/
@@ -98,7 +98,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -yqq ripgrep fd-find
           sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
       - run: cd infrastructure/runtime && npm run test:coverage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: coverage
