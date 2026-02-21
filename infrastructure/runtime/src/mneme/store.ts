@@ -1454,6 +1454,34 @@ export class SessionStore {
     return rows.map((r) => this.mapSession(r));
   }
 
+  /**
+   * For a given agent, find the canonical DM session key.
+   * This enables webchat to converge with Signal DM into a single session
+   * rather than creating isolated parallel conversations.
+   *
+   * Priority: Signal DM session with most distillations (deepest context),
+   * then most messages, then most recently active.
+   */
+  getCanonicalSessionKey(nousId: string): string | null {
+    // Find DM bindings for this agent (Signal DMs, not groups)
+    const row = this.db
+      .prepare(
+        `SELECT s.session_key
+         FROM sessions s
+         WHERE s.nous_id = ?
+           AND s.session_key LIKE 'signal:%'
+           AND s.status = 'active'
+           AND s.session_key NOT IN (
+             SELECT 'signal:' || rc.peer_id FROM routing_cache rc
+             WHERE rc.channel = 'signal' AND rc.peer_kind = 'group'
+           )
+         ORDER BY s.distillation_count DESC, s.message_count DESC, s.updated_at DESC
+         LIMIT 1`,
+      )
+      .get(nousId) as { session_key: string } | undefined;
+    return row?.session_key ?? null;
+  }
+
   // --- Thread Model (Phase 1 + 2) ---
 
   resolveThread(nousId: string, identity: string): Thread {
