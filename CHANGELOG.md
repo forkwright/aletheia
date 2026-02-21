@@ -4,6 +4,32 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.1] - 2026-02-21
+
+### Added
+- **Plugin auto-discovery** (Spec 18 P4) — scans `shared/plugins/` for plugin directories, merges with explicitly configured paths, `aletheia plugins list` CLI command
+- **Plugin path safety** (Spec 18 P5) — `realpathSync` traversal guard on auto-discovered plugins, symlink escape prevention. Explicit config paths bypass validation.
+- **Loop guard hook template** (Spec 18 P6) — `shared/hooks/_templates/loop-guard.yaml` + `.sh`, detects stuck tool-call patterns via sentinel file
+- **Encrypted memory init** (Spec 20 P4) — AES-256-GCM encryption wired at startup with salt persistence. `encryptIfEnabled`/`decryptIfNeeded` already in store; this adds `initEncryption()` call and salt management.
+- **Agent file import** (Spec 21 P2) — `aletheia import <file.agent.json>` restores workspace files, sessions with ID remapping, messages, notes, working state, distillation priming
+- **Scheduled backups** (Spec 21 P3) — `backup:all-agents` cron command, configurable destination and retention days via `BackupConfig` schema
+
+### Changed
+- CI streamlined: removed duplicate npm audit from nightly (kept in security.yml), fixed dependabot-auto-merge check name (`quality` not `typecheck`), staggered CodeQL to Wednesday, added zod major version ignore
+- Dependencies: better-sqlite3 11→12, @types/node 22→25, @vitest/coverage-v8 3→4, actions/setup-python v5→v6
+
+### Fixed
+- **Rolldown chunk circular dependency** — dynamic `import("koina/fs.js")` in loader.ts created a chunk that referenced `__exportAll` from entry.mjs, causing `TypeError: __exportAll is not a function` at startup. Converted to static import.
+- 96 lint warnings eliminated (unused imports, unsorted imports, unused parameters across 21 test files)
+- Removed dead auth scaffolding (tls.ts, sanitize.ts, retention.ts — spec 3 stubs with zero consumers)
+- Removed unused `StoreError` class
+
+### Specs Completed
+- **Spec 18** Extensibility — 6/6 phases
+- **Spec 20** Security Hardening — 4/4 phases
+
+---
+
 ## [0.10.0] - 2026-02-20
 
 ### Added
