@@ -122,11 +122,11 @@ export class ToolRegistry {
     }
   }
 
-  expireUnusedTools(sessionId: string, currentTurn: number): string[] {
+  expireUnusedTools(sessionId: string, currentTurn: number, expiryTurns?: number): string[] {
     const expired: string[] = [];
     for (const [key, entry] of this.activeTools) {
       if (entry.sessionId !== sessionId) continue;
-      if (currentTurn - entry.lastUsedTurn >= EXPIRY_TURNS) {
+      if (currentTurn - entry.lastUsedTurn >= (expiryTurns ?? EXPIRY_TURNS)) {
         expired.push(key.split(":").slice(1).join(":"));
         this.activeTools.delete(key);
       }
