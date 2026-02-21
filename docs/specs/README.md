@@ -13,28 +13,32 @@ that evolve with the system.
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
 | 16 | [Efficiency](16_efficiency.md) | 5/6 phases | Hot-reload config (5) |
+| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | 4/5 phases | Cost visibility UI (5) |
 
 ### In Progress
 
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 20 | [Security Hardening](20_security-hardening.md) | 1/4 phases | Docker sandbox (2), audit trail (3), encrypted memory (4) |
-| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | ~1.5/5 phases | Plan mode, model routing |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Phases 1b, 2a done | Release workflow (1a,1c), auth wiring (2b-2e), UI (3a-3c), failover (4a) |
-| 9 | [Graph Visualization](09_graph-visualization.md) | 3/8+ phases | Communities, search, editing |
+| 20 | [Security Hardening](20_security-hardening.md) | 1/4 phases | Docker sandbox (2), audit trail (3), encrypted memory (4) |
 
-### Draft
+### Draft — Next Up
 
-| # | Spec | Status | Scope |
-|---|------|--------|-------|
-| 18 | [Extensibility](18_extensibility.md) | Draft | Hooks, custom commands, plugins, path safety |
-| 21 | [Agent Portability](21_agent-portability.md) | Draft | Export/import agent files, scheduled backups, checkpoint time-travel |
-| 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine, IDE integration, event bus hardening, pub/sub |
-| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Agent self-construction, CLI scaffolding, onboarding wizard |
-| 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI, shared editing |
-| 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | Draft | Autonomous tool creation, strategy refinement, memory curation |
-| 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | Semantic space analysis, concept drift, embedding-level insights |
-| 24 | [Aletheia Linux](24_aletheia-linux.md) | Skeleton | OS + network integration |
+| # | Spec | Status | Scope | Value |
+|---|------|--------|-------|-------|
+| 21 | [Agent Portability](21_agent-portability.md) | Draft | Export/import, backups, time-travel | **High** — no backup story exists |
+| 18 | [Extensibility](18_extensibility.md) | Draft | Hooks, custom commands, plugins | **High** — opens the platform |
+| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Agent scaffolding, CLI, wizard | **Medium** — needed for public adoption |
+
+### Draft — Future
+
+| # | Spec | Status | Scope | Notes |
+|---|------|--------|-------|-------|
+| 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI | Nice-to-have, not blocking |
+| 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | Draft | Autonomous tool creation, memory curation | Research-grade, needs usage data first |
+| 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | Semantic space analysis, concept drift | Research-grade |
+| 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine | Premature — Cody confirmed A2A is early |
+| 24 | [Aletheia Linux](24_aletheia-linux.md) | Skeleton | OS + network integration | Long-term vision |
 
 ### Reference
 
@@ -44,29 +48,31 @@ that evolve with the system.
 
 ### Priority Order
 
-**Tier 1 — Finish what's started:**
-1. **16** Efficiency — one phase left (hot-reload config)
+**Tier 1 — Close out (1 phase each):**
+1. **16** Efficiency — hot-reload config
+2. **4** Cost-Aware Orchestration — cost visibility UI
 
-**Tier 2 — Core capabilities:**
-2. **20** Security Hardening — sandbox, audit trail, encryption
-3. **18** Extensibility — hooks + commands open the platform
-4. **21** Agent Portability — backup/export is genuinely missing
+**Tier 2 — Active work:**
+3. **3** Auth & Updates — release workflow, auth wiring, login UI
+4. **20** Security Hardening — sandbox, audit trail, encryption
 
-**Tier 3 — Platform maturity:**
-5. **4** Cost-Aware Orchestration — plan mode, routing
-6. **3** Auth & Updates — release workflow, auth wiring
-7. **9** Graph Viz — communities, search
-8. **22** Interop & Workflows — A2A, workflow engine
-9. **25** Integrated IDE — in-browser editing
-10. **26** Recursive Self-Improvement — autonomous capability growth
-11. **27** Embedding Space Intelligence — semantic analysis
-12. **5** Onboarding — capstone, ship last
-13. **24** Aletheia Linux — long-term vision
+**Tier 3 — Next up:**
+5. **21** Agent Portability — backup/export is genuinely missing
+6. **18** Extensibility — hooks + commands open the platform
+7. **5** Onboarding — needed for public adoption
+
+**Tier 4 — Future / research:**
+8. **25** Integrated IDE
+9. **26** Recursive Self-Improvement
+10. **27** Embedding Space Intelligence
+11. **22** Interop & Workflows — A2A premature per Cody
+12. **24** Aletheia Linux — long-term
 
 ## Implemented (Archived)
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Graph Visualization](archive/09_graph-visualization.md) | PRs #56, #90, #91 | 2D/3D graph, node cards, communities, search, health audit, drift detection, context lookup |
 | [Knowledge Graph](archive/07_knowledge-graph.md) | PRs #61, #85, #86 | Vector recall, Neo4j degradation, sufficiency gates, entity CRUD, tool memory |
 | [Chat Output Quality](archive/11_chat-output-quality.md) | PR #86 | Narration filter, cost badge, GFM checkboxes, rich components |
 | [Session Continuity](archive/12_session-continuity.md) | PRs #53, #85 | Expanded tail, structured summaries, working state, agent notes, post-distillation priming |
@@ -86,7 +92,7 @@ that evolve with the system.
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
 
-**Score: 18 archived, 5 in progress, 8 draft/skeleton.**
+**Score: 19 archived, 4 in progress, 8 draft/skeleton.**
 
 ## Conventions
 
