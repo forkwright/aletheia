@@ -1,58 +1,12 @@
-// Structured planning with verification loops
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+// Structured planning with verification loops — SQLite-backed
 import { createLogger } from "../../koina/logger.js";
+import { generateId } from "../../koina/crypto.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
+import type { SessionStore, ExecutionPlanStep } from "../../mneme/store.js";
 
 const log = createLogger("organon.plan");
 
-interface PlanStep {
-  id: string;
-  description: string;
-  status: "pending" | "in_progress" | "completed" | "failed" | "skipped";
-  acceptanceCriteria?: string | undefined;
-  dependsOn: string[];
-  result?: string | undefined;
-  failureReason?: string | undefined;
-  startedAt?: string | undefined;
-  completedAt?: string | undefined;
-}
-
-interface Plan {
-  id: string;
-  nousId: string;
-  sessionId: string;
-  goal: string;
-  status: "planning" | "executing" | "completed" | "failed" | "abandoned";
-  steps: PlanStep[];
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string | undefined;
-  summary?: string | undefined;
-}
-
-function plansFilePath(workspace: string): string {
-  return join(workspace, "..", "..", "shared", "blackboard", "plans.jsonl");
-}
-
-function loadPlans(filePath: string): Plan[] {
-  if (!existsSync(filePath)) return [];
-  const content = readFileSync(filePath, "utf-8").trim();
-  if (!content) return [];
-  return content.split("\n").map((line) => JSON.parse(line) as Plan);
-}
-
-function savePlans(filePath: string, plans: Plan[]): void {
-  const dir = dirname(filePath);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(filePath, plans.map((p) => JSON.stringify(p)).join("\n") + "\n");
-}
-
-function generatePlanId(): string {
-  return `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-}
-
-export function createPlanTools(): ToolHandler[] {
+export function createPlanTools(store: SessionStore): ToolHandler[] {
   const planCreate: ToolHandler = {
     definition: {
       name: "plan_create",
@@ -103,15 +57,14 @@ export function createPlanTools(): ToolHandler[] {
       const goal = input["goal"] as string;
       const rawSteps = input["steps"] as Array<Record<string, unknown>>;
 
-      const steps: PlanStep[] = rawSteps.map((s) => ({
+      const steps: ExecutionPlanStep[] = rawSteps.map((s) => ({
         id: s["id"] as string,
         description: s["description"] as string,
-        status: "pending",
-        acceptanceCriteria: s["acceptanceCriteria"] as string | undefined,
+        status: "pending" as const,
+        ...(s["acceptanceCriteria"] ? { acceptanceCriteria: s["acceptanceCriteria"] as string } : {}),
         dependsOn: (s["dependsOn"] as string[]) ?? [],
       }));
 
-      // Validate dependencies reference valid step IDs
       const stepIds = new Set(steps.map((s) => s.id));
       for (const step of steps) {
         for (const dep of step.dependsOn) {
@@ -121,31 +74,23 @@ export function createPlanTools(): ToolHandler[] {
         }
       }
 
-      const plan: Plan = {
-        id: generatePlanId(),
-        nousId: context.nousId,
+      const planId = `plan_${generateId()}`;
+      store.createExecutionPlan({
+        id: planId,
         sessionId: context.sessionId,
+        nousId: context.nousId,
         goal,
-        status: "executing",
         steps,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      });
 
-      const filePath = plansFilePath(context.workspace);
-      const plans = loadPlans(filePath);
-      plans.push(plan);
-      savePlans(filePath, plans);
+      log.info(`Plan created: ${planId} for ${context.nousId} — ${steps.length} steps`);
 
-      log.info(`Plan created: ${plan.id} for ${context.nousId} — ${steps.length} steps`);
-
-      // Return which steps are immediately actionable (no dependencies)
       const actionable = steps
         .filter((s) => s.dependsOn.length === 0)
         .map((s) => s.id);
 
       return JSON.stringify({
-        planId: plan.id,
+        planId,
         stepCount: steps.length,
         actionableNow: actionable,
       });
@@ -168,22 +113,17 @@ export function createPlanTools(): ToolHandler[] {
         required: ["planId"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    async execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
-      const filePath = plansFilePath(context.workspace);
-      const plans = loadPlans(filePath);
-      const plan = plans.find((p) => p.id === planId);
+      const plan = store.getPlan(planId);
+      if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
 
-      if (!plan) {
-        return JSON.stringify({ error: `Plan not found: ${planId}` });
-      }
+      const steps = plan.steps as unknown as ExecutionPlanStep[];
+      const completed = steps.filter((s) => s.status === "completed");
+      const failed = steps.filter((s) => s.status === "failed");
+      const pending = steps.filter((s) => s.status === "pending");
+      const inProgress = steps.filter((s) => s.status === "in_progress");
 
-      const completed = plan.steps.filter((s) => s.status === "completed");
-      const failed = plan.steps.filter((s) => s.status === "failed");
-      const pending = plan.steps.filter((s) => s.status === "pending");
-      const inProgress = plan.steps.filter((s) => s.status === "in_progress");
-
-      // Find actionable steps: pending with all dependencies completed
       const completedIds = new Set(completed.map((s) => s.id));
       const actionable = pending.filter((s) =>
         s.dependsOn.every((dep) => completedIds.has(dep)),
@@ -191,10 +131,10 @@ export function createPlanTools(): ToolHandler[] {
 
       return JSON.stringify({
         planId: plan.id,
-        goal: plan.goal,
+        goal: plan.steps.length > 0 ? (steps[0] as ExecutionPlanStep).description : "",
         status: plan.status,
-        progress: `${completed.length}/${plan.steps.length} complete`,
-        steps: plan.steps.map((s) => ({
+        progress: `${completed.length}/${steps.length} complete`,
+        steps: steps.map((s) => ({
           id: s.id,
           status: s.status,
           description: s.description,
@@ -230,41 +170,36 @@ export function createPlanTools(): ToolHandler[] {
         required: ["planId", "stepId"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    async execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
       const stepId = input["stepId"] as string;
       const result = input["result"] as string | undefined;
 
-      const filePath = plansFilePath(context.workspace);
-      const plans = loadPlans(filePath);
-      const plan = plans.find((p) => p.id === planId);
+      const plan = store.getPlan(planId);
       if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
 
-      const step = plan.steps.find((s) => s.id === stepId);
+      const steps = plan.steps as unknown as ExecutionPlanStep[];
+      const step = steps.find((s) => s.id === stepId);
       if (!step) return JSON.stringify({ error: `Step not found: ${stepId}` });
 
       step.status = "completed";
-      step.result = result;
+      if (result) step.result = result;
       step.completedAt = new Date().toISOString();
-      plan.updatedAt = new Date().toISOString();
 
-      // Check if all steps are done
-      const allDone = plan.steps.every((s) =>
+      const allDone = steps.every((s) =>
         s.status === "completed" || s.status === "skipped",
       );
+
+      store.updatePlanSteps(planId, steps);
       if (allDone) {
-        plan.status = "completed";
-        plan.completedAt = new Date().toISOString();
+        store.updatePlanStatus(planId, "completed");
         log.info(`Plan completed: ${planId}`);
       }
 
-      savePlans(filePath, plans);
-
-      // Find newly actionable steps
       const completedIds = new Set(
-        plan.steps.filter((s) => s.status === "completed").map((s) => s.id),
+        steps.filter((s) => s.status === "completed").map((s) => s.id),
       );
-      const newlyActionable = plan.steps.filter(
+      const newlyActionable = steps.filter(
         (s) =>
           s.status === "pending" &&
           s.dependsOn.every((dep) => completedIds.has(dep)),
@@ -273,7 +208,7 @@ export function createPlanTools(): ToolHandler[] {
       return JSON.stringify({
         stepId,
         status: "completed",
-        planStatus: plan.status,
+        planStatus: allDone ? "completed" : plan.status,
         nextSteps: newlyActionable.map((s) => s.id),
       });
     },
@@ -294,32 +229,30 @@ export function createPlanTools(): ToolHandler[] {
         required: ["planId", "stepId", "reason"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    async execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
       const stepId = input["stepId"] as string;
       const reason = input["reason"] as string;
       const abandon = input["abandon"] as boolean | undefined;
 
-      const filePath = plansFilePath(context.workspace);
-      const plans = loadPlans(filePath);
-      const plan = plans.find((p) => p.id === planId);
+      const plan = store.getPlan(planId);
       if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
 
-      const step = plan.steps.find((s) => s.id === stepId);
+      const steps = plan.steps as unknown as ExecutionPlanStep[];
+      const step = steps.find((s) => s.id === stepId);
       if (!step) return JSON.stringify({ error: `Step not found: ${stepId}` });
 
       step.status = "failed";
       step.failureReason = reason;
       step.completedAt = new Date().toISOString();
-      plan.updatedAt = new Date().toISOString();
+
+      let planStatus = plan.status;
 
       if (abandon) {
-        plan.status = "abandoned";
-        plan.completedAt = new Date().toISOString();
+        planStatus = "abandoned";
         log.info(`Plan abandoned: ${planId} — step ${stepId} failed: ${reason}`);
       } else {
-        // Skip steps that depend on the failed step (cascade)
-        const skippable = findDependents(plan.steps, stepId);
+        const skippable = findDependents(steps, stepId);
         for (const s of skippable) {
           if (s.status === "pending") {
             s.status = "skipped";
@@ -327,25 +260,24 @@ export function createPlanTools(): ToolHandler[] {
           }
         }
 
-        // Check if any steps can still proceed
-        const remaining = plan.steps.filter(
+        const remaining = steps.filter(
           (s) => s.status === "pending" || s.status === "in_progress",
         );
         if (remaining.length === 0) {
-          plan.status = "failed";
-          plan.completedAt = new Date().toISOString();
+          planStatus = "failed";
           log.info(`Plan failed: ${planId} — no remaining steps`);
         }
       }
 
-      savePlans(filePath, plans);
+      store.updatePlanSteps(planId, steps);
+      store.updatePlanStatus(planId, planStatus);
 
       return JSON.stringify({
         stepId,
         status: "failed",
         reason,
-        planStatus: plan.status,
-        skipped: plan.steps
+        planStatus,
+        skipped: steps
           .filter((s) => s.status === "skipped")
           .map((s) => s.id),
       });
@@ -355,11 +287,10 @@ export function createPlanTools(): ToolHandler[] {
   return [planCreate, planStatus, planStepComplete, planStepFail];
 }
 
-function findDependents(steps: PlanStep[], failedId: string): PlanStep[] {
-  const dependents: PlanStep[] = [];
+function findDependents(steps: ExecutionPlanStep[], failedId: string): ExecutionPlanStep[] {
+  const dependents: ExecutionPlanStep[] = [];
   const failedIds = new Set([failedId]);
 
-  // Cascade: find all steps that transitively depend on the failed step
   let changed = true;
   while (changed) {
     changed = false;

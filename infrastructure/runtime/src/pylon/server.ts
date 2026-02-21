@@ -1001,19 +1001,19 @@ export function createGateway(
     // Queue the execution trigger as a user message
     store.queueMessage(plan.sessionId, `[PLAN_APPROVED:${planId}] ${summary}`, "system");
 
-    // If there's no active turn, send a message to start one
-    const lockKey = `${plan.nousId}:${plan.sessionId}`;
+    // Look up session to get the correct session_key for lock routing
+    const session = store.findSessionById(plan.sessionId);
+    const sessionKey = session?.sessionKey ?? "main";
+    const lockKey = `${plan.nousId}:${sessionKey}`;
+
     if (!manager.isSessionActive(lockKey)) {
-      // Fire a new turn to pick up the plan
-      const triggerMsg = `Execute the approved plan ${planId}. The plan steps are already stored — retrieve them and execute each approved step in order.`;
-      // Use streaming endpoint internally
+      // No active turn — fire a new turn to pick up the plan
       setImmediate(() => {
         const gen = manager.handleMessageStreaming({
-          text: triggerMsg,
+          text: `Execute the approved plan ${planId}. The plan steps are already stored — retrieve them and execute each approved step in order.`,
           nousId: plan.nousId,
-          sessionKey: plan.sessionId.includes(":") ? plan.sessionId : "main",
+          sessionKey,
         });
-        // Consume the generator (fire-and-forget)
         (async () => { for await (const _ of gen) { /* drain */ } })().catch(() => {});
       });
     }

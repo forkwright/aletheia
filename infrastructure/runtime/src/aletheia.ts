@@ -20,6 +20,8 @@ import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
 import { memoryCorrectTool } from "./organon/built-in/memory-correct.js";
 import { memoryForgetTool } from "./organon/built-in/memory-forget.js";
+import { mem0RetractTool } from "./organon/built-in/mem0-retract.js";
+import { mem0AuditTool } from "./organon/built-in/mem0-audit.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
@@ -34,6 +36,7 @@ import { createPlanTools } from "./organon/built-in/plan.js";
 import { createPlanProposeHandler } from "./organon/built-in/plan-propose.js";
 import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
+import { createSelfEvaluateTool } from "./organon/built-in/self-evaluate.js";
 import { createWhatDoIKnowTool } from "./organon/built-in/what-do-i-know.js";
 import { createRecentCorrectionsTool } from "./organon/built-in/recent-corrections.js";
 import { createBlackboardTool } from "./organon/built-in/blackboard.js";
@@ -156,6 +159,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register({ ...factRetractTool, category: "available" as const });
   tools.register({ ...memoryCorrectTool, category: "available" as const });
   tools.register({ ...memoryForgetTool, category: "available" as const });
+  tools.register({ ...mem0RetractTool, category: "available" as const });
+  tools.register({ ...mem0AuditTool, category: "available" as const });
   tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
@@ -173,7 +178,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(sessionStatusTool);
 
   // Planning tools (available on-demand)
-  for (const planTool of createPlanTools()) {
+  for (const planTool of createPlanTools(store)) {
     planTool.category = "available";
     tools.register(planTool);
   }
@@ -275,6 +280,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const correctionsTool = createRecentCorrectionsTool(store);
   correctionsTool.category = "available";
   tools.register(correctionsTool);
+  const selfEvalTool = createSelfEvaluateTool(store, competence, uncertainty);
+  selfEvalTool.category = "available";
+  tools.register(selfEvalTool);
 
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
