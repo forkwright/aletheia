@@ -31,11 +31,11 @@ export async function loadSessions(nousId: string): Promise<void> {
       !s.sessionKey.startsWith("agent:") &&
       !s.sessionKey.startsWith("prosoche"),
     );
-    // Auto-select: prefer Signal session (shared with phone), then most recent
+    // Auto-select: prefer the Signal session for continuity (shared with phone), then most recent
     if (sessions.length > 0) {
       const current = sessions.find((s) => s.id === activeSessionId);
       if (!current) {
-        const signal = sessions.find((s) => s.sessionKey.startsWith("signal:"));
+        const signal = sessions.find((s) => s.sessionKey.startsWith("signal:") && s.nousId === nousId);
         activeSessionId = signal?.id ?? sessions[0]!.id;
       }
     } else {
@@ -52,7 +52,10 @@ export function setActiveSession(id: string): void {
 
 export function getActiveSessionKey(): string {
   const session = getActiveSession();
-  return session?.sessionKey ?? `web:${Date.now()}`;
+  if (!session) return `web:${Date.now()}`;
+  // Signal session keys are valid — the webchat should share the same conversation
+  // thread as Signal for continuity. The server-side guard prevents cross-agent leakage.
+  return session.sessionKey;
 }
 
 export function createNewSession(_nousId: string): string {

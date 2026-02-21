@@ -401,13 +401,25 @@ export function createGateway(
       return c.json({ error: "agentId and message required" }, 400);
     }
 
+    // Guard: verify signal: session key ownership (same as streaming endpoint)
+    let resolvedKey = sessionKey ?? "main";
+    if (resolvedKey.startsWith("signal:")) {
+      const signalPeerId = resolvedKey.slice("signal:".length);
+      const routedOwner = store.resolveRoute("signal", "group", signalPeerId)
+        ?? store.resolveRoute("signal", "dm", signalPeerId);
+      if (routedOwner && routedOwner !== agentId) {
+        resolvedKey = `web:${Date.now()}`;
+        log.warn(`API session key ownership mismatch: signal key belongs to ${routedOwner}, not ${agentId}`);
+      }
+    }
+
     try {
       const result = await withTurnAsync(
-        { channel: "api", nousId: agentId, sessionKey: sessionKey ?? "main" },
+        { channel: "api", nousId: agentId, sessionKey: resolvedKey },
         () => manager.handleMessage({
           text: message,
           nousId: agentId,
-          sessionKey: sessionKey ?? "main",
+          sessionKey: resolvedKey,
           ...(media?.length ? { media } : {}),
         }),
       );
@@ -479,7 +491,25 @@ export function createGateway(
     }
 
     const encoder = new TextEncoder();
-    const resolvedSessionKey = sessionKey ?? "main";
+    const rawSessionKey = sessionKey ?? "main";
+
+    // Guard: if the webchat sends a signal: session key, verify agent ownership.
+    // Signal session keys are bound to specific agents via routing cache.
+    // If agentId doesn't match the routed owner, the client has a stale session
+    // reference (e.g., switched agents without refreshing). Create a fresh session.
+    let resolvedSessionKey = rawSessionKey;
+    if (rawSessionKey.startsWith("signal:")) {
+      const signalPeerId = rawSessionKey.slice("signal:".length);
+      const routedOwner = store.resolveRoute("signal", "group", signalPeerId)
+        ?? store.resolveRoute("signal", "dm", signalPeerId);
+      if (routedOwner && routedOwner !== agentId) {
+        resolvedSessionKey = `web:${Date.now()}`;
+        log.warn(
+          `Session key ownership mismatch: "${rawSessionKey}" belongs to ${routedOwner}, ` +
+          `not ${agentId}. Reassigned to "${resolvedSessionKey}".`,
+        );
+      }
+    }
 
     // Thread resolution: webchat identity is "anonymous" until auth is wired
     let webchatThreadId: string | undefined;
