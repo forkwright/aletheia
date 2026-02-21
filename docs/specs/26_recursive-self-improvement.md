@@ -1,4 +1,4 @@
-# Spec 24: Recursive Self-Improvement
+# Spec 26: Recursive Self-Improvement
 
 Aletheia agents autonomously improve their own capabilities — creating tools, refining strategies, proposing code patches, and curating their own memory — within a layered safety architecture that keeps the base model frozen and gates all structural changes behind automated verification.
 

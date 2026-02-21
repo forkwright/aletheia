@@ -1,6 +1,6 @@
 # Spec: Sleep-Time Compute — Reflective Memory
 
-**Status:** Phase 1-3 implemented (PR pending)
+**Status:** Complete — All 3 phases implemented (PR #80)
 **Author:** Syn
 **Date:** 2026-02-21
 **Source:** Gap Analysis F-11, Letta's sleep-time multi-agent pattern

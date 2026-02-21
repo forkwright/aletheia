@@ -1,4 +1,4 @@
-# Spec 18: Integrated IDE
+# Spec 25: Integrated IDE
 
 Lightweight file editor embedded in the Aletheia web UI, enabling humans and agents to work on the same files without context-switching to an external IDE.
 
