@@ -1,0 +1,13 @@
+# Example: Run a backup script after every distillation
+# Copy to shared/hooks/ to activate
+
+name: backup-on-distill
+event: distill:after
+description: Back up session data after distillation completes
+
+handler:
+  type: shell
+  command: /bin/sh
+  args: ["-c", "cp /root/.aletheia/sessions.db /root/.aletheia/sessions.db.bak-$(date +%Y%m%d%H%M)"]
+  timeout: 30s
+  failAction: warn

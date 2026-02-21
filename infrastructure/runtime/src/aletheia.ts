@@ -76,6 +76,7 @@ import type { AletheiaConfig } from "./taxis/schema.js";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
+import { registerHooks, type HookRegistry } from "./koina/hooks.js";
 
 const log = createLogger("aletheia");
 
@@ -338,6 +339,21 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.info(`Loaded ${runtime.plugins.size} plugins`);
     runtime.manager.setPlugins(runtime.plugins);
     await runtime.plugins.dispatchStart();
+  }
+
+  // --- Declarative Hooks ---
+  // Load YAML hook definitions from shared/hooks/ and wire to event bus.
+  // These run shell commands at lifecycle points — no TypeScript required.
+  const hooksDir = join(paths.shared, "hooks");
+  const hookRegistry = registerHooks(hooksDir);
+  // Also load per-nous hooks from each agent workspace (nous/<id>/hooks/)
+  const perNousHookRegistries: HookRegistry[] = [];
+  for (const agent of config.agents.list) {
+    const agentHooksDir = join(paths.nous, agent.id, "hooks");
+    const agentHooks = registerHooks(agentHooksDir);
+    if (agentHooks.hooks.length > 0) {
+      perNousHookRegistries.push(agentHooks);
+    }
   }
 
   // --- Auth ---
@@ -672,6 +688,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
     }
     await closeBrowser().catch(() => {});
     await runtime.plugins.dispatchShutdown();
+    hookRegistry.teardown();
+    for (const reg of perNousHookRegistries) reg.teardown();
     runtime.shutdown();
     process.exit(0);
   };

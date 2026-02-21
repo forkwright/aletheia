@@ -1,0 +1,14 @@
+# Example: Per-agent hook — only fires for Demiurge
+# Copy to shared/hooks/ or nous/demiurge/hooks/ to activate
+
+name: craft-journal
+event: turn:after
+description: Append craft session notes for Demiurge's domain
+nousFilter: [demiurge]
+
+handler:
+  type: shell
+  command: /bin/sh
+  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> /mnt/ssd/aletheia/nous/demiurge/craft-journal.log"]
+  timeout: 5s
+  failAction: silent
