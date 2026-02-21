@@ -1,7 +1,7 @@
 // Execute stage — LLM streaming + tool loop
 import { createLogger } from "../../../koina/logger.js";
 import { PipelineError } from "../../../koina/errors.js";
-import { estimateTokens } from "../../../hermeneus/token-counter.js";
+import { estimateTokens, truncateToolResult } from "../../../hermeneus/token-counter.js";
 import { getReversibility, requiresSimulation } from "../../../organon/reversibility.js";
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
 import { requiresApproval as checkApproval } from "../../../organon/approval.js";
@@ -362,8 +362,11 @@ export async function* executeStreaming(
           ...(isError ? { is_error: true } : {}),
         });
 
-        services.store.appendMessage(sessionId, "tool_result", toolResult, {
-          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
+        // Truncate for storage — model sees full result for current turn,
+        // but future turns see truncated version to reduce context bloat
+        const storedResult = truncateToolResult(toolUse.name, toolResult);
+        services.store.appendMessage(sessionId, "tool_result", storedResult, {
+          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
 
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {
@@ -645,8 +648,11 @@ export async function executeBuffered(
           ...(isError ? { is_error: true } : {}),
         });
 
-        services.store.appendMessage(sessionId, "tool_result", toolResult, {
-          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(toolResult),
+        // Truncate for storage — model sees full result for current turn,
+        // but future turns see truncated version to reduce context bloat
+        const storedResultBuf = truncateToolResult(toolUse.name, toolResult);
+        services.store.appendMessage(sessionId, "tool_result", storedResultBuf, {
+          toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResultBuf),
         });
 
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {

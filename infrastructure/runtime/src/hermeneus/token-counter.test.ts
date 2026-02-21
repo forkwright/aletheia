@@ -5,6 +5,7 @@ import {
   estimateTokens,
   estimateTokensSafe,
   estimateToolDefTokens,
+  truncateToolResult,
   SAFETY_MARGIN,
 } from "./token-counter.js";
 
@@ -73,5 +74,49 @@ describe("estimateToolDefTokens", () => {
     const oneResult = estimateToolDefTokens([{ name: "a" }]);
     const twoResult = estimateToolDefTokens([{ name: "a" }, { name: "b" }]);
     expect(twoResult).toBeGreaterThan(oneResult);
+  });
+});
+
+describe("truncateToolResult", () => {
+  it("returns short results unchanged", () => {
+    const result = truncateToolResult("grep", "line1\nline2\nline3");
+    expect(result).toBe("line1\nline2\nline3");
+  });
+
+  it("truncates results exceeding tool-specific limit", () => {
+    // grep limit is 5000 chars
+    const longResult = "x".repeat(8000);
+    const truncated = truncateToolResult("grep", longResult);
+    expect(truncated.length).toBeLessThan(longResult.length);
+    expect(truncated).toContain("chars truncated for storage");
+  });
+
+  it("preserves head and tail", () => {
+    const head = "HEAD_MARKER_" + "a".repeat(2000);
+    const middle = "m".repeat(5000);
+    const tail = "b".repeat(2000) + "_TAIL_MARKER";
+    const longResult = head + middle + tail;
+    const truncated = truncateToolResult("exec", longResult); // exec limit: 8000
+    expect(truncated).toContain("HEAD_MARKER_");
+    expect(truncated).toContain("_TAIL_MARKER");
+  });
+
+  it("uses default limit for unknown tools", () => {
+    // Default is 5000 chars
+    const longResult = "x".repeat(6000);
+    const truncated = truncateToolResult("unknown_tool", longResult);
+    expect(truncated.length).toBeLessThan(longResult.length);
+    expect(truncated).toContain("chars truncated for storage");
+  });
+
+  it("respects tool-specific limits", () => {
+    // read limit is 10000, grep limit is 5000
+    const result = "x".repeat(7000);
+    const readTruncated = truncateToolResult("read", result);
+    const grepTruncated = truncateToolResult("grep", result);
+    // read should NOT truncate (7000 < 10000)
+    expect(readTruncated).toBe(result);
+    // grep SHOULD truncate (7000 > 5000)
+    expect(grepTruncated).toContain("chars truncated for storage");
   });
 });
