@@ -48,6 +48,7 @@ function writeState(agentId: string): AgentChatState {
       error: null,
       abortController: null,
       pendingApproval: null,
+      pendingPlan: null,
     };
   }
   return states[agentId]!;

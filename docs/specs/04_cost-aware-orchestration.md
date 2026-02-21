@@ -1,6 +1,6 @@
 # Spec: Cost-Aware Orchestration & Interactive Turn Model
 
-**Status:** Phases 1-3 done (59cde8b, PR #59, PR #89). Phase 4 (routing) and Phase 5 (cost visibility) remaining.
+**Status:** Phases 1-4 done (59cde8b, PR #59, PR #89). Phase 5 (cost visibility) remaining — assigned to Claude Code.
 **Author:** Syn
 **Date:** 2026-02-19
 
