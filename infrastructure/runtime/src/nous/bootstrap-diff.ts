@@ -106,9 +106,31 @@ export function logBootstrapDiff(
       );
     }
     if (diff.changed.length > 0) {
-      log.info(
-        `Bootstrap files changed for ${diff.nousId}: ${diff.changed.join(", ")}`,
-      );
+      // Identify cache-invalidating changes: static files changing between turns
+      // forces Anthropic to re-cache the entire prefix (expensive).
+      const STATIC_FILES = new Set(["SOUL.md", "USER.md", "AGENTS.md", "IDENTITY.md"]);
+      const SEMI_STATIC_FILES = new Set(["GOALS.md", "TOOLS.md", "MEMORY.md", "EVAL_FEEDBACK.md"]);
+      const staticChanges = diff.changed.filter((f) => STATIC_FILES.has(f));
+      const semiStaticChanges = diff.changed.filter((f) => SEMI_STATIC_FILES.has(f));
+      const dynamicChanges = diff.changed.filter((f) => !STATIC_FILES.has(f) && !SEMI_STATIC_FILES.has(f));
+
+      if (staticChanges.length > 0) {
+        log.warn(
+          `Cache invalidation: static files changed for ${diff.nousId}: ${staticChanges.join(", ")} — ` +
+          `full prefix re-cache required (all 4 cache breakpoints invalidated)`,
+        );
+      }
+      if (semiStaticChanges.length > 0) {
+        log.info(
+          `Cache invalidation: semi-static files changed for ${diff.nousId}: ${semiStaticChanges.join(", ")} — ` +
+          `breakpoint 2 re-cached (breakpoint 1 preserved if static unchanged)`,
+        );
+      }
+      if (dynamicChanges.length > 0) {
+        log.debug(
+          `Dynamic bootstrap files changed for ${diff.nousId}: ${dynamicChanges.join(", ")} (no cache impact)`,
+        );
+      }
     }
     if (diff.added.length > 0) {
       log.info(
