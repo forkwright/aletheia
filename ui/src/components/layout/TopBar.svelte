@@ -36,6 +36,17 @@
     showMobileMenu = false;
   }
 
+  let sessionCost = $derived(() => {
+    const agentId = getActiveAgentId();
+    if (!agentId) return 0;
+    const msgs = getMessages(agentId);
+    let total = 0;
+    for (const m of msgs) {
+      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
+    }
+    return total;
+  });
+
   async function handleLogout() {
     await logout();
     clearToken();
@@ -66,6 +77,9 @@
         {/if}
         <span class="agent-name">{agent.name}</span>
       </span>
+    {/if}
+    {#if sessionCost() > 0}
+      <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
     {/if}
   </div>
   <div class="right desktop-nav">
@@ -209,6 +223,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .session-cost {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
   }
   .right {
     display: flex;

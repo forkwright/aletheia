@@ -1,4 +1,4 @@
-import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage, EntityDetail } from "./types";
+import type { Agent, Session, HistoryMessage, MetricsData, CostSummary, DailyCost, GraphData, FileTreeEntry, GitFileStatus, CommandInfo, Thread, ThreadMessage, EntityDetail } from "./types";
 import { getAccessToken, refresh } from "./auth";
 
 const TOKEN_KEY = "aletheia_token";
@@ -125,6 +125,11 @@ export async function fetchCostSummary(): Promise<CostSummary> {
 
 export async function fetchSessionCosts(sessionId: string): Promise<unknown> {
   return fetchJson(`/api/costs/session/${sessionId}`);
+}
+
+export async function fetchDailyCosts(days = 30): Promise<DailyCost[]> {
+  const data = await fetchJson<{ daily: DailyCost[] }>(`/api/costs/daily?days=${days}`);
+  return data.daily;
 }
 
 export interface GraphExportParams {

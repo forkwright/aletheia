@@ -2,6 +2,7 @@
   import { fetchMetrics, fetchCostSummary } from "../../lib/api";
   import { formatTokens, formatUptime, formatCost, formatTimeSince } from "../../lib/format";
   import Badge from "../shared/Badge.svelte";
+  import UsageChart from "./UsageChart.svelte";
   import type { MetricsData, CostSummary } from "../../lib/types";
 
   let metrics = $state<MetricsData | null>(null);
@@ -71,6 +72,10 @@
           {/each}
         </div>
       </div>
+    </div>
+
+    <div class="section">
+      <UsageChart />
     </div>
 
     <div class="section">
