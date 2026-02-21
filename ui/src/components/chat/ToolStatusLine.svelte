@@ -238,4 +238,12 @@
     transform: translateX(1px);
     color: var(--accent);
   }
+
+  @media (max-width: 768px) {
+    .tool-status-line {
+      font-size: 11px;
+      padding: 4px 8px;
+      max-width: calc(100vw - 80px);
+    }
+  }
 </style>

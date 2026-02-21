@@ -396,6 +396,7 @@
     background: var(--bg-elevated);
     flex-shrink: 0;
     position: relative;
+    padding-bottom: var(--safe-bottom);
   }
   .input-bar.drag-over {
     border-color: var(--accent);
@@ -673,5 +674,42 @@
   .slash-desc {
     color: var(--text-secondary);
     font-size: 12px;
+  }
+
+  @media (max-width: 768px) {
+    .input-area {
+      padding: 8px 10px;
+    }
+    .input-wrapper {
+      padding: 2px 2px 2px 6px;
+    }
+    textarea {
+      font-size: 16px; /* Prevents iOS zoom on focus */
+      min-height: 36px;
+      padding: 6px 0;
+    }
+    .send-btn {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .attach-btn {
+      width: 32px;
+      height: 32px;
+    }
+    .stop-btn {
+      width: 32px;
+      height: 32px;
+    }
+    .attachment-thumb {
+      width: 64px;
+      height: 64px;
+    }
+    .slash-menu {
+      left: 10px;
+      right: 10px;
+    }
+    .slash-item {
+      padding: 10px 12px;
+    }
   }
 </style>

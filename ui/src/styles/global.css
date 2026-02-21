@@ -25,6 +25,12 @@
   --topbar-height: 48px;
   --radius: 8px;
   --radius-sm: 6px;
+
+  /* Safe area insets for notch/dynamic island/home bar */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 *, *::before, *::after {
@@ -45,10 +51,14 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Prevent iOS bounce/overscroll */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 #app {
-  height: 100vh;
+  height: 100dvh; /* dynamic viewport height — respects iOS keyboard */
+  height: 100vh; /* fallback for older browsers */
   display: flex;
   flex-direction: column;
 }
@@ -101,5 +111,18 @@ button {
 @media (max-width: 768px) {
   :root {
     --sidebar-width: 280px;
+    --topbar-height: 44px;
+  }
+
+  /* Prevent double-tap zoom on interactive elements */
+  button, a, input, textarea, select, label {
+    touch-action: manipulation;
+  }
+}
+
+/* iOS keyboard handling — use dvh when available */
+@supports (height: 100dvh) {
+  #app {
+    height: 100dvh;
   }
 }

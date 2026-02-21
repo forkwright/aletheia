@@ -603,6 +603,26 @@
       top: 0;
       bottom: 0;
       z-index: 50;
+      border-left: none;
+    }
+    .panel-header {
+      padding: 12px 14px 8px;
+      padding-top: calc(12px);
+    }
+    .tool-row {
+      padding: 8px 14px;
+    }
+    .tool-detail {
+      padding: 4px 10px 8px 36px;
+    }
+    .tool-preview {
+      padding: 0 10px 4px 36px;
+    }
+    .tool-result {
+      font-size: 10px;
+    }
+    .tool-input-json {
+      font-size: 9px;
     }
   }
 </style>

@@ -65,10 +65,27 @@
 .chat-body {
   flex: 1;
   min-width: 0;
+  /* Prevent long content from blowing out container */
+  overflow: hidden;
 }
 
 .chat-content {
   margin-top: 2px;
+  overflow-x: auto;
 }
 
 /* Tool pill styles removed — replaced by ToolStatusLine component */
+
+@media (max-width: 768px) {
+  .chat-msg {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .chat-avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .chat-avatar-emoji {
+    font-size: 16px;
+  }
+}

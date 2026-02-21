@@ -256,4 +256,28 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  @media (max-width: 768px) {
+    .approval-card {
+      margin: 6px 0;
+      padding: 10px 12px;
+    }
+    .approval-actions {
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .approval-buttons {
+      justify-content: stretch;
+    }
+    .btn-approve, .btn-deny {
+      flex: 1;
+      justify-content: center;
+      padding: 8px 14px;
+    }
+    .approval-input {
+      font-size: 11px;
+      max-height: 150px;
+    }
+  }
 </style>
