@@ -1,4 +1,4 @@
-import { Marked } from "marked";
+import { Marked, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 
 // Selective highlight.js — only the languages we actually need (~90% smaller)
@@ -52,9 +52,31 @@ const marked = new Marked({
   },
 });
 
+// Explicit table renderer — bypasses potential internal state issues with
+// marked's default table rendering in browser bundles
+marked.use({
+  renderer: {
+    table({ header, rows }: Tokens.Table): string {
+      const cell = (c: Tokens.TableCell): string => {
+        const raw = c.tokens.map((t) => ("raw" in t ? (t as { raw: string }).raw : "")).join("");
+        const inline = marked.parseInline(raw) as string;
+        const content = typeof inline === "string" ? inline : String(inline ?? "");
+        const tag = c.header ? "th" : "td";
+        const align = c.align ? ` align="${c.align}"` : "";
+        return `<${tag}${align}>${content}</${tag}>\n`;
+      };
+      const head = "<tr>\n" + header.map(cell).join("") + "</tr>\n";
+      const body = rows.map((row: Tokens.TableCell[]) => "<tr>\n" + row.map(cell).join("") + "</tr>\n").join("");
+      return `<table>\n<thead>\n${head}</thead>\n${body ? `<tbody>${body}</tbody>` : ""}</table>\n`;
+    },
+  },
+});
+
 export function renderMarkdown(text: string): string {
-  const raw = marked.parse(text, { async: false }) as string;
-  return DOMPurify.sanitize(raw, {
+  if (typeof text !== "string") text = String(text ?? "");
+  const raw = marked.parse(text, { async: false });
+  const html = typeof raw === "string" ? raw : String(raw ?? "");
+  return DOMPurify.sanitize(html, {
     ADD_ATTR: ["class", "type", "checked", "disabled"],
     ADD_TAGS: ["input"],
   });
