@@ -1,6 +1,6 @@
 # Spec 23: Memory Pipeline — Extraction, Quality, and Retrieval
 
-**Status:** Draft  
+**Status:** Active — Phases 1-3 done, 4+6 partial, 5 pending  
 **Author:** Syn  
 **Date:** 2026-02-21  
 **Spec:** 23  
