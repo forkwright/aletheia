@@ -6,15 +6,29 @@
     loading = false,
     onNodeClick,
     onRefresh,
+    onDeleteEntity,
   }: {
     drift: DriftData | null;
     loading?: boolean;
     onNodeClick?: (id: string) => void;
     onRefresh?: () => void;
+    onDeleteEntity?: (name: string) => Promise<void>;
   } = $props();
 
   let activeSection = $state<"suggestions" | "orphans" | "stale" | "clusters">("suggestions");
   let expanded = $state(true);
+  let pendingAction = $state<string | null>(null);
+
+  async function executeDelete(entity: string) {
+    if (!onDeleteEntity) return;
+    pendingAction = entity;
+    try {
+      await onDeleteEntity(entity);
+      onRefresh?.();
+    } finally {
+      pendingAction = null;
+    }
+  }
 </script>
 
 <div class="drift-panel" class:collapsed={!expanded}>
@@ -78,6 +92,15 @@
                     {suggestion.entity}
                   </button>
                   <span class="suggestion-reason">{suggestion.reason}</span>
+                  {#if onDeleteEntity && (suggestion.type === "delete" || suggestion.type === "merge_or_delete")}
+                    <button
+                      class="action-btn delete-btn"
+                      disabled={pendingAction === suggestion.entity}
+                      onclick={() => executeDelete(suggestion.entity)}
+                    >
+                      {pendingAction === suggestion.entity ? "…" : "Delete"}
+                    </button>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -257,6 +280,23 @@
     text-align: left;
   }
   .entity-link:hover { text-decoration: underline; }
+
+  .action-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid;
+    margin-top: 2px;
+    align-self: flex-start;
+  }
+  .delete-btn {
+    background: rgba(248, 81, 73, 0.1);
+    border-color: var(--red, #f85149);
+    color: var(--red, #f85149);
+  }
+  .delete-btn:hover:not(:disabled) { background: rgba(248, 81, 73, 0.25); }
+  .delete-btn:disabled { opacity: 0.4; cursor: default; }
 
   .drift-row {
     display: flex;
