@@ -370,6 +370,228 @@ async function flushReflectionToMemory(
   }
 }
 
+// --- Phase 2: Weekly cross-session reflection ---
+
+const WEEKLY_REFLECTION_PROMPT = `You are performing a weekly reflection on an agent's distillation summaries from the past week.
+These summaries capture what happened across multiple sessions. Your job is to find trajectory-level patterns.
+
+## What to look for
+
+1. **TRAJECTORY** — How did the user's focus shift across the week?
+   - "Early in the week, focus was on X; shifted to Y after the decision about Z"
+   - "Consistent daily attention to X, suggesting ongoing priority"
+
+2. **TOPIC_DRIFT** — Things that were discussed but dropped.
+   - "X was a topic Monday-Wednesday but hasn't appeared since"
+   - "User asked about Y three times but never followed through"
+
+3. **WEEKLY_PATTERNS** — Recurring weekly behaviors.
+   - "User tends to do deep technical work early week and planning late week"
+   - "Architecture conversations cluster on specific days"
+
+4. **UNRESOLVED_ARC** — Multi-session threads that haven't concluded.
+   - "Migration project mentioned in 3 sessions without completion marker"
+
+Return ONLY valid JSON:
+{
+  "trajectory": ["description"],
+  "topic_drift": ["description"],
+  "weekly_patterns": ["description"],
+  "unresolved_arcs": ["description"]
+}`;
+
+export interface WeeklyReflectionResult {
+  nousId: string;
+  summariesReviewed: number;
+  trajectory: string[];
+  topicDrift: string[];
+  weeklyPatterns: string[];
+  unresolvedArcs: string[];
+  tokensUsed: number;
+  durationMs: number;
+}
+
+/**
+ * Weekly cross-session reflection over distillation summaries.
+ * Looks for trajectory-level patterns across the past N days.
+ */
+export async function weeklyReflection(
+  store: SessionStore,
+  router: ProviderRouter,
+  nousId: string,
+  opts: {
+    model: string;
+    lookbackDays?: number;
+  },
+): Promise<WeeklyReflectionResult> {
+  const startTime = Date.now();
+  const lookbackDays = opts.lookbackDays ?? 7;
+  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const summaries = store.getDistillationSummaries(nousId, since);
+
+  if (summaries.length === 0) {
+    log.info(`No distillation summaries for ${nousId} in last ${lookbackDays} days`);
+    return {
+      nousId,
+      summariesReviewed: 0,
+      trajectory: [],
+      topicDrift: [],
+      weeklyPatterns: [],
+      unresolvedArcs: [],
+      tokensUsed: 0,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  // Build the conversation from summaries (chronological)
+  const conversation = summaries
+    .reverse() // oldest first
+    .map((s) => {
+      const date = new Date(s.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return `[${date}] ${s.summary}`;
+    })
+    .join("\n\n---\n\n");
+
+  log.info(`Weekly reflection for ${nousId}: ${summaries.length} summaries, ${lookbackDays} day window`);
+
+  const result = await router.complete({
+    model: opts.model,
+    system: WEEKLY_REFLECTION_PROMPT,
+    messages: [{ role: "user", content: conversation }],
+    maxTokens: 4096,
+    temperature: 0.3,
+  });
+
+  const tokensUsed = (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0);
+
+  const text = result.content
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+
+  const parsed = extractJson(text);
+  if (!parsed) {
+    log.warn(`Weekly reflection returned no parseable JSON. Raw: ${text.slice(0, 300)}`);
+    return {
+      nousId,
+      summariesReviewed: summaries.length,
+      trajectory: [],
+      topicDrift: [],
+      weeklyPatterns: [],
+      unresolvedArcs: [],
+      tokensUsed,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  const weeklyResult: WeeklyReflectionResult = {
+    nousId,
+    summariesReviewed: summaries.length,
+    trajectory: asStringArray(parsed["trajectory"]),
+    topicDrift: asStringArray(parsed["topic_drift"]),
+    weeklyPatterns: asStringArray(parsed["weekly_patterns"]),
+    unresolvedArcs: asStringArray(parsed["unresolved_arcs"]),
+    tokensUsed,
+    durationMs: Date.now() - startTime,
+  };
+
+  const totalFindings = weeklyResult.trajectory.length +
+    weeklyResult.topicDrift.length +
+    weeklyResult.weeklyPatterns.length +
+    weeklyResult.unresolvedArcs.length;
+
+  log.info(
+    `Weekly reflection for ${nousId}: ${totalFindings} findings ` +
+    `(${weeklyResult.trajectory.length} trajectory, ${weeklyResult.topicDrift.length} drift, ` +
+    `${weeklyResult.weeklyPatterns.length} patterns, ${weeklyResult.unresolvedArcs.length} arcs)`,
+  );
+
+  return weeklyResult;
+}
+
+// --- Phase 3: Self-Assessment Integration ---
+
+export interface SelfAssessment {
+  nousId: string;
+  /** How often this agent gets corrected (lower = more calibrated) */
+  correctionRate: number;
+  /** How many unresolved threads accumulate (lower = better attention) */
+  unresolvedRate: number;
+  /** Number of contradictions detected (indicates memory quality issues) */
+  contradictionCount: number;
+  /** Trend: improving, stable, or degrading based on recent reflections */
+  trend: "improving" | "stable" | "degrading" | "insufficient_data";
+  /** Raw data points */
+  dataPoints: number;
+}
+
+/**
+ * Compute a self-assessment from recent reflection logs.
+ * Looks at the last N reflections to derive calibration signals.
+ */
+export function computeSelfAssessment(
+  store: SessionStore,
+  nousId: string,
+  opts?: { limit?: number },
+): SelfAssessment {
+  const limit = opts?.limit ?? 14; // two weeks of nightly reflections
+  const reflections = store.getReflectionLog(nousId, { limit });
+
+  if (reflections.length < 3) {
+    return {
+      nousId,
+      correctionRate: 0,
+      unresolvedRate: 0,
+      contradictionCount: 0,
+      trend: "insufficient_data",
+      dataPoints: reflections.length,
+    };
+  }
+
+  // Compute rates across all reflections
+  const totalSessions = reflections.reduce((sum, r) => sum + r.sessionsReviewed, 0);
+  const totalCorrections = reflections.reduce((sum, r) => sum + r.correctionsFound, 0);
+  const totalUnresolved = reflections.reduce((sum, r) => sum + r.unresolvedThreadsFound, 0);
+  const totalContradictions = reflections.reduce((sum, r) => sum + r.contradictionsFound, 0);
+
+  const correctionRate = totalSessions > 0 ? totalCorrections / totalSessions : 0;
+  const unresolvedRate = totalSessions > 0 ? totalUnresolved / totalSessions : 0;
+
+  // Compute trend: compare first half vs second half of reflections
+  const mid = Math.floor(reflections.length / 2);
+  // reflections are in DESC order (newest first)
+  const recent = reflections.slice(0, mid);
+  const older = reflections.slice(mid);
+
+  const recentCorrections = recent.reduce((sum, r) => sum + r.correctionsFound, 0);
+  const olderCorrections = older.reduce((sum, r) => sum + r.correctionsFound, 0);
+  const recentUnresolved = recent.reduce((sum, r) => sum + r.unresolvedThreadsFound, 0);
+  const olderUnresolved = older.reduce((sum, r) => sum + r.unresolvedThreadsFound, 0);
+
+  // Lower is better for both metrics
+  const recentScore = recentCorrections + recentUnresolved;
+  const olderScore = olderCorrections + olderUnresolved;
+
+  let trend: SelfAssessment["trend"];
+  if (recentScore < olderScore * 0.7) {
+    trend = "improving";
+  } else if (recentScore > olderScore * 1.3) {
+    trend = "degrading";
+  } else {
+    trend = "stable";
+  }
+
+  return {
+    nousId,
+    correctionRate: Math.round(correctionRate * 100) / 100,
+    unresolvedRate: Math.round(unresolvedRate * 100) / 100,
+    contradictionCount: totalContradictions,
+    trend,
+    dataPoints: reflections.length,
+  };
+}
+
 function emptyFindings(): ReflectionFindings {
   return {
     patterns: [],

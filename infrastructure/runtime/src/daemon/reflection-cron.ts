@@ -1,6 +1,6 @@
 // Nightly reflection cron — sleep-time compute for all active agents
 import { createLogger } from "../koina/logger.js";
-import { reflectOnAgent } from "../distillation/reflect.js";
+import { reflectOnAgent, weeklyReflection } from "../distillation/reflect.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { MemoryFlushTarget } from "../distillation/hooks.js";
@@ -109,4 +109,70 @@ export async function runNightlyReflection(
   );
 
   return { agentsReflected, totalFindings, totalMemoriesStored, errors };
+}
+
+
+/**
+ * Run weekly cross-session reflection for all configured agents.
+ * Designed to be called from a cron job (schedule: "0 4 * * 0" — Sunday 4am).
+ */
+export async function runWeeklyReflection(
+  store: SessionStore,
+  router: ProviderRouter,
+  config: AletheiaConfig,
+  opts: { model?: string; lookbackDays?: number } = {},
+): Promise<{
+  agentsReflected: number;
+  totalFindings: number;
+  errors: string[];
+}> {
+  const model = opts.model ?? config.agents.defaults.compaction.distillationModel;
+  const lookbackDays = opts.lookbackDays ?? 7;
+
+  const agentIds = Object.keys(config.agents.list);
+  if (agentIds.length === 0) {
+    log.info("No agents configured — skipping weekly reflection");
+    return { agentsReflected: 0, totalFindings: 0, errors: [] };
+  }
+
+  log.info(`Starting weekly reflection for ${agentIds.length} agents (model: ${model}, lookback: ${lookbackDays}d)`);
+
+  let agentsReflected = 0;
+  let totalFindings = 0;
+  const errors: string[] = [];
+
+  for (const nousId of agentIds) {
+    try {
+      const result = await weeklyReflection(store, router, nousId, {
+        model,
+        lookbackDays,
+      });
+
+      if (result.summariesReviewed > 0) {
+        agentsReflected++;
+        const findings = result.trajectory.length +
+          result.topicDrift.length +
+          result.weeklyPatterns.length +
+          result.unresolvedArcs.length;
+        totalFindings += findings;
+
+        log.info(
+          `Weekly reflection for ${nousId}: ${result.summariesReviewed} summaries, ` +
+          `${findings} findings, ${result.tokensUsed} tokens, ${result.durationMs}ms`,
+        );
+      }
+    } catch (err) {
+      const msg = `Weekly reflection failed for ${nousId}: ${err instanceof Error ? err.message : err}`;
+      log.error(msg);
+      errors.push(msg);
+    }
+  }
+
+  log.info(
+    `Weekly reflection complete: ${agentsReflected}/${agentIds.length} agents, ` +
+    `${totalFindings} findings` +
+    (errors.length > 0 ? `, ${errors.length} errors` : ""),
+  );
+
+  return { agentsReflected, totalFindings, errors };
 }

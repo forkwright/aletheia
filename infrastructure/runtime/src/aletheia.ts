@@ -62,7 +62,7 @@ import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
-import { runNightlyReflection } from "./daemon/reflection-cron.js";
+import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -488,6 +488,19 @@ export async function startRuntime(configPath?: string): Promise<void> {
     );
     return `Reflected: ${result.agentsReflected} agents, ${result.totalFindings} findings, ${result.totalMemoriesStored} memories stored` +
       (result.errors.length > 0 ? ` (${result.errors.length} errors)` : "");
+  });
+
+  cron.registerCommand("reflection:weekly", async () => {
+    const result = await runWeeklyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        lookbackDays: 7,
+      },
+    );
+    return `Weekly reflection: ${result.agentsReflected} agents, ${result.totalFindings} findings`;
   });
 
   if (config.cron.enabled) {

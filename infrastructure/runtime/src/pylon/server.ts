@@ -14,6 +14,7 @@ import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
 import type { McpClientManager } from "../organon/mcp-client.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
+import { computeSelfAssessment } from "../distillation/reflect.js";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { eventBus, type EventName } from "../koina/event-bus.js";
 import { join, resolve } from "node:path";
@@ -848,6 +849,12 @@ export function createGateway(
     const limit = parseInt(c.req.query("limit") ?? "10", 10);
     const logs = store.getReflectionLog(nousId, { limit });
     return c.json({ nousId, reflections: logs });
+  });
+
+  app.get("/api/reflection/:nousId/assessment", (c) => {
+    const nousId = c.req.param("nousId");
+    const assessment = computeSelfAssessment(store, nousId);
+    return c.json({ nousId, assessment });
   });
 
   app.get("/api/reflection/:nousId/latest", (c) => {

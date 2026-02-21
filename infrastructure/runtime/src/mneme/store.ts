@@ -1854,6 +1854,35 @@ export class SessionStore {
     };
   }
 
+  /**
+   * Get distillation summaries for a nous within a time range.
+   * Summaries are assistant messages containing "Distillation #" in their content.
+   */
+  getDistillationSummaries(
+    nousId: string,
+    since: string,
+    limit = 50,
+  ): Array<{ sessionId: string; summary: string; createdAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.session_id, m.content, m.created_at
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.nous_id = ? AND m.role = 'assistant'
+           AND m.content LIKE '%Distillation #%'
+           AND m.created_at >= ?
+         ORDER BY m.id DESC
+         LIMIT ?`,
+      )
+      .all(nousId, since, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      sessionId: r["session_id"] as string,
+      summary: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
   // --- Reflection Log ---
 
   recordReflection(record: {
@@ -1900,7 +1929,7 @@ export class SessionStore {
     const limit = opts?.limit ?? 30;
     const rows = this.db
       .prepare(
-        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY reflected_at DESC LIMIT ?",
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT ?",
       )
       .all(nousId, limit) as Record<string, unknown>[];
 
@@ -1910,7 +1939,7 @@ export class SessionStore {
   getLastReflection(nousId: string): ReflectionLog | null {
     const row = this.db
       .prepare(
-        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY reflected_at DESC LIMIT 1",
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT 1",
       )
       .get(nousId) as Record<string, unknown> | undefined;
     return row ? this.mapReflectionLog(row) : null;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { reflectOnAgent, type ReflectionOpts } from "./reflect.js";
+import { reflectOnAgent, weeklyReflection, computeSelfAssessment, type ReflectionOpts } from "./reflect.js";
 import { SessionStore } from "../mneme/store.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 
@@ -264,5 +264,181 @@ describe("reflection store methods", () => {
     expect(last).not.toBeNull();
     expect(last!.patternsFound).toBe(1);
     expect(last!.sessionsReviewed).toBe(1);
+  });
+});
+
+
+describe("weeklyReflection", () => {
+  it("returns empty when no distillation summaries exist", async () => {
+    const store = makeStore();
+    const router = makeRouter({});
+
+    const result = await weeklyReflection(store, router, "syn", {
+      model: "claude-haiku-4-5-20251001",
+    });
+
+    expect(result.summariesReviewed).toBe(0);
+    expect(result.trajectory).toHaveLength(0);
+    expect(router.complete).not.toHaveBeenCalled();
+  });
+
+  it("reflects on distillation summaries from past week", async () => {
+    const store = makeStore();
+    const session = store.createSession("syn", "main");
+
+    // Add some distillation summary messages
+    store.appendMessage(session.id, "assistant", "[Distillation #1]\n\nUser worked on spec system and merged several PRs.", { tokenEstimate: 100 });
+    store.appendMessage(session.id, "assistant", "[Distillation #2]\n\nUser shifted focus to gap analysis and reflection systems.", { tokenEstimate: 100 });
+
+    const weeklyFindings = {
+      trajectory: ["Focus shifted from spec system to reflection infrastructure"],
+      topic_drift: ["Docker optimization mentioned early but dropped"],
+      weekly_patterns: ["Deep technical work in evening hours"],
+      unresolved_arcs: ["Mem0 sidecar connection issue persists"],
+    };
+
+    const router = makeRouter(weeklyFindings);
+    const result = await weeklyReflection(store, router, "syn", {
+      model: "claude-haiku-4-5-20251001",
+    });
+
+    expect(result.summariesReviewed).toBe(2);
+    expect(result.trajectory).toHaveLength(1);
+    expect(result.topicDrift).toHaveLength(1);
+    expect(result.weeklyPatterns).toHaveLength(1);
+    expect(result.unresolvedArcs).toHaveLength(1);
+    expect(result.tokensUsed).toBeGreaterThan(0);
+  });
+
+  it("handles unparseable response gracefully", async () => {
+    const store = makeStore();
+    const session = store.createSession("syn", "main");
+    store.appendMessage(session.id, "assistant", "[Distillation #1]\n\nSome summary.", { tokenEstimate: 50 });
+
+    const router = {
+      complete: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "Not valid JSON" }],
+        usage: { inputTokens: 500, outputTokens: 200 },
+      }),
+      completeStreaming: vi.fn(),
+      registerProvider: vi.fn(),
+    } as unknown as ProviderRouter;
+
+    const result = await weeklyReflection(store, router, "syn", {
+      model: "claude-haiku-4-5-20251001",
+    });
+
+    expect(result.summariesReviewed).toBe(1);
+    expect(result.trajectory).toHaveLength(0);
+  });
+});
+
+describe("getDistillationSummaries", () => {
+  it("returns only messages with Distillation # marker", () => {
+    const store = makeStore();
+    const session = store.createSession("syn", "main");
+
+    store.appendMessage(session.id, "assistant", "Regular response", { tokenEstimate: 10 });
+    store.appendMessage(session.id, "assistant", "[Distillation #1]\n\nSummary text", { tokenEstimate: 50 });
+    store.appendMessage(session.id, "user", "Question about distillation", { tokenEstimate: 10 });
+    store.appendMessage(session.id, "assistant", "[Distillation #2]\n\nAnother summary", { tokenEstimate: 50 });
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const summaries = store.getDistillationSummaries("syn", since);
+
+    expect(summaries).toHaveLength(2);
+    expect(summaries[0]!.summary).toContain("Distillation #2");
+    expect(summaries[1]!.summary).toContain("Distillation #1");
+  });
+});
+
+
+describe("computeSelfAssessment", () => {
+  it("returns insufficient_data with fewer than 3 reflections", () => {
+    const store = makeStore();
+    const result = computeSelfAssessment(store, "syn");
+    expect(result.trend).toBe("insufficient_data");
+    expect(result.dataPoints).toBe(0);
+  });
+
+  it("computes correction rate and unresolved rate", () => {
+    const store = makeStore();
+
+    // Seed 4 reflections with varying findings
+    for (let i = 0; i < 4; i++) {
+      store.recordReflection({
+        nousId: "syn",
+        sessionsReviewed: 2,
+        messagesReviewed: 100,
+        findings: {
+          patterns: ["p1"],
+          contradictions: i < 2 ? ["c1"] : [],
+          corrections: i % 2 === 0 ? ["fix1", "fix2"] : [],
+          preferences: [],
+          relationships: [],
+          unresolvedThreads: i > 1 ? ["u1"] : [],
+        },
+        memoriesStored: 1,
+        tokensUsed: 5000,
+        durationMs: 1000,
+        model: "haiku",
+      });
+    }
+
+    const result = computeSelfAssessment(store, "syn");
+    expect(result.dataPoints).toBe(4);
+    expect(result.correctionRate).toBeGreaterThan(0); // 4 corrections / 8 sessions
+    expect(result.contradictionCount).toBe(2);
+    expect(result.trend).not.toBe("insufficient_data");
+  });
+
+  it("detects improving trend when recent reflections have fewer issues", () => {
+    const store = makeStore();
+
+    // Older reflections (lots of corrections)
+    for (let i = 0; i < 4; i++) {
+      store.recordReflection({
+        nousId: "syn",
+        sessionsReviewed: 1,
+        messagesReviewed: 50,
+        findings: {
+          patterns: [],
+          contradictions: [],
+          corrections: ["fix1", "fix2", "fix3"],
+          preferences: [],
+          relationships: [],
+          unresolvedThreads: ["u1", "u2"],
+        },
+        memoriesStored: 0,
+        tokensUsed: 3000,
+        durationMs: 500,
+        model: "haiku",
+      });
+    }
+
+    // Recent reflections (fewer corrections)
+    for (let i = 0; i < 4; i++) {
+      store.recordReflection({
+        nousId: "syn",
+        sessionsReviewed: 1,
+        messagesReviewed: 50,
+        findings: {
+          patterns: [],
+          contradictions: [],
+          corrections: [],
+          preferences: [],
+          relationships: [],
+          unresolvedThreads: [],
+        },
+        memoriesStored: 0,
+        tokensUsed: 3000,
+        durationMs: 500,
+        model: "haiku",
+      });
+    }
+
+    const result = computeSelfAssessment(store, "syn");
+    // Recent (first 4 in DESC order = the zeros) vs older (last 4 = the 5-each)
+    expect(result.trend).toBe("improving");
   });
 });
