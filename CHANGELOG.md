@@ -4,6 +4,64 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.3] - 2026-02-22
+
+### Added
+- **Runtime code patching** (Spec 26 P5) — `propose_patch` and `rollback_patch` tools let agents modify their own source code with automated safety gates (tsc + vitest + backup/restore). Patchable dirs: `organon/`, `nous/`, `distillation/`, `daemon/`. Rate limited: 1/hr/agent, 3/day total.
+- **Evolutionary config search** (Spec 26 P6) — `evolution:nightly` cron mutates pipeline configs (recall, tools, notes) via Haiku, benchmarks variants against approval-signal tasks, promotes winners with 24h auto-adopt window and Signal notification. Archive capped at 5 variants per agent.
+- **Checkpoint time-travel** (Spec 21 P4) — `aletheia fork <session-id> --at <N>` creates a new session branched from distillation checkpoint N. API endpoints: `GET /api/sessions/:id/checkpoints`, `POST /api/sessions/:id/fork`.
+- **Pipeline config save** — `savePipelineConfig()` function for writing validated configs back to disk
+
+### Specs Completed
+- **Spec 26** Recursive Self-Improvement — 6/6 phases
+- **Spec 21** Agent Portability — 4/4 phases
+
+---
+
+## [0.10.2] - 2026-02-21
+
+### Added
+- **Update notification badge** (Spec 3 P3b) — TopBar polls `/api/system/update-status`, shows green version badge when update available
+- **Update API endpoint** (Spec 3 P3c) — `POST /api/system/update` runs git pull + rebuild, returns status
+- **Credential failover** (Spec 3 P4a) — `ProviderRouter.complete()` tries backup API keys from `~/.aletheia/credentials/anthropic.json` on recoverable errors (429/5xx)
+
+### Fixed
+- **`[object Object]` in webchat** — LLM sometimes returns structured objects in string arrays during distillation extraction and working state updates. Added `toStringArray()` filter to all 9 array fields across `extract.ts` and `working-state.ts`.
+
+### Changed
+- **Tool workspace scope removed** — file tools (read, write, edit, ls, grep, find) no longer constrained to workspace + allowedRoots via `safePath()`. Now use plain `resolve()`, matching `exec` tool behavior. Deleted `safe-path.ts` and tests.
+
+### Specs Completed
+- **Spec 3** Auth & Updates — all phases complete
+
+---
+
+## [0.10.1] - 2026-02-21
+
+### Added
+- **Plugin auto-discovery** (Spec 18 P4) — scans `shared/plugins/` for plugin directories, merges with explicitly configured paths, `aletheia plugins list` CLI command
+- **Plugin path safety** (Spec 18 P5) — `realpathSync` traversal guard on auto-discovered plugins, symlink escape prevention. Explicit config paths bypass validation.
+- **Loop guard hook template** (Spec 18 P6) — `shared/hooks/_templates/loop-guard.yaml` + `.sh`, detects stuck tool-call patterns via sentinel file
+- **Encrypted memory init** (Spec 20 P4) — AES-256-GCM encryption wired at startup with salt persistence. `encryptIfEnabled`/`decryptIfNeeded` already in store; this adds `initEncryption()` call and salt management.
+- **Agent file import** (Spec 21 P2) — `aletheia import <file.agent.json>` restores workspace files, sessions with ID remapping, messages, notes, working state, distillation priming
+- **Scheduled backups** (Spec 21 P3) — `backup:all-agents` cron command, configurable destination and retention days via `BackupConfig` schema
+
+### Changed
+- CI streamlined: removed duplicate npm audit from nightly (kept in security.yml), fixed dependabot-auto-merge check name (`quality` not `typecheck`), staggered CodeQL to Wednesday, added zod major version ignore
+- Dependencies: better-sqlite3 11→12, @types/node 22→25, @vitest/coverage-v8 3→4, actions/setup-python v5→v6
+
+### Fixed
+- **Rolldown chunk circular dependency** — dynamic `import("koina/fs.js")` in loader.ts created a chunk that referenced `__exportAll` from entry.mjs, causing `TypeError: __exportAll is not a function` at startup. Converted to static import.
+- 96 lint warnings eliminated (unused imports, unsorted imports, unused parameters across 21 test files)
+- Removed dead auth scaffolding (tls.ts, sanitize.ts, retention.ts — spec 3 stubs with zero consumers)
+- Removed unused `StoreError` class
+
+### Specs Completed
+- **Spec 18** Extensibility — 6/6 phases
+- **Spec 20** Security Hardening — 4/4 phases
+
+---
+
 ## [0.10.0] - 2026-02-20
 
 ### Added

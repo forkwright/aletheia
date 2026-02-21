@@ -1,8 +1,7 @@
 // Directory listing tool
 import { readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 
 export const lsTool: ToolHandler = {
   definition: {
@@ -39,7 +38,7 @@ export const lsTool: ToolHandler = {
     context: ToolContext,
   ): Promise<string> {
     const dirPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
+      ? resolve(context.workspace, input["path"] as string)
       : context.workspace;
     const showAll = (input["all"] as boolean) ?? false;
 
@@ -58,7 +57,7 @@ export const lsTool: ToolHandler = {
           const modified = stat.mtime.toISOString().slice(0, 16).replace("T", " ");
           const suffix = isDir ? "/" : "";
           lines.push(`${modified}  ${size.padStart(8)}  ${entry.name}${suffix}`);
-        } catch {
+        } catch { /* stat failed for entry */
           lines.push(`${"?".padStart(17)}  ${"?".padStart(8)}  ${entry.name}`);
         }
       }

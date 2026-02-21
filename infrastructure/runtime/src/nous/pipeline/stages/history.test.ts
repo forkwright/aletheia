@@ -1,6 +1,6 @@
 // History stage tests
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TurnState, RuntimeServices } from "../types.js";
+import type { RuntimeServices, TurnState } from "../types.js";
 
 vi.mock("../../../hermeneus/token-counter.js", () => ({
   estimateTokens: vi.fn().mockReturnValue(10),

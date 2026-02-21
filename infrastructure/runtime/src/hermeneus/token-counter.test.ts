@@ -1,13 +1,13 @@
 // Token counter tests
 import { describe, expect, it } from "vitest";
 import {
+  dynamicThinkingBudget,
   estimateMessageTokens,
   estimateTokens,
   estimateTokensSafe,
   estimateToolDefTokens,
-  truncateToolResult,
-  dynamicThinkingBudget,
   SAFETY_MARGIN,
+  truncateToolResult,
 } from "./token-counter.js";
 
 describe("estimateTokens", () => {

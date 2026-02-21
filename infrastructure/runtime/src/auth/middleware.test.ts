@@ -1,6 +1,6 @@
 // Auth middleware tests
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createAuthMiddleware, createAuthRoutes, type AuthConfig } from "./middleware.js";
+import { type AuthConfig, createAuthMiddleware, createAuthRoutes } from "./middleware.js";
 import type { Context, Next } from "hono";
 import Database from "better-sqlite3";
 import { AuthSessionStore } from "./sessions.js";
@@ -10,7 +10,7 @@ import { signToken } from "./tokens.js";
 
 function makeContext(overrides?: Record<string, unknown>): { c: Context; json: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn>; status: number } {
   const headers = new Map<string, string>();
-  const queryParams = new Map<string, string>();
+  const _queryParams = new Map<string, string>();
   const json = vi.fn().mockReturnValue(new Response());
   const set = vi.fn();
   const headerFn = vi.fn().mockImplementation((name: string, value?: string) => {

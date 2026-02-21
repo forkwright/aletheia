@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { getConnectionStatus } from "../../stores/connection.svelte";
   import { getActiveAgent, getActiveAgentId } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
@@ -19,6 +20,8 @@
   let agent = $derived(getActiveAgent());
   let hasSession = $derived(!!getAccessToken());
   let showMobileMenu = $state(false);
+  let updateAvailable = $state(false);
+  let updateVersion = $state("");
 
   let sessionCost = $derived(() => {
     const agentId = getActiveAgentId();
@@ -36,22 +39,24 @@
     showMobileMenu = false;
   }
 
-  let sessionCost = $derived(() => {
-    const agentId = getActiveAgentId();
-    if (!agentId) return 0;
-    const msgs = getMessages(agentId);
-    let total = 0;
-    for (const m of msgs) {
-      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
-    }
-    return total;
-  });
-
   async function handleLogout() {
     await logout();
     clearToken();
     location.reload();
   }
+
+  onMount(async () => {
+    try {
+      const res = await fetch("/api/system/update-status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.available) {
+          updateAvailable = true;
+          updateVersion = data.latest ?? "";
+        }
+      }
+    } catch { /* ignore */ }
+  });
 </script>
 
 <header class="topbar">
@@ -80,6 +85,9 @@
     {/if}
     {#if sessionCost() > 0}
       <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
+    {/if}
+    {#if updateAvailable}
+      <span class="update-badge" title="Update available: v{updateVersion}">v{updateVersion}</span>
     {/if}
   </div>
   <div class="right desktop-nav">
@@ -232,6 +240,16 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1px 6px;
+  }
+  .update-badge {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--green);
+    background: color-mix(in srgb, var(--green) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+    border-radius: 8px;
+    padding: 1px 6px;
+    cursor: default;
   }
   .right {
     display: flex;

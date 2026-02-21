@@ -1,6 +1,9 @@
 // Uncertainty quantification — track calibration of agent confidence estimates
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createLogger } from "../koina/logger.js";
+
+const log = createLogger("uncertainty");
 
 interface CalibrationPoint {
   nousId: string;
@@ -32,7 +35,8 @@ export class UncertaintyTracker {
     if (existsSync(this.filePath)) {
       try {
         this.points = JSON.parse(readFileSync(this.filePath, "utf-8"));
-      } catch {
+      } catch (err) {
+        log.debug(`Calibration data corrupt, starting fresh: ${err instanceof Error ? err.message : err}`);
         this.points = [];
       }
     }

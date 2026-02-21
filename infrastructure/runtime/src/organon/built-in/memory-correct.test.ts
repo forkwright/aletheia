@@ -1,5 +1,5 @@
 // Memory correction tool tests
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { memoryCorrectTool } from "./memory-correct.js";
 import type { ToolContext } from "../registry.js";
 

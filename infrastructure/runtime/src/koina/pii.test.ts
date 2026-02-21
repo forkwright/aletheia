@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scanText, type PiiScanConfig } from "./pii.js";
+import { type PiiScanConfig, scanText } from "./pii.js";
 
 const mask: PiiScanConfig = { mode: "mask" };
 const hash: PiiScanConfig = { mode: "hash" };

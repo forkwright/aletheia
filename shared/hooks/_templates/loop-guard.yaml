@@ -1,0 +1,14 @@
+# Loop guard — write sentinel when an agent appears stuck in a tool loop
+# Copy to shared/hooks/ and set enabled: true to activate.
+# Supplements the built-in loop-detector.ts (which runs inside the pipeline).
+
+name: loop-guard
+event: turn:after
+enabled: false
+description: External loop guard — writes sentinel file on high tool call count
+
+handler:
+  type: shell
+  command: /mnt/ssd/aletheia/shared/hooks/_templates/loop-guard.sh
+  timeout: 5s
+  failAction: silent

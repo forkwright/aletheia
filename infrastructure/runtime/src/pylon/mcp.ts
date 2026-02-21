@@ -39,7 +39,7 @@ export function loadMcpTokens(credPath: string): McpToken[] {
   try {
     const raw = readFileSync(tokensPath, "utf-8");
     return JSON.parse(raw) as McpToken[];
-  } catch {
+  } catch { /* MCP init failed */
     log.warn("Failed to load MCP tokens");
     return [];
   }
@@ -116,7 +116,7 @@ export function createMcpRoutes(
           const keepAlive = setInterval(() => {
             try {
               controller.enqueue(encoder.encode(": ping\n\n"));
-            } catch {
+            } catch { /* MCP tool call failed */
               clearInterval(keepAlive);
             }
           }, 30000);
@@ -155,7 +155,7 @@ export function createMcpRoutes(
         return c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Request too large" } }, 413);
       }
       request = JSON.parse(raw) as JsonRpcRequest;
-    } catch {
+    } catch { /* MCP cleanup failed */
       return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
     }
 

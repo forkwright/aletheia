@@ -19,7 +19,7 @@ export function isWhisperAvailable(): boolean {
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     execFileSync("which", [WHISPER_BINARY], { timeout: 5000 });
     return true;
-  } catch {
+  } catch { /* transcription unavailable */
     return false;
   }
 }

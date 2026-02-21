@@ -2,7 +2,7 @@
 import { createLogger } from "../../koina/logger.js";
 import { generateId } from "../../koina/crypto.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import type { SessionStore, ExecutionPlanStep } from "../../mneme/store.js";
+import type { ExecutionPlanStep, SessionStore } from "../../mneme/store.js";
 
 const log = createLogger("organon.plan");
 

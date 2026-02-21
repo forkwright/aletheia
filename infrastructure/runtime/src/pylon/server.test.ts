@@ -1,6 +1,6 @@
 // Pylon server tests
 import { describe, expect, it, vi } from "vitest";
-import { createGateway, setCronRef, setWatchdogRef } from "./server.js";
+import { createGateway } from "./server.js";
 
 function makeConfig() {
   return {

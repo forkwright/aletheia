@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type DockerExecOpts, dockerAvailable, execInDocker, resetDockerCheck } from "./docker-exec.js";
+import { dockerAvailable, type DockerExecOpts, execInDocker, resetDockerCheck } from "./docker-exec.js";
 
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),

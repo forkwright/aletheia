@@ -88,7 +88,7 @@ export async function finalize(
       .then((newState) => {
         if (newState) services.store.updateWorkingState(sessionId, newState);
       })
-      .catch(() => {});
+      .catch((err) => { log.debug(`Working state extraction failed: ${err instanceof Error ? err.message : err}`); });
   }
 
   // After-turn memory extraction — lightweight, non-blocking, on cheap model
@@ -129,7 +129,7 @@ export async function finalize(
           }
         }
       })
-      .catch(() => {}); // Non-blocking, never fail the turn
+      .catch((err) => { log.debug(`Turn fact extraction failed: ${err instanceof Error ? err.message : err}`); });
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

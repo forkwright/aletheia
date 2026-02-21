@@ -126,7 +126,7 @@ if (jsonLogPath) {
     }
     try {
       appendFileSync(jsonLogPath, JSON.stringify(entry) + "\n");
-    } catch {
+    } catch { /* log write failed — cannot recurse */
       // Don't recurse on log failure
     }
   });

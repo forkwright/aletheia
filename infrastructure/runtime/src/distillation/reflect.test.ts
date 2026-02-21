@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { reflectOnAgent, weeklyReflection, computeSelfAssessment, type ReflectionOpts } from "./reflect.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeSelfAssessment, type ReflectionOpts, reflectOnAgent, weeklyReflection } from "./reflect.js";
 import { SessionStore } from "../mneme/store.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 

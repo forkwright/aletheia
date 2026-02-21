@@ -36,7 +36,7 @@ export async function preprocessLinks(
 async function fetchPreview(url: string): Promise<string | null> {
   try {
     await validateUrl(url);
-  } catch {
+  } catch { /* preprocessing failed — use original */
     log.debug(`Skipping private/blocked URL: ${url}`);
     return null;
   }

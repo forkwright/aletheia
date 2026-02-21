@@ -7,7 +7,7 @@ import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import { tryReloadConfig } from "../taxis/loader.js";
-import { createAuthMiddleware, createAuthRoutes, type AuthConfig, type AuthUser } from "../auth/middleware.js";
+import { type AuthConfig, type AuthUser, createAuthMiddleware, createAuthRoutes } from "../auth/middleware.js";
 import type { AuthSessionStore } from "../auth/sessions.js";
 import type { AuditLog } from "../auth/audit.js";
 import type { CronScheduler } from "../daemon/cron.js";
@@ -200,7 +200,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON" }, 400);
     }
 
@@ -318,6 +318,33 @@ export function createGateway(
   app.get("/api/system/update-channel", (c) =>
     c.json({ channel: config.updates?.channel ?? "stable" }),
   );
+
+  app.get("/api/system/update-status", (c) => {
+    const entries = store.blackboardRead("system:update");
+    if (!entries || entries.length === 0) return c.json({ available: false });
+    try {
+      return c.json(JSON.parse(entries[0]!.value));
+    } catch { /* unparseable update status */
+      return c.json({ available: false });
+    }
+  });
+
+  app.post("/api/system/update", async (c) => {
+    const { execSync } = await import("node:child_process");
+    const root = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
+    try {
+      const output = execSync(
+        `cd ${root} && git pull origin main && cd infrastructure/runtime && npx tsdown`,
+        { timeout: 120_000, encoding: "utf-8" },
+      );
+      log.info(`System update completed: ${output.slice(-200)}`);
+      return c.json({ ok: true, message: "Update complete. Restart service to apply." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`System update failed: ${msg}`);
+      return c.json({ error: msg }, 500);
+    }
+  });
 
   app.post("/api/config/reload", (c) => {
     const newConfig = tryReloadConfig();
@@ -437,7 +464,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
@@ -506,7 +533,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
@@ -790,7 +817,7 @@ export function createGateway(
     try {
       const body = await c.req.json() as Record<string, unknown>;
       alwaysAllow = body["alwaysAllow"] === true;
-    } catch {
+    } catch { /* JSON parse failed */
       // No body is fine
     }
     const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
@@ -937,6 +964,45 @@ export function createGateway(
     }
   });
 
+  // --- Session Checkpoints & Forking ---
+
+  app.get("/api/sessions/:id/checkpoints", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json({ sessionId: id, checkpoints: store.getCheckpoints(id) });
+  });
+
+  app.post("/api/sessions/:id/fork", async (c) => {
+    const id = c.req.param("id");
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch { /* JSON parse failed */
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const at = body["at"];
+    if (typeof at !== "number" || at < 1) {
+      return c.json({ error: "'at' (distillation number) required, must be >= 1" }, 400);
+    }
+
+    try {
+      const result = store.forkSession(id, at);
+      return c.json({
+        ok: true,
+        newSessionId: result.newSessionId,
+        messagesCopied: result.messagesCopied,
+        sourceSessionId: id,
+        checkpoint: at,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`Session fork failed: ${msg}`);
+      return c.json({ error: msg }, 400);
+    }
+  });
+
   // --- Message Queue API ---
 
   app.post("/api/sessions/:id/queue", async (c) => {
@@ -1014,7 +1080,7 @@ export function createGateway(
           nousId: plan.nousId,
           sessionKey,
         });
-        (async () => { for await (const _ of gen) { /* drain */ } })().catch(() => {});
+        (async () => { for await (const _ of gen) { /* drain */ } })().catch((err) => { log.warn(`Plan execution drain failed: ${err instanceof Error ? err.message : err}`); });
       });
     }
 
@@ -1477,7 +1543,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* JSON parse failed */
       return c.json({ error: "Invalid JSON" }, 400);
     }
     const key = body["key"] as string;
@@ -1549,7 +1615,8 @@ export function createGateway(
         return a.name.localeCompare(b.name);
       });
       return result;
-    } catch {
+    } catch (err) {
+      log.debug(`buildTree failed for directory: ${err instanceof Error ? err.message : err}`);
       return [];
     }
   }
@@ -1597,7 +1664,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* JSON parse failed */
       return c.json({ error: "Invalid JSON" }, 400);
     }
 

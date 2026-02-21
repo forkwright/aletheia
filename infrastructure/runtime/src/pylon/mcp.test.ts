@@ -1,6 +1,6 @@
 // MCP routes tests — JSON-RPC handling, auth, scope enforcement, tool listing, tool execution
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMcpRoutes, loadMcpTokens, validateMcpToken } from "./mcp.js";
+import { describe, expect, it, vi } from "vitest";
+import { createMcpRoutes, validateMcpToken } from "./mcp.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   return {

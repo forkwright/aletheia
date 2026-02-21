@@ -75,6 +75,13 @@ export const ERROR_CODES = {
   MEMORY_SEARCH_FAILED: "Memory search returned an error",
   MEMORY_STORE_FAILED: "Failed to store memory",
 
+  // organon (code patching)
+  PATCH_FORBIDDEN_PATH: "Patch target is in a forbidden directory",
+  PATCH_RATE_LIMITED: "Patch rate limit exceeded",
+  PATCH_TSC_FAILED: "TypeScript compilation failed after patch",
+  PATCH_TEST_FAILED: "Test suite failed after patch",
+  PATCH_NOT_FOUND: "Patch ID not found in history",
+
   // koina (PII)
   PII_SCAN_FAILED: "PII scan threw unexpectedly",
 } as const;

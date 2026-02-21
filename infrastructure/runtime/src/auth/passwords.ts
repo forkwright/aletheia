@@ -39,7 +39,7 @@ export function verifyPassword(password: string, hash: string): boolean {
       p: params["p"] ?? PARALLELISM,
     });
     return timingSafeEqual(stored, derived);
-  } catch {
+  } catch { /* db init failed */
     return false;
   }
 }

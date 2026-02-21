@@ -1,6 +1,6 @@
 // Distillation hooks — memory flush with retry
 import { createLogger } from "../koina/logger.js";
-import { scanText, type PiiScanConfig } from "../koina/pii.js";
+import { type PiiScanConfig, scanText } from "../koina/pii.js";
 import { trySafe } from "../koina/safe.js";
 import type { ExtractionResult } from "./extract.js";
 

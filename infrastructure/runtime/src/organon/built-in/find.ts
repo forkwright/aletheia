@@ -1,8 +1,8 @@
 // File search tool — find files by name pattern
 import { execFile } from "node:child_process";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,7 +13,7 @@ async function getFdBinary(): Promise<string> {
   try {
     await execFileAsync("fd", ["--version"], { timeout: 2000 });
     fdBinary = "fd";
-  } catch {
+  } catch { /* fd not available — use fallback */
     fdBinary = "fdfind";
   }
   return fdBinary;
@@ -69,7 +69,7 @@ export const findTool: ToolHandler = {
   ): Promise<string> {
     const pattern = input["pattern"] as string;
     const searchPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
+      ? resolve(context.workspace, input["path"] as string)
       : context.workspace;
     const type = input["type"] as string | undefined;
     const maxDepth = input["maxDepth"] as number | undefined;

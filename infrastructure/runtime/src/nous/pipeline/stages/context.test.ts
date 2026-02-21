@@ -1,6 +1,6 @@
 // Context stage tests
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TurnState, RuntimeServices, SystemBlock } from "../types.js";
+import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 vi.mock("../../../koina/logger.js", () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),

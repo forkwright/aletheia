@@ -106,6 +106,10 @@ const NOISE_PATTERNS = [
 const MIN_ITEM_LENGTH = 15;
 const MAX_ITEM_LENGTH = 300;
 
+function toStringArray(arr: unknown[]): string[] {
+  return arr.filter((x): x is string => typeof x === "string");
+}
+
 /** Filter out noise from extracted items. */
 function filterNoise(items: string[]): string[] {
   return items.filter((item) => {
@@ -181,11 +185,11 @@ async function extractChunk(
   }
 
   const raw = {
-    facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
-    decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
-    openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
-    keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
-    contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
+    facts: Array.isArray(parsed["facts"]) ? toStringArray(parsed["facts"]) : [],
+    decisions: Array.isArray(parsed["decisions"]) ? toStringArray(parsed["decisions"]) : [],
+    openItems: Array.isArray(parsed["openItems"]) ? toStringArray(parsed["openItems"]) : [],
+    keyEntities: Array.isArray(parsed["keyEntities"]) ? toStringArray(parsed["keyEntities"]) : [],
+    contradictions: Array.isArray(parsed["contradictions"]) ? toStringArray(parsed["contradictions"]) : [],
   };
 
   // Apply post-extraction noise filtering to facts and decisions
@@ -266,13 +270,13 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (balanced) {
     try {
       return JSON.parse(balanced) as Record<string, unknown>;
-    } catch {
+    } catch { /* mem0 store failed — non-fatal */
       // Strategy 2: Repair common LLM issues then parse
       const repaired = repairJson(balanced);
       try {
         log.debug("JSON parsed after repair (balanced extraction)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch {
+      } catch { /* session notes failed — non-fatal */
         // Fall through
       }
     }
@@ -283,12 +287,12 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (match) {
     try {
       return JSON.parse(match[0]) as Record<string, unknown>;
-    } catch {
+    } catch { /* fact file write failed — non-fatal */
       const repaired = repairJson(match[0]);
       try {
         log.debug("JSON parsed after repair (greedy regex)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch {
+      } catch { /* fact backup failed — non-fatal */
         log.warn(`All JSON parse strategies failed. Fragment: ${match[0].slice(0, 200)}`);
       }
     }

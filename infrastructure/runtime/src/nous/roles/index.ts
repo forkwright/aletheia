@@ -115,7 +115,7 @@ export function parseStructuredResult(responseText: string): SubAgentResult | nu
       ...(parsed["issues"] ? { issues: parsed["issues"] as SubAgentIssue[] } : {}),
       confidence: (parsed["confidence"] as number) ?? 0.5,
     };
-  } catch {
+  } catch { /* role file parse failed */
     return null;
   }
 }

@@ -347,7 +347,7 @@ export class AnthropicProvider {
             let input: Record<string, unknown> = {};
             try {
               input = JSON.parse(state.jsonParts?.join("") ?? "{}");
-            } catch {
+            } catch { /* stream abort cleanup */
               log.warn("Failed to parse tool_use input JSON from stream");
             }
             contentBlocks.push({

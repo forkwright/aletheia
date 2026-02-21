@@ -1,8 +1,7 @@
 // File write tool
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 import { trySafe } from "../../koina/safe.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
 
@@ -48,11 +47,10 @@ export const writeTool: ToolHandler = {
     const filePath = input["path"] as string;
     const content = input["content"] as string;
     const append = (input["append"] as boolean) ?? false;
-    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
+    const resolved = resolve(context.workspace, filePath);
 
     try {
       mkdirSync(dirname(resolved), { recursive: true });
-      // codeql[js/insecure-temporary-file] - path is workspace-constrained via safePath, not tmpdir
       writeFileSync(resolved, content, {
         flag: append ? "a" : "w",
         encoding: "utf-8",

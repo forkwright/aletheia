@@ -26,7 +26,7 @@ function formatEphemeralTimestamp(isoString: string, tz: string = "UTC"): string
       minute: "2-digit",
       hour12: true,
     });
-  } catch {
+  } catch { /* image read failed — skip attachment */
     return null;
   }
 }
@@ -63,7 +63,7 @@ export function buildMessages(
           }
           continue;
         }
-      } catch {
+      } catch { /* tool result parse failed — use raw */
         // Not JSON — plain text assistant message
       }
       messages.push({ role: "assistant", content: msg.content });
@@ -131,7 +131,8 @@ export function buildMessages(
           const decoded = Buffer.from(data, "base64").toString("utf-8");
           const label = item.filename ? `[File: ${item.filename}]` : "[Text file]";
           blocks.push({ type: "text", text: `${label}\n\n${decoded}` });
-        } catch {
+        } catch (err) {
+          log.debug(`Base64 decode failed for ${item.filename ?? "unknown"}: ${err instanceof Error ? err.message : err}`);
           blocks.push({ type: "text", text: `[Could not decode text file: ${item.filename ?? "unknown"}]` });
         }
       } else {

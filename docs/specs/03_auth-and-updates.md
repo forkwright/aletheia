@@ -1,6 +1,6 @@
 # Spec: Login Authentication & Self-Update System
 
-**Status:** Phase 1 done (PR #50), Part 2 Phase 1b done (PR #70), auth wiring + session management UI done (PR #99)
+**Status:** Complete. All phases implemented (PRs #50, #70, #99, #126).
 **Author:** Syn  
 **Date:** 2026-02-19  
 

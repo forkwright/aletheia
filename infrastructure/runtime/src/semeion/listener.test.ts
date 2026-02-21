@@ -1,5 +1,5 @@
 // Signal listener tests — envelope handling, access control, mention hydration
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // We can't easily test startListener (SSE consumer) without a real stream,
 // but we can test the helper functions by importing them indirectly.

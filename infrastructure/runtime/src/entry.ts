@@ -4,7 +4,8 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
-import { runDiagnostics, applyFixes, formatResults } from "./koina/diagnostics.js";
+import { applyFixes, formatResults, runDiagnostics } from "./koina/diagnostics.js";
+import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
 
@@ -408,6 +409,91 @@ program
     },
   );
 
+// --- Session Forking ---
+
+program
+  .command("fork")
+  .description("Fork a session from a historical distillation checkpoint")
+  .argument("<session-id>", "Session ID to fork")
+  .requiredOption("--at <number>", "Distillation checkpoint number to fork from")
+  .action(async (sessionId: string, opts: { at: string }) => {
+    const distillationNumber = parseInt(opts.at, 10);
+    if (isNaN(distillationNumber) || distillationNumber < 1) {
+      console.error("--at must be a positive integer (distillation number)");
+      process.exit(1);
+    }
+
+    const { SessionStore } = await import("./mneme/store.js");
+    const { paths } = await import("./taxis/paths.js");
+    const store = new SessionStore(paths.sessionsDb());
+    try {
+      const result = store.forkSession(sessionId, distillationNumber);
+      console.log(`Forked session: ${result.newSessionId}`);
+      console.log(`  Source: ${sessionId} @ distillation #${distillationNumber}`);
+      console.log(`  Messages copied: ${result.messagesCopied}`);
+    } catch (err) {
+      console.error(`Fork failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    } finally {
+      store.close();
+    }
+  });
+
+// --- Plugins ---
+
+const pluginsCmd = program.command("plugins").description("Plugin management");
+
+pluginsCmd
+  .command("list")
+  .description("List discovered and configured plugins")
+  .action(async () => {
+    const { existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { paths } = await import("./taxis/paths.js");
+    const { loadConfig } = await import("./taxis/loader.js");
+
+    const config = loadConfig();
+    const rootDir = paths.pluginRoot;
+
+    console.log(`Plugin root: ${rootDir}\n`);
+
+    // Discover plugins from root directory
+    const discovered: Array<{ id: string; version: string; path: string; source: string }> = [];
+
+    if (existsSync(rootDir)) {
+      const { discoverPlugins } = await import("./prostheke/loader.js");
+      const found = await discoverPlugins(rootDir);
+      for (const p of found) {
+        discovered.push({ id: p.manifest.id, version: p.manifest.version, path: rootDir, source: "discovered" });
+      }
+    }
+
+    // Configured explicit paths
+    for (const p of config.plugins.load.paths) {
+      const exists = existsSync(p);
+      if (exists) {
+        const manifestPath = join(p, "manifest.json");
+        const manifest = readJson(manifestPath) as { id?: string; version?: string } | null;
+        if (manifest?.id) {
+          discovered.push({ id: manifest.id, version: manifest.version ?? "?", path: p, source: "config" });
+        }
+      } else {
+        discovered.push({ id: "(missing)", version: "-", path: p, source: "config" });
+      }
+    }
+
+    if (discovered.length === 0) {
+      console.log("No plugins found.");
+      return;
+    }
+
+    for (const p of discovered) {
+      const enabled = config.plugins.entries[p.id]?.enabled !== false;
+      const status = p.id === "(missing)" ? "MISSING" : enabled ? "enabled" : "disabled";
+      console.log(`  ${p.id} v${p.version} [${status}] (${p.source}: ${p.path})`);
+    }
+  });
+
 // --- Update ---
 
 program
@@ -444,6 +530,60 @@ program
       }
     },
   );
+
+// --- Import ---
+
+program
+  .command("import")
+  .description("Import an agent from an AgentFile JSON export")
+  .argument("<file>", "Path to .agent.json file")
+  .option("--nous-id <id>", "Override agent ID (for cloning)")
+  .option("--skip-sessions", "Skip session/message import")
+  .option("--skip-workspace", "Skip workspace file restoration")
+  .action(async (file: string, opts: { nousId?: string; skipSessions?: boolean; skipWorkspace?: boolean }) => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { SessionStore } = await import("./mneme/store.js");
+    const { paths } = await import("./taxis/paths.js");
+    const { importAgent } = await import("./portability/import.js");
+
+    const filePath = resolve(file);
+    let raw: string;
+    try {
+      raw = readFileSync(filePath, "utf-8");
+    } catch (err) {
+      console.error(`Cannot read file: ${filePath}`);
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+
+    let agentFile: import("./portability/export.js").AgentFile;
+    try {
+      agentFile = JSON.parse(raw);
+    } catch { /* invalid JSON in agent file */
+      console.error("Invalid JSON in agent file");
+      process.exit(1);
+    }
+
+    const store = new SessionStore(paths.sessionsDb());
+    try {
+      console.log(`Importing agent from: ${filePath}`);
+      const importOpts: import("./portability/import.js").ImportOptions = {};
+      if (opts.nousId) importOpts.targetNousId = opts.nousId;
+      if (opts.skipSessions) importOpts.skipSessions = opts.skipSessions;
+      if (opts.skipWorkspace) importOpts.skipWorkspace = opts.skipWorkspace;
+      const result = await importAgent(agentFile, store, importOpts);
+
+      console.log(`\nImport complete:`);
+      console.log(`  Agent: ${result.nousId}`);
+      console.log(`  Files: ${result.filesRestored}`);
+      console.log(`  Sessions: ${result.sessionsImported}`);
+      console.log(`  Messages: ${result.messagesImported}`);
+      console.log(`  Notes: ${result.notesImported}`);
+    } finally {
+      store.close();
+    }
+  });
 
 // --- Token Audit ---
 
@@ -521,7 +661,7 @@ program
     let raw: string;
     try {
       raw = readFileSync(configPath, "utf-8");
-    } catch {
+    } catch { /* config file unreadable */
       console.error(`Cannot read config: ${configPath}`);
       process.exit(1);
     }
@@ -529,7 +669,7 @@ program
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
+    } catch { /* invalid JSON in config */
       console.error("Invalid JSON in config file");
       process.exit(1);
     }

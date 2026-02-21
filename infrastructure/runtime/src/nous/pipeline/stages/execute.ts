@@ -299,7 +299,8 @@ export async function* executeStreaming(
                 });
                 continue;
               }
-            } catch {
+            } catch (err) {
+              log.debug(`Approval gate cancelled for ${toolUse.name}: ${err instanceof Error ? err.message : err}`);
               toolResults.push({
                 type: "tool_result", tool_use_id: toolUse.id,
                 content: `[DENIED] Tool "${toolUse.name}" approval was cancelled.`, is_error: true,

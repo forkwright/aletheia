@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { initEncryption, encrypt, decrypt, isEncrypted, decryptIfNeeded, encryptIfEnabled, isEncryptionReady, getKeySalt } from "./encryption.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { decrypt, decryptIfNeeded, encrypt, encryptIfEnabled, getKeySalt, initEncryption, isEncrypted, isEncryptionReady } from "./encryption.js";
 
 describe("encryption", () => {
   beforeEach(() => {

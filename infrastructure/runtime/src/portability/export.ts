@@ -6,9 +6,9 @@
 // Design: Spec 21 Phase 1 (Agent Portability)
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, extname } from "node:path";
+import { extname, join, relative } from "node:path";
 import { createLogger } from "../koina/logger.js";
-import type { SessionStore, Session, WorkingState, DistillationPriming } from "../mneme/store.js";
+import type { DistillationPriming, Session, SessionStore, WorkingState } from "../mneme/store.js";
 import { paths } from "../taxis/paths.js";
 
 const log = createLogger("portability:export");
@@ -154,7 +154,7 @@ function scanWorkspace(
     let entries: string[];
     try {
       entries = readdirSync(dir);
-    } catch {
+    } catch { /* memory file read failed — skip */
       return;
     }
 
@@ -166,7 +166,7 @@ function scanWorkspace(
       let stat;
       try {
         stat = statSync(fullPath);
-      } catch {
+      } catch { /* config read failed — skip */
         continue;
       }
 
@@ -187,7 +187,7 @@ function scanWorkspace(
       if (isTextFile(entry)) {
         try {
           files[relPath] = readFileSync(fullPath, "utf-8");
-        } catch {
+        } catch { /* session export failed — skip */
           binaryFiles.push(relPath);
         }
       } else {

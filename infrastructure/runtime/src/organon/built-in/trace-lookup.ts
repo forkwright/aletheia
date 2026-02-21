@@ -56,7 +56,7 @@ export const traceLookupTool: ToolHandler = {
     const traces = recent.map((line) => {
       try {
         return JSON.parse(line);
-      } catch {
+      } catch { /* trace search failed */
         return null;
       }
     }).filter(Boolean);

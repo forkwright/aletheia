@@ -6,7 +6,7 @@ import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
-import { flushToMemory, type FlushOptions, type MemoryFlushTarget } from "./hooks.js";
+import { type FlushOptions, flushToMemory, type MemoryFlushTarget } from "./hooks.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
@@ -135,6 +135,7 @@ async function runDistillation(
       }
     } catch (e) {
       if (e instanceof AletheiaError) throw e;
+      log.warn(`Unexpected error during distillation pre-check: ${e instanceof Error ? e.message : e}`);
     }
   }
 

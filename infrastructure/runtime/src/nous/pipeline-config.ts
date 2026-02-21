@@ -1,5 +1,5 @@
 // Per-agent pipeline configuration — recall, tool expiry, note budget
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { createLogger } from "../koina/logger.js";
@@ -58,6 +58,12 @@ export function loadPipelineConfig(workspace: string): PipelineConfig {
     log.warn(`Invalid pipeline.json in ${workspace}: ${err instanceof Error ? err.message : err}`);
     return DEFAULTS;
   }
+}
+
+export function savePipelineConfig(workspace: string, config: PipelineConfig): void {
+  const filePath = join(workspace, "pipeline.json");
+  writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
+  clearPipelineConfigCache(workspace);
 }
 
 export function clearPipelineConfigCache(workspace?: string): void {

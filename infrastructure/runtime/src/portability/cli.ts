@@ -13,7 +13,7 @@
 
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { exportAgent, agentFileToJson } from "./export.js";
+import { agentFileToJson, exportAgent } from "./export.js";
 import { loadConfig } from "../taxis/loader.js";
 import { SessionStore } from "../mneme/store.js";
 import { paths } from "../taxis/paths.js";

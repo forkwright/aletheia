@@ -36,7 +36,7 @@ export function detectBootstrapDiff(
         Record<string, string>
       >;
       if (data[nousId]) previous = data[nousId];
-    } catch {
+    } catch { /* file unreadable — skip diff */
       /* ignore missing or corrupt file */
     }
   }
@@ -54,7 +54,7 @@ export function detectBootstrapDiff(
         string,
         Record<string, string>
       >;
-    } catch {
+    } catch { /* hash computation failed — skip */
       /* missing or corrupt — start fresh */
     }
     existing[nousId] = currentHashes;

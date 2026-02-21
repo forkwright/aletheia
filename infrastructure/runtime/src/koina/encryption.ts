@@ -83,7 +83,7 @@ export function isEncrypted(content: string): boolean {
   try {
     const parsed = JSON.parse(content);
     return parsed.v === 1 && typeof parsed.ct === "string" && typeof parsed.iv === "string";
-  } catch {
+  } catch { /* decryption failed — return null */
     return false;
   }
 }

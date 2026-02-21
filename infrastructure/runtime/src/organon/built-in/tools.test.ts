@@ -1,6 +1,6 @@
 // Built-in tool tests — tests tool definitions and execute functions using temp workspace
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ToolContext } from "../registry.js";
@@ -74,7 +74,7 @@ describe("editTool", () => {
   it("replaces text in a file", async () => {
     writeFileSync(join(workspace, "edit.txt"), "hello world");
     const { editTool } = await import("./edit.js");
-    const result = await editTool.execute(
+    await editTool.execute(
       { path: "edit.txt", old_text: "world", new_text: "vitest" },
       ctx,
     );

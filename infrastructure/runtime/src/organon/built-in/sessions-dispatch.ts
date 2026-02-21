@@ -354,7 +354,7 @@ function applyReducer(
         } else {
           nonJson.push(r);
         }
-      } catch {
+      } catch { /* dispatch cleanup failed */
         nonJson.push(r);
       }
     }

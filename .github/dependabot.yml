@@ -15,6 +15,9 @@ updates:
       production-dependencies:
         dependency-type: production
         update-types: [patch]
+    ignore:
+      - dependency-name: zod
+        update-types: [version-update:semver-major]
     reviewers:
       - forkwright
 

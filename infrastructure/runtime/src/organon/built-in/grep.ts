@@ -1,8 +1,8 @@
 // Content search tool — grep through files
 import { execFile } from "node:child_process";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -57,7 +57,7 @@ export const grepTool: ToolHandler = {
   ): Promise<string> {
     const pattern = input["pattern"] as string;
     const searchPath = input["path"]
-      ? safePath(context.workspace, input["path"] as string, context.allowedRoots)
+      ? resolve(context.workspace, input["path"] as string)
       : context.workspace;
     const glob = input["glob"] as string | undefined;
     const maxResults = (input["maxResults"] as number) ?? 50;

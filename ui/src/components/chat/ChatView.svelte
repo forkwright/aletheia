@@ -47,7 +47,7 @@
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent } from "../../lib/events";
+  import { onGlobalEvent, getActiveTurns } from "../../lib/events";
   import { onMount, onDestroy } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
@@ -145,6 +145,16 @@
     } else if (!sessionId && prevSessionId) {
       prevSessionId = null;
       if (currentAgentId) clearMessages(currentAgentId);
+    }
+  });
+
+  // Recover remote streaming state when agent becomes available
+  $effect(() => {
+    const agentId = getActiveAgentId();
+    if (!agentId) return;
+    const activeTurns = getActiveTurns();
+    if (activeTurns[agentId] && activeTurns[agentId] > 0) {
+      setRemoteStreaming(agentId, true);
     }
   });
 

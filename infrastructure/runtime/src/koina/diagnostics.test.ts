@@ -1,9 +1,6 @@
 // Diagnostics tests
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { applyFixes, formatResults, type DiagnosticResult } from "./diagnostics.js";
+import { describe, expect, it, vi } from "vitest";
+import { applyFixes, type DiagnosticResult, formatResults } from "./diagnostics.js";
 
 describe("formatResults", () => {
   it("formats ok results with + icon", () => {

@@ -2,7 +2,10 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { clearPipelineConfigCache, loadPipelineConfig, PipelineConfigSchema } from "../../nous/pipeline-config.js";
+import { createLogger } from "../../koina/logger.js";
 import type { ToolHandler } from "../registry.js";
+
+const log = createLogger("pipeline-config");
 
 export function createPipelineConfigTool(): ToolHandler {
   return {
@@ -96,7 +99,8 @@ function loadExistingConfig(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) return {};
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    log.debug(`Config parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`);
     return {};
   }
 }

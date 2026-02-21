@@ -43,7 +43,7 @@ export function createStatusReportTool(
           activeKeys: bbKeys.length,
           keys: bbKeys.slice(0, 10),
         };
-      } catch {
+      } catch { /* section gathering failed */
         report["blackboard"] = { error: "unavailable" };
       }
 
@@ -55,7 +55,7 @@ export function createStatusReportTool(
           grouped[s.signal] = (grouped[s.signal] ?? 0) + 1;
         }
         report["recentSignals"] = grouped;
-      } catch {
+      } catch { /* section gathering failed */
         report["recentSignals"] = { error: "unavailable" };
       }
 
@@ -78,7 +78,7 @@ export function createStatusReportTool(
           active: active.length,
           total: sessions.length,
         };
-      } catch {
+      } catch { /* section gathering failed */
         report["sessions"] = { error: "unavailable" };
       }
 

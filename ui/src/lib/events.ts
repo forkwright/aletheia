@@ -7,6 +7,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 const listeners = new Set<EventCallback>();
+let lastActiveTurns: Record<string, number> = {};
 
 export function onGlobalEvent(cb: EventCallback): () => void {
   listeners.add(cb);
@@ -53,7 +54,9 @@ function connect() {
 
   source.addEventListener("init", (e) => {
     try {
-      dispatch("init", JSON.parse((e as MessageEvent).data));
+      const data = JSON.parse((e as MessageEvent).data);
+      if (data.activeTurns) lastActiveTurns = data.activeTurns;
+      dispatch("init", data);
     } catch { /* ignore */ }
   });
 
@@ -66,7 +69,14 @@ function connect() {
   for (const type of eventTypes) {
     source.addEventListener(type, (e) => {
       try {
-        dispatch(type, JSON.parse((e as MessageEvent).data));
+        const data = JSON.parse((e as MessageEvent).data);
+        // Keep activeTurns cache in sync
+        if (type === "turn:before" && data.nousId) {
+          lastActiveTurns[data.nousId] = (lastActiveTurns[data.nousId] ?? 0) + 1;
+        } else if (type === "turn:after" && data.nousId) {
+          lastActiveTurns[data.nousId] = Math.max(0, (lastActiveTurns[data.nousId] ?? 1) - 1);
+        }
+        dispatch(type, data);
       } catch { /* ignore */ }
     });
   }
@@ -79,6 +89,10 @@ function scheduleReconnect() {
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
     connect();
   }, reconnectDelay);
+}
+
+export function getActiveTurns(): Record<string, number> {
+  return lastActiveTurns;
 }
 
 export function getConnectionStatus(): "connected" | "disconnected" | "connecting" {

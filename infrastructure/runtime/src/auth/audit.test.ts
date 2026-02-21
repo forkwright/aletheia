@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { AuditLog } from "./audit.js";
 import { verifyAuditChain } from "./audit-verify.js";

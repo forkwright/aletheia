@@ -110,7 +110,7 @@ function checkSessionsDb(_config: AletheiaConfig | null): DiagnosticResult {
         return { name: "sessions_db", status: "warn", message: "Sessions DB exists but is empty (will be initialized on start)" };
       }
       return { name: "sessions_db", status: "ok", message: `Sessions DB exists (${Math.round(stat.size / 1024)}KB)` };
-    } catch {
+    } catch { /* service check failed */
       return { name: "sessions_db", status: "error", message: "Sessions DB exists but is not readable" };
     }
   }
@@ -178,7 +178,7 @@ function checkStalePid(_config: AletheiaConfig | null): DiagnosticResult {
     try {
       process.kill(pid, 0); // Signal 0 = check if alive
       return { name: "stale_pid", status: "ok", message: `Process ${pid} is running` };
-    } catch {
+    } catch { /* stat failed — skip */
       return {
         name: "stale_pid",
         status: "warn",
@@ -189,7 +189,7 @@ function checkStalePid(_config: AletheiaConfig | null): DiagnosticResult {
         },
       };
     }
-  } catch {
+  } catch { /* diagnostics dir listing failed */
     return { name: "stale_pid", status: "ok", message: "No PID file" };
   }
 }
@@ -278,7 +278,7 @@ export function runDiagnostics(): { results: DiagnosticResult[]; config: Alethei
   let config: AletheiaConfig | null = null;
   try {
     config = loadConfig();
-  } catch {
+  } catch { /* workspace stat failed */
     // Config check itself will report the error
   }
 

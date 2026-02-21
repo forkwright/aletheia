@@ -46,6 +46,7 @@ import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
 import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
+import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
@@ -67,10 +68,11 @@ import { startListener } from "./semeion/listener.js";
 import { initSenderPii, parseTarget, sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
-import { loadPlugins } from "./prostheke/loader.js";
+import { discoverPlugins, loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
+import { runEvolutionCycle } from "./daemon/evolution-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -79,9 +81,10 @@ import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { getKeySalt, initEncryption } from "./koina/encryption.js";
 import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
-import { registerHooks, type HookRegistry } from "./koina/hooks.js";
+import { type HookRegistry, registerHooks } from "./koina/hooks.js";
 
 const log = createLogger("aletheia");
 
@@ -116,6 +119,26 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   applyEnv(config);
 
+  // Initialize encryption before store (store uses encryptIfEnabled/decryptIfNeeded)
+  if (config.encryption.enabled) {
+    const passphrase = process.env[config.encryption.keyEnvVar];
+    if (!passphrase) {
+      log.warn(`Encryption enabled but ${config.encryption.keyEnvVar} not set — messages will NOT be encrypted`);
+    } else {
+      const saltPath = join(paths.configDir(), "encryption.salt");
+      let salt: string | undefined;
+      if (existsSync(saltPath)) {
+        salt = readFileSync(saltPath, "utf-8").trim();
+      }
+      initEncryption(passphrase, salt);
+      if (!salt) {
+        writeFileSync(saltPath, getKeySalt()!, { mode: 0o600 });
+      }
+      try { chmodSync(saltPath, 0o600); } catch { /* may already be correct */ }
+      log.info("Message encryption active");
+    }
+  }
+
   const store = new SessionStore(paths.sessionsDb());
 
   // Harden file permissions on sensitive files at startup
@@ -125,7 +148,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     for (const p of [dbPath, cfgPath]) {
       try {
         if (existsSync(p)) chmodSync(p, 0o600);
-      } catch {
+      } catch { /* salt file creation failed — non-fatal */
         log.warn(`Could not harden permissions on ${p}`);
       }
     }
@@ -197,6 +220,12 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   }
   const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
   if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
+
+  // Runtime code patching tools (available on-demand)
+  for (const patchTool of createPatchTools()) {
+    patchTool.category = "available";
+    tools.register(patchTool);
+  }
 
   // enable_tool meta-tool — lets agents activate available tools on demand
   const enableToolHandler: import("./organon/registry.js").ToolHandler = {
@@ -341,8 +370,20 @@ export async function startRuntime(configPath?: string): Promise<void> {
   const config = runtime.config;
 
   // --- Plugins ---
-  if (config.plugins.enabled && config.plugins.load.paths.length > 0) {
-    const pluginDefs = await loadPlugins(config.plugins.load.paths);
+  if (config.plugins.enabled) {
+    const pluginDefs = config.plugins.load.paths.length > 0
+      ? await loadPlugins(config.plugins.load.paths)
+      : [];
+
+    // Auto-discover plugins from plugin root directory
+    const discovered = await discoverPlugins(paths.pluginRoot);
+    const loadedIds = new Set(pluginDefs.map((p) => p.manifest.id));
+    for (const dp of discovered) {
+      if (!loadedIds.has(dp.manifest.id)) {
+        pluginDefs.push(dp);
+      }
+    }
+
     for (const plugin of pluginDefs) {
       const entry = config.plugins.entries[plugin.manifest.id];
       if (entry && !entry.enabled) {
@@ -351,9 +392,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
       }
       runtime.plugins.register(plugin, runtime.tools);
     }
-    log.info(`Loaded ${runtime.plugins.size} plugins`);
-    runtime.manager.setPlugins(runtime.plugins);
-    await runtime.plugins.dispatchStart();
+    if (runtime.plugins.size > 0) {
+      log.info(`Loaded ${runtime.plugins.size} plugins`);
+      runtime.manager.setPlugins(runtime.plugins);
+      await runtime.plugins.dispatchStart();
+    }
   }
 
   // --- Declarative Hooks ---
@@ -604,6 +647,65 @@ export async function startRuntime(configPath?: string): Promise<void> {
       },
     );
     return `Weekly reflection: ${result.agentsReflected} agents, ${result.totalFindings} findings`;
+  });
+
+  // Backup cron command — exports all agents to JSON files with retention
+  cron.registerCommand("backup:all-agents", async () => {
+    const { mkdirSync: mkdirBackup, readdirSync: readdirBackup, unlinkSync: unlinkBackup } = await import("node:fs");
+    const { exportAgent, agentFileToJson } = await import("./portability/export.js");
+    const dest = config.backup.destination;
+    mkdirBackup(dest, { recursive: true });
+
+    const date = new Date().toISOString().split("T")[0];
+    let count = 0;
+
+    for (const agent of config.agents.list) {
+      try {
+        const agentFile = await exportAgent(agent.id, agent as unknown as Record<string, unknown>, runtime.store);
+        const filename = `${agent.id}-${date}.agent.json`;
+        const { writeFileSync: writeBackup } = await import("node:fs");
+        const { join: joinPath } = await import("node:path");
+        writeBackup(joinPath(dest, filename), agentFileToJson(agentFile, false));
+        count++;
+      } catch (err) {
+        log.warn(`Backup failed for ${agent.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    // Retention — delete old .agent.json files
+    const cutoff = Date.now() - config.backup.retentionDays * 24 * 60 * 60 * 1000;
+    try {
+      const { statSync: statBackup } = await import("node:fs");
+      const { join: joinPath } = await import("node:path");
+      for (const file of readdirBackup(dest)) {
+        if (!file.endsWith(".agent.json")) continue;
+        const filePath = joinPath(dest, file);
+        const stat = statBackup(filePath);
+        if (stat.mtimeMs < cutoff) {
+          unlinkBackup(filePath);
+          log.debug(`Deleted old backup: ${file}`);
+        }
+      }
+    } catch { /* retention cleanup is best-effort */ }
+
+    return `Backed up ${count} agents to ${dest}`;
+  });
+
+  // Evolutionary config search — mutate pipeline configs, benchmark, promote winners
+  cron.registerCommand("evolution:nightly", async () => {
+    const opts: Parameters<typeof runEvolutionCycle>[3] = {};
+    if (clients.size > 0 && config.watchdog?.alertRecipient) {
+      const alertRecipient = config.watchdog.alertRecipient;
+      const client = clients.values().next().value!;
+      const accountId = clients.keys().next().value!;
+      const account = config.channels.signal.accounts[accountId]!;
+      const accountPhone = account.account ?? accountId;
+      opts.sendNotification = async (_nousId, message) => {
+        await sendMessage(client, { account: accountPhone, recipient: alertRecipient }, message, { markdown: false });
+      };
+    }
+    const result = await runEvolutionCycle(runtime.store, runtime.router, config, opts);
+    return `Evolution: ${result.agentsProcessed} agents, ${result.variantsCreated} variants, ${result.promotions} promotions`;
   });
 
   if (config.cron.enabled) {

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { allNousIds, applyEnv, loadConfig, resolveDefaultNous, resolveModel, resolveNous, resolveWorkspace } from "./loader.js";
 import { ConfigError } from "../koina/errors.js";
-import type { AletheiaConfig, NousConfig } from "./schema.js";
+import type { AletheiaConfig } from "./schema.js";
 
 // Mock readJson — loader depends on koina/fs.readJson
 vi.mock("../koina/fs.js", () => ({

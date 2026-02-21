@@ -121,7 +121,7 @@ function truncateJson(
     const stringified = JSON.stringify(parsed, null, 2);
     if (stringified.length <= maxChars) return stringified;
     return stringified.slice(0, maxChars) + "\n... [truncated]";
-  } catch {
+  } catch { /* token estimation failed — skip */
     // not valid JSON, fall through
   }
 

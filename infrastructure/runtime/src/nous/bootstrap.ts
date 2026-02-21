@@ -91,7 +91,7 @@ export function assembleBootstrap(
       file.tokens = estimateTokens(file.content);
       file.hash = createHash("sha256").update(file.content).digest("hex").slice(0, 16);
       loaded.push(file);
-    } catch {
+    } catch { /* file unreadable — logged below */
       log.warn(`Failed to read ${file.path}`);
     }
   }

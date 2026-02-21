@@ -18,7 +18,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Wait for typecheck to pass
+      - name: Wait for CI quality to pass
         if: >-
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           (steps.metadata.outputs.update-type == 'version-update:semver-minor' &&
@@ -26,8 +26,8 @@ jobs:
         run: |
           gh pr checks "$PR_URL" --watch --interval 30 --required \
             --fail-fast 2>/dev/null || true
-          gh pr checks "$PR_URL" | grep -E "^typecheck" | grep -q "pass" || \
-            { echo "typecheck did not pass — skipping auto-merge"; exit 0; }
+          gh pr checks "$PR_URL" | grep -E "^quality" | grep -q "pass" || \
+            { echo "CI quality did not pass — skipping auto-merge"; exit 0; }
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

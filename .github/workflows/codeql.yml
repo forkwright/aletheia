@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 10 * * 1" # Monday 04:00 CST
+    - cron: "0 14 * * 3" # Wednesday 08:00 CST
 
 jobs:
   analyze:

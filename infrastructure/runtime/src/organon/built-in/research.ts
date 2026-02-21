@@ -66,7 +66,7 @@ export function createResearchTool(registry: ToolRegistry): ToolHandler {
           count: memoryResults.length,
           results: memoryResults,
         };
-      } catch {
+      } catch { /* primary research failed */
         findings["memory"] = { count: 0, error: "memory search unavailable" };
       }
 
@@ -84,7 +84,7 @@ export function createResearchTool(registry: ToolRegistry): ToolHandler {
             context,
           );
           findings["web"] = { source: webToolName, results: raw };
-        } catch {
+        } catch { /* fallback research failed */
           findings["web"] = { error: "web search unavailable" };
         }
       } else {

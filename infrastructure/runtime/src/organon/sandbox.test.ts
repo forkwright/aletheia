@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { screenCommand, getDefaultDenyPatterns } from "./sandbox.js";
+import { describe, expect, it } from "vitest";
+import { getDefaultDenyPatterns, screenCommand } from "./sandbox.js";
 
 describe("screenCommand", () => {
   it("blocks rm -rf /", () => {

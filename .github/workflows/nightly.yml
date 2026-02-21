@@ -34,7 +34,8 @@ jobs:
           path: infrastructure/runtime/coverage/
           retention-days: 30
 
-  audit:
+  # npm audit runs in security.yml (weekly + PRs) — no duplication here
+  dead-code:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -44,21 +45,6 @@ jobs:
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
-      - name: Full dependency audit
-        run: |
-          cd infrastructure/runtime
-          npm audit --json > audit-results.json || true
-          node -e "
-            const audit = require('./audit-results.json');
-            const meta = audit.metadata?.vulnerabilities || {};
-            const critical = meta.critical || 0;
-            const high = meta.high || 0;
-            console.log('Vulnerabilities — critical: ' + critical + ', high: ' + high + ', moderate: ' + (meta.moderate || 0) + ', low: ' + (meta.low || 0));
-            if (critical > 0 || high > 0) {
-              console.error('::error::Found ' + critical + ' critical and ' + high + ' high severity vulnerabilities');
-              process.exit(1);
-            }
-          "
       - name: Detect unused exports
         run: |
           cd infrastructure/runtime
@@ -76,8 +62,6 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: nightly-audit
-          path: |
-            infrastructure/runtime/audit-results.json
-            infrastructure/runtime/dead-code.json
+          name: nightly-dead-code
+          path: infrastructure/runtime/dead-code.json
           retention-days: 30

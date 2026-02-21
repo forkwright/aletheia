@@ -17,7 +17,7 @@ export function dockerAvailable(): boolean {
     execSync("docker info", { timeout: 5000, stdio: "ignore" });
     dockerOk = true;
     log.info("Docker available for sandbox execution");
-  } catch {
+  } catch { /* docker not available */
     dockerOk = false;
     log.warn("Docker not available — sandbox will use pattern-only mode");
   }

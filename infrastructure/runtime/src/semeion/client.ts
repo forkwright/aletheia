@@ -154,7 +154,7 @@ export class SignalClient {
         signal: AbortSignal.timeout(2000),
       });
       return res.ok;
-    } catch {
+    } catch { /* connection failed — report unhealthy */
       return false;
     }
   }

@@ -1,5 +1,5 @@
 // Research meta-tool tests
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createResearchTool } from "./research.js";
 import { ToolRegistry } from "../registry.js";
 
