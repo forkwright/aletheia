@@ -103,15 +103,19 @@ export async function recallMemories(
     }))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
+  // Exact-text dedup first, then MMR diversity selection
   const seen = new Set<string>();
-  const deduped: MemoryHit[] = [];
+  const exactDeduped: MemoryHit[] = [];
   for (const h of filtered) {
     if (!seen.has(h.memory)) {
       seen.add(h.memory);
-      deduped.push(h);
+      exactDeduped.push(h);
     }
-    if (deduped.length >= limit) break;
   }
+
+  // MMR-style diversity selection: penalize candidates similar to already-selected items
+  // Uses token-level Jaccard overlap (no vector fetch needed, zero latency cost)
+  const deduped = mmrSelect(exactDeduped, limit);
 
   if (deduped.length === 0) {
     const ms = Date.now() - start;
@@ -153,6 +157,78 @@ export async function recallMemories(
     durationMs: ms,
     tokens,
   };
+}
+
+/**
+ * MMR-style diversity selection using token-level Jaccard overlap.
+ * Greedily selects the highest-scoring candidate that isn't too similar
+ * to already-selected items. This prevents "5 memories that all say
+ * the same thing" without requiring vector access.
+ *
+ * @param lambda - Balance between relevance (1.0) and diversity (0.0). Default 0.7.
+ */
+export function mmrSelect(
+  candidates: MemoryHit[],
+  limit: number,
+  lambda = 0.7,
+): MemoryHit[] {
+  if (candidates.length <= 1) return candidates.slice(0, limit);
+
+  const selected: MemoryHit[] = [];
+  const remaining = [...candidates];
+  const tokenCache = new Map<string, Set<string>>();
+
+  function getTokens(text: string): Set<string> {
+    let cached = tokenCache.get(text);
+    if (!cached) {
+      cached = new Set(text.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
+      tokenCache.set(text, cached);
+    }
+    return cached;
+  }
+
+  function jaccardSimilarity(a: string, b: string): number {
+    const tokensA = getTokens(a);
+    const tokensB = getTokens(b);
+    if (tokensA.size === 0 && tokensB.size === 0) return 1;
+    let intersection = 0;
+    for (const t of tokensA) {
+      if (tokensB.has(t)) intersection++;
+    }
+    const union = tokensA.size + tokensB.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  // First item: always pick the highest-scoring
+  selected.push(remaining.shift()!);
+
+  while (selected.length < limit && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestMmrScore = -Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i]!;
+      const relevance = candidate.score ?? 0;
+
+      // Max similarity to any already-selected item
+      let maxSim = 0;
+      for (const sel of selected) {
+        const sim = jaccardSimilarity(candidate.memory, sel.memory);
+        if (sim > maxSim) maxSim = sim;
+      }
+
+      // MMR score: balance relevance and diversity
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmrScore) {
+        bestMmrScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+
+    selected.push(remaining.splice(bestIdx, 1)[0]!);
+  }
+
+  return selected;
 }
 
 async function fetchGraphEnhanced(
