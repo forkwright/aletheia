@@ -1,10 +1,13 @@
 // Nightly reflection cron — sleep-time compute for all active agents
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { reflectOnAgent, weeklyReflection } from "../distillation/reflect.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { MemoryFlushTarget } from "../distillation/hooks.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import type { CompetenceModel } from "../nous/competence.js";
 
 const log = createLogger("daemon:reflection");
 
@@ -19,6 +22,8 @@ export interface ReflectionCronOpts {
   memoryTarget?: MemoryFlushTarget;
   /** Fetch existing memories for contradiction detection */
   fetchExistingMemories?: (nousId: string) => Promise<string[]>;
+  /** Competence model for structured eval output */
+  competence?: CompetenceModel;
 }
 
 /**
@@ -41,7 +46,7 @@ export async function runNightlyReflection(
   const lookbackHours = opts.lookbackHours ?? 24;
 
   // Get all configured agents
-  const agentIds = Object.keys(config.agents.list);
+  const agentIds = config.agents.list.map((a) => a.id);
   if (agentIds.length === 0) {
     log.info("No agents configured — skipping reflection");
     return { agentsReflected: 0, totalFindings: 0, totalMemoriesStored: 0, errors: [] };
@@ -94,6 +99,18 @@ export async function runNightlyReflection(
           `${findings} findings, ${result.memoriesStored} stored, ` +
           `${result.tokensUsed} tokens, ${result.durationMs}ms`,
         );
+
+        // Write structured EVAL_FEEDBACK.md to agent workspace
+        const agentConfig = config.agents.list.find((a) => a.id === nousId);
+        if (agentConfig?.workspace) {
+          try {
+            const evalContent = buildEvalFeedback(nousId, result.findings, opts.competence);
+            writeFileSync(join(agentConfig.workspace, "EVAL_FEEDBACK.md"), evalContent);
+            log.info(`Wrote EVAL_FEEDBACK.md for ${nousId}`);
+          } catch (writeErr) {
+            log.warn(`Failed to write EVAL_FEEDBACK.md for ${nousId}: ${writeErr instanceof Error ? writeErr.message : writeErr}`);
+          }
+        }
       }
     } catch (err) {
       const msg = `Reflection failed for ${nousId}: ${err instanceof Error ? err.message : err}`;
@@ -129,7 +146,7 @@ export async function runWeeklyReflection(
   const model = opts.model ?? config.agents.defaults.compaction.distillationModel;
   const lookbackDays = opts.lookbackDays ?? 7;
 
-  const agentIds = Object.keys(config.agents.list);
+  const agentIds = config.agents.list.map((a) => a.id);
   if (agentIds.length === 0) {
     log.info("No agents configured — skipping weekly reflection");
     return { agentsReflected: 0, totalFindings: 0, errors: [] };
@@ -175,4 +192,72 @@ export async function runWeeklyReflection(
   );
 
   return { agentsReflected, totalFindings, errors };
+}
+
+function buildEvalFeedback(
+  nousId: string,
+  findings: import("../mneme/store.js").ReflectionFindings,
+  competence?: CompetenceModel,
+): string {
+  const date = new Date().toISOString().split("T")[0];
+  const lines: string[] = [`## Self-Evaluation — ${date}\n`];
+
+  // Strengths from competence model
+  lines.push("### Strengths");
+  if (competence) {
+    const agent = competence.getAgentCompetence(nousId);
+    if (agent) {
+      const strong = Object.entries(agent.domains)
+        .filter(([, d]) => d.score >= 0.5)
+        .sort((a, b) => b[1].score - a[1].score);
+      for (const [domain, data] of strong) {
+        lines.push(`- **${domain}**: score ${data.score.toFixed(2)} (${data.successes} successes)`);
+      }
+      if (strong.length === 0) lines.push("- No high-scoring domains yet");
+    } else {
+      lines.push("- No competence data recorded yet");
+    }
+  } else {
+    lines.push("- Competence model not available");
+  }
+
+  // Weaknesses from competence model
+  lines.push("\n### Weaknesses");
+  if (competence) {
+    const agent = competence.getAgentCompetence(nousId);
+    if (agent) {
+      const weak = Object.entries(agent.domains)
+        .filter(([, d]) => d.score < 0.5)
+        .sort((a, b) => a[1].score - b[1].score);
+      for (const [domain, data] of weak) {
+        lines.push(`- **${domain}**: score ${data.score.toFixed(2)} (${data.corrections} corrections)`);
+      }
+      if (weak.length === 0) lines.push("- No weak domains detected");
+    }
+  }
+
+  // Correction patterns from reflection findings
+  lines.push("\n### Correction Patterns");
+  if (findings.corrections.length > 0) {
+    for (const c of findings.corrections.slice(0, 5)) lines.push(`- ${c}`);
+  } else {
+    lines.push("- No corrections found in this period");
+  }
+
+  // Recommended adjustments
+  lines.push("\n### Recommended Adjustments");
+  if (findings.patterns.length > 0) {
+    for (const p of findings.patterns.slice(0, 3)) lines.push(`- ${p}`);
+  }
+  if (findings.contradictions.length > 0) {
+    lines.push(`- Resolve ${findings.contradictions.length} contradiction(s) in memory`);
+  }
+  if (findings.unresolvedThreads.length > 0) {
+    lines.push(`- Follow up on ${findings.unresolvedThreads.length} unresolved thread(s)`);
+  }
+  if (findings.patterns.length === 0 && findings.contradictions.length === 0 && findings.unresolvedThreads.length === 0) {
+    lines.push("- No adjustments needed");
+  }
+
+  return lines.join("\n") + "\n";
 }

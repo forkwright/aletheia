@@ -97,6 +97,18 @@ export interface PlanStep {
   result?: string;
 }
 
+export interface ExecutionPlanStep {
+  id: string;
+  description: string;
+  status: "pending" | "in_progress" | "completed" | "failed" | "skipped";
+  acceptanceCriteria?: string;
+  dependsOn: string[];
+  result?: string;
+  failureReason?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface StoredPlan {
   id: string;
   sessionId: string;
@@ -2064,10 +2076,16 @@ export class SessionStore {
       .run(status, resolvedAt, planId);
   }
 
-  updatePlanSteps(planId: string, steps: PlanStep[]): void {
+  updatePlanSteps(planId: string, steps: (PlanStep | ExecutionPlanStep)[]): void {
     this.db
       .prepare("UPDATE plans SET steps = ? WHERE id = ?")
       .run(JSON.stringify(steps), planId);
+  }
+
+  createExecutionPlan(plan: { id: string; sessionId: string; nousId: string; goal: string; steps: ExecutionPlanStep[] }): void {
+    this.db
+      .prepare("INSERT INTO plans (id, session_id, nous_id, status, steps, total_estimated_cost_cents) VALUES (?, ?, ?, 'executing', ?, 0)")
+      .run(plan.id, plan.sessionId, plan.nousId, JSON.stringify(plan.steps));
   }
 
   private mapPlan(r: Record<string, unknown>): StoredPlan {
