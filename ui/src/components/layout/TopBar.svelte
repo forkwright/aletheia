@@ -1,9 +1,11 @@
 <script lang="ts">
   import { getConnectionStatus } from "../../stores/connection.svelte";
-  import { getActiveAgent } from "../../stores/agents.svelte";
+  import { getActiveAgent, getActiveAgentId } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
   import { clearToken } from "../../lib/api";
+  import { getMessages } from "../../stores/chat.svelte";
+  import { formatCost, calculateMessageCost } from "../../lib/format";
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
@@ -16,6 +18,17 @@
 
   let agent = $derived(getActiveAgent());
   let hasSession = $derived(!!getAccessToken());
+
+  let sessionCost = $derived(() => {
+    const agentId = getActiveAgentId();
+    if (!agentId) return 0;
+    const msgs = getMessages(agentId);
+    let total = 0;
+    for (const m of msgs) {
+      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
+    }
+    return total;
+  });
 
   async function handleLogout() {
     await logout();
@@ -47,6 +60,9 @@
         {/if}
         {agent.name}
       </span>
+    {/if}
+    {#if sessionCost() > 0}
+      <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
     {/if}
   </div>
   <div class="right">
@@ -135,6 +151,15 @@
   }
   .agent-emoji {
     font-size: 14px;
+  }
+  .session-cost {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1px 6px;
   }
   .right {
     display: flex;

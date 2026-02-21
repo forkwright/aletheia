@@ -1184,6 +1184,27 @@ export function createGateway(
     });
   });
 
+  app.get("/api/costs/daily", (c) => {
+    const days = Math.min(Number(c.req.query("days")) || 30, 90);
+    const rows = store.getDailyCosts(days);
+    const daily = rows.map((r) => {
+      const cost = calculateCostBreakdown({
+        inputTokens: r.inputTokens,
+        outputTokens: r.outputTokens,
+        cacheReadTokens: r.cacheReadTokens,
+        cacheWriteTokens: r.cacheWriteTokens,
+        model: null,
+      });
+      return {
+        date: r.date,
+        cost: Math.round(cost.totalCost * 10000) / 10000,
+        tokens: r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens,
+        turns: r.turns,
+      };
+    });
+    return c.json({ daily });
+  });
+
   app.get("/api/metrics", (c) => {
     const metrics = store.getMetrics();
     const uptime = process.uptime();
