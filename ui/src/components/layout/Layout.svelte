@@ -22,6 +22,7 @@
 
   let authState = $state<AuthState>("loading");
   let tokenValue = $state("");
+  let hasToken = $state(!!getToken());
 
   // Determine auth mode on mount
   (async () => {

@@ -269,7 +269,6 @@ export class NousManager {
 
     // Primary sessions: multi-signal trigger — fire if ANY condition is met
     const actualContext = session.computedContextTokens || session.lastInputTokens || session.tokenCountEstimate || 0;
-    const lastDistilledMs = session.lastDistilledAt ? Date.now() - new Date(session.lastDistilledAt).getTime() : Infinity;
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
 
     let triggerReason: string | null = null;
@@ -277,7 +276,8 @@ export class NousManager {
       triggerReason = `context=${actualContext} >= 120K`;
     } else if (session.messageCount >= 150) {
       triggerReason = `messageCount=${session.messageCount} >= 150`;
-    } else if (lastDistilledMs > sevenDays && session.messageCount >= 20) {
+    } else if (session.lastDistilledAt && (Date.now() - new Date(session.lastDistilledAt).getTime()) > sevenDays && session.messageCount >= 20) {
+      const lastDistilledMs = Date.now() - new Date(session.lastDistilledAt).getTime();
       triggerReason = `stale (${Math.round(lastDistilledMs / 86400000)}d since last distill) + ${session.messageCount} msgs`;
     } else if (session.distillationCount === 0 && session.messageCount >= 30) {
       triggerReason = `never distilled + ${session.messageCount} msgs`;

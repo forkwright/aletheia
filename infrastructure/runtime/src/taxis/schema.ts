@@ -100,6 +100,7 @@ const NousDefinition = z.object({
       emoji: z.string().optional(),
     })
     .optional(),
+  domains: z.array(z.string()).optional(),
 }).passthrough();
 
 const AgentDefaults = z.preprocess(

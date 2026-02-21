@@ -49,6 +49,8 @@ function makeStore(overrides: Record<string, unknown> = {}) {
     getCostsByAgent: vi.fn().mockReturnValue([
       { model: "claude-sonnet", inputTokens: 80000, outputTokens: 40000, cacheReadTokens: 15000, cacheWriteTokens: 4000, turns: 30 },
     ]),
+    getCanonicalSessionKey: vi.fn().mockReturnValue(null),
+    resolveRoute: vi.fn().mockReturnValue(null),
     ...overrides,
   } as never;
 }

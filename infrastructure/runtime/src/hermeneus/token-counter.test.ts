@@ -5,6 +5,8 @@ import {
   estimateTokens,
   estimateTokensSafe,
   estimateToolDefTokens,
+  truncateToolResult,
+  dynamicThinkingBudget,
   SAFETY_MARGIN,
 } from "./token-counter.js";
 
@@ -73,5 +75,83 @@ describe("estimateToolDefTokens", () => {
     const oneResult = estimateToolDefTokens([{ name: "a" }]);
     const twoResult = estimateToolDefTokens([{ name: "a" }, { name: "b" }]);
     expect(twoResult).toBeGreaterThan(oneResult);
+  });
+});
+
+describe("truncateToolResult", () => {
+  it("returns short results unchanged", () => {
+    const result = truncateToolResult("grep", "line1\nline2\nline3");
+    expect(result).toBe("line1\nline2\nline3");
+  });
+
+  it("truncates results exceeding tool-specific limit", () => {
+    // grep limit is 5000 chars
+    const longResult = "x".repeat(8000);
+    const truncated = truncateToolResult("grep", longResult);
+    expect(truncated.length).toBeLessThan(longResult.length);
+    expect(truncated).toContain("chars truncated for storage");
+  });
+
+  it("preserves head and tail", () => {
+    const head = "HEAD_MARKER_" + "a".repeat(2000);
+    const middle = "m".repeat(5000);
+    const tail = "b".repeat(2000) + "_TAIL_MARKER";
+    const longResult = head + middle + tail;
+    const truncated = truncateToolResult("exec", longResult); // exec limit: 8000
+    expect(truncated).toContain("HEAD_MARKER_");
+    expect(truncated).toContain("_TAIL_MARKER");
+  });
+
+  it("uses default limit for unknown tools", () => {
+    // Default is 5000 chars
+    const longResult = "x".repeat(6000);
+    const truncated = truncateToolResult("unknown_tool", longResult);
+    expect(truncated.length).toBeLessThan(longResult.length);
+    expect(truncated).toContain("chars truncated for storage");
+  });
+
+  it("respects tool-specific limits", () => {
+    // read limit is 10000, grep limit is 5000
+    const result = "x".repeat(7000);
+    const readTruncated = truncateToolResult("read", result);
+    const grepTruncated = truncateToolResult("grep", result);
+    // read should NOT truncate (7000 < 10000)
+    expect(readTruncated).toBe(result);
+    // grep SHOULD truncate (7000 > 5000)
+    expect(grepTruncated).toContain("chars truncated for storage");
+  });
+});
+
+describe("dynamicThinkingBudget", () => {
+  it("returns minimal budget for very short messages", () => {
+    expect(dynamicThinkingBudget("hi")).toBe(1024);
+    expect(dynamicThinkingBudget("yes")).toBe(1024);
+  });
+
+  it("returns reduced budget for short messages", () => {
+    const budget = dynamicThinkingBudget("What is the capital of France?");
+    expect(budget).toBeLessThan(10_000);
+    expect(budget).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("returns full budget for long/complex messages", () => {
+    const longMsg = "x".repeat(1000);
+    expect(dynamicThinkingBudget(longMsg)).toBe(10_000);
+  });
+
+  it("reduces budget for tool loop iterations", () => {
+    const msg = "Review the codebase architecture and identify patterns";
+    const firstLoop = dynamicThinkingBudget(msg, { toolLoopIteration: 0 });
+    const secondLoop = dynamicThinkingBudget(msg, { toolLoopIteration: 1 });
+    expect(secondLoop).toBeLessThan(firstLoop);
+  });
+
+  it("respects custom base budget", () => {
+    const longMsg = "x".repeat(1000);
+    expect(dynamicThinkingBudget(longMsg, { baseBudget: 20_000 })).toBe(20_000);
+  });
+
+  it("never returns below minimum", () => {
+    expect(dynamicThinkingBudget("", { baseBudget: 500 })).toBe(1024);
   });
 });

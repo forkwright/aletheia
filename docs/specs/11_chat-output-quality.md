@@ -1,6 +1,6 @@
 # Spec: Chat Output Quality — Signal Over Noise
 
-**Status:** Phase 1-3 done (PR #70). Phase 4 next.
+**Status:** Phase 1-4 done. Phase 5 next.
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -61,7 +61,7 @@ Not content filtering — reclassification. Information moves to thinking pane, 
 
 During tool-heavy turns (28 tool calls), the user sees a wall of process narration streaming in the text pane. After the turn completes, the thinking pane collapses and only the final clean summary remains — but during the work, the experience is noisy.
 
-### Phase 4: Full-Response Narration Suppression (Runtime)
+### Phase 4: Full-Response Narration Suppression (Runtime) ✅
 
 Extend the `NarrationFilter` to classify narration throughout the entire response, not just at the start.
 
@@ -112,7 +112,7 @@ Status cards, diff views, progress checklists, cost badges. Pattern-match on com
 | **1** ✅ | Prompt — thinking vs chat routing | Small | High |
 | **2** ✅ | Prompt — formatting standards | Small | Medium |
 | **3** ✅ | Runtime narration filter (response start) | Medium | Medium (safety net) |
-| **4** | Runtime narration filter (full response) | Small | High — eliminates mid-response process noise |
+| **4** ✅ | Runtime narration filter (full response) | Small | High — eliminates mid-response process noise |
 | **5** | Rich UI components | Large | High |
 
 ---

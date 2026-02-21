@@ -4,7 +4,7 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let onAuthFailure: (() => void) | null = null;
 
 export interface AuthMode {
-  mode: "token" | "session";
+  mode: "none" | "token" | "session";
   sessionAuth: boolean;
 }
 

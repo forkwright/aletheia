@@ -422,6 +422,17 @@ program
     },
   );
 
+// --- Token Audit ---
+
+program
+  .command("audit-tokens [agent-id]")
+  .description("Show per-section bootstrap token breakdown for an agent")
+  .action(async (agentId: string | undefined) => {
+    const { auditTokens } = await import("./nous/audit.js");
+    const id = agentId ?? "main";
+    await auditTokens(id);
+  });
+
 // --- Auth Migration ---
 
 program

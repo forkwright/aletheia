@@ -96,15 +96,36 @@ export function createSessionsSpawnTool(
             enum: ROLE_NAMES,
             description: "Pre-configured role preset (coder/reviewer/researcher/explorer/runner). Sets model, system prompt, tools, maxTurns, and token budget. Explicit params override role defaults.",
           },
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                task: { type: "string", description: "Task description" },
+                role: { type: "string", enum: ROLE_NAMES, description: "Role preset" },
+                agentId: { type: "string", description: "Agent to run as" },
+                model: { type: "string", description: "Model override" },
+              },
+              required: ["task"],
+            },
+            description: "Array of tasks for parallel dispatch (max 3 concurrent). When provided, 'task' field is ignored.",
+          },
         },
-        required: ["task"],
+        required: [],
       },
     },
     async execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
+      // Parallel dispatch path
+      const tasksArray = input["tasks"] as Array<Record<string, unknown>> | undefined;
+      if (tasksArray && tasksArray.length > 0) {
+        return executeParallel(tasksArray, input, context, dispatcher, sharedRoot);
+      }
+
       const task = input["task"] as string;
+      if (!task) return JSON.stringify({ error: "Either 'task' or 'tasks' is required" });
       const agentId = (input["agentId"] as string) ?? context.nousId;
       const isEphemeral = input["ephemeral"] === true;
       const roleName = input["role"] as string | undefined;
@@ -348,6 +369,104 @@ export function createSessionsSpawnTool(
       }
     },
   };
+}
+
+const MAX_PARALLEL = 3;
+
+async function executeParallel(
+  tasks: Array<Record<string, unknown>>,
+  parentInput: Record<string, unknown>,
+  context: ToolContext,
+  dispatcher?: AgentDispatcher,
+  _sharedRoot?: string,
+): Promise<string> {
+  if (!dispatcher) return JSON.stringify({ error: "Agent dispatch not available" });
+
+  const capped = tasks.slice(0, MAX_PARALLEL);
+  if (tasks.length > MAX_PARALLEL) {
+    log.warn(`Parallel dispatch capped at ${MAX_PARALLEL} (${tasks.length} requested)`);
+  }
+
+  const timeoutSeconds = (parentInput["timeoutSeconds"] as number) ?? 180;
+  const startTime = Date.now();
+
+  const promises = capped.map(async (taskDef, idx) => {
+    const task = taskDef["task"] as string;
+    const roleName = (taskDef["role"] as string | undefined) ?? (parentInput["role"] as string | undefined);
+    const role = roleName ? resolveRole(roleName) : null;
+    const agentId = (taskDef["agentId"] as string | undefined) ?? (parentInput["agentId"] as string | undefined) ?? context.nousId;
+    const modelOverride = (taskDef["model"] as string | undefined) ?? (parentInput["model"] as string | undefined) ?? role?.model;
+    const budgetTokens = role?.maxTokenBudget;
+    const sessionKey = `spawn:${context.nousId}:${Date.now().toString(36)}:${idx}`;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Spawn timeout after ${timeoutSeconds}s`)), timeoutSeconds * 1000);
+    });
+
+    try {
+      const outcome = await Promise.race([
+        dispatcher.handleMessage({
+          text: task,
+          nousId: agentId,
+          sessionKey,
+          parentSessionId: context.sessionId,
+          channel: "spawn",
+          peerKind: "agent",
+          peerId: context.nousId,
+          ...(modelOverride ? { model: modelOverride } : {}),
+          depth: (context.depth ?? 0) + 1,
+        }),
+        timeoutPromise,
+      ]);
+      clearTimeout(timer!);
+
+      const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
+      const structured = parseStructuredResult(outcome.text);
+      const durationMs = Date.now() - startTime;
+
+      if (dispatcher.store) {
+        dispatcher.store.logSubAgentCall({
+          sessionId: outcome.sessionId,
+          parentSessionId: context.sessionId,
+          parentNousId: context.nousId,
+          ...(roleName ? { role: roleName } : {}),
+          agentId,
+          task,
+          ...(modelOverride ? { model: modelOverride } : {}),
+          inputTokens: outcome.inputTokens ?? 0,
+          outputTokens: outcome.outputTokens ?? 0,
+          toolCalls: outcome.toolCalls ?? 0,
+          status: "completed",
+          durationMs,
+        });
+      }
+
+      return {
+        index: idx,
+        task: task.slice(0, 200),
+        ...(roleName ? { role: roleName } : {}),
+        result: outcome.text,
+        ...(structured ? { structuredResult: structured } : {}),
+        tokens: { input: outcome.inputTokens, output: outcome.outputTokens, total: totalTokens, budget: budgetTokens ?? null },
+        durationMs,
+      };
+    } catch (err) {
+      clearTimeout(timer!);
+      return {
+        index: idx,
+        task: task.slice(0, 200),
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  const results = await Promise.allSettled(promises);
+  const output = results.map((r) =>
+    r.status === "fulfilled" ? r.value : { error: String(r.reason) },
+  );
+
+  return JSON.stringify({ parallel: true, count: output.length, results: output, totalDurationMs: Date.now() - startTime });
 }
 
 export const sessionsSpawnTool = createSessionsSpawnTool();

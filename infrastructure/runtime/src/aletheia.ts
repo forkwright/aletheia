@@ -25,6 +25,7 @@ import { cleanupTtsFiles } from "./semeion/tts.js";
 import { createSessionsSendTool } from "./organon/built-in/sessions-send.js";
 import { createSessionsAskTool } from "./organon/built-in/sessions-ask.js";
 import { createSessionsSpawnTool } from "./organon/built-in/sessions-spawn.js";
+import { createSessionsDispatchTool } from "./organon/built-in/sessions-dispatch.js";
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
@@ -252,6 +253,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const spawnTool = createSessionsSpawnTool(auditDispatcher, sharedRoot);
   spawnTool.category = "available";
   tools.register(spawnTool);
+  const dispatchTool = createSessionsDispatchTool(auditDispatcher, sharedRoot);
+  dispatchTool.category = "available";
+  tools.register(dispatchTool);
   tools.register(createDeliberateTool(auditDispatcher));
 
   return {
@@ -513,6 +517,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Retention — enforce data lifecycle policy every 24h (with immediate first run)
   const spawnCleanupTimer = setInterval(() => {
     runtime.store.archiveStaleSpawnSessions();
+    runtime.store.deleteEphemeralSessions(24 * 60 * 60 * 1000); // 24h
     cleanupTtsFiles();
     runtime.store.blackboardExpire();
   }, 60 * 60 * 1000);

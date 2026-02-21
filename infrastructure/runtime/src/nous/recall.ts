@@ -36,6 +36,7 @@ export async function recallMemories(
     maxTokens?: number;
     timeoutMs?: number;
     minScore?: number;
+    domains?: string[];
   },
 ): Promise<RecallResult> {
   const limit = opts?.limit ?? 8;
@@ -52,7 +53,7 @@ export async function recallMemories(
 
   try {
     // Primary path: vector-only search (fast, ~200-500ms)
-    hits = await fetchBasicSearch(query, nousId, limit, controller.signal);
+    hits = await fetchBasicSearch(query, nousId, limit, controller.signal, opts?.domains);
 
     // If vector search returned results above threshold, skip graph enrichment.
     // Only fall back to graph-enhanced search if vector search found nothing
@@ -182,6 +183,7 @@ async function fetchBasicSearch(
   nousId: string,
   limit: number,
   signal: AbortSignal,
+  domains?: string[],
 ): Promise<MemoryHit[]> {
   const res = await fetch(`${SIDECAR_URL}/search`, {
     method: "POST",
@@ -191,6 +193,7 @@ async function fetchBasicSearch(
       user_id: USER_ID,
       agent_id: nousId,
       limit,
+      ...(domains && domains.length > 0 ? { domains } : {}),
     }),
     signal,
   });

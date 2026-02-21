@@ -1,6 +1,6 @@
 # Spec: Knowledge Graph — Performance, Utility, and Integration
 
-**Status:** Phase 1a-1b done (PRs #49, #70)  
+**Status:** Phase 1a-1b, 2a done (PRs #49, #70)  
 **Author:** Syn  
 **Date:** 2026-02-19  
 
@@ -174,7 +174,7 @@ Instead of only recalling on user message, surface memories when they become rel
 |-------|--------|--------|
 | **1a: Vector-only fast path** | Small | Recall drops from 3s → 500ms |
 | **1b: Neo4j optional mode** | Medium | System works without Neo4j running |
-| **2a: Extraction prompt improvement** | Small | Better memory quality |
+| **2a: Extraction prompt improvement** ✅ | Small | Better memory quality |
 | **2b: Memory confidence/decay** | Medium | Prevents stale memory accumulation |
 | **2c: Graph UI search + edit** | Medium | User can see and correct the knowledge base |
 | **3a: Domain-scoped memory** | Medium | Clean agent separation |

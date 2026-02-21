@@ -47,6 +47,7 @@ class SearchRequest(BaseModel):
     user_id: str = "default"
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
+    domains: list[str] | None = None
 
 
 class ImportRequest(BaseModel):
@@ -139,6 +140,69 @@ async def add_memory(req: AddRequest, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
+    """Boost scores for recently created memories (linear decay over window)."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    for r in results:
+        created = r.get("created_at") or (r.get("metadata") or {}).get("created_at")
+        if not created:
+            continue
+        try:
+            if isinstance(created, str):
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            else:
+                continue
+            age_hours = (now - dt).total_seconds() / 3600
+            if age_hours < window_hours:
+                boost = max_boost * (1.0 - age_hours / window_hours)
+                r["score"] = (r.get("score") or 0.0) + boost
+        except (ValueError, TypeError):
+            pass
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return results
+
+
+def _apply_confidence_weight(results: list, max_penalty: float = 0.10) -> list:
+    """Penalize search scores for memories with high decay counts (frequently unreferenced)."""
+    if not neo4j_available() or not results:
+        return results
+    memory_ids = [r.get("id") for r in results if r.get("id")]
+    if not memory_ids:
+        return results
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            records = session.run(
+                "UNWIND $ids AS mid "
+                "OPTIONAL MATCH (m:MemoryAccess {memory_id: mid}) "
+                "RETURN mid, m.access_count AS accesses, m.decay_count AS decays",
+                ids=memory_ids,
+            ).data()
+        driver.close()
+        mark_neo4j_ok()
+        access_map: dict[str, tuple[int, int]] = {}
+        for rec in records:
+            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("decays") or 0)
+        for r in results:
+            mid = r.get("id")
+            if mid and mid in access_map:
+                accesses, decays = access_map[mid]
+                # Decay penalty: up to max_penalty for heavily decayed memories
+                if decays > 0 and accesses == 0:
+                    penalty = min(max_penalty, decays * 0.02)
+                    r["score"] = max(0, (r.get("score") or 0.0) - penalty)
+                # Access boost: small boost for frequently accessed memories
+                elif accesses > 2:
+                    boost = min(0.05, accesses * 0.01)
+                    r["score"] = (r.get("score") or 0.0) + boost
+        results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("confidence weighting failed: %s", e)
+    return results
+
+
 @router.post("/search")
 async def search_memory(req: SearchRequest, request: Request):
     mem = _get_memory(request)
@@ -153,6 +217,16 @@ async def search_memory(req: SearchRequest, request: Request):
             meta = r.get("metadata") or {}
             if "created_at" in meta:
                 r["created_at"] = meta["created_at"]
+        if isinstance(results, list):
+            if req.domains:
+                allowed = set(req.domains)
+                results = [
+                    r for r in results
+                    if not (r.get("metadata") or {}).get("domain")
+                    or (r.get("metadata") or {}).get("domain") in allowed
+                ]
+            results = _apply_recency_boost(results)
+            results = _apply_confidence_weight(results)
         return {"ok": True, "results": results}
     except Exception as e:
         logger.exception("search_memory failed")

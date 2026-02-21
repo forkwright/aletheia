@@ -187,7 +187,7 @@ export class SessionStore {
     // Auto-classify session type from key pattern
     let sessionType: Session["sessionType"] = "primary";
     if (key.includes("prosoche")) sessionType = "background";
-    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
+    else if (key.startsWith("ask:") || key.startsWith("spawn:") || key.startsWith("dispatch:") || key.startsWith("ephemeral:")) sessionType = "ephemeral";
 
     this.db
       .prepare(
@@ -209,10 +209,27 @@ export class SessionStore {
     model?: string,
     parentSessionId?: string,
   ): Session {
-    return (
-      this.findSession(nousId, sessionKey) ??
-      this.createSession(nousId, sessionKey, parentSessionId, model)
-    );
+    const active = this.findSession(nousId, sessionKey);
+    if (active) return active;
+
+    // Check for archived/distilled session with same key — reactivate instead of
+    // creating a duplicate (UNIQUE constraint on nous_id + session_key spans all statuses)
+    const archived = this.db
+      .prepare(
+        "SELECT * FROM sessions WHERE nous_id = ? AND session_key = ? AND status != 'active' ORDER BY updated_at DESC LIMIT 1",
+      )
+      .get(nousId, sessionKey) as Record<string, unknown> | undefined;
+
+    if (archived) {
+      const id = archived["id"] as string;
+      this.db
+        .prepare("UPDATE sessions SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+        .run(id);
+      log.info(`Reactivated archived session ${id} for nous ${nousId} (key: ${sessionKey})`);
+      return this.findSessionById(id)!;
+    }
+
+    return this.createSession(nousId, sessionKey, parentSessionId, model);
   }
 
   findSessionsByKey(sessionKey: string): Session[] {
@@ -1435,6 +1452,34 @@ export class SessionStore {
       `)
       .all(nousId, nousId, since, since, until, until) as Array<Record<string, unknown>>;
     return rows.map((r) => this.mapSession(r));
+  }
+
+  /**
+   * For a given agent, find the canonical DM session key.
+   * This enables webchat to converge with Signal DM into a single session
+   * rather than creating isolated parallel conversations.
+   *
+   * Priority: Signal DM session with most distillations (deepest context),
+   * then most messages, then most recently active.
+   */
+  getCanonicalSessionKey(nousId: string): string | null {
+    // Find DM bindings for this agent (Signal DMs, not groups)
+    const row = this.db
+      .prepare(
+        `SELECT s.session_key
+         FROM sessions s
+         WHERE s.nous_id = ?
+           AND s.session_key LIKE 'signal:%'
+           AND s.status = 'active'
+           AND s.session_key NOT IN (
+             SELECT 'signal:' || rc.peer_id FROM routing_cache rc
+             WHERE rc.channel = 'signal' AND rc.peer_kind = 'group'
+           )
+         ORDER BY s.distillation_count DESC, s.message_count DESC, s.updated_at DESC
+         LIMIT 1`,
+      )
+      .get(nousId) as { session_key: string } | undefined;
+    return row?.session_key ?? null;
   }
 
   // --- Thread Model (Phase 1 + 2) ---

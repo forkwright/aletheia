@@ -1,6 +1,6 @@
 # Spec: Efficiency — Parallel Execution & Token Economy
 
-**Status:** Draft
+**Status:** Phases 1, 2a-2d, 3 done. Phase 4 next.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -65,7 +65,7 @@ Spec 13 (Sub-Agent Workforce) defines delegation to sub-agents. Currently, sub-a
 
 ## Design
 
-### Phase 1: Parallel Tool Execution
+### Phase 1: Parallel Tool Execution ✅
 
 **Goal:** Execute independent tool calls concurrently when the model returns multiple `tool_use` blocks.
 
@@ -341,12 +341,12 @@ When users see that a single `exec` result consumed 2,400 tokens of context, the
 
 | Phase | What | Effort | Impact |
 |-------|------|--------|--------|
-| **1** | Parallel tool execution | Medium | High — 2-5x faster tool-heavy turns |
-| **2a** | Token audit tooling | Small | Foundation — measurement before optimization |
-| **2b** | Bootstrap density audit | Small-Medium | Medium — trim redundant prompt content |
-| **2c** | Tool result truncation | Small | Medium — reduces context bloat over time |
-| **2d** | Dynamic thinking budget | Small | Low-Medium — saves tokens on simple turns |
-| **3** | Parallel sub-agent dispatch | Medium | Medium — faster complex delegation |
+| **1** ✅ | Parallel tool execution | Medium | High — 2-5x faster tool-heavy turns |
+| **2a** | Token audit tooling | Small | ✅ Done — `audit-tokens` CLI with per-file, cache group, cost estimates |
+| **2b** | Bootstrap density audit | Small-Medium | ✅ Done — Syn 55%, domain agents ~45% trimmed. Measurement drives ongoing trims |
+| **2c** | Tool result truncation | Small | ✅ Done — per-tool char limits, head+tail preservation, both exec paths |
+| **2d** | Dynamic thinking budget | Small | ✅ Done — message-length heuristic + tool-loop reduction (30% on iterations 2+) |
+| **3** | Parallel sub-agent dispatch | Medium | ✅ Done — `sessions_dispatch` batch tool, Promise.allSettled, timing metrics |
 | **4** | Per-tool cost visibility | Small | Low — awareness drives behavior change |
 
 ---

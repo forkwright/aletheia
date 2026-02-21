@@ -109,7 +109,9 @@ export async function buildContext(
   // Pre-turn memory recall
   let recallTokens = 0;
   if (!degradedServices.includes("mem0-sidecar")) {
-    const recall = await recallMemories(msg.text, nousId);
+    const recall = await recallMemories(msg.text, nousId, {
+      ...(state.nous.domains ? { domains: state.nous.domains } : {}),
+    });
     if (recall.block) systemPrompt.push(recall.block);
     recallTokens = recall.tokens;
     if (recall.count > 0) {
@@ -162,7 +164,7 @@ export async function buildContext(
     }
   }
 
-  // Session metrics — injected every 8th turn for self-awareness
+  // Session metrics + cost — injected every 8th turn for self-awareness
   const msgCount = currentSession?.messageCount ?? 0;
   if (msgCount > 0 && msgCount % 8 === 0) {
     const elapsed = currentSession?.createdAt
@@ -172,13 +174,25 @@ export async function buildContext(
     const utilization = contextTokens > 0
       ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / contextTokens) * 100)
       : 0;
+
+    // Cost summary from usage records
+    const usageRecords = services.store.getUsageForSession(sessionId);
+    const totalInput = usageRecords.reduce((s, u) => s + u.inputTokens, 0);
+    const totalOutput = usageRecords.reduce((s, u) => s + u.outputTokens, 0);
+    const totalCache = usageRecords.reduce((s, u) => s + u.cacheReadTokens, 0);
+    const lastTurn = usageRecords[usageRecords.length - 1];
+    const lastTurnTokens = lastTurn ? `${lastTurn.inputTokens}in/${lastTurn.outputTokens}out` : "n/a";
+    const cacheRate = totalInput > 0 ? Math.round((totalCache / totalInput) * 100) : 0;
+
     systemPrompt.push({
       type: "text",
       text:
         `## Session Metrics — Turn ${msgCount}\n\n` +
         `Session duration: ${elapsed} min\n` +
         `Context utilization: ${utilization}%\n` +
-        `Distillations: ${currentSession?.distillationCount ?? 0}`,
+        `Distillations: ${currentSession?.distillationCount ?? 0}\n` +
+        `Total tokens: ${totalInput}in / ${totalOutput}out (cache hit: ${cacheRate}%)\n` +
+        `Last turn: ${lastTurnTokens}`,
     });
   }
 

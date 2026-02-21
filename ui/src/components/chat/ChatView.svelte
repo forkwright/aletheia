@@ -4,6 +4,7 @@
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
+  import DistillationProgress from "./DistillationProgress.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
   import {
@@ -36,6 +37,7 @@
     getActiveSessionId,
     getActiveSessionKey,
     getActiveSession,
+    setActiveSession,
     refreshSessions,
     createNewSession,
     loadSessions,
@@ -248,7 +250,12 @@
     const currentAgentId = getActiveAgentId();
     if (!currentAgentId) return;
     const sessionKey = getActiveSessionKey();
-    sendMessage(currentAgentId, text, sessionKey, media).then(() => {
+    sendMessage(currentAgentId, text, sessionKey, media).then((resolvedSessionId) => {
+      // If the server redirected to a different session (e.g., signal key ownership mismatch),
+      // switch the UI to the server's session before refreshing the list.
+      if (resolvedSessionId && resolvedSessionId !== getActiveSessionId()) {
+        setActiveSession(resolvedSessionId);
+      }
       skipNextHistoryLoad = true;
       refreshSessions(currentAgentId);
     });
@@ -303,6 +310,21 @@
     thinkingIsLive = false;
   }
 
+  // Thinking panel persistence — capture thinking content when turn completes
+  let previouslyLive = false;
+  $effect(() => {
+    const isLive = thinkingIsLive && currentAgentId ? getIsStreaming(currentAgentId) : false;
+    if (previouslyLive && !isLive && currentAgentId) {
+      const msgs = getMessages(currentAgentId);
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg?.thinking) {
+        selectedThinking = lastMsg.thinking;
+      }
+      thinkingIsLive = false;
+    }
+    previouslyLive = isLive;
+  });
+
   function handleAbort() {
     const id = getActiveAgentId();
     if (id) abortStream(id);
@@ -351,6 +373,7 @@
   {#if pendingApproval}
     <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
   {/if}
+  <DistillationProgress />
   <InputBar
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}

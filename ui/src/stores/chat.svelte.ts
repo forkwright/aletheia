@@ -128,10 +128,11 @@ export async function sendMessage(
   text: string,
   sessionKey: string,
   media?: MediaItem[],
-): Promise<void> {
+): Promise<string | null> {
   const state = writeState(agentId);
-  if (state.isStreaming) return;
+  if (state.isStreaming) return null;
   state.error = null;
+  let resolvedSessionId: string | null = null;
 
   // Add user message optimistically
   const userMsg: ChatMessage = {
@@ -153,6 +154,10 @@ export async function sendMessage(
   try {
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
+        case "turn_start":
+          resolvedSessionId = event.sessionId;
+          break;
+
         case "thinking_delta":
           state.thinkingText += event.text;
           break;
@@ -164,7 +169,7 @@ export async function sendMessage(
         case "tool_start":
           state.activeToolCalls = [
             ...state.activeToolCalls,
-            { id: event.toolId, name: event.toolName, status: "running" },
+            { id: event.toolId, name: event.toolName, status: "running", input: event.input },
           ];
           break;
 
@@ -176,6 +181,7 @@ export async function sendMessage(
                   status: event.isError ? "error" as const : "complete" as const,
                   result: event.result,
                   durationMs: event.durationMs,
+                  tokenEstimate: event.tokenEstimate,
                 }
               : tc,
           );
@@ -260,6 +266,7 @@ export async function sendMessage(
     state.abortController = null;
     state.pendingApproval = null;
   }
+  return resolvedSessionId;
 }
 
 export function hasLocalStream(agentId: string): boolean {
@@ -300,10 +307,11 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
             : undefined;
 
           if (toolBlocks.length > 0) {
-            currentToolCalls = toolBlocks.map((b: { id: string; name: string }) => ({
+            currentToolCalls = toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
               id: b.id,
               name: b.name,
               status: "complete" as const,
+              input: b.input,
             }));
           }
 
