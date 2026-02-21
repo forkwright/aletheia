@@ -91,6 +91,7 @@ export function resolveStage(
     allowedRoots,
     depth: msg.depth ?? 0,
     ...(abortSignal ? { signal: abortSignal } : {}),
+    sandboxConfig: services.config.sandbox,
   };
 
   const trace = new TraceBuilder(session.id, nousId, 0, model);

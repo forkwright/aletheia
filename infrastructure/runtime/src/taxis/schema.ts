@@ -464,6 +464,14 @@ const UpdatesConfig = z
 
 const SandboxConfig = z
   .object({
+    enabled: z.boolean().default(false),
+    mode: z.enum(["docker", "pattern-only"]).default("pattern-only"),
+    image: z.string().default("aletheia-sandbox:latest"),
+    allowNetwork: z.boolean().default(false),
+    mountWorkspace: z.enum(["readonly", "readwrite"]).default("readonly"),
+    bypassFor: z.array(z.string()).default([]),
+    memoryLimit: z.string().default("512m"),
+    cpuLimit: z.number().default(1),
     denyPatterns: z.array(z.string()).default([]),
     auditDenied: z.boolean().default(true),
   })

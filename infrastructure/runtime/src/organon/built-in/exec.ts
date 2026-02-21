@@ -3,7 +3,10 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { ToolContext, ToolHandler } from "../registry.js";
 import { screenCommand } from "../sandbox.js";
+import { dockerAvailable, execInDocker } from "../docker-exec.js";
+import { createLogger } from "../../koina/logger.js";
 
+const log = createLogger("tool.exec");
 const execAsync = promisify(exec);
 
 export const execTool: ToolHandler = {
@@ -45,20 +48,50 @@ export const execTool: ToolHandler = {
   ): Promise<string> {
     const command = input["command"] as string;
     const timeout = (input["timeout"] as number) ?? 30000;
+    const sandbox = context.sandboxConfig;
 
-    // Pre-screen against deny patterns
-    const screen = screenCommand(command);
+    // Pre-screen against deny patterns (always runs, even for bypassed agents)
+    const extraPatterns = sandbox?.denyPatterns ?? [];
+    const screen = screenCommand(command, extraPatterns);
     if (!screen.allowed) {
+      if (sandbox?.auditDenied) {
+        log.warn(`Denied exec by ${context.nousId}: ${command.slice(0, 200)} (pattern: ${screen.matchedPattern})`);
+      }
       return `Error: Command blocked by security policy. Matched pattern: "${screen.matchedPattern}". This command is not allowed.`;
     }
 
+    // Decide execution path: Docker sandbox vs direct
+    const useDocker =
+      sandbox?.enabled &&
+      sandbox.mode === "docker" &&
+      !sandbox.bypassFor.includes(context.nousId) &&
+      dockerAvailable();
+
     try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: context.workspace,
-        timeout,
-        maxBuffer: 1024 * 1024,
-        env: { ...process.env, ALETHEIA_NOUS: context.nousId },
-      });
+      let stdout: string;
+      let stderr: string;
+
+      if (useDocker) {
+        const result = await execInDocker({
+          command,
+          workspace: context.workspace,
+          nousId: context.nousId,
+          timeout,
+          config: sandbox,
+        });
+        stdout = result.stdout;
+        stderr = result.stderr;
+      } else {
+        const result = await execAsync(command, {
+          cwd: context.workspace,
+          timeout,
+          maxBuffer: 1024 * 1024,
+          env: { ...process.env, ALETHEIA_NOUS: context.nousId },
+        });
+        stdout = result.stdout;
+        stderr = result.stderr;
+      }
+
       let trimmed = stdout.trim();
       if (trimmed.length > 50000) {
         trimmed =

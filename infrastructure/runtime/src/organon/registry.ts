@@ -37,6 +37,7 @@ export interface ToolContext {
   allowedRoots?: string[];
   depth?: number;
   signal?: AbortSignal;
+  sandboxConfig?: import("../taxis/schema.js").SandboxSettings;
 }
 
 interface ActiveToolEntry {
