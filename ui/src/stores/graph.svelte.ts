@@ -1,6 +1,6 @@
 // Graph visualization store
-import { fetchGraphExport, type GraphExportParams } from "../lib/api";
-import type { GraphData, GraphNode, GraphEdge, CommunityMeta } from "../lib/types";
+import { fetchGraphExport, fetchEntityDetail, deleteEntity, mergeEntities, type GraphExportParams } from "../lib/api";
+import type { GraphData, GraphNode, GraphEdge, CommunityMeta, EntityDetail } from "../lib/types";
 
 const EMPTY: GraphData = { nodes: [], edges: [], communities: 0, community_meta: [], total_nodes: 0 };
 
@@ -12,6 +12,8 @@ let highlightedCommunity = $state<number | null>(null);
 let searchQuery = $state("");
 let loadedMode = $state<"top" | "community" | "all">("top");
 let loadedLimit = $state(200);
+let entityDetail = $state<EntityDetail | null>(null);
+let entityLoading = $state(false);
 
 export function getGraphData(): GraphData {
   return graphData;
@@ -89,6 +91,61 @@ export function getTotalNodes(): number {
 
 export function getCommunityMeta(): CommunityMeta[] {
   return graphData.community_meta;
+}
+
+export function getEntityDetail(): EntityDetail | null {
+  return entityDetail;
+}
+
+export function getEntityLoading(): boolean {
+  return entityLoading;
+}
+
+export async function loadEntityDetail(name: string): Promise<void> {
+  entityLoading = true;
+  try {
+    entityDetail = await fetchEntityDetail(name);
+  } catch {
+    entityDetail = null;
+  } finally {
+    entityLoading = false;
+  }
+}
+
+export async function removeEntity(name: string): Promise<boolean> {
+  try {
+    await deleteEntity(name);
+    graphData = {
+      ...graphData,
+      nodes: graphData.nodes.filter((n) => n.id !== name),
+      edges: graphData.edges.filter((e) => e.source !== name && e.target !== name),
+    };
+    if (selectedNodeId === name) {
+      selectedNodeId = null;
+      entityDetail = null;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function mergeEntityNodes(source: string, target: string): Promise<boolean> {
+  try {
+    await mergeEntities(source, target);
+    graphData = {
+      ...graphData,
+      nodes: graphData.nodes.filter((n) => n.id !== source),
+      edges: graphData.edges.filter((e) => e.source !== source && e.target !== source),
+    };
+    if (selectedNodeId === source) {
+      selectedNodeId = target;
+      await loadEntityDetail(target);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function loadGraph(params?: GraphExportParams): Promise<void> {

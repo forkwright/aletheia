@@ -848,6 +848,25 @@ export function createGateway(
     }
   });
 
+  // --- Tool Stats API ---
+
+  app.get("/api/tool-stats", (c) => {
+    const agentId = c.req.query("agentId");
+    const window = c.req.query("window");
+    let windowHours = 168; // 7 days
+    if (window) {
+      const match = window.match(/^(\d+)(h|d)$/);
+      if (match) {
+        windowHours = match[2] === "d" ? parseInt(match[1]!, 10) * 24 : parseInt(match[1]!, 10);
+      }
+    }
+    const stats = store.getToolStats({
+      ...(agentId ? { nousId: agentId } : {}),
+      windowHours,
+    });
+    return c.json({ ok: true, window: `${windowHours}h`, stats });
+  });
+
   // --- Reflection API ---
 
   app.get("/api/reflection/:nousId", (c) => {
@@ -1140,6 +1159,31 @@ export function createGateway(
   app.post("/api/memory/graph/analyze", async (c) => {
     const body = await c.req.text();
     const res = await fetch(`${memoryUrl}/graph/analyze`, {
+      method: "POST",
+      headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/entity/:name", async (c) => {
+    const name = c.req.param("name");
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.delete("/api/memory/entity/:name", async (c) => {
+    const name = c.req.param("name");
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers: memorySidecarHeaders(),
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.post("/api/memory/entity/merge", async (c) => {
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/entity/merge`, {
       method: "POST",
       headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
       body,

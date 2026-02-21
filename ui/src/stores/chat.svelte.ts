@@ -210,6 +210,7 @@ export async function sendMessage(
             timestamp: new Date().toISOString(),
             toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
             ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
+            turnOutcome: event.outcome,
           };
           state.messages = [...state.messages, assistantMsg];
           state.streamingText = "";

@@ -1,6 +1,6 @@
 // Tool registry tests
 import { describe, expect, it } from "vitest";
-import { type ToolContext, type ToolHandler, ToolRegistry } from "./registry.js";
+import { type ToolContext, type ToolHandler, ToolRegistry, matchesToolFilter } from "./registry.js";
 
 function makeHandler(name: string, result = "ok"): ToolHandler {
   return {
@@ -77,5 +77,51 @@ describe("ToolRegistry", () => {
     reg.register(makeHandler("big", bigResult));
     const result = await reg.execute("big", {}, ctx);
     expect(result.length).toBeLessThan(bigResult.length);
+  });
+
+  it("getDefinitions filters by toolFilter glob patterns", () => {
+    const reg = new ToolRegistry();
+    reg.register(makeHandler("read"));
+    reg.register(makeHandler("write"));
+    reg.register(makeHandler("grep"));
+    reg.register(makeHandler("mem0_search"));
+    reg.register(makeHandler("mem0_add"));
+    const defs = reg.getDefinitions({ toolFilter: ["read", "mem0_*"] });
+    expect(defs.map((d) => d.name)).toEqual(["read", "mem0_search", "mem0_add"]);
+  });
+
+  it("toolFilter with wildcard-only matches all", () => {
+    const reg = new ToolRegistry();
+    reg.register(makeHandler("a"));
+    reg.register(makeHandler("b"));
+    const defs = reg.getDefinitions({ toolFilter: ["*"] });
+    expect(defs).toHaveLength(2);
+  });
+});
+
+describe("matchesToolFilter", () => {
+  it("matches exact names", () => {
+    expect(matchesToolFilter("read", ["read", "write"])).toBe(true);
+    expect(matchesToolFilter("exec", ["read", "write"])).toBe(false);
+  });
+
+  it("matches wildcard at end", () => {
+    expect(matchesToolFilter("mem0_search", ["mem0_*"])).toBe(true);
+    expect(matchesToolFilter("mem0_add", ["mem0_*"])).toBe(true);
+    expect(matchesToolFilter("grep", ["mem0_*"])).toBe(false);
+  });
+
+  it("matches wildcard at start", () => {
+    expect(matchesToolFilter("graph_search", ["*_search"])).toBe(true);
+    expect(matchesToolFilter("mem0_search", ["*_search"])).toBe(true);
+    expect(matchesToolFilter("read", ["*_search"])).toBe(false);
+  });
+
+  it("matches star-only pattern", () => {
+    expect(matchesToolFilter("anything", ["*"])).toBe(true);
+  });
+
+  it("returns false for empty patterns", () => {
+    expect(matchesToolFilter("read", [])).toBe(false);
   });
 });
