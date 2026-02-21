@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# audit-tokens — Measure token consumption per bootstrap section for an agent
+#
+# Usage: audit-tokens [agent-id]
+# Default: syn (the heaviest agent)
+#
+# Measures each file loaded during bootstrap assembly and shows token breakdown.
+
+set -euo pipefail
+
+AGENT="${1:-syn}"
+NOUS_ROOT="/mnt/ssd/aletheia/nous"
+WORKSPACE="$NOUS_ROOT/$AGENT"
+
+if [ ! -d "$WORKSPACE" ]; then
+  echo "Error: Workspace not found at $WORKSPACE" >&2
+  exit 1
+fi
+
+# Bootstrap files in priority order (matches bootstrap.ts)
+BOOTSTRAP_FILES=(
+  "SOUL.md"
+  "USER.md"
+  "AGENTS.md"
+  "IDENTITY.md"
+  "GOALS.md"
+  "TOOLS.md"
+  "MEMORY.md"
+  "EVAL_FEEDBACK.md"
+  "PROSOCHE.md"
+  "CONTEXT.md"
+)
+
+CACHE_GROUPS=(
+  "static"      # SOUL
+  "static"      # USER
+  "static"      # AGENTS
+  "static"      # IDENTITY
+  "semi-static" # GOALS
+  "semi-static" # TOOLS
+  "semi-static" # MEMORY
+  "semi-static" # EVAL_FEEDBACK
+  "dynamic"     # PROSOCHE
+  "dynamic"     # CONTEXT
+)
+
+# Approximation: 1 token per 3.5 characters (matches hermeneus/token-counter.ts)
+CHARS_PER_TOKEN=3.5
+
+estimate_tokens() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo 0
+    return
+  fi
+  local chars
+  chars=$(wc -c < "$file" | tr -d ' ')
+  echo "scale=0; ($chars + $CHARS_PER_TOKEN - 1) / $CHARS_PER_TOKEN" | bc
+}
+
+count_words() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo 0
+    return
+  fi
+  wc -w < "$file" | tr -d ' '
+}
+
+count_lines() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo 0
+    return
+  fi
+  wc -l < "$file" | tr -d ' '
+}
+
+# Header
+echo ""
+echo "Bootstrap Token Audit — $AGENT"
+echo "────────────────────────────────────────────────────────"
+printf "%-22s %8s %8s %8s  %s\n" "File" "Tokens" "Words" "Lines" "Cache"
+echo "────────────────────────────────────────────────────────"
+
+total_tokens=0
+static_tokens=0
+semi_static_tokens=0
+dynamic_tokens=0
+file_count=0
+
+for i in "${!BOOTSTRAP_FILES[@]}"; do
+  file="${BOOTSTRAP_FILES[$i]}"
+  group="${CACHE_GROUPS[$i]}"
+  path="$WORKSPACE/$file"
+
+  if [ ! -f "$path" ]; then
+    continue
+  fi
+
+  tokens=$(estimate_tokens "$path")
+  words=$(count_words "$path")
+  lines=$(count_lines "$path")
+  file_count=$((file_count + 1))
+  total_tokens=$((total_tokens + tokens))
+
+  case "$group" in
+    static) static_tokens=$((static_tokens + tokens)) ;;
+    semi-static) semi_static_tokens=$((semi_static_tokens + tokens)) ;;
+    dynamic) dynamic_tokens=$((dynamic_tokens + tokens)) ;;
+  esac
+
+  printf "%-22s %8d %8d %8d  %s\n" "$file" "$tokens" "$words" "$lines" "$group"
+done
+
+echo "────────────────────────────────────────────────────────"
+printf "%-22s %8d\n" "Total" "$total_tokens"
+echo ""
+
+# Cache group breakdown
+echo "Cache Groups:"
+echo "  Static (cached):      $static_tokens tokens"
+echo "  Semi-static (cached): $semi_static_tokens tokens"
+echo "  Dynamic (uncached):   $dynamic_tokens tokens"
+cached_tokens=$((static_tokens + semi_static_tokens))
+echo "  Cacheable:            $cached_tokens tokens ($(( cached_tokens * 100 / (total_tokens > 0 ? total_tokens : 1) ))%)"
+echo ""
+
+# Effective cost estimation (cache hit reduces cost by 90%)
+effective_cached=$(( cached_tokens * 10 / 100 ))
+effective_total=$(( effective_cached + dynamic_tokens ))
+echo "Cost Estimate (per turn, @ Opus \$15/MTok input):"
+echo "  Full cost:     \$$(echo "scale=4; $total_tokens * 15 / 1000000" | bc)"
+echo "  With caching:  \$$(echo "scale=4; $effective_total * 15 / 1000000" | bc) (cache hit ~90% discount)"
+echo ""
+
+# Tool definitions estimate
+# Count tool definition files in the runtime source
+TOOLS_DIR="/mnt/ssd/aletheia/infrastructure/runtime/src/organon/built-in"
+if [ -d "$TOOLS_DIR" ]; then
+  tool_count=$(grep -l 'name:.*"' "$TOOLS_DIR"/*.ts 2>/dev/null | grep -v test | wc -l)
+  # Some tools are lazy-loaded (enable_tool), ~60-70% are always active
+  active_est=$((tool_count * 70 / 100))
+  # Each tool definition: ~300-500 tokens for name + description + JSON schema
+  tool_est=$((active_est * 400))
+  echo "Tool Definitions (estimated):"
+  echo "  ~$active_est active tools (of $tool_count total) × ~400 tokens ≈ $tool_est tokens"
+  effective_total_with_tools=$((total_tokens + tool_est))
+  echo "  Bootstrap + tools ≈ $effective_total_with_tools tokens"
+  echo ""
+fi
+
+# Compare across all agents
+echo "Cross-Agent Comparison:"
+echo "────────────────────────────────────────────────────────"
+printf "%-12s %8s %8s\n" "Agent" "Tokens" "Files"
+echo "────────────────────────────────────────────────────────"
+
+for agent_dir in "$NOUS_ROOT"/*/; do
+  agent_name=$(basename "$agent_dir")
+  [ "$agent_name" = "_example" ] && continue
+  [ ! -d "$agent_dir" ] && continue
+
+  agent_total=0
+  agent_files=0
+  for file in "${BOOTSTRAP_FILES[@]}"; do
+    fpath="$agent_dir/$file"
+    if [ -f "$fpath" ]; then
+      t=$(estimate_tokens "$fpath")
+      agent_total=$((agent_total + t))
+      agent_files=$((agent_files + 1))
+    fi
+  done
+
+  if [ $agent_files -gt 0 ]; then
+    marker=""
+    [ "$agent_name" = "$AGENT" ] && marker=" ◄"
+    printf "%-12s %8d %8d%s\n" "$agent_name" "$agent_total" "$agent_files" "$marker"
+  fi
+done
+
+echo "────────────────────────────────────────────────────────"
+echo ""
