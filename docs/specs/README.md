@@ -17,6 +17,7 @@ that evolve with the system.
 | 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
 | 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-3 done | **Full-response narration suppression** (Phase 4), rich message components |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
+| 16 | [Efficiency](16_efficiency.md) | Draft | Parallel tool execution, token audit, bootstrap density, tool result truncation, dynamic thinking budget, parallel sub-agent dispatch |
 | 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Draft | Thinking persistence, thinking Markdown rendering, tool input display, tool categorization, status line enhancement |
 | 14 | [Development Workflow](14_development-workflow.md) | Phases 1-3, 6 done | CI zero-broken-windows (Phase 4), versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
@@ -29,10 +30,11 @@ that evolve with the system.
 4. **4 Cost-Aware Orchestration** — Complements #13. Plan mode gives Cody visibility into what I'm about to do. Model routing becomes simpler once sub-agents handle the cheap work.
 5. **3 Auth & Updates** — Operations. The update CLI eliminates manual deploys. Not blocking development, but reduces friction for every future change.
 6. **7 Knowledge Graph** — Memory quality. Making Neo4j optional reduces infrastructure burden. Better extraction improves what survives distillation.
-7. **15 UI Interaction Quality** — Polish. Thinking persistence + formatting and tool input display are small changes with outsized impact on the chat experience. Groups naturally with #11.
-8. **11 Chat Output Quality** — Polish. Runtime narration filter is a safety net for prompt compliance. Rich components improve the conversation experience.
-9. **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (#7). High value but lower urgency.
-10. **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid enough for someone else to run.
+7. **16 Efficiency** — Performance. Parallel tool execution (2-5x faster tool-heavy turns), token audit + truncation, dynamic thinking budget. Compounds on every turn.
+8. **15 UI Interaction Quality** — Polish. Thinking persistence + formatting and tool input display are small changes with outsized impact on the chat experience. Groups naturally with #11.
+9. **11 Chat Output Quality** — Polish. Runtime narration filter is a safety net for prompt compliance. Rich components improve the conversation experience.
+10. **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (#7). High value but lower urgency.
+11. **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid enough for someone else to run.
 
 ## Implemented (Archived)
 

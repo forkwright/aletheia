@@ -131,19 +131,31 @@
       .replace(/\n/g, "<br>");
   }
 
+  // Pending file content to initialize editor with after loading completes
+  let pendingInit = $state<{ content: string; path: string } | null>(null);
+
+  // When fileLoading transitions to false and we have pending content, the cm-wrapper
+  // re-mounts. Wait for Svelte to bind editorContainer, then init the editor.
+  $effect(() => {
+    if (!fileLoading && pendingInit && editorContainer) {
+      initEditor(pendingInit.content, pendingInit.path);
+      pendingInit = null;
+    }
+  });
+
   async function openFile(path: string) {
     if (isDirty && !confirm("Discard unsaved changes?")) return;
 
     fileLoading = true;
     currentPath = path;
     showPreview = false;
+    pendingInit = null;
     try {
       const agentId = getActiveAgentId();
       const data = await fetchWorkspaceFile(path, agentId ?? undefined);
       originalContent = data.content;
-      if (editorContainer) {
-        initEditor(data.content, path);
-      }
+      // Defer editor init until after fileLoading=false re-mounts the cm-wrapper div
+      pendingInit = { content: data.content, path };
     } catch (err) {
       saveError = `Failed to load: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
