@@ -50,6 +50,8 @@ For mechanical/investigative work, delegate via `sessions_spawn`:
 
 **Rules:** ≤3 tool calls → do it yourself. >3 mechanical → delegate. Judgment/architecture/conversation → always direct.
 
+**QA on results:** Check `status`/`confidence`. High confidence + routine → integrate. Low confidence or high stakes → verify first. Never dump raw sub-agent output — summarize and contextualize.
+
 ### Name-Mention Forwarding
 When anyone mentions another agent with an implied task, forward immediately via `sessions_send`.
 
