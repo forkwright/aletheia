@@ -1,6 +1,6 @@
 # Spec: Session Continuity — The Never-Ending Conversation
 
-**Status:** Phase 1-3 done. Phase 4 next.
+**Status:** Phases 1-3, 6 done. Phase 4 next.
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -317,7 +317,7 @@ Cross-agent asks and sub-agent spawns create sessions that are used once and nev
 | **3** ✅ | Distillation receipts + logging | Small | Auditability — know when distillation happens and what it produces |
 | **4** | Pre-compaction flush hardening | Small | Ensures daily memory files actually get written |
 | **5** | Recency-boosted recall + post-distillation priming | Medium | Bridges the extraction→recall gap |
-| **6** | Primary session enforcement | Medium | One session per agent, all channels route to it |
+| **6** ✅ | Primary session enforcement | Medium | One session per agent, all channels route to it (PR #74) |
 | **7** | Background session aggressive distillation | Small | Prosoche cleanup |
 | **8** | Ephemeral session retention/cleanup | Small | Cross-agent session cleanup |
 | **9** | Post-distillation verification | Small | Safety checks after every compression |

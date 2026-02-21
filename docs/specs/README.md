@@ -10,15 +10,15 @@ that evolve with the system.
 
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 12 | [Session Continuity](12_session-continuity.md) | Draft | Session classification, smart distillation triggers, token accounting, receipt logging, recall bridging, primary session enforcement, ephemeral cleanup, **distillation progress UI** |
+| 12 | [Session Continuity](12_session-continuity.md) | Phases 1-3, 6 done | Pre-compaction flush hardening, recency-boosted recall, background session cleanup, ephemeral retention, post-distillation verification, **distillation progress UI** |
 | 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | Draft | Role definitions, enhanced spawn, structured result contracts, parallel dispatch, budget controls, routing guidelines |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
-| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a done | Neo4j optional mode, extraction quality, memory confidence/decay, domain scoping, thread-aware recall |
-| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phase 1-3 done | **Full-response narration suppression** (Phase 4), rich message components |
+| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a-1b, 2a done | Memory confidence/decay, graph UI search+edit, domain scoping, thread-aware recall |
+| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phases 1-4 done | Rich message components (Phase 5) |
 | 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
-| 16 | [Efficiency](16_efficiency.md) | Draft | Parallel tool execution, token audit, bootstrap density, tool result truncation, dynamic thinking budget, parallel sub-agent dispatch |
-| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Draft | Thinking persistence, thinking Markdown rendering, tool input display, tool categorization, status line enhancement |
+| 16 | [Efficiency](16_efficiency.md) | Phase 1 done | Token audit tooling, bootstrap density, tool result truncation, dynamic thinking budget, parallel sub-agent dispatch, cost visibility |
+| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Phases 1-3 done | Tool categorization & grouping (Phase 4), status line enhancement (Phase 5) |
 | 14 | [Development Workflow](14_development-workflow.md) | Phases 1-3, 6 done | CI zero-broken-windows (Phase 4), versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
 

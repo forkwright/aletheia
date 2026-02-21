@@ -20,16 +20,39 @@ const EXTRACTION_PROMPT = `You are extracting durable knowledge from a conversat
 - Extract DECISIONS with their rationale — the "why" matters as much as the "what".
 - Extract OPEN ITEMS that require future action — include who owns them if stated.
 - Extract KEY ENTITIES: people, projects, tools, services, locations referenced.
-- For tool results: extract the factual findings, not the tool invocation details.
 - NEVER extract: greetings, acknowledgments, timestamps of the conversation itself, meta-commentary about the conversation.
 - Each item: one clear sentence. No duplicates. No hedging language.
 - If a fact contradicts a previously known fact, note BOTH versions and flag the contradiction.
 
+## Context-Dependent Filtering
+Detect the conversation type and extract accordingly:
+
+**Tool-heavy turns** — extract CONCLUSIONS and OUTCOMES, not tool invocations.
+  - Bad: "User ran grep to search for imports"
+  - Good: "The auth module has 6 unused exports that should be removed"
+
+**Discussion turns** — extract OPINIONS, PREFERENCES, and DECISIONS.
+  - Bad: "User and agent discussed leather options"
+  - Good: "User prefers chrome-tanned leather for belts due to durability; rejects veg-tan for this use case"
+
+**Planning turns** — extract PLANS, TIMELINES, and COMMITMENTS.
+  - Bad: "User asked about schedule"
+  - Good: "MBA final project due March 15, needs 3 weeks of work, starting after midterms"
+
+**Debugging turns** — extract ROOT CAUSES and FIXES, not the investigation steps.
+  - Bad: "Checked logs, found error, restarted service"
+  - Good: "Session convergence bug caused by UNIQUE constraint on archived rows; fixed by reactivating instead of re-creating"
+
+**Correction turns** — extract the CORRECTED fact, flag the old one.
+  - Bad: "User said the previous answer was wrong"
+  - Good: "CORRECTION: Pitman arm torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+
 ## Quality Filters
-- Skip facts that are obvious from context (e.g., "The user asked a question")
-- Skip facts that are purely temporal ("We discussed this at 3pm")
-- Prefer specific over vague: "Honda Passport needs brake pads replaced" over "vehicle maintenance discussed"
-- Include confidence: prefix uncertain facts with [UNCERTAIN]
+- Skip facts obvious from context (e.g., "The user asked a question")
+- Skip purely temporal facts ("We discussed this at 3pm")
+- Prefer specific over vague: "Honda Passport needs brake pads replaced" > "vehicle maintenance discussed"
+- Prefix uncertain facts with [UNCERTAIN]
+- For CORRECTIONS: include both the wrong and right versions
 
 Return ONLY valid JSON:
 {

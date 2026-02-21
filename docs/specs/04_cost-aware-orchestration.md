@@ -343,10 +343,44 @@ Budget: $10.00 remaining today
 - Tool for orchestrator: `sessions_spawn` enhanced with type/model/budget params
 
 ### Phase 3: Plan Mode
-- Plan presentation format (structured, with cost estimates)
-- Approval flow: webchat buttons, Signal text parsing
-- Partial approval / step editing
-- Plan execution engine (sequential or parallel steps)
+
+**Implementation design:**
+
+A plan is a structured object the agent creates mid-turn and yields back to the human for approval before executing. This requires a new turn state: `awaiting_approval`.
+
+```typescript
+interface PlanStep {
+  id: number;
+  label: string;              // Human-readable description
+  role: "coder" | "reviewer" | "researcher" | "explorer" | "runner" | "self";
+  model: string;              // e.g., "haiku", "sonnet"
+  estimatedTokens: number;    // Input + output estimate
+  estimatedCostCents: number; // Based on model pricing
+  parallel?: number[];        // Step IDs this can run alongside
+  status: "pending" | "approved" | "skipped" | "running" | "done" | "failed";
+}
+
+interface Plan {
+  id: string;
+  sessionId: string;
+  steps: PlanStep[];
+  totalEstimatedCostCents: number;
+  createdAt: string;
+  status: "awaiting_approval" | "executing" | "completed" | "cancelled";
+}
+```
+
+**Agent-side:** The agent emits a `plan_proposed` event via SSE instead of proceeding with tool calls. The turn completes with `stop_reason: "plan_proposed"`. The plan is stored in the session's working state.
+
+**Human-side (webchat):** Plan renders as an inline card with per-step checkboxes, cost breakdown, and Approve/Edit/Cancel buttons. Response sent via message queue (Spec 04 Phase 1). Agent receives the approval as a structured message and resumes execution.
+
+**Human-side (Signal):** Plan renders as formatted text. Agent parses natural language responses ("yes", "skip 3", "do 1-2 first", "no") using the same intent parser.
+
+**Execution:** Approved steps run via `sessions_spawn` (sub-agents) or direct execution (self steps). Steps marked parallel run concurrently. Results are collected and presented as a summary.
+
+**Key files:** manager.ts (plan state tracking), server.ts (plan approval endpoint), execute.ts (plan execution engine), types.ts (Plan/PlanStep interfaces), UI plan card component.
+
+**Depends on:** Spec 13 sub-agent infrastructure for spawn-based execution.
 
 ### Phase 4: Automatic Routing
 - Enhance complexity scorer with more signals
