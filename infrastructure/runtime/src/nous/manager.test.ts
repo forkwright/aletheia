@@ -53,6 +53,7 @@ function makeStore() {
     queueMessage: vi.fn(),
     drainQueue: vi.fn().mockReturnValue([]),
     getQueueLength: vi.fn().mockReturnValue(0),
+    getDistillationPriming: vi.fn().mockReturnValue(null),
   } as never;
 }
 
