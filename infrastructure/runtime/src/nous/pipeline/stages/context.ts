@@ -8,6 +8,7 @@ import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
+import { loadPipelineConfig } from "../../pipeline-config.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
@@ -109,10 +110,18 @@ export async function buildContext(
     }
   }
 
+  // Pipeline config — per-agent tuning of recall, tool expiry, note budget
+  const pipelineConfig = loadPipelineConfig(workspace);
+
   // Pre-turn memory recall
   let recallTokens = 0;
   if (!degradedServices.includes("mem0-sidecar")) {
     const recall = await recallMemories(msg.text, nousId, {
+      limit: pipelineConfig.recall.limit,
+      maxTokens: pipelineConfig.recall.maxTokens,
+      minScore: pipelineConfig.recall.minScore,
+      sufficiencyThreshold: pipelineConfig.recall.sufficiencyThreshold,
+      sufficiencyMinHits: pipelineConfig.recall.sufficiencyMinHits,
       ...(state.nous.domains ? { domains: state.nous.domains } : {}),
       ...(threadSummaryText ? { threadSummary: threadSummaryText } : {}),
     });
@@ -172,7 +181,7 @@ export async function buildContext(
   // Agent notes injection — explicit notes written by the agent that survive distillation
   const notes = services.store.getNotes(sessionId, { limit: 20 });
   if (notes.length > 0) {
-    const NOTE_TOKEN_CAP = 2000;
+    const NOTE_TOKEN_CAP = pipelineConfig.notes.tokenCap;
     const header = "## Agent Notes\n\nNotes you wrote during this session. These survive context distillation.\n\n";
     let tokenCount = estimateTokens(header);
     const noteLines: string[] = [];

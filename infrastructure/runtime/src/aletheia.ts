@@ -46,6 +46,8 @@ import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
 import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
+import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
+import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
@@ -284,6 +286,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   selfEvalTool.category = "available";
   tools.register(selfEvalTool);
 
+  // Pipeline self-configuration — agents tune recall, tool expiry, note budget
+  const pipelineCfgTool = createPipelineConfigTool();
+  pipelineCfgTool.category = "available";
+  tools.register(pipelineCfgTool);
+
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
   tools.register(createNoteTool(store));
@@ -459,6 +466,11 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Command Registry ---
   const commandRegistry = createDefaultRegistry();
+  const customCmds = loadCustomCommands(join(paths.shared, "commands"));
+  if (customCmds.length > 0) {
+    const registered = registerCustomCommands(customCmds, commandRegistry, runtime.manager);
+    log.info(`Loaded ${registered} custom commands from shared/commands/`);
+  }
   setCommandsRef(commandRegistry);
 
   // --- Signal ---
