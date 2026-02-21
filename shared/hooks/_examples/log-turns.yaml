@@ -1,0 +1,13 @@
+# Example: Log every turn completion to a file
+# Copy to shared/hooks/ to activate
+
+name: log-turns
+event: turn:after
+description: Append turn metadata to a daily log file
+
+handler:
+  type: shell
+  command: /bin/sh
+  args: ["-c", "echo \"$(date -Iseconds) {{nousId}} {{sessionId}} tokens_in={{inputTokens}} tokens_out={{outputTokens}} tools={{toolCalls}}\" >> /tmp/aletheia-turns.log"]
+  timeout: 5s
+  failAction: silent

@@ -1,0 +1,13 @@
+# Example: Send a notification when Aletheia boots
+# Copy to shared/hooks/ to activate
+
+name: notify-boot
+event: boot:ready
+description: Log boot completion with tool and plugin counts
+
+handler:
+  type: shell
+  command: /bin/sh
+  args: ["-c", "echo \"Aletheia ready on port {{port}} with {{tools}} tools and {{plugins}} plugins\" | logger -t aletheia"]
+  timeout: 5s
+  failAction: silent
