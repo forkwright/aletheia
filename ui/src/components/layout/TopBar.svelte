@@ -2,6 +2,8 @@
   import { getConnectionStatus } from "../../stores/connection.svelte";
   import { getActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
+  import { getAccessToken, logout } from "../../lib/auth";
+  import { clearToken } from "../../lib/api";
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
@@ -13,6 +15,13 @@
   } = $props();
 
   let agent = $derived(getActiveAgent());
+  let hasSession = $derived(!!getAccessToken());
+
+  async function handleLogout() {
+    await logout();
+    clearToken();
+    location.reload();
+  }
 </script>
 
 <header class="topbar">
@@ -53,6 +62,11 @@
     <button class="topbar-btn" class:active={activeView === "settings"} onclick={() => onSetView(activeView === "settings" ? "chat" : "settings")}>
       Settings
     </button>
+    {#if hasSession}
+      <button class="topbar-btn logout-btn" onclick={handleLogout}>
+        Logout
+      </button>
+    {/if}
   </div>
 </header>
 
@@ -147,5 +161,12 @@
     color: var(--accent);
     border-color: var(--border);
     background: var(--surface);
+  }
+  .logout-btn {
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+  .logout-btn:hover {
+    color: var(--red);
   }
 </style>
