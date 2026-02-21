@@ -4,8 +4,9 @@ import { estimateTokens } from "../hermeneus/token-counter.js";
 
 const log = createLogger("recall");
 
-const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+// Lazy reads — env vars may be set by taxis config after module import
+const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export interface RecallResult {
   block: { type: "text"; text: string } | null;
@@ -160,12 +161,12 @@ async function fetchGraphEnhanced(
   limit: number,
   signal: AbortSignal,
 ): Promise<MemoryHit[]> {
-  const res = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+  const res = await fetch(`${getSidecarUrl()}/graph_enhanced_search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query,
-      user_id: USER_ID,
+      user_id: getUserId(),
       agent_id: nousId,
       limit,
       graph_weight: 0.3,
@@ -185,12 +186,12 @@ async function fetchBasicSearch(
   signal: AbortSignal,
   domains?: string[],
 ): Promise<MemoryHit[]> {
-  const res = await fetch(`${SIDECAR_URL}/search`, {
+  const res = await fetch(`${getSidecarUrl()}/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query,
-      user_id: USER_ID,
+      user_id: getUserId(),
       agent_id: nousId,
       limit,
       ...(domains && domains.length > 0 ? { domains } : {}),
