@@ -1,6 +1,6 @@
 # Spec: Efficiency — Parallel Execution & Token Economy
 
-**Status:** Phases 1, 2a-2c done. Phase 2d next.
+**Status:** Phases 1, 2a-2d done. Phase 3 next.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -345,7 +345,7 @@ When users see that a single `exec` result consumed 2,400 tokens of context, the
 | **2a** | Token audit tooling | Small | ✅ Done — `audit-tokens` CLI with per-file, cache group, cost estimates |
 | **2b** | Bootstrap density audit | Small-Medium | ✅ Done — Syn 55%, domain agents ~45% trimmed. Measurement drives ongoing trims |
 | **2c** | Tool result truncation | Small | ✅ Done — per-tool char limits, head+tail preservation, both exec paths |
-| **2d** | Dynamic thinking budget | Small | Low-Medium — saves tokens on simple turns |
+| **2d** | Dynamic thinking budget | Small | ✅ Done — message-length heuristic + tool-loop reduction (30% on iterations 2+) |
 | **3** | Parallel sub-agent dispatch | Medium | Medium — faster complex delegation |
 | **4** | Per-tool cost visibility | Small | Low — awareness drives behavior change |
 

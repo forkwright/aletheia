@@ -6,6 +6,7 @@ import {
   estimateTokensSafe,
   estimateToolDefTokens,
   truncateToolResult,
+  dynamicThinkingBudget,
   SAFETY_MARGIN,
 } from "./token-counter.js";
 
@@ -118,5 +119,39 @@ describe("truncateToolResult", () => {
     expect(readTruncated).toBe(result);
     // grep SHOULD truncate (7000 > 5000)
     expect(grepTruncated).toContain("chars truncated for storage");
+  });
+});
+
+describe("dynamicThinkingBudget", () => {
+  it("returns minimal budget for very short messages", () => {
+    expect(dynamicThinkingBudget("hi")).toBe(1024);
+    expect(dynamicThinkingBudget("yes")).toBe(1024);
+  });
+
+  it("returns reduced budget for short messages", () => {
+    const budget = dynamicThinkingBudget("What is the capital of France?");
+    expect(budget).toBeLessThan(10_000);
+    expect(budget).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("returns full budget for long/complex messages", () => {
+    const longMsg = "x".repeat(1000);
+    expect(dynamicThinkingBudget(longMsg)).toBe(10_000);
+  });
+
+  it("reduces budget for tool loop iterations", () => {
+    const msg = "Review the codebase architecture and identify patterns";
+    const firstLoop = dynamicThinkingBudget(msg, { toolLoopIteration: 0 });
+    const secondLoop = dynamicThinkingBudget(msg, { toolLoopIteration: 1 });
+    expect(secondLoop).toBeLessThan(firstLoop);
+  });
+
+  it("respects custom base budget", () => {
+    const longMsg = "x".repeat(1000);
+    expect(dynamicThinkingBudget(longMsg, { baseBudget: 20_000 })).toBe(20_000);
+  });
+
+  it("never returns below minimum", () => {
+    expect(dynamicThinkingBudget("", { baseBudget: 500 })).toBe(1024);
   });
 });

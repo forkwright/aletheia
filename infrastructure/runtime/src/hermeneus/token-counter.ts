@@ -56,6 +56,40 @@ const TOOL_RESULT_CHAR_LIMITS: Record<string, number> = {
 const DEFAULT_RESULT_CHAR_LIMIT = 5000;
 
 /**
+ * Compute a dynamic thinking budget based on message complexity.
+ * Simple messages (short, no tool context) get a minimal budget.
+ * Complex messages (long, multi-part, architecture, debugging) get the full budget.
+ * Returns the adjusted budget, clamped between min and max.
+ */
+export function dynamicThinkingBudget(
+  messageContent: string,
+  opts?: { baseBudget?: number; toolLoopIteration?: number },
+): number {
+  const base = opts?.baseBudget ?? 10_000;
+  const minBudget = 1024;
+
+  // Tool loop iterations after the first don't need full thinking —
+  // the model is just processing tool results
+  if (opts?.toolLoopIteration && opts.toolLoopIteration > 0) {
+    return Math.max(minBudget, Math.floor(base * 0.3));
+  }
+
+  const len = messageContent.length;
+
+  // Very short messages ("hi", "yes", "thanks") → minimal thinking
+  if (len < 50) return minBudget;
+
+  // Short messages (single question or command) → reduced thinking
+  if (len < 200) return Math.max(minBudget, Math.floor(base * 0.4));
+
+  // Medium messages → moderate thinking
+  if (len < 800) return Math.max(minBudget, Math.floor(base * 0.7));
+
+  // Long/complex messages → full budget
+  return base;
+}
+
+/**
  * Truncate a tool result for storage, preserving head and tail for context.
  * Returns the original string if it's within the limit.
  */

@@ -1,7 +1,7 @@
 // Execute stage — LLM streaming + tool loop
 import { createLogger } from "../../../koina/logger.js";
 import { PipelineError } from "../../../koina/errors.js";
-import { estimateTokens, truncateToolResult } from "../../../hermeneus/token-counter.js";
+import { estimateTokens, truncateToolResult, dynamicThinkingBudget } from "../../../hermeneus/token-counter.js";
 import { getReversibility, requiresSimulation } from "../../../organon/reversibility.js";
 import { executeWithTimeout, resolveTimeout, ToolTimeoutError } from "../../../organon/timeout.js";
 import { requiresApproval as checkApproval } from "../../../organon/approval.js";
@@ -84,6 +84,13 @@ export async function* executeStreaming(
     const supportsThinking = /opus|sonnet-4/i.test(model);
     const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
 
+    // Dynamic thinking budget — reduce for simple messages and tool loop iterations
+    const userContent = currentMessages.filter(m => m.role === "user").pop()?.content;
+    const userText = typeof userContent === "string" ? userContent : JSON.stringify(userContent ?? "");
+    const effectiveThinkingBudget = useThinking
+      ? dynamicThinkingBudget(userText, { baseBudget: thinkingConfig.budget, toolLoopIteration: loop })
+      : 0;
+
     // Build context management — clears old tool results and thinking blocks server-side
     const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
     const contextManagement = buildContextManagement(contextTokens, useThinking);
@@ -96,7 +103,7 @@ export async function* executeStreaming(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
-      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: thinkingConfig.budget } } : {}),
+      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: effectiveThinkingBudget } } : {}),
       ...(contextManagement ? { contextManagement } : {}),
     })) {
       switch (streamEvent.type) {
