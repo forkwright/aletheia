@@ -1,6 +1,6 @@
 # Spec: Agent Portability — Export, Import & Time-Travel
 
-**Status:** Phase 1 done (feat/agent-export). Phases 2-4 remaining.
+**Status:** Phase 1 done (PR #100). Phases 2-4 remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 **Source:** Gap Analysis F-15, F-34; Letta Agent File + LangGraph checkpointing

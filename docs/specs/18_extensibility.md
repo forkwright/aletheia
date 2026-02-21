@@ -1,6 +1,6 @@
 # Spec: Extensibility — Hooks, Commands & Plugins
 
-**Status:** Phase 1 done (feat/hook-system). Phases 2-6 remaining.
+**Status:** Phase 1 done (PR #98). Phases 2-6 remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 **Source:** Gap Analysis F-2, F-12, F-24, F-25, F-27, F-37
