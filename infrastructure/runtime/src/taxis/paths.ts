@@ -12,6 +12,7 @@ export const paths = {
   sharedConfig: join(ALETHEIA_ROOT, "shared", "config"),
   sharedMemory: join(ALETHEIA_ROOT, "shared", "memory"),
   infrastructure: join(ALETHEIA_ROOT, "infrastructure"),
+  pluginRoot: process.env["ALETHEIA_PLUGIN_ROOT"] ?? join(ALETHEIA_ROOT, "shared", "plugins"),
 
   configDir(): string {
     return (
