@@ -36,9 +36,39 @@
     }
   }
 
+  /** Get a short input summary for a running tool */
+  function inputHint(tool: ToolCallState): string {
+    if (!tool.input) return "";
+    const inp = tool.input;
+    switch (tool.name) {
+      case "exec": {
+        const cmd = String(inp.command ?? "");
+        return cmd.length > 40 ? cmd.slice(0, 37) + "..." : cmd;
+      }
+      case "read":
+      case "write":
+      case "edit":
+      case "ls": {
+        const p = String(inp.path ?? inp.file ?? "");
+        const parts = p.split("/");
+        return parts.length > 1 ? parts.slice(-2).join("/") : p;
+      }
+      case "grep":
+        return `/${inp.pattern ?? ""}/`;
+      case "web_search":
+      case "mem0_search":
+        return String(inp.query ?? "").slice(0, 40);
+      default:
+        return "";
+    }
+  }
+
   let statusText = $derived.by(() => {
     if (running.length > 0) {
-      return humanizeTool(running[running.length - 1]!.name);
+      const current = running[running.length - 1]!;
+      const hint = inputHint(current);
+      const label = humanizeTool(current.name);
+      return hint ? `${label}: ${hint}` : label;
     }
     if (errors > 0) {
       return `${total} tool${total === 1 ? '' : 's'} · ${errors} failed`;

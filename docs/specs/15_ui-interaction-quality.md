@@ -1,6 +1,6 @@
 # Spec: UI Interaction Quality — Thinking Persistence & Tool Detail
 
-**Status:** Draft
+**Status:** Phase 1-3 done. Phase 4 next.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -51,7 +51,7 @@ What it doesn't show:
 
 ## Design
 
-### Phase 1: Thinking Panel Persistence
+### Phase 1: Thinking Panel Persistence ✅
 
 **Goal:** Thinking panel stays open across the streaming→completed transition, content preserved seamlessly.
 
@@ -105,7 +105,7 @@ $effect(() => {
 
 **Recommendation:** Option A. It's a 15-line change in `ChatView.svelte` with no store changes. Option B is cleaner architecturally but touches the store contract.
 
-### Phase 2: Thinking Panel Rendering
+### Phase 2: Thinking Panel Rendering ✅
 
 **Goal:** Thinking content renders with Markdown formatting instead of raw `<pre>`.
 
@@ -173,7 +173,7 @@ The `Markdown` component already handles code blocks, lists, headers, emphasis, 
 
 **Fallback:** If the thinking content is genuinely unstructured (no markdown markers), the Markdown component renders it as plain paragraphs — still better than `<pre>` because it wraps properly and respects paragraph breaks.
 
-### Phase 3: Tool Input Display
+### Phase 3: Tool Input Display ✅
 
 **Goal:** Show what each tool was called with, not just what it returned. The input IS the context.
 
@@ -480,9 +480,9 @@ let statusText = $derived.by(() => {
 
 | Phase | What | Effort | Impact |
 |-------|------|--------|--------|
-| **1** | Thinking panel persistence across turn completion | Small | High — eliminates jarring panel close |
-| **2** | Thinking panel Markdown rendering | Small | Medium — makes thinking content actually readable |
-| **3** | Tool input display (event stream → UI) | Medium | High — the single biggest tool panel improvement |
+| **1** ✅ | Thinking panel persistence across turn completion | Small | High — eliminates jarring panel close |
+| **2** ✅ | Thinking panel Markdown rendering | Small | Medium — makes thinking content actually readable |
+| **3** ✅ | Tool input display (event stream → UI) | Medium | High — the single biggest tool panel improvement |
 | **4** | Tool categorization & grouping | Medium | Medium — scales tool-heavy turns |
 | **5** | Tool status line enhancement | Small | Medium — better at-a-glance value |
 

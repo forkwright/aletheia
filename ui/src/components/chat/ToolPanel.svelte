@@ -65,6 +65,42 @@
     }
   }
 
+  /** Summarize tool input for inline display */
+  function getInputSummary(tool: ToolCallState): string {
+    if (!tool.input) return "";
+    const inp = tool.input;
+    switch (tool.name) {
+      case "exec": {
+        const cmd = String(inp.command ?? "");
+        return cmd.length > 60 ? cmd.slice(0, 57) + "..." : cmd;
+      }
+      case "read":
+      case "write":
+      case "edit":
+      case "ls":
+        return String(inp.path ?? inp.file ?? "");
+      case "grep": {
+        const pattern = String(inp.pattern ?? "");
+        const path = String(inp.path ?? "");
+        return path ? `/${pattern}/ in ${path}` : `/${pattern}/`;
+      }
+      case "find":
+        return `${inp.pattern ?? ""} in ${inp.path ?? ""}`;
+      case "web_search":
+      case "mem0_search":
+        return String(inp.query ?? "");
+      case "web_fetch":
+        return String(inp.url ?? "");
+      case "sessions_send":
+      case "sessions_ask":
+        return `\u2192 ${inp.agentId ?? inp.targetAgent ?? ""}`;
+      case "blackboard":
+        return `${inp.action ?? ""} ${inp.key ?? ""}`;
+      default:
+        return "";
+    }
+  }
+
   function statusIcon(status: string): string {
     switch (status) {
       case "running": return "";
@@ -193,7 +229,9 @@
           </span>
           <span class="tool-label">
             <span class="tool-name">{humanize(tool.name)}</span>
-            {#if tool.name !== humanize(tool.name)}
+            {#if getInputSummary(tool)}
+              <span class="tool-input-summary">{getInputSummary(tool)}</span>
+            {:else if tool.name !== humanize(tool.name)}
               <span class="tool-raw">{tool.name}</span>
             {/if}
           </span>
@@ -202,9 +240,14 @@
           {/if}
           <span class="tool-chevron">{expandedIds.has(tool.id) ? "−" : "+"}</span>
         </button>
-        {#if expandedIds.has(tool.id) && tool.result}
+        {#if expandedIds.has(tool.id) && (tool.result || tool.input)}
           <div class="tool-detail">
-            <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
+            {#if tool.input}
+              <pre class="tool-input-json">{JSON.stringify(tool.input, null, 2)}</pre>
+            {/if}
+            {#if tool.result}
+              <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
+            {/if}
             {#if isCollapsible(tool)}
               <button class="collapse-toggle" onclick={() => toggleCollapse(tool.id)}>
                 {isCollapsed(tool) ? `Show all ${resultLineCount(tool.result)} lines` : "Show less"}
@@ -372,6 +415,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .tool-input-summary {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
   .tool-time {
     color: var(--text-muted);
     font-size: 10px;
@@ -403,6 +455,20 @@
     padding: 4px 14px 8px 52px;
     max-height: 300px;
     overflow: auto;
+  }
+  .tool-input-json {
+    margin: 0 0 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-muted);
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    border-left: 2px solid var(--accent);
+    opacity: 0.8;
   }
   .tool-result {
     margin: 0;

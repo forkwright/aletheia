@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Markdown from "./Markdown.svelte";
+
   let { thinkingText, isStreaming = false, onClose }: {
     thinkingText: string;
     isStreaming?: boolean;
@@ -41,7 +43,9 @@
     onscroll={checkScroll}
   >
     {#if thinkingText}
-      <pre class="thinking-text">{thinkingText}</pre>
+      <div class="thinking-content">
+        <Markdown content={thinkingText} />
+      </div>
     {:else}
       <div class="empty-thinking">No thinking content yet.</div>
     {/if}
@@ -122,14 +126,19 @@
     padding: 12px;
     min-height: 0;
   }
-  .thinking-text {
-    font-family: var(--font-mono);
-    font-size: 12px;
+  .thinking-content {
+    font-size: 13px;
     color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.6;
-    margin: 0;
+    line-height: 1.5;
+  }
+  .thinking-content :global(.markdown-body) {
+    font-size: 13px;
+  }
+  .thinking-content :global(p) {
+    margin: 0 0 6px;
+  }
+  .thinking-content :global(pre) {
+    font-size: 12px;
   }
   .empty-thinking {
     color: var(--text-muted);
