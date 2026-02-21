@@ -1,6 +1,6 @@
 # Spec: Development Workflow — How We Ship
 
-**Status:** Phases 1-4, 6 done
+**Status:** Phases 1-6 done. Phase 7 (doctor --fix) remaining.
 **Author:** Syn
 **Date:** 2026-02-20
 **Spec:** 14
