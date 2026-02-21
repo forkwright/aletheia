@@ -93,9 +93,11 @@ export async function buildContext(
   ];
 
   // Thread-level relationship context (injected before recall so it primes memory search)
+  let threadSummaryText: string | undefined;
   if (msg.threadId) {
     const threadSummary = services.store.getThreadSummary(msg.threadId);
     if (threadSummary?.summary) {
+      threadSummaryText = threadSummary.summary;
       const factsText = threadSummary.keyFacts.length > 0
         ? `\n\n**Key facts:**\n${threadSummary.keyFacts.slice(0, 20).map((f) => `- ${f}`).join("\n")}`
         : "";
@@ -111,6 +113,7 @@ export async function buildContext(
   if (!degradedServices.includes("mem0-sidecar")) {
     const recall = await recallMemories(msg.text, nousId, {
       ...(state.nous.domains ? { domains: state.nous.domains } : {}),
+      ...(threadSummaryText ? { threadSummary: threadSummaryText } : {}),
     });
     if (recall.block) systemPrompt.push(recall.block);
     recallTokens = recall.tokens;

@@ -11,6 +11,7 @@ import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
 import { distillSession } from "../distillation/pipeline.js";
+import type { MemoryFlushTarget } from "../distillation/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
@@ -46,6 +47,7 @@ let turnCounter = 0;
 export class NousManager {
   private plugins?: PluginRegistry;
   private watchdog?: Watchdog;
+  private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
@@ -70,6 +72,7 @@ export class NousManager {
 
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
+  setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
@@ -109,6 +112,7 @@ export class NousManager {
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
       approvalGate: this.approvalGate,
       approvalMode,
+      ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
     };
   }
 
@@ -260,6 +264,7 @@ export class NousManager {
           preserveRecentMessages: 20,
           lightweight: true,
           ...(workspace ? { workspace } : {}),
+          ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
         });
       }).catch((err) => {
         log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
@@ -305,6 +310,7 @@ export class NousManager {
         preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
         ...(workspace ? { workspace } : {}),
         ...(this.plugins ? { plugins: this.plugins } : {}),
+        ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
         ...(thread ? {
           onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
             this.store.updateThreadSummary(thread.id, summary, keyFacts);
@@ -341,6 +347,7 @@ export class NousManager {
       preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
+      ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
       ...(thread ? {
         onThreadSummaryUpdate: (summary, keyFacts) => {
           this.store.updateThreadSummary(thread.id, summary, keyFacts);

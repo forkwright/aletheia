@@ -15,6 +15,7 @@ import type {
 import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
+import type { MemoryFlushTarget } from "../../distillation/hooks.js";
 
 export interface MediaAttachment {
   contentType: string;
@@ -118,6 +119,7 @@ export interface RuntimeServices {
   skillsSection?: string;
   approvalGate?: ApprovalGate;
   approvalMode?: ApprovalMode;
+  memoryTarget?: MemoryFlushTarget;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */

@@ -54,6 +54,24 @@ Detect the conversation type and extract accordingly:
 - Prefix uncertain facts with [UNCERTAIN]
 - For CORRECTIONS: include both the wrong and right versions
 
+## Real Examples from Corpus Audit
+
+BAD (actual noise that was extracted — don't produce these):
+- "Uses grep" — tool invocation, not knowledge
+- "Familiar with confabulation guards" — too generic, no actionable content
+- "Works with a system called Aletheia" — obvious from context
+- "Manages agent systems" — vague and implied
+- "The user asked about configuration" — meta-commentary
+- "Ran git status to check repository" — ephemeral action
+
+GOOD (actual high-value extractions):
+- "ALETHEIA_MEMORY_USER must be set in aletheia.env or all extractions default to user_id='default'"
+- "Prefers chrome-tanned leather for belts; rejects veg-tan for durability reasons"
+- "CORRECTION: Pitman arm torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+- "Prosoche dedup window set to 8 hours to reduce alert fatigue from static overdue tasks"
+- "Baby #2 due October 2026"
+- "memoryTarget interface exists in hooks.ts but was never wired — distillation drops all extracted facts"
+
 Return ONLY valid JSON:
 {
   "facts": ["string"],
@@ -72,6 +90,34 @@ const EMPTY_RESULT: ExtractionResult = {
 };
 
 const MAX_CHUNK_TOKENS = 80000; // Leave room for system prompt + output within 200K context
+
+/**
+ * Post-extraction noise filters — catches garbage the prompt doesn't filter.
+ * Based on actual noise patterns observed in Qdrant corpus audit (2026-02-21).
+ */
+const NOISE_PATTERNS = [
+  /^(Uses|Familiar with|Works with|Has experience|Has access|Knows about)\b/i,
+  /^(The user|User|They|He|She) (is|was|has|had|does|did|can|could|will|would|asked|mentioned|said|wants|wanted|needs|needed)\b/i,
+  /^(Runs?|Ran|Executed|Checked|Opened|Closed|Searched|Grepped|Found|Looked at)\b/i,
+  /^(Asked about|Discussed|Mentioned|Talked about|Referred to|Agreed to|Noted that)\b/i,
+  /^(Manages|Works on|Involved in|Participates in|Contributes to) (a |an |the |some )/i,
+];
+
+const MIN_ITEM_LENGTH = 15;
+const MAX_ITEM_LENGTH = 300;
+
+/** Filter out noise from extracted items. */
+function filterNoise(items: string[]): string[] {
+  return items.filter((item) => {
+    const trimmed = item.trim();
+    if (trimmed.length < MIN_ITEM_LENGTH || trimmed.length > MAX_ITEM_LENGTH) return false;
+    if (NOISE_PATTERNS.some((p) => p.test(trimmed))) {
+      log.debug(`Filtered noise: "${trimmed.slice(0, 60)}"`);
+      return false;
+    }
+    return true;
+  });
+}
 
 export async function extractFromMessages(
   router: ProviderRouter,
@@ -134,12 +180,27 @@ async function extractChunk(
     return { ...EMPTY_RESULT };
   }
 
-  return {
+  const raw = {
     facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
     decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
     openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
     keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
     contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
+  };
+
+  // Apply post-extraction noise filtering to facts and decisions
+  // (openItems, keyEntities, and contradictions are kept as-is)
+  const filteredFacts = filterNoise(raw.facts);
+  const filteredDecisions = filterNoise(raw.decisions);
+  const removed = (raw.facts.length - filteredFacts.length) + (raw.decisions.length - filteredDecisions.length);
+  if (removed > 0) {
+    log.info(`Post-extraction filter removed ${removed} noise items`);
+  }
+
+  return {
+    ...raw,
+    facts: filteredFacts,
+    decisions: filteredDecisions,
   };
 }
 

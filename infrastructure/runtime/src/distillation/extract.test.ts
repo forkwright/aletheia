@@ -16,9 +16,9 @@ function mockRouter(responseText: string) {
 describe("extractFromMessages", () => {
   it("parses JSON from LLM response", async () => {
     const json = JSON.stringify({
-      facts: ["fact1"],
-      decisions: ["dec1"],
-      openItems: ["open1"],
+      facts: ["Pitman arm torque spec is 185 ft-lbs per service manual"],
+      decisions: ["Decision: use chrome-tanned leather for belt due to durability"],
+      openItems: ["Need to order steering box rebuild kit before Saturday"],
       keyEntities: ["ent1"],
       contradictions: [],
     });
@@ -27,9 +27,9 @@ describe("extractFromMessages", () => {
       { role: "user", content: "hello" },
     ], "test-model");
 
-    expect(result.facts).toEqual(["fact1"]);
-    expect(result.decisions).toEqual(["dec1"]);
-    expect(result.openItems).toEqual(["open1"]);
+    expect(result.facts).toEqual(["Pitman arm torque spec is 185 ft-lbs per service manual"]);
+    expect(result.decisions).toEqual(["Decision: use chrome-tanned leather for belt due to durability"]);
+    expect(result.openItems).toEqual(["Need to order steering box rebuild kit before Saturday"]);
     expect(result.keyEntities).toEqual(["ent1"]);
     expect(result.contradictions).toEqual([]);
   });
@@ -46,12 +46,12 @@ describe("extractFromMessages", () => {
   });
 
   it("handles partial JSON (missing fields)", async () => {
-    const router = mockRouter('{"facts": ["a"], "decisions": []}');
+    const router = mockRouter('{"facts": ["ALETHEIA_MEMORY_USER must be set in aletheia.env"], "decisions": []}');
     const result = await extractFromMessages(router, [
       { role: "user", content: "test" },
     ], "test-model");
 
-    expect(result.facts).toEqual(["a"]);
+    expect(result.facts).toEqual(["ALETHEIA_MEMORY_USER must be set in aletheia.env"]);
     expect(result.decisions).toEqual([]);
     expect(result.openItems).toEqual([]);
   });
@@ -129,5 +129,56 @@ describe("extractJson", () => {
 
   it("returns null for no JSON", () => {
     expect(extractJson("no json content at all")).toBeNull();
+  });
+});
+
+describe("noise filtering", () => {
+  it("filters generic patterns from extraction output", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Uses grep for searching",
+        "Familiar with TypeScript and React patterns",
+        "Baby #2 due October 2026",
+        "Works with a system called Aletheia",
+        "The user asked about deployment",
+        "Ran git status to check repository state",
+        "Prosoche dedup window set to 8 hours to reduce alert fatigue",
+      ],
+      decisions: [
+        "Decision: migrate to Qdrant for vector search due to filtering support",
+        "Discussed options for the leather project",
+      ],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [
+      { role: "user", content: "hello" },
+    ], "test-model");
+
+    // Should keep: Baby #2, Prosoche, Qdrant migration
+    // Should filter: Uses grep, Familiar with, Works with, The user asked, Ran git, Discussed
+    expect(result.facts).toEqual([
+      "Baby #2 due October 2026",
+      "Prosoche dedup window set to 8 hours to reduce alert fatigue",
+    ]);
+    expect(result.decisions).toEqual([
+      "Decision: migrate to Qdrant for vector search due to filtering support",
+    ]);
+  });
+
+  it("filters items that are too short or too long", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "short",
+        "x".repeat(301),
+        "This is a normal-length fact that should be kept",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [
+      { role: "user", content: "hello" },
+    ], "test-model");
+
+    expect(result.facts).toEqual(["This is a normal-length fact that should be kept"]);
   });
 });

@@ -18,6 +18,8 @@ import { webSearchTool } from "./organon/built-in/web-search.js";
 import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
+import { memoryCorrectTool } from "./organon/built-in/memory-correct.js";
+import { memoryForgetTool } from "./organon/built-in/memory-forget.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
@@ -83,6 +85,7 @@ export interface AletheiaRuntime {
   tools: ToolRegistry;
   manager: NousManager;
   plugins: PluginRegistry;
+  memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget;
   shutdown: () => void;
 }
 
@@ -137,6 +140,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...memoryCorrectTool, category: "available" as const });
+  tools.register({ ...memoryForgetTool, category: "available" as const });
   tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
@@ -210,6 +215,40 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Memory flush target — connects distillation/reflection extraction to memory sidecar
+  const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+  const memoryUserId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+  const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
+    async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
+      try {
+        const res = await fetch(`${sidecarUrl}/add_batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            texts: memories,
+            user_id: memoryUserId,
+            agent_id: agentId,
+            source: "distillation",
+            confidence: 0.8,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          log.warn(`Memory flush HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+          return { added: 0, errors: memories.length };
+        }
+        const data = await res.json() as { added?: number; errors?: number; skipped?: number };
+        log.info(`Memory flush: ${data.added ?? 0} added, ${data.skipped ?? 0} deduped, ${data.errors ?? 0} errors (agent=${agentId})`);
+        return { added: data.added ?? 0, errors: data.errors ?? 0 };
+      } catch (err) {
+        log.warn(`Memory flush failed: ${err instanceof Error ? err.message : err}`);
+        return { added: 0, errors: memories.length };
+      }
+    },
+  };
+  manager.setMemoryTarget(memoryTarget);
+  log.info("Memory flush target configured (sidecar /add_batch)");
+
   // Competence model + uncertainty tracker — wired into manager for runtime use
   const sharedRoot = paths.root;
   const competence = new CompetenceModel(sharedRoot);
@@ -266,6 +305,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     tools,
     manager,
     plugins,
+    memoryTarget,
     shutdown: () => {
       store.close();
       log.info("Runtime shutdown complete");
@@ -484,6 +524,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
         model: config.agents.defaults.compaction.distillationModel,
         minHumanMessages: 10,
         lookbackHours: 24,
+        memoryTarget: runtime.memoryTarget,
       },
     );
     return `Reflected: ${result.agentsReflected} agents, ${result.totalFindings} findings, ${result.totalMemoriesStored} memories stored` +
