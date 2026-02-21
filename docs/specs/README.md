@@ -13,9 +13,9 @@ that evolve with the system.
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
 | 3 | [Auth & Updates](03_auth-and-updates.md) | Phases 1b, 2a done; auth wiring + session UI (PR #99) | Release workflow (1a,1c), remaining auth (2c-2e), login UI (3a-3c), failover (4a) |
-| 20 | [Security Hardening](20_security-hardening.md) | 2/4 phases (PR #99) | Audit trail (3), encrypted memory (4) |
-| 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | 3/6 phases (PR #106) | Pipeline self-config (4), code patching (5), evolutionary search (6) |
-| 18 | [Extensibility](18_extensibility.md) | 1/6 phases (PR #98) | Custom commands (2), plugin API (3-4), marketplace (5-6) |
+| 20 | [Security Hardening](20_security-hardening.md) | 3/4 phases (PRs #99, #106) | Encrypted memory (4) |
+| 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | 4/6 phases (PRs #106, #107) | Code patching (5), evolutionary search (6) |
+| 18 | [Extensibility](18_extensibility.md) | 2/6 phases (PRs #98, #107) | Per-nous hooks (3), plugin API (4), path safety (5), loop guard (6) |
 | 21 | [Agent Portability](21_agent-portability.md) | 1/4 phases (PR #100) | Import (2), time-travel (3), migration (4) |
 
 ### Draft
@@ -38,11 +38,11 @@ that evolve with the system.
 
 **Tier 1 — Active work (phases in progress):**
 1. **3** Auth & Updates — login UI, release workflow
-2. **20** Security Hardening — audit trail, encryption
-3. **26** Recursive Self-Improvement — pipeline self-config, code patching
+2. **20** Security Hardening — encrypted memory
+3. **26** Recursive Self-Improvement — code patching, evolutionary search
 
-**Tier 2 — Continue (phase 1 done, more to go):**
-4. **18** Extensibility — custom commands, plugin API
+**Tier 2 — Continue (multiple phases done, more to go):**
+4. **18** Extensibility — per-nous hooks, plugin API
 5. **21** Agent Portability — import, time-travel
 
 **Tier 3 — Draft:**

@@ -1,6 +1,6 @@
 # Spec: Security Hardening — Sandbox, Encryption, Audit, PII
 
-**Status:** Phases 1-2 done (PII detection, Docker sandbox — PR #99). Phases 3-4 remaining.
+**Status:** Phases 1-3 done (PII detection, Docker sandbox, audit trail — PRs #99, #106). Phase 4 remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 **Source:** Gap Analysis F-4, F-6, F-7, F-8; OwnPilot + OpenClaw reference implementations
