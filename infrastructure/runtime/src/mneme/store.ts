@@ -23,6 +23,7 @@ export interface Session {
   lastDistilledAt: string | null;
   computedContextTokens: number;
   workingState: WorkingState | null;
+  distillationPriming: DistillationPriming | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +35,15 @@ export interface WorkingState {
   recentDecisions: string[];
   openFiles: string[];
   updatedAt: string;
+}
+
+export interface DistillationPriming {
+  facts: string[];
+  decisions: string[];
+  openItems: string[];
+  summary: string;
+  distillationNumber: number;
+  distilledAt: string;
 }
 
 export interface QueuedMessage {
@@ -74,6 +84,35 @@ export interface UsageRecord {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   model: string | null;
+}
+
+export interface ReflectionLog {
+  id: number;
+  nousId: string;
+  reflectedAt: string;
+  sessionsReviewed: number;
+  messagesReviewed: number;
+  patternsFound: number;
+  contradictionsFound: number;
+  correctionsFound: number;
+  preferencesFound: number;
+  relationshipsFound: number;
+  unresolvedThreadsFound: number;
+  memoriesStored: number;
+  tokensUsed: number;
+  durationMs: number;
+  model: string | null;
+  findings: ReflectionFindings;
+  errors: string | null;
+}
+
+export interface ReflectionFindings {
+  patterns: string[];
+  contradictions: string[];
+  corrections: string[];
+  preferences: string[];
+  relationships: string[];
+  unresolvedThreads: string[];
 }
 
 export interface Thread {
@@ -598,6 +637,69 @@ export class SessionStore {
     }));
   }
 
+  recordToolStat(record: {
+    nousId: string;
+    toolName: string;
+    success: boolean;
+    errorMessage?: string;
+    durationMs?: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO tool_stats (nous_id, tool_name, success, error_message, duration_ms)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.toolName,
+        record.success ? 1 : 0,
+        record.errorMessage ?? null,
+        record.durationMs ?? null,
+      );
+  }
+
+  getToolStats(opts: {
+    nousId?: string;
+    windowHours?: number;
+  } = {}): Array<{
+    toolName: string;
+    totalCalls: number;
+    successCount: number;
+    failureCount: number;
+    failureRate: number;
+    avgDurationMs: number;
+  }> {
+    const windowHours = opts.windowHours ?? 168; // 7 days
+    const cutoff = new Date(Date.now() - windowHours * 3600_000).toISOString();
+    const nousFilter = opts.nousId ? "AND nous_id = ?" : "";
+    const params: unknown[] = [cutoff];
+    if (opts.nousId) params.push(opts.nousId);
+
+    const rows = this.db
+      .prepare(
+        `SELECT tool_name,
+                count(*) AS total_calls,
+                sum(success) AS success_count,
+                count(*) - sum(success) AS failure_count,
+                ROUND(1.0 - (CAST(sum(success) AS REAL) / count(*)), 3) AS failure_rate,
+                ROUND(avg(duration_ms), 0) AS avg_duration_ms
+         FROM tool_stats
+         WHERE created_at > ? ${nousFilter}
+         GROUP BY tool_name
+         ORDER BY total_calls DESC`,
+      )
+      .all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => ({
+      toolName: r['tool_name'] as string,
+      totalCalls: r['total_calls'] as number,
+      successCount: r['success_count'] as number,
+      failureCount: r['failure_count'] as number,
+      failureRate: r['failure_rate'] as number,
+      avgDurationMs: r['avg_duration_ms'] as number,
+    }));
+  }
+
   updateBootstrapHash(sessionId: string, hash: string): void {
     this.db
       .prepare(
@@ -670,11 +772,32 @@ export class SessionStore {
     targetSessionId?: string;
     kind: "send" | "ask" | "spawn";
     content: string;
+    idempotencyWindowMs?: number;
   }): number {
+    const hash = this.hashCrossAgentContent(
+      record.sourceNousId ?? "",
+      record.targetNousId,
+      record.kind,
+      record.content,
+    );
+
+    // Dedup: check for identical call within window (default 5 minutes)
+    const windowMs = record.idempotencyWindowMs ?? 300_000;
+    const cutoff = new Date(Date.now() - windowMs).toISOString();
+    const existing = this.db
+      .prepare(
+        `SELECT id FROM cross_agent_messages
+         WHERE content_hash = ? AND created_at > ?
+         LIMIT 1`,
+      )
+      .get(hash, cutoff) as { id: number } | undefined;
+
+    if (existing) return existing.id;
+
     const result = this.db
       .prepare(
-        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO cross_agent_messages (source_session_id, source_nous_id, target_nous_id, target_session_id, kind, content, status, content_hash)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
       )
       .run(
         record.sourceSessionId,
@@ -683,8 +806,25 @@ export class SessionStore {
         record.targetSessionId ?? null,
         record.kind,
         record.content,
+        hash,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  private hashCrossAgentContent(source: string, target: string, kind: string, content: string): string {
+    const input = `${source}:${target}:${kind}:${content}`;
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < input.length; i++) {
+      const ch = input.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
   }
 
   getUnsurfacedMessages(nousId: string): Array<{
@@ -1115,6 +1255,7 @@ export class SessionStore {
       lastDistilledAt: (row['last_distilled_at'] as string) ?? null,
       computedContextTokens: (row['computed_context_tokens'] as number) ?? 0,
       workingState: this.parseWorkingState(row['working_state'] as string | null),
+      distillationPriming: this.parseJSON<DistillationPriming>(row['distillation_priming'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
     };
@@ -1124,6 +1265,15 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as WorkingState;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseJSON<T>(raw: string | null): T | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
     } catch {
       return null;
     }
@@ -1707,6 +1857,28 @@ export class SessionStore {
       .run(sessionId);
   }
 
+  // --- Distillation Priming ---
+
+  setDistillationPriming(sessionId: string, priming: DistillationPriming): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(priming), sessionId);
+  }
+
+  getDistillationPriming(sessionId: string): DistillationPriming | null {
+    const row = this.db
+      .prepare("SELECT distillation_priming FROM sessions WHERE id = ?")
+      .get(sessionId) as { distillation_priming: string | null } | undefined;
+    if (!row?.distillation_priming) return null;
+    return this.parseJSON<DistillationPriming>(row.distillation_priming);
+  }
+
+  clearDistillationPriming(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
   // --- Agent Notes ---
 
   addNote(sessionId: string, nousId: string, category: AgentNote["category"], content: string): number {
@@ -1822,6 +1994,151 @@ export class SessionStore {
       transport: r["transport"] as string,
       channelKey: r["channel_key"] as string,
       lastSeenAt: r["last_seen_at"] as string,
+    };
+  }
+
+  /**
+   * Get distillation summaries for a nous within a time range.
+   * Summaries are assistant messages containing "Distillation #" in their content.
+   */
+  getDistillationSummaries(
+    nousId: string,
+    since: string,
+    limit = 50,
+  ): Array<{ sessionId: string; summary: string; createdAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.session_id, m.content, m.created_at
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.nous_id = ? AND m.role = 'assistant'
+           AND m.content LIKE '%Distillation #%'
+           AND m.created_at >= ?
+         ORDER BY m.id DESC
+         LIMIT ?`,
+      )
+      .all(nousId, since, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      sessionId: r["session_id"] as string,
+      summary: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  // --- Reflection Log ---
+
+  recordReflection(record: {
+    nousId: string;
+    sessionsReviewed: number;
+    messagesReviewed: number;
+    findings: ReflectionFindings;
+    memoriesStored: number;
+    tokensUsed: number;
+    durationMs: number;
+    model: string;
+    errors?: string;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO reflection_log
+         (nous_id, sessions_reviewed, messages_reviewed,
+          patterns_found, contradictions_found, corrections_found,
+          preferences_found, relationships_found, unresolved_threads_found,
+          memories_stored, tokens_used, duration_ms, model, findings, errors)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.sessionsReviewed,
+        record.messagesReviewed,
+        record.findings.patterns.length,
+        record.findings.contradictions.length,
+        record.findings.corrections.length,
+        record.findings.preferences.length,
+        record.findings.relationships.length,
+        record.findings.unresolvedThreads.length,
+        record.memoriesStored,
+        record.tokensUsed,
+        record.durationMs,
+        record.model,
+        JSON.stringify(record.findings),
+        record.errors ?? null,
+      );
+    return result.lastInsertRowid as number;
+  }
+
+  getReflectionLog(nousId: string, opts?: { limit?: number }): ReflectionLog[] {
+    const limit = opts?.limit ?? 30;
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT ?",
+      )
+      .all(nousId, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => this.mapReflectionLog(r));
+  }
+
+  getLastReflection(nousId: string): ReflectionLog | null {
+    const row = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(nousId) as Record<string, unknown> | undefined;
+    return row ? this.mapReflectionLog(row) : null;
+  }
+
+  /**
+   * Get sessions with meaningful human activity since a given time.
+   * "Meaningful" = at least minMessages human messages, primary or standard sessions only.
+   */
+  getActiveSessionsSince(
+    nousId: string,
+    since: string,
+    minMessages: number,
+  ): Session[] {
+    const rows = this.db
+      .prepare(
+        `SELECT s.*, COUNT(m.id) AS human_msg_count
+         FROM sessions s
+         JOIN messages m ON m.session_id = s.id AND m.role = 'user' AND m.is_distilled = 0 AND m.created_at >= ?
+         WHERE s.nous_id = ? AND s.session_type = 'primary'
+         GROUP BY s.id
+         HAVING human_msg_count >= ?
+         ORDER BY s.updated_at DESC`,
+      )
+      .all(since, nousId, minMessages) as Record<string, unknown>[];
+    return rows.map((r) => this.mapSession(r));
+  }
+
+  private mapReflectionLog(r: Record<string, unknown>): ReflectionLog {
+    let findings: ReflectionFindings = {
+      patterns: [], contradictions: [], corrections: [],
+      preferences: [], relationships: [], unresolvedThreads: [],
+    };
+    try {
+      findings = JSON.parse(r["findings"] as string) as ReflectionFindings;
+    } catch {
+      log.warn(`Malformed findings JSON in reflection ${r["id"]}`);
+    }
+    return {
+      id: r["id"] as number,
+      nousId: r["nous_id"] as string,
+      reflectedAt: r["reflected_at"] as string,
+      sessionsReviewed: r["sessions_reviewed"] as number,
+      messagesReviewed: r["messages_reviewed"] as number,
+      patternsFound: r["patterns_found"] as number,
+      contradictionsFound: r["contradictions_found"] as number,
+      correctionsFound: r["corrections_found"] as number,
+      preferencesFound: r["preferences_found"] as number,
+      relationshipsFound: r["relationships_found"] as number,
+      unresolvedThreadsFound: r["unresolved_threads_found"] as number,
+      memoriesStored: r["memories_stored"] as number,
+      tokensUsed: r["tokens_used"] as number,
+      durationMs: r["duration_ms"] as number,
+      model: r["model"] as string | null,
+      findings,
+      errors: r["errors"] as string | null,
     };
   }
 }

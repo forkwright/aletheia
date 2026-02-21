@@ -93,6 +93,14 @@ export function createSessionsDispatchTool(
             minItems: 1,
             maxItems: 10,
           },
+          reducer: {
+            type: "string",
+            enum: ["concat", "dedup", "merge"],
+            description:
+              "How to combine results: concat (default, all results), " +
+              "dedup (remove duplicate results by content hash), " +
+              "merge (deep-merge JSON object results)",
+          },
         },
         required: ["tasks"],
       },
@@ -268,6 +276,10 @@ export function createSessionsDispatchTool(
         };
       });
 
+      // Apply reducer
+      const reducer = (input["reducer"] as string) ?? "concat";
+      const { reduced, reducerInfo } = applyReducer(dispatchResults, reducer);
+
       // Summary stats
       const succeeded = dispatchResults.filter(r => r.status === "success").length;
       const failed = dispatchResults.filter(r => r.status !== "success").length;
@@ -277,14 +289,16 @@ export function createSessionsDispatchTool(
       log.info(
         `Dispatch complete: ${succeeded}/${tasks.length} succeeded, ` +
         `${totalDurationMs}ms wall (${sequentialMs}ms sequential), ` +
-        `${totalTokens} tokens`,
+        `${totalTokens} tokens` +
+        (reducer !== "concat" ? `, reducer=${reducer} (${reduced.length}/${dispatchResults.length} kept)` : ""),
       );
 
       return JSON.stringify({
         taskCount: tasks.length,
         succeeded,
         failed,
-        results: dispatchResults,
+        ...(reducer !== "concat" ? { reducer, reducerInfo } : {}),
+        results: reduced,
         timing: {
           wallClockMs: totalDurationMs,
           sequentialMs,
@@ -294,6 +308,86 @@ export function createSessionsDispatchTool(
       });
     },
   };
+}
+
+function simpleHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
+function applyReducer(
+  results: DispatchResult[],
+  reducer: string,
+): { reduced: DispatchResult[]; reducerInfo?: Record<string, unknown> } {
+  if (reducer === "concat" || !reducer) {
+    return { reduced: results };
+  }
+
+  if (reducer === "dedup") {
+    const seen = new Set<string>();
+    const kept: DispatchResult[] = [];
+    let removed = 0;
+    for (const r of results) {
+      const hash = simpleHash((r.result ?? r.error ?? "").replace(/\s+/g, " ").trim());
+      if (seen.has(hash)) {
+        removed++;
+        continue;
+      }
+      seen.add(hash);
+      kept.push(r);
+    }
+    return { reduced: kept, reducerInfo: { duplicatesRemoved: removed } };
+  }
+
+  if (reducer === "merge") {
+    const jsonResults: Record<string, unknown>[] = [];
+    const nonJson: DispatchResult[] = [];
+    for (const r of results) {
+      if (!r.result) { nonJson.push(r); continue; }
+      try {
+        const parsed = JSON.parse(r.result);
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          jsonResults.push(parsed);
+        } else {
+          nonJson.push(r);
+        }
+      } catch {
+        nonJson.push(r);
+      }
+    }
+
+    if (jsonResults.length < 2) return { reduced: results };
+
+    const merged: Record<string, unknown> = {};
+    for (const obj of jsonResults) {
+      for (const [k, v] of Object.entries(obj)) {
+        if (!(k in merged)) {
+          merged[k] = v;
+        } else if (Array.isArray(merged[k]) && Array.isArray(v)) {
+          merged[k] = [...(merged[k] as unknown[]), ...v];
+        }
+        // First-wins for non-array conflicts
+      }
+    }
+
+    const mergedResult: DispatchResult = {
+      index: 0,
+      task: "merged",
+      status: "success",
+      result: JSON.stringify(merged),
+      durationMs: Math.max(...results.map(r => r.durationMs)),
+    };
+
+    return {
+      reduced: [mergedResult, ...nonJson],
+      reducerInfo: { mergedCount: jsonResults.length, nonJsonCount: nonJson.length },
+    };
+  }
+
+  return { reduced: results };
 }
 
 export const sessionsDispatchTool = createSessionsDispatchTool();

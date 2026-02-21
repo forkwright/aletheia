@@ -198,4 +198,35 @@
   .markdown-body :global(strong) {
     font-weight: 600;
   }
+  /* Task list checkboxes (GFM) */
+  .markdown-body :global(li:has(> input[type="checkbox"])) {
+    list-style: none;
+    margin-left: -20px;
+  }
+  .markdown-body :global(input[type="checkbox"]) {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--text-muted);
+    border-radius: 3px;
+    background: transparent;
+    vertical-align: middle;
+    margin-right: 6px;
+    position: relative;
+    top: -1px;
+    cursor: default;
+  }
+  .markdown-body :global(input[type="checkbox"]:checked) {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .markdown-body :global(input[type="checkbox"]:checked::after) {
+    content: "\2713";
+    display: block;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 14px;
+  }
 </style>

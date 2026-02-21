@@ -4,8 +4,9 @@ import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("tool:mem0-search");
 
-const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+// Lazy reads — env vars may be set by taxis config after module import
+const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const mem0SearchTool: ToolHandler = {
   definition: {
@@ -62,12 +63,12 @@ export const mem0SearchTool: ToolHandler = {
 
       // Tier 1: Enhanced search with query rewriting + alias resolution
       try {
-        const enhancedRes = await fetch(`${SIDECAR_URL}/search_enhanced`, {
+        const enhancedRes = await fetch(`${getSidecarUrl()}/search_enhanced`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query,
-            user_id: USER_ID,
+            user_id: getUserId(),
             agent_id: context.nousId,
             limit: limit * 2,
             rewrite: true,
@@ -84,12 +85,12 @@ export const mem0SearchTool: ToolHandler = {
       // Tier 2: Graph-enhanced search (vector + graph neighbor expansion)
       if (results.length === 0) {
         try {
-          const graphRes = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+          const graphRes = await fetch(`${getSidecarUrl()}/graph_enhanced_search`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               query,
-              user_id: USER_ID,
+              user_id: getUserId(),
               agent_id: context.nousId,
               limit: limit * 2,
               graph_weight: 0.3,
@@ -110,19 +111,19 @@ export const mem0SearchTool: ToolHandler = {
         const searchBody = (agentId?: string) =>
           JSON.stringify({
             query,
-            user_id: USER_ID,
+            user_id: getUserId(),
             ...(agentId ? { agent_id: agentId } : {}),
             limit,
           });
         try {
           const [aRes, gRes] = await Promise.all([
-            fetch(`${SIDECAR_URL}/search`, {
+            fetch(`${getSidecarUrl()}/search`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: searchBody(context.nousId),
               signal: controller.signal,
             }),
-            fetch(`${SIDECAR_URL}/search`, {
+            fetch(`${getSidecarUrl()}/search`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: searchBody(),

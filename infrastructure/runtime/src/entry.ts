@@ -2,9 +2,9 @@
 // CLI entry point
 import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
-import { loadConfig } from "./taxis/loader.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
+import { runDiagnostics, applyFixes, formatResults } from "./koina/diagnostics.js";
 
 const log = createLogger("entry");
 
@@ -46,25 +46,48 @@ gateway
 
 program
   .command("doctor")
-  .description("Validate configuration")
+  .description("Validate configuration and check system health")
   .option("-c, --config <path>", "Config file path")
-  .action((opts: { config?: string }) => {
-    try {
-      const config = loadConfig(opts.config);
-      console.log("Config valid.");
-      console.log(`  Nous: ${config.agents.list.map((a) => a.id).join(", ")}`);
-      console.log(`  Bindings: ${config.bindings.length}`);
-      console.log(`  Gateway port: ${config.gateway.port}`);
-      console.log(`  Signal accounts: ${Object.keys(config.channels.signal.accounts).length}`);
-      console.log(`  Plugins: ${Object.keys(config.plugins.entries).length}`);
-      console.log(`  Plugin paths: ${config.plugins.load.paths.length}`);
-    } catch (error) {
-      console.error(
-        "Config invalid:",
-        error instanceof Error ? error.message : error,
-      );
-      process.exit(1);
+  .option("--fix", "Apply automatic fixes for fixable issues")
+  .option("--dry-run", "Show what --fix would do without applying")
+  .action((opts: { config?: string; fix?: boolean; dryRun?: boolean }) => {
+    const { results, config } = runDiagnostics();
+
+    if (config) {
+      console.log(`Aletheia Doctor — ${config.agents.list.length} agents\n`);
+    } else {
+      console.log("Aletheia Doctor\n");
     }
+
+    console.log(formatResults(results, opts.dryRun || opts.fix));
+
+    if (opts.dryRun) {
+      const fixable = results.filter((r) => r.fix);
+      if (fixable.length > 0) {
+        console.log(`\nDry run: ${fixable.length} fix(es) would be applied.`);
+      }
+    } else if (opts.fix) {
+      const fixable = results.filter((r) => r.fix);
+      if (fixable.length === 0) {
+        console.log("\nNothing to fix.");
+      } else {
+        console.log(`\nApplying ${fixable.length} fix(es)...`);
+        const { applied, failed } = applyFixes(results);
+        console.log(`  Applied: ${applied}`);
+        if (failed.length > 0) {
+          console.log(`  Failed: ${failed.length}`);
+          for (const f of failed) console.log(`    X ${f}`);
+        }
+
+        // Re-run to verify
+        console.log("\nRe-checking...");
+        const { results: recheck } = runDiagnostics();
+        console.log(formatResults(recheck));
+      }
+    }
+
+    const errors = results.filter((r) => r.status === "error").length;
+    if (errors > 0) process.exit(1);
   });
 
 program

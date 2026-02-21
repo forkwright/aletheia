@@ -100,12 +100,36 @@
     }
   }
 
+  let elapsed = $state(0);
+  let runStart = $state(0);
+
+  $effect(() => {
+    if (running.length > 0) {
+      if (!runStart) runStart = Date.now();
+      elapsed = Math.floor((Date.now() - runStart) / 1000);
+      const iv = setInterval(() => {
+        elapsed = Math.floor((Date.now() - runStart) / 1000);
+      }, 1000);
+      return () => clearInterval(iv);
+    } else {
+      runStart = 0;
+      elapsed = 0;
+    }
+  });
+
+  function formatElapsed(s: number): string {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m${s % 60}s`;
+  }
+
   let statusText = $derived.by(() => {
     if (running.length > 0) {
       const current = running[running.length - 1]!;
+      const icon = TOOL_CATEGORIES[current.name]?.icon ?? "\u2699";
       const hint = inputHint(current);
       const label = humanizeTool(current.name);
-      return hint ? `${label}: ${hint}` : label;
+      const time = elapsed > 0 ? ` (${formatElapsed(elapsed)})` : "";
+      return hint ? `${icon} ${label}: ${hint}${time}` : `${icon} ${label}${time}`;
     }
     if (errors > 0) {
       return `${total} tool${total === 1 ? '' : 's'} · ${errors} failed`;

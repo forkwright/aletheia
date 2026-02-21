@@ -630,6 +630,7 @@ cd infrastructure/runtime && npm version minor -m "release: v%s" && cd ../.. && 
 | **3a** | Session management UI (settings page) | Small | 2c |
 | **3b** | Update button in UI (calls API) | Small | 1b, 2c |
 | **3c** | `POST /api/system/update` endpoint | Medium | 1b, 2b |
+| **4a** | Auth credential failover (F-23) | Small | 2b — fallback credentials on 429/5xx from LLM providers |
 
 **Recommended start:** 1a → 1b → 1c (get updates working first, it's the bigger daily pain point), then 2a → 2b → 2c → 2d (auth).
 

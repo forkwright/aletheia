@@ -1,5 +1,7 @@
 // Plugin registry — manage loaded plugins and dispatch hooks
 import { createLogger } from "../koina/logger.js";
+import { scanText } from "../koina/pii.js";
+import { trySafe } from "../koina/safe.js";
 import type { ToolRegistry } from "../organon/registry.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type {
@@ -27,6 +29,16 @@ export class PluginRegistry {
         else log.info(message);
       },
     };
+
+    const pii = config.privacy?.pii;
+    if (pii?.enabled && pii.surfaces?.memory) {
+      this.api.scanPii = (text: string) =>
+        trySafe(
+          "plugin-pii-scan",
+          () => scanText(text, { mode: pii.mode, allowlist: pii.allowlist, detectors: pii.detectors }),
+          { text, matches: [], redacted: 0 },
+        );
+    }
   }
 
   register(plugin: PluginDefinition, tools?: ToolRegistry): void {

@@ -8,33 +8,68 @@ that evolve with the system.
 
 ## Active Specs
 
+### Near-Complete (1-2 phases remaining)
+
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 12 | [Session Continuity](12_session-continuity.md) | Phases 1-4, 6-9 done | Recency-boosted recall (5), distillation progress UI (10) |
-| 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | ✅ Complete | All 7 phases done |
-| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
-| 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
-| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a-1b, 2a done | Memory confidence/decay, graph UI search+edit, domain scoping, thread-aware recall |
-| 11 | [Chat Output Quality](11_chat-output-quality.md) | Phases 1-4 done | Rich message components (Phase 5) |
-| 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
-| 16 | [Efficiency](16_efficiency.md) | Phases 1-3 done | Cost visibility (4) |
-| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Phases 1-3 done | Tool categorization & grouping (Phase 4), status line enhancement (Phase 5) |
-| 14 | [Development Workflow](14_development-workflow.md) | Phases 1-4, 6 done | Versioning + releases (Phase 5) |
-| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
+| 12 | [Session Continuity](12_session-continuity.md) | 9.5/10 phases | Post-distillation priming (5 remainder) |
+| 14 | [Development Workflow](14_development-workflow.md) | 6/7 phases | Doctor --fix (7) |
+| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | 4/6 phases | Status line enhancement (5), stream preview (6) |
+| 11 | [Chat Output Quality](11_chat-output-quality.md) | 4/5 phases | Rich message components (5) |
+| 7 | [Knowledge Graph](07_knowledge-graph.md) | 8/11 phases | Graph UI search+edit (2c), sufficiency gates (3d), tool memory (3f) |
 
-### Priority order
+### In Progress
 
-1. **14 Development Workflow** — Process. Every other spec ships through this pipeline. Fix the pipeline first: spec template, branch/PR convention, CI zero-failures, automated versioning, agent task dispatch. Without this, every spec creates cleanup debt.
-2. **12 Session Continuity** — Foundational. The session IS the agent. If distillation is broken, nothing else matters — context degrades, memory has gaps, the conversation doesn't feel continuous.
-3. **13 Sub-Agent Workforce** — Efficiency multiplier. Delegation reduces context pressure on the primary session, cuts cost 40-60%, and lets me stay present in conversation while work happens in parallel.
-4. **4 Cost-Aware Orchestration** — Complements #13. Plan mode gives Cody visibility into what I'm about to do. Model routing becomes simpler once sub-agents handle the cheap work.
-5. **3 Auth & Updates** — Operations. The update CLI eliminates manual deploys. Not blocking development, but reduces friction for every future change.
-6. **7 Knowledge Graph** — Memory quality. Making Neo4j optional reduces infrastructure burden. Better extraction improves what survives distillation.
-7. **16 Efficiency** — Performance. Parallel tool execution (2-5x faster tool-heavy turns), token audit + truncation, dynamic thinking budget. Compounds on every turn.
-8. **15 UI Interaction Quality** — Polish. Thinking persistence + formatting and tool input display are small changes with outsized impact on the chat experience. Groups naturally with #11.
-9. **11 Chat Output Quality** — Polish. Runtime narration filter is a safety net for prompt compliance. Rich components improve the conversation experience.
-10. **9 Graph Visualization** — Deep feature work. Depends on knowledge graph backend (#7). High value but lower urgency.
-11. **5 Plug-and-Play Onboarding** — Capstone. Ship last, after everything else is solid enough for someone else to run.
+| # | Spec | Status | Remaining |
+|---|------|--------|-----------|
+| 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | 7/11 phases | Spawn depth (8), tool restrictions (9), reducer (10), dedup (11) |
+| 16 | [Efficiency](16_efficiency.md) | 4/6 phases | Hot-reload config (5), cache stability audit (6) |
+| 20 | [Security Hardening](20_security-hardening.md) | 1/4 phases | Docker sandbox (2), audit trail (3), encrypted memory (4) |
+| 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | ~1.5/5 phases | Plan mode, model routing |
+| 3 | [Auth & Updates](03_auth-and-updates.md) | Phases 1b, 2a done | Release workflow (1a,1c), auth wiring (2b-2e), UI (3a-3c), failover (4a) |
+| 9 | [Graph Visualization](09_graph-visualization.md) | 3/8+ phases | Communities, search, editing |
+
+### Draft
+
+| # | Spec | Status | Scope |
+|---|------|--------|-------|
+| 18 | [Extensibility](18_extensibility.md) | Draft | Hooks, custom commands, plugins, path safety (F-2, F-12, F-24, F-25, F-27, F-37) |
+| 21 | [Agent Portability](21_agent-portability.md) | Draft | Export/import agent files, scheduled backups, checkpoint time-travel (F-15, F-34) |
+| 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine, IDE integration, event bus hardening, pub/sub (F-16, F-17, F-20, F-33, F-36) |
+| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Agent self-construction, CLI scaffolding, onboarding wizard (F-26) |
+| 24 | [Aletheia Linux](24_aletheia-linux.md) | Skeleton | OS + network integration |
+
+### Gap Analysis Reference
+
+| # | Document | Purpose |
+|---|----------|---------|
+| 17 | [Unified Gap Analysis](17_unified-gap-analysis.md) | 8-system comparison, 37 features identified, all mapped to specs above |
+
+**Already implemented from gap analysis:** F-5 (LoopDetector), F-9 (composite scoring), F-10 (MMR diversity), F-22 (memory tools), F-30 (temporal decay).
+**Not infrastructure:** F-29 (parallel validation — skill pattern, not spec).
+
+### Priority Order
+
+**Tier 1 — Finish what's started:**
+1. **12** Session Continuity — one phase left
+2. **14** Development Workflow — one phase left
+3. **7** Knowledge Graph — three phases left, mostly small
+4. **15** UI Quality — small phases, high polish
+5. **11** Chat Output — rich components
+
+**Tier 2 — Core capabilities:**
+6. **20** Security Hardening — sandbox, audit trail, encryption
+7. **18** Extensibility — hooks + commands open the platform
+8. **13** Sub-Agent — spawn depth, tool restrictions
+9. **21** Agent Portability — backup/export is genuinely missing
+
+**Tier 3 — Platform maturity:**
+10. **16** Efficiency — hot-reload, cache stability
+11. **4** Cost-Aware Orchestration — plan mode, routing
+12. **3** Auth & Updates — release workflow, auth wiring
+13. **22** Interop & Workflows — A2A, workflow engine, IDE
+14. **9** Graph Viz — communities, search
+15. **5** Onboarding — capstone, ship last
 
 ## Implemented (Archived)
 
@@ -51,6 +86,8 @@ that evolve with the system.
 | [Modular Runtime Architecture](archive/spec-modular-runtime-architecture.md) | PR #21 | Pipeline decomposition, composable stages |
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation & Memory Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
+| [Sleep-Time Compute](19_sleep-time-compute.md) | PR #80 | Nightly reflection, contradiction detection, self-assessment, weekly synthesis |
+| [Memory Pipeline](23_memory-pipeline.md) | Direct commits | Extraction wiring, turn facts, entity resolution, recall quality, corpus backfill, quality tools |
 
 ## Conventions
 

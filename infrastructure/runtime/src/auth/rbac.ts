@@ -26,6 +26,9 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   "POST /api/sessions/:id/archive": "api:admin",
   "POST /api/sessions/:id/distill": "api:admin",
   "GET /api/cron": "api:admin",
+  "GET /api/reflection/:nousId": "api:admin",
+  "GET /api/reflection/:nousId/assessment": "api:admin",
+  "GET /api/reflection/:nousId/latest": "api:admin",
   "POST /api/cron/:id/trigger": "api:admin",
   "GET /api/config": "api:admin",
   "GET /api/turns/active": "api:admin",
@@ -108,6 +111,9 @@ function normalizeRoute(method: string, path: string): string {
     )
     .replace(/\/api\/costs\/agent\/[^/]+/, "/api/costs/agent/:id")
     .replace(/\/api\/cron\/[^/]+\/trigger/, "/api/cron/:id/trigger")
+    .replace(/\/api\/reflection\/[^/]+\/assessment/, "/api/reflection/:nousId/assessment")
+    .replace(/\/api\/reflection\/[^/]+\/latest/, "/api/reflection/:nousId/latest")
+    .replace(/\/api\/reflection\/[^/]+$/, "/api/reflection/:nousId")
     .replace(
       /\/api\/export\/sessions\/[^/]+$/,
       "/api/export/sessions/:id",

@@ -326,4 +326,58 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_sub_agent_parent ON sub_agent_log(parent_session_id);
     `,
   },
+  {
+    version: 15,
+    sql: `
+      -- Reflection log: nightly sleep-time compute results
+      CREATE TABLE IF NOT EXISTS reflection_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nous_id TEXT NOT NULL,
+        reflected_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        sessions_reviewed INTEGER NOT NULL DEFAULT 0,
+        messages_reviewed INTEGER NOT NULL DEFAULT 0,
+        patterns_found INTEGER NOT NULL DEFAULT 0,
+        contradictions_found INTEGER NOT NULL DEFAULT 0,
+        corrections_found INTEGER NOT NULL DEFAULT 0,
+        preferences_found INTEGER NOT NULL DEFAULT 0,
+        relationships_found INTEGER NOT NULL DEFAULT 0,
+        unresolved_threads_found INTEGER NOT NULL DEFAULT 0,
+        memories_stored INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        model TEXT,
+        findings TEXT NOT NULL DEFAULT '{}',
+        errors TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_reflection_nous ON reflection_log(nous_id);
+      CREATE INDEX IF NOT EXISTS idx_reflection_date ON reflection_log(reflected_at);
+    `,
+  },
+  {
+    version: 16,
+    sql: `
+      -- Post-distillation priming: extracted context injected into the first turn after distillation
+      ALTER TABLE sessions ADD COLUMN distillation_priming TEXT;
+    `,
+  },
+  {
+    version: 17,
+    sql: `
+      -- Content hash for cross-agent message idempotency
+      ALTER TABLE cross_agent_messages ADD COLUMN content_hash TEXT;
+      CREATE INDEX IF NOT EXISTS idx_xagent_hash ON cross_agent_messages(content_hash, created_at);
+
+      -- Tool usage stats for memory/analytics
+      CREATE TABLE IF NOT EXISTS tool_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nous_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        error_message TEXT,
+        duration_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tool_stats_lookup ON tool_stats(nous_id, tool_name, created_at);
+    `,
+  },
 ];

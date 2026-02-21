@@ -93,9 +93,11 @@ export async function buildContext(
   ];
 
   // Thread-level relationship context (injected before recall so it primes memory search)
+  let threadSummaryText: string | undefined;
   if (msg.threadId) {
     const threadSummary = services.store.getThreadSummary(msg.threadId);
     if (threadSummary?.summary) {
+      threadSummaryText = threadSummary.summary;
       const factsText = threadSummary.keyFacts.length > 0
         ? `\n\n**Key facts:**\n${threadSummary.keyFacts.slice(0, 20).map((f) => `- ${f}`).join("\n")}`
         : "";
@@ -111,6 +113,7 @@ export async function buildContext(
   if (!degradedServices.includes("mem0-sidecar")) {
     const recall = await recallMemories(msg.text, nousId, {
       ...(state.nous.domains ? { domains: state.nous.domains } : {}),
+      ...(threadSummaryText ? { threadSummary: threadSummaryText } : {}),
     });
     if (recall.block) systemPrompt.push(recall.block);
     recallTokens = recall.tokens;
@@ -138,6 +141,31 @@ export async function buildContext(
       type: "text",
       text: formatWorkingState(workingState),
     });
+  }
+
+  // Post-distillation priming — inject extracted context from the most recent distillation.
+  // This ensures the agent's first turn after distillation has full awareness of what was
+  // compressed, independent of recall similarity matching. Consumed once and cleared.
+  const priming = services.store.getDistillationPriming(sessionId);
+  if (priming) {
+    const sections: string[] = [];
+    sections.push(`Context was distilled (compression #${priming.distillationNumber}). Key extracted context below.`);
+    if (priming.facts.length > 0) {
+      sections.push(`**Facts:**\n${priming.facts.map(f => `- ${f}`).join("\n")}`);
+    }
+    if (priming.decisions.length > 0) {
+      sections.push(`**Decisions:**\n${priming.decisions.map(d => `- ${d}`).join("\n")}`);
+    }
+    if (priming.openItems.length > 0) {
+      sections.push(`**Open items:**\n${priming.openItems.map(o => `- ${o}`).join("\n")}`);
+    }
+    systemPrompt.push({
+      type: "text",
+      text: `## Post-Distillation Context\n\n${sections.join("\n\n")}`,
+    });
+    // Clear after injection — one-shot priming
+    services.store.clearDistillationPriming(sessionId);
+    log.info(`Injected post-distillation priming for ${nousId} (${priming.facts.length} facts, ${priming.decisions.length} decisions, ${priming.openItems.length} open items)`);
   }
 
   // Agent notes injection — explicit notes written by the agent that survive distillation
@@ -202,6 +230,7 @@ export async function buildContext(
     sessionId,
     ...(nous.tools.allow.length > 0 ? { allow: nous.tools.allow } : {}),
     ...(nous.tools.deny.length > 0 ? { deny: nous.tools.deny } : {}),
+    ...(msg.toolFilter?.length ? { toolFilter: msg.toolFilter } : {}),
   });
 
   state.systemPrompt = systemPrompt;

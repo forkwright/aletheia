@@ -1,6 +1,6 @@
 # Spec: Development Workflow — How We Ship
 
-**Status:** Phases 1-4, 6 done
+**Status:** Phases 1-6 done. Phase 7 (doctor --fix) remaining.
 **Author:** Syn
 **Date:** 2026-02-20
 **Spec:** 14
@@ -378,6 +378,37 @@ Every task dispatched to Claude Code or a sub-agent includes:
 - [ ] Task brief template documented in CONTRIBUTING.md
 - [ ] Sub-agent role definitions include git/commit rules
 - [ ] Claude Code dispatch instructions standardized in AGENTS.md
+
+---
+
+### Phase 7: Doctor with --fix (F-21)
+
+**Problem:** `aletheia doctor` diagnoses issues but can't fix them. Every fixable issue requires manual intervention.
+
+**Design:** Each diagnostic check returns a fixable action tuple when the issue is auto-correctable:
+
+```typescript
+interface DiagnosticResult {
+  status: "ok" | "warn" | "error";
+  message: string;
+  fix?: {
+    description: string;
+    action: () => Promise<void>;
+  };
+}
+```
+
+`aletheia doctor` — diagnose only (current behavior)
+`aletheia doctor --fix` — diagnose and apply all available fixes
+`aletheia doctor --fix --dry-run` — show what would be fixed without applying
+
+Fixable issues: missing directories, stale config entries, broken symlinks, missing git config, permission issues (via setfacl), stale PID files.
+
+**Acceptance Criteria:**
+- [ ] At least 5 diagnostic checks have fixable actions
+- [ ] `--fix` applies all fixes and re-runs diagnostics to confirm
+- [ ] `--dry-run` shows fixes without applying
+- [ ] Non-fixable issues clearly labeled as manual
 
 ---
 

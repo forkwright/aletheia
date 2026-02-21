@@ -1,5 +1,7 @@
 // Distillation hooks — memory flush with retry
 import { createLogger } from "../koina/logger.js";
+import { scanText, type PiiScanConfig } from "../koina/pii.js";
+import { trySafe } from "../koina/safe.js";
 import type { ExtractionResult } from "./extract.js";
 
 const log = createLogger("distillation:hooks");
@@ -11,16 +13,37 @@ export interface MemoryFlushTarget {
   ): Promise<{ added: number; errors: number }>;
 }
 
+export interface FlushOptions {
+  maxRetries?: number;
+  piiConfig?: { enabled?: boolean; mode?: string; surfaces?: { memory?: boolean }; allowlist?: string[]; detectors?: string[] };
+}
+
 export async function flushToMemory(
   target: MemoryFlushTarget,
   agentId: string,
   extraction: ExtractionResult,
-  maxRetries = 3,
+  optsOrRetries: number | FlushOptions = 3,
 ): Promise<{ flushed: number; errors: number }> {
-  const memories: string[] = [
+  const opts: FlushOptions = typeof optsOrRetries === "number"
+    ? { maxRetries: optsOrRetries }
+    : optsOrRetries;
+  const maxRetries = opts.maxRetries ?? 3;
+
+  let memories: string[] = [
     ...extraction.facts,
     ...extraction.decisions.map((d) => `Decision: ${d}`),
   ];
+
+  if (opts.piiConfig?.enabled && opts.piiConfig.surfaces?.memory !== false) {
+    const piiCfg: PiiScanConfig = {
+      mode: (opts.piiConfig.mode as PiiScanConfig["mode"]) ?? "mask",
+      allowlist: opts.piiConfig.allowlist,
+      detectors: opts.piiConfig.detectors as PiiScanConfig["detectors"],
+    };
+    memories = memories.map((m) =>
+      trySafe("pii-flush", () => scanText(m, piiCfg), { text: m, matches: [], redacted: 0 }).text,
+    );
+  }
 
   if (memories.length === 0) {
     return { flushed: 0, errors: 0 };

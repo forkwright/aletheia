@@ -14,6 +14,7 @@ import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
 import type { McpClientManager } from "../organon/mcp-client.js";
 import { calculateCostBreakdown } from "../hermeneus/pricing.js";
+import { computeSelfAssessment } from "../distillation/reflect.js";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { eventBus, type EventName } from "../koina/event-bus.js";
 import { join, resolve } from "node:path";
@@ -306,9 +307,15 @@ export function createGateway(
   app.get("/api/status", (c) =>
     c.json({
       status: "ok",
+      version: getVersion(),
+      updateChannel: config.updates?.channel ?? "stable",
       agents: config.agents.list.map((a) => a.id),
       timestamp: new Date().toISOString(),
     }),
+  );
+
+  app.get("/api/system/update-channel", (c) =>
+    c.json({ channel: config.updates?.channel ?? "stable" }),
   );
 
   app.get("/api/sessions", (c) => {
@@ -841,6 +848,47 @@ export function createGateway(
     }
   });
 
+  // --- Tool Stats API ---
+
+  app.get("/api/tool-stats", (c) => {
+    const agentId = c.req.query("agentId");
+    const window = c.req.query("window");
+    let windowHours = 168; // 7 days
+    if (window) {
+      const match = window.match(/^(\d+)(h|d)$/);
+      if (match) {
+        windowHours = match[2] === "d" ? parseInt(match[1]!, 10) * 24 : parseInt(match[1]!, 10);
+      }
+    }
+    const stats = store.getToolStats({
+      ...(agentId ? { nousId: agentId } : {}),
+      windowHours,
+    });
+    return c.json({ ok: true, window: `${windowHours}h`, stats });
+  });
+
+  // --- Reflection API ---
+
+  app.get("/api/reflection/:nousId", (c) => {
+    const nousId = c.req.param("nousId");
+    const limit = parseInt(c.req.query("limit") ?? "10", 10);
+    const logs = store.getReflectionLog(nousId, { limit });
+    return c.json({ nousId, reflections: logs });
+  });
+
+  app.get("/api/reflection/:nousId/assessment", (c) => {
+    const nousId = c.req.param("nousId");
+    const assessment = computeSelfAssessment(store, nousId);
+    return c.json({ nousId, assessment });
+  });
+
+  app.get("/api/reflection/:nousId/latest", (c) => {
+    const nousId = c.req.param("nousId");
+    const last = store.getLastReflection(nousId);
+    if (!last) return c.json({ nousId, reflection: null });
+    return c.json({ nousId, reflection: last });
+  });
+
   app.post("/api/sessions/:id/archive", (c) => {
     const id = c.req.param("id");
     const session = store.findSessionById(id);
@@ -1111,6 +1159,31 @@ export function createGateway(
   app.post("/api/memory/graph/analyze", async (c) => {
     const body = await c.req.text();
     const res = await fetch(`${memoryUrl}/graph/analyze`, {
+      method: "POST",
+      headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
+      body,
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.get("/api/memory/entity/:name", async (c) => {
+    const name = c.req.param("name");
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}`, { headers: memorySidecarHeaders() });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.delete("/api/memory/entity/:name", async (c) => {
+    const name = c.req.param("name");
+    const res = await fetch(`${memoryUrl}/entity/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers: memorySidecarHeaders(),
+    });
+    return c.json(await res.json(), res.status as 200);
+  });
+
+  app.post("/api/memory/entity/merge", async (c) => {
+    const body = await c.req.text();
+    const res = await fetch(`${memoryUrl}/entity/merge`, {
       method: "POST",
       headers: memorySidecarHeaders({ "Content-Type": "application/json" }),
       body,

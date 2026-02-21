@@ -74,6 +74,9 @@ export const ERROR_CODES = {
   MEMORY_SIDECAR_DOWN: "Memory sidecar is not responding",
   MEMORY_SEARCH_FAILED: "Memory search returned an error",
   MEMORY_STORE_FAILED: "Failed to store memory",
+
+  // koina (PII)
+  PII_SCAN_FAILED: "PII scan threw unexpectedly",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

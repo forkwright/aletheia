@@ -4,8 +4,9 @@ import { estimateTokens } from "../hermeneus/token-counter.js";
 
 const log = createLogger("recall");
 
-const SIDECAR_URL = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const USER_ID = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+// Lazy reads — env vars may be set by taxis config after module import
+const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export interface RecallResult {
   block: { type: "text"; text: string } | null;
@@ -28,56 +29,84 @@ export function computeRecencyBoost(createdAt: string | null | undefined, now: n
   return 0.15 * (1 - age / (24 * 3600 * 1000));
 }
 
+export interface RecallOpts {
+  limit?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  minScore?: number;
+  /** Score threshold at which vector results are considered "sufficient" — skips graph fallback. */
+  sufficiencyThreshold?: number;
+  /** Minimum number of hits above sufficiencyThreshold to skip graph fallback. */
+  sufficiencyMinHits?: number;
+  domains?: string[];
+  threadSummary?: string;
+}
+
 export async function recallMemories(
   messageText: string,
   nousId: string,
-  opts?: {
-    limit?: number;
-    maxTokens?: number;
-    timeoutMs?: number;
-    minScore?: number;
-    domains?: string[];
-  },
+  opts?: RecallOpts,
 ): Promise<RecallResult> {
   const limit = opts?.limit ?? 8;
   const maxTokens = opts?.maxTokens ?? 1500;
   const timeoutMs = opts?.timeoutMs ?? 5000;
   const minScore = opts?.minScore ?? 0.75;
+  // Sufficiency gates: if N hits score above this threshold, vector search alone
+  // is sufficient — skip the expensive graph-enhanced fallback entirely.
+  const sufficiencyThreshold = opts?.sufficiencyThreshold ?? 0.85;
+  const sufficiencyMinHits = opts?.sufficiencyMinHits ?? 3;
   const start = Date.now();
 
-  const query = messageText.slice(0, 500);
+  // Thread-aware query: combine current message (70%) with thread summary (30%)
+  // Thread summary provides broader context so recall isn't limited to the last message
+  const msgQuery = messageText.slice(0, 500);
+  const query = opts?.threadSummary
+    ? `${msgQuery}\n\nThread context: ${opts.threadSummary.slice(0, 300)}`
+    : msgQuery;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let hits: MemoryHit[] = [];
 
   try {
-    // Primary path: vector-only search (fast, ~200-500ms)
+    // Tier 1: Vector-only search (fast, ~200-500ms)
     hits = await fetchBasicSearch(query, nousId, limit, controller.signal, opts?.domains);
 
-    // If vector search returned results above threshold, skip graph enrichment.
-    // Only fall back to graph-enhanced search if vector search found nothing
-    // useful, since graph traversal adds 1-2s of latency.
-    const hasUsableHits = hits.some(
-      (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+    // Sufficiency gate: count hits that score above the high-confidence threshold.
+    // If enough strong hits exist, vector search alone is sufficient — no need for
+    // the expensive graph traversal (1-2s). This is the "tiered retrieval" pattern
+    // from memU: only escalate to deeper retrieval when shallow results are weak.
+    const strongHits = hits.filter(
+      (h) => h.score !== null && h.score !== undefined && h.score >= sufficiencyThreshold,
     );
+    const isSufficient = strongHits.length >= sufficiencyMinHits;
 
-    if (!hasUsableHits) {
-      const elapsed = Date.now() - start;
-      const remaining = timeoutMs - elapsed;
-      if (remaining > 1000) {
-        // Enough time budget left to try graph-enhanced search
-        log.debug(
-          `Vector search returned no hits above ${minScore} for ${nousId}, trying graph-enhanced (${remaining}ms remaining)`,
-        );
-        const graphHits = await fetchGraphEnhanced(
-          query,
-          nousId,
-          limit,
-          controller.signal,
-        );
-        // Graph-enhanced returns combined_score; use that if available
-        hits = graphHits;
+    if (isSufficient) {
+      log.debug(
+        `Recall sufficiency gate passed for ${nousId}: ${strongHits.length} hits above ${sufficiencyThreshold} — skipping graph fallback`,
+      );
+    } else {
+      // Check if we have ANY usable hits (above minScore but below sufficiency)
+      const hasUsableHits = hits.some(
+        (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
+      );
+
+      if (!hasUsableHits) {
+        // Tier 2: Graph-enhanced search — only when vector search found nothing useful
+        const elapsed = Date.now() - start;
+        const remaining = timeoutMs - elapsed;
+        if (remaining > 1000) {
+          log.debug(
+            `Vector search returned no hits above ${minScore} for ${nousId}, trying graph-enhanced (${remaining}ms remaining)`,
+          );
+          const graphHits = await fetchGraphEnhanced(
+            query,
+            nousId,
+            limit,
+            controller.signal,
+          );
+          hits = graphHits;
+        }
       }
     }
   } catch (err) {
@@ -102,15 +131,19 @@ export async function recallMemories(
     }))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
+  // Exact-text dedup first, then MMR diversity selection
   const seen = new Set<string>();
-  const deduped: MemoryHit[] = [];
+  const exactDeduped: MemoryHit[] = [];
   for (const h of filtered) {
     if (!seen.has(h.memory)) {
       seen.add(h.memory);
-      deduped.push(h);
+      exactDeduped.push(h);
     }
-    if (deduped.length >= limit) break;
   }
+
+  // MMR-style diversity selection: penalize candidates similar to already-selected items
+  // Uses token-level Jaccard overlap (no vector fetch needed, zero latency cost)
+  const deduped = mmrSelect(exactDeduped, limit);
 
   if (deduped.length === 0) {
     const ms = Date.now() - start;
@@ -154,18 +187,90 @@ export async function recallMemories(
   };
 }
 
+/**
+ * MMR-style diversity selection using token-level Jaccard overlap.
+ * Greedily selects the highest-scoring candidate that isn't too similar
+ * to already-selected items. This prevents "5 memories that all say
+ * the same thing" without requiring vector access.
+ *
+ * @param lambda - Balance between relevance (1.0) and diversity (0.0). Default 0.7.
+ */
+export function mmrSelect(
+  candidates: MemoryHit[],
+  limit: number,
+  lambda = 0.7,
+): MemoryHit[] {
+  if (candidates.length <= 1) return candidates.slice(0, limit);
+
+  const selected: MemoryHit[] = [];
+  const remaining = [...candidates];
+  const tokenCache = new Map<string, Set<string>>();
+
+  function getTokens(text: string): Set<string> {
+    let cached = tokenCache.get(text);
+    if (!cached) {
+      cached = new Set(text.toLowerCase().split(/\s+/).filter((t) => t.length > 2));
+      tokenCache.set(text, cached);
+    }
+    return cached;
+  }
+
+  function jaccardSimilarity(a: string, b: string): number {
+    const tokensA = getTokens(a);
+    const tokensB = getTokens(b);
+    if (tokensA.size === 0 && tokensB.size === 0) return 1;
+    let intersection = 0;
+    for (const t of tokensA) {
+      if (tokensB.has(t)) intersection++;
+    }
+    const union = tokensA.size + tokensB.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  // First item: always pick the highest-scoring
+  selected.push(remaining.shift()!);
+
+  while (selected.length < limit && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestMmrScore = -Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i]!;
+      const relevance = candidate.score ?? 0;
+
+      // Max similarity to any already-selected item
+      let maxSim = 0;
+      for (const sel of selected) {
+        const sim = jaccardSimilarity(candidate.memory, sel.memory);
+        if (sim > maxSim) maxSim = sim;
+      }
+
+      // MMR score: balance relevance and diversity
+      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      if (mmrScore > bestMmrScore) {
+        bestMmrScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+
+    selected.push(remaining.splice(bestIdx, 1)[0]!);
+  }
+
+  return selected;
+}
+
 async function fetchGraphEnhanced(
   query: string,
   nousId: string,
   limit: number,
   signal: AbortSignal,
 ): Promise<MemoryHit[]> {
-  const res = await fetch(`${SIDECAR_URL}/graph_enhanced_search`, {
+  const res = await fetch(`${getSidecarUrl()}/graph_enhanced_search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query,
-      user_id: USER_ID,
+      user_id: getUserId(),
       agent_id: nousId,
       limit,
       graph_weight: 0.3,
@@ -185,12 +290,12 @@ async function fetchBasicSearch(
   signal: AbortSignal,
   domains?: string[],
 ): Promise<MemoryHit[]> {
-  const res = await fetch(`${SIDECAR_URL}/search`, {
+  const res = await fetch(`${getSidecarUrl()}/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query,
-      user_id: USER_ID,
+      user_id: getUserId(),
       agent_id: nousId,
       limit,
       ...(domains && domains.length > 0 ? { domains } : {}),

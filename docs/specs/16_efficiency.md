@@ -1,6 +1,6 @@
 # Spec: Efficiency — Parallel Execution & Token Economy
 
-**Status:** Phases 1, 2a-2d, 3 done. Phase 4 next.
+**Status:** Phases 1-4, 6 done. Phase 5 (hot-reload config) remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 
@@ -347,7 +347,9 @@ When users see that a single `exec` result consumed 2,400 tokens of context, the
 | **2c** | Tool result truncation | Small | ✅ Done — per-tool char limits, head+tail preservation, both exec paths |
 | **2d** | Dynamic thinking budget | Small | ✅ Done — message-length heuristic + tool-loop reduction (30% on iterations 2+) |
 | **3** | Parallel sub-agent dispatch | Medium | ✅ Done — `sessions_dispatch` batch tool, Promise.allSettled, timing metrics |
-| **4** | Per-tool cost visibility | Small | Low — awareness drives behavior change |
+| **4** ✅ | Per-tool cost visibility | Small | ✅ Done — token stats every 8th turn (cache rate, last turn), per-tool token estimates in ToolPanel (PR #75) |
+| **5** | Hot-reload config (F-3) | Medium | File watcher on config.yaml → SIGUSR1-style reload without restart. Agent additions, model changes, binding updates live. |
+| **6** | Prompt cache stability audit (F-18) | Small | Audit bootstrap assembly for cache invalidation patterns — ensure static blocks stay stable across turns to maximize Anthropic cache hits |
 
 ---
 

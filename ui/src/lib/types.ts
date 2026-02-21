@@ -42,6 +42,7 @@ export interface ChatMessage {
   isStreaming?: boolean;
   media?: MediaItem[];
   thinking?: string;
+  turnOutcome?: TurnOutcome;
 }
 
 export interface ToolCallState {
@@ -159,6 +160,27 @@ export interface GraphData {
   communities: number;
   community_meta: CommunityMeta[];
   total_nodes: number;
+}
+
+export interface EntityRelationship {
+  type: string;
+  target: string;
+  direction: "out" | "in";
+}
+
+export interface EntityMemory {
+  text: string;
+  score: number;
+}
+
+export interface EntityDetail {
+  name: string;
+  properties: Record<string, unknown>;
+  relationships: EntityRelationship[];
+  memories: EntityMemory[];
+  confidence: "high" | "medium" | "low";
+  relationship_count: number;
+  pagerank: number;
 }
 
 export interface CommandInfo {

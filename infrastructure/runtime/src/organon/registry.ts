@@ -8,6 +8,19 @@ const log = createLogger("organon");
 const DEFAULT_MAX_RESULT_TOKENS = 8000;
 const EXPIRY_TURNS = 5;
 
+/** Simple glob match: supports `*` wildcards (e.g. "mem0_*", "*_search", "read"). */
+export function matchesToolFilter(name: string, patterns: string[]): boolean {
+  for (const p of patterns) {
+    if (p === name) return true;
+    if (p === "*") return true;
+    if (p.includes("*")) {
+      const escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      if (new RegExp(`^${escaped}$`).test(name)) return true;
+    }
+  }
+  return false;
+}
+
 export interface ToolHandler {
   definition: ToolDefinition;
   execute: (
@@ -58,6 +71,7 @@ export class ToolRegistry {
     allow?: string[];
     deny?: string[];
     sessionId?: string;
+    toolFilter?: string[];
   }): ToolDefinition[] {
     let tools = Array.from(this.tools.values());
 
@@ -79,6 +93,10 @@ export class ToolRegistry {
     if (opts?.deny?.length) {
       const denied = new Set(opts.deny);
       tools = tools.filter((t) => !denied.has(t.definition.name));
+    }
+
+    if (opts?.toolFilter?.length) {
+      tools = tools.filter((t) => matchesToolFilter(t.definition.name, opts.toolFilter!));
     }
 
     return tools.map((t) => t.definition);

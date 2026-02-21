@@ -27,6 +27,8 @@ const TOOL_REVERSIBILITY: Record<string, Reversibility> = {
   // Memory — mutations are irreversible
   mem0_search: "reversible",
   fact_retract: "destructive",
+  memory_correct: "destructive",
+  memory_forget: "destructive",
 
   // Planning — state changes but recoverable
   plan_create: "reversible",

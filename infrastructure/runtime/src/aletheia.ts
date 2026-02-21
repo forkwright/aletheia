@@ -18,6 +18,8 @@ import { webSearchTool } from "./organon/built-in/web-search.js";
 import { braveSearchTool } from "./organon/built-in/brave-search.js";
 import { mem0SearchTool } from "./organon/built-in/mem0-search.js";
 import { factRetractTool } from "./organon/built-in/fact-retract.js";
+import { memoryCorrectTool } from "./organon/built-in/memory-correct.js";
+import { memoryForgetTool } from "./organon/built-in/memory-forget.js";
 import { browserTool, closeBrowser } from "./organon/built-in/browser.js";
 import { createMessageTool } from "./organon/built-in/message.js";
 import { createVoiceReplyTool } from "./organon/built-in/voice-reply.js";
@@ -56,12 +58,13 @@ import {
   waitForReady,
 } from "./semeion/daemon.js";
 import { startListener } from "./semeion/listener.js";
-import { parseTarget, sendMessage } from "./semeion/sender.js";
+import { initSenderPii, parseTarget, sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
+import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -82,6 +85,7 @@ export interface AletheiaRuntime {
   tools: ToolRegistry;
   manager: NousManager;
   plugins: PluginRegistry;
+  memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget;
   shutdown: () => void;
 }
 
@@ -136,6 +140,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   // Memory
   tools.register(mem0SearchTool);
   tools.register({ ...factRetractTool, category: "available" as const });
+  tools.register({ ...memoryCorrectTool, category: "available" as const });
+  tools.register({ ...memoryForgetTool, category: "available" as const });
   tools.register({ ...traceLookupTool, category: "available" as const });
 
   // Browser (requires chromium on host)
@@ -209,6 +215,40 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const manager = new NousManager(config, store, router, tools);
   const plugins = new PluginRegistry(config);
 
+  // Memory flush target — connects distillation/reflection extraction to memory sidecar
+  const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
+  const memoryUserId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
+  const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
+    async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
+      try {
+        const res = await fetch(`${sidecarUrl}/add_batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            texts: memories,
+            user_id: memoryUserId,
+            agent_id: agentId,
+            source: "distillation",
+            confidence: 0.8,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          log.warn(`Memory flush HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+          return { added: 0, errors: memories.length };
+        }
+        const data = await res.json() as { added?: number; errors?: number; skipped?: number };
+        log.info(`Memory flush: ${data.added ?? 0} added, ${data.skipped ?? 0} deduped, ${data.errors ?? 0} errors (agent=${agentId})`);
+        return { added: data.added ?? 0, errors: data.errors ?? 0 };
+      } catch (err) {
+        log.warn(`Memory flush failed: ${err instanceof Error ? err.message : err}`);
+        return { added: 0, errors: memories.length };
+      }
+    },
+  };
+  manager.setMemoryTarget(memoryTarget);
+  log.info("Memory flush target configured (sidecar /add_batch)");
+
   // Competence model + uncertainty tracker — wired into manager for runtime use
   const sharedRoot = paths.root;
   const competence = new CompetenceModel(sharedRoot);
@@ -265,6 +305,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     tools,
     manager,
     plugins,
+    memoryTarget,
     shutdown: () => {
       store.close();
       log.info("Runtime shutdown complete");
@@ -342,6 +383,23 @@ export async function startRuntime(configPath?: string): Promise<void> {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
   }
 
+  // Record tool stats for usage analytics
+  for (const eventName of ["tool:called", "tool:failed"] as const) {
+    eventBus.on(eventName, (payload: Record<string, unknown>) => {
+      try {
+        const errMsg = eventName === "tool:failed" ? (payload["error"] as string)?.slice(0, 500) : undefined;
+        const durMs = payload["durationMs"] as number | undefined;
+        runtime.store.recordToolStat({
+          nousId: (payload["nousId"] as string) ?? "unknown",
+          toolName: (payload["name"] as string) ?? "unknown",
+          success: eventName === "tool:called",
+          ...(errMsg ? { errorMessage: errMsg } : {}),
+          ...(durMs !== null && durMs !== undefined ? { durationMs: durMs } : {}),
+        });
+      } catch { /* non-fatal */ }
+    });
+  }
+
   startGateway(app, port);
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);
@@ -385,6 +443,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
       boundGroupIds.add(binding.match.peer.id);
     }
   }
+
+  initSenderPii(config.privacy?.pii);
 
   if (config.channels.signal.enabled) {
     for (const [accountId, account] of Object.entries(
@@ -472,6 +532,37 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Cron ---
   const cron = new CronScheduler(config, runtime.manager);
   setCronRef(cron);
+
+  // Register built-in reflection command for cron
+  cron.registerCommand("reflection:nightly", async () => {
+    const result = await runNightlyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        minHumanMessages: 10,
+        lookbackHours: 24,
+        memoryTarget: runtime.memoryTarget,
+      },
+    );
+    return `Reflected: ${result.agentsReflected} agents, ${result.totalFindings} findings, ${result.totalMemoriesStored} memories stored` +
+      (result.errors.length > 0 ? ` (${result.errors.length} errors)` : "");
+  });
+
+  cron.registerCommand("reflection:weekly", async () => {
+    const result = await runWeeklyReflection(
+      runtime.store,
+      runtime.router,
+      config,
+      {
+        model: config.agents.defaults.compaction.distillationModel,
+        lookbackDays: 7,
+      },
+    );
+    return `Weekly reflection: ${result.agentsReflected} agents, ${result.totalFindings} findings`;
+  });
+
   if (config.cron.enabled) {
     cron.start();
   }
