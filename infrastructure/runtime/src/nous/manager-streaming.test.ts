@@ -15,6 +15,7 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
         contextTokens: 200000,
         maxOutputTokens: 4096,
         bootstrapMaxTokens: 30000,
+        narrationFilter: false,
         routing: { enabled: false, tiers: {}, agentOverrides: {} },
         compaction: { maxHistoryShare: 0.7, distillationModel: "claude-haiku" },
       },
