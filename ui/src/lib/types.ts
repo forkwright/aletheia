@@ -194,8 +194,12 @@ export interface EntityRelationship {
 }
 
 export interface EntityMemory {
+  id?: string;
   text: string;
   score: number;
+  created_at?: string | null;
+  agent_id?: string | null;
+  source?: "stated" | "inferred" | string;
 }
 
 export interface EntityDetail {

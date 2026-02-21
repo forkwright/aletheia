@@ -1922,15 +1922,22 @@ async def entity_detail(name: str, request: Request):
     memories: list[dict[str, Any]] = []
     try:
         mem = _get_memory(request)
-        raw = await asyncio.to_thread(mem.search, name, user_id="default", limit=5)
+        raw = await asyncio.to_thread(mem.search, name, user_id="default", limit=10)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
         if isinstance(results, list):
             for r in results:
-                if r.get("score", 0) > 0.5:
+                if r.get("score", 0) > 0.4:
+                    meta = r.get("metadata") or {}
+                    created = r.get("created_at") or meta.get("created_at")
+                    agent_id = meta.get("agent_id")
+                    source = meta.get("source", "inferred")  # "stated" vs "inferred"
                     memories.append({
                         "id": r.get("id"),
-                        "text": r.get("memory", "")[:200],
+                        "text": r.get("memory", "")[:300],
                         "score": round(r.get("score", 0), 3),
+                        "created_at": created,
+                        "agent_id": agent_id,
+                        "source": source,
                     })
     except Exception:
         pass  # Non-fatal — graph data still returned
