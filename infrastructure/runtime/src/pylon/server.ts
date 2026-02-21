@@ -314,7 +314,23 @@ export function createGateway(
   app.get("/api/sessions", (c) => {
     const nousId = c.req.query("nousId");
     const sessions = store.listSessions(nousId);
-    return c.json({ sessions });
+    // Include canonical session key per agent for webchat convergence
+    const canonical: Record<string, string> = {};
+    if (nousId) {
+      const key = store.getCanonicalSessionKey(nousId);
+      if (key) canonical[nousId] = key;
+    } else {
+      // Multi-agent view: resolve for each unique agent
+      const seen = new Set<string>();
+      for (const s of sessions) {
+        if (!seen.has(s.nousId)) {
+          seen.add(s.nousId);
+          const key = store.getCanonicalSessionKey(s.nousId);
+          if (key) canonical[s.nousId] = key;
+        }
+      }
+    }
+    return c.json({ sessions, canonical });
   });
 
   app.get("/api/sessions/:id/history", (c) => {
@@ -401,7 +417,7 @@ export function createGateway(
       return c.json({ error: "agentId and message required" }, 400);
     }
 
-    // Guard: verify signal: session key ownership (same as streaming endpoint)
+    // Session convergence: same logic as streaming endpoint
     let resolvedKey = sessionKey ?? "main";
     if (resolvedKey.startsWith("signal:")) {
       const signalPeerId = resolvedKey.slice("signal:".length);
@@ -410,6 +426,14 @@ export function createGateway(
       if (routedOwner && routedOwner !== agentId) {
         resolvedKey = `web:${Date.now()}`;
         log.warn(`API session key ownership mismatch: signal key belongs to ${routedOwner}, not ${agentId}`);
+      }
+    } else if (!resolvedKey.startsWith("agent:") && !resolvedKey.startsWith("cron:") && !resolvedKey.startsWith("spawn:")) {
+      const canonical = store.getCanonicalSessionKey(agentId);
+      if (canonical) {
+        if (canonical !== resolvedKey) {
+          log.info(`API session converged: "${resolvedKey}" → "${canonical}" for ${agentId}`);
+        }
+        resolvedKey = canonical;
       }
     }
 
@@ -493,12 +517,13 @@ export function createGateway(
     const encoder = new TextEncoder();
     const rawSessionKey = sessionKey ?? "main";
 
-    // Guard: if the webchat sends a signal: session key, verify agent ownership.
-    // Signal session keys are bound to specific agents via routing cache.
-    // If agentId doesn't match the routed owner, the client has a stale session
-    // reference (e.g., switched agents without refreshing). Create a fresh session.
+    // Session convergence: when webchat connects with a generic key (main, web:*, etc.),
+    // resolve to the canonical DM session so webchat and Signal share the same conversation.
+    // This ensures continuity across devices and transports.
     let resolvedSessionKey = rawSessionKey;
+
     if (rawSessionKey.startsWith("signal:")) {
+      // Guard: if the webchat sends a signal: session key, verify agent ownership.
       const signalPeerId = rawSessionKey.slice("signal:".length);
       const routedOwner = store.resolveRoute("signal", "group", signalPeerId)
         ?? store.resolveRoute("signal", "dm", signalPeerId);
@@ -508,6 +533,18 @@ export function createGateway(
           `Session key ownership mismatch: "${rawSessionKey}" belongs to ${routedOwner}, ` +
           `not ${agentId}. Reassigned to "${resolvedSessionKey}".`,
         );
+      }
+    } else if (!rawSessionKey.startsWith("agent:") && !rawSessionKey.startsWith("cron:") && !rawSessionKey.startsWith("spawn:")) {
+      // For generic webchat keys (main, web:main, web:1234, etc.),
+      // try to converge with the canonical DM session
+      const canonical = store.getCanonicalSessionKey(agentId);
+      if (canonical) {
+        resolvedSessionKey = canonical;
+        if (canonical !== rawSessionKey) {
+          log.info(
+            `Webchat session converged: "${rawSessionKey}" → "${canonical}" for ${agentId}`,
+          );
+        }
       }
     }
 
