@@ -79,6 +79,18 @@ import { eventBus } from "./koina/event-bus.js";
 
 const log = createLogger("aletheia");
 
+type RoutingEntry = { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string };
+
+function extractBindings(config: AletheiaConfig): RoutingEntry[] {
+  return config.bindings.map((b) => {
+    const entry: RoutingEntry = { channel: b.match.channel, nousId: b.agentId };
+    if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+    if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+    if (b.match.accountId) entry.accountId = b.match.accountId;
+    return entry;
+  });
+}
+
 export interface AletheiaRuntime {
   config: AletheiaConfig;
   store: SessionStore;
@@ -204,17 +216,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   log.info(`Registered ${tools.size} tools`);
 
-  const bindings = config.bindings.map((b) => {
-    const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
-      channel: b.match.channel,
-      nousId: b.agentId,
-    };
-    if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
-    if (b.match.peer?.id) entry.peerId = b.match.peer.id;
-    if (b.match.accountId) entry.accountId = b.match.accountId;
-    return entry;
-  });
-  store.rebuildRoutingCache(bindings);
+  store.rebuildRoutingCache(extractBindings(config));
   store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
@@ -383,7 +385,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Wire event bus → SSE push for real-time UI updates
   for (const eventName of [
     "turn:before", "turn:after", "tool:called", "tool:failed",
-    "session:created", "session:archived",
+    "session:created", "session:archived", "config:reloaded",
   ] as const) {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));
   }
@@ -630,8 +632,13 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Config hot-reload ---
   const configWatcher = watchConfig(configPath, (newConfig) => {
     const diff = runtime.manager.reloadConfig(newConfig);
+
+    // Rebuild routing cache with new bindings
+    const newBindings = extractBindings(newConfig);
+    runtime.store.rebuildRoutingCache(newBindings);
+
     eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
-    log.info(`Config reloaded: +${diff.added.length} -${diff.removed.length} agents`);
+    log.info(`Config reloaded: +${diff.added.length} -${diff.removed.length} agents, ${newBindings.length} bindings`);
   });
 
   // --- Shutdown ---

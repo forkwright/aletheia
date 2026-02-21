@@ -325,7 +325,22 @@ export function createGateway(
       return c.json({ ok: false, error: "Config validation failed — check logs" }, 400);
     }
     const diff = manager.reloadConfig(newConfig);
-    return c.json({ ok: true, added: diff.added, removed: diff.removed });
+
+    // Rebuild routing cache with new bindings
+    const bindings = newConfig.bindings.map((b) => {
+      const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
+        channel: b.match.channel,
+        nousId: b.agentId,
+      };
+      if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+      if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+      if (b.match.accountId) entry.accountId = b.match.accountId;
+      return entry;
+    });
+    store.rebuildRoutingCache(bindings);
+
+    eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
+    return c.json({ ok: true, added: diff.added, removed: diff.removed, bindings: bindings.length });
   });
 
   app.get("/api/sessions", (c) => {
