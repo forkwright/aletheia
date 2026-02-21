@@ -9,6 +9,7 @@ export type EventName =
   | "tool:called"
   | "tool:failed"
   | "distill:before"
+  | "distill:stage"
   | "distill:after"
   | "session:created"
   | "session:archived"

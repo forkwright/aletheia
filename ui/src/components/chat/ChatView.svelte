@@ -4,6 +4,7 @@
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
+  import DistillationProgress from "./DistillationProgress.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import type { ToolCallState } from "../../lib/types";
   import {
@@ -372,6 +373,7 @@
   {#if pendingApproval}
     <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
   {/if}
+  <DistillationProgress />
   <InputBar
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}

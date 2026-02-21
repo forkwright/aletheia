@@ -365,6 +365,9 @@ export function createGateway(
           ["tool:failed", forward("tool:failed")],
           ["session:created", forward("session:created")],
           ["session:archived", forward("session:archived")],
+          ["distill:before", forward("distill:before")],
+          ["distill:stage", forward("distill:stage")],
+          ["distill:after", forward("distill:after")],
         ];
 
         for (const [event, handler] of handlers) {

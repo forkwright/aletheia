@@ -61,6 +61,7 @@ function connect() {
   const eventTypes = [
     "turn:before", "turn:after", "turn:text_delta", "turn:tool_start", "turn:tool_result",
     "tool:called", "tool:failed", "session:created", "session:archived",
+    "distill:before", "distill:stage", "distill:after",
   ];
   for (const type of eventTypes) {
     source.addEventListener(type, (e) => {

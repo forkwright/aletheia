@@ -7,10 +7,47 @@
     onclick?: () => void;
   } = $props();
 
+  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
+    read: { icon: "\u{1F4C1}", label: "fs" },
+    write: { icon: "\u{1F4C1}", label: "fs" },
+    edit: { icon: "\u{1F4C1}", label: "fs" },
+    ls: { icon: "\u{1F4C1}", label: "fs" },
+    find: { icon: "\u{1F50D}", label: "search" },
+    grep: { icon: "\u{1F50D}", label: "search" },
+    web_search: { icon: "\u{1F50D}", label: "search" },
+    mem0_search: { icon: "\u{1F50D}", label: "search" },
+    exec: { icon: "\u26A1", label: "exec" },
+    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
+    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
+    message: { icon: "\u{1F4AC}", label: "comms" },
+    blackboard: { icon: "\u{1F9E0}", label: "system" },
+    note: { icon: "\u{1F9E0}", label: "system" },
+    enable_tool: { icon: "\u{1F9E0}", label: "system" },
+    web_fetch: { icon: "\u{1F310}", label: "web" },
+  };
+
+  function getCategory(name: string): string {
+    return TOOL_CATEGORIES[name]?.label ?? "other";
+  }
+
   let running = $derived(tools.filter(t => t.status === "running"));
   let completed = $derived(tools.filter(t => t.status !== "running").length);
   let errors = $derived(tools.filter(t => t.status === "error").length);
   let total = $derived(tools.length);
+
+  let categoryBreakdown = $derived.by(() => {
+    if (running.length > 0 || total < 2) return "";
+    const counts = new Map<string, { icon: string; count: number }>();
+    for (const t of tools) {
+      const cat = getCategory(t.name);
+      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
+      const existing = counts.get(cat);
+      if (existing) existing.count++;
+      else counts.set(cat, { icon: entry.icon, count: 1 });
+    }
+    return [...counts.values()].map(c => `${c.icon}${c.count}`).join(" ");
+  });
 
   /** Humanize a tool name into a readable activity label */
   function humanizeTool(name: string): string {
@@ -72,6 +109,9 @@
     }
     if (errors > 0) {
       return `${total} tool${total === 1 ? '' : 's'} · ${errors} failed`;
+    }
+    if (categoryBreakdown) {
+      return categoryBreakdown;
     }
     return `${total} tool${total === 1 ? '' : 's'} completed`;
   });

@@ -199,6 +199,8 @@ async function runDistillation(
       return { role: m.role, content: m.content };
     });
 
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "sanitize", progress: 1, total: 6 });
+
   // Sanitize tool results — truncate verbose payloads before LLM-facing operations
   const sanitized = sanitizeToolResults(rawMessages);
 
@@ -236,6 +238,7 @@ async function runDistillation(
     summaryTokens = estimateTokens(summary);
   } else {
     // Pass 1: Extraction
+    eventBus.emit("distill:stage", { sessionId, nousId, stage: "extract", progress: 2, total: 6 });
     log.info(`Extraction pass: ${simpleMessages.length} messages`);
     extraction = await extractFromMessages(
       router,
@@ -263,6 +266,7 @@ async function runDistillation(
     }
 
     // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
+    eventBus.emit("distill:stage", { sessionId, nousId, stage: "summarize", progress: 3, total: 6 });
     log.info("Summary pass");
     summary = await summarizeInStages(
       router,
@@ -321,6 +325,8 @@ async function runDistillation(
     model: opts.extractionModel,
   });
   store.updateLastDistilledAt(sessionId);
+
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "flush", progress: 4, total: 6 });
 
   let flushSucceeded = true;
   let flushErrors: string | undefined;
@@ -385,6 +391,8 @@ async function runDistillation(
     ];
     opts.onThreadSummaryUpdate(markedSummary, keyFacts);
   }
+
+  eventBus.emit("distill:stage", { sessionId, nousId, stage: "verify", progress: 5, total: 6 });
 
   // Post-distillation verification — log warnings, don't block
   {
