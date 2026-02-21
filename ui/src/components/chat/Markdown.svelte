@@ -3,7 +3,8 @@
 
   let { content }: { content: string } = $props();
 
-  let html = $derived(renderMarkdown(content));
+  let safeContent = $derived(typeof content === "string" ? content : String(content ?? ""));
+  let html = $derived(renderMarkdown(safeContent));
   let container = $state<HTMLDivElement | null>(null);
 
   // Add copy buttons to code blocks after render
