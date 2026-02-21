@@ -12,6 +12,7 @@
     onClose,
     onDelete,
     onMerge,
+    onFlag = undefined,
   }: {
     node: GraphNode;
     detail: EntityDetail | null;
@@ -23,6 +24,7 @@
     onClose: () => void;
     onDelete: (name: string) => Promise<boolean>;
     onMerge: (source: string, target: string) => Promise<boolean>;
+    onFlag?: ((name: string, flagged: boolean) => Promise<void>) | undefined;
   } = $props();
 
   let confirmDelete = $state(false);
@@ -30,6 +32,15 @@
   let showAllMemories = $state(false);
   let showAllConnections = $state(false);
   let activeTab = $state<"memories" | "connections">("memories");
+  let isFlagged = $state(false);
+  let hasFlagHandler = $derived(typeof onFlag === "function");
+
+  // Detect flagged state from properties
+  $effect(() => {
+    if (detail?.properties) {
+      isFlagged = !!(detail.properties as Record<string, unknown>)["flagged"];
+    }
+  });
 
   // Group relationships by type
   function groupedRelationships(rels: EntityRelationship[]): Map<string, EntityRelationship[]> {
@@ -234,17 +245,27 @@
 
   <!-- Actions -->
   <div class="card-actions">
-    {#if confirmDelete}
-      <div class="confirm-row">
-        <span class="confirm-label">Delete "{node.id}"?</span>
-        <button class="action-btn danger" onclick={async () => { await onDelete(node.id); confirmDelete = false; }}>
-          Confirm
+    <div class="action-row">
+      {#if hasFlagHandler}
+        <button
+          class="action-btn"
+          class:flagged={isFlagged}
+          title={isFlagged ? "Remove flag" : "Flag for review"}
+          onclick={async () => { if (onFlag) await onFlag(node.id, !isFlagged); isFlagged = !isFlagged; }}
+        >
+          {isFlagged ? "🚩 Flagged" : "🏳 Flag"}
         </button>
-        <button class="action-btn" onclick={() => confirmDelete = false}>Cancel</button>
-      </div>
-    {:else}
-      <button class="action-btn danger-outline" onclick={() => confirmDelete = true}>Delete</button>
-    {/if}
+      {/if}
+      {#if confirmDelete}
+        <span class="confirm-label">Delete?</span>
+        <button class="action-btn danger" onclick={async () => { await onDelete(node.id); confirmDelete = false; }}>
+          Yes
+        </button>
+        <button class="action-btn" onclick={() => confirmDelete = false}>No</button>
+      {:else}
+        <button class="action-btn danger-outline" onclick={() => confirmDelete = true}>Delete</button>
+      {/if}
+    </div>
     <div class="merge-row">
       <input
         class="merge-input"
@@ -690,6 +711,18 @@
     font-family: var(--font-sans);
   }
   .merge-input:focus { outline: none; border-color: var(--accent); }
+
+  .action-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .action-btn.flagged {
+    border-color: var(--yellow, #d29922);
+    color: var(--yellow, #d29922);
+    background: color-mix(in srgb, var(--yellow, #d29922) 10%, transparent);
+  }
 
   @media (max-width: 768px) {
     .node-card {

@@ -2,6 +2,10 @@
   import { onMount } from "svelte";
   import Graph2D from "./Graph2D.svelte";
   import NodeCard from "./NodeCard.svelte";
+  import HealthBar from "./HealthBar.svelte";
+  import DriftPanel from "./DriftPanel.svelte";
+  import TimelineSlider from "./TimelineSlider.svelte";
+  import ContextLookup from "./ContextLookup.svelte";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getCommunityIds,
@@ -11,6 +15,13 @@
     searchGraph, getSearchResults, getSearchLoading, clearSearchResults,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
     loadGraph, loadEntityDetail, removeEntity, mergeEntityNodes,
+    // Graph Intelligence (Phases 8-13)
+    getMemoryHealth, getHealthLoading, loadMemoryHealth,
+    getAgentOverlay, getAgentOverlayLoading, loadAgentOverlay,
+    getDriftData, getDriftLoading, loadDriftData,
+    getActiveOverlay, setActiveOverlay,
+    getSelectedAgentFilter, setSelectedAgentFilter,
+    loadTimeline,
   } from "../../stores/graph.svelte";
 
   type ViewMode = "2d" | "3d";
@@ -19,6 +30,9 @@
   let graph2d = $state<Graph2D | null>(null);
   let graph3d = $state<any>(null);
   let progressivePhase = $state<"initial" | "full">("initial");
+  let showContextLookup = $state(false);
+  let showTimeline = $state(false);
+  let showEdgeFilter = $state(true);
 
   const PALETTE = [
     "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
@@ -26,6 +40,16 @@
     "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
     "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
   ];
+
+  const AGENT_COLORS: Record<string, string> = {
+    syn: "#58a6ff",
+    demiurge: "#d29922",
+    syl: "#f778ba",
+    akron: "#3fb950",
+    eiron: "#bc8cff",
+    arbor: "#56d4dd",
+    unknown: "#8b949e",
+  };
 
   function communityColor(community: number): string {
     if (community < 0) return "#30363d";
@@ -38,6 +62,8 @@
     await loadGraph({ mode: "top", limit: 20 });
     progressivePhase = "full";
     await loadGraph({ mode: "top", limit: 200 });
+    // Load health data in background
+    loadMemoryHealth();
   }
 
   // --- Handlers ---
@@ -102,6 +128,48 @@
     viewMode = mode;
   }
 
+  // Overlay mode toggles
+  function toggleOverlay(mode: "agents" | "drift" | "timeline") {
+    const current = getActiveOverlay();
+    if (current === mode) {
+      setActiveOverlay("none");
+      if (mode === "timeline") {
+        showTimeline = false;
+        reloadGraph(); // Reload full graph
+      }
+      if (mode === "drift") {
+        // Just hide
+      }
+      if (mode === "agents") {
+        setSelectedAgentFilter(null);
+      }
+    } else {
+      setActiveOverlay(mode);
+      if (mode === "agents") loadAgentOverlay();
+      if (mode === "drift") loadDriftData();
+      if (mode === "timeline") showTimeline = true;
+    }
+  }
+
+  function handleContextSearch(q: string) {
+    searchGraph(q);
+  }
+
+  async function handleFlag(name: string, flagged: boolean) {
+    // TODO: Wire to sidecar flag endpoint when available
+    console.log(`Flag ${name}: ${flagged}`);
+  }
+
+  function handleTimelineApply(since: string, until: string) {
+    loadTimeline(since, until);
+  }
+
+  function handleTimelineClear() {
+    showTimeline = false;
+    setActiveOverlay("none");
+    reloadGraph();
+  }
+
   onMount(() => {
     initialLoad();
   });
@@ -117,14 +185,41 @@
   let hiddenEdges = $derived(getHiddenEdgeTypes());
   let communityMeta = $derived(getCommunityMeta());
 
+  let memoryHealth = $derived(getMemoryHealth());
+  let healthLoading = $derived(getHealthLoading());
+  let agentOverlay = $derived(getAgentOverlay());
+  let driftData = $derived(getDriftData());
+  let driftLoading = $derived(getDriftLoading());
+  let activeOverlay = $derived(getActiveOverlay());
+  let selectedAgentFilter = $derived(getSelectedAgentFilter());
+
   function communityLabel(cid: number): string {
     const meta = communityMeta.find((m) => m.id === cid);
     if (meta && "name" in meta) return (meta as unknown as { name: string }).name;
     return String(cid);
   }
+
+  // Drift notification badge
+  let driftBadge = $derived(driftData?.suggestion_count ?? 0);
 </script>
 
 <div class="graph-view">
+  <!-- Health Bar (Phase 8) -->
+  <HealthBar
+    health={memoryHealth}
+    loading={healthLoading}
+    onRefresh={() => loadMemoryHealth()}
+  />
+
+  <!-- Timeline Slider (Phase 9) -->
+  {#if showTimeline}
+    <TimelineSlider
+      dateRange={memoryHealth?.date_range ?? null}
+      onRangeChange={handleTimelineApply}
+      onClear={handleTimelineClear}
+    />
+  {/if}
+
   <div class="graph-toolbar">
     <input
       class="graph-search"
@@ -138,21 +233,78 @@
       <button class="toggle-btn" class:active={viewMode === "2d"} onclick={() => switchView("2d")}>2D</button>
       <button class="toggle-btn" class:active={viewMode === "3d"} onclick={() => switchView("3d")}>3D</button>
     </div>
-    <div class="community-pills">
+
+    <!-- Overlay toggles (Phases 9-11) -->
+    <div class="overlay-toggles">
       <button
-        class="pill"
-        class:active={getHighlightedCommunity() === null}
-        onclick={() => { setHighlightedCommunity(null); reloadGraph(); }}
-      >All</button>
-      {#each communityIds.slice(0, 12) as cid}
+        class="overlay-btn"
+        class:active={activeOverlay === "timeline"}
+        onclick={() => toggleOverlay("timeline")}
+        title="Timeline filter"
+      >📅</button>
+      <button
+        class="overlay-btn"
+        class:active={activeOverlay === "agents"}
+        onclick={() => toggleOverlay("agents")}
+        title="Agent overlay"
+      >👥</button>
+      <button
+        class="overlay-btn"
+        class:active={activeOverlay === "drift"}
+        onclick={() => toggleOverlay("drift")}
+        title="Drift detection"
+      >
+        🔍
+        {#if driftBadge > 0 && activeOverlay !== "drift"}
+          <span class="drift-badge">{driftBadge}</span>
+        {/if}
+      </button>
+      <button
+        class="overlay-btn"
+        class:active={showContextLookup}
+        onclick={() => showContextLookup = !showContextLookup}
+        title="Context lookup"
+      >🔎</button>
+    </div>
+
+    <!-- Agent filter pills (Phase 10) -->
+    {#if activeOverlay === "agents" && agentOverlay?.all_agents}
+      <div class="agent-pills">
+        <button
+          class="pill agent-pill"
+          class:active={selectedAgentFilter === null}
+          onclick={() => setSelectedAgentFilter(null)}
+        >All agents</button>
+        {#each agentOverlay.all_agents as agent}
+          <button
+            class="pill agent-pill"
+            class:active={selectedAgentFilter === agent}
+            style="--pill-color: {AGENT_COLORS[agent] ?? '#8b949e'}"
+            onclick={() => setSelectedAgentFilter(selectedAgentFilter === agent ? null : agent)}
+          >{agent}</button>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Community pills (default mode) -->
+    {#if activeOverlay === "none"}
+      <div class="community-pills">
         <button
           class="pill"
-          class:active={getHighlightedCommunity() === cid}
-          style="--pill-color: {communityColor(cid)}"
-          onclick={() => handleCommunityClick(cid)}
-        >{communityLabel(cid)}</button>
-      {/each}
-    </div>
+          class:active={getHighlightedCommunity() === null}
+          onclick={() => { setHighlightedCommunity(null); reloadGraph(); }}
+        >All</button>
+        {#each communityIds.slice(0, 12) as cid}
+          <button
+            class="pill"
+            class:active={getHighlightedCommunity() === cid}
+            style="--pill-color: {communityColor(cid)}"
+            onclick={() => handleCommunityClick(cid)}
+          >{communityLabel(cid)}</button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="load-controls">
       <select class="mode-select" onchange={handleModeChange}>
         <option value="top" selected={getLoadedMode() === "top"}>Top nodes</option>
@@ -192,6 +344,10 @@
         bind:hoverNodeId
         onNodeClick={handleNodeClick}
         onBackgroundClick={handleBackgroundClick}
+        agentOverlay={activeOverlay === "agents" ? agentOverlay : null}
+        agentFilter={selectedAgentFilter}
+        agentColors={AGENT_COLORS}
+        driftData={activeOverlay === "drift" ? driftData : null}
       />
     {:else}
       {#await import("./Graph3D.svelte") then { default: Graph3D }}
@@ -208,6 +364,30 @@
         <div class="graph-error">Failed to load 3D renderer</div>
       {/await}
     {/if}
+
+    <!-- Context Lookup (Phase 13) -->
+    {#if showContextLookup}
+      <ContextLookup
+        searchQuery={getSearchQuery()}
+        searchResults={getSearchResults()}
+        searchLoading={getSearchLoading()}
+        entityDetail={getEntityDetail()}
+        entityLoading={getEntityLoading()}
+        onSearch={handleContextSearch}
+        onNodeClick={handleNodeClick}
+        onClose={() => showContextLookup = false}
+      />
+    {/if}
+
+    <!-- Drift Panel (Phase 11) -->
+    {#if activeOverlay === "drift"}
+      <DriftPanel
+        drift={driftData}
+        loading={driftLoading}
+        onNodeClick={handleNodeClick}
+        onRefresh={() => loadDriftData()}
+      />
+    {/if}
   </div>
 
   {#if selectedNode}
@@ -222,10 +402,11 @@
       onClose={() => { setSelectedNodeId(null); }}
       onDelete={removeEntity}
       onMerge={mergeEntityNodes}
+      onFlag={handleFlag}
     />
   {/if}
 
-  {#if edgeTypes.length > 0}
+  {#if edgeTypes.length > 0 && showEdgeFilter}
     <div class="edge-filter-panel">
       <h4 class="panel-heading">Edge Types</h4>
       {#each edgeTypes as type}
@@ -294,12 +475,62 @@
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
-  .toggle-btn:hover {
-    color: var(--text);
-  }
+  .toggle-btn:hover { color: var(--text); }
   .toggle-btn.active {
     background: var(--accent);
     color: #fff;
+  }
+
+  /* Overlay toggles */
+  .overlay-toggles {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .overlay-btn {
+    background: none;
+    border: none;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+    line-height: 1;
+  }
+  .overlay-btn:hover { background: var(--surface); }
+  .overlay-btn.active {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
+  .drift-badge {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    background: var(--yellow, #d29922);
+    color: #000;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 3px;
+    border-radius: 6px;
+    min-width: 12px;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  /* Agent pills */
+  .agent-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .agent-pill {
+    text-transform: capitalize;
   }
 
   .community-pills {
@@ -378,12 +609,8 @@
     z-index: 10;
     pointer-events: none;
   }
-  .graph-loading {
-    color: var(--text-secondary);
-  }
-  .graph-error {
-    color: var(--red);
-  }
+  .graph-loading { color: var(--text-secondary); }
+  .graph-error { color: var(--red); }
 
   .edge-filter-panel {
     position: absolute;
@@ -416,6 +643,4 @@
     opacity: 0.4;
     text-decoration: line-through;
   }
-
-
 </style>

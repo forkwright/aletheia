@@ -2399,3 +2399,364 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
     except Exception as e:
         logger.exception("memory/forget failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# --- Spec 09 Phases 8-13: Graph Intelligence Endpoints ---
+
+
+@router.get("/memory/health")
+async def memory_health(request: Request, user_id: str = "default"):
+    """Aggregate memory health stats: total, stale, conflicting, flagged, avg confidence."""
+    mem = _get_memory(request)
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        # Get collection info for total count
+        collection = client.get_collection(COLLECTION_NAME)
+        total = collection.points_count or 0
+
+        # Sample memories for stats (up to 500)
+        raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
+        entries = raw.get("results", raw) if isinstance(raw, dict) else raw
+        if not isinstance(entries, list):
+            entries = []
+
+        now = datetime.now(timezone.utc)
+        stale_count = 0
+        flagged_count = 0
+        forgotten_count = 0
+        low_confidence_count = 0
+        confidence_sum = 0.0
+        confidence_n = 0
+        by_agent: dict[str, int] = {}
+        oldest_date: str | None = None
+        newest_date: str | None = None
+
+        for entry in entries:
+            meta = entry.get("metadata", {}) or {}
+
+            # Confidence tracking
+            conf = meta.get("confidence")
+            if isinstance(conf, (int, float)):
+                confidence_sum += conf
+                confidence_n += 1
+                if conf < 0.3:
+                    low_confidence_count += 1
+
+            # Staleness: >30 days since created
+            created = entry.get("created_at") or meta.get("created_at")
+            if created:
+                try:
+                    dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    age_days = (now - dt).days
+                    if age_days > 30:
+                        stale_count += 1
+                    date_str = dt.isoformat()
+                    if oldest_date is None or date_str < oldest_date:
+                        oldest_date = date_str
+                    if newest_date is None or date_str > newest_date:
+                        newest_date = date_str
+                except (ValueError, TypeError):
+                    pass
+
+            # Flagged / forgotten
+            if meta.get("flagged"):
+                flagged_count += 1
+            if meta.get("forgotten"):
+                forgotten_count += 1
+
+            # By agent
+            agent = meta.get("agent_id") or meta.get("original_agent") or "unknown"
+            by_agent[agent] = by_agent.get(agent, 0) + 1
+
+        avg_confidence = round(confidence_sum / max(confidence_n, 1), 3)
+
+        # Contradiction detection: search for pairs with opposing sentiment on same entity
+        # Lightweight: count memories with confidence < 0.4 as potential conflicts
+        conflict_count = low_confidence_count  # Proxy: low confidence often means contradicting info
+
+        return {
+            "ok": True,
+            "total": total,
+            "sampled": len(entries),
+            "stale": stale_count,
+            "conflicts": conflict_count,
+            "flagged": flagged_count,
+            "forgotten": forgotten_count,
+            "avg_confidence": avg_confidence,
+            "by_agent": dict(sorted(by_agent.items(), key=lambda x: -x[1])),
+            "date_range": {"oldest": oldest_date, "newest": newest_date},
+        }
+    except Exception as e:
+        logger.exception("memory/health failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph/timeline")
+async def graph_timeline(
+    request: Request,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 200,
+):
+    """Date-filtered graph export. Returns nodes that have memories within the date range."""
+    if not neo4j_available():
+        return {"ok": False, "available": False, "nodes": [], "edges": []}
+
+    # Parse date params
+    since_dt = None
+    until_dt = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid 'since' date: {since}")
+    if until:
+        try:
+            until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid 'until' date: {until}")
+
+    # Get all entities from Neo4j
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (n) WHERE n.name IS NOT NULL "
+                "OPTIONAL MATCH (n)-[r]->(m) WHERE m.name IS NOT NULL "
+                "RETURN n.name AS name, labels(n) AS labels, "
+                "n.pagerank AS pagerank, n.community AS community, "
+                "n.created_at AS created_at, n.updated_at AS updated_at, "
+                "collect(DISTINCT {type: type(r), target: m.name}) AS rels "
+                "ORDER BY COALESCE(n.pagerank, 0) DESC LIMIT $limit",
+                limit=limit,
+            )
+            rows = result.data()
+        driver.close()
+        mark_neo4j_ok()
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("graph/timeline failed: %s", e)
+        return {"ok": False, "available": False, "nodes": [], "edges": []}
+
+    # Filter by date range if specified
+    nodes = []
+    edges = []
+    node_ids = set()
+
+    for row in rows:
+        include = True
+        created = row.get("created_at") or row.get("updated_at")
+        if created and (since_dt or until_dt):
+            try:
+                dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                if since_dt and dt < since_dt:
+                    include = False
+                if until_dt and dt > until_dt:
+                    include = False
+            except (ValueError, TypeError):
+                pass  # Include if date unparseable
+
+        if include:
+            name = row["name"]
+            node_ids.add(name)
+            nodes.append({
+                "id": name,
+                "labels": row.get("labels", []),
+                "pagerank": row.get("pagerank") or 0,
+                "community": row.get("community", -1) if row.get("community") is not None else -1,
+                "created_at": str(created) if created else None,
+            })
+
+            for rel in (row.get("rels") or []):
+                if rel.get("target"):
+                    edges.append({
+                        "source": name,
+                        "target": rel["target"],
+                        "rel_type": rel.get("type", "RELATED_TO"),
+                    })
+
+    # Filter edges to only include nodes in our set
+    edges = [e for e in edges if e["source"] in node_ids and e["target"] in node_ids]
+
+    return {
+        "ok": True,
+        "nodes": nodes,
+        "edges": edges,
+        "total_nodes": len(nodes),
+        "date_range": {"since": since, "until": until},
+    }
+
+
+@router.get("/graph/agent-overlay")
+async def graph_agent_overlay(request: Request, user_id: str = "default"):
+    """Returns per-node agent ownership data: which agent knows most about each entity."""
+    mem = _get_memory(request)
+
+    try:
+        # Get all memories with agent metadata
+        raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
+        entries = raw.get("results", raw) if isinstance(raw, dict) else raw
+        if not isinstance(entries, list):
+            entries = []
+
+        # Build entity → agent frequency map
+        entity_agents: dict[str, dict[str, int]] = {}
+
+        for entry in entries:
+            meta = entry.get("metadata", {}) or {}
+            agent = meta.get("agent_id") or meta.get("original_agent")
+            if not agent:
+                continue
+
+            text = entry.get("memory", "")
+            # Extract entity names mentioned (simple word-boundary match on capitalized words)
+            words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+            for word in words:
+                if word not in entity_agents:
+                    entity_agents[word] = {}
+                entity_agents[word][agent] = entity_agents[word].get(agent, 0) + 1
+
+        # Convert to node → primary agent + all agents
+        node_agents: dict[str, dict[str, Any]] = {}
+        all_agents: set[str] = set()
+
+        for entity, agents in entity_agents.items():
+            if not agents:
+                continue
+            primary = max(agents, key=agents.get)  # type: ignore
+            all_agents.update(agents.keys())
+            node_agents[entity] = {
+                "primary": primary,
+                "agents": agents,
+                "total_mentions": sum(agents.values()),
+            }
+
+        return {
+            "ok": True,
+            "node_agents": node_agents,
+            "all_agents": sorted(all_agents),
+            "total_entities": len(node_agents),
+        }
+    except Exception as e:
+        logger.exception("graph/agent-overlay failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph/drift")
+async def graph_drift(request: Request, user_id: str = "default", stale_days: int = 30):
+    """Detect stale nodes, orphaned clusters, and suggest cleanup actions."""
+    if not neo4j_available():
+        return {"ok": False, "available": False}
+
+    try:
+        driver = neo4j_driver()
+        with driver.session() as session:
+            # Orphaned nodes: no relationships at all
+            orphans = session.run(
+                "MATCH (n) WHERE n.name IS NOT NULL "
+                "AND NOT (n)--() "
+                "RETURN n.name AS name, n.pagerank AS pagerank, n.community AS community "
+                "ORDER BY COALESCE(n.pagerank, 0) DESC LIMIT 50"
+            ).data()
+
+            # Low-connectivity nodes (only 1 relationship)
+            low_conn = session.run(
+                "MATCH (n) WHERE n.name IS NOT NULL "
+                "WITH n, size([(n)--() | 1]) AS degree "
+                "WHERE degree = 1 "
+                "RETURN n.name AS name, n.pagerank AS pagerank, degree "
+                "ORDER BY COALESCE(n.pagerank, 0) ASC LIMIT 30"
+            ).data()
+
+            # Small isolated clusters (community size <= 2)
+            small_clusters = session.run(
+                "MATCH (n) WHERE n.community IS NOT NULL AND n.name IS NOT NULL "
+                "WITH n.community AS comm, collect(n.name) AS members, count(*) AS size "
+                "WHERE size <= 2 "
+                "RETURN comm, members, size ORDER BY size"
+            ).data()
+
+            # Total node count
+            total = session.run(
+                "MATCH (n) WHERE n.name IS NOT NULL RETURN count(n) AS total"
+            ).single()
+            total_count = total["total"] if total else 0
+
+        driver.close()
+        mark_neo4j_ok()
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("graph/drift failed: %s", e)
+        return {"ok": False, "available": False}
+
+    # Check memory staleness via Qdrant
+    stale_entities: list[dict[str, Any]] = []
+    try:
+        mem = _get_memory(request)
+        raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
+        entries = raw.get("results", raw) if isinstance(raw, dict) else raw
+        if isinstance(entries, list):
+            now = datetime.now(timezone.utc)
+            entity_dates: dict[str, datetime] = {}
+            for entry in entries:
+                meta = entry.get("metadata", {}) or {}
+                created = entry.get("created_at") or meta.get("created_at")
+                if not created:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                    text = entry.get("memory", "")
+                    # Track most recent mention per capitalized entity
+                    words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+                    for word in words:
+                        if word not in entity_dates or dt > entity_dates[word]:
+                            entity_dates[word] = dt
+                except (ValueError, TypeError):
+                    pass
+
+            for entity, last_seen in entity_dates.items():
+                age_days = (now - last_seen).days
+                if age_days > stale_days:
+                    stale_entities.append({
+                        "name": entity,
+                        "last_seen": last_seen.isoformat(),
+                        "age_days": age_days,
+                    })
+            stale_entities.sort(key=lambda x: -x["age_days"])
+    except Exception:
+        pass  # Non-fatal
+
+    # Generate suggested actions
+    suggestions: list[dict[str, str]] = []
+    for o in orphans[:5]:
+        suggestions.append({
+            "type": "delete",
+            "entity": o["name"],
+            "reason": f"Orphaned node (no relationships)",
+        })
+    for s in stale_entities[:5]:
+        suggestions.append({
+            "type": "review",
+            "entity": s["name"],
+            "reason": f"Stale — last mentioned {s['age_days']}d ago",
+        })
+    for cluster in small_clusters[:3]:
+        members = cluster["members"]
+        suggestions.append({
+            "type": "merge_or_delete",
+            "entity": ", ".join(members),
+            "reason": f"Isolated cluster of {cluster['size']} nodes",
+        })
+
+    return {
+        "ok": True,
+        "total_nodes": total_count,
+        "orphaned_nodes": orphans,
+        "low_connectivity": low_conn,
+        "small_clusters": small_clusters,
+        "stale_entities": stale_entities[:20],
+        "suggestions": suggestions,
+        "suggestion_count": len(suggestions),
+    }
