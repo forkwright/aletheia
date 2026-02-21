@@ -5,6 +5,7 @@
 # Python 3.12+ supports all modern type syntax natively.
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 
 from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
 from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
@@ -55,7 +58,29 @@ class ImportRequest(BaseModel):
     user_id: str = "default"
 
 
+class AddDirectRequest(BaseModel):
+    """Store a pre-extracted fact directly — bypass Mem0 LLM extraction."""
+    text: str
+    user_id: str = "default"
+    agent_id: str | None = None
+    source: str = "direct"
+    session_id: str | None = None
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class AddBatchRequest(BaseModel):
+    """Store multiple pre-extracted facts directly — bypass Mem0 LLM extraction."""
+    texts: list[str]
+    user_id: str = "default"
+    agent_id: str | None = None
+    source: str = "distillation"
+    session_id: str | None = None
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
 DEDUP_THRESHOLD = 0.85
+DIRECT_DEDUP_THRESHOLD = 0.90  # Higher threshold for pre-extracted facts (more specific)
+COLLECTION_NAME = "aletheia_memories"
 
 
 @router.post("/add")
@@ -201,6 +226,222 @@ def _apply_confidence_weight(results: list, max_penalty: float = 0.10) -> list:
         mark_neo4j_down()
         logger.warning("confidence weighting failed: %s", e)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Direct storage endpoints — bypass Mem0 LLM extraction
+# These accept pre-extracted facts and embed + store them directly in Qdrant.
+# ---------------------------------------------------------------------------
+
+def _content_hash(text: str) -> str:
+    """Deterministic hash for content dedup."""
+    return hashlib.md5(text.strip().lower().encode()).hexdigest()
+
+
+async def _embed_texts(mem, texts: list[str]) -> list[list[float]]:
+    """Embed a list of texts using the Mem0 embedding model."""
+    embedder = mem.embedding_model
+    vectors = []
+    for text in texts:
+        vec = await asyncio.to_thread(embedder.embed, text)
+        vectors.append(vec)
+    return vectors
+
+
+async def _semantic_dedup_check(
+    client: QdrantClient,
+    vector: list[float],
+    user_id: str,
+    threshold: float = DIRECT_DEDUP_THRESHOLD,
+) -> bool:
+    """Check if a semantically similar memory already exists. Returns True if duplicate."""
+    try:
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=1,
+            with_payload=False,
+        )
+        if results.points and results.points[0].score >= threshold:
+            return True
+    except Exception as e:
+        logger.warning("Semantic dedup check failed (proceeding with add): %s", e)
+    return False
+
+
+@router.post("/add_direct")
+async def add_direct(req: AddDirectRequest, request: Request):
+    """Store a single pre-extracted fact directly in Qdrant.
+
+    Bypasses Mem0's LLM extraction entirely. The caller is responsible
+    for fact quality — this endpoint embeds and stores as-is.
+    """
+    mem = _get_memory(request)
+    text = req.text.strip()
+    if not text:
+        return {"ok": False, "error": "empty text"}
+
+    try:
+        content_hash = _content_hash(text)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Content hash dedup (exact match)
+        existing = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(key="hash", match=MatchValue(value=content_hash)),
+                    FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                ]
+            ),
+            limit=1,
+            with_payload=False,
+            with_vectors=False,
+        )
+        if existing[0]:
+            return {"ok": True, "result": "deduplicated", "reason": "content_hash"}
+
+        # Embed
+        vectors = await _embed_texts(mem, [text])
+        vector = vectors[0]
+
+        # Semantic dedup (cosine similarity)
+        if await _semantic_dedup_check(client, vector, req.user_id):
+            return {"ok": True, "result": "deduplicated", "reason": "semantic"}
+
+        # Store
+        now = datetime.now(timezone.utc).isoformat()
+        point_id = str(uuid.uuid4())
+        payload = {
+            "memory": text[:500],
+            "data": text,
+            "source": req.source,
+            "hash": content_hash,
+            "user_id": req.user_id,
+            "created_at": now,
+            "confidence": req.confidence,
+        }
+        if req.agent_id:
+            payload["agent_id"] = req.agent_id
+        if req.session_id:
+            payload["session_id"] = req.session_id
+
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[PointStruct(id=point_id, vector=vector, payload=payload)],
+        )
+
+        logger.info(f"add_direct: stored '{text[:80]}' (source={req.source}, agent={req.agent_id})")
+        return {"ok": True, "result": "added", "id": point_id}
+
+    except Exception as e:
+        logger.exception("add_direct failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add_batch")
+async def add_batch(req: AddBatchRequest, request: Request):
+    """Store multiple pre-extracted facts directly in Qdrant.
+
+    Same as /add_direct but batched for efficiency. Used by distillation
+    and reflection pipelines to flush extracted facts.
+    """
+    mem = _get_memory(request)
+    texts = [t.strip() for t in req.texts if t.strip()]
+    if not texts:
+        return {"ok": True, "added": 0, "skipped": 0, "errors": 0}
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Content hash dedup — batch check existing hashes
+        hashes = {_content_hash(t): t for t in texts}
+        existing_hashes: set[str] = set()
+        for h in hashes:
+            results = client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(key="hash", match=MatchValue(value=h)),
+                        FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if results[0]:
+                existing_hashes.add(h)
+
+        # Filter to new-only
+        new_texts = []
+        new_hashes = []
+        for h, t in hashes.items():
+            if h not in existing_hashes:
+                new_texts.append(t)
+                new_hashes.append(h)
+
+        if not new_texts:
+            return {"ok": True, "added": 0, "skipped": len(texts), "errors": 0}
+
+        # Embed all new texts
+        vectors = await _embed_texts(mem, new_texts)
+
+        # Semantic dedup + build points
+        points = []
+        skipped_semantic = 0
+        for text, vector, content_hash in zip(new_texts, vectors, new_hashes):
+            if await _semantic_dedup_check(client, vector, req.user_id):
+                skipped_semantic += 1
+                continue
+
+            payload = {
+                "memory": text[:500],
+                "data": text,
+                "source": req.source,
+                "hash": content_hash,
+                "user_id": req.user_id,
+                "created_at": now,
+                "confidence": req.confidence,
+            }
+            if req.agent_id:
+                payload["agent_id"] = req.agent_id
+            if req.session_id:
+                payload["session_id"] = req.session_id
+
+            points.append(PointStruct(
+                id=str(uuid.uuid4()),
+                vector=vector,
+                payload=payload,
+            ))
+
+        # Upsert in batches of 100
+        added = 0
+        errors = 0
+        for i in range(0, len(points), 100):
+            batch = points[i : i + 100]
+            try:
+                client.upsert(collection_name=COLLECTION_NAME, points=batch)
+                added += len(batch)
+            except Exception as e:
+                logger.error(f"add_batch upsert failed for batch {i}: {e}")
+                errors += len(batch)
+
+        total_skipped = len(existing_hashes) + skipped_semantic
+        logger.info(
+            f"add_batch: {added} added, {total_skipped} skipped "
+            f"({len(existing_hashes)} hash, {skipped_semantic} semantic), "
+            f"{errors} errors (source={req.source}, agent={req.agent_id})"
+        )
+        return {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
+
+    except Exception as e:
+        logger.exception("add_batch failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/search")
