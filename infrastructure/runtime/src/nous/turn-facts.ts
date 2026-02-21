@@ -127,8 +127,8 @@ function parseFactsArray(raw: string): string[] {
         if (Array.isArray(arr)) {
           return arr.filter((item): item is string => typeof item === "string");
         }
-      } catch {
-        // Give up
+      } catch (err) {
+        log.debug(`Turn facts JSON parse failed: ${err instanceof Error ? err.message : err}`);
       }
     }
   }

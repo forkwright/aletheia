@@ -1014,7 +1014,7 @@ export function createGateway(
           nousId: plan.nousId,
           sessionKey,
         });
-        (async () => { for await (const _ of gen) { /* drain */ } })().catch(() => {});
+        (async () => { for await (const _ of gen) { /* drain */ } })().catch((err) => { log.warn(`Plan execution drain failed: ${err instanceof Error ? err.message : err}`); });
       });
     }
 
@@ -1549,7 +1549,8 @@ export function createGateway(
         return a.name.localeCompare(b.name);
       });
       return result;
-    } catch {
+    } catch (err) {
+      log.debug(`buildTree failed for directory: ${err instanceof Error ? err.message : err}`);
       return [];
     }
   }

@@ -1,9 +1,12 @@
 // Browser tool — navigate, screenshot, extract via headless Chromium + LLM-driven browsing
 import type { ToolHandler } from "../registry.js";
 import { validateUrl } from "./ssrf-guard.js";
+import { createLogger } from "../../koina/logger.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+
+const log = createLogger("browser");
 
 let browserPromise: Promise<Browser> | null = null;
 let browserInstance: Browser | null = null;
@@ -136,7 +139,7 @@ export const browserTool: ToolHandler = {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout });
 
         if (waitFor) {
-          await page.waitForSelector(waitFor, { timeout }).catch(() => {});
+          await page.waitForSelector(waitFor, { timeout }).catch((err) => { log.debug(`waitForSelector "${waitFor}" timed out: ${err instanceof Error ? err.message : err}`); });
         }
 
         switch (action) {

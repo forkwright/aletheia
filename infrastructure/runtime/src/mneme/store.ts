@@ -1333,7 +1333,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as WorkingState;
-    } catch {
+    } catch (err) {
+      log.debug(`Corrupt working state JSON: ${err instanceof Error ? err.message : err}`);
       return null;
     }
   }
@@ -1342,7 +1343,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as T;
-    } catch {
+    } catch (err) {
+      log.debug(`Corrupt JSON field: ${err instanceof Error ? err.message : err}`);
       return null;
     }
   }

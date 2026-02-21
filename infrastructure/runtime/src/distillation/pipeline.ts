@@ -135,6 +135,7 @@ async function runDistillation(
       }
     } catch (e) {
       if (e instanceof AletheiaError) throw e;
+      log.warn(`Unexpected error during distillation pre-check: ${e instanceof Error ? e.message : e}`);
     }
   }
 
