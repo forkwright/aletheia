@@ -143,6 +143,31 @@ export async function buildContext(
     });
   }
 
+  // Post-distillation priming — inject extracted context from the most recent distillation.
+  // This ensures the agent's first turn after distillation has full awareness of what was
+  // compressed, independent of recall similarity matching. Consumed once and cleared.
+  const priming = services.store.getDistillationPriming(sessionId);
+  if (priming) {
+    const sections: string[] = [];
+    sections.push(`Context was distilled (compression #${priming.distillationNumber}). Key extracted context below.`);
+    if (priming.facts.length > 0) {
+      sections.push(`**Facts:**\n${priming.facts.map(f => `- ${f}`).join("\n")}`);
+    }
+    if (priming.decisions.length > 0) {
+      sections.push(`**Decisions:**\n${priming.decisions.map(d => `- ${d}`).join("\n")}`);
+    }
+    if (priming.openItems.length > 0) {
+      sections.push(`**Open items:**\n${priming.openItems.map(o => `- ${o}`).join("\n")}`);
+    }
+    systemPrompt.push({
+      type: "text",
+      text: `## Post-Distillation Context\n\n${sections.join("\n\n")}`,
+    });
+    // Clear after injection — one-shot priming
+    services.store.clearDistillationPriming(sessionId);
+    log.info(`Injected post-distillation priming for ${nousId} (${priming.facts.length} facts, ${priming.decisions.length} decisions, ${priming.openItems.length} open items)`);
+  }
+
   // Agent notes injection — explicit notes written by the agent that survive distillation
   const notes = services.store.getNotes(sessionId, { limit: 20 });
   if (notes.length > 0) {

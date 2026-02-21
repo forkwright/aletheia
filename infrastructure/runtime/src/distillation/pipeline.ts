@@ -395,6 +395,21 @@ async function runDistillation(
     opts.onThreadSummaryUpdate(markedSummary, keyFacts);
   }
 
+  // Store priming data for the next turn — ensures the agent's first turn after
+  // distillation has full awareness of what was just compressed, independent of
+  // recall similarity matching. Consumed and cleared by context.ts on next turn.
+  if (!opts.lightweight) {
+    store.setDistillationPriming(sessionId, {
+      facts: extraction.facts.slice(0, 20),
+      decisions: extraction.decisions.slice(0, 10),
+      openItems: extraction.openItems.slice(0, 10),
+      summary: markedSummary.slice(0, 2000),
+      distillationNumber,
+      distilledAt: new Date().toISOString(),
+    });
+    log.info(`Stored distillation priming for session ${sessionId} (${extraction.facts.length} facts, ${extraction.decisions.length} decisions)`);
+  }
+
   eventBus.emit("distill:stage", { sessionId, nousId, stage: "verify", progress: 5, total: 6 });
 
   // Post-distillation verification — log warnings, don't block

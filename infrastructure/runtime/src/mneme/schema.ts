@@ -353,4 +353,11 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_reflection_date ON reflection_log(reflected_at);
     `,
   },
+  {
+    version: 16,
+    sql: `
+      -- Post-distillation priming: extracted context injected into the first turn after distillation
+      ALTER TABLE sessions ADD COLUMN distillation_priming TEXT;
+    `,
+  },
 ];

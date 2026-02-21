@@ -23,6 +23,7 @@ export interface Session {
   lastDistilledAt: string | null;
   computedContextTokens: number;
   workingState: WorkingState | null;
+  distillationPriming: DistillationPriming | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +35,15 @@ export interface WorkingState {
   recentDecisions: string[];
   openFiles: string[];
   updatedAt: string;
+}
+
+export interface DistillationPriming {
+  facts: string[];
+  decisions: string[];
+  openItems: string[];
+  summary: string;
+  distillationNumber: number;
+  distilledAt: string;
 }
 
 export interface QueuedMessage {
@@ -1144,6 +1154,7 @@ export class SessionStore {
       lastDistilledAt: (row['last_distilled_at'] as string) ?? null,
       computedContextTokens: (row['computed_context_tokens'] as number) ?? 0,
       workingState: this.parseWorkingState(row['working_state'] as string | null),
+      distillationPriming: this.parseJSON<DistillationPriming>(row['distillation_priming'] as string | null),
       createdAt: row['created_at'] as string,
       updatedAt: row['updated_at'] as string,
     };
@@ -1153,6 +1164,15 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as WorkingState;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseJSON<T>(raw: string | null): T | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as T;
     } catch {
       return null;
     }
@@ -1733,6 +1753,28 @@ export class SessionStore {
   clearWorkingState(sessionId: string): void {
     this.db
       .prepare("UPDATE sessions SET working_state = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(sessionId);
+  }
+
+  // --- Distillation Priming ---
+
+  setDistillationPriming(sessionId: string, priming: DistillationPriming): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(JSON.stringify(priming), sessionId);
+  }
+
+  getDistillationPriming(sessionId: string): DistillationPriming | null {
+    const row = this.db
+      .prepare("SELECT distillation_priming FROM sessions WHERE id = ?")
+      .get(sessionId) as { distillation_priming: string | null } | undefined;
+    if (!row?.distillation_priming) return null;
+    return this.parseJSON<DistillationPriming>(row.distillation_priming);
+  }
+
+  clearDistillationPriming(sessionId: string): void {
+    this.db
+      .prepare("UPDATE sessions SET distillation_priming = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
       .run(sessionId);
   }
 
