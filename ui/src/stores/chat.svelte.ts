@@ -1,6 +1,6 @@
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
-import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem, PendingApproval } from "../lib/types";
+import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem, PendingApproval, PlanProposal } from "../lib/types";
 
 interface AgentChatState {
   messages: ChatMessage[];
@@ -12,6 +12,7 @@ interface AgentChatState {
   error: string | null;
   abortController: AbortController | null;
   pendingApproval: PendingApproval | null;
+  pendingPlan: PlanProposal | null;
 }
 
 let states = $state<Record<string, AgentChatState>>({});
@@ -26,6 +27,7 @@ const EMPTY: AgentChatState = {
   error: null,
   abortController: null,
   pendingApproval: null,
+  pendingPlan: null,
 };
 
 // Read-only access — returns default for unknown agents, never mutates during render
@@ -86,6 +88,18 @@ export function getPendingApproval(agentId: string): PendingApproval | null {
 
 export function clearPendingApproval(agentId: string): void {
   writeState(agentId).pendingApproval = null;
+}
+
+export function getPendingPlan(agentId: string): PlanProposal | null {
+  return readState(agentId).pendingPlan;
+}
+
+export function setPendingPlan(agentId: string, plan: PlanProposal): void {
+  writeState(agentId).pendingPlan = plan;
+}
+
+export function clearPendingPlan(agentId: string): void {
+  writeState(agentId).pendingPlan = null;
 }
 
 export function clearError(agentId: string): void {
@@ -200,6 +214,14 @@ export async function sendMessage(
 
         case "tool_approval_resolved":
           state.pendingApproval = null;
+          break;
+
+        case "plan_proposed":
+          state.pendingPlan = event.plan;
+          break;
+
+        case "plan_complete":
+          state.pendingPlan = null;
           break;
 
         case "turn_complete": {
