@@ -391,7 +391,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
         const durMs = payload["durationMs"] as number | undefined;
         runtime.store.recordToolStat({
           nousId: (payload["nousId"] as string) ?? "unknown",
-          toolName: (payload["name"] as string) ?? "unknown",
+          toolName: (payload["tool"] as string) ?? "unknown",
           success: eventName === "tool:called",
           ...(errMsg ? { errorMessage: errMsg } : {}),
           ...(durMs != null ? { durationMs: durMs } : {}),
