@@ -27,7 +27,7 @@ jobs:
       - name: Integration tests
         run: cd infrastructure/runtime && npm run test:integration
         continue-on-error: true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-coverage
@@ -73,7 +73,7 @@ jobs:
               if (files > 5) console.warn('::warning::' + files + ' unused files detected');
             } catch { console.log('No dead code report generated'); }
           "
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-audit
