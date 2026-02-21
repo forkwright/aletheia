@@ -1,6 +1,6 @@
 # Spec: Efficiency — Parallel Execution & Token Economy
 
-**Status:** Phases 1-4 done. Phases 5-6 (gap analysis additions) pending.
+**Status:** Phases 1-4, 6 done. Phase 5 (hot-reload config) remaining.
 **Author:** Syn
 **Date:** 2026-02-21
 

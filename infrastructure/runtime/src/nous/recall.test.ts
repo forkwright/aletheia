@@ -117,6 +117,41 @@ describe("recallMemories", () => {
     expect(mockFetch.mock.calls[0][0]).toContain("/search");
   });
 
+  it("skips graph fallback when sufficiency gate passes (3+ hits above 0.85)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeResponse([
+        { memory: "High confidence fact 1", score: 0.92 },
+        { memory: "High confidence fact 2", score: 0.90 },
+        { memory: "High confidence fact 3", score: 0.88 },
+        { memory: "Marginal fact", score: 0.78 },
+      ]),
+    );
+
+    const result = await recallMemories("test", "chiron");
+
+    expect(result.count).toBe(4);
+    // Sufficiency gate: 3 hits >= 0.85, so graph-enhanced never called
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("tries graph fallback when below sufficiency threshold despite having usable hits", async () => {
+    // 2 hits above 0.85 (below sufficiencyMinHits=3) but above minScore
+    // This should still skip graph because hasUsableHits is true
+    mockFetch.mockResolvedValueOnce(
+      makeResponse([
+        { memory: "Decent result 1", score: 0.88 },
+        { memory: "Decent result 2", score: 0.86 },
+        { memory: "Weak result", score: 0.76 },
+      ]),
+    );
+
+    const result = await recallMemories("test", "chiron");
+
+    expect(result.count).toBe(3);
+    // Has usable hits (above 0.75), so graph fallback still skipped
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns null on complete failure", async () => {
     mockFetch.mockRejectedValueOnce(new Error("connection refused"));
 
