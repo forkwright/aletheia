@@ -10,15 +10,15 @@ that evolve with the system.
 
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 12 | [Session Continuity](12_session-continuity.md) | Phases 1-4, 6-9 done | Recency-boosted recall (5), distillation progress UI (10) |
+| 12 | [Session Continuity](12_session-continuity.md) | Phases 1-4, 5 (partial), 6-10 done | Post-distillation priming (5 remainder) |
 | 13 | [Sub-Agent Workforce](13_sub-agent-workforce.md) | ✅ Complete | All 7 phases done |
+| 16 | [Efficiency](16_efficiency.md) | ✅ Complete | All 4 phases done |
 | 4 | [Cost-Aware Orchestration](04_cost-aware-orchestration.md) | Phase 1 done, Phase 2 partial | Plan mode, automatic model routing per-turn, cost visibility/tracking |
-| 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Part 2: release workflow, `aletheia update` CLI, update check daemon. Also: migrate-auth CLI, session mgmt UI |
-| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phase 1a-1b, 2a done | Memory confidence/decay, graph UI search+edit, domain scoping, thread-aware recall |
+| 3 | [Auth & Updates](03_auth-and-updates.md) | Auth done (2a-2e) | Release workflow, `aletheia update` CLI, update check daemon, migrate-auth CLI, session mgmt UI |
+| 7 | [Knowledge Graph](07_knowledge-graph.md) | Phases 1a-1b, 2a-2b, 3a done | Graph UI search+edit (2c), thread-aware recall (3b) |
 | 11 | [Chat Output Quality](11_chat-output-quality.md) | Phases 1-4 done | Rich message components (Phase 5) |
-| 9 | [Graph Visualization](09_graph-visualization.md) | Phase 1-3 done | Named communities, semantic node cards, search, editing, auditing, archaeology, cross-agent viz, drift detection |
-| 16 | [Efficiency](16_efficiency.md) | Phases 1-3 done | Cost visibility (4) |
-| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Phases 1-3 done | Tool categorization & grouping (Phase 4), status line enhancement (Phase 5) |
+| 9 | [Graph Visualization](09_graph-visualization.md) | Phases 1-3 done | Named communities, semantic node cards, search, editing |
+| 15 | [UI Interaction Quality](15_ui-interaction-quality.md) | Phases 1-4 done | Status line enhancement (Phase 5) |
 | 14 | [Development Workflow](14_development-workflow.md) | Phases 1-4, 6 done | Versioning + releases (Phase 5) |
 | 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Everything — zero implementation |
 
