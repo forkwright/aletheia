@@ -76,6 +76,35 @@ export interface UsageRecord {
   model: string | null;
 }
 
+export interface ReflectionLog {
+  id: number;
+  nousId: string;
+  reflectedAt: string;
+  sessionsReviewed: number;
+  messagesReviewed: number;
+  patternsFound: number;
+  contradictionsFound: number;
+  correctionsFound: number;
+  preferencesFound: number;
+  relationshipsFound: number;
+  unresolvedThreadsFound: number;
+  memoriesStored: number;
+  tokensUsed: number;
+  durationMs: number;
+  model: string | null;
+  findings: ReflectionFindings;
+  errors: string | null;
+}
+
+export interface ReflectionFindings {
+  patterns: string[];
+  contradictions: string[];
+  corrections: string[];
+  preferences: string[];
+  relationships: string[];
+  unresolvedThreads: string[];
+}
+
 export interface Thread {
   id: string;
   nousId: string;
@@ -1822,6 +1851,151 @@ export class SessionStore {
       transport: r["transport"] as string,
       channelKey: r["channel_key"] as string,
       lastSeenAt: r["last_seen_at"] as string,
+    };
+  }
+
+  /**
+   * Get distillation summaries for a nous within a time range.
+   * Summaries are assistant messages containing "Distillation #" in their content.
+   */
+  getDistillationSummaries(
+    nousId: string,
+    since: string,
+    limit = 50,
+  ): Array<{ sessionId: string; summary: string; createdAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT m.session_id, m.content, m.created_at
+         FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE s.nous_id = ? AND m.role = 'assistant'
+           AND m.content LIKE '%Distillation #%'
+           AND m.created_at >= ?
+         ORDER BY m.id DESC
+         LIMIT ?`,
+      )
+      .all(nousId, since, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => ({
+      sessionId: r["session_id"] as string,
+      summary: r["content"] as string,
+      createdAt: r["created_at"] as string,
+    }));
+  }
+
+  // --- Reflection Log ---
+
+  recordReflection(record: {
+    nousId: string;
+    sessionsReviewed: number;
+    messagesReviewed: number;
+    findings: ReflectionFindings;
+    memoriesStored: number;
+    tokensUsed: number;
+    durationMs: number;
+    model: string;
+    errors?: string;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO reflection_log
+         (nous_id, sessions_reviewed, messages_reviewed,
+          patterns_found, contradictions_found, corrections_found,
+          preferences_found, relationships_found, unresolved_threads_found,
+          memories_stored, tokens_used, duration_ms, model, findings, errors)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.nousId,
+        record.sessionsReviewed,
+        record.messagesReviewed,
+        record.findings.patterns.length,
+        record.findings.contradictions.length,
+        record.findings.corrections.length,
+        record.findings.preferences.length,
+        record.findings.relationships.length,
+        record.findings.unresolvedThreads.length,
+        record.memoriesStored,
+        record.tokensUsed,
+        record.durationMs,
+        record.model,
+        JSON.stringify(record.findings),
+        record.errors ?? null,
+      );
+    return result.lastInsertRowid as number;
+  }
+
+  getReflectionLog(nousId: string, opts?: { limit?: number }): ReflectionLog[] {
+    const limit = opts?.limit ?? 30;
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT ?",
+      )
+      .all(nousId, limit) as Record<string, unknown>[];
+
+    return rows.map((r) => this.mapReflectionLog(r));
+  }
+
+  getLastReflection(nousId: string): ReflectionLog | null {
+    const row = this.db
+      .prepare(
+        "SELECT * FROM reflection_log WHERE nous_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(nousId) as Record<string, unknown> | undefined;
+    return row ? this.mapReflectionLog(row) : null;
+  }
+
+  /**
+   * Get sessions with meaningful human activity since a given time.
+   * "Meaningful" = at least minMessages human messages, primary or standard sessions only.
+   */
+  getActiveSessionsSince(
+    nousId: string,
+    since: string,
+    minMessages: number,
+  ): Session[] {
+    const rows = this.db
+      .prepare(
+        `SELECT s.*, COUNT(m.id) AS human_msg_count
+         FROM sessions s
+         JOIN messages m ON m.session_id = s.id AND m.role = 'user' AND m.is_distilled = 0 AND m.created_at >= ?
+         WHERE s.nous_id = ? AND s.session_type = 'primary'
+         GROUP BY s.id
+         HAVING human_msg_count >= ?
+         ORDER BY s.updated_at DESC`,
+      )
+      .all(since, nousId, minMessages) as Record<string, unknown>[];
+    return rows.map((r) => this.mapSession(r));
+  }
+
+  private mapReflectionLog(r: Record<string, unknown>): ReflectionLog {
+    let findings: ReflectionFindings = {
+      patterns: [], contradictions: [], corrections: [],
+      preferences: [], relationships: [], unresolvedThreads: [],
+    };
+    try {
+      findings = JSON.parse(r["findings"] as string) as ReflectionFindings;
+    } catch {
+      log.warn(`Malformed findings JSON in reflection ${r["id"]}`);
+    }
+    return {
+      id: r["id"] as number,
+      nousId: r["nous_id"] as string,
+      reflectedAt: r["reflected_at"] as string,
+      sessionsReviewed: r["sessions_reviewed"] as number,
+      messagesReviewed: r["messages_reviewed"] as number,
+      patternsFound: r["patterns_found"] as number,
+      contradictionsFound: r["contradictions_found"] as number,
+      correctionsFound: r["corrections_found"] as number,
+      preferencesFound: r["preferences_found"] as number,
+      relationshipsFound: r["relationships_found"] as number,
+      unresolvedThreadsFound: r["unresolved_threads_found"] as number,
+      memoriesStored: r["memories_stored"] as number,
+      tokensUsed: r["tokens_used"] as number,
+      durationMs: r["duration_ms"] as number,
+      model: r["model"] as string | null,
+      findings,
+      errors: r["errors"] as string | null,
     };
   }
 }

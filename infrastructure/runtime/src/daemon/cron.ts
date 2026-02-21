@@ -24,11 +24,22 @@ export class CronScheduler {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
   private ticking = false;
+  private builtInCommands = new Map<string, () => Promise<string>>();
 
   constructor(
     private config: AletheiaConfig,
     private manager: NousManager,
   ) {}
+
+  /**
+   * Register a built-in command that can be referenced from cron jobs.
+   * When a cron job's `command` matches the registered name, the callback
+   * runs instead of execSync.
+   */
+  registerCommand(name: string, handler: () => Promise<string>): void {
+    this.builtInCommands.set(name, handler);
+    log.info(`Registered built-in cron command: ${name}`);
+  }
 
   start(): void {
     if (this.running) return;
@@ -116,8 +127,21 @@ export class CronScheduler {
         log.info(`Cron job ${entry.id} firing`);
         const timeoutMs = (entry.timeoutSeconds || 300) * 1000;
 
-        // Command-type jobs run a shell command instead of dispatching to an agent
+        // Command-type jobs: check built-in commands first, then fall through to shell
         if (entry.command) {
+          const builtIn = this.builtInCommands.get(entry.command);
+          if (builtIn) {
+            return Promise.race([
+              builtIn().then((stdout) => {
+                log.info(`Built-in command ${entry.id} completed: ${stdout.slice(0, 200)}`);
+                return { type: "command" as const, stdout };
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)), timeoutMs),
+              ),
+            ]);
+          }
+
           return new Promise<{ type: "command"; stdout: string }>((resolve, reject) => {
             try {
               const stdout = execSync(entry.command!, {
