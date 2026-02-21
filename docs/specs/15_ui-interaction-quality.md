@@ -485,6 +485,7 @@ let statusText = $derived.by(() => {
 | **3** ✅ | Tool input display (event stream → UI) | Medium | High — the single biggest tool panel improvement |
 | **4** ✅ | Tool categorization & grouping | Medium | ✅ Done — category badges in ToolPanel header + ToolStatusLine breakdown, per-tool token estimates (PR #75) |
 | **5** | Tool status line enhancement | Small | Medium — better at-a-glance value |
+| **6** | Stream preview / typing indicators (F-19) | Small | Signal placeholder message + webchat typing indicator while agent is processing |
 
 ---
 

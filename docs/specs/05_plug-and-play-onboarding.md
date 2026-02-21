@@ -243,6 +243,7 @@ The agent's second session (or the tail of the first) should demonstrate calibra
 | **3** | SOUL.md scaffold (minimal template the agent overwrites) | Phase 1 |
 | **4** | Post-onboarding verification prompt | Phase 2 |
 | **5** | Web UI agent creation (same flow, browser-based) | Phase 1-4 |
+| **6** | Onboarding wizard — `aletheia init` (F-26) | Nothing — interactive setup for fresh installs: Signal bridge, model keys, first agent |
 
 ### Estimated Effort
 

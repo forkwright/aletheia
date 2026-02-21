@@ -1,6 +1,6 @@
 # Spec: Sub-Agent Workforce — Delegation as Default
 
-**Status:** Draft
+**Status:** Phases 1-7 ✅ Complete. Phases 8-11 (gap analysis additions) pending.
 **Author:** Syn
 **Date:** 2026-02-20
 
@@ -399,6 +399,10 @@ The QA step is judgment — exactly what Opus is for.
 | **5** | Budget controls + cost tracking | Small | ✅ Done — `logSubAgentCall()` + `budgetTokens` + `maxTurns` limits |
 | **6** | Routing guidelines in AGENTS.md | Small | ✅ Done — decision tree + routing rules in Syn AGENTS.md |
 | **7** | QA workflow patterns | Small | ✅ Done — confidence-based integration rules in AGENTS.md + template |
+| **8** | Spawn depth limit (F-1) | Small | Recursive spawn guard — max depth configurable, prevents infinite delegation chains |
+| **9** | Tool restrictions for ephemeral (F-13) | Small | `EphemeralSpec.tools` glob patterns — restrict available tools per spawn role |
+| **10** | Reducer for parallel outputs (F-35) | Small | Structured merging for `sessions_dispatch` results — resolve conflicts, aggregate findings |
+| **11** | Announcement idempotency (F-28) | Small | Content hash dedup in cross-agent calls — prevent duplicate messages from retries |
 
 ---
 
