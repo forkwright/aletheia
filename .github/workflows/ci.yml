@@ -22,15 +22,15 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: infrastructure/runtime/package-lock.json
       - run: cd infrastructure/runtime && npm ci
       # Cache node_modules for downstream jobs
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v5
         with:
           path: infrastructure/runtime/node_modules
           key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
@@ -39,11 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: infrastructure/runtime/node_modules
           key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
@@ -53,7 +53,7 @@ jobs:
         run: cd infrastructure/runtime && npm run lint:check
       - name: Build
         run: cd infrastructure/runtime && npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: dist
           path: infrastructure/runtime/dist/
@@ -65,11 +65,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: infrastructure/runtime/node_modules
           key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
@@ -85,11 +85,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: infrastructure/runtime/node_modules
           key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
@@ -98,7 +98,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -yqq ripgrep fd-find
           sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
       - run: cd infrastructure/runtime && npm run test:coverage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: coverage
@@ -108,7 +108,7 @@ jobs:
   check-shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Lint shell scripts
         run: |
           failed=0

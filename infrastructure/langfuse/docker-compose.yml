@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   langfuse-server:
-    image: docker.io/langfuse/langfuse:2
+    image: docker.io/langfuse/langfuse:3
     container_name: langfuse
     restart: unless-stopped
     depends_on:
@@ -19,7 +19,7 @@ services:
     mem_limit: 512m
 
   langfuse-db:
-    image: docker.io/library/postgres:15-alpine
+    image: docker.io/library/postgres:18-alpine
     container_name: langfuse-db
     restart: unless-stopped
     environment:
