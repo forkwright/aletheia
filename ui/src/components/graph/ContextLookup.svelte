@@ -185,7 +185,7 @@
   .search-btn {
     background: var(--accent, #9A7B4F);
     border: none;
-    color: #0f1114;
+    color: var(--bg);
     padding: 5px 10px;
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);

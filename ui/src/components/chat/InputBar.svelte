@@ -492,7 +492,7 @@
   .send-btn {
     background: var(--accent);
     border: none;
-    color: #0f1114;
+    color: var(--bg);
     padding: 8px 16px;
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);

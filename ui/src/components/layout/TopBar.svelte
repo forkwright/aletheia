@@ -191,9 +191,10 @@
     color: var(--text-secondary);
   }
   .title {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 500;
+    letter-spacing: 0.01em;
     white-space: nowrap;
   }
   .status-dot {

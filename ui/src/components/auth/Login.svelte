@@ -81,7 +81,10 @@
     text-align: center;
   }
   .login-card h1 {
-    font-size: var(--text-2xl);
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 500;
+    letter-spacing: 0.01em;
     margin-bottom: 4px;
   }
   .login-card p {
@@ -135,7 +138,7 @@
   .submit {
     background: var(--accent);
     border: none;
-    color: #0f1114;
+    color: var(--bg);
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     font-size: var(--text-base);

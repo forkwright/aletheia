@@ -34,26 +34,26 @@
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
 
-  /* Earth-toned graph palette — warm, distinct, not neon */
+  /* Ardent dye palette leads, earth tones follow */
   const PALETTE = [
-    "#9A7B4F", "#4a9a5b", "#b8922f", "#c75450", "#8a7eb8",
+    "#7a2838", "#4a3860", "#5C8E63", "#9A7B4F", "#a06e3a",
     "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
     "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
     "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
   ];
 
   const AGENT_COLORS: Record<string, string> = {
-    syn: "#9A7B4F",      /* aged brass */
-    demiurge: "#b8922f",  /* raw sienna */
+    syn: "#9A7B4F",      /* aged brass — primary orchestrator */
+    demiurge: "#a06e3a",  /* natural leather — the maker */
     syl: "#b07a8a",       /* dusty rose */
-    akron: "#4a9a5b",     /* iron-mordanted green */
-    eiron: "#8a7eb8",     /* muted violet */
+    akron: "#5C8E63",     /* aporia green — field work */
+    eiron: "#4a3860",     /* thanatochromia — analysis */
     arbor: "#6b8fa3",     /* steel blue */
     unknown: "#6b6560",   /* warm grey */
   };
 
   function communityColor(community: number): string {
-    if (community < 0) return "#2e3038";
+    if (community < 0) return "#302c28";
     return PALETTE[community % PALETTE.length]!;
   }
 
@@ -484,7 +484,7 @@
   .toggle-btn:hover { color: var(--text); }
   .toggle-btn.active {
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
   }
 
   /* Overlay toggles */

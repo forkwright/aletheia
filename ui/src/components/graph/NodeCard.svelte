@@ -692,7 +692,7 @@
   }
   .action-btn.primary:hover {
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
   }
 
   .merge-row {

@@ -153,7 +153,7 @@
   }
   .session-current {
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
     font-size: var(--text-2xs);
     padding: 1px 6px;
     border-radius: var(--radius);
