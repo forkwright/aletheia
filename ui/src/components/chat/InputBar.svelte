@@ -465,7 +465,7 @@
   }
   .attach-btn:hover {
     color: var(--accent);
-    background: rgba(201, 168, 76, 0.1);
+    background: rgba(154, 123, 79, 0.1);
   }
   .stop-btn {
     background: rgba(248, 81, 73, 0.1);
@@ -620,7 +620,7 @@
   .drag-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(201, 168, 76, 0.08);
+    background: rgba(154, 123, 79, 0.08);
     border: 2px dashed var(--accent);
     border-radius: var(--radius);
     display: flex;

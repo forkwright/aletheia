@@ -233,7 +233,7 @@
   .section-tab:hover { color: var(--text-secondary, #8b949e); }
   .section-tab.active {
     color: var(--text, #e6edf3);
-    border-bottom-color: var(--accent, #c9a84c);
+    border-bottom-color: var(--accent, #9A7B4F);
   }
 
   .section-content {
@@ -273,7 +273,7 @@
   .entity-link {
     background: none;
     border: none;
-    color: var(--accent, #c9a84c);
+    color: var(--accent, #9A7B4F);
     font-size: 12px;
     cursor: pointer;
     padding: 0;
