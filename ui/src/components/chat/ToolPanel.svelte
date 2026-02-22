@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
+  import { getToolCategory } from "../../lib/tools";
   import { highlightCode, inferLanguage } from "../../lib/markdown";
   import DOMPurify from "dompurify";
   import Spinner from "../shared/Spinner.svelte";
@@ -42,33 +43,13 @@
     tools.reduce((sum, t) => sum + (t.durationMs ?? 0), 0)
   );
 
-  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
-    read: { icon: "\u{1F4C1}", label: "fs" },
-    write: { icon: "\u{1F4C1}", label: "fs" },
-    edit: { icon: "\u{1F4C1}", label: "fs" },
-    ls: { icon: "\u{1F4C1}", label: "fs" },
-    find: { icon: "\u{1F50D}", label: "search" },
-    grep: { icon: "\u{1F50D}", label: "search" },
-    web_search: { icon: "\u{1F50D}", label: "search" },
-    mem0_search: { icon: "\u{1F50D}", label: "search" },
-    exec: { icon: "\u26A1", label: "exec" },
-    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
-    message: { icon: "\u{1F4AC}", label: "comms" },
-    blackboard: { icon: "\u{1F9E0}", label: "system" },
-    note: { icon: "\u{1F9E0}", label: "system" },
-    enable_tool: { icon: "\u{1F9E0}", label: "system" },
-    web_fetch: { icon: "\u{1F310}", label: "web" },
-  };
-
   let categoryStats = $derived.by(() => {
     const counts = new Map<string, { icon: string; count: number }>();
     for (const t of tools) {
-      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
-      const existing = counts.get(entry.label);
+      const cat = getToolCategory(t.name);
+      const existing = counts.get(cat.label);
       if (existing) existing.count++;
-      else counts.set(entry.label, { icon: entry.icon, count: 1 });
+      else counts.set(cat.label, { icon: cat.icon, count: 1 });
     }
     return [...counts.values()];
   });
@@ -237,8 +218,8 @@
         <span class="stat time">{formatDuration(totalDuration)}</span>
       {/if}
       <span class="stat-spacer"></span>
-      <button class="toggle-btn" onclick={expandAll} title="Expand all">⊞</button>
-      <button class="toggle-btn" onclick={collapseAll} title="Collapse all">⊟</button>
+      <button class="toggle-btn" onclick={expandAll} title="Expand all" aria-label="Expand all tool calls">⊞</button>
+      <button class="toggle-btn" onclick={collapseAll} title="Collapse all" aria-label="Collapse all tool calls">⊟</button>
     </div>
     {#if categoryStats.length > 1}
       <div class="header-categories">
@@ -331,7 +312,7 @@
     margin-bottom: 6px;
   }
   .panel-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text);
   }
@@ -339,7 +320,7 @@
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 18px;
+    font-size: var(--text-xl);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     line-height: 1;
@@ -353,7 +334,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
   }
   .stat {
@@ -361,8 +342,8 @@
     align-items: center;
     gap: 3px;
   }
-  .stat.ok { color: var(--green); }
-  .stat.err { color: var(--red); }
+  .stat.ok { color: var(--status-success); }
+  .stat.err { color: var(--status-error); }
   .stat.running { color: var(--accent); }
   .stat.time { color: var(--text-muted); font-family: var(--font-mono); }
   .stat-spacer { flex: 1; }
@@ -373,7 +354,7 @@
     flex-wrap: wrap;
   }
   .cat-badge {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     letter-spacing: -0.5px;
   }
@@ -381,9 +362,9 @@
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     line-height: 1;
   }
@@ -416,17 +397,17 @@
     background: transparent;
     border: none;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--text-sm);
     text-align: left;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--transition-quick);
   }
   .tool-row:hover {
     background: var(--surface-hover);
   }
   .tool-idx {
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     width: 18px;
     text-align: right;
@@ -437,14 +418,14 @@
     width: 14px;
     text-align: center;
     flex-shrink: 0;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  .tool-status-icon.complete { color: var(--green); }
-  .tool-status-icon.error { color: var(--red); }
+  .tool-status-icon.complete { color: var(--status-success); }
+  .tool-status-icon.error { color: var(--status-error); }
   .tool-status-icon.running { color: var(--accent); }
   .tool-label {
     flex: 1;
@@ -462,7 +443,7 @@
   .tool-raw {
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -470,7 +451,7 @@
   .tool-input-summary {
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -478,20 +459,20 @@
   }
   .tool-time {
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     flex-shrink: 0;
   }
   .tool-tokens {
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     flex-shrink: 0;
     opacity: 0.7;
   }
   .tool-chevron {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
     width: 14px;
     text-align: center;
     flex-shrink: 0;
@@ -500,7 +481,7 @@
   /* Preview — collapsed one-liner */
   .tool-preview {
     padding: 0 14px 4px 52px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     font-family: var(--font-mono);
     white-space: nowrap;
@@ -518,7 +499,7 @@
   .tool-input-json {
     margin: 0 0 6px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     white-space: pre-wrap;
     word-break: break-all;
@@ -532,7 +513,7 @@
   .tool-result {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;
@@ -552,7 +533,7 @@
     background: none;
     border: none;
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--text-xs);
     padding: 2px 0;
     cursor: pointer;
     margin-top: 2px;
@@ -562,37 +543,37 @@
   }
   /* Diff rendering */
   .tool-result :global(.diff-add) {
-    color: #aff5b4;
-    background: rgba(63, 185, 80, 0.15);
+    color: var(--syntax-inserted);
+    background: rgba(74, 154, 91, 0.15);
     display: inline-block;
     width: 100%;
   }
   .tool-result :global(.diff-del) {
-    color: #ffdcd7;
-    background: rgba(248, 81, 73, 0.15);
+    color: var(--syntax-deleted);
+    background: rgba(199, 84, 80, 0.15);
     display: inline-block;
     width: 100%;
   }
   .tool-result :global(.diff-hunk) {
-    color: var(--purple);
+    color: var(--status-info);
     font-weight: 500;
   }
 
   /* hljs tokens in tool results */
-  .tool-result :global(.hljs-keyword) { color: #ff7b72; }
+  .tool-result :global(.hljs-keyword) { color: var(--syntax-keyword); }
   .tool-result :global(.hljs-string),
-  .tool-result :global(.hljs-regexp) { color: #a5d6ff; }
-  .tool-result :global(.hljs-number) { color: #79c0ff; }
-  .tool-result :global(.hljs-comment) { color: #8b949e; }
-  .tool-result :global(.hljs-built_in) { color: #ffa657; }
+  .tool-result :global(.hljs-regexp) { color: var(--syntax-string); }
+  .tool-result :global(.hljs-number) { color: var(--syntax-number); }
+  .tool-result :global(.hljs-comment) { color: var(--syntax-comment); }
+  .tool-result :global(.hljs-built_in) { color: var(--syntax-builtin); }
   .tool-result :global(.hljs-function),
-  .tool-result :global(.hljs-title) { color: #d2a8ff; }
-  .tool-result :global(.hljs-property) { color: #79c0ff; }
-  .tool-result :global(.hljs-tag) { color: #7ee787; }
-  .tool-result :global(.hljs-name) { color: #7ee787; }
-  .tool-result :global(.hljs-attr) { color: #79c0ff; }
-  .tool-result :global(.hljs-addition) { color: #aff5b4; background: rgba(63, 185, 80, 0.15); }
-  .tool-result :global(.hljs-deletion) { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
+  .tool-result :global(.hljs-title) { color: var(--syntax-function); }
+  .tool-result :global(.hljs-property) { color: var(--syntax-number); }
+  .tool-result :global(.hljs-tag) { color: var(--syntax-tag); }
+  .tool-result :global(.hljs-name) { color: var(--syntax-tag); }
+  .tool-result :global(.hljs-attr) { color: var(--syntax-number); }
+  .tool-result :global(.hljs-addition) { color: var(--syntax-inserted); background: rgba(74, 154, 91, 0.15); }
+  .tool-result :global(.hljs-deletion) { color: var(--syntax-deleted); background: rgba(199, 84, 80, 0.15); }
 
   @media (max-width: 768px) {
     .tool-panel {
@@ -619,10 +600,10 @@
       padding: 0 10px 4px 36px;
     }
     .tool-result {
-      font-size: 10px;
+      font-size: var(--text-2xs);
     }
     .tool-input-json {
-      font-size: 9px;
+      font-size: var(--text-2xs);
     }
   }
 </style>

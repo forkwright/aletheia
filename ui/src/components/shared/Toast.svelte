@@ -59,9 +59,9 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-md);
     animation: slide-in 0.2s ease-out;
     cursor: pointer;
     width: 100%;
@@ -75,7 +75,7 @@
     gap: 6px;
   }
   .toast-emoji {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .toast-agent {
     font-weight: 600;
@@ -83,7 +83,7 @@
   }
   .toast-dismiss {
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--text-lg);
     padding: 0 2px;
     line-height: 1;
     cursor: pointer;
@@ -93,7 +93,7 @@
   }
   .toast-preview {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

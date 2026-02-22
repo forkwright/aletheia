@@ -27,7 +27,13 @@ export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
-// Per-million-token pricing (mirrors hermeneus/pricing.ts)
+// Per-million-token pricing — Sonnet 4 rates
+// CANONICAL SOURCE: infrastructure/runtime/src/hermeneus/pricing.ts
+// This is a simplified client-side estimate. The server calculates exact costs
+// per-model (Opus, Sonnet, Haiku) in hermeneus/pricing.ts. This UI version
+// defaults to Sonnet rates for inline message cost badges. Metrics/totals
+// use the server-side calculation via the /api/costs endpoint.
+// TODO: Plumb model through TurnOutcome so UI can use per-model pricing
 const PRICING = {
   input: 3,
   output: 15,

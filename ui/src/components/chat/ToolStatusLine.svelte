@@ -1,35 +1,12 @@
 <script lang="ts">
   import type { ToolCallState } from "../../lib/types";
+  import { getToolCategory } from "../../lib/tools";
   import Spinner from "../shared/Spinner.svelte";
 
   let { tools, onclick }: {
     tools: ToolCallState[];
     onclick?: () => void;
   } = $props();
-
-  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
-    read: { icon: "\u{1F4C1}", label: "fs" },
-    write: { icon: "\u{1F4C1}", label: "fs" },
-    edit: { icon: "\u{1F4C1}", label: "fs" },
-    ls: { icon: "\u{1F4C1}", label: "fs" },
-    find: { icon: "\u{1F50D}", label: "search" },
-    grep: { icon: "\u{1F50D}", label: "search" },
-    web_search: { icon: "\u{1F50D}", label: "search" },
-    mem0_search: { icon: "\u{1F50D}", label: "search" },
-    exec: { icon: "\u26A1", label: "exec" },
-    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
-    message: { icon: "\u{1F4AC}", label: "comms" },
-    blackboard: { icon: "\u{1F9E0}", label: "system" },
-    note: { icon: "\u{1F9E0}", label: "system" },
-    enable_tool: { icon: "\u{1F9E0}", label: "system" },
-    web_fetch: { icon: "\u{1F310}", label: "web" },
-  };
-
-  function getCategory(name: string): string {
-    return TOOL_CATEGORIES[name]?.label ?? "other";
-  }
 
   let running = $derived(tools.filter(t => t.status === "running"));
   let completed = $derived(tools.filter(t => t.status !== "running").length);
@@ -40,11 +17,10 @@
     if (running.length > 0 || total < 2) return "";
     const counts = new Map<string, { icon: string; count: number }>();
     for (const t of tools) {
-      const cat = getCategory(t.name);
-      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
-      const existing = counts.get(cat);
+      const cat = getToolCategory(t.name);
+      const existing = counts.get(cat.label);
       if (existing) existing.count++;
-      else counts.set(cat, { icon: entry.icon, count: 1 });
+      else counts.set(cat.label, { icon: cat.icon, count: 1 });
     }
     return [...counts.values()].map(c => `${c.icon}${c.count}`).join(" ");
   });
@@ -175,12 +151,12 @@
     margin-bottom: 6px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: var(--radius-pill);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-family: var(--font-sans);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick), color var(--transition-quick);
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
@@ -191,12 +167,12 @@
     color: var(--text);
   }
   .tool-status-line.active {
-    border-color: rgba(88, 166, 255, 0.3);
+    border-color: rgba(154, 123, 79, 0.3);
     color: var(--text);
   }
   .tool-status-line.has-errors {
     border-color: rgba(248, 81, 73, 0.3);
-    color: var(--red);
+    color: var(--status-error);
   }
   .status-indicator {
     display: flex;
@@ -207,13 +183,13 @@
     flex-shrink: 0;
   }
   .icon-done {
-    color: var(--green);
-    font-size: 11px;
+    color: var(--status-success);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   .icon-error {
-    color: var(--red);
-    font-size: 11px;
+    color: var(--status-error);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   .status-text {
@@ -224,15 +200,15 @@
   }
   .status-count {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
     flex-shrink: 0;
   }
   .chevron {
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     flex-shrink: 0;
-    transition: transform 0.15s;
+    transition: transform var(--transition-quick);
   }
   .tool-status-line:hover .chevron {
     transform: translateX(1px);
@@ -241,7 +217,7 @@
 
   @media (max-width: 768px) {
     .tool-status-line {
-      font-size: 11px;
+      font-size: var(--text-xs);
       padding: 4px 8px;
       max-width: calc(100vw - 80px);
     }

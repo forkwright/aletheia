@@ -66,7 +66,8 @@
       {:else}
         <div class="empty-initials">{initials}</div>
       {/if}
-      <p>Send a message to start a conversation.</p>
+      <p class="empty-name">{agentName ?? "Agent"}</p>
+      <p class="empty-hint">Ready when you are.</p>
     </div>
   {:else}
     {#each messages as message (message.id)}
@@ -109,7 +110,7 @@
   {/if}
 
   {#if !isNearBottom && isStreaming}
-    <button class="scroll-btn" onclick={scrollToBottom}>
+    <button class="scroll-btn" onclick={scrollToBottom} aria-label="Scroll to newest messages">
       New messages below
     </button>
   {/if}
@@ -130,11 +131,21 @@
     justify-content: center;
     height: 100%;
     color: var(--text-muted);
-    font-size: 14px;
-    gap: 12px;
+    font-size: var(--text-base);
+    gap: 8px;
+  }
+  .empty-name {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+  .empty-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
   }
   .empty-emoji {
-    font-size: 48px;
+    font-size: var(--text-4xl);
     line-height: 1;
     width: 64px;
     height: 64px;
@@ -143,7 +154,7 @@
     justify-content: center;
   }
   .empty-initials {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
     width: 64px;
     height: 64px;
@@ -152,7 +163,7 @@
     justify-content: center;
     border-radius: var(--radius);
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
     letter-spacing: 1px;
   }
 
@@ -162,13 +173,13 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
     border: none;
     padding: 6px 16px;
-    border-radius: 16px;
-    font-size: 12px;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
   }
   .scroll-btn:hover {
@@ -179,7 +190,7 @@
     .scroll-btn {
       bottom: 8px;
       padding: 8px 20px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
     .empty-state {
       padding: 0 20px;

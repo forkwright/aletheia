@@ -18,8 +18,8 @@
     background: rgba(248, 81, 73, 0.1);
     border: 1px solid rgba(248, 81, 73, 0.3);
     border-radius: var(--radius-sm);
-    color: var(--red);
-    font-size: 13px;
+    color: var(--status-error);
+    font-size: var(--text-sm);
   }
   .error-text {
     flex: 1;
@@ -27,8 +27,8 @@
   .dismiss {
     background: none;
     border: none;
-    color: var(--red);
-    font-size: 18px;
+    color: var(--status-error);
+    font-size: var(--text-xl);
     padding: 0 4px;
     opacity: 0.7;
     line-height: 1;
@@ -37,7 +37,7 @@
     opacity: 1;
   }
   .dismiss:focus-visible {
-    outline: 2px solid var(--red);
+    outline: 2px solid var(--status-error);
     outline-offset: 2px;
   }
 </style>

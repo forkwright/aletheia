@@ -4,6 +4,25 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.5] - 2026-02-22
+
+### Added
+- **Web UI agent creation** (Spec 5 P5) — "+" button in sidebar opens inline form to create agents. Calls `POST /api/agents` which scaffolds workspace, updates config, and hot-reloads the runtime. New agent is auto-selected for immediate onboarding.
+- **`aletheia init` wizard** (Spec 5 P6) — First-run setup: prompts for Anthropic API key, gateway port, and first agent. Writes credentials, config, and scaffolds workspace in one flow.
+
+### Specs Completed
+- **Spec 5** Plug-and-Play Onboarding — 6/6 phases
+
+---
+
+## [0.10.4] - 2026-02-22
+
+### Added
+- **`aletheia agent create`** (Spec 5 P1-P3) — CLI command scaffolds a new agent workspace from `_example/` template with onboarding SOUL.md. Supports `--id`, `--name`, `--emoji` flags or interactive prompts. Automatically updates `aletheia.json` with agent entry and web binding.
+- **Onboarding SOUL.md** (Spec 5 P4) — Scaffolded agents get an onboarding prompt as their initial SOUL.md. The agent interviews its operator to learn name, domain, working style, and boundaries, then writes its own `SOUL.md`, `USER.md`, and `MEMORY.md`. Zero runtime changes — the agent naturally transitions out of onboarding by overwriting SOUL.md via the write tool.
+
+---
+
 ## [0.10.3] - 2026-02-22
 
 ### Added

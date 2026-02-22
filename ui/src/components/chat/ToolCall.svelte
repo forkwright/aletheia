@@ -45,7 +45,7 @@
     animation: pulse-border 2s ease infinite;
   }
   .tool-call.error {
-    border-color: var(--red);
+    border-color: var(--status-error);
   }
   @keyframes pulse-border {
     0%, 100% { border-color: var(--accent); }
@@ -60,7 +60,7 @@
     background: transparent;
     border: none;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
   }
   .tool-header:hover {
@@ -78,28 +78,28 @@
     flex-shrink: 0;
   }
   .icon-ok {
-    color: var(--green);
-    font-size: 13px;
+    color: var(--status-success);
+    font-size: var(--text-sm);
     font-weight: 700;
   }
   .icon-error {
-    color: var(--red);
+    color: var(--status-error);
     font-weight: 700;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .tool-name {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     flex: 1;
   }
   .tool-duration {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
   }
   .expand-icon {
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     width: 16px;
     text-align: center;
   }
@@ -112,7 +112,7 @@
   .tool-output pre {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;

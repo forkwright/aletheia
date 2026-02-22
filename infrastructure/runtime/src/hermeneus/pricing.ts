@@ -1,4 +1,6 @@
 // Model pricing for cost attribution (per million tokens)
+// CANONICAL SOURCE for all pricing. UI has a simplified copy at ui/src/lib/format.ts
+// that defaults to Sonnet rates. When updating rates here, update the UI copy too.
 interface ModelPricing {
   inputPerMTok: number;
   outputPerMTok: number;

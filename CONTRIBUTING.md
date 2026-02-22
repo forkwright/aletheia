@@ -192,7 +192,7 @@ Full reference: [DEVELOPMENT.md](docs/DEVELOPMENT.md#code-style-conventions). Su
 `koina/error-codes.ts`. Never throw strings or bare `Error`. Non-critical ops
 use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 
-**Never empty catch.** Every catch logs, rethrows, or returns a meaningful value.
+**No silent catch.** Every catch block must either log, rethrow, return a meaningful value, or include an inline `/* reason */` comment explaining why the error is intentionally discarded.
 
 **Naming:** Files `kebab-case`, classes `PascalCase`, functions `camelCase`
 verb-first, constants `UPPER_SNAKE`, events `noun:verb`.

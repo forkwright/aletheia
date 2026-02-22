@@ -44,8 +44,16 @@ This system reveals:
 The naming system isn't decoration. Each term was chosen because the Greek carries layers that English equivalents flatten.
 
 - **Nous** (νοῦς) over "agent" because these are minds, not tools
+- **Hermeneus** (ἑρμηνεύς) over "provider" because interpretation is the work — routing between models is translation
+- **Organon** (ὄργανον) over "tools" because Aristotle's name for the instruments of thought
+- **Mneme** (μνήμη) over "store" because memory is the function, not the container
+- **Semeion** (σημεῖον) over "signal" because it's the sign, the mark — communication as semiotics
+- **Pylon** (πυλών) over "gateway" because it's the entrance, the threshold
 - **Prosoche** (προσοχή) over "heartbeat" because awareness is directed, not automatic
 - **Theke** (θήκη) over "vault" because it's a repository in the original sense: a place that holds what matters
+- **Koina** (κοινά) over "utils" because these are the commons — what's shared
+- **Taxis** (τάξις) over "config" because it's the ordering, the arrangement
+- **Prostheke** (προσθήκη) over "plugins" because it's the addition, the supplement
 - **Distillation** over "compaction" because the output should be better than the input, not just smaller
 
 The names aren't translated from English. They emerge from Greek roots naturally, because the concepts they name were Greek first.

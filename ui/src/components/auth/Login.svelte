@@ -81,12 +81,15 @@
     text-align: center;
   }
   .login-card h1 {
-    font-size: 24px;
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 500;
+    letter-spacing: 0.01em;
     margin-bottom: 4px;
   }
   .login-card p {
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: var(--text-base);
     margin-bottom: 20px;
   }
   .login-card form {
@@ -100,7 +103,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 10px 14px;
-    font-size: 14px;
+    font-size: var(--text-base);
     font-family: var(--font-sans);
     width: 100%;
   }
@@ -115,7 +118,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
@@ -125,20 +128,20 @@
   }
   .error {
     background: rgba(248, 81, 73, 0.1);
-    border: 1px solid var(--red);
+    border: 1px solid var(--status-error);
     border-radius: var(--radius-sm);
-    color: var(--red);
-    font-size: 13px;
+    color: var(--status-error);
+    font-size: var(--text-sm);
     padding: 8px 12px;
     text-align: left;
   }
   .submit {
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: var(--bg);
     padding: 10px 14px;
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     margin-top: 4px;
@@ -160,12 +163,12 @@
       padding: 24px 20px;
     }
     .input {
-      font-size: 16px; /* Prevents iOS zoom */
+      font-size: var(--text-lg); /* Prevents iOS zoom */
       padding: 12px 14px;
     }
     .submit {
       padding: 12px 14px;
-      font-size: 15px;
+      font-size: var(--text-base);
     }
   }
 </style>

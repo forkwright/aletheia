@@ -3,9 +3,9 @@
 
 .chat-msg {
   display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-  transition: background 0.15s;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  transition: background var(--transition-quick);
 }
 
 .chat-msg:hover {
@@ -21,8 +21,8 @@
 }
 
 @keyframes chat-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .chat-avatar {
@@ -41,17 +41,17 @@
 }
 
 .chat-avatar.agent {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-muted);
+  border-color: var(--accent-border);
 }
 
 .chat-avatar-emoji {
-  font-size: 18px;
+  font-size: var(--text-xl);
   line-height: 1;
 }
 
 .chat-avatar-text {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -59,13 +59,12 @@
 }
 
 .chat-avatar.agent .chat-avatar-text {
-  color: #fff;
+  color: var(--accent);
 }
 
 .chat-body {
   flex: 1;
   min-width: 0;
-  /* Prevent long content from blowing out container */
   overflow: hidden;
 }
 
@@ -74,18 +73,16 @@
   overflow-x: auto;
 }
 
-/* Tool pill styles removed — replaced by ToolStatusLine component */
-
 @media (max-width: 768px) {
   .chat-msg {
-    gap: 8px;
-    padding: 10px 12px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
   }
   .chat-avatar {
     width: 28px;
     height: 28px;
   }
   .chat-avatar-emoji {
-    font-size: 16px;
+    font-size: var(--text-lg);
   }
 }

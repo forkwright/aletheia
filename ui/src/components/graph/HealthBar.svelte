@@ -71,9 +71,9 @@
     align-items: center;
     gap: 8px;
     padding: 4px 12px;
-    background: var(--bg-elevated, #161b22);
-    border-bottom: 1px solid var(--border, #30363d);
-    font-size: 12px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-sm);
     min-height: 28px;
     flex-wrap: wrap;
   }
@@ -88,29 +88,29 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    color: var(--text-secondary, #8b949e);
+    color: var(--text-secondary);
   }
 
   .stat-icon {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .stat-value {
     font-weight: 600;
-    color: var(--text, #e6edf3);
+    color: var(--text);
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .stat-label {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     opacity: 0.7;
   }
 
   .stat.warn .stat-value {
-    color: var(--yellow, #d29922);
+    color: var(--status-warning);
   }
 
   .stat.muted {
@@ -120,7 +120,7 @@
   .stat-divider {
     width: 1px;
     height: 14px;
-    background: var(--border, #30363d);
+    background: var(--border);
   }
 
   .agent-breakdown {
@@ -130,35 +130,35 @@
   }
 
   .agent-chip {
-    background: var(--surface, #21262d);
-    border: 1px solid var(--border, #30363d);
+    background: var(--surface);
+    border: 1px solid var(--border);
     padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 10px;
-    color: var(--text-secondary, #8b949e);
+    border-radius: var(--radius);
+    font-size: var(--text-2xs);
+    color: var(--text-secondary);
     white-space: nowrap;
   }
   .agent-chip b {
-    color: var(--text, #e6edf3);
+    color: var(--text);
     font-weight: 600;
     margin-left: 2px;
   }
 
   .health-loading, .health-empty {
-    color: var(--text-muted, #484f58);
-    font-size: 11px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
   .refresh-btn {
     background: none;
-    border: 1px solid var(--border, #30363d);
-    color: var(--text-secondary, #8b949e);
-    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
     padding: 1px 6px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
     margin-left: auto;
   }
-  .refresh-btn:hover { color: var(--text, #e6edf3); }
+  .refresh-btn:hover { color: var(--text); }
   .refresh-btn:disabled { opacity: 0.4; cursor: default; }
 </style>

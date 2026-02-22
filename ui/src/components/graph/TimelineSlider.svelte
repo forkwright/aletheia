@@ -68,13 +68,13 @@
 <style>
   .timeline-slider {
     padding: 4px 12px;
-    background: var(--bg-elevated, #161b22);
-    border-bottom: 1px solid var(--border, #30363d);
+    background: var(--bg-elevated, #1a1816);
+    border-bottom: 1px solid var(--border);
   }
 
   .timeline-slider.active {
-    background: color-mix(in srgb, var(--accent, #58a6ff) 8%, var(--bg-elevated, #161b22));
-    border-bottom-color: var(--accent, #58a6ff);
+    background: color-mix(in srgb, var(--accent, #9A7B4F) 8%, var(--bg-elevated, #1a1816));
+    border-bottom-color: var(--accent, #9A7B4F);
   }
 
   .timeline-row {
@@ -85,9 +85,9 @@
   }
 
   .timeline-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
-    color: var(--text-secondary, #8b949e);
+    color: var(--text-secondary);
     white-space: nowrap;
   }
 
@@ -97,17 +97,17 @@
   }
 
   .preset-btn {
-    background: var(--surface, #21262d);
-    border: 1px solid var(--border, #30363d);
-    color: var(--text-secondary, #8b949e);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
     padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-2xs);
     cursor: pointer;
   }
   .preset-btn:hover {
-    color: var(--text, #e6edf3);
-    border-color: var(--accent, #58a6ff);
+    color: var(--text);
+    border-color: var(--accent, #9A7B4F);
   }
 
   .date-inputs {
@@ -117,32 +117,32 @@
   }
 
   .date-input {
-    background: var(--surface, #21262d);
-    border: 1px solid var(--border, #30363d);
-    color: var(--text, #e6edf3);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
     padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 11px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     font-family: var(--font-mono, monospace);
     width: 120px;
   }
   .date-input:focus {
     outline: none;
-    border-color: var(--accent, #58a6ff);
+    border-color: var(--accent, #9A7B4F);
   }
 
   .date-separator {
-    color: var(--text-muted, #484f58);
-    font-size: 11px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
   .apply-btn {
-    background: var(--accent, #58a6ff);
+    background: var(--accent, #9A7B4F);
     border: none;
-    color: #fff;
+    color: var(--bg);
     padding: 2px 10px;
-    border-radius: 4px;
-    font-size: 11px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
   }
@@ -150,16 +150,16 @@
 
   .clear-btn {
     background: none;
-    border: 1px solid var(--border, #30363d);
-    color: var(--text-muted, #484f58);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 11px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   .clear-btn:hover {
-    color: var(--red, #f85149);
-    border-color: var(--red, #f85149);
+    color: var(--status-error);
+    border-color: var(--status-error);
   }
 
   @media (max-width: 768px) {

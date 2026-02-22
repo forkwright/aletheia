@@ -70,6 +70,13 @@ export async function fetchAgents(): Promise<Agent[]> {
   return data.agents;
 }
 
+export async function createAgent(id: string, name: string, emoji?: string): Promise<{ ok: boolean; id: string }> {
+  return fetchJson("/api/agents", {
+    method: "POST",
+    body: JSON.stringify({ id, name, ...(emoji ? { emoji } : {}) }),
+  });
+}
+
 export async function fetchAgentIdentity(id: string): Promise<{ name: string; emoji: string | null }> {
   return fetchJson(`/api/agents/${id}/identity`);
 }

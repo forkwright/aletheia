@@ -41,9 +41,9 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 14px;
+    font-size: var(--text-base);
     text-align: left;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .agent-card:hover {
     background: var(--surface-hover);
@@ -66,12 +66,13 @@
     border-radius: var(--radius-sm);
   }
   .emoji {
-    font-size: 20px;
+    font-size: var(--text-xl);
     line-height: 1;
   }
   .initials {
-    font-size: 11px;
-    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
     width: 28px;
     height: 28px;
     display: flex;
@@ -79,7 +80,7 @@
     justify-content: center;
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
     letter-spacing: 0.5px;
   }
   .info {
@@ -95,7 +96,7 @@
     white-space: nowrap;
   }
   .activity {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
   .unread-badge {
@@ -103,10 +104,10 @@
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
+    border-radius: var(--radius);
     background: var(--accent);
-    color: #fff;
-    font-size: 10px;
+    color: var(--bg);
+    font-size: var(--text-2xs);
     font-weight: 700;
     display: flex;
     align-items: center;
