@@ -16,6 +16,8 @@ import sys
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
+from .config import VOYAGE_MODEL, VOYAGE_DIMS
+
 log = logging.getLogger("aletheia.memory.reindex")
 
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
@@ -30,9 +32,9 @@ def get_embedder():
         from openai import OpenAI
         client = OpenAI(api_key=voyage_key, base_url="https://api.voyageai.com/v1")
         def embed(text):
-            r = client.embeddings.create(input=[text.replace("\n", " ")], model="voyage-3-large")
+            r = client.embeddings.create(input=[text.replace("\n", " ")], model=VOYAGE_MODEL)
             return r.data[0].embedding
-        return embed, 1024
+        return embed, VOYAGE_DIMS
     else:
         try:
             from fastembed import TextEmbedding
