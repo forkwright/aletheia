@@ -1927,6 +1927,99 @@ export class SessionStore {
       .run(sessionId);
   }
 
+  // --- Session Forking (Checkpoint Time-Travel) ---
+
+  getCheckpoints(sessionId: string): Array<{
+    distillationNumber: number;
+    distilledAt: string;
+    messagesBefore: number;
+    messagesAfter: number;
+    factsExtracted: number;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT distillation_number, distilled_at, messages_before, messages_after, facts_extracted
+         FROM distillation_log WHERE session_id = ? ORDER BY distillation_number ASC`,
+      )
+      .all(sessionId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      distillationNumber: r["distillation_number"] as number,
+      distilledAt: r["distilled_at"] as string,
+      messagesBefore: r["messages_before"] as number,
+      messagesAfter: r["messages_after"] as number,
+      factsExtracted: r["facts_extracted"] as number,
+    }));
+  }
+
+  forkSession(
+    sessionId: string,
+    distillationNumber: number,
+  ): { newSessionId: string; messagesCopied: number } {
+    const receipt = this.db
+      .prepare(
+        "SELECT * FROM distillation_log WHERE session_id = ? AND distillation_number = ? LIMIT 1",
+      )
+      .get(sessionId, distillationNumber) as Record<string, unknown> | undefined;
+    if (!receipt) {
+      throw new SessionError("Distillation checkpoint not found", {
+        code: "SESSION_NOT_FOUND",
+        context: { sessionId, distillationNumber },
+      });
+    }
+
+    const original = this.findSessionById(sessionId);
+    if (!original) {
+      throw new SessionError("Source session not found", {
+        code: "SESSION_NOT_FOUND",
+        context: { sessionId },
+      });
+    }
+
+    // Find the distillation summary message for this checkpoint
+    const summaryRow = this.db
+      .prepare(
+        `SELECT seq FROM messages
+         WHERE session_id = ? AND role = 'assistant'
+           AND content LIKE ? AND is_distilled = 0
+         ORDER BY seq ASC LIMIT 1`,
+      )
+      .get(sessionId, `%[Distillation #${distillationNumber}]%`) as { seq: number } | undefined;
+
+    const cutoffSeq = summaryRow?.seq;
+    if (!cutoffSeq) {
+      throw new SessionError("Distillation summary message not found", {
+        code: "SESSION_CORRUPTED",
+        context: { sessionId, distillationNumber },
+      });
+    }
+
+    const forkKey = `fork:${sessionId.slice(4, 12)}:d${distillationNumber}:${Date.now().toString(36)}`;
+    const newSession = this.createSession(original.nousId, forkKey, sessionId);
+
+    // Copy non-distilled messages up to and including the checkpoint summary
+    const msgs = this.db
+      .prepare(
+        `SELECT role, content, tool_call_id, tool_name, token_estimate
+         FROM messages
+         WHERE session_id = ? AND is_distilled = 0 AND seq <= ?
+         ORDER BY seq ASC`,
+      )
+      .all(sessionId, cutoffSeq) as Array<Record<string, unknown>>;
+
+    for (const m of msgs) {
+      const opts: { toolCallId?: string; toolName?: string; tokenEstimate?: number } = {};
+      if (m["tool_call_id"]) opts.toolCallId = m["tool_call_id"] as string;
+      if (m["tool_name"]) opts.toolName = m["tool_name"] as string;
+      if (m["token_estimate"]) opts.tokenEstimate = m["token_estimate"] as number;
+      this.appendMessage(newSession.id, m["role"] as Message["role"], m["content"] as string, opts);
+    }
+
+    log.info(
+      `Forked session ${sessionId} at distillation #${distillationNumber} → ${newSession.id} (${msgs.length} messages)`,
+    );
+    return { newSessionId: newSession.id, messagesCopied: msgs.length };
+  }
+
   // --- Distillation Priming ---
 
   setDistillationPriming(sessionId: string, priming: DistillationPriming): void {

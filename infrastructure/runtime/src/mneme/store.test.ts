@@ -712,3 +712,77 @@ describe("retention", () => {
     expect(truncated).toBe(0);
   });
 });
+
+describe("session forking (checkpoint time-travel)", () => {
+  function setupDistilledSession() {
+    const session = store.createSession("syn", "main");
+    // Simulate conversation with messages
+    store.appendMessage(session.id, "user", "What is Qdrant?");
+    store.appendMessage(session.id, "assistant", "Qdrant is a vector database.");
+    store.appendMessage(session.id, "user", "How does indexing work?");
+    store.appendMessage(session.id, "assistant", "HNSW algorithm is used.");
+
+    // Simulate distillation #1: mark first 4 messages as distilled, add summary
+    store.markMessagesDistilled(session.id, [1, 2, 3, 4]);
+    store.appendMessage(session.id, "assistant", "[Distillation #1] Summary: Discussed Qdrant vector DB and HNSW indexing.");
+    store.incrementDistillationCount(session.id);
+    store.recordDistillationLog({
+      sessionId: session.id, nousId: "syn",
+      messagesBefore: 4, messagesAfter: 1,
+      tokensBefore: 200, tokensAfter: 50,
+      factsExtracted: 2, decisionsExtracted: 0, openItemsExtracted: 0,
+      flushSucceeded: true, distillationNumber: 1,
+    });
+
+    // More messages after distillation
+    store.appendMessage(session.id, "user", "Tell me about Neo4j.");
+    store.appendMessage(session.id, "assistant", "Neo4j is a graph database.");
+    return session;
+  }
+
+  it("getCheckpoints returns distillation receipts in order", () => {
+    const session = setupDistilledSession();
+    const checkpoints = store.getCheckpoints(session.id);
+    expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]!.distillationNumber).toBe(1);
+    expect(checkpoints[0]!.factsExtracted).toBe(2);
+  });
+
+  it("getCheckpoints returns empty for session with no distillations", () => {
+    const session = store.createSession("syn", "fresh");
+    expect(store.getCheckpoints(session.id)).toHaveLength(0);
+  });
+
+  it("forkSession copies messages up to checkpoint", () => {
+    const session = setupDistilledSession();
+    const result = store.forkSession(session.id, 1);
+
+    expect(result.newSessionId).toMatch(/^ses_/);
+    expect(result.messagesCopied).toBe(1); // only the summary (undistilled msgs <= summary seq)
+
+    const forked = store.findSessionById(result.newSessionId);
+    expect(forked).not.toBeNull();
+    expect(forked!.parentSessionId).toBe(session.id);
+
+    const history = store.getHistory(result.newSessionId);
+    expect(history).toHaveLength(1);
+    expect(history[0]!.content).toContain("[Distillation #1]");
+  });
+
+  it("forkSession excludes post-checkpoint messages", () => {
+    const session = setupDistilledSession();
+    const result = store.forkSession(session.id, 1);
+    const history = store.getHistory(result.newSessionId);
+    const contents = history.map((m) => m.content);
+    expect(contents.some((c) => c.includes("Neo4j"))).toBe(false);
+  });
+
+  it("forkSession throws on invalid distillation number", () => {
+    const session = setupDistilledSession();
+    expect(() => store.forkSession(session.id, 999)).toThrow("checkpoint not found");
+  });
+
+  it("forkSession throws on non-existent session", () => {
+    expect(() => store.forkSession("ses_nonexistent", 1)).toThrow("checkpoint not found");
+  });
+});

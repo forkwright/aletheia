@@ -1,6 +1,6 @@
 # Spec 26: Recursive Self-Improvement
 
-**Status:** Phases 1-4 done (PRs #106, #107). Phases 5-6 remaining.
+**Status:** All 6 phases complete (PRs #106, #107, #128).
 **Author:** Syn
 **Date:** 2026-02-21
 

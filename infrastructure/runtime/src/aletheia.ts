@@ -46,6 +46,7 @@ import { createStatusReportTool } from "./organon/built-in/status-report.js";
 import { createResearchTool } from "./organon/built-in/research.js";
 import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
+import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
@@ -71,6 +72,7 @@ import { discoverPlugins, loadPlugins } from "./prostheke/loader.js";
 import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
+import { runEvolutionCycle } from "./daemon/evolution-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -218,6 +220,12 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   }
   const authoredCount = loadAuthoredTools(defaultWorkspace, tools);
   if (authoredCount > 0) log.info(`Loaded ${authoredCount} authored tools`);
+
+  // Runtime code patching tools (available on-demand)
+  for (const patchTool of createPatchTools()) {
+    patchTool.category = "available";
+    tools.register(patchTool);
+  }
 
   // enable_tool meta-tool — lets agents activate available tools on demand
   const enableToolHandler: import("./organon/registry.js").ToolHandler = {
@@ -681,6 +689,23 @@ export async function startRuntime(configPath?: string): Promise<void> {
     } catch { /* retention cleanup is best-effort */ }
 
     return `Backed up ${count} agents to ${dest}`;
+  });
+
+  // Evolutionary config search — mutate pipeline configs, benchmark, promote winners
+  cron.registerCommand("evolution:nightly", async () => {
+    const opts: Parameters<typeof runEvolutionCycle>[3] = {};
+    if (clients.size > 0 && config.watchdog?.alertRecipient) {
+      const alertRecipient = config.watchdog.alertRecipient;
+      const client = clients.values().next().value!;
+      const accountId = clients.keys().next().value!;
+      const account = config.channels.signal.accounts[accountId]!;
+      const accountPhone = account.account ?? accountId;
+      opts.sendNotification = async (_nousId, message) => {
+        await sendMessage(client, { account: accountPhone, recipient: alertRecipient }, message, { markdown: false });
+      };
+    }
+    const result = await runEvolutionCycle(runtime.store, runtime.router, config, opts);
+    return `Evolution: ${result.agentsProcessed} agents, ${result.variantsCreated} variants, ${result.promotions} promotions`;
   });
 
   if (config.cron.enabled) {

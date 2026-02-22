@@ -409,6 +409,36 @@ program
     },
   );
 
+// --- Session Forking ---
+
+program
+  .command("fork")
+  .description("Fork a session from a historical distillation checkpoint")
+  .argument("<session-id>", "Session ID to fork")
+  .requiredOption("--at <number>", "Distillation checkpoint number to fork from")
+  .action(async (sessionId: string, opts: { at: string }) => {
+    const distillationNumber = parseInt(opts.at, 10);
+    if (isNaN(distillationNumber) || distillationNumber < 1) {
+      console.error("--at must be a positive integer (distillation number)");
+      process.exit(1);
+    }
+
+    const { SessionStore } = await import("./mneme/store.js");
+    const { paths } = await import("./taxis/paths.js");
+    const store = new SessionStore(paths.sessionsDb());
+    try {
+      const result = store.forkSession(sessionId, distillationNumber);
+      console.log(`Forked session: ${result.newSessionId}`);
+      console.log(`  Source: ${sessionId} @ distillation #${distillationNumber}`);
+      console.log(`  Messages copied: ${result.messagesCopied}`);
+    } catch (err) {
+      console.error(`Fork failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    } finally {
+      store.close();
+    }
+  });
+
 // --- Plugins ---
 
 const pluginsCmd = program.command("plugins").description("Plugin management");
