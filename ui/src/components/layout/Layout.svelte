@@ -1,6 +1,5 @@
 <script lang="ts">
   import TopBar from "./TopBar.svelte";
-  import Sidebar from "./Sidebar.svelte";
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
   import SettingsView from "../settings/SettingsView.svelte";
@@ -15,7 +14,6 @@
   type ViewId = "chat" | "metrics" | "graph" | "settings";
   type AuthState = "loading" | "login" | "token-setup" | "authenticated";
 
-  const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
 
   let activeView = $state<ViewId>("chat");
@@ -54,7 +52,6 @@
     authState = "authenticated";
     location.reload();
   }
-  let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
   let filePanelOpen = $state(false);
   let filePanelWidth = $state(Number(localStorage.getItem(FILE_PANEL_WIDTH_KEY)) || 520);
   let resizing = $state(false);
@@ -65,18 +62,6 @@
       setToken(tokenValue.trim());
       hasToken = true;
       location.reload();
-    }
-  }
-
-  function toggleSidebar() {
-    sidebarCollapsed = !sidebarCollapsed;
-    localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
-  }
-
-  function closeSidebar() {
-    if (window.innerWidth <= 768) {
-      sidebarCollapsed = true;
-      localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
     }
   }
 
@@ -143,15 +128,9 @@
 {:else}
   <TopBar
     onSetView={handleSetView}
-    onToggleSidebar={toggleSidebar}
     activeView={filePanelOpen ? "files" : activeView}
-    {sidebarCollapsed}
   />
   <div class="main">
-    <Sidebar collapsed={sidebarCollapsed} onAgentSelect={closeSidebar} />
-    {#if !sidebarCollapsed}
-      <button class="sidebar-overlay" onclick={closeSidebar} aria-label="Close sidebar"></button>
-    {/if}
     <div class="content" class:resizing>
       {#if activeView === "metrics"}
         <MetricsView />
@@ -232,9 +211,6 @@
   .resize-handle:hover, .resizing .resize-handle {
     background: var(--accent);
   }
-  .sidebar-overlay {
-    display: none;
-  }
   .token-setup {
     display: flex;
     align-items: center;
@@ -293,16 +269,6 @@
   }
 
   @media (max-width: 768px) {
-    .sidebar-overlay {
-      display: block;
-      position: fixed;
-      inset: 0;
-      top: calc(var(--topbar-height) + var(--safe-top));
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 99;
-      border: none;
-      cursor: default;
-    }
     .token-card {
       margin: 0 16px;
     }
