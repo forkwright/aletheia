@@ -404,6 +404,8 @@
     background: var(--bg-elevated);
     flex-shrink: 0;
     position: relative;
+    /* Use safe-area when no keyboard, but don't double-pad when keyboard is open
+       (keyboard replaces the home indicator area) */
     padding-bottom: var(--safe-bottom);
   }
   .input-bar.drag-over {
@@ -692,21 +694,24 @@
       padding: 2px 2px 2px 6px;
     }
     textarea {
-      font-size: var(--text-lg); /* Prevents iOS zoom on focus */
+      font-size: 16px; /* Exactly 16px prevents iOS zoom on focus */
       min-height: 36px;
       padding: 6px 0;
     }
     .send-btn {
-      padding: 8px 12px;
+      padding: 10px 14px;
       font-size: var(--text-sm);
+      /* Larger touch target on mobile */
+      min-height: 40px;
+      min-width: 56px;
     }
     .attach-btn {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
     }
     .stop-btn {
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
     }
     .attachment-thumb {
       width: 64px;
@@ -715,9 +720,15 @@
     .slash-menu {
       left: 10px;
       right: 10px;
+      /* On mobile keyboard open, slash menu shouldn't extend off-screen */
+      max-height: 40vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .slash-item {
-      padding: 10px 12px;
+      padding: 12px 14px;
+      /* Minimum 44px tap target per Apple HIG */
+      min-height: 44px;
     }
   }
 </style>

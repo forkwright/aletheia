@@ -8,7 +8,8 @@
   import { getToken, setToken } from "../../lib/api";
   import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler, logout } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
-  import { getActiveAgentId } from "../../stores/agents.svelte";
+  import { getActiveAgentId, isFirstRun, loadAgents } from "../../stores/agents.svelte";
+  import Welcome from "../onboarding/Welcome.svelte";
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "settings";
@@ -126,6 +127,9 @@
     </div>
   </div>
 {:else}
+  {#if isFirstRun()}
+    <Welcome onComplete={() => { loadAgents(); }} />
+  {:else}
   <TopBar
     onSetView={handleSetView}
     activeView={filePanelOpen ? "files" : activeView}
@@ -141,7 +145,7 @@
           <div style="padding:2rem;color:var(--text-secondary)">Failed to load graph view</div>
         {/await}
       {:else if activeView === "settings"}
-        <SettingsView />
+        <SettingsView onNavigate={handleSetView} />
       {:else}
         <div class="chat-pane">
           {#key getActiveAgentId()}
@@ -164,6 +168,7 @@
     </div>
   </div>
   <Toast />
+  {/if}
 {/if}
 
 <style>
@@ -173,6 +178,8 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
+    /* Critical for mobile keyboard: flex child must be able to shrink
+       when --app-height decreases */
   }
   .content {
     flex: 1;

@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { getToken, setToken, clearToken } from "../../lib/api";
-  import { getAgents } from "../../stores/agents.svelte";
+  import { getToken, setToken, clearToken, createAgent } from "../../lib/api";
+  import { getAgents, loadAgents, setActiveAgent } from "../../stores/agents.svelte";
+  import { loadSessions } from "../../stores/sessions.svelte";
   import { onMount } from "svelte";
   import type { Agent } from "../../lib/types";
   import SessionManager from "./SessionManager.svelte";
   import { fetchAuthMode, getAccessToken, logout as sessionLogout } from "../../lib/auth";
+
+  let { onNavigate }: { onNavigate?: (view: string) => void } = $props();
 
   const THEME_KEY = "aletheia_theme";
   const FONT_SIZE_KEY = "aletheia_font_size";
@@ -18,6 +21,42 @@
   let fontSize = $state<number>(
     parseInt(localStorage.getItem(FONT_SIZE_KEY) ?? "14", 10),
   );
+
+  let showCreateForm = $state(false);
+  let formName = $state("");
+  let formId = $state("");
+  let formEmoji = $state("");
+  let formError = $state("");
+  let creating = $state(false);
+
+  function deriveId(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+  }
+
+  function handleNameInput() {
+    formId = deriveId(formName);
+  }
+
+  async function handleCreate() {
+    if (!formName.trim() || !formId.trim()) return;
+    creating = true;
+    formError = "";
+    try {
+      await createAgent(formId, formName.trim(), formEmoji.trim() || undefined);
+      await loadAgents();
+      setActiveAgent(formId);
+      loadSessions(formId);
+      showCreateForm = false;
+      formName = "";
+      formId = "";
+      formEmoji = "";
+      onNavigate?.("chat");
+    } catch (err) {
+      formError = err instanceof Error ? err.message : String(err);
+    } finally {
+      creating = false;
+    }
+  }
 
   onMount(async () => {
     agents = getAgents();
@@ -76,6 +115,45 @@
         <div class="setting-row">
           <span class="setting-label muted">No agents configured</span>
         </div>
+      {/if}
+      {#if showCreateForm}
+        <div class="create-form">
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="Agent name"
+            bind:value={formName}
+            oninput={handleNameInput}
+            disabled={creating}
+          />
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="ID (auto-derived)"
+            bind:value={formId}
+            disabled={creating}
+          />
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="Emoji (optional)"
+            bind:value={formEmoji}
+            disabled={creating}
+          />
+          {#if formError}
+            <div class="form-error">{formError}</div>
+          {/if}
+          <div class="form-actions">
+            <button class="btn-primary" onclick={handleCreate} disabled={creating || !formName.trim()}>
+              {creating ? "Creating..." : "Create"}
+            </button>
+            <button class="btn-cancel" onclick={() => { showCreateForm = false; formError = ""; }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      {:else}
+        <button class="btn-add" onclick={() => { showCreateForm = true; }}>+ New Agent</button>
       {/if}
     </section>
 
@@ -298,5 +376,47 @@
   }
   .btn-danger:hover {
     background: rgba(248, 81, 73, 0.1);
+  }
+  .btn-add {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    transition: all var(--transition-quick);
+  }
+  .btn-add:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .create-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .form-error {
+    color: var(--status-error);
+    font-size: var(--text-xs);
+  }
+  .form-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-cancel {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+  .btn-cancel:hover {
+    color: var(--text);
   }
 </style>

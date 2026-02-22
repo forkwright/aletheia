@@ -31,7 +31,9 @@ program
   .description("First-run setup wizard — configure credentials, create first agent")
   .action(async () => {
     const { existsSync, mkdirSync, writeFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const { randomBytes } = await import("node:crypto");
     const { paths } = await import("./taxis/paths.js");
     const { writeJson } = await import("./koina/fs.js");
     const { scaffoldAgent } = await import("./taxis/scaffold.js");
@@ -67,6 +69,23 @@ program
         return;
       }
 
+      // Auth mode
+      const authInput = (await ask("Auth mode — none (local only), token (API key), session (multi-user) [none]: ")).trim().toLowerCase();
+      const authMode = (authInput === "token" || authInput === "session") ? authInput : "none";
+      const authBlock: Record<string, unknown> = { mode: authMode };
+      if (authMode === "token") {
+        const token = randomBytes(24).toString("hex");
+        authBlock["token"] = token;
+        console.log(`\n  Auth token: ${token}`);
+        console.log(`  Save this — you'll need it to access the UI and API.\n`);
+      }
+
+      // Aletheia root detection
+      const scriptDir = dirname(fileURLToPath(import.meta.url));
+      const detectedRoot = join(scriptDir, "..", "..");
+      const rootInput = (await ask(`Aletheia root [${detectedRoot}]: `)).trim();
+      const aletheiaRoot = rootInput || detectedRoot;
+
       // First agent
       const agentName = (await ask("First agent name (e.g. Atlas): ")).trim();
       if (!agentName) {
@@ -81,19 +100,24 @@ program
       mkdirSync(credDir, { recursive: true });
       const credPath = join(credDir, "anthropic.json");
       writeFileSync(credPath, JSON.stringify({ apiKey }, null, 2) + "\n", { mode: 0o600 });
-      console.log(`  Credentials: ${credPath}`);
 
       // Write base config (scaffoldAgent will append agent + binding)
       mkdirSync(paths.configDir(), { recursive: true });
       writeJson(configPath, {
         agents: { defaults: {}, list: [] },
         bindings: [],
-        gateway: { port },
+        gateway: { port, auth: authBlock },
+        env: { ALETHEIA_ROOT: aletheiaRoot },
       });
 
-      // Scaffold agent
-      mkdirSync(paths.nous, { recursive: true });
-      const templateDir = join(paths.nous, "_example");
+      // Write env file for systemd compatibility
+      const envPath = join(paths.configDir(), "aletheia.env");
+      writeFileSync(envPath, `ALETHEIA_ROOT=${aletheiaRoot}\n`, "utf-8");
+
+      // Scaffold agent using detected root
+      const nousDir = join(aletheiaRoot, "nous");
+      mkdirSync(nousDir, { recursive: true });
+      const templateDir = join(nousDir, "_example");
       if (!existsSync(templateDir)) {
         mkdirSync(templateDir, { recursive: true });
       }
@@ -102,18 +126,31 @@ program
         id: agentId,
         name: agentName,
         emoji: agentEmoji,
-        nousDir: paths.nous,
+        nousDir,
         configPath,
         templateDir,
       });
 
+      const authLabel = authMode === "none"
+        ? "none (no token required)"
+        : authMode === "token"
+          ? "token (saved to config)"
+          : "session (configure users with migrate-auth)";
+
       console.log(`\nSetup complete.`);
-      console.log(`  Config: ${configPath}`);
-      console.log(`  Agent: ${agentName} (${agentId}) → ${result.workspace}`);
+      console.log(`  Config:  ${configPath}`);
+      console.log(`  Agent:   ${agentName} (${agentId}) → ${result.workspace}`);
+      console.log(`  Auth:    ${authLabel}`);
+      console.log(`  Root:    ${aletheiaRoot}`);
       console.log(`\nStart the gateway:`);
       console.log(`  aletheia gateway start`);
       console.log(`\nThen open:`);
       console.log(`  http://localhost:${port}/ui`);
+      console.log(`\nYour agent has onboarding instructions — it will learn your`);
+      console.log(`preferences through conversation.`);
+      console.log(`\nUseful commands:`);
+      console.log(`  aletheia doctor        Validate setup`);
+      console.log(`  aletheia agent create  Add another agent`);
     } finally {
       rl.close();
     }
