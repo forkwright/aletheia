@@ -19,6 +19,8 @@ import { computeSelfAssessment } from "../distillation/reflect.js";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { eventBus, type EventName } from "../koina/event-bus.js";
 import { join, resolve } from "node:path";
+import { paths } from "../taxis/paths.js";
+import { scaffoldAgent } from "../taxis/scaffold.js";
 import { execSync } from "node:child_process";
 import { getVersion } from "../version.js";
 
@@ -853,6 +855,47 @@ export function createGateway(
       model: a.model ?? config.agents.defaults.model.primary,
     }));
     return c.json({ agents });
+  });
+
+  app.post("/api/agents", async (c) => {
+    try {
+      const body = await c.req.json<{ id: string; name: string; emoji?: string }>();
+      if (!body.id || !body.name) {
+        return c.json({ error: "id and name are required" }, 400);
+      }
+      const scaffoldOpts = {
+        id: body.id,
+        name: body.name,
+        nousDir: paths.nous,
+        configPath: paths.configFile(),
+        templateDir: join(paths.nous, "_example"),
+        ...(body.emoji ? { emoji: body.emoji } : {}),
+      };
+      const result = scaffoldAgent(scaffoldOpts);
+
+      // Hot-reload config so the new agent is immediately available
+      const newConfig = tryReloadConfig();
+      if (newConfig) {
+        const diff = manager.reloadConfig(newConfig);
+        const bindings = newConfig.bindings.map((b) => {
+          const entry: { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string } = {
+            channel: b.match.channel, nousId: b.agentId,
+          };
+          if (b.match.peer?.kind) entry.peerKind = b.match.peer.kind;
+          if (b.match.peer?.id) entry.peerId = b.match.peer.id;
+          if (b.match.accountId) entry.accountId = b.match.accountId;
+          return entry;
+        });
+        store.rebuildRoutingCache(bindings);
+        eventBus.emit("config:reloaded", { added: diff.added, removed: diff.removed });
+      }
+
+      return c.json({ ok: true, id: body.id, workspace: result.workspace, filesCreated: result.filesCreated });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = msg.includes("already exists") ? 409 : 400;
+      return c.json({ error: msg }, status);
+    }
   });
 
   app.get("/api/agents/:id", (c) => {
