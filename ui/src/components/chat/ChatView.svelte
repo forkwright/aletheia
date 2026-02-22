@@ -69,9 +69,15 @@
       if (event === "init") {
         const initData = data as { activeTurns?: Record<string, number> };
         const activeTurns = initData.activeTurns ?? {};
+        // Set or clear remote streaming based on server's authoritative state
         if (activeTurns[agentId] && activeTurns[agentId] > 0) {
           setRemoteStreaming(agentId, true);
+        } else {
+          setRemoteStreaming(agentId, false);
         }
+        // Reload history on reconnect to catch any missed messages
+        const sid = getActiveSessionId();
+        if (sid) loadHistory(agentId, sid);
       }
 
       if (event === "turn:after") {
@@ -107,18 +113,18 @@
 
       if (event === "connection") {
         const { status } = data as { status: string };
-        if (status === "disconnected" && !pollInterval) {
-          pollInterval = setInterval(() => {
-            const id = getActiveAgentId();
-            const sid = getActiveSessionId();
-            if (id && sid) loadHistory(id, sid);
-          }, 30_000);
-        } else if (status === "connected" && pollInterval) {
-          clearInterval(pollInterval);
-          pollInterval = null;
-          const id = getActiveAgentId();
-          const sid = getActiveSessionId();
-          if (id && sid) loadHistory(id, sid);
+        if (status === "disconnected") {
+          // Clear remote streaming — we can't trust it without SSE
+          setRemoteStreaming(agentId, false);
+          if (!pollInterval) {
+            pollInterval = setInterval(() => {
+              const id = getActiveAgentId();
+              const sid = getActiveSessionId();
+              if (id && sid) loadHistory(id, sid);
+            }, 5_000); // Poll every 5s while disconnected
+          }
+        } else if (status === "connected") {
+          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         }
       }
     });
@@ -148,14 +154,13 @@
     }
   });
 
-  // Recover remote streaming state when agent becomes available
+  // Sync remote streaming state from SSE activeTurns
   $effect(() => {
     const agentId = getActiveAgentId();
     if (!agentId) return;
     const activeTurns = getActiveTurns();
-    if (activeTurns[agentId] && activeTurns[agentId] > 0) {
-      setRemoteStreaming(agentId, true);
-    }
+    const active = activeTurns[agentId] && activeTurns[agentId] > 0;
+    setRemoteStreaming(agentId, !!active);
   });
 
   // Slash command registry
