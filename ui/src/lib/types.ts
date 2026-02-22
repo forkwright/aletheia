@@ -105,6 +105,7 @@ export interface TurnOutcome {
   text: string;
   nousId: string;
   sessionId: string;
+  model?: string;
   toolCalls: number;
   inputTokens: number;
   outputTokens: number;

@@ -646,7 +646,7 @@ export function createGateway(
           const turnId = `webchat:topic:${Date.now()}`;
           ctrl.enqueue(enc.encode(`event: turn_start\ndata: ${JSON.stringify({ type: "turn_start", sessionId: "", nousId: agentId, turnId })}\n\n`));
           ctrl.enqueue(enc.encode(`event: text_delta\ndata: ${JSON.stringify({ type: "text_delta", text: ackText })}\n\n`));
-          ctrl.enqueue(enc.encode(`event: turn_complete\ndata: ${JSON.stringify({ type: "turn_complete", outcome: { text: ackText, nousId: agentId, sessionId: "", toolCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } })}\n\n`));
+          ctrl.enqueue(enc.encode(`event: turn_complete\ndata: ${JSON.stringify({ type: "turn_complete", outcome: { text: ackText, nousId: agentId, sessionId: "", model: "none", toolCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } })}\n\n`));
           ctrl.close();
         },
       });

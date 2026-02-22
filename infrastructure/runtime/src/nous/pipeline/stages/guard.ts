@@ -38,6 +38,7 @@ export function checkGuards(
       text,
       nousId,
       sessionId,
+      model: state.model,
       toolCalls: 0,
       inputTokens: 0,
       outputTokens: 0,

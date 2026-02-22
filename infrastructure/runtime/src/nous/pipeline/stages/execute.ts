@@ -209,7 +209,7 @@ export async function* executeStreaming(
       services.store.appendMessage(sessionId, "assistant", storeContent, { tokenEstimate: estimateTokens(storeContent) });
 
       const outcome: TurnOutcome = {
-        text, nousId, sessionId, toolCalls: totalToolCalls,
+        text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
       };
@@ -423,7 +423,7 @@ export async function* executeStreaming(
           state.totalToolCalls = totalToolCalls;
           state.currentMessages = currentMessages;
           state.outcome = {
-            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
           };
@@ -572,7 +572,7 @@ export async function executeBuffered(
       state.totalCacheWriteTokens = totalCacheWriteTokens;
       state.currentMessages = currentMessages;
       state.outcome = {
-        text, nousId, sessionId, toolCalls: totalToolCalls,
+        text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
       };
@@ -727,7 +727,7 @@ export async function executeBuffered(
           state.totalToolCalls = totalToolCalls;
           state.currentMessages = currentMessages;
           state.outcome = {
-            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
           };
