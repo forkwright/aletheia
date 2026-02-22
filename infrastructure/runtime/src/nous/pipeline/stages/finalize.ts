@@ -8,6 +8,7 @@ import { extractTurnFacts } from "../../turn-facts.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { createLogger } from "../../../koina/logger.js";
+import { getSidecarUrl, getUserId } from "../../../koina/memory-client.js";
 import type { RuntimeServices, TurnState } from "../types.js";
 
 const log = createLogger("finalize");
@@ -102,15 +103,13 @@ export async function finalize(
     extractTurnFacts(services.router, outcome.text, toolSummary, factModel)
       .then(async (result) => {
         if (result.facts.length > 0) {
-          const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-          const userId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
           try {
-            const res = await fetch(`${sidecarUrl}/add_batch`, {
+            const res = await fetch(`${getSidecarUrl()}/add_batch`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 texts: result.facts,
-                user_id: userId,
+                user_id: getUserId(),
                 agent_id: nousId,
                 source: "turn",
                 session_id: sessionId,

@@ -1,10 +1,9 @@
 // Memory audit tool — agents can review and assess their own memories
 import { createLogger } from "../../koina/logger.js";
+import { getSidecarUrl, getUserId } from "../../koina/memory-client.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.mem0-audit");
-const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const mem0AuditTool: ToolHandler = {
   definition: {

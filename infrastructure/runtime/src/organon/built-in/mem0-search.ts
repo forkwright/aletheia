@@ -1,12 +1,9 @@
 // Mem0 memory search tool — query long-term extracted memories
 import type { ToolContext, ToolHandler } from "../registry.js";
 import { createLogger } from "../../koina/logger.js";
+import { getSidecarUrl, getUserId } from "../../koina/memory-client.js";
 
 const log = createLogger("tool:mem0-search");
-
-// Lazy reads — env vars may be set by taxis config after module import
-const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const mem0SearchTool: ToolHandler = {
   definition: {

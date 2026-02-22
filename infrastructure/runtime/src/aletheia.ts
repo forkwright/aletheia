@@ -85,6 +85,7 @@ import { getKeySalt, initEncryption } from "./koina/encryption.js";
 import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
 import { type HookRegistry, registerHooks } from "./koina/hooks.js";
+import { getSidecarUrl, getUserId } from "./koina/memory-client.js";
 
 const log = createLogger("aletheia");
 
@@ -260,17 +261,15 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const plugins = new PluginRegistry(config);
 
   // Memory flush target — connects distillation/reflection extraction to memory sidecar
-  const sidecarUrl = process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-  const memoryUserId = process.env["ALETHEIA_MEMORY_USER"] ?? "default";
   const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
     async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
       try {
-        const res = await fetch(`${sidecarUrl}/add_batch`, {
+        const res = await fetch(`${getSidecarUrl()}/add_batch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             texts: memories,
-            user_id: memoryUserId,
+            user_id: getUserId(),
             agent_id: agentId,
             source: "distillation",
             confidence: 0.8,
