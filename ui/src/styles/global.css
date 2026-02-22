@@ -128,6 +128,86 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+/* === LIGHT THEME === */
+/* Warm parchment — same material family as Ardent Leatherworks (#F7F3E8) */
+[data-theme="light"] {
+  /* Backgrounds — warm parchment, not clinical white */
+  --bg: #F7F3E8;
+  --bg-elevated: #FFFFFF;
+  --surface: #EDE8DC;
+  --surface-hover: #E5DFD2;
+
+  /* Borders — visible but soft */
+  --border: #D4CEBD;
+  --border-accent: #9A7B4F;
+
+  /* Text — warm dark, not pure black */
+  --text: #2A2725;
+  --text-secondary: #6B6560;
+  --text-muted: #9A9590;
+
+  /* Accent — same brass, slightly deeper for light-bg contrast */
+  --accent: #8A6B3F;
+  --accent-hover: #7A5B2F;
+  --accent-muted: rgba(138, 107, 63, 0.12);
+  --accent-border: rgba(138, 107, 63, 0.35);
+
+  /* Dye palette — same hues, adjusted for light background */
+  --aima: #581523;
+  --aima-light: #6E1D2F;
+  --thanatochromia: #2C1B3A;
+  --thanatochromia-light: #3A2550;
+  --aporia: #4A7A52;
+  --aporia-muted: #5C8E63;
+  --natural: #8B5A2B;
+  --natural-light: #7A4E24;
+
+  /* Status — same hues, darker for light-bg contrast */
+  --status-success: #3A8A4B;
+  --status-error: #B74440;
+  --status-warning: #A8821F;
+  --status-info: #7A6EA8;
+  --status-active: #B48A2A;
+
+  /* Syntax — adjusted for light background */
+  --syntax-keyword: #A8654A;
+  --syntax-string: #5A8D3E;
+  --syntax-number: #4A7EA7;
+  --syntax-comment: #9A9590;
+  --syntax-function: #A48A4A;
+  --syntax-type: #7A6EA8;
+  --syntax-literal: #4A7EA7;
+  --syntax-tag: #5A8D3E;
+  --syntax-attr: #A8654A;
+  --syntax-property: #8A7A5A;
+  --syntax-meta: #5A7F93;
+  --syntax-builtin: #A48A4A;
+  --syntax-deleted: #B74440;
+  --syntax-inserted: #3A8A4B;
+
+  /* Shadows — lighter, warm-tinted */
+  --shadow-sm: 0 2px 8px rgba(42, 39, 37, 0.08);
+  --shadow-md: 0 4px 12px rgba(42, 39, 37, 0.12);
+  --shadow-lg: 0 8px 24px rgba(42, 39, 37, 0.16);
+
+  /* Chat message backgrounds — dark uses white overlay, light uses dark overlay */
+  --chat-msg-hover: rgba(0, 0, 0, 0.02);
+  --chat-msg-assistant: rgba(0, 0, 0, 0.015);
+
+  color-scheme: light;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #D4CEBD;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #9A9590;
+}
+
+[data-theme="light"] ::selection {
+  background: rgba(138, 107, 63, 0.2);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
