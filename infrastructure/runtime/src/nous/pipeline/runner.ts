@@ -78,6 +78,17 @@ export async function* runStreamingPipeline(
     eventBus.emit("pipeline:error", { nousId: state.nousId, sessionId: state.sessionId, stage, error: message });
 
     yield { type: "error", message: `Turn failed at ${stage}: ${message}` };
+    yield { type: "turn_complete", outcome: {
+      text: "",
+      nousId: state.nousId,
+      sessionId: state.sessionId,
+      toolCalls: state.totalToolCalls ?? 0,
+      inputTokens: state.totalInputTokens ?? 0,
+      outputTokens: state.totalOutputTokens ?? 0,
+      cacheReadTokens: state.totalCacheReadTokens ?? 0,
+      cacheWriteTokens: state.totalCacheWriteTokens ?? 0,
+      error: message,
+    }};
     return undefined;
   }
 }
