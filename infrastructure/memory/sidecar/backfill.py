@@ -35,7 +35,7 @@ except ImportError as e:
 QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 COLLECTION = "aletheia_memories"
-EMBED_MODEL = "voyage-3-large"  # 1024-dim, must match existing collection
+EMBED_MODEL = os.environ.get("VOYAGE_MODEL", "voyage-4-large")  # 1024-dim default
 CHUNK_SIZE = 512  # tokens ~= words * 1.3, keep chunks focused
 CHUNK_OVERLAP = 50  # overlap for context continuity
 BATCH_SIZE = 64  # Voyage batch limit
