@@ -13,9 +13,15 @@ interface AgentChatState {
   abortController: AbortController | null;
   pendingApproval: PendingApproval | null;
   pendingPlan: PlanProposal | null;
+  // Debounce buffers — accumulate deltas, flush to reactive state on timer
+  _textBuffer: string;
+  _thinkingBuffer: string;
+  _flushTimer: ReturnType<typeof setTimeout> | null;
 }
 
 let states = $state<Record<string, AgentChatState>>({});
+
+const STREAM_DEBOUNCE_MS = 100;
 
 const EMPTY: AgentChatState = {
   messages: [],
@@ -28,6 +34,9 @@ const EMPTY: AgentChatState = {
   abortController: null,
   pendingApproval: null,
   pendingPlan: null,
+  _textBuffer: "",
+  _thinkingBuffer: "",
+  _flushTimer: null,
 };
 
 // Read-only access — returns default for unknown agents, never mutates during render
@@ -49,6 +58,9 @@ function writeState(agentId: string): AgentChatState {
       abortController: null,
       pendingApproval: null,
       pendingPlan: null,
+      _textBuffer: "",
+      _thinkingBuffer: "",
+      _flushTimer: null,
     };
   }
   return states[agentId]!;
@@ -121,6 +133,10 @@ export function clearMessages(agentId: string): void {
   const state = writeState(agentId);
   state.messages = [];
   state.streamingText = "";
+  state.thinkingText = "";
+  state._textBuffer = "";
+  state._thinkingBuffer = "";
+  if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
   state.activeToolCalls = [];
   state.error = null;
   state.pendingApproval = null;
@@ -136,6 +152,39 @@ export function injectLocalMessage(agentId: string, content: string): void {
     timestamp: new Date().toISOString(),
   };
   state.messages = [...state.messages, msg];
+}
+
+/** Flush buffered text/thinking deltas to reactive state immediately */
+function flushStreamBuffer(state: AgentChatState): void {
+  if (state._flushTimer) {
+    clearTimeout(state._flushTimer);
+    state._flushTimer = null;
+  }
+  if (state._textBuffer) {
+    state.streamingText += state._textBuffer;
+    state._textBuffer = "";
+  }
+  if (state._thinkingBuffer) {
+    state.thinkingText += state._thinkingBuffer;
+    state._thinkingBuffer = "";
+  }
+}
+
+/** Schedule a debounced flush — accumulates deltas, renders at most every STREAM_DEBOUNCE_MS */
+function scheduleFlush(state: AgentChatState): void {
+  if (!state._flushTimer) {
+    state._flushTimer = setTimeout(() => {
+      state._flushTimer = null;
+      if (state._textBuffer) {
+        state.streamingText += state._textBuffer;
+        state._textBuffer = "";
+      }
+      if (state._thinkingBuffer) {
+        state.thinkingText += state._thinkingBuffer;
+        state._thinkingBuffer = "";
+      }
+    }, STREAM_DEBOUNCE_MS);
+  }
 }
 
 export async function sendMessage(
@@ -159,10 +208,13 @@ export async function sendMessage(
   };
   state.messages = [...state.messages, userMsg];
 
-  // Start streaming
+  // Start streaming — clear buffers and any pending flush
   state.isStreaming = true;
   state.streamingText = "";
   state.thinkingText = "";
+  state._textBuffer = "";
+  state._thinkingBuffer = "";
+  if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
@@ -174,11 +226,13 @@ export async function sendMessage(
           break;
 
         case "thinking_delta":
-          state.thinkingText += event.text;
+          state._thinkingBuffer += event.text;
+          scheduleFlush(state);
           break;
 
         case "text_delta":
-          state.streamingText += event.text;
+          state._textBuffer += event.text;
+          scheduleFlush(state);
           break;
 
         case "tool_start":
@@ -226,6 +280,7 @@ export async function sendMessage(
           break;
 
         case "turn_complete": {
+          flushStreamBuffer(state);
           const assistantMsg: ChatMessage = {
             id: `assistant-${Date.now()}`,
             role: "assistant",
@@ -244,6 +299,7 @@ export async function sendMessage(
         }
 
         case "turn_abort": {
+          flushStreamBuffer(state);
           state.remoteStreaming = false;
           if (state.streamingText) {
             const partial: ChatMessage = {
@@ -270,6 +326,8 @@ export async function sendMessage(
       state.error = err instanceof Error ? err.message : String(err);
     }
   } finally {
+    // Flush any remaining buffered text before saving
+    flushStreamBuffer(state);
     // If we still have streaming text (e.g. aborted mid-stream), save it
     if (state.streamingText) {
       const partial: ChatMessage = {
@@ -286,6 +344,9 @@ export async function sendMessage(
     state.remoteStreaming = false;
     state.streamingText = "";
     state.thinkingText = "";
+    state._textBuffer = "";
+    state._thinkingBuffer = "";
+    if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
     state.activeToolCalls = [];
     state.abortController = null;
     state.pendingApproval = null;
