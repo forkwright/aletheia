@@ -964,6 +964,45 @@ export function createGateway(
     }
   });
 
+  // --- Session Checkpoints & Forking ---
+
+  app.get("/api/sessions/:id/checkpoints", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json({ sessionId: id, checkpoints: store.getCheckpoints(id) });
+  });
+
+  app.post("/api/sessions/:id/fork", async (c) => {
+    const id = c.req.param("id");
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const at = body["at"];
+    if (typeof at !== "number" || at < 1) {
+      return c.json({ error: "'at' (distillation number) required, must be >= 1" }, 400);
+    }
+
+    try {
+      const result = store.forkSession(id, at);
+      return c.json({
+        ok: true,
+        newSessionId: result.newSessionId,
+        messagesCopied: result.messagesCopied,
+        sourceSessionId: id,
+        checkpoint: at,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`Session fork failed: ${msg}`);
+      return c.json({ error: msg }, 400);
+    }
+  });
+
   // --- Message Queue API ---
 
   app.post("/api/sessions/:id/queue", async (c) => {

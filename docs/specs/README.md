@@ -8,13 +8,6 @@ that evolve with the system.
 
 ## Active Specs
 
-### In Progress
-
-| # | Spec | Status | Remaining |
-|---|------|--------|-----------|
-| 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | 4/6 phases (PRs #106, #107) | Code patching (5), evolutionary search (6) |
-| 21 | [Agent Portability](21_agent-portability.md) | 3/4 phases (PRs #100, #124) | Checkpoint time-travel (4) |
-
 ### Draft
 
 | # | Spec | Status | Scope | Notes |
@@ -33,21 +26,19 @@ that evolve with the system.
 
 ### Priority Order
 
-**Tier 1 — Active work (phases in progress):**
-1. **26** Recursive Self-Improvement — code patching, evolutionary search
-2. **21** Agent Portability — checkpoint time-travel
-
-**Tier 3 — Draft:**
-6. **5** Onboarding — needed for public adoption
-7. **25** Integrated IDE
-8. **27** Embedding Space Intelligence
-9. **22** Interop & Workflows
-10. **24** Aletheia Linux — long-term
+**Draft:**
+1. **5** Onboarding — needed for public adoption
+2. **25** Integrated IDE
+3. **27** Embedding Space Intelligence
+4. **22** Interop & Workflows
+5. **24** Aletheia Linux — long-term
 
 ## Implemented (Archived)
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Recursive Self-Improvement](26_recursive-self-improvement.md) | PRs #106, #107, #128 | Self-authored tools, skill learning, competence model, code patching, evolutionary config search |
+| [Agent Portability](21_agent-portability.md) | PRs #100, #124, #128 | Agent file export/import, scheduled backups, checkpoint time-travel (session forking) |
 | [Auth & Updates](03_auth-and-updates.md) | PRs #50, #70, #99, #126 | OAuth login, session mgmt, update daemon, release workflow, credential failover, update notification UI |
 | [Extensibility](18_extensibility.md) | PRs #98, #107, #124 | Hooks, custom commands, per-nous hooks, plugin auto-discovery, path safety, loop guard template |
 | [Security Hardening](20_security-hardening.md) | PRs #99, #106, #124 | PII detection, Docker sandbox, tamper-evident audit, encrypted memory at rest |
@@ -73,7 +64,7 @@ that evolve with the system.
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
 
-**Score: 24 archived, 2 in progress, 5 draft/skeleton.**
+**Score: 26 archived, 0 in progress, 5 draft/skeleton.**
 
 ## Conventions
 

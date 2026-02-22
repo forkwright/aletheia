@@ -4,6 +4,20 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.3] - 2026-02-22
+
+### Added
+- **Runtime code patching** (Spec 26 P5) — `propose_patch` and `rollback_patch` tools let agents modify their own source code with automated safety gates (tsc + vitest + backup/restore). Patchable dirs: `organon/`, `nous/`, `distillation/`, `daemon/`. Rate limited: 1/hr/agent, 3/day total.
+- **Evolutionary config search** (Spec 26 P6) — `evolution:nightly` cron mutates pipeline configs (recall, tools, notes) via Haiku, benchmarks variants against approval-signal tasks, promotes winners with 24h auto-adopt window and Signal notification. Archive capped at 5 variants per agent.
+- **Checkpoint time-travel** (Spec 21 P4) — `aletheia fork <session-id> --at <N>` creates a new session branched from distillation checkpoint N. API endpoints: `GET /api/sessions/:id/checkpoints`, `POST /api/sessions/:id/fork`.
+- **Pipeline config save** — `savePipelineConfig()` function for writing validated configs back to disk
+
+### Specs Completed
+- **Spec 26** Recursive Self-Improvement — 6/6 phases
+- **Spec 21** Agent Portability — 4/4 phases
+
+---
+
 ## [0.10.2] - 2026-02-21
 
 ### Added
