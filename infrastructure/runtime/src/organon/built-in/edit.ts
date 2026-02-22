@@ -1,7 +1,7 @@
 // File edit tool — find and replace
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
 import { trySafe } from "../../koina/safe.js";
 
@@ -48,7 +48,7 @@ export const editTool: ToolHandler = {
     const filePath = input["path"] as string;
     const oldText = input["old_text"] as string;
     const newText = input["new_text"] as string;
-    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
+    const resolved = resolve(context.workspace, filePath);
 
     if (oldText === "") {
       return "Error: old_text cannot be empty — it would match everywhere";

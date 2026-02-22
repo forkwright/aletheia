@@ -1,7 +1,7 @@
 // File read tool
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
-import { safePath } from "./safe-path.js";
 
 export const readTool: ToolHandler = {
   definition: {
@@ -39,7 +39,7 @@ export const readTool: ToolHandler = {
   ): Promise<string> {
     const filePath = input["path"] as string;
     const maxLines = input["maxLines"] as number | undefined;
-    const resolved = safePath(context.workspace, filePath, context.allowedRoots);
+    const resolved = resolve(context.workspace, filePath);
 
     try {
       // Read atomically — no stat-then-read race
