@@ -48,7 +48,7 @@
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent, getActiveTurns } from "../../lib/events.svelte";
+  import { onGlobalEvent } from "../../lib/events.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
@@ -163,14 +163,9 @@
     }
   });
 
-  // Sync remote streaming state from SSE activeTurns
-  $effect(() => {
-    const agentId = getActiveAgentId();
-    if (!agentId) return;
-    const activeTurns = getActiveTurns();
-    const active = activeTurns[agentId] && activeTurns[agentId] > 0;
-    untrack(() => setRemoteStreaming(agentId, !!active));
-  });
+  // Remote streaming state is synced via the onGlobalEvent handler above
+  // (turn:before → setRemoteStreaming(true), turn:after → setRemoteStreaming(false))
+  // No $effect needed — that would re-fire on every SSE event due to $state object churn.
 
   // Slash command registry
   const slashCommands: Record<string, { description: string; handler: (args?: string) => void }> = {

@@ -81,13 +81,15 @@ function connect() {
     try {
       const data = JSON.parse((e as MessageEvent).data);
       const newActiveTurns: Record<string, number> = data.activeTurns ?? {};
-      // Clear stale entries: if an agent was "active" before but isn't now, zero it
       for (const agentId of Object.keys(lastActiveTurns)) {
         if (!(agentId in newActiveTurns)) {
           newActiveTurns[agentId] = 0;
         }
       }
-      lastActiveTurns = newActiveTurns;
+      // Only reassign if values actually changed (prevents $state object thrashing)
+      if (JSON.stringify(lastActiveTurns) !== JSON.stringify(newActiveTurns)) {
+        lastActiveTurns = newActiveTurns;
+      }
       dispatch("init", { ...data, activeTurns: lastActiveTurns });
     } catch { /* ignore */ }
   });
