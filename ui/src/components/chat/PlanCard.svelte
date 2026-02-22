@@ -132,7 +132,7 @@
     padding: 12px 16px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--blue, #58a6ff);
+    border-left: 3px solid var(--accent);
     border-radius: var(--radius-sm);
     animation: fade-in 0.2s ease;
   }

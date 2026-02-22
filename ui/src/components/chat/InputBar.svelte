@@ -465,7 +465,7 @@
   }
   .attach-btn:hover {
     color: var(--accent);
-    background: rgba(88, 166, 255, 0.1);
+    background: rgba(201, 168, 76, 0.1);
   }
   .stop-btn {
     background: rgba(248, 81, 73, 0.1);
@@ -492,7 +492,7 @@
   .send-btn {
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: #0f1114;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
     font-size: 13px;
@@ -620,7 +620,7 @@
   .drag-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(88, 166, 255, 0.08);
+    background: rgba(201, 168, 76, 0.08);
     border: 2px dashed var(--accent);
     border-radius: var(--radius);
     display: flex;

@@ -167,7 +167,7 @@
     color: var(--text);
   }
   .tool-status-line.active {
-    border-color: rgba(88, 166, 255, 0.3);
+    border-color: rgba(201, 168, 76, 0.3);
     color: var(--text);
   }
   .tool-status-line.has-errors {
