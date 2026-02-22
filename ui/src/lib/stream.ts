@@ -1,6 +1,22 @@
 import { getEffectiveToken } from "./api";
 import type { TurnStreamEvent, MediaItem } from "./types";
 
+const READ_TIMEOUT_MS = 120_000; // 2 min — abort if no data for this long
+
+function readWithTimeout<T>(reader: ReadableStreamDefaultReader<T>, timeoutMs: number): Promise<ReadableStreamReadResult<T>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reader.cancel("Read timeout").catch(() => {});
+      reject(new Error("Stream read timed out — server may be unreachable"));
+    }, timeoutMs);
+
+    reader.read().then(
+      (result) => { clearTimeout(timer); resolve(result); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 export async function* streamMessage(
   agentId: string,
   message: string,
@@ -43,7 +59,7 @@ export async function* streamMessage(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout(reader, READ_TIMEOUT_MS);
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
