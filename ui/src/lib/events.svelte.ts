@@ -11,6 +11,8 @@ const HEARTBEAT_TIMEOUT_MS = 45_000; // Server sends pings every ~30s
 const listeners = new Set<EventCallback>();
 let lastActiveTurns = $state<Record<string, number>>({});
 let agentStatuses = $state<Record<string, string>>({});
+let visibilityHandler: (() => void) | null = null;
+let onlineHandler: (() => void) | null = null;
 
 export function onGlobalEvent(cb: EventCallback): () => void {
   listeners.add(cb);
@@ -26,6 +28,7 @@ function dispatch(event: string, data: unknown) {
 export function initEventSource(): void {
   if (source) return;
   connect();
+  installLifecycleHandlers();
 }
 
 export function closeEventSource(): void {
@@ -34,6 +37,59 @@ export function closeEventSource(): void {
   if (source) {
     source.close();
     source = null;
+  }
+  removeLifecycleHandlers();
+}
+
+/**
+ * Immediately reconnect SSE — used when the page regains visibility or
+ * comes back online. Clears any pending exponential-backoff timer and
+ * connects with a fresh 1s delay floor.
+ */
+function forceReconnect() {
+  if (source && source.readyState === EventSource.OPEN) return; // already healthy
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
+  if (source) { source.close(); source = null; }
+  reconnectDelay = 1000; // reset backoff
+  connect();
+}
+
+/**
+ * Mobile browsers freeze/kill SSE connections when:
+ *  - Tab goes to background (visibilitychange)
+ *  - Phone sleeps (same event)
+ *  - Network changes (online/offline events)
+ *
+ * Without explicit reconnect on resume, users see stale UI until the
+ * 45s heartbeat timeout fires — which feels broken.
+ */
+function installLifecycleHandlers() {
+  if (visibilityHandler) return; // already installed
+
+  visibilityHandler = () => {
+    if (document.visibilityState === "visible") {
+      // Tab is back — reconnect immediately
+      forceReconnect();
+    }
+  };
+  document.addEventListener("visibilitychange", visibilityHandler);
+
+  onlineHandler = () => {
+    // Network came back — reconnect immediately
+    forceReconnect();
+  };
+  window.addEventListener("online", onlineHandler);
+}
+
+function removeLifecycleHandlers() {
+  if (visibilityHandler) {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+  if (onlineHandler) {
+    window.removeEventListener("online", onlineHandler);
+    onlineHandler = null;
   }
 }
 
