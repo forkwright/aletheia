@@ -21,7 +21,7 @@
           "complex": "claude-opus-4-6"
         },
         "agentOverrides": {
-          "main": "complex",
+          "syn": "complex",
           "creative": "complex",
           "technical": "complex"
         }
@@ -32,7 +32,7 @@
     },
     "list": [
       {
-        "id": "main",
+        "id": "syn",
         "name": "Atlas",
         "default": true,
         "workspace": "/path/to/aletheia/nous/atlas",
@@ -58,7 +58,7 @@
   },
   "bindings": [
     {
-      "agentId": "main",
+      "agentId": "syn",
       "match": {
         "channel": "signal",
         "peer": {

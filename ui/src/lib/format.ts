@@ -27,31 +27,35 @@ export function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
-// Per-million-token pricing — Sonnet 4 rates
+// Per-million-token pricing by model family
 // CANONICAL SOURCE: infrastructure/runtime/src/hermeneus/pricing.ts
-// This is a simplified client-side estimate. The server calculates exact costs
-// per-model (Opus, Sonnet, Haiku) in hermeneus/pricing.ts. This UI version
-// defaults to Sonnet rates for inline message cost badges. Metrics/totals
-// use the server-side calculation via the /api/costs endpoint.
-// TODO: Plumb model through TurnOutcome so UI can use per-model pricing
-const PRICING = {
-  input: 3,
-  output: 15,
-  cacheRead: 0.3,
-  cacheWrite: 3.75,
+const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  opus:   { input: 15,  output: 75, cacheRead: 1.5,  cacheWrite: 18.75 },
+  sonnet: { input: 3,   output: 15, cacheRead: 0.3,  cacheWrite: 3.75 },
+  haiku:  { input: 0.8, output: 4,  cacheRead: 0.08, cacheWrite: 1 },
 };
+
+function resolvePricing(model?: string) {
+  if (model) {
+    if (model.includes("opus")) return MODEL_PRICING.opus;
+    if (model.includes("haiku")) return MODEL_PRICING.haiku;
+  }
+  return MODEL_PRICING.sonnet;
+}
 
 export function calculateMessageCost(usage: {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  model?: string;
 }): number {
+  const p = resolvePricing(usage.model);
   return (
-    (usage.inputTokens / 1_000_000) * PRICING.input +
-    (usage.outputTokens / 1_000_000) * PRICING.output +
-    (usage.cacheReadTokens / 1_000_000) * PRICING.cacheRead +
-    (usage.cacheWriteTokens / 1_000_000) * PRICING.cacheWrite
+    (usage.inputTokens / 1_000_000) * p.input +
+    (usage.outputTokens / 1_000_000) * p.output +
+    (usage.cacheReadTokens / 1_000_000) * p.cacheRead +
+    (usage.cacheWriteTokens / 1_000_000) * p.cacheWrite
   );
 }
 

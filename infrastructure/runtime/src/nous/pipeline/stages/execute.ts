@@ -125,7 +125,7 @@ export async function* executeStreaming(
     const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
 
     // Build context management — clears old tool results and thinking blocks server-side
-    const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = services.config.agents.defaults.contextTokens;
     const contextManagement = buildContextManagement(contextTokens, useThinking);
 
     for await (const streamEvent of services.router.completeStreaming({
@@ -209,7 +209,7 @@ export async function* executeStreaming(
       services.store.appendMessage(sessionId, "assistant", storeContent, { tokenEstimate: estimateTokens(storeContent) });
 
       const outcome: TurnOutcome = {
-        text, nousId, sessionId, toolCalls: totalToolCalls,
+        text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
       };
@@ -271,6 +271,7 @@ export async function* executeStreaming(
         const toolUse = batch[0]!;
         totalToolCalls++;
         yield { type: "tool_start", toolName: toolUse.name, toolId: toolUse.id, input: toolUse.input as Record<string, unknown> };
+        eventBus.emit("status:update", { nousId, status: toolUse.name });
 
         // Approval gate
         if (services.approvalGate && services.approvalMode && services.approvalMode !== "autonomous") {
@@ -335,6 +336,7 @@ export async function* executeStreaming(
           totalToolCalls++;
           yield { type: "tool_start", toolName: toolUse.name, toolId: toolUse.id, input: toolUse.input as Record<string, unknown> };
         }
+        eventBus.emit("status:update", { nousId, status: `${batch.length} tools` });
 
         const batchStart = Date.now();
         const settled = await Promise.allSettled(
@@ -423,7 +425,7 @@ export async function* executeStreaming(
           state.totalToolCalls = totalToolCalls;
           state.currentMessages = currentMessages;
           state.outcome = {
-            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
           };
@@ -503,7 +505,7 @@ export async function executeBuffered(
   const seq = state.seq;
 
   // Context management for buffered path
-  const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+  const contextTokens = services.config.agents.defaults.contextTokens;
   const bufferedContextMgmt = buildContextManagement(contextTokens, false);
 
   for (let loop = 0; ; loop++) {
@@ -572,7 +574,7 @@ export async function executeBuffered(
       state.totalCacheWriteTokens = totalCacheWriteTokens;
       state.currentMessages = currentMessages;
       state.outcome = {
-        text, nousId, sessionId, toolCalls: totalToolCalls,
+        text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
       };
@@ -727,7 +729,7 @@ export async function executeBuffered(
           state.totalToolCalls = totalToolCalls;
           state.currentMessages = currentMessages;
           state.outcome = {
-            text: planSummary, nousId, sessionId, toolCalls: totalToolCalls,
+            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
           };

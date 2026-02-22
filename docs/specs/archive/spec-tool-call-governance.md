@@ -2,7 +2,7 @@
 
 **Author:** forkwright
 **Date:** 2026-02-18  
-**Status:** Draft  
+**Status:** Implemented (PR #22). Framework timeouts, turn cancellation, LoopDetector integration.  
 **Mouseion:** #TBD  
 **Depends on:** None (standalone, builds on existing loop-detector)
 

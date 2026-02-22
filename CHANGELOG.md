@@ -4,6 +4,18 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.6] - 2026-02-22
+
+### Fixed
+- **Pipeline error `turn_complete`** — Streaming pipeline errors now yield a proper `turn_complete` event with error outcome, so clients compose correct assistant messages instead of saving partial text without attribution
+- **SSE stream error handler** — Guarded `controller.enqueue` in the stream endpoint's outer catch to prevent uncaught exception when client has already disconnected
+- **Active turns counter floor** — Global `activeTurns` counter uses `Math.max(0, ...)` to prevent negative values
+- **SSE connection resilience** — Heartbeat timer (45s) detects dead connections, reconnect clears stale `activeTurns`, disconnect fallback polls every 5s, fetch stream has 2-min read timeout
+- **Connection listener accumulation** — `initConnection()` now cleans up previous listener before adding a new one, preventing duplicate status callbacks on re-initialization
+- **App.svelte effect cleanup** — `$effect` returns `disconnect()` cleanup to close EventSource when effect re-runs
+
+---
+
 ## [0.10.5] - 2026-02-22
 
 ### Added

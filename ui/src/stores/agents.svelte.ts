@@ -22,6 +22,10 @@ export function isLoading(): boolean {
   return loading;
 }
 
+export function isFirstRun(): boolean {
+  return agents.length === 0 && !loading;
+}
+
 export async function loadAgents(): Promise<void> {
   loading = true;
   try {

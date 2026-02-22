@@ -3,68 +3,70 @@
 ## Prerequisites
 
 - Node.js >= 22.12
-- Docker and Docker Compose
-- signal-cli ([install guide](https://github.com/AsamK/signal-cli))
-- A registered Signal phone number
+- An Anthropic API key
 
-## 1. Build
+## 1. Clone and Build
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
 cd infrastructure/runtime && npm install && npx tsdown && cd ../..
+cd ui && npm install && npm run build && cd ..
 ```
 
-## 2. Configure
+## 2. Initialize
 
 ```bash
-cp .env.example shared/config/aletheia.env
-# Edit: ANTHROPIC_API_KEY, ALETHEIA_ROOT
-
-mkdir -p ~/.aletheia/credentials
-cp config/aletheia.example.json ~/.aletheia/aletheia.json
-# Edit: agent workspace paths, Signal number, bindings
+npx infrastructure/runtime/aletheia.mjs init
 ```
 
-See [CONFIGURATION.md](CONFIGURATION.md) for full reference.
+The wizard will prompt for:
+- Anthropic API key
+- Gateway port (default: 18789)
+- Auth mode (default: none for local use)
+- Aletheia root directory
+- First agent name and emoji
 
-## 3. Memory Infrastructure (optional)
+## 3. Start
+
+```bash
+npx infrastructure/runtime/aletheia.mjs gateway start
+```
+
+Or if installed globally:
+
+```bash
+aletheia gateway start
+```
+
+## 4. Open the UI
+
+```
+http://localhost:18789/ui
+```
+
+Your first agent will guide you through onboarding — it asks about your preferences, communication style, and what you need help with, then writes its own identity files.
+
+## 5. Verify
+
+```bash
+aletheia doctor                         # Validate config
+aletheia status                         # Check running gateway
+curl http://localhost:18789/health      # Health check
+```
+
+## Optional: Memory Infrastructure
+
+For long-term memory with vector search and knowledge graphs:
 
 ```bash
 cd infrastructure/memory && docker compose up -d    # Qdrant + Neo4j
 ```
 
-For the Mem0 sidecar, see [DEPLOYMENT.md](DEPLOYMENT.md#memory-sidecar).
+See [DEPLOYMENT.md](DEPLOYMENT.md#memory-sidecar) for the Mem0 sidecar setup.
 
-## 4. Create an Agent
+## Optional: Signal Integration
 
-```bash
-cp -r nous/_example nous/atlas
-# Edit: SOUL.md (identity), USER.md (operator), IDENTITY.md (name + emoji)
-```
-
-See [WORKSPACE_FILES.md](WORKSPACE_FILES.md) for file reference.
-
-## 5. Build Web UI (optional)
-
-```bash
-cd ui && npm install && npm run build && cd ..
-```
-
-## 6. Run
-
-```bash
-node infrastructure/runtime/aletheia.mjs gateway
-```
-
-## 7. Verify
-
-```bash
-curl http://localhost:18789/health       # Gateway
-open http://localhost:18789/ui           # Web UI
-aletheia send -a atlas -m "Hello"       # Test message
-```
-
-Signal: send a message to the registered number. Use `!help` for commands.
+Requires [signal-cli](https://github.com/AsamK/signal-cli) and a registered phone number. See [CONFIGURATION.md](CONFIGURATION.md#signal) for setup.
 
 ## Next Steps
 

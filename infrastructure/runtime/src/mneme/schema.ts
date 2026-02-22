@@ -398,4 +398,23 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id, status);
     `,
   },
+  {
+    version: 19,
+    sql: `
+      -- Rename Syn's agent ID from "main" (OpenClaw legacy) to "syn"
+      UPDATE sessions SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE cross_agent_messages SET source_nous_id = 'syn' WHERE source_nous_id = 'main';
+      UPDATE cross_agent_messages SET target_nous_id = 'syn' WHERE target_nous_id = 'main';
+      UPDATE routing_cache SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE interaction_signals SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE blackboard SET author_nous_id = 'syn' WHERE author_nous_id = 'main';
+      UPDATE threads SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE agent_notes SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE distillation_log SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE sub_agent_log SET parent_nous_id = 'syn' WHERE parent_nous_id = 'main';
+      UPDATE reflection_log SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE tool_stats SET nous_id = 'syn' WHERE nous_id = 'main';
+      UPDATE plans SET nous_id = 'syn' WHERE nous_id = 'main';
+    `,
+  },
 ];

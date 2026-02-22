@@ -1,15 +1,26 @@
 <script lang="ts">
   import Layout from "./components/layout/Layout.svelte";
-  import { initConnection } from "./stores/connection.svelte";
+  import { initConnection, disconnect } from "./stores/connection.svelte";
   import { loadAgents } from "./stores/agents.svelte";
   import { loadBranding } from "./stores/branding.svelte";
   import { getToken } from "./lib/api";
+  import { installMobileHandlers, removeMobileHandlers, isMobileDevice } from "./lib/mobile";
+
+  // Install mobile handlers once — idempotent, only activates on touch devices
+  if (isMobileDevice()) {
+    installMobileHandlers();
+  }
 
   $effect(() => {
     if (getToken()) {
       loadBranding();
       loadAgents();
       initConnection();
+
+      return () => {
+        disconnect();
+        removeMobileHandlers();
+      };
     }
   });
 

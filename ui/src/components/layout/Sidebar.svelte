@@ -58,12 +58,6 @@
     onAgentSelect?.();
   }
 
-  $effect(() => {
-    const agentId = getActiveAgentId();
-    if (agentId) {
-      loadSessions(agentId);
-    }
-  });
 </script>
 
 <aside class="sidebar" class:collapsed>

@@ -1,20 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getConnectionStatus } from "../../stores/connection.svelte";
-  import { getActiveAgent, getActiveAgentId } from "../../stores/agents.svelte";
+  import { getAgents, getActiveAgent, getActiveAgentId, setActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
   import { clearToken } from "../../lib/api";
   import { getMessages } from "../../stores/chat.svelte";
   import { formatCost, calculateMessageCost } from "../../lib/format";
+  import { getActiveTurns, getAgentStatus } from "../../lib/events.svelte";
+  import { getUnreadCount, markRead } from "../../stores/notifications.svelte";
+  import { loadSessions } from "../../stores/sessions.svelte";
+  import AgentPill from "../agents/AgentPill.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
-  let { onSetView, onToggleSidebar, activeView, sidebarCollapsed = false }: {
+  let { onSetView, activeView, onAgentSelect }: {
     onSetView: (view: ViewId) => void;
-    onToggleSidebar: () => void;
     activeView: ViewId;
-    sidebarCollapsed?: boolean;
+    onAgentSelect?: () => void;
   } = $props();
 
   let agent = $derived(getActiveAgent());
@@ -33,6 +36,14 @@
     }
     return total;
   });
+
+  function handleAgentClick(id: string) {
+    setActiveAgent(id);
+    loadSessions(id);
+    markRead(id);
+    if (activeView !== "chat") onSetView("chat");
+    onAgentSelect?.();
+  }
 
   function handleMobileNav(view: ViewId) {
     onSetView(view);
@@ -61,28 +72,21 @@
 
 <header class="topbar">
   <div class="left">
-    <button
-      class="sidebar-toggle"
-      class:open={!sidebarCollapsed}
-      onclick={onToggleSidebar}
-      aria-label="Toggle sidebar"
-      title={sidebarCollapsed ? "Show agents" : "Hide agents"}
-    >
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <rect x="1" y="2" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
-        <line x1="6.5" y1="2" x2="6.5" y2="16" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
-    </button>
     <h1 class="title desktop-only">{getBrandName()}</h1>
     <span class="status-dot" class:connected={getConnectionStatus() === "connected"} class:connecting={getConnectionStatus() === "connecting"}></span>
-    {#if agent}
-      <span class="active-agent">
-        {#if agent.emoji}
-          <span class="agent-emoji">{agent.emoji}</span>
-        {/if}
-        <span class="agent-name">{agent.name}</span>
-      </span>
-    {/if}
+    <div class="agent-bar" data-scrollable>
+      {#each getAgents() as a (a.id)}
+        <AgentPill
+          agent={a}
+          isActive={a.id === getActiveAgentId()}
+          unreadCount={getUnreadCount(a.id)}
+          activeTurns={getActiveTurns()[a.id] ?? 0}
+          statusLabel={getAgentStatus(a.id)}
+          onclick={() => handleAgentClick(a.id)}
+        />
+      {/each}
+      <button class="add-agent-pill" onclick={() => onSetView("settings")} title="Add agent">+</button>
+    </div>
     {#if sessionCost() > 0}
       <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
     {/if}
@@ -163,32 +167,51 @@
     border-bottom: 1px solid var(--border);
     background: var(--bg-elevated);
     flex-shrink: 0;
+    position: relative;
+    z-index: 100;
   }
   .left {
     display: flex;
     align-items: center;
     gap: 10px;
     min-width: 0;
+    flex: 1;
+    overflow: hidden;
   }
-  .sidebar-toggle {
+  .agent-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 1;
+    min-width: 0;
+    /* Mark as scrollable so mobile.ts doesn't block touch */
+  }
+  .agent-bar[data-scrollable] {
+    /* Marker attribute for mobile touchmove passthrough */
+  }
+  .agent-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .add-agent-pill {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     background: none;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-pill);
     color: var(--text-muted);
-    transition: color var(--transition-quick), background var(--transition-quick), border-color var(--transition-quick);
+    font-size: var(--text-lg);
     flex-shrink: 0;
+    transition: all var(--transition-quick);
   }
-  .sidebar-toggle:hover {
-    color: var(--text);
-    background: var(--surface);
-  }
-  .sidebar-toggle.open {
-    color: var(--text-secondary);
+  .add-agent-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .title {
     font-family: var(--font-display);
@@ -214,24 +237,6 @@
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-  }
-  .active-agent {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-  }
-  .agent-emoji {
-    font-size: var(--text-base);
-    flex-shrink: 0;
-  }
-  .agent-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .session-cost {
     font-size: var(--text-xs);
@@ -363,13 +368,14 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 12px 16px;
+      padding: 14px 16px;
       background: none;
       border: none;
       color: var(--text-secondary);
       font-size: var(--text-base);
       font-weight: 500;
       text-align: left;
+      min-height: 48px; /* 48px minimum touch target per Material Design */
       transition: background var(--transition-quick);
     }
     .mobile-menu-item:hover, .mobile-menu-item:active {

@@ -142,7 +142,7 @@ export class NousManager {
   }
 
   private trackTurnEnd(nousId: string): void {
-    this.activeTurns--;
+    this.activeTurns = Math.max(0, this.activeTurns - 1);
     const cur = this.activeTurnsByNous.get(nousId) ?? 1;
     if (cur <= 1) this.activeTurnsByNous.delete(nousId);
     else this.activeTurnsByNous.set(nousId, cur - 1);
@@ -261,7 +261,7 @@ export class NousManager {
 
   private maybeScheduleDistillation(sessionId: string, nousId: string, lockKey: string): void {
     const compaction = this.config.agents.defaults.compaction;
-    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = this.config.agents.defaults.contextTokens;
     const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
 
     const session = this.store.findSessionById(sessionId);
@@ -344,7 +344,7 @@ export class NousManager {
 
   async triggerDistillation(sessionId: string): Promise<void> {
     const compaction = this.config.agents.defaults.compaction;
-    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = this.config.agents.defaults.contextTokens;
     const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
     const distillModel = compaction.distillationModel;
 

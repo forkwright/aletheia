@@ -1,12 +1,9 @@
 // Pre-turn memory recall — surfaces relevant memories before LLM reasoning
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
+import { getSidecarUrl, getUserId } from "../koina/memory-client.js";
 
 const log = createLogger("recall");
-
-// Lazy reads — env vars may be set by taxis config after module import
-const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export interface RecallResult {
   block: { type: "text"; text: string } | null;

@@ -1,6 +1,6 @@
 # Spec: Modular Runtime Architecture
 
-**Status:** Approved  
+**Status:** Implemented (PR #21). Pipeline decomposition, composable stages, manager reduced from 1,446 to 378 lines.  
 **Author:** forkwright
 
 **Date:** 2026-02-18  

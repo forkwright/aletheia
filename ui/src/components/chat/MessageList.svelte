@@ -12,6 +12,7 @@
     thinkingText = "",
     activeToolCalls,
     isStreaming,
+    turnStartedAt = null,
     agentName,
     agentEmoji,
     onToolClick,
@@ -22,6 +23,7 @@
     thinkingText?: string;
     activeToolCalls: ToolCallState[];
     isStreaming: boolean;
+    turnStartedAt?: number | null;
     agentName?: string | null;
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
@@ -55,6 +57,29 @@
     if (isNearBottom) {
       requestAnimationFrame(scrollToBottom);
     }
+  });
+
+  // When the visual viewport resizes (keyboard open/close), keep scroll pinned
+  // to bottom if we were already near the bottom
+  import { onMount, onDestroy } from "svelte";
+
+  let viewportCleanup: (() => void) | null = null;
+
+  onMount(() => {
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const handleResize = () => {
+        if (isNearBottom) {
+          requestAnimationFrame(scrollToBottom);
+        }
+      };
+      vv.addEventListener("resize", handleResize);
+      viewportCleanup = () => vv.removeEventListener("resize", handleResize);
+    }
+  });
+
+  onDestroy(() => {
+    viewportCleanup?.();
   });
 </script>
 
@@ -102,7 +127,7 @@
               <Markdown content={streamingText} />
             </div>
           {:else if activeToolCalls.length === 0 && !thinkingText}
-            <StreamingIndicator />
+            <StreamingIndicator startedAt={turnStartedAt} />
           {/if}
         </div>
       </div>
@@ -123,6 +148,8 @@
     overflow-x: hidden;
     min-height: 0;
     position: relative;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain; /* Prevent pull-to-refresh in message list */
   }
   .empty-state {
     display: flex;

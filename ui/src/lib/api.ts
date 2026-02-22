@@ -99,7 +99,17 @@ export async function archiveSession(sessionId: string): Promise<void> {
 }
 
 export async function distillSession(sessionId: string): Promise<void> {
-  await fetchJson(`/api/sessions/${sessionId}/distill`, { method: "POST" });
+  await fetchJson(`/api/sessions/${sessionId}/distill`, {
+    method: "POST",
+    signal: AbortSignal.timeout(90_000),
+  });
+}
+
+export async function queueMessage(sessionId: string, text: string): Promise<void> {
+  await fetchJson(`/api/sessions/${sessionId}/queue`, {
+    method: "POST",
+    body: JSON.stringify({ text, sender: "webchat" }),
+  });
 }
 
 export async function fetchThreads(nousId?: string): Promise<Thread[]> {

@@ -27,6 +27,10 @@
     clearPendingApproval,
     getPendingPlan,
     clearPendingPlan,
+    addRemoteToolCall,
+    setTurnStartedAt,
+    getTurnStartedAt,
+    injectUserMessage,
   } from "../../stores/chat.svelte";
   import type { MediaItem } from "../../lib/types";
   import {
@@ -44,11 +48,12 @@
     refreshSessions,
     createNewSession,
     loadSessions,
+    isSessionsLoading,
   } from "../../stores/sessions.svelte";
-  import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
+  import { distillSession, fetchCommands, executeCommand, queueMessage } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent, getActiveTurns } from "../../lib/events";
-  import { onMount, onDestroy } from "svelte";
+  import { onGlobalEvent } from "../../lib/events.svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
 
@@ -69,15 +74,22 @@
       if (event === "init") {
         const initData = data as { activeTurns?: Record<string, number> };
         const activeTurns = initData.activeTurns ?? {};
+        // Set or clear remote streaming based on server's authoritative state
         if (activeTurns[agentId] && activeTurns[agentId] > 0) {
           setRemoteStreaming(agentId, true);
+        } else {
+          setRemoteStreaming(agentId, false);
         }
+        // Reload history on reconnect to catch any missed messages
+        const sid = getActiveSessionId();
+        if (sid && !hasLocalStream(agentId)) loadHistory(agentId, sid);
       }
 
       if (event === "turn:after") {
         const turnData = data as { nousId?: string; sessionId?: string; text?: string };
         if (turnData.nousId === agentId) {
           setRemoteStreaming(agentId, false);
+          setTurnStartedAt(agentId, null);
           if (!hasLocalStream(agentId)) {
             const sessionId = getActiveSessionId();
             if (sessionId) {
@@ -102,23 +114,31 @@
         const turnData = data as { nousId?: string };
         if (turnData.nousId === agentId) {
           setRemoteStreaming(agentId, true);
+          setTurnStartedAt(agentId, Date.now());
+        }
+      }
+
+      if (event === "tool:called") {
+        const toolData = data as { nousId?: string; tool?: string; durationMs?: number };
+        if (toolData.nousId === agentId && toolData.tool) {
+          addRemoteToolCall(agentId, toolData.tool, toolData.durationMs);
         }
       }
 
       if (event === "connection") {
         const { status } = data as { status: string };
-        if (status === "disconnected" && !pollInterval) {
-          pollInterval = setInterval(() => {
-            const id = getActiveAgentId();
-            const sid = getActiveSessionId();
-            if (id && sid) loadHistory(id, sid);
-          }, 30_000);
-        } else if (status === "connected" && pollInterval) {
-          clearInterval(pollInterval);
-          pollInterval = null;
-          const id = getActiveAgentId();
-          const sid = getActiveSessionId();
-          if (id && sid) loadHistory(id, sid);
+        if (status === "disconnected") {
+          // Clear remote streaming — we can't trust it without SSE
+          setRemoteStreaming(agentId, false);
+          if (!pollInterval) {
+            pollInterval = setInterval(() => {
+              const id = getActiveAgentId();
+              const sid = getActiveSessionId();
+              if (id && sid) loadHistory(id, sid);
+            }, 5_000); // Poll every 5s while disconnected
+          }
+        } else if (status === "connected") {
+          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         }
       }
     });
@@ -142,21 +162,23 @@
       } else {
         loadHistory(currentAgentId, sessionId);
       }
+    } else if (!sessionId && currentAgentId) {
+      // Agent active but no session — load sessions once (untrack prevents loop)
+      untrack(() => {
+        if (!isSessionsLoading()) {
+          prevSessionId = null;
+          loadSessions(currentAgentId);
+        }
+      });
     } else if (!sessionId && prevSessionId) {
       prevSessionId = null;
       if (currentAgentId) clearMessages(currentAgentId);
     }
   });
 
-  // Recover remote streaming state when agent becomes available
-  $effect(() => {
-    const agentId = getActiveAgentId();
-    if (!agentId) return;
-    const activeTurns = getActiveTurns();
-    if (activeTurns[agentId] && activeTurns[agentId] > 0) {
-      setRemoteStreaming(agentId, true);
-    }
-  });
+  // Remote streaming state is synced via the onGlobalEvent handler above
+  // (turn:before → setRemoteStreaming(true), turn:after → setRemoteStreaming(false))
+  // No $effect needed — that would re-fire on every SSE event due to $state object churn.
 
   // Slash command registry
   const slashCommands: Record<string, { description: string; handler: (args?: string) => void }> = {
@@ -274,6 +296,17 @@
     });
   }
 
+  function handleQueue(text: string) {
+    if (!currentAgentId) return;
+    injectUserMessage(currentAgentId, text);
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      queueMessage(sessionId, text).catch((err) => {
+        injectLocalMessage(currentAgentId!, `*Queue failed: ${err instanceof Error ? err.message : String(err)}*`);
+      });
+    }
+  }
+
   let agent = $derived(getActiveAgent());
   let currentAgentId = $derived(getActiveAgentId());
   let emoji = $derived(currentAgentId ? getAgentEmoji(currentAgentId) : null);
@@ -285,6 +318,8 @@
     const contextWindow = 200_000;
     return Math.min(100, Math.round((tokens / contextWindow) * 100));
   });
+
+  let turnStartedAt = $derived(currentAgentId ? getTurnStartedAt(currentAgentId) : null);
 
   // Pending tool approval
   let pendingApproval = $derived(currentAgentId ? getPendingApproval(currentAgentId) : null);
@@ -372,6 +407,7 @@
       thinkingText={currentAgentId ? getThinkingText(currentAgentId) : ""}
       activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
       isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
+      {turnStartedAt}
       agentName={agent?.name}
       agentEmoji={emoji}
       onToolClick={handleToolClick}
@@ -399,6 +435,7 @@
     isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
     onSend={handleSend}
     onAbort={handleAbort}
+    onQueue={handleQueue}
     contextPercent={contextPercent()}
     slashCommands={getSlashCommands()}
   />
@@ -410,11 +447,22 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    /* On mobile with keyboard open, the view must shrink to fit above the keyboard.
+       The --app-height variable (set by mobile.ts) handles the outer container,
+       and flex layout propagates the constraint inward. */
   }
   .chat-area {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  @media (max-width: 768px) {
+    .chat-view {
+      /* Ensure the flex column fills available space and doesn't overflow
+         when the virtual keyboard is open */
+      overflow: hidden;
+    }
   }
 </style>

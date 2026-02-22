@@ -13,6 +13,8 @@ NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", os.environ.get("NEO4J_PASS", "chiron-memory"))
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
+VOYAGE_MODEL = os.environ.get("VOYAGE_MODEL", "voyage-4-large")
+VOYAGE_DIMS = 1024  # voyage-4-large default; same as voyage-3-large
 
 FACT_EXTRACTION_PROMPT = """\
 You extract durable personal facts from conversations. Output JSON only.
@@ -76,12 +78,12 @@ def build_mem0_config(backend: dict = None) -> dict:
         embedder_config = {
             "provider": "openai",
             "config": {
-                "model": "voyage-3-large",
+                "model": VOYAGE_MODEL,
                 "api_key": VOYAGE_API_KEY,
                 "openai_base_url": "https://api.voyageai.com/v1",
             },
         }
-        embedding_dims = 1024
+        embedding_dims = VOYAGE_DIMS
     else:
         embedder_config = {
             "provider": "fastembed",

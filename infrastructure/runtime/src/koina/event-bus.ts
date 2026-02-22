@@ -8,6 +8,7 @@ export type EventName =
   | "turn:after"
   | "tool:called"
   | "tool:failed"
+  | "status:update"
   | "distill:before"
   | "distill:stage"
   | "distill:after"

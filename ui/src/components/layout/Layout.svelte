@@ -1,6 +1,5 @@
 <script lang="ts">
   import TopBar from "./TopBar.svelte";
-  import Sidebar from "./Sidebar.svelte";
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
   import SettingsView from "../settings/SettingsView.svelte";
@@ -9,12 +8,13 @@
   import { getToken, setToken } from "../../lib/api";
   import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler, logout } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
+  import { getActiveAgentId, isFirstRun, loadAgents } from "../../stores/agents.svelte";
+  import Welcome from "../onboarding/Welcome.svelte";
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "settings";
   type AuthState = "loading" | "login" | "token-setup" | "authenticated";
 
-  const SIDEBAR_KEY = "aletheia_sidebar_collapsed";
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
 
   let activeView = $state<ViewId>("chat");
@@ -53,7 +53,6 @@
     authState = "authenticated";
     location.reload();
   }
-  let sidebarCollapsed = $state(localStorage.getItem(SIDEBAR_KEY) === "true");
   let filePanelOpen = $state(false);
   let filePanelWidth = $state(Number(localStorage.getItem(FILE_PANEL_WIDTH_KEY)) || 520);
   let resizing = $state(false);
@@ -64,18 +63,6 @@
       setToken(tokenValue.trim());
       hasToken = true;
       location.reload();
-    }
-  }
-
-  function toggleSidebar() {
-    sidebarCollapsed = !sidebarCollapsed;
-    localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
-  }
-
-  function closeSidebar() {
-    if (window.innerWidth <= 768) {
-      sidebarCollapsed = true;
-      localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed));
     }
   }
 
@@ -140,17 +127,14 @@
     </div>
   </div>
 {:else}
+  {#if isFirstRun()}
+    <Welcome onComplete={() => { loadAgents(); }} />
+  {:else}
   <TopBar
     onSetView={handleSetView}
-    onToggleSidebar={toggleSidebar}
     activeView={filePanelOpen ? "files" : activeView}
-    {sidebarCollapsed}
   />
   <div class="main">
-    <Sidebar collapsed={sidebarCollapsed} onAgentSelect={closeSidebar} />
-    {#if !sidebarCollapsed}
-      <button class="sidebar-overlay" onclick={closeSidebar} aria-label="Close sidebar"></button>
-    {/if}
     <div class="content" class:resizing>
       {#if activeView === "metrics"}
         <MetricsView />
@@ -161,10 +145,12 @@
           <div style="padding:2rem;color:var(--text-secondary)">Failed to load graph view</div>
         {/await}
       {:else if activeView === "settings"}
-        <SettingsView />
+        <SettingsView onNavigate={handleSetView} />
       {:else}
         <div class="chat-pane">
-          <ChatView />
+          {#key getActiveAgentId()}
+            <ChatView />
+          {/key}
         </div>
         {#if filePanelOpen}
           <div
@@ -182,6 +168,7 @@
     </div>
   </div>
   <Toast />
+  {/if}
 {/if}
 
 <style>
@@ -191,6 +178,8 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
+    /* Critical for mobile keyboard: flex child must be able to shrink
+       when --app-height decreases */
   }
   .content {
     flex: 1;
@@ -228,9 +217,6 @@
   }
   .resize-handle:hover, .resizing .resize-handle {
     background: var(--accent);
-  }
-  .sidebar-overlay {
-    display: none;
   }
   .token-setup {
     display: flex;
@@ -290,16 +276,6 @@
   }
 
   @media (max-width: 768px) {
-    .sidebar-overlay {
-      display: block;
-      position: fixed;
-      inset: 0;
-      top: calc(var(--topbar-height) + var(--safe-top));
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 99;
-      border: none;
-      cursor: default;
-    }
     .token-card {
       margin: 0 16px;
     }

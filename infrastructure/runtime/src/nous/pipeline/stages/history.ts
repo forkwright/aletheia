@@ -13,6 +13,9 @@ export async function prepareHistory(
   const { nousId, sessionId, msg, nous } = state;
   const historyBudget = (state as TurnState & { _historyBudget?: number })._historyBudget ?? 0;
 
+  const repaired = services.store.repairOrphanedToolUse(sessionId);
+  if (repaired > 0) log.info(`Persisted ${repaired} orphan repair(s) for session ${sessionId}`);
+
   const history = services.store.getHistoryWithBudget(sessionId, historyBudget);
 
   // Surface unsurfaced cross-agent messages

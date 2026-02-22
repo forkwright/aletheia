@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { getToken, setToken, clearToken, fetchMetrics, fetchAgents } from "../../lib/api";
-  import { getBrandName } from "../../stores/branding.svelte";
-  import { getAgents } from "../../stores/agents.svelte";
+  import { getToken, setToken, clearToken, createAgent } from "../../lib/api";
+  import { getAgents, loadAgents, setActiveAgent } from "../../stores/agents.svelte";
+  import { loadSessions } from "../../stores/sessions.svelte";
   import { onMount } from "svelte";
-  import type { Agent, MetricsData } from "../../lib/types";
-  import CostDashboard from "../CostDashboard.svelte";
+  import type { Agent } from "../../lib/types";
   import SessionManager from "./SessionManager.svelte";
   import { fetchAuthMode, getAccessToken, logout as sessionLogout } from "../../lib/auth";
+
+  let { onNavigate }: { onNavigate?: (view: string) => void } = $props();
 
   const THEME_KEY = "aletheia_theme";
   const FONT_SIZE_KEY = "aletheia_font_size";
 
   let tokenInput = $state(getToken() ?? "");
   let agents = $state<Agent[]>([]);
-  let metrics = $state<MetricsData | null>(null);
   let isSessionAuth = $state(false);
   let theme = $state<"dark" | "light">(
     (localStorage.getItem(THEME_KEY) as "dark" | "light") ?? "dark",
@@ -22,14 +22,49 @@
     parseInt(localStorage.getItem(FONT_SIZE_KEY) ?? "14", 10),
   );
 
+  let showCreateForm = $state(false);
+  let formName = $state("");
+  let formId = $state("");
+  let formEmoji = $state("");
+  let formError = $state("");
+  let creating = $state(false);
+
+  function deriveId(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+  }
+
+  function handleNameInput() {
+    formId = deriveId(formName);
+  }
+
+  async function handleCreate() {
+    if (!formName.trim() || !formId.trim()) return;
+    creating = true;
+    formError = "";
+    try {
+      await createAgent(formId, formName.trim(), formEmoji.trim() || undefined);
+      await loadAgents();
+      setActiveAgent(formId);
+      loadSessions(formId);
+      showCreateForm = false;
+      formName = "";
+      formId = "";
+      formEmoji = "";
+      onNavigate?.("chat");
+    } catch (err) {
+      formError = err instanceof Error ? err.message : String(err);
+    } finally {
+      creating = false;
+    }
+  }
+
   onMount(async () => {
     agents = getAgents();
     try {
-      const [m, mode] = await Promise.all([fetchMetrics(), fetchAuthMode()]);
-      metrics = m;
+      const mode = await fetchAuthMode();
       isSessionAuth = mode.sessionAuth;
     } catch {
-      // metrics unavailable
+      // auth mode unavailable
     }
   });
 
@@ -59,36 +94,11 @@
     localStorage.setItem(FONT_SIZE_KEY, String(size));
     document.documentElement.style.fontSize = `${size}px`;
   }
-
-  function formatUptime(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  }
 </script>
 
 <div class="settings-view">
   <div class="settings-container">
     <h2 class="settings-heading">Settings</h2>
-
-    <section class="settings-section">
-      <h3 class="section-title">General</h3>
-      <div class="setting-row">
-        <span class="setting-label">Instance</span>
-        <span class="setting-value">{getBrandName()}</span>
-      </div>
-      {#if metrics}
-        <div class="setting-row">
-          <span class="setting-label">Uptime</span>
-          <span class="setting-value">{formatUptime(metrics.uptime)}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Status</span>
-          <span class="setting-value status-ok">{metrics.status}</span>
-        </div>
-      {/if}
-    </section>
 
     <section class="settings-section">
       <h3 class="section-title">Agents</h3>
@@ -105,6 +115,45 @@
         <div class="setting-row">
           <span class="setting-label muted">No agents configured</span>
         </div>
+      {/if}
+      {#if showCreateForm}
+        <div class="create-form">
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="Agent name"
+            bind:value={formName}
+            oninput={handleNameInput}
+            disabled={creating}
+          />
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="ID (auto-derived)"
+            bind:value={formId}
+            disabled={creating}
+          />
+          <input
+            type="text"
+            class="settings-input"
+            placeholder="Emoji (optional)"
+            bind:value={formEmoji}
+            disabled={creating}
+          />
+          {#if formError}
+            <div class="form-error">{formError}</div>
+          {/if}
+          <div class="form-actions">
+            <button class="btn-primary" onclick={handleCreate} disabled={creating || !formName.trim()}>
+              {creating ? "Creating..." : "Create"}
+            </button>
+            <button class="btn-cancel" onclick={() => { showCreateForm = false; formError = ""; }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      {:else}
+        <button class="btn-add" onclick={() => { showCreateForm = true; }}>+ New Agent</button>
       {/if}
     </section>
 
@@ -161,45 +210,7 @@
       {/if}
     </section>
 
-    {#if metrics}
-      <section class="settings-section">
-        <h3 class="section-title">Usage</h3>
-        <div class="setting-row">
-          <span class="setting-label">Total turns</span>
-          <span class="setting-value mono">{metrics.usage.turnCount.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Input tokens</span>
-          <span class="setting-value mono">{metrics.usage.totalInputTokens.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Output tokens</span>
-          <span class="setting-value mono">{metrics.usage.totalOutputTokens.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Cache hit rate</span>
-          <span class="setting-value mono">{metrics.usage.cacheHitRate}%</span>
-        </div>
-      </section>
 
-      <section class="settings-section cost-section">
-        <CostDashboard />
-      </section>
-
-      {#if metrics.services.length > 0}
-        <section class="settings-section">
-          <h3 class="section-title">Services</h3>
-          {#each metrics.services as svc (svc.name)}
-            <div class="setting-row">
-              <span class="setting-label">{svc.name}</span>
-              <span class="setting-value" class:status-ok={svc.healthy} class:status-err={!svc.healthy}>
-                {svc.healthy ? "healthy" : svc.message ?? "down"}
-              </span>
-            </div>
-          {/each}
-        </section>
-      {/if}
-    {/if}
   </div>
 </div>
 
@@ -262,12 +273,6 @@
   .setting-value.mono {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-  }
-  .status-ok {
-    color: var(--status-success);
-  }
-  .status-err {
-    color: var(--status-error);
   }
   .toggle-group {
     display: flex;
@@ -372,9 +377,46 @@
   .btn-danger:hover {
     background: rgba(248, 81, 73, 0.1);
   }
-  .cost-section :global(.cost-dashboard) {
-    padding: 0;
-    height: auto;
-    overflow: visible;
+  .btn-add {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    transition: all var(--transition-quick);
+  }
+  .btn-add:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .create-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .form-error {
+    color: var(--status-error);
+    font-size: var(--text-xs);
+  }
+  .form-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-cancel {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+  .btn-cancel:hover {
+    color: var(--text);
   }
 </style>

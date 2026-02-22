@@ -13,9 +13,17 @@ interface AgentChatState {
   abortController: AbortController | null;
   pendingApproval: PendingApproval | null;
   pendingPlan: PlanProposal | null;
+  turnStartedAt: number | null;
+  // Debounce buffers — accumulate deltas, flush to reactive state on timer
+  _textBuffer: string;
+  _thinkingBuffer: string;
+  _flushTimer: ReturnType<typeof setTimeout> | null;
 }
 
 let states = $state<Record<string, AgentChatState>>({});
+let historyGeneration: Record<string, number> = {};
+
+const STREAM_DEBOUNCE_MS = 100;
 
 const EMPTY: AgentChatState = {
   messages: [],
@@ -28,6 +36,10 @@ const EMPTY: AgentChatState = {
   abortController: null,
   pendingApproval: null,
   pendingPlan: null,
+  turnStartedAt: null,
+  _textBuffer: "",
+  _thinkingBuffer: "",
+  _flushTimer: null,
 };
 
 // Read-only access — returns default for unknown agents, never mutates during render
@@ -49,6 +61,10 @@ function writeState(agentId: string): AgentChatState {
       abortController: null,
       pendingApproval: null,
       pendingPlan: null,
+      turnStartedAt: null,
+      _textBuffer: "",
+      _thinkingBuffer: "",
+      _flushTimer: null,
     };
   }
   return states[agentId]!;
@@ -107,13 +123,48 @@ export function clearError(agentId: string): void {
   writeState(agentId).error = null;
 }
 
+export function getTurnStartedAt(agentId: string): number | null {
+  return readState(agentId).turnStartedAt;
+}
+
+export function setTurnStartedAt(agentId: string, ts: number | null): void {
+  writeState(agentId).turnStartedAt = ts;
+}
+
+export function addRemoteToolCall(agentId: string, toolName: string, durationMs?: number): void {
+  const state = writeState(agentId);
+  const tc: ToolCallState = {
+    id: `remote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: toolName,
+    status: "complete",
+    durationMs,
+  };
+  state.activeToolCalls = [...state.activeToolCalls, tc];
+}
+
+export function injectUserMessage(agentId: string, content: string): void {
+  const state = writeState(agentId);
+  const msg: ChatMessage = {
+    id: `user-${Date.now()}`,
+    role: "user",
+    content,
+    timestamp: new Date().toISOString(),
+  };
+  state.messages = [...state.messages, msg];
+}
+
 export async function loadHistory(agentId: string, sessionId: string): Promise<void> {
+  const gen = (historyGeneration[agentId] ?? 0) + 1;
+  historyGeneration[agentId] = gen;
   const state = writeState(agentId);
   try {
     const history = await fetchHistory(sessionId);
+    if (historyGeneration[agentId] !== gen) return; // Stale — a newer load superseded us
     state.messages = historyToMessages(history);
   } catch (err) {
-    state.error = err instanceof Error ? err.message : String(err);
+    if (historyGeneration[agentId] === gen) {
+      state.error = err instanceof Error ? err.message : String(err);
+    }
   }
 }
 
@@ -121,9 +172,14 @@ export function clearMessages(agentId: string): void {
   const state = writeState(agentId);
   state.messages = [];
   state.streamingText = "";
+  state.thinkingText = "";
+  state._textBuffer = "";
+  state._thinkingBuffer = "";
+  if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
   state.activeToolCalls = [];
   state.error = null;
   state.pendingApproval = null;
+  state.turnStartedAt = null;
 }
 
 /** Inject a local-only message (not sent to any agent) */
@@ -136,6 +192,39 @@ export function injectLocalMessage(agentId: string, content: string): void {
     timestamp: new Date().toISOString(),
   };
   state.messages = [...state.messages, msg];
+}
+
+/** Flush buffered text/thinking deltas to reactive state immediately */
+function flushStreamBuffer(state: AgentChatState): void {
+  if (state._flushTimer) {
+    clearTimeout(state._flushTimer);
+    state._flushTimer = null;
+  }
+  if (state._textBuffer) {
+    state.streamingText += state._textBuffer;
+    state._textBuffer = "";
+  }
+  if (state._thinkingBuffer) {
+    state.thinkingText += state._thinkingBuffer;
+    state._thinkingBuffer = "";
+  }
+}
+
+/** Schedule a debounced flush — accumulates deltas, renders at most every STREAM_DEBOUNCE_MS */
+function scheduleFlush(state: AgentChatState): void {
+  if (!state._flushTimer) {
+    state._flushTimer = setTimeout(() => {
+      state._flushTimer = null;
+      if (state._textBuffer) {
+        state.streamingText += state._textBuffer;
+        state._textBuffer = "";
+      }
+      if (state._thinkingBuffer) {
+        state.thinkingText += state._thinkingBuffer;
+        state._thinkingBuffer = "";
+      }
+    }, STREAM_DEBOUNCE_MS);
+  }
 }
 
 export async function sendMessage(
@@ -159,10 +248,13 @@ export async function sendMessage(
   };
   state.messages = [...state.messages, userMsg];
 
-  // Start streaming
+  // Start streaming — clear buffers and any pending flush
   state.isStreaming = true;
   state.streamingText = "";
   state.thinkingText = "";
+  state._textBuffer = "";
+  state._thinkingBuffer = "";
+  if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
   state.activeToolCalls = [];
   state.abortController = new AbortController();
 
@@ -174,11 +266,13 @@ export async function sendMessage(
           break;
 
         case "thinking_delta":
-          state.thinkingText += event.text;
+          state._thinkingBuffer += event.text;
+          scheduleFlush(state);
           break;
 
         case "text_delta":
-          state.streamingText += event.text;
+          state._textBuffer += event.text;
+          scheduleFlush(state);
           break;
 
         case "tool_start":
@@ -226,6 +320,7 @@ export async function sendMessage(
           break;
 
         case "turn_complete": {
+          flushStreamBuffer(state);
           const assistantMsg: ChatMessage = {
             id: `assistant-${Date.now()}`,
             role: "assistant",
@@ -244,6 +339,7 @@ export async function sendMessage(
         }
 
         case "turn_abort": {
+          flushStreamBuffer(state);
           state.remoteStreaming = false;
           if (state.streamingText) {
             const partial: ChatMessage = {
@@ -270,6 +366,8 @@ export async function sendMessage(
       state.error = err instanceof Error ? err.message : String(err);
     }
   } finally {
+    // Flush any remaining buffered text before saving
+    flushStreamBuffer(state);
     // If we still have streaming text (e.g. aborted mid-stream), save it
     if (state.streamingText) {
       const partial: ChatMessage = {
@@ -286,9 +384,13 @@ export async function sendMessage(
     state.remoteStreaming = false;
     state.streamingText = "";
     state.thinkingText = "";
+    state._textBuffer = "";
+    state._thinkingBuffer = "";
+    if (state._flushTimer) { clearTimeout(state._flushTimer); state._flushTimer = null; }
     state.activeToolCalls = [];
     state.abortController = null;
     state.pendingApproval = null;
+    state.turnStartedAt = null;
   }
   return resolvedSessionId;
 }
@@ -307,7 +409,7 @@ export function abortStream(agentId: string): void {
 
 function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
-  let currentToolCalls: ToolCallState[] = [];
+  let pendingToolCalls: ToolCallState[] = [];
 
   for (const msg of history) {
     if (msg.role === "user") {
@@ -318,7 +420,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         timestamp: msg.createdAt,
       });
     } else if (msg.role === "assistant") {
-      // Check if it's a JSON content block array (text + tool_use + thinking blocks)
+      // Try parsing as JSON content block array (text + tool_use + thinking blocks)
       try {
         const parsed = JSON.parse(msg.content);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
@@ -330,17 +432,20 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
             ? thinkingBlocks.map((b: { thinking: string }) => b.thinking).join("\n\n")
             : undefined;
 
+          // Accumulate tool calls (append, don't overwrite)
           if (toolBlocks.length > 0) {
-            currentToolCalls = toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
-              id: b.id,
-              name: b.name,
-              status: "complete" as const,
-              input: b.input,
-            }));
+            pendingToolCalls.push(
+              ...toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
+                id: b.id,
+                name: b.name,
+                status: "complete" as const,
+                input: b.input,
+              })),
+            );
           }
 
-          // If there's text alongside tool_use, emit a message with the text
-          if (textBlocks.length > 0 && toolBlocks.length > 0) {
+          // If there's text, emit a message with text + all accumulated tool calls
+          if (textBlocks.length > 0) {
             const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
             if (text) {
               result.push({
@@ -348,33 +453,16 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
+                toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
                 ...(thinkingText ? { thinking: thinkingText } : {}),
               });
+              pendingToolCalls = [];
+              continue;
             }
           }
 
-          // If only tool_use blocks (no text), skip — tool calls attach to next assistant message
-          if (toolBlocks.length > 0) continue;
-
-          // Text blocks (possibly with thinking, no tool_use)
-          if (textBlocks.length > 0) {
-            const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
-            result.push({
-              id: msg.id,
-              role: "assistant",
-              content: text,
-              timestamp: msg.createdAt,
-              toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
-              ...(thinkingText ? { thinking: thinkingText } : {}),
-            });
-            currentToolCalls = [];
-            continue;
-          }
-
-          // Thinking-only blocks (no text, no tool_use) — unlikely but handle gracefully
-          if (thinkingBlocks.length > 0 && textBlocks.length === 0 && toolBlocks.length === 0) {
-            continue;
-          }
+          // No text — tool calls or thinking only, skip (tools attach to next text message)
+          continue;
         }
       } catch {
         // Not JSON, treat as plain text
@@ -385,11 +473,11 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         role: "assistant",
         content: msg.content,
         timestamp: msg.createdAt,
-        toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
+        toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
       });
-      currentToolCalls = [];
+      pendingToolCalls = [];
     } else if (msg.role === "tool_result") {
-      const tc = currentToolCalls.find((t) => t.id === msg.toolCallId);
+      const tc = pendingToolCalls.find((t) => t.id === msg.toolCallId);
       if (tc) {
         tc.result = msg.content.slice(0, 2000);
       }

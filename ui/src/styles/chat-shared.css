@@ -9,11 +9,11 @@
 }
 
 .chat-msg:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--chat-msg-hover, rgba(255, 255, 255, 0.02));
 }
 
 .chat-msg.assistant {
-  background: rgba(255, 255, 255, 0.01);
+  background: var(--chat-msg-assistant, rgba(255, 255, 255, 0.01));
 }
 
 .chat-msg.streaming {

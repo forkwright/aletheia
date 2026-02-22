@@ -1,11 +1,9 @@
 // Memory retraction tool — agents can request fact removal
 import { createLogger } from "../../koina/logger.js";
+import { getSidecarUrl, getUserId } from "../../koina/memory-client.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.fact-retract");
-// Lazy reads — env vars may be set by taxis config after module import
-const getSidecarUrl = () => process.env["ALETHEIA_MEMORY_URL"] ?? "http://127.0.0.1:8230";
-const getUserId = () => process.env["ALETHEIA_MEMORY_USER"] ?? "default";
 
 export const factRetractTool: ToolHandler = {
   definition: {

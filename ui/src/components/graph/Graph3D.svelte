@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import * as THREE from "three";
   import type { GraphData as AppGraphData } from "../../lib/types";
+  import { communityColor } from "../../lib/graph-colors";
 
   let {
     graphData,
@@ -18,18 +19,6 @@
     onNodeClick?: (nodeId: string) => void;
     onBackgroundClick?: () => void;
   } = $props();
-
-  const PALETTE = [
-    "#7a2838", "#4a3860", "#5C8E63", "#9A7B4F", "#a06e3a",
-    "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
-    "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
-    "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
-  ];
-
-  function communityColor(community: number): string {
-    if (community < 0) return "#302c28";
-    return PALETTE[community % PALETTE.length]!;
-  }
 
   function pagerankSize(pr: number): number {
     const clamped = Math.max(pr, 0.0001);
