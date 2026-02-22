@@ -679,8 +679,10 @@ export function createGateway(
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               log.error(`Stream error: ${msg}`);
-              const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
-              controller.enqueue(encoder.encode(payload));
+              try {
+                const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
+                controller.enqueue(encoder.encode(payload));
+              } catch { /* client already disconnected */ }
             } finally {
               controller.close();
             }

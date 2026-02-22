@@ -142,7 +142,7 @@ export class NousManager {
   }
 
   private trackTurnEnd(nousId: string): void {
-    this.activeTurns--;
+    this.activeTurns = Math.max(0, this.activeTurns - 1);
     const cur = this.activeTurnsByNous.get(nousId) ?? 1;
     if (cur <= 1) this.activeTurnsByNous.delete(nousId);
     else this.activeTurnsByNous.set(nousId, cur - 1);

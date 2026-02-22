@@ -1,6 +1,6 @@
 <script lang="ts">
   import Layout from "./components/layout/Layout.svelte";
-  import { initConnection } from "./stores/connection.svelte";
+  import { initConnection, disconnect } from "./stores/connection.svelte";
   import { loadAgents } from "./stores/agents.svelte";
   import { loadBranding } from "./stores/branding.svelte";
   import { getToken } from "./lib/api";
@@ -10,6 +10,7 @@
       loadBranding();
       loadAgents();
       initConnection();
+      return () => disconnect();
     }
   });
 
