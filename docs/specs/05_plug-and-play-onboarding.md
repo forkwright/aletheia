@@ -1,6 +1,6 @@
 # Spec: Plug-and-Play Onboarding
 
-**Status:** Draft (rewritten 2026-02-20)
+**Status:** In Progress — Phases 1-4 done (PR #131)
 **Author:** Syn
 **Date:** 2026-02-19, revised 2026-02-20
 

@@ -439,6 +439,66 @@ program
     }
   });
 
+// --- Agent Management ---
+
+const agentCmd = program.command("agent").description("Agent management");
+
+agentCmd
+  .command("create")
+  .description("Scaffold a new agent workspace with onboarding")
+  .option("--id <id>", "Agent ID (lowercase, alphanumeric, hyphens)")
+  .option("--name <name>", "Agent display name")
+  .option("--emoji <emoji>", "Agent emoji")
+  .action(async (opts: { id?: string; name?: string; emoji?: string }) => {
+    const { paths } = await import("./taxis/paths.js");
+    const { scaffoldAgent, validateAgentId } = await import("./taxis/scaffold.js");
+    const { join } = await import("node:path");
+
+    let id = opts.id;
+    let name = opts.name;
+
+    if (!id || !name) {
+      const readline = await import("node:readline");
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> =>
+        new Promise((resolve) => rl.question(q, resolve));
+
+      if (!id) {
+        id = (await ask("Agent ID (e.g. atlas): ")).trim();
+        const check = validateAgentId(id);
+        if (!check.valid) {
+          console.error(`Invalid ID: ${check.reason}`);
+          rl.close();
+          process.exit(1);
+        }
+      }
+      if (!name) {
+        name = (await ask("Display name: ")).trim();
+        if (!name) { name = id.charAt(0).toUpperCase() + id.slice(1); }
+      }
+      rl.close();
+    }
+
+    try {
+      const scaffoldOpts = {
+        id,
+        name,
+        nousDir: paths.nous,
+        configPath: paths.configFile(),
+        templateDir: join(paths.nous, "_example"),
+        ...(opts.emoji ? { emoji: opts.emoji } : {}),
+      };
+      const result = scaffoldAgent(scaffoldOpts);
+      console.log(`Created agent "${name}" (${id})`);
+      console.log(`  Workspace: ${result.workspace}`);
+      console.log(`  Files: ${result.filesCreated.join(", ")}`);
+      console.log(`\nStart onboarding: open the web UI and select ${name}.`);
+    } catch (err) {
+      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  });
+
 // --- Plugins ---
 
 const pluginsCmd = program.command("plugins").description("Plugin management");

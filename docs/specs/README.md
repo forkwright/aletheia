@@ -8,11 +8,16 @@ that evolve with the system.
 
 ## Active Specs
 
+### In Progress
+
+| # | Spec | Status | Scope | Notes |
+|---|------|--------|-------|-------|
+| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | 4/6 phases | Agent scaffolding, CLI, onboarding | Needed for public adoption |
+
 ### Draft
 
 | # | Spec | Status | Scope | Notes |
 |---|------|--------|-------|-------|
-| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | Draft | Agent scaffolding, CLI, wizard | Needed for public adoption |
 | 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI | Nice-to-have |
 | 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | Semantic space analysis, concept drift | Research-grade |
 | 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine | A2A premature per Cody |
@@ -27,8 +32,7 @@ that evolve with the system.
 ### Priority Order
 
 **Draft:**
-1. **5** Onboarding — needed for public adoption
-2. **25** Integrated IDE
+1. **25** Integrated IDE
 3. **27** Embedding Space Intelligence
 4. **22** Interop & Workflows
 5. **24** Aletheia Linux — long-term
@@ -64,7 +68,7 @@ that evolve with the system.
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
 
-**Score: 26 archived, 0 in progress, 5 draft/skeleton.**
+**Score: 26 archived, 1 in progress, 4 draft/skeleton.**
 
 ## Conventions
 
