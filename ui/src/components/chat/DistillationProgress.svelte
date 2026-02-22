@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onGlobalEvent } from "../../lib/events";
+  import { onGlobalEvent } from "../../lib/events.svelte";
   import { onMount, onDestroy } from "svelte";
   import Spinner from "../shared/Spinner.svelte";
 

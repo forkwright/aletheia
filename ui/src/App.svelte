@@ -4,13 +4,31 @@
   import { loadAgents } from "./stores/agents.svelte";
   import { loadBranding } from "./stores/branding.svelte";
   import { getToken } from "./lib/api";
+  import { onGlobalEvent } from "./lib/events.svelte";
+  import { loadHistory, hasLocalStream } from "./stores/chat.svelte";
+
+  let unsubTurnAfter: (() => void) | null = null;
 
   $effect(() => {
     if (getToken()) {
       loadBranding();
       loadAgents();
       initConnection();
-      return () => disconnect();
+
+      // Preload history for any agent that completes a remote turn
+      unsubTurnAfter = onGlobalEvent((event, data) => {
+        if (event === "turn:after") {
+          const { nousId, sessionId } = data as { nousId?: string; sessionId?: string };
+          if (nousId && sessionId && !hasLocalStream(nousId)) {
+            loadHistory(nousId, sessionId);
+          }
+        }
+      });
+
+      return () => {
+        disconnect();
+        unsubTurnAfter?.();
+      };
     }
   });
 

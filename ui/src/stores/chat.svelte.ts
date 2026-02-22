@@ -307,7 +307,7 @@ export function abortStream(agentId: string): void {
 
 function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
-  let currentToolCalls: ToolCallState[] = [];
+  let pendingToolCalls: ToolCallState[] = [];
 
   for (const msg of history) {
     if (msg.role === "user") {
@@ -318,7 +318,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         timestamp: msg.createdAt,
       });
     } else if (msg.role === "assistant") {
-      // Check if it's a JSON content block array (text + tool_use + thinking blocks)
+      // Try parsing as JSON content block array (text + tool_use + thinking blocks)
       try {
         const parsed = JSON.parse(msg.content);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.type) {
@@ -330,17 +330,20 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
             ? thinkingBlocks.map((b: { thinking: string }) => b.thinking).join("\n\n")
             : undefined;
 
+          // Accumulate tool calls (append, don't overwrite)
           if (toolBlocks.length > 0) {
-            currentToolCalls = toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
-              id: b.id,
-              name: b.name,
-              status: "complete" as const,
-              input: b.input,
-            }));
+            pendingToolCalls.push(
+              ...toolBlocks.map((b: { id: string; name: string; input?: Record<string, unknown> }) => ({
+                id: b.id,
+                name: b.name,
+                status: "complete" as const,
+                input: b.input,
+              })),
+            );
           }
 
-          // If there's text alongside tool_use, emit a message with the text
-          if (textBlocks.length > 0 && toolBlocks.length > 0) {
+          // If there's text, emit a message with text + all accumulated tool calls
+          if (textBlocks.length > 0) {
             const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
             if (text) {
               result.push({
@@ -348,33 +351,16 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
+                toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
                 ...(thinkingText ? { thinking: thinkingText } : {}),
               });
+              pendingToolCalls = [];
+              continue;
             }
           }
 
-          // If only tool_use blocks (no text), skip — tool calls attach to next assistant message
-          if (toolBlocks.length > 0) continue;
-
-          // Text blocks (possibly with thinking, no tool_use)
-          if (textBlocks.length > 0) {
-            const text = textBlocks.map((b: { text: string }) => b.text).join("\n").trim();
-            result.push({
-              id: msg.id,
-              role: "assistant",
-              content: text,
-              timestamp: msg.createdAt,
-              toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
-              ...(thinkingText ? { thinking: thinkingText } : {}),
-            });
-            currentToolCalls = [];
-            continue;
-          }
-
-          // Thinking-only blocks (no text, no tool_use) — unlikely but handle gracefully
-          if (thinkingBlocks.length > 0 && textBlocks.length === 0 && toolBlocks.length === 0) {
-            continue;
-          }
+          // No text — tool calls or thinking only, skip (tools attach to next text message)
+          continue;
         }
       } catch {
         // Not JSON, treat as plain text
@@ -385,11 +371,11 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         role: "assistant",
         content: msg.content,
         timestamp: msg.createdAt,
-        toolCalls: currentToolCalls.length > 0 ? [...currentToolCalls] : undefined,
+        toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
       });
-      currentToolCalls = [];
+      pendingToolCalls = [];
     } else if (msg.role === "tool_result") {
-      const tc = currentToolCalls.find((t) => t.id === msg.toolCallId);
+      const tc = pendingToolCalls.find((t) => t.id === msg.toolCallId);
       if (tc) {
         tc.result = msg.content.slice(0, 2000);
       }

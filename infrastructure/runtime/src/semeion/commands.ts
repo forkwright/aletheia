@@ -73,7 +73,7 @@ export function createDefaultRegistry(): CommandRegistry {
   function findSession(ctx: CommandContext, nousId?: string): ReturnType<SessionStore["findSessionById"]> {
     if (ctx.sessionId) return ctx.store.findSessionById(ctx.sessionId);
     const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-    return ctx.store.findSession(nousId ?? ctx.config.agents.list[0]?.id ?? "main", sessionKey);
+    return ctx.store.findSession(nousId ?? ctx.config.agents.list[0]?.id ?? "syn", sessionKey);
   }
 
   function findSessionsByCtx(ctx: CommandContext): ReturnType<SessionStore["findSessionsByKey"]> {

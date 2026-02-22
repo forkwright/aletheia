@@ -1,6 +1,6 @@
 # Spec: Authentication & Security Hardening
 
-**Status:** Draft  
+**Status:** Implemented (PR #26). JWT, RBAC, sessions, audit, TLS. Integration continued in specs #03 and #20.  
 **Author:** forkwright
 **Date:** 2026-02-19  
 

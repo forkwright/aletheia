@@ -9,6 +9,7 @@
   import { getToken, setToken } from "../../lib/api";
   import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler, logout } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
+  import { getActiveAgentId } from "../../stores/agents.svelte";
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "settings";
@@ -164,7 +165,9 @@
         <SettingsView />
       {:else}
         <div class="chat-pane">
-          <ChatView />
+          {#key getActiveAgentId()}
+            <ChatView />
+          {/key}
         </div>
         {#if filePanelOpen}
           <div
