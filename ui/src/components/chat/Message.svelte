@@ -233,11 +233,12 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 1px 6px;
-    opacity: 0.7;
     cursor: default;
+    transition: color 0.15s, border-color 0.15s;
   }
   .cost-badge:hover {
-    opacity: 1;
+    color: var(--text-secondary);
+    border-color: var(--text-muted);
   }
 
   /* Media in messages */

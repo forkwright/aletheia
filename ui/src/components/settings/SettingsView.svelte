@@ -128,9 +128,9 @@
       <div class="setting-row">
         <span class="setting-label">Font size</span>
         <div class="font-size-control">
-          <button class="size-btn" onclick={() => setFontSize(Math.max(11, fontSize - 1))}>−</button>
+          <button class="size-btn" onclick={() => setFontSize(Math.max(11, fontSize - 1))} aria-label="Decrease font size">−</button>
           <span class="size-value">{fontSize}px</span>
-          <button class="size-btn" onclick={() => setFontSize(Math.min(20, fontSize + 1))}>+</button>
+          <button class="size-btn" onclick={() => setFontSize(Math.min(20, fontSize + 1))} aria-label="Increase font size">+</button>
         </div>
       </div>
     </section>
@@ -242,7 +242,7 @@
     font-size: 13px;
   }
   .setting-row + .setting-row {
-    border-top: 1px solid rgba(48, 54, 61, 0.4);
+    border-top: 1px solid var(--border);
   }
   .setting-label {
     color: var(--text);

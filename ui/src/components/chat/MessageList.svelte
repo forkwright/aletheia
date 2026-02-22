@@ -110,7 +110,7 @@
   {/if}
 
   {#if !isNearBottom && isStreaming}
-    <button class="scroll-btn" onclick={scrollToBottom}>
+    <button class="scroll-btn" onclick={scrollToBottom} aria-label="Scroll to newest messages">
       New messages below
     </button>
   {/if}
