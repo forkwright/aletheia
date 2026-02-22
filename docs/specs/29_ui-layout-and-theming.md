@@ -61,7 +61,7 @@ The pill status text derives from existing data:
 - Default → "Idle" (muted dot)
 - Distilling → "Distilling" (from `distill:before`/`distill:after` SSE events)
 
-Future: the runtime could emit richer status (current tool name, "Completing Plan", "Researching") via a new SSE event type `status:update`. This is not required for Phase 1 — the above covers the useful states.
+The runtime will emit a `status:update` SSE event with a short label (current tool name, "Running plan", "Researching") on tool_start, plan_start, etc. Phase 1 wires the pill to display this label when present, falling back to the binary states above.
 
 **Components affected:**
 
@@ -69,7 +69,7 @@ Future: the runtime could emit richer status (current tool name, "Completing Pla
 |-----------|--------|
 | `Layout.svelte` | Remove `<Sidebar>` import and rendering. Remove `sidebarCollapsed` state, `toggleSidebar()`, `closeSidebar()`, sidebar-related CSS. |
 | `TopBar.svelte` | Add agent pills between brand name and nav buttons. Import agent store + events. Each pill is a clickable button that calls `setActiveAgent()`. |
-| `Sidebar.svelte` | Delete file (or keep for future sub-agent use). |
+| `Sidebar.svelte` | Keep file, hidden. Reserved for future sub-agent/session list. |
 | `AgentCard.svelte` | Refactor into `AgentPill.svelte` — horizontal compact layout. |
 | `global.css` | Remove `--sidebar-width` variable. |
 | `chat-shared.css` | No changes needed. |
@@ -78,7 +78,7 @@ Future: the runtime could emit richer status (current tool name, "Completing Pla
 
 **Mobile behavior:** On narrow screens (<768px), the agent pills can overflow horizontally with `overflow-x: auto` and `-webkit-overflow-scrolling: touch`. The hamburger menu remains for view navigation (Files/Metrics/Settings) but no longer needs a sidebar drawer.
 
-**Create agent button:** The `+` button from the sidebar moves to the end of the agent pill row. Clicking it opens a small popover/dropdown form (same fields: name, ID, emoji) positioned below the `+` pill.
+**Create agent button:** The `+` button from the sidebar moves to the end of the agent pill row. Clicking it navigates to Settings where the full agent creation form lives. Rare action — doesn't justify inline complexity.
 
 ---
 
@@ -308,15 +308,15 @@ Phases 2–4 are independent of each other. Phase 1 is the structural change; ph
 
 ---
 
-## Open Questions
+## Decisions (2026-02-22)
 
-1. **Sub-agent display.** Cody mentioned the freed-up sidebar could show sub-agents "but that's for another time." Do we want the sidebar to remain hidden but available for a future sub-agent/session list? Or delete it entirely?
+1. **Sub-agent display.** Keep sidebar hidden, not deleted. Reserved for future sub-agent/session list.
 
-2. **Rich agent status.** Current SSE gives us binary working/idle via `activeTurns`. Should we add a `status:update` event with a short label (e.g., "Running plan", "Researching", tool name) for the pills? This requires a runtime change (emit status on tool_start/plan_start).
+2. **Rich agent status.** Yes — add `status:update` SSE event from the runtime. Pills should show current activity (tool name, "Running plan", "Researching") not just binary working/idle. Requires runtime change: emit on tool_start, plan_start, etc.
 
-3. **Create agent UX.** The `+` at the end of the agent pills — popover form or navigate to Settings? The popover keeps you in context; Settings is cleaner for a rare action.
+3. **Create agent UX.** Navigate to Settings. Rare action doesn't justify inline popover complexity.
 
-4. **Mobile agent bar.** Horizontal scroll works for 4–5 agents. At 8+ agents the bar becomes hard to navigate. Accordion? Overflow menu? Not a problem today but worth deciding the cap.
+4. **Mobile agent bar.** No cap needed — practical limit is ~5 agents. Long-term: group agents or collapse to icon-only on overflow.
 
 ---
 
