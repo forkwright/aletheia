@@ -17,8 +17,8 @@ export async function auditTokens(agentId: string): Promise<void> {
     maxTokens: config.agents.defaults.bootstrapMaxTokens,
   });
 
-  const contextWindow = config.agents.defaults.contextTokens ?? 200000;
-  const maxOutput = config.agents.defaults.maxOutputTokens ?? 16384;
+  const contextWindow = config.agents.defaults.contextTokens;
+  const maxOutput = config.agents.defaults.maxOutputTokens;
 
   // Build tool defs for token estimation (empty registry — no dispatch context available)
   const tools = new ToolRegistry();

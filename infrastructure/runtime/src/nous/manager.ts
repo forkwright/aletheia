@@ -261,7 +261,7 @@ export class NousManager {
 
   private maybeScheduleDistillation(sessionId: string, nousId: string, lockKey: string): void {
     const compaction = this.config.agents.defaults.compaction;
-    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = this.config.agents.defaults.contextTokens;
     const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
 
     const session = this.store.findSessionById(sessionId);
@@ -344,7 +344,7 @@ export class NousManager {
 
   async triggerDistillation(sessionId: string): Promise<void> {
     const compaction = this.config.agents.defaults.compaction;
-    const contextTokens = this.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = this.config.agents.defaults.contextTokens;
     const distillThreshold = Math.floor(contextTokens * compaction.maxHistoryShare);
     const distillModel = compaction.distillationModel;
 

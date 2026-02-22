@@ -125,7 +125,7 @@ export async function* executeStreaming(
     const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
 
     // Build context management — clears old tool results and thinking blocks server-side
-    const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+    const contextTokens = services.config.agents.defaults.contextTokens;
     const contextManagement = buildContextManagement(contextTokens, useThinking);
 
     for await (const streamEvent of services.router.completeStreaming({
@@ -503,7 +503,7 @@ export async function executeBuffered(
   const seq = state.seq;
 
   // Context management for buffered path
-  const contextTokens = services.config.agents.defaults.contextTokens ?? 200000;
+  const contextTokens = services.config.agents.defaults.contextTokens;
   const bufferedContextMgmt = buildContextManagement(contextTokens, false);
 
   for (let loop = 0; ; loop++) {
