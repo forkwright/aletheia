@@ -4,7 +4,7 @@
 
 Privacy-first. Runs on commodity hardware as a systemd service. No cloud dependencies beyond your LLM API key.
 
-**v0.9.1** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
+**v0.10.0** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
 
 ---
 
@@ -35,7 +35,7 @@ Privacy-first. Runs on commodity hardware as a systemd service. No cloud depende
 
 **Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~450KB bundle), Hono gateway on port 18789.
 
-**Interfaces**: Svelte 5 web UI with streaming, file upload, syntax highlighting, thinking visualization, and force-directed memory graph. Signal messenger via signal-cli. 10 built-in `!` commands. CLI admin tools.
+**Interfaces**: Svelte 5 web UI with streaming, file upload, syntax highlighting, thinking visualization, and force-directed memory graph. Signal messenger via signal-cli. 14 built-in `!` commands. CLI admin tools.
 
 **Models**: Anthropic (OAuth or API key). Complexity-based routing. Extended thinking for reasoning models.
 
@@ -58,7 +58,7 @@ aletheia/
 │   │       ├── taxis/          Config loading + validation (Zod)
 │   │       ├── mneme/          Session store (better-sqlite3, 10 migrations)
 │   │       ├── hermeneus/      Anthropic SDK + provider router
-│   │       ├── organon/        Tool registry + 33 built-in tools + skills
+│   │       ├── organon/        Tool registry + 41 built-in tools + skills
 │   │       ├── semeion/        Signal client, listener, commands
 │   │       ├── pylon/          Hono HTTP gateway, MCP, Web UI
 │   │       ├── prostheke/      Plugin system
@@ -89,7 +89,7 @@ Svelte 5 at `/ui`. Streaming responses, file upload, syntax highlighting, thinki
 
 ### Signal Commands
 
-`!status` `!help` `!ping` `!sessions` `!reset` `!agent` `!skills` `!approve` `!deny` `!contacts`
+`!ping` `!help` `!status` `!sessions` `!reset` `!agent` `!skills` `!model` `!think` `!distill` `!blackboard` `!approve` `!deny` `!contacts`
 
 ### CLI
 
