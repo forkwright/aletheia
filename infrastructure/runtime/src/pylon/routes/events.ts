@@ -28,6 +28,7 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           ["turn:after", forward("turn:after")],
           ["tool:called", forward("tool:called")],
           ["tool:failed", forward("tool:failed")],
+          ["status:update", forward("status:update")],
           ["session:created", forward("session:created")],
           ["session:archived", forward("session:archived")],
           ["distill:before", forward("distill:before")],

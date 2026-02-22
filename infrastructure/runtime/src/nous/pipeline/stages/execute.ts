@@ -271,6 +271,7 @@ export async function* executeStreaming(
         const toolUse = batch[0]!;
         totalToolCalls++;
         yield { type: "tool_start", toolName: toolUse.name, toolId: toolUse.id, input: toolUse.input as Record<string, unknown> };
+        eventBus.emit("status:update", { nousId, status: toolUse.name });
 
         // Approval gate
         if (services.approvalGate && services.approvalMode && services.approvalMode !== "autonomous") {
@@ -335,6 +336,7 @@ export async function* executeStreaming(
           totalToolCalls++;
           yield { type: "tool_start", toolName: toolUse.name, toolId: toolUse.id, input: toolUse.input as Record<string, unknown> };
         }
+        eventBus.emit("status:update", { nousId, status: `${batch.length} tools` });
 
         const batchStart = Date.now();
         const settled = await Promise.allSettled(

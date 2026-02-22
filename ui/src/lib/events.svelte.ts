@@ -10,6 +10,7 @@ const MAX_RECONNECT_DELAY = 30000;
 const HEARTBEAT_TIMEOUT_MS = 45_000; // Server sends pings every ~30s
 const listeners = new Set<EventCallback>();
 let lastActiveTurns = $state<Record<string, number>>({});
+let agentStatuses = $state<Record<string, string>>({});
 
 export function onGlobalEvent(cb: EventCallback): () => void {
   listeners.add(cb);
@@ -97,7 +98,8 @@ function connect() {
   // Forward server event types (only types the server SSE route actually emits)
   const eventTypes = [
     "turn:before", "turn:after",
-    "tool:called", "tool:failed", "session:created", "session:archived",
+    "tool:called", "tool:failed", "status:update",
+    "session:created", "session:archived",
     "distill:before", "distill:stage", "distill:after",
   ];
   for (const type of eventTypes) {
@@ -109,6 +111,12 @@ function connect() {
           lastActiveTurns = { ...lastActiveTurns, [data.nousId]: (lastActiveTurns[data.nousId] ?? 0) + 1 };
         } else if (type === "turn:after" && data.nousId) {
           lastActiveTurns = { ...lastActiveTurns, [data.nousId]: Math.max(0, (lastActiveTurns[data.nousId] ?? 1) - 1) };
+          // Clear status when turn ends
+          if ((lastActiveTurns[data.nousId] ?? 0) <= 0) {
+            agentStatuses = { ...agentStatuses, [data.nousId]: "" };
+          }
+        } else if (type === "status:update" && data.nousId && data.status) {
+          agentStatuses = { ...agentStatuses, [data.nousId]: data.status };
         }
         dispatch(type, data);
       } catch { /* ignore */ }
@@ -130,6 +138,10 @@ function scheduleReconnect() {
 
 export function getActiveTurns(): Record<string, number> {
   return lastActiveTurns;
+}
+
+export function getAgentStatus(agentId: string): string {
+  return agentStatuses[agentId] ?? "";
 }
 
 export function getConnectionStatus(): "connected" | "disconnected" | "connecting" {

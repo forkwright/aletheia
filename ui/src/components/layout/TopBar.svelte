@@ -7,7 +7,7 @@
   import { clearToken } from "../../lib/api";
   import { getMessages } from "../../stores/chat.svelte";
   import { formatCost, calculateMessageCost } from "../../lib/format";
-  import { getActiveTurns } from "../../lib/events.svelte";
+  import { getActiveTurns, getAgentStatus } from "../../lib/events.svelte";
   import { getUnreadCount, markRead } from "../../stores/notifications.svelte";
   import { loadSessions } from "../../stores/sessions.svelte";
   import AgentPill from "../agents/AgentPill.svelte";
@@ -81,6 +81,7 @@
           isActive={a.id === getActiveAgentId()}
           unreadCount={getUnreadCount(a.id)}
           activeTurns={getActiveTurns()[a.id] ?? 0}
+          statusLabel={getAgentStatus(a.id)}
           onclick={() => handleAgentClick(a.id)}
         />
       {/each}
