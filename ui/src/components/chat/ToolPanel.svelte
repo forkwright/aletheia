@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
+  import { getToolCategory } from "../../lib/tools";
   import { highlightCode, inferLanguage } from "../../lib/markdown";
   import DOMPurify from "dompurify";
   import Spinner from "../shared/Spinner.svelte";
@@ -42,33 +43,13 @@
     tools.reduce((sum, t) => sum + (t.durationMs ?? 0), 0)
   );
 
-  const TOOL_CATEGORIES: Record<string, { icon: string; label: string }> = {
-    read: { icon: "\u{1F4C1}", label: "fs" },
-    write: { icon: "\u{1F4C1}", label: "fs" },
-    edit: { icon: "\u{1F4C1}", label: "fs" },
-    ls: { icon: "\u{1F4C1}", label: "fs" },
-    find: { icon: "\u{1F50D}", label: "search" },
-    grep: { icon: "\u{1F50D}", label: "search" },
-    web_search: { icon: "\u{1F50D}", label: "search" },
-    mem0_search: { icon: "\u{1F50D}", label: "search" },
-    exec: { icon: "\u26A1", label: "exec" },
-    sessions_send: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_ask: { icon: "\u{1F4AC}", label: "comms" },
-    sessions_spawn: { icon: "\u{1F4AC}", label: "comms" },
-    message: { icon: "\u{1F4AC}", label: "comms" },
-    blackboard: { icon: "\u{1F9E0}", label: "system" },
-    note: { icon: "\u{1F9E0}", label: "system" },
-    enable_tool: { icon: "\u{1F9E0}", label: "system" },
-    web_fetch: { icon: "\u{1F310}", label: "web" },
-  };
-
   let categoryStats = $derived.by(() => {
     const counts = new Map<string, { icon: string; count: number }>();
     for (const t of tools) {
-      const entry = TOOL_CATEGORIES[t.name] ?? { icon: "\u2699", label: "other" };
-      const existing = counts.get(entry.label);
+      const cat = getToolCategory(t.name);
+      const existing = counts.get(cat.label);
       if (existing) existing.count++;
-      else counts.set(entry.label, { icon: entry.icon, count: 1 });
+      else counts.set(cat.label, { icon: cat.icon, count: 1 });
     }
     return [...counts.values()];
   });
