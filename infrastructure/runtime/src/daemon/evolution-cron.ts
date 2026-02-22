@@ -71,7 +71,7 @@ export function loadArchive(workspace: string, nousId: string): EvolutionArchive
   }
   try {
     return JSON.parse(readFileSync(path, "utf-8")) as EvolutionArchive;
-  } catch {
+  } catch { /* evolution check failed — non-fatal */
     log.warn(`Invalid archive for ${nousId}, resetting`);
     return { variants: [], currentDefault: "", lastRunAt: "" };
   }

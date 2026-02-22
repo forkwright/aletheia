@@ -154,7 +154,7 @@ function scanWorkspace(
     let entries: string[];
     try {
       entries = readdirSync(dir);
-    } catch {
+    } catch { /* memory file read failed — skip */
       return;
     }
 
@@ -166,7 +166,7 @@ function scanWorkspace(
       let stat;
       try {
         stat = statSync(fullPath);
-      } catch {
+      } catch { /* config read failed — skip */
         continue;
       }
 
@@ -187,7 +187,7 @@ function scanWorkspace(
       if (isTextFile(entry)) {
         try {
           files[relPath] = readFileSync(fullPath, "utf-8");
-        } catch {
+        } catch { /* session export failed — skip */
           binaryFiles.push(relPath);
         }
       } else {

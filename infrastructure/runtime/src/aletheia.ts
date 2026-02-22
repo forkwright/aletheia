@@ -148,7 +148,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     for (const p of [dbPath, cfgPath]) {
       try {
         if (existsSync(p)) chmodSync(p, 0o600);
-      } catch {
+      } catch { /* salt file creation failed — non-fatal */
         log.warn(`Could not harden permissions on ${p}`);
       }
     }

@@ -239,7 +239,7 @@ process.on("exit", () => {
   if (browserInstance) {
     try {
       (browserInstance as unknown as { process(): { kill(sig: string): void } | null }).process()?.kill("SIGKILL");
-    } catch {
+    } catch { /* browser cleanup failed */
       // Best-effort — process may already be gone
     }
   }

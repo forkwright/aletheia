@@ -19,7 +19,7 @@ export function broadcastEvent(event: string, data: unknown): void {
   for (const client of eventClients) {
     try {
       client.controller.enqueue(encoded);
-    } catch {
+    } catch { /* UI file read failed */
       eventClients.delete(client);
     }
   }
@@ -61,7 +61,7 @@ export function createUiRoutes(
           try {
             controller.enqueue(new TextEncoder().encode(": ping\n\n"));
             client.lastPing = Date.now();
-          } catch {
+          } catch { /* UI asset read failed */
             clearInterval(ping);
             eventClients.delete(client);
           }

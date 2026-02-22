@@ -136,7 +136,7 @@ async function probeService(svc: ServiceProbe): Promise<boolean> {
       signal: AbortSignal.timeout(timeout),
     });
     return res.ok;
-  } catch {
+  } catch { /* health check failed — report unhealthy */
     return false;
   }
 }

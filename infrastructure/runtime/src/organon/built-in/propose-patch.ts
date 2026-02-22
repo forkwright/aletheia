@@ -53,7 +53,7 @@ function loadHistory(workspace: string): PatchHistory {
   if (!existsSync(path)) return { patches: [] };
   try {
     return JSON.parse(readFileSync(path, "utf-8")) as PatchHistory;
-  } catch {
+  } catch { /* git check failed */
     return { patches: [] };
   }
 }

@@ -40,7 +40,7 @@ export function commitWorkspaceChange(
     execFileSync("git", ["add", rel], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
     execFileSync("git", ["diff", "--cached", "--quiet"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
     // If git diff --cached --quiet exits 0, nothing staged — skip commit
-  } catch {
+  } catch { /* git not available */
     // Exit code 1 from git diff means there ARE staged changes — commit them
     try {
       const rel = relative(workspace, filePath);

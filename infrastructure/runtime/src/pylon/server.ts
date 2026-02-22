@@ -200,7 +200,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON" }, 400);
     }
 
@@ -324,7 +324,7 @@ export function createGateway(
     if (!entries || entries.length === 0) return c.json({ available: false });
     try {
       return c.json(JSON.parse(entries[0]!.value));
-    } catch {
+    } catch { /* unparseable update status */
       return c.json({ available: false });
     }
   });
@@ -464,7 +464,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
@@ -533,7 +533,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch { /* invalid JSON body */
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
@@ -817,7 +817,7 @@ export function createGateway(
     try {
       const body = await c.req.json() as Record<string, unknown>;
       alwaysAllow = body["alwaysAllow"] === true;
-    } catch {
+    } catch { /* JSON parse failed */
       // No body is fine
     }
     const resolved = manager.approvalGate.resolveApproval(turnId, toolId, {
@@ -978,7 +978,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = await c.req.json();
-    } catch {
+    } catch { /* JSON parse failed */
       return c.json({ error: "Invalid JSON" }, 400);
     }
 
@@ -1543,7 +1543,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* JSON parse failed */
       return c.json({ error: "Invalid JSON" }, 400);
     }
     const key = body["key"] as string;
@@ -1664,7 +1664,7 @@ export function createGateway(
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
-    } catch {
+    } catch { /* JSON parse failed */
       return c.json({ error: "Invalid JSON" }, 400);
     }
 

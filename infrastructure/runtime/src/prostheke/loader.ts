@@ -120,7 +120,7 @@ export function validatePluginPath(pluginPath: string, pluginRoot: string): bool
     const resolved = realpathSync(resolve(pluginPath));
     const normalizedRoot = pluginRoot.endsWith(sep) ? pluginRoot : pluginRoot + sep;
     return resolved === pluginRoot || resolved.startsWith(normalizedRoot);
-  } catch {
+  } catch { /* plugin load failed */
     return false;
   }
 }

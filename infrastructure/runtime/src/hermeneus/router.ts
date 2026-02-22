@@ -76,7 +76,7 @@ export class ProviderRouter {
         log.warn(`Primary credential failed (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
         try {
           return await this.backupProviders[i]!.complete({ ...request, model });
-        } catch {
+        } catch { /* backup also failed — try next */
           continue;
         }
       }
@@ -104,7 +104,7 @@ export class ProviderRouter {
         );
         try {
           return await this.complete({ ...request, model: fallback });
-        } catch {
+        } catch { /* fallback model also failed — try next */
           continue;
         }
       }

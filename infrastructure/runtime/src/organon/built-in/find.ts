@@ -13,7 +13,7 @@ async function getFdBinary(): Promise<string> {
   try {
     await execFileAsync("fd", ["--version"], { timeout: 2000 });
     fdBinary = "fd";
-  } catch {
+  } catch { /* fd not available — use fallback */
     fdBinary = "fdfind";
   }
   return fdBinary;
