@@ -149,9 +149,14 @@
       } else {
         loadHistory(currentAgentId, sessionId);
       }
-    } else if (!sessionId && currentAgentId && !isSessionsLoading()) {
-      prevSessionId = null;
-      loadSessions(currentAgentId);
+    } else if (!sessionId && currentAgentId) {
+      // Agent active but no session — load sessions once (untrack prevents loop)
+      untrack(() => {
+        if (!isSessionsLoading()) {
+          prevSessionId = null;
+          loadSessions(currentAgentId);
+        }
+      });
     } else if (!sessionId && prevSessionId) {
       prevSessionId = null;
       if (currentAgentId) clearMessages(currentAgentId);
