@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { getToken, setToken, clearToken, fetchMetrics, fetchAgents } from "../../lib/api";
-  import { getBrandName } from "../../stores/branding.svelte";
+  import { getToken, setToken, clearToken } from "../../lib/api";
   import { getAgents } from "../../stores/agents.svelte";
   import { onMount } from "svelte";
-  import type { Agent, MetricsData } from "../../lib/types";
-  import CostDashboard from "../CostDashboard.svelte";
+  import type { Agent } from "../../lib/types";
   import SessionManager from "./SessionManager.svelte";
   import { fetchAuthMode, getAccessToken, logout as sessionLogout } from "../../lib/auth";
 
@@ -13,7 +11,6 @@
 
   let tokenInput = $state(getToken() ?? "");
   let agents = $state<Agent[]>([]);
-  let metrics = $state<MetricsData | null>(null);
   let isSessionAuth = $state(false);
   let theme = $state<"dark" | "light">(
     (localStorage.getItem(THEME_KEY) as "dark" | "light") ?? "dark",
@@ -25,11 +22,10 @@
   onMount(async () => {
     agents = getAgents();
     try {
-      const [m, mode] = await Promise.all([fetchMetrics(), fetchAuthMode()]);
-      metrics = m;
+      const mode = await fetchAuthMode();
       isSessionAuth = mode.sessionAuth;
     } catch {
-      // metrics unavailable
+      // auth mode unavailable
     }
   });
 
@@ -59,36 +55,11 @@
     localStorage.setItem(FONT_SIZE_KEY, String(size));
     document.documentElement.style.fontSize = `${size}px`;
   }
-
-  function formatUptime(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  }
 </script>
 
 <div class="settings-view">
   <div class="settings-container">
     <h2 class="settings-heading">Settings</h2>
-
-    <section class="settings-section">
-      <h3 class="section-title">General</h3>
-      <div class="setting-row">
-        <span class="setting-label">Instance</span>
-        <span class="setting-value">{getBrandName()}</span>
-      </div>
-      {#if metrics}
-        <div class="setting-row">
-          <span class="setting-label">Uptime</span>
-          <span class="setting-value">{formatUptime(metrics.uptime)}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Status</span>
-          <span class="setting-value status-ok">{metrics.status}</span>
-        </div>
-      {/if}
-    </section>
 
     <section class="settings-section">
       <h3 class="section-title">Agents</h3>
@@ -161,45 +132,7 @@
       {/if}
     </section>
 
-    {#if metrics}
-      <section class="settings-section">
-        <h3 class="section-title">Usage</h3>
-        <div class="setting-row">
-          <span class="setting-label">Total turns</span>
-          <span class="setting-value mono">{metrics.usage.turnCount.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Input tokens</span>
-          <span class="setting-value mono">{metrics.usage.totalInputTokens.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Output tokens</span>
-          <span class="setting-value mono">{metrics.usage.totalOutputTokens.toLocaleString()}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Cache hit rate</span>
-          <span class="setting-value mono">{metrics.usage.cacheHitRate}%</span>
-        </div>
-      </section>
 
-      <section class="settings-section cost-section">
-        <CostDashboard />
-      </section>
-
-      {#if metrics.services.length > 0}
-        <section class="settings-section">
-          <h3 class="section-title">Services</h3>
-          {#each metrics.services as svc (svc.name)}
-            <div class="setting-row">
-              <span class="setting-label">{svc.name}</span>
-              <span class="setting-value" class:status-ok={svc.healthy} class:status-err={!svc.healthy}>
-                {svc.healthy ? "healthy" : svc.message ?? "down"}
-              </span>
-            </div>
-          {/each}
-        </section>
-      {/if}
-    {/if}
   </div>
 </div>
 
@@ -262,12 +195,6 @@
   .setting-value.mono {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-  }
-  .status-ok {
-    color: var(--status-success);
-  }
-  .status-err {
-    color: var(--status-error);
   }
   .toggle-group {
     display: flex;
@@ -371,10 +298,5 @@
   }
   .btn-danger:hover {
     background: rgba(248, 81, 73, 0.1);
-  }
-  .cost-section :global(.cost-dashboard) {
-    padding: 0;
-    height: auto;
-    overflow: visible;
   }
 </style>
