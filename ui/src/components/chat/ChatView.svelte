@@ -48,7 +48,7 @@
   import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
   import { onGlobalEvent, getActiveTurns } from "../../lib/events";
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
 
@@ -160,7 +160,7 @@
     if (!agentId) return;
     const activeTurns = getActiveTurns();
     const active = activeTurns[agentId] && activeTurns[agentId] > 0;
-    setRemoteStreaming(agentId, !!active);
+    untrack(() => setRemoteStreaming(agentId, !!active));
   });
 
   // Slash command registry
