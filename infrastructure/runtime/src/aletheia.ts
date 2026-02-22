@@ -457,7 +457,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // Wire event bus → SSE push for real-time UI updates
   for (const eventName of [
-    "turn:before", "turn:after", "tool:called", "tool:failed",
+    "turn:before", "turn:after", "tool:called", "tool:failed", "status:update",
     "session:created", "session:archived", "config:reloaded",
   ] as const) {
     eventBus.on(eventName, (payload) => broadcastEvent(eventName, payload));

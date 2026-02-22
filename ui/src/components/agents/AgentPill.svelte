@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Agent } from "../../lib/types";
 
-  let { agent, isActive = false, unreadCount = 0, activeTurns = 0, onclick }: {
+  let { agent, isActive = false, unreadCount = 0, activeTurns = 0, statusLabel = "", onclick }: {
     agent: Agent;
     isActive?: boolean;
     unreadCount?: number;
     activeTurns?: number;
+    statusLabel?: string;
     onclick: () => void;
   } = $props();
 
@@ -13,7 +14,7 @@
     unreadCount > 0
       ? `${unreadCount > 9 ? "9+" : unreadCount} new`
       : activeTurns > 0
-        ? "Working"
+        ? (statusLabel || "Working")
         : "Idle",
   );
 

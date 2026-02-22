@@ -240,7 +240,7 @@ export function loadHookDefinitions(hooksDir: string): HookDefinition[] {
 // Known event names from the event bus
 const VALID_EVENTS: Set<string> = new Set([
   "turn:before", "turn:after",
-  "tool:called", "tool:failed",
+  "tool:called", "tool:failed", "status:update",
   "distill:before", "distill:stage", "distill:after",
   "session:created", "session:archived",
   "memory:added", "memory:retracted",
