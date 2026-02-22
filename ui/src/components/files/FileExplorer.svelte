@@ -92,7 +92,7 @@
         const agentId = getActiveAgentId();
         loadTree(agentId ?? undefined);
         loadGitStatus(agentId ?? undefined);
-      }} title="Refresh">↻</button>
+      }} title="Refresh" aria-label="Refresh file tree">↻</button>
     </div>
     <div class="filter-row">
       <input
@@ -122,7 +122,7 @@
     {:else if getSelectedPath()}
       <div class="preview-header">
         <span class="preview-path">{getSelectedPath()}</span>
-        <button class="close-btn" onclick={clearFileSelection}>×</button>
+        <button class="close-btn" onclick={clearFileSelection} aria-label="Close file preview">×</button>
       </div>
       <pre class="preview-content">{@html highlightFileContent(getSelectedContent(), getSelectedPath()!)}</pre>
     {:else}

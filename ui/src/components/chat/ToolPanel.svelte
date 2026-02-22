@@ -218,8 +218,8 @@
         <span class="stat time">{formatDuration(totalDuration)}</span>
       {/if}
       <span class="stat-spacer"></span>
-      <button class="toggle-btn" onclick={expandAll} title="Expand all">⊞</button>
-      <button class="toggle-btn" onclick={collapseAll} title="Collapse all">⊟</button>
+      <button class="toggle-btn" onclick={expandAll} title="Expand all" aria-label="Expand all tool calls">⊞</button>
+      <button class="toggle-btn" onclick={collapseAll} title="Collapse all" aria-label="Collapse all tool calls">⊟</button>
     </div>
     {#if categoryStats.length > 1}
       <div class="header-categories">
