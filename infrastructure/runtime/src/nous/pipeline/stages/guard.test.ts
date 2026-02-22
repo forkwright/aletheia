@@ -15,7 +15,7 @@ const mocked = vi.mocked(checkInputCircuitBreakers);
 
 function makeState(text = "hello") {
   return {
-    nousId: "main",
+    nousId: "syn",
     sessionId: "ses_1",
     msg: { text, senderId: "u1" },
   } as never;
@@ -44,7 +44,7 @@ describe("checkGuards", () => {
     expect(result!.outcome.toolCalls).toBe(0);
     expect(result!.outcome.inputTokens).toBe(0);
     expect(result!.outcome.outputTokens).toBe(0);
-    expect(result!.outcome.nousId).toBe("main");
+    expect(result!.outcome.nousId).toBe("syn");
     expect(result!.outcome.sessionId).toBe("ses_1");
   });
 
