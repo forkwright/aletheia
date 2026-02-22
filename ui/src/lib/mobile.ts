@@ -2,14 +2,13 @@
  * Mobile viewport and keyboard handling.
  *
  * The problem: on iOS and Android, the virtual keyboard resizes the visual viewport
- * but NOT the layout viewport (100dvh). This means fixed/flex layouts don't shrink
- * to fit above the keyboard — the input bar gets hidden behind it.
+ * but NOT necessarily the layout viewport. This means fixed/flex layouts using dvh
+ * don't shrink to fit above the keyboard — the input bar gets hidden behind it.
  *
- * The fix: use the VisualViewport API to detect the keyboard height and set a CSS
- * custom property (--keyboard-height) that the layout can use. Also manages:
+ * The fix: use the VisualViewport API to detect the actual visible height and set
+ * --app-height directly. Also manages:
  *  - Scroll-into-view when input is focused
  *  - Preventing pull-to-refresh during chat scroll
- *  - iOS rubber-band suppression on the app shell
  */
 
 let installed = false;
@@ -28,26 +27,57 @@ export function installMobileHandlers(): void {
   const cleanups: Array<() => void> = [];
 
   // --- 1. Virtual keyboard height tracking via VisualViewport ---
+  // On Android Chrome, window.innerHeight and vv.height may both change together,
+  // making (innerHeight - vv.height) unreliable. Instead, we track the initial
+  // full viewport height and compare against current vv.height to detect keyboard.
   if (window.visualViewport) {
     const vv = window.visualViewport;
+    let initialHeight = vv.height;
+    let lastAppHeight = 0;
 
-    function updateKeyboardHeight() {
-      // The keyboard height is the difference between the layout viewport and
-      // the visual viewport. On desktop this is always 0.
-      const keyboardHeight = Math.max(0, window.innerHeight - vv.height);
-      document.documentElement.style.setProperty("--keyboard-height", `${keyboardHeight}px`);
-
-      // Also update the app height to match the visible area exactly
-      document.documentElement.style.setProperty("--app-height", `${vv.height}px`);
+    // On orientation change or significant resize (not keyboard), update baseline
+    function updateBaseline() {
+      // If viewport grew, it's an orientation change or keyboard dismiss
+      if (vv.height > initialHeight + 50) {
+        initialHeight = vv.height;
+      }
     }
 
-    vv.addEventListener("resize", updateKeyboardHeight);
-    vv.addEventListener("scroll", updateKeyboardHeight);
-    updateKeyboardHeight(); // initial
+    function updateAppHeight() {
+      // Use the actual visual viewport height — this is the truth on both iOS and Android
+      const h = vv.height;
+
+      // Debounce: don't thrash layout for tiny changes (< 5px)
+      if (Math.abs(h - lastAppHeight) < 5) return;
+      lastAppHeight = h;
+
+      const keyboardHeight = Math.max(0, initialHeight - h);
+      document.documentElement.style.setProperty("--keyboard-height", `${keyboardHeight}px`);
+      document.documentElement.style.setProperty("--app-height", `${h}px`);
+    }
+
+    vv.addEventListener("resize", () => {
+      updateBaseline();
+      updateAppHeight();
+    });
+    // Also track scroll — on iOS keyboard open causes viewport scroll
+    vv.addEventListener("scroll", updateAppHeight);
+
+    // Screen orientation changes reset baseline
+    const orientHandler = () => {
+      setTimeout(() => {
+        initialHeight = vv.height;
+        updateAppHeight();
+      }, 300);
+    };
+    screen.orientation?.addEventListener?.("change", orientHandler);
+
+    updateAppHeight(); // initial
 
     cleanups.push(() => {
-      vv.removeEventListener("resize", updateKeyboardHeight);
-      vv.removeEventListener("scroll", updateKeyboardHeight);
+      vv.removeEventListener("resize", updateAppHeight);
+      vv.removeEventListener("scroll", updateAppHeight);
+      screen.orientation?.removeEventListener?.("change", orientHandler);
       document.documentElement.style.removeProperty("--keyboard-height");
       document.documentElement.style.removeProperty("--app-height");
     });
@@ -60,7 +90,7 @@ export function installMobileHandlers(): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) return;
 
-    // Wait for keyboard animation to finish (~300ms on iOS)
+    // Wait for keyboard animation to finish (~300ms on iOS, ~250ms on Android)
     setTimeout(() => {
       target.scrollIntoView({ block: "end", behavior: "smooth" });
     }, 350);
@@ -70,13 +100,20 @@ export function installMobileHandlers(): void {
   cleanups.push(() => document.removeEventListener("focusin", handleFocusIn));
 
   // --- 3. Prevent overscroll / pull-to-refresh on the app shell ---
-  // Only prevent on the body/app itself, not on scrollable content areas
+  // Only prevent on the body/app itself, not on scrollable content areas.
+  // Use a conservative approach: only prevent on the outermost shell.
   function handleTouchMove(e: TouchEvent) {
     const target = e.target as HTMLElement;
-    // Allow scrolling inside .message-list and other scrollable containers
-    if (target.closest(".message-list, .mobile-menu, .agent-bar, [data-scrollable]")) return;
+
+    // Allow scrolling inside any scrollable container or interactive element
+    if (target.closest(
+      ".message-list, .mobile-menu, .agent-bar, .topbar, .input-wrapper, " +
+      ".tool-panel, .thinking-panel, .slash-menu, " +
+      "[data-scrollable], button, a, input, textarea"
+    )) return;
 
     // Prevent body overscroll (pull-to-refresh, rubber banding)
+    // Check if we're on the actual app shell with no scrollable parent
     const scrollable = target.closest("[style*='overflow']") ?? target.closest(".content");
     if (!scrollable) {
       e.preventDefault();
@@ -85,9 +122,6 @@ export function installMobileHandlers(): void {
 
   document.addEventListener("touchmove", handleTouchMove, { passive: false });
   cleanups.push(() => document.removeEventListener("touchmove", handleTouchMove));
-
-  // --- 4. iOS: prevent double-tap zoom on buttons ---
-  // Already handled via touch-action: manipulation in global.css for mobile
 
   cleanup = () => {
     for (const fn of cleanups) fn();

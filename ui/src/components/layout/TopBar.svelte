@@ -167,6 +167,8 @@
     border-bottom: 1px solid var(--border);
     background: var(--bg-elevated);
     flex-shrink: 0;
+    position: relative;
+    z-index: 100;
   }
   .left {
     display: flex;
