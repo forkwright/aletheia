@@ -1,6 +1,6 @@
 # Spec: Turn Safety — Error Propagation, Distillation Guards, and Orphan Prevention
 
-**Status:** Draft  
+**Status:** Implemented (PRs #38, #39). Pipeline error boundaries, session lock fix, distillation guards, orphan diagnostics.  
 **Author:** Syn  
 **Date:** 2026-02-19  
 
