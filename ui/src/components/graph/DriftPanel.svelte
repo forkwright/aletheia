@@ -199,7 +199,7 @@
   }
 
   .badge {
-    background: var(--yellow, #d29922);
+    background: var(--status-warning);
     color: #000;
     font-size: var(--text-2xs);
     font-weight: 700;
@@ -292,8 +292,8 @@
   }
   .delete-btn {
     background: rgba(248, 81, 73, 0.1);
-    border-color: var(--red, #f85149);
-    color: var(--red, #f85149);
+    border-color: var(--status-error);
+    color: var(--status-error);
   }
   .delete-btn:hover:not(:disabled) { background: rgba(248, 81, 73, 0.25); }
   .delete-btn:disabled { opacity: 0.4; cursor: default; }
@@ -314,7 +314,7 @@
   }
 
   .stale-age {
-    color: var(--yellow, #d29922);
+    color: var(--status-warning);
   }
 
   .cluster-row {

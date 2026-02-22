@@ -114,8 +114,8 @@
 
         // Drift overlay mode
         if (driftData) {
-          if (orphanedSet.has(node.id)) return "#f85149"; // Red for orphaned
-          if (staleSet.has(node.id)) return "#d29922"; // Yellow for stale
+          if (orphanedSet.has(node.id)) return "#c75450"; // Red for orphaned
+          if (staleSet.has(node.id)) return "#b8922f"; // Yellow for stale
           return communityColor(node.community ?? -1);
         }
 
@@ -154,7 +154,7 @@
           if (orphanedSet.has(node.id)) {
             ctx.beginPath();
             ctx.arc(node.x, node.y, size / 2 + 2, 0, 2 * Math.PI);
-            ctx.strokeStyle = "#f85149";
+            ctx.strokeStyle = "#c75450";
             ctx.lineWidth = 1.5 / globalScale;
             ctx.setLineDash([3 / globalScale, 2 / globalScale]);
             ctx.stroke();
@@ -162,7 +162,7 @@
           } else if (staleSet.has(node.id)) {
             ctx.beginPath();
             ctx.arc(node.x, node.y, size / 2 + 2, 0, 2 * Math.PI);
-            ctx.strokeStyle = "#d29922";
+            ctx.strokeStyle = "#b8922f";
             ctx.lineWidth = 1 / globalScale;
             ctx.setLineDash([2 / globalScale, 2 / globalScale]);
             ctx.stroke();

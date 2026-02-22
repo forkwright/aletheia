@@ -241,21 +241,21 @@
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);
-    color: var(--green, #3fb950);
+    color: var(--status-success);
     border-color: rgba(63, 185, 80, 0.3);
   }
   .btn-approve:hover:not(:disabled) {
     background: rgba(63, 185, 80, 0.25);
-    border-color: var(--green, #3fb950);
+    border-color: var(--status-success);
   }
   .btn-cancel {
     background: rgba(248, 81, 73, 0.1);
-    color: var(--red, #f85149);
+    color: var(--status-error);
     border-color: rgba(248, 81, 73, 0.2);
   }
   .btn-cancel:hover:not(:disabled) {
     background: rgba(248, 81, 73, 0.2);
-    border-color: var(--red, #f85149);
+    border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-cancel:disabled {
     opacity: 0.5;

@@ -133,7 +133,7 @@
     padding: 12px 16px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--yellow, #d29922);
+    border-left: 3px solid var(--status-warning);
     border-radius: var(--radius-sm);
     animation: fade-in 0.2s ease;
   }
@@ -163,11 +163,11 @@
   }
   .risk-badge.destructive {
     background: rgba(248, 81, 73, 0.15);
-    color: var(--red, #f85149);
+    color: var(--status-error);
   }
   .risk-badge.irreversible {
     background: rgba(210, 153, 34, 0.15);
-    color: var(--yellow, #d29922);
+    color: var(--status-warning);
   }
   .approval-reason {
     font-size: var(--text-sm);
@@ -236,21 +236,21 @@
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);
-    color: var(--green, #3fb950);
+    color: var(--status-success);
     border-color: rgba(63, 185, 80, 0.3);
   }
   .btn-approve:hover:not(:disabled) {
     background: rgba(63, 185, 80, 0.25);
-    border-color: var(--green, #3fb950);
+    border-color: var(--status-success);
   }
   .btn-deny {
     background: rgba(248, 81, 73, 0.1);
-    color: var(--red, #f85149);
+    color: var(--status-error);
     border-color: rgba(248, 81, 73, 0.2);
   }
   .btn-deny:hover:not(:disabled) {
     background: rgba(248, 81, 73, 0.2);
-    border-color: var(--red, #f85149);
+    border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-deny:disabled {
     opacity: 0.5;

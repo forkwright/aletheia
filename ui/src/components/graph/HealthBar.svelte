@@ -110,7 +110,7 @@
   }
 
   .stat.warn .stat-value {
-    color: var(--yellow, #d29922);
+    color: var(--status-warning);
   }
 
   .stat.muted {

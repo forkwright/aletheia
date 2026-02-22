@@ -719,9 +719,9 @@
   }
 
   .action-btn.flagged {
-    border-color: var(--yellow, #d29922);
-    color: var(--yellow, #d29922);
-    background: color-mix(in srgb, var(--yellow, #d29922) 10%, transparent);
+    border-color: var(--status-warning);
+    color: var(--status-warning);
+    background: color-mix(in srgb, var(--status-warning) 10%, transparent);
   }
 
   @media (max-width: 768px) {

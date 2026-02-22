@@ -158,8 +158,8 @@
     cursor: pointer;
   }
   .clear-btn:hover {
-    color: var(--red, #f85149);
-    border-color: var(--red, #f85149);
+    color: var(--status-error);
+    border-color: var(--status-error);
   }
 
   @media (max-width: 768px) {

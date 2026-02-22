@@ -517,7 +517,7 @@
     position: absolute;
     top: -2px;
     right: 0;
-    background: var(--yellow, #d29922);
+    background: var(--status-warning);
     color: #000;
     font-size: var(--text-2xs);
     font-weight: 700;
