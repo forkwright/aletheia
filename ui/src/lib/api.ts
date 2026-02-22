@@ -105,6 +105,13 @@ export async function distillSession(sessionId: string): Promise<void> {
   });
 }
 
+export async function queueMessage(sessionId: string, text: string): Promise<void> {
+  await fetchJson(`/api/sessions/${sessionId}/queue`, {
+    method: "POST",
+    body: JSON.stringify({ text, sender: "webchat" }),
+  });
+}
+
 export async function fetchThreads(nousId?: string): Promise<Thread[]> {
   const qs = nousId ? `?nousId=${nousId}` : "";
   const data = await fetchJson<{ threads: Thread[] }>(`/api/threads${qs}`);

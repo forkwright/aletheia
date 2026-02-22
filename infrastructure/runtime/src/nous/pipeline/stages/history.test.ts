@@ -34,6 +34,7 @@ function makeServices(): RuntimeServices {
       getUnsurfacedMessages: vi.fn().mockReturnValue([]),
       appendMessage: vi.fn().mockReturnValue(5),
       markMessagesSurfaced: vi.fn(),
+      repairOrphanedToolUse: vi.fn().mockReturnValue(0),
     },
     plugins: null,
   } as unknown as RuntimeServices;

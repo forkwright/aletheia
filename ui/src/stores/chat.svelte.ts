@@ -13,6 +13,7 @@ interface AgentChatState {
   abortController: AbortController | null;
   pendingApproval: PendingApproval | null;
   pendingPlan: PlanProposal | null;
+  turnStartedAt: number | null;
   // Debounce buffers — accumulate deltas, flush to reactive state on timer
   _textBuffer: string;
   _thinkingBuffer: string;
@@ -35,6 +36,7 @@ const EMPTY: AgentChatState = {
   abortController: null,
   pendingApproval: null,
   pendingPlan: null,
+  turnStartedAt: null,
   _textBuffer: "",
   _thinkingBuffer: "",
   _flushTimer: null,
@@ -59,6 +61,7 @@ function writeState(agentId: string): AgentChatState {
       abortController: null,
       pendingApproval: null,
       pendingPlan: null,
+      turnStartedAt: null,
       _textBuffer: "",
       _thinkingBuffer: "",
       _flushTimer: null,
@@ -120,6 +123,36 @@ export function clearError(agentId: string): void {
   writeState(agentId).error = null;
 }
 
+export function getTurnStartedAt(agentId: string): number | null {
+  return readState(agentId).turnStartedAt;
+}
+
+export function setTurnStartedAt(agentId: string, ts: number | null): void {
+  writeState(agentId).turnStartedAt = ts;
+}
+
+export function addRemoteToolCall(agentId: string, toolName: string, durationMs?: number): void {
+  const state = writeState(agentId);
+  const tc: ToolCallState = {
+    id: `remote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: toolName,
+    status: "complete",
+    durationMs,
+  };
+  state.activeToolCalls = [...state.activeToolCalls, tc];
+}
+
+export function injectUserMessage(agentId: string, content: string): void {
+  const state = writeState(agentId);
+  const msg: ChatMessage = {
+    id: `user-${Date.now()}`,
+    role: "user",
+    content,
+    timestamp: new Date().toISOString(),
+  };
+  state.messages = [...state.messages, msg];
+}
+
 export async function loadHistory(agentId: string, sessionId: string): Promise<void> {
   const gen = (historyGeneration[agentId] ?? 0) + 1;
   historyGeneration[agentId] = gen;
@@ -146,6 +179,7 @@ export function clearMessages(agentId: string): void {
   state.activeToolCalls = [];
   state.error = null;
   state.pendingApproval = null;
+  state.turnStartedAt = null;
 }
 
 /** Inject a local-only message (not sent to any agent) */
@@ -356,6 +390,7 @@ export async function sendMessage(
     state.activeToolCalls = [];
     state.abortController = null;
     state.pendingApproval = null;
+    state.turnStartedAt = null;
   }
   return resolvedSessionId;
 }

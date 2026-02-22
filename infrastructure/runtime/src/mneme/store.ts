@@ -429,6 +429,38 @@ export class SessionStore {
     return result;
   }
 
+  repairOrphanedToolUse(sessionId: string): number {
+    const history = this.getHistory(sessionId, { excludeDistilled: true });
+
+    const answeredIds = new Set<string>();
+    for (const m of history) {
+      if (m.role === "tool_result" && m.toolCallId) {
+        answeredIds.add(m.toolCallId);
+      }
+    }
+
+    let repaired = 0;
+    for (const m of history) {
+      if (m.role !== "assistant") continue;
+      try {
+        const parsed = JSON.parse(m.content);
+        if (!Array.isArray(parsed)) continue;
+        for (const block of parsed) {
+          if (block.type !== "tool_use" || !block.id) continue;
+          if (answeredIds.has(block.id)) continue;
+          this.appendMessage(sessionId, "tool_result",
+            `Error: Tool "${block.name ?? "unknown"}" execution interrupted — service restarted mid-turn.`,
+            { toolCallId: block.id, toolName: block.name ?? undefined },
+          );
+          answeredIds.add(block.id);
+          repaired++;
+        }
+      } catch { /* not JSON, skip */ }
+    }
+
+    return repaired;
+  }
+
   getRecentToolCalls(sessionId: string, limit = 10): string[] {
     const rows = this.db
       .prepare(
