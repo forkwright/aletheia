@@ -163,7 +163,7 @@
     justify-content: center;
     border-radius: var(--radius);
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
     letter-spacing: 1px;
   }
 
@@ -173,7 +173,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
     border: none;
     padding: 6px 16px;
     border-radius: var(--radius-pill);

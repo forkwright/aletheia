@@ -68,12 +68,12 @@
 <style>
   .timeline-slider {
     padding: 4px 12px;
-    background: var(--bg-elevated, #181a1f);
+    background: var(--bg-elevated, #1a1816);
     border-bottom: 1px solid var(--border);
   }
 
   .timeline-slider.active {
-    background: color-mix(in srgb, var(--accent, #9A7B4F) 8%, var(--bg-elevated, #181a1f));
+    background: color-mix(in srgb, var(--accent, #9A7B4F) 8%, var(--bg-elevated, #1a1816));
     border-bottom-color: var(--accent, #9A7B4F);
   }
 
@@ -139,7 +139,7 @@
   .apply-btn {
     background: var(--accent, #9A7B4F);
     border: none;
-    color: #0f1114;
+    color: var(--bg);
     padding: 2px 10px;
     border-radius: var(--radius-sm);
     font-size: var(--text-xs);

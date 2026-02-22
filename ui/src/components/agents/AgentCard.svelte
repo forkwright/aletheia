@@ -70,8 +70,9 @@
     line-height: 1;
   }
   .initials {
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: 500;
     width: 28px;
     height: 28px;
     display: flex;
@@ -79,7 +80,7 @@
     justify-content: center;
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
     letter-spacing: 0.5px;
   }
   .info {
@@ -105,7 +106,7 @@
     padding: 0 5px;
     border-radius: var(--radius);
     background: var(--accent);
-    color: #0f1114;
+    color: var(--bg);
     font-size: var(--text-2xs);
     font-weight: 700;
     display: flex;
