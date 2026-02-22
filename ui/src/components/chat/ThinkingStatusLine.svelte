@@ -72,12 +72,12 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-left: 3px solid var(--status-active);
-    border-radius: 14px;
+    border-radius: var(--radius-pill);
     color: var(--text-secondary);
     font-size: var(--text-sm);
     font-family: var(--font-sans);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick), color var(--transition-quick);
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
@@ -114,7 +114,7 @@
     color: var(--text-muted);
     font-size: var(--text-base);
     flex-shrink: 0;
-    transition: transform 0.15s;
+    transition: transform var(--transition-quick);
   }
   .thinking-status-line:hover .chevron {
     transform: translateX(1px);

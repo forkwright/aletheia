@@ -408,7 +408,7 @@
   }
   .context-fill {
     height: 100%;
-    transition: width 0.5s ease, background 0.5s ease;
+    transition: width var(--transition-measured), background var(--transition-measured);
   }
   .input-area {
     position: relative;
@@ -422,7 +422,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 4px 4px 4px 8px;
-    transition: border-color 0.15s;
+    transition: border-color var(--transition-quick);
   }
   .input-wrapper:focus-within {
     border-color: var(--accent);
@@ -458,7 +458,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--transition-quick), background var(--transition-quick);
     align-self: flex-end;
     margin-bottom: 2px;
     cursor: pointer;
@@ -478,7 +478,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
     align-self: flex-end;
     margin-bottom: 2px;
   }
@@ -498,7 +498,7 @@
     font-size: var(--text-sm);
     font-weight: 500;
     flex-shrink: 0;
-    transition: background 0.15s, opacity 0.15s;
+    transition: background var(--transition-quick), opacity var(--transition-quick);
   }
   .send-btn:hover:not(:disabled) {
     background: var(--accent-hover);
@@ -591,7 +591,7 @@
     justify-content: center;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--transition-quick);
   }
   .attachment-thumb:hover .remove-btn {
     opacity: 1;
@@ -658,7 +658,7 @@
     color: var(--text);
     font-size: var(--text-sm);
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--transition-quick);
   }
   .slash-item:hover,
   .slash-item.selected {

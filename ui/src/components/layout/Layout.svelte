@@ -224,7 +224,7 @@
     cursor: col-resize;
     background: transparent;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
   }
   .resize-handle:hover, .resizing .resize-handle {
     background: var(--accent);

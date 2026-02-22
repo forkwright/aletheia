@@ -174,7 +174,7 @@
     border: none;
     padding: 2px 6px;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     white-space: nowrap;
   }
   .segment-label:hover {
@@ -207,7 +207,7 @@
     color: var(--accent);
     background: var(--surface);
     padding: 3px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--border);
   }
 
@@ -231,10 +231,10 @@
     color: var(--text-muted);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1px 6px;
     cursor: default;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--transition-quick), border-color var(--transition-quick);
   }
   .cost-badge:hover {
     color: var(--text-secondary);
@@ -262,7 +262,7 @@
     padding: 0;
     overflow: hidden;
     cursor: pointer;
-    transition: border-color 0.15s;
+    transition: border-color var(--transition-quick);
   }
   .media-thumb:hover {
     border-color: var(--accent);
@@ -338,7 +338,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
   }
   .lightbox-close:hover {
     background: rgba(255, 255, 255, 0.25);

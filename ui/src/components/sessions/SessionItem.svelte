@@ -32,7 +32,7 @@
     color: var(--text);
     font-size: var(--text-sm);
     text-align: left;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
   }
   .session-item:hover {
     background: var(--surface-hover);

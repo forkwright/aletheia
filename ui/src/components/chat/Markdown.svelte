@@ -71,7 +71,7 @@
     font-size: 0.9em;
     padding: 2px 6px;
     background: var(--surface);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .markdown-body :global(pre) {
     margin: 8px 0;
@@ -244,7 +244,7 @@
     width: 14px;
     height: 14px;
     border: 1.5px solid var(--text-muted);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: transparent;
     vertical-align: middle;
     margin-right: 6px;

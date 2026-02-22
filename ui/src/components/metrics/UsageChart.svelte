@@ -91,7 +91,7 @@
     background: var(--accent);
     border-radius: 2px 2px 0 0;
     min-height: 2px;
-    transition: height 0.3s ease;
+    transition: height var(--transition-measured);
     opacity: 0.8;
   }
   .bar-col:hover .bar {

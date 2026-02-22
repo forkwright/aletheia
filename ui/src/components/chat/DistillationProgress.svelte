@@ -82,7 +82,7 @@
     margin: 4px 0;
     background: rgba(154, 123, 79, 0.06);
     border: 1px solid rgba(154, 123, 79, 0.2);
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-size: var(--text-sm);
     color: var(--text-secondary);
     animation: fade-in 0.2s ease;
@@ -126,14 +126,14 @@
   .distill-track {
     height: 3px;
     background: var(--surface);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
   }
   .distill-fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 2px;
-    transition: width 0.4s ease;
+    border-radius: var(--radius-sm);
+    transition: width var(--transition-measured);
   }
   .distill-bar.complete .distill-fill {
     background: var(--status-success);

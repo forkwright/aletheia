@@ -180,7 +180,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--transition-quick), background var(--transition-quick), border-color var(--transition-quick);
     flex-shrink: 0;
   }
   .sidebar-toggle:hover {
@@ -238,7 +238,7 @@
     color: var(--text-muted);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1px 6px;
   }
   .update-badge {
@@ -247,7 +247,7 @@
     color: var(--status-success);
     background: color-mix(in srgb, var(--status-success) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1px 6px;
     cursor: default;
   }
@@ -263,7 +263,7 @@
     padding: 4px 10px;
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
   .topbar-btn:hover {
     color: var(--text);
@@ -300,7 +300,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--transition-quick), background var(--transition-quick);
   }
   .mobile-menu-btn:hover, .mobile-menu-btn.active {
     color: var(--text);
@@ -349,7 +349,7 @@
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      box-shadow: var(--shadow-lg);
       min-width: 160px;
       overflow: hidden;
       animation: menu-in 0.12s ease;
@@ -369,7 +369,7 @@
       font-size: var(--text-base);
       font-weight: 500;
       text-align: left;
-      transition: background 0.1s;
+      transition: background var(--transition-quick);
     }
     .mobile-menu-item:hover, .mobile-menu-item:active {
       background: var(--surface-hover);

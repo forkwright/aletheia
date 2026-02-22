@@ -61,7 +61,7 @@
     color: var(--text);
     font-size: var(--text-sm);
     text-align: left;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-md);
     animation: slide-in 0.2s ease-out;
     cursor: pointer;
     width: 100%;

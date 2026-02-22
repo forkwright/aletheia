@@ -43,7 +43,7 @@
     color: var(--text);
     font-size: var(--text-base);
     text-align: left;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .agent-card:hover {
     background: var(--surface-hover);
@@ -103,7 +103,7 @@
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
+    border-radius: var(--radius);
     background: var(--accent);
     color: #0f1114;
     font-size: var(--text-2xs);

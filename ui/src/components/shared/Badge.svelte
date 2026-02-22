@@ -9,7 +9,7 @@
   .badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-pill);
     font-size: var(--text-xs);
     font-weight: 600;
     white-space: nowrap;

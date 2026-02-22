@@ -159,7 +159,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
   }
   .risk-badge.destructive {
     background: rgba(248, 81, 73, 0.15);
@@ -216,7 +216,7 @@
     font-size: var(--text-2xs);
     background: var(--surface);
     padding: 1px 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
   }
   .approval-buttons {
     display: flex;
@@ -232,7 +232,7 @@
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);

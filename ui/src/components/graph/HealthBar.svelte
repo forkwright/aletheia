@@ -133,7 +133,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 1px 6px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-size: var(--text-2xs);
     color: var(--text-secondary);
     white-space: nowrap;
@@ -153,7 +153,7 @@
     background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 1px 6px;
     font-size: var(--text-sm);
     cursor: pointer;

@@ -298,7 +298,7 @@
     display: flex;
     flex-direction: column;
     z-index: 20;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-lg);
   }
 
   /* Header */
@@ -380,7 +380,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-2xs);
     color: var(--text-secondary);
   }
@@ -425,7 +425,7 @@
     font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
 
   .tab-btn:hover {
@@ -495,7 +495,7 @@
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     padding: 0 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-2xs);
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -533,7 +533,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
   }
 
@@ -556,8 +556,8 @@
     font-size: var(--text-sm);
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: 3px;
-    transition: background 0.1s;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-quick);
   }
 
   .rel-target:hover {
@@ -665,7 +665,7 @@
     border-radius: var(--radius-sm);
     font-size: var(--text-xs);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
   .action-btn:hover { color: var(--text); border-color: var(--text-muted); }
   .action-btn:disabled { opacity: 0.4; cursor: default; }

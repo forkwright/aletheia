@@ -479,7 +479,7 @@
     font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--transition-quick), color var(--transition-quick);
   }
   .toggle-btn:hover { color: var(--text); }
   .toggle-btn.active {
@@ -505,7 +505,7 @@
     font-size: var(--text-sm);
     cursor: pointer;
     position: relative;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
     line-height: 1;
   }
   .overlay-btn:hover { background: var(--surface); }
@@ -522,7 +522,7 @@
     font-size: var(--text-2xs);
     font-weight: 700;
     padding: 1px 3px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     min-width: 12px;
     text-align: center;
     line-height: 1.2;
@@ -550,11 +550,11 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-pill);
     font-size: var(--text-xs);
     white-space: nowrap;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
   .pill:hover {
     border-color: var(--pill-color, var(--text-muted));

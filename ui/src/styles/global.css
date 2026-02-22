@@ -89,9 +89,10 @@
   --topbar-height: 48px;
 
   /* === RADIUS === */
-  /* Two sizes. That's it. */
+  /* Three sizes. Containers, elements, pills. */
   --radius: 8px;        /* containers, cards, modals */
-  --radius-sm: 4px;     /* buttons, badges, inputs */
+  --radius-sm: 4px;     /* buttons, badges, inputs, code */
+  --radius-pill: 14px;  /* pills, status lines, scroll button */
 
   /* === SHADOWS === */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);

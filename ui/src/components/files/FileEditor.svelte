@@ -345,7 +345,7 @@
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text);
     padding: 3px 6px;
     font-size: var(--text-xs);
@@ -446,7 +446,7 @@
     color: var(--text-muted);
     font-size: var(--text-base);
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     line-height: 1;
   }
@@ -457,7 +457,7 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-size: var(--text-xs);
     cursor: pointer;
   }
@@ -517,7 +517,7 @@
   .preview-pane :global(code) {
     background: var(--surface);
     padding: 1px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
   }

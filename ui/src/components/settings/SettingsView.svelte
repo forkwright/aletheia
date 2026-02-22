@@ -282,8 +282,8 @@
     color: var(--text-secondary);
     padding: 4px 12px;
     font-size: var(--text-sm);
-    border-radius: 4px;
-    transition: all 0.15s;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-quick);
   }
   .toggle-btn.active {
     background: var(--accent);

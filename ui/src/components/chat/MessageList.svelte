@@ -176,10 +176,10 @@
     color: #0f1114;
     border: none;
     padding: 6px 16px;
-    border-radius: 16px;
+    border-radius: var(--radius-pill);
     font-size: var(--text-sm);
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
   }
   .scroll-btn:hover {

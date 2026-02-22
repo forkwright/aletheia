@@ -92,7 +92,7 @@
     color: var(--status-active);
     background: rgba(232, 169, 42, 0.1);
     padding: 2px 6px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     border: 1px solid rgba(232, 169, 42, 0.2);
     animation: pulse 2s ease-in-out infinite;
   }
@@ -112,7 +112,7 @@
     font-size: var(--text-lg);
     cursor: pointer;
     border-radius: var(--radius-sm);
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--transition-quick), color var(--transition-quick);
     flex-shrink: 0;
   }
   .close-btn:hover {

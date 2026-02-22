@@ -161,7 +161,7 @@
     color: var(--text-secondary);
     background: var(--surface);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
   }
   .plan-steps {
     display: flex;
@@ -176,7 +176,7 @@
     padding: 6px 8px;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--transition-quick);
     font-size: var(--text-sm);
   }
   .plan-step:hover {
@@ -237,7 +237,7 @@
     font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);

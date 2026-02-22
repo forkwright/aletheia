@@ -364,7 +364,7 @@
     color: var(--text-muted);
     font-size: var(--text-sm);
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     line-height: 1;
   }
@@ -400,7 +400,7 @@
     font-size: var(--text-sm);
     text-align: left;
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background var(--transition-quick);
   }
   .tool-row:hover {
     background: var(--surface-hover);

@@ -204,7 +204,7 @@
     font-size: var(--text-2xs);
     font-weight: 700;
     padding: 1px 5px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     min-width: 16px;
     text-align: center;
   }
@@ -228,7 +228,7 @@
     padding: 5px 4px;
     cursor: pointer;
     border-bottom: 2px solid transparent;
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
   .section-tab:hover { color: var(--text-secondary); }
   .section-tab.active {
@@ -284,7 +284,7 @@
   .action-btn {
     font-size: var(--text-2xs);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     border: 1px solid;
     margin-top: 2px;

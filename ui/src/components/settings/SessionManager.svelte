@@ -156,7 +156,7 @@
     color: #0f1114;
     font-size: var(--text-2xs);
     padding: 1px 6px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-weight: 500;
   }
   .revoke-btn {
