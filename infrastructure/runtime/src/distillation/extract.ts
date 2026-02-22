@@ -270,13 +270,13 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (balanced) {
     try {
       return JSON.parse(balanced) as Record<string, unknown>;
-    } catch {
+    } catch { /* mem0 store failed — non-fatal */
       // Strategy 2: Repair common LLM issues then parse
       const repaired = repairJson(balanced);
       try {
         log.debug("JSON parsed after repair (balanced extraction)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch {
+      } catch { /* session notes failed — non-fatal */
         // Fall through
       }
     }
@@ -287,12 +287,12 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (match) {
     try {
       return JSON.parse(match[0]) as Record<string, unknown>;
-    } catch {
+    } catch { /* fact file write failed — non-fatal */
       const repaired = repairJson(match[0]);
       try {
         log.debug("JSON parsed after repair (greedy regex)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch {
+      } catch { /* fact backup failed — non-fatal */
         log.warn(`All JSON parse strategies failed. Fragment: ${match[0].slice(0, 200)}`);
       }
     }

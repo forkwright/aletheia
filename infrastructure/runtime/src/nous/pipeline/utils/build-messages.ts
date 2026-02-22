@@ -26,7 +26,7 @@ function formatEphemeralTimestamp(isoString: string, tz: string = "UTC"): string
       minute: "2-digit",
       hour12: true,
     });
-  } catch {
+  } catch { /* image read failed — skip attachment */
     return null;
   }
 }
@@ -63,7 +63,7 @@ export function buildMessages(
           }
           continue;
         }
-      } catch {
+      } catch { /* tool result parse failed — use raw */
         // Not JSON — plain text assistant message
       }
       messages.push({ role: "assistant", content: msg.content });

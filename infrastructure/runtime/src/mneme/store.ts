@@ -234,7 +234,7 @@ export class SessionStore {
         )
         .get() as { version: number } | undefined;
       return row?.version ?? 0;
-    } catch {
+    } catch { /* migration column may already exist */
       return 0;
     }
   }
@@ -2337,7 +2337,7 @@ export class SessionStore {
     };
     try {
       findings = JSON.parse(r["findings"] as string) as ReflectionFindings;
-    } catch {
+    } catch { /* DB cleanup failed — non-fatal */
       log.warn(`Malformed findings JSON in reflection ${r["id"]}`);
     }
     return {

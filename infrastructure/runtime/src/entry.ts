@@ -560,7 +560,7 @@ program
     let agentFile: import("./portability/export.js").AgentFile;
     try {
       agentFile = JSON.parse(raw);
-    } catch {
+    } catch { /* invalid JSON in agent file */
       console.error("Invalid JSON in agent file");
       process.exit(1);
     }
@@ -661,7 +661,7 @@ program
     let raw: string;
     try {
       raw = readFileSync(configPath, "utf-8");
-    } catch {
+    } catch { /* config file unreadable */
       console.error(`Cannot read config: ${configPath}`);
       process.exit(1);
     }
@@ -669,7 +669,7 @@ program
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
+    } catch { /* invalid JSON in config */
       console.error("Invalid JSON in config file");
       process.exit(1);
     }

@@ -57,7 +57,7 @@ export const lsTool: ToolHandler = {
           const modified = stat.mtime.toISOString().slice(0, 16).replace("T", " ");
           const suffix = isDir ? "/" : "";
           lines.push(`${modified}  ${size.padStart(8)}  ${entry.name}${suffix}`);
-        } catch {
+        } catch { /* stat failed for entry */
           lines.push(`${"?".padStart(17)}  ${"?".padStart(8)}  ${entry.name}`);
         }
       }

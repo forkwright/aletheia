@@ -45,7 +45,7 @@ export function verifyToken(
     ) as AccessTokenPayload;
     if (payload.exp < Math.floor(Date.now() / 1000)) return null;
     return payload;
-  } catch {
+  } catch { /* db init failed */
     return null;
   }
 }

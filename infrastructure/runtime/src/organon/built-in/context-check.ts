@@ -31,7 +31,7 @@ export function createContextCheckTool(registry: ToolRegistry): ToolHandler {
       try {
         const sessionResult = await registry.execute("session_status", {}, context);
         results["session"] = JSON.parse(sessionResult);
-      } catch {
+      } catch { /* memory search failed — skip */
         results["session"] = { error: "unavailable" };
       }
 
@@ -39,7 +39,7 @@ export function createContextCheckTool(registry: ToolRegistry): ToolHandler {
       try {
         const calResult = await registry.execute("check_calibration", {}, context);
         results["calibration"] = JSON.parse(calResult);
-      } catch {
+      } catch { /* blackboard read failed — skip */
         results["calibration"] = { error: "unavailable" };
       }
 

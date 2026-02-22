@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 export function readText(path: string): string | null {
   try {
     return readFileSync(path, "utf-8");
-  } catch {
+  } catch { /* file missing or unreadable */
     return null;
   }
 }
@@ -15,7 +15,7 @@ export function readJson<T = unknown>(path: string): T | null {
   if (text === null) return null;
   try {
     return JSON.parse(text) as T;
-  } catch {
+  } catch { /* malformed JSON */
     return null;
   }
 }

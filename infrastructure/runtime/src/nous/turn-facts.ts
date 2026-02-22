@@ -118,7 +118,7 @@ function parseFactsArray(raw: string): string[] {
     if (Array.isArray(parsed)) {
       return parsed.filter((item): item is string => typeof item === "string");
     }
-  } catch {
+  } catch { /* fact extraction failed — non-fatal */
     // Try extracting array from within text
     const match = text.match(/\[[\s\S]*\]/);
     if (match) {
