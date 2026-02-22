@@ -20,6 +20,7 @@ interface AgentChatState {
 }
 
 let states = $state<Record<string, AgentChatState>>({});
+let historyGeneration: Record<string, number> = {};
 
 const STREAM_DEBOUNCE_MS = 100;
 
@@ -120,12 +121,17 @@ export function clearError(agentId: string): void {
 }
 
 export async function loadHistory(agentId: string, sessionId: string): Promise<void> {
+  const gen = (historyGeneration[agentId] ?? 0) + 1;
+  historyGeneration[agentId] = gen;
   const state = writeState(agentId);
   try {
     const history = await fetchHistory(sessionId);
+    if (historyGeneration[agentId] !== gen) return; // Stale — a newer load superseded us
     state.messages = historyToMessages(history);
   } catch (err) {
-    state.error = err instanceof Error ? err.message : String(err);
+    if (historyGeneration[agentId] === gen) {
+      state.error = err instanceof Error ? err.message : String(err);
+    }
   }
 }
 

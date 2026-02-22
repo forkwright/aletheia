@@ -24,6 +24,7 @@ export function isSessionsLoading(): boolean {
 
 export async function loadSessions(nousId: string): Promise<void> {
   const gen = ++loadGeneration;
+  activeSessionId = null; // Clear immediately to prevent stale session reads during fetch
   loading = true;
   try {
     const all = await fetchSessions(nousId);
