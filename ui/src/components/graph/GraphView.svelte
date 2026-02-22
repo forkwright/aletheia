@@ -6,6 +6,7 @@
   import DriftPanel from "./DriftPanel.svelte";
   import TimelineSlider from "./TimelineSlider.svelte";
   import ContextLookup from "./ContextLookup.svelte";
+  import { communityColor, agentColor, AGENT_COLORS } from "../../lib/graph-colors";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getCommunityIds,
@@ -33,29 +34,6 @@
   let showContextLookup = $state(false);
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
-
-  /* Ardent dye palette leads, earth tones follow */
-  const PALETTE = [
-    "#7a2838", "#4a3860", "#5C8E63", "#9A7B4F", "#a06e3a",
-    "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
-    "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
-    "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
-  ];
-
-  const AGENT_COLORS: Record<string, string> = {
-    syn: "#9A7B4F",      /* aged brass — primary orchestrator */
-    demiurge: "#a06e3a",  /* natural leather — the maker */
-    syl: "#b07a8a",       /* dusty rose */
-    akron: "#5C8E63",     /* aporia green — field work */
-    eiron: "#4a3860",     /* thanatochromia — analysis */
-    arbor: "#6b8fa3",     /* steel blue */
-    unknown: "#6b6560",   /* warm grey */
-  };
-
-  function communityColor(community: number): string {
-    if (community < 0) return "#302c28";
-    return PALETTE[community % PALETTE.length]!;
-  }
 
   // --- Progressive loading ---
   async function initialLoad() {
