@@ -12,6 +12,7 @@
     thinkingText = "",
     activeToolCalls,
     isStreaming,
+    turnStartedAt = null,
     agentName,
     agentEmoji,
     onToolClick,
@@ -22,6 +23,7 @@
     thinkingText?: string;
     activeToolCalls: ToolCallState[];
     isStreaming: boolean;
+    turnStartedAt?: number | null;
     agentName?: string | null;
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
@@ -102,7 +104,7 @@
               <Markdown content={streamingText} />
             </div>
           {:else if activeToolCalls.length === 0 && !thinkingText}
-            <StreamingIndicator />
+            <StreamingIndicator startedAt={turnStartedAt} />
           {/if}
         </div>
       </div>

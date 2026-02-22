@@ -5,12 +5,14 @@
     isStreaming,
     onSend,
     onAbort,
+    onQueue,
     contextPercent = 0,
     slashCommands = [],
   }: {
     isStreaming: boolean;
     onSend: (text: string, media?: MediaItem[]) => void;
     onAbort: () => void;
+    onQueue?: (text: string) => void;
     contextPercent?: number;
     slashCommands?: Array<{ command: string; description: string }>;
   } = $props();
@@ -230,9 +232,15 @@
 
     if (isStreaming) {
       if (trimmed) {
-        queued = trimmed;
-        text = "";
-        if (textarea) textarea.style.height = "40px";
+        if (onQueue) {
+          onQueue(trimmed);
+          text = "";
+          if (textarea) textarea.style.height = "40px";
+        } else {
+          queued = trimmed;
+          text = "";
+          if (textarea) textarea.style.height = "40px";
+        }
       }
       return;
     }
@@ -369,9 +377,9 @@
         class="send-btn"
         onclick={submit}
         disabled={!hasContent}
-        class:queuing={isStreaming && text.trim().length > 0}
+        class:queuing={isStreaming && !onQueue && text.trim().length > 0}
       >
-        {isStreaming && text.trim().length > 0 ? "Queue" : "Send"}
+        {isStreaming && text.trim().length > 0 ? (onQueue ? "Send" : "Queue") : "Send"}
       </button>
     </div>
     <input
