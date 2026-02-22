@@ -4,6 +4,14 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.4] - 2026-02-22
+
+### Added
+- **`aletheia agent create`** (Spec 5 P1-P3) — CLI command scaffolds a new agent workspace from `_example/` template with onboarding SOUL.md. Supports `--id`, `--name`, `--emoji` flags or interactive prompts. Automatically updates `aletheia.json` with agent entry and web binding.
+- **Onboarding SOUL.md** (Spec 5 P4) — Scaffolded agents get an onboarding prompt as their initial SOUL.md. The agent interviews its operator to learn name, domain, working style, and boundaries, then writes its own `SOUL.md`, `USER.md`, and `MEMORY.md`. Zero runtime changes — the agent naturally transitions out of onboarding by overwriting SOUL.md via the write tool.
+
+---
+
 ## [0.10.3] - 2026-02-22
 
 ### Added
