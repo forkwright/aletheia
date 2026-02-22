@@ -12,7 +12,6 @@ that evolve with the system.
 
 | # | Spec | Status | Remaining |
 |---|------|--------|-----------|
-| 3 | [Auth & Updates](03_auth-and-updates.md) | Phases 1b, 2a done; auth wiring + session UI (PR #99) | Release workflow (1a,1c), remaining auth (2c-2e), login UI (3a-3c), failover (4a) |
 | 26 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | 4/6 phases (PRs #106, #107) | Code patching (5), evolutionary search (6) |
 | 21 | [Agent Portability](21_agent-portability.md) | 3/4 phases (PRs #100, #124) | Checkpoint time-travel (4) |
 
@@ -35,9 +34,8 @@ that evolve with the system.
 ### Priority Order
 
 **Tier 1 — Active work (phases in progress):**
-1. **3** Auth & Updates — login UI, release workflow
-2. **26** Recursive Self-Improvement — code patching, evolutionary search
-3. **21** Agent Portability — checkpoint time-travel
+1. **26** Recursive Self-Improvement — code patching, evolutionary search
+2. **21** Agent Portability — checkpoint time-travel
 
 **Tier 3 — Draft:**
 6. **5** Onboarding — needed for public adoption
@@ -50,6 +48,7 @@ that evolve with the system.
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Auth & Updates](03_auth-and-updates.md) | PRs #50, #70, #99, #126 | OAuth login, session mgmt, update daemon, release workflow, credential failover, update notification UI |
 | [Extensibility](18_extensibility.md) | PRs #98, #107, #124 | Hooks, custom commands, per-nous hooks, plugin auto-discovery, path safety, loop guard template |
 | [Security Hardening](20_security-hardening.md) | PRs #99, #106, #124 | PII detection, Docker sandbox, tamper-evident audit, encrypted memory at rest |
 | [Cost-Aware Orchestration](archive/04_cost-aware-orchestration.md) | PRs #59, #89, #99 | Model routing, token pricing, sub-agent delegation, plan mode, cost visibility UI |
@@ -74,7 +73,7 @@ that evolve with the system.
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
 
-**Score: 23 archived, 3 in progress, 5 draft/skeleton.**
+**Score: 24 archived, 2 in progress, 5 draft/skeleton.**
 
 ## Conventions
 

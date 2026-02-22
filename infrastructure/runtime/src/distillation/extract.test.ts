@@ -132,6 +132,35 @@ describe("extractJson", () => {
   });
 });
 
+describe("object element filtering", () => {
+  it("filters non-string elements from LLM arrays", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Valid fact about deployment process",
+        { text: "Structured but wrong format", confidence: 0.9 },
+        42,
+        "Another valid fact about config changes",
+      ],
+      decisions: [{ decision: "use Qdrant" }],
+      openItems: ["Need to verify integration test results pass"],
+      keyEntities: ["Qdrant", { name: "Neo4j" }],
+      contradictions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [
+      { role: "user", content: "hello" },
+    ], "test-model");
+
+    expect(result.facts).toEqual([
+      "Valid fact about deployment process",
+      "Another valid fact about config changes",
+    ]);
+    expect(result.decisions).toEqual([]);
+    expect(result.openItems).toEqual(["Need to verify integration test results pass"]);
+    expect(result.keyEntities).toEqual(["Qdrant"]);
+  });
+});
+
 describe("noise filtering", () => {
   it("filters generic patterns from extraction output", async () => {
     const json = JSON.stringify({

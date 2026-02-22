@@ -4,6 +4,24 @@ All notable changes to Aletheia are documented here.
 
 ---
 
+## [0.10.2] - 2026-02-21
+
+### Added
+- **Update notification badge** (Spec 3 P3b) — TopBar polls `/api/system/update-status`, shows green version badge when update available
+- **Update API endpoint** (Spec 3 P3c) — `POST /api/system/update` runs git pull + rebuild, returns status
+- **Credential failover** (Spec 3 P4a) — `ProviderRouter.complete()` tries backup API keys from `~/.aletheia/credentials/anthropic.json` on recoverable errors (429/5xx)
+
+### Fixed
+- **`[object Object]` in webchat** — LLM sometimes returns structured objects in string arrays during distillation extraction and working state updates. Added `toStringArray()` filter to all 9 array fields across `extract.ts` and `working-state.ts`.
+
+### Changed
+- **Tool workspace scope removed** — file tools (read, write, edit, ls, grep, find) no longer constrained to workspace + allowedRoots via `safePath()`. Now use plain `resolve()`, matching `exec` tool behavior. Deleted `safe-path.ts` and tests.
+
+### Specs Completed
+- **Spec 3** Auth & Updates — all phases complete
+
+---
+
 ## [0.10.1] - 2026-02-21
 
 ### Added

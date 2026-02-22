@@ -319,6 +319,33 @@ export function createGateway(
     c.json({ channel: config.updates?.channel ?? "stable" }),
   );
 
+  app.get("/api/system/update-status", (c) => {
+    const entries = store.blackboardRead("system:update");
+    if (!entries || entries.length === 0) return c.json({ available: false });
+    try {
+      return c.json(JSON.parse(entries[0]!.value));
+    } catch {
+      return c.json({ available: false });
+    }
+  });
+
+  app.post("/api/system/update", async (c) => {
+    const { execSync } = await import("node:child_process");
+    const root = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
+    try {
+      const output = execSync(
+        `cd ${root} && git pull origin main && cd infrastructure/runtime && npx tsdown`,
+        { timeout: 120_000, encoding: "utf-8" },
+      );
+      log.info(`System update completed: ${output.slice(-200)}`);
+      return c.json({ ok: true, message: "Update complete. Restart service to apply." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`System update failed: ${msg}`);
+      return c.json({ error: msg }, 500);
+    }
+  });
+
   app.post("/api/config/reload", (c) => {
     const newConfig = tryReloadConfig();
     if (!newConfig) {

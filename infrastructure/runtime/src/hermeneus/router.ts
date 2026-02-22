@@ -20,6 +20,7 @@ interface ProviderEntry {
 
 export class ProviderRouter {
   private providers: ProviderEntry[] = [];
+  private backupProviders: AnthropicProvider[] = [];
 
   registerProvider(
     name: string,
@@ -32,6 +33,13 @@ export class ProviderRouter {
       models: new Set(models),
     });
     log.info(`Registered provider ${name}${models.length > 0 ? ` (${models.join(", ")})` : ""}`);
+  }
+
+  registerBackupCredentials(providers: AnthropicProvider[]): void {
+    this.backupProviders = providers;
+    if (providers.length > 0) {
+      log.info(`Registered ${providers.length} backup credential(s) for failover`);
+    }
   }
 
   private resolve(model: string): ProviderEntry {
@@ -56,10 +64,24 @@ export class ProviderRouter {
 
   async complete(request: CompletionRequest): Promise<TurnResult> {
     const entry = this.resolve(request.model);
-    // Normalize model name — strip provider prefix for the SDK
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
     log.debug(`Routing ${request.model} to ${entry.name} (model=${model})`);
-    return entry.provider.complete({ ...request, model });
+    try {
+      return await entry.provider.complete({ ...request, model });
+    } catch (error) {
+      if (!(error instanceof ProviderError) || !error.recoverable || this.backupProviders.length === 0) {
+        throw error;
+      }
+      for (let i = 0; i < this.backupProviders.length; i++) {
+        log.warn(`Primary credential failed (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
+        try {
+          return await this.backupProviders[i]!.complete({ ...request, model });
+        } catch {
+          continue;
+        }
+      }
+      throw error;
+    }
   }
 
   async *completeStreaming(request: CompletionRequest): AsyncGenerator<StreamingEvent> {
@@ -89,6 +111,7 @@ export class ProviderRouter {
       throw error;
     }
   }
+
 }
 
 export interface RouterConfig {
@@ -151,5 +174,22 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   const providerOpts = authToken ? { authToken } : fileApiKey ? { apiKey: fileApiKey } : undefined;
   const anthropic = new AnthropicProvider(providerOpts);
   router.registerProvider("anthropic", anthropic, configModels);
+
+  // Read backup credentials for failover on 429/5xx
+  const home = process.env["HOME"] ?? "/tmp";
+  const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
+  try {
+    const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
+    const backupKeys = raw["backupKeys"];
+    if (Array.isArray(backupKeys)) {
+      const backups = backupKeys
+        .filter((k): k is string => typeof k === "string" && k.length > 0)
+        .map((key) => new AnthropicProvider({ apiKey: key }));
+      if (backups.length > 0) {
+        router.registerBackupCredentials(backups);
+      }
+    }
+  } catch { /* no backup keys configured */ }
+
   return router;
 }

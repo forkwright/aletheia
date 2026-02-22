@@ -106,6 +106,10 @@ const NOISE_PATTERNS = [
 const MIN_ITEM_LENGTH = 15;
 const MAX_ITEM_LENGTH = 300;
 
+function toStringArray(arr: unknown[]): string[] {
+  return arr.filter((x): x is string => typeof x === "string");
+}
+
 /** Filter out noise from extracted items. */
 function filterNoise(items: string[]): string[] {
   return items.filter((item) => {
@@ -181,11 +185,11 @@ async function extractChunk(
   }
 
   const raw = {
-    facts: Array.isArray(parsed["facts"]) ? parsed["facts"] : [],
-    decisions: Array.isArray(parsed["decisions"]) ? parsed["decisions"] : [],
-    openItems: Array.isArray(parsed["openItems"]) ? parsed["openItems"] : [],
-    keyEntities: Array.isArray(parsed["keyEntities"]) ? parsed["keyEntities"] : [],
-    contradictions: Array.isArray(parsed["contradictions"]) ? parsed["contradictions"] : [],
+    facts: Array.isArray(parsed["facts"]) ? toStringArray(parsed["facts"]) : [],
+    decisions: Array.isArray(parsed["decisions"]) ? toStringArray(parsed["decisions"]) : [],
+    openItems: Array.isArray(parsed["openItems"]) ? toStringArray(parsed["openItems"]) : [],
+    keyEntities: Array.isArray(parsed["keyEntities"]) ? toStringArray(parsed["keyEntities"]) : [],
+    contradictions: Array.isArray(parsed["contradictions"]) ? toStringArray(parsed["contradictions"]) : [],
   };
 
   // Apply post-extraction noise filtering to facts and decisions

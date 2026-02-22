@@ -7,6 +7,10 @@ import type { WorkingState } from "../mneme/store.js";
 
 const log = createLogger("working-state");
 
+function toStringArray(arr: unknown[]): string[] {
+  return arr.filter((x): x is string => typeof x === "string");
+}
+
 const EXTRACTION_PROMPT = `You are extracting structured task context from a conversation turn. Output valid JSON only — no markdown, no explanation.
 
 Given the assistant's last response and any tool calls, extract:
@@ -72,16 +76,16 @@ export async function extractWorkingState(
     const state: WorkingState = {
       currentTask: typeof parsed["currentTask"] === "string" ? parsed["currentTask"] : "",
       completedSteps: Array.isArray(parsed["completedSteps"])
-        ? (parsed["completedSteps"] as string[]).slice(0, 5)
+        ? toStringArray(parsed["completedSteps"]).slice(0, 5)
         : [],
       nextSteps: Array.isArray(parsed["nextSteps"])
-        ? (parsed["nextSteps"] as string[]).slice(0, 3)
+        ? toStringArray(parsed["nextSteps"]).slice(0, 3)
         : [],
       recentDecisions: Array.isArray(parsed["recentDecisions"])
-        ? (parsed["recentDecisions"] as string[]).slice(0, 3)
+        ? toStringArray(parsed["recentDecisions"]).slice(0, 3)
         : [],
       openFiles: Array.isArray(parsed["openFiles"])
-        ? (parsed["openFiles"] as string[]).slice(0, 5)
+        ? toStringArray(parsed["openFiles"]).slice(0, 5)
         : [],
       updatedAt: new Date().toISOString(),
     };
