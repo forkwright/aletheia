@@ -173,6 +173,8 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
+    /* Critical for mobile keyboard: flex child must be able to shrink
+       when --app-height decreases */
   }
   .content {
     flex: 1;

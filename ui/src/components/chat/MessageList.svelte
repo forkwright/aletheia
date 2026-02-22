@@ -58,6 +58,29 @@
       requestAnimationFrame(scrollToBottom);
     }
   });
+
+  // When the visual viewport resizes (keyboard open/close), keep scroll pinned
+  // to bottom if we were already near the bottom
+  import { onMount, onDestroy } from "svelte";
+
+  let viewportCleanup: (() => void) | null = null;
+
+  onMount(() => {
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const handleResize = () => {
+        if (isNearBottom) {
+          requestAnimationFrame(scrollToBottom);
+        }
+      };
+      vv.addEventListener("resize", handleResize);
+      viewportCleanup = () => vv.removeEventListener("resize", handleResize);
+    }
+  });
+
+  onDestroy(() => {
+    viewportCleanup?.();
+  });
 </script>
 
 <div class="message-list" bind:this={container} onscroll={checkScroll}>
@@ -125,6 +148,8 @@
     overflow-x: hidden;
     min-height: 0;
     position: relative;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain; /* Prevent pull-to-refresh in message list */
   }
   .empty-state {
     display: flex;

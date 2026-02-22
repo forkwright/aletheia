@@ -447,11 +447,22 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    /* On mobile with keyboard open, the view must shrink to fit above the keyboard.
+       The --app-height variable (set by mobile.ts) handles the outer container,
+       and flex layout propagates the constraint inward. */
   }
   .chat-area {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  @media (max-width: 768px) {
+    .chat-view {
+      /* Ensure the flex column fills available space and doesn't overflow
+         when the virtual keyboard is open */
+      overflow: hidden;
+    }
   }
 </style>

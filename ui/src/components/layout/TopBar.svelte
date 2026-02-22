@@ -74,7 +74,7 @@
   <div class="left">
     <h1 class="title desktop-only">{getBrandName()}</h1>
     <span class="status-dot" class:connected={getConnectionStatus() === "connected"} class:connecting={getConnectionStatus() === "connecting"}></span>
-    <div class="agent-bar">
+    <div class="agent-bar" data-scrollable>
       {#each getAgents() as a (a.id)}
         <AgentPill
           agent={a}
@@ -185,6 +185,10 @@
     scrollbar-width: none;
     flex-shrink: 1;
     min-width: 0;
+    /* Mark as scrollable so mobile.ts doesn't block touch */
+  }
+  .agent-bar[data-scrollable] {
+    /* Marker attribute for mobile touchmove passthrough */
   }
   .agent-bar::-webkit-scrollbar {
     display: none;
@@ -362,13 +366,14 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 12px 16px;
+      padding: 14px 16px;
       background: none;
       border: none;
       color: var(--text-secondary);
       font-size: var(--text-base);
       font-weight: 500;
       text-align: left;
+      min-height: 48px; /* 48px minimum touch target per Material Design */
       transition: background var(--transition-quick);
     }
     .mobile-menu-item:hover, .mobile-menu-item:active {
