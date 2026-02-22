@@ -194,14 +194,14 @@
     border-bottom: 1px solid var(--border);
   }
   .explorer-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
   }
   .refresh-btn {
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--text-lg);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
   }
@@ -220,7 +220,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-family: var(--font-sans);
   }
   .filter-input:focus {
@@ -235,7 +235,7 @@
   .tree-loading, .tree-empty {
     padding: 16px;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -249,7 +249,7 @@
     background: none;
     border: none;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--text-sm);
     text-align: left;
     cursor: pointer;
     white-space: nowrap;
@@ -264,13 +264,13 @@
   }
   .tree-icon {
     width: 12px;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
     flex-shrink: 0;
   }
   .tree-file-icon {
     width: 18px;
-    font-size: 9px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     flex-shrink: 0;
@@ -285,7 +285,7 @@
   }
   .tree-size {
     margin-left: auto;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     flex-shrink: 0;
@@ -297,12 +297,12 @@
     flex-shrink: 0;
     margin-left: 4px;
   }
-  .git-indicator.modified { background: var(--yellow); }
-  .git-indicator.added { background: var(--green); }
-  .git-indicator.deleted { background: var(--red); }
-  .tree-item.modified .tree-name { color: var(--yellow); }
-  .tree-item.added .tree-name { color: var(--green); }
-  .tree-item.deleted .tree-name { color: var(--red); }
+  .git-indicator.modified { background: var(--status-warning); }
+  .git-indicator.added { background: var(--status-success); }
+  .git-indicator.deleted { background: var(--status-error); }
+  .tree-item.modified .tree-name { color: var(--status-warning); }
+  .tree-item.added .tree-name { color: var(--status-success); }
+  .tree-item.deleted .tree-name { color: var(--status-error); }
 
   .file-preview {
     flex: 1;
@@ -321,7 +321,7 @@
   }
   .preview-path {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -331,7 +331,7 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 18px;
+    font-size: var(--text-xl);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     line-height: 1;
@@ -346,7 +346,7 @@
     margin: 0;
     padding: 12px 16px;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-all;
@@ -360,22 +360,22 @@
     gap: 8px;
     height: 100%;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 
   /* hljs tokens in file preview */
-  .preview-content :global(.hljs-keyword) { color: #ff7b72; }
+  .preview-content :global(.hljs-keyword) { color: var(--syntax-keyword); }
   .preview-content :global(.hljs-string),
-  .preview-content :global(.hljs-regexp) { color: #a5d6ff; }
-  .preview-content :global(.hljs-number) { color: #79c0ff; }
-  .preview-content :global(.hljs-comment) { color: #8b949e; }
-  .preview-content :global(.hljs-built_in) { color: #ffa657; }
+  .preview-content :global(.hljs-regexp) { color: var(--syntax-string); }
+  .preview-content :global(.hljs-number) { color: var(--syntax-number); }
+  .preview-content :global(.hljs-comment) { color: var(--syntax-comment); }
+  .preview-content :global(.hljs-built_in) { color: var(--syntax-builtin); }
   .preview-content :global(.hljs-function),
-  .preview-content :global(.hljs-title) { color: #d2a8ff; }
-  .preview-content :global(.hljs-property) { color: #79c0ff; }
-  .preview-content :global(.hljs-tag) { color: #7ee787; }
-  .preview-content :global(.hljs-name) { color: #7ee787; }
-  .preview-content :global(.hljs-attr) { color: #79c0ff; }
+  .preview-content :global(.hljs-title) { color: var(--syntax-function); }
+  .preview-content :global(.hljs-property) { color: var(--syntax-number); }
+  .preview-content :global(.hljs-tag) { color: var(--syntax-tag); }
+  .preview-content :global(.hljs-name) { color: var(--syntax-tag); }
+  .preview-content :global(.hljs-attr) { color: var(--syntax-number); }
 
   @media (max-width: 768px) {
     .explorer-sidebar {

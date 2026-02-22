@@ -224,7 +224,7 @@
     cursor: col-resize;
     background: transparent;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
   }
   .resize-handle:hover, .resizing .resize-handle {
     background: var(--accent);
@@ -249,12 +249,12 @@
     text-align: center;
   }
   .token-card h1 {
-    font-size: 24px;
+    font-size: var(--text-2xl);
     margin-bottom: 8px;
   }
   .token-card p {
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: var(--text-base);
     margin-bottom: 20px;
   }
   .token-card form {
@@ -268,7 +268,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 10px 14px;
-    font-size: 14px;
+    font-size: var(--text-base);
     font-family: var(--font-mono);
     width: 100%;
   }
@@ -282,7 +282,7 @@
     color: #0f1114;
     padding: 10px 14px;
     border-radius: var(--radius-sm);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
   }
   .token-submit:hover {

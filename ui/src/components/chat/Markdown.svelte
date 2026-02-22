@@ -46,7 +46,7 @@
 
 <style>
   .markdown-body {
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1.6;
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -71,7 +71,7 @@
     font-size: 0.9em;
     padding: 2px 6px;
     background: var(--surface);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .markdown-body :global(pre) {
     margin: 8px 0;
@@ -86,7 +86,7 @@
     position: absolute;
     top: 4px;
     left: 12px;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-family: var(--font-sans);
     color: var(--text-muted);
     text-transform: uppercase;
@@ -97,35 +97,35 @@
   .markdown-body :global(pre code) {
     padding: 0;
     background: none;
-    font-size: 13px;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
-  /* highlight.js token colors — dark theme */
-  .markdown-body :global(.hljs-keyword) { color: #ff7b72; }
+  /* highlight.js token colors — Aletheia warm syntax */
+  .markdown-body :global(.hljs-keyword) { color: var(--syntax-keyword); }
   .markdown-body :global(.hljs-string),
-  .markdown-body :global(.hljs-regexp) { color: #a5d6ff; }
+  .markdown-body :global(.hljs-regexp) { color: var(--syntax-string); }
   .markdown-body :global(.hljs-number),
-  .markdown-body :global(.hljs-literal) { color: #79c0ff; }
-  .markdown-body :global(.hljs-comment) { color: #8b949e; font-style: italic; }
+  .markdown-body :global(.hljs-literal) { color: var(--syntax-number); }
+  .markdown-body :global(.hljs-comment) { color: var(--syntax-comment); font-style: italic; }
   .markdown-body :global(.hljs-function),
-  .markdown-body :global(.hljs-title) { color: #d2a8ff; }
-  .markdown-body :global(.hljs-built_in) { color: #ffa657; }
+  .markdown-body :global(.hljs-title) { color: var(--syntax-function); }
+  .markdown-body :global(.hljs-built_in) { color: var(--syntax-builtin); }
   .markdown-body :global(.hljs-type),
-  .markdown-body :global(.hljs-class) { color: #ffa657; }
+  .markdown-body :global(.hljs-class) { color: var(--syntax-type); }
   .markdown-body :global(.hljs-attr),
-  .markdown-body :global(.hljs-attribute) { color: #79c0ff; }
+  .markdown-body :global(.hljs-attribute) { color: var(--syntax-attr); }
   .markdown-body :global(.hljs-variable),
-  .markdown-body :global(.hljs-template-variable) { color: #ffa657; }
-  .markdown-body :global(.hljs-property) { color: #79c0ff; }
-  .markdown-body :global(.hljs-tag) { color: #7ee787; }
-  .markdown-body :global(.hljs-name) { color: #7ee787; }
+  .markdown-body :global(.hljs-template-variable) { color: var(--syntax-builtin); }
+  .markdown-body :global(.hljs-property) { color: var(--syntax-property); }
+  .markdown-body :global(.hljs-tag) { color: var(--syntax-tag); }
+  .markdown-body :global(.hljs-name) { color: var(--syntax-tag); }
   .markdown-body :global(.hljs-selector-class),
   .markdown-body :global(.hljs-selector-id),
-  .markdown-body :global(.hljs-selector-tag) { color: #7ee787; }
-  .markdown-body :global(.hljs-meta) { color: #79c0ff; }
-  .markdown-body :global(.hljs-addition) { color: #aff5b4; background: rgba(63, 185, 80, 0.15); }
-  .markdown-body :global(.hljs-deletion) { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
-  .markdown-body :global(.hljs-punctuation) { color: #c9d1d9; }
+  .markdown-body :global(.hljs-selector-tag) { color: var(--syntax-tag); }
+  .markdown-body :global(.hljs-meta) { color: var(--syntax-meta); }
+  .markdown-body :global(.hljs-addition) { color: var(--syntax-inserted); background: rgba(74, 154, 91, 0.15); }
+  .markdown-body :global(.hljs-deletion) { color: var(--syntax-deleted); background: rgba(199, 84, 80, 0.15); }
+  .markdown-body :global(.hljs-punctuation) { color: var(--text-secondary); }
   .markdown-body :global(pre .copy-btn) {
     position: absolute;
     top: 6px;
@@ -133,12 +133,12 @@
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     color: var(--text-muted);
-    padding: 2px 8px;
+    padding: 2px var(--space-2);
     border-radius: var(--radius-sm);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-sans);
     opacity: 0;
-    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    transition: opacity var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);
     cursor: pointer;
     z-index: 1;
   }
@@ -150,8 +150,8 @@
     border-color: var(--accent);
   }
   .markdown-body :global(pre .copy-btn.copied) {
-    color: var(--green);
-    border-color: var(--green);
+    color: var(--status-success);
+    border-color: var(--status-success);
     opacity: 1;
   }
   .markdown-body :global(ul),
@@ -178,7 +178,7 @@
   .markdown-body :global(table) {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .markdown-body :global(th),
   .markdown-body :global(td) {
@@ -210,24 +210,24 @@
   @media (max-width: 768px) {
     .markdown-body :global(pre) {
       padding: 10px 12px;
-      font-size: 12px;
+      font-size: var(--text-sm);
       border-radius: var(--radius-sm);
       /* Ensure horizontal scroll works on touch */
       -webkit-overflow-scrolling: touch;
     }
     .markdown-body :global(pre code) {
-      font-size: 12px;
+      font-size: var(--text-sm);
     }
     .markdown-body :global(pre .copy-btn) {
       /* Always visible on mobile — no hover */
       opacity: 0.7;
       padding: 4px 10px;
-      font-size: 12px;
+      font-size: var(--text-sm);
     }
     .markdown-body :global(th),
     .markdown-body :global(td) {
       padding: 4px 8px;
-      font-size: 12px;
+      font-size: var(--text-sm);
     }
     .markdown-body :global(ul),
     .markdown-body :global(ol) {
@@ -244,7 +244,7 @@
     width: 14px;
     height: 14px;
     border: 1.5px solid var(--text-muted);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: transparent;
     vertical-align: middle;
     margin-right: 6px;
@@ -260,7 +260,7 @@
     content: "\2713";
     display: block;
     color: #0f1114;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     text-align: center;
     line-height: 14px;

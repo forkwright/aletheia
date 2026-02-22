@@ -1,35 +1,110 @@
+/*
+ * Aletheia Design System
+ * ἀλήθεια — unconcealment, truth disclosed through attention
+ *
+ * Typography: System sans (tool clarity), system mono (precision)
+ * Type scale: 1.2 minor third, 14px base
+ * Spacing: 4px base unit
+ * Palette: warm dark ground, aged brass accent, muted earth status
+ */
+
 :root {
-  /* Backgrounds — warm dark, not cold blue-black */
+  /* === TYPE SCALE === */
+  /* 1.2 minor third — same ratio as Ardent, different voice */
+  --text-2xs: 0.694rem;   /* ~10px — badges, counts */
+  --text-xs: 0.75rem;     /* ~11px — metadata, timestamps (was 10-11px scattered) */
+  --text-sm: 0.833rem;    /* ~12px — secondary UI text */
+  --text-base: 1rem;      /* 14px — body */
+  --text-lg: 1.125rem;    /* ~16px — emphasis */
+  --text-xl: 1.25rem;     /* ~18px — emoji, subheads */
+  --text-2xl: 1.5rem;     /* ~21px — section heads */
+  --text-3xl: 1.75rem;    /* ~25px — page heads */
+  --text-4xl: 3rem;       /* ~42px — empty state hero */
+
+  /* === SPACING === */
+  /* 4px base unit. Every gap, padding, margin traces here. */
+  --space-1: 0.25rem;     /* 4px — tight: inner badge padding */
+  --space-2: 0.5rem;      /* 8px — compact: icon gaps, small padding */
+  --space-3: 0.75rem;     /* 12px — default: component padding, gaps */
+  --space-4: 1rem;        /* 16px — comfortable: section padding */
+  --space-5: 1.25rem;     /* 20px — roomy: between sections */
+  --space-6: 1.5rem;      /* 24px — generous: major breaks */
+  --space-8: 2rem;        /* 32px — spacious: page-level padding */
+
+  /* === BACKGROUNDS === */
+  /* Warm dark — not cold blue-black */
   --bg: #0f1114;
   --bg-elevated: #181a1f;
   --surface: #1e2025;
   --surface-hover: #26282e;
+
+  /* === BORDERS === */
   --border: #2e3038;
   --border-accent: #9A7B4F;
 
-  /* Text — slightly warm white, not blue-tinted */
+  /* === TEXT === */
+  /* Slightly warm white — not blue-tinted */
   --text: #e8e6e3;
   --text-secondary: #9a9590;
   --text-muted: #6b6560;
 
-  /* Accent — aged brass, material warmth */
+  /* === ACCENT === */
+  /* Aged brass — material warmth, not backlit */
   --accent: #9A7B4F;
   --accent-hover: #B08E5E;
-  --green: #3fb950;
-  --red: #f85149;
-  --yellow: #d29922;
-  --amber: #e8a92a;
-  --purple: #bc8cff;
+  --accent-muted: rgba(154, 123, 79, 0.15);
+  --accent-border: rgba(154, 123, 79, 0.4);
 
+  /* === STATUS === */
+  /* Muted earth tones — functional, not GitHub neon */
+  --status-success: #4a9a5b;   /* iron-mordanted green, not #3fb950 */
+  --status-error: #c75450;     /* oxide red, not #f85149 */
+  --status-warning: #b8922f;   /* raw sienna, not #d29922 */
+  --status-info: #8a7eb8;      /* muted violet, not #bc8cff */
+  --status-active: #c49a3a;    /* warm amber, not #e8a92a */
+
+  /* === SYNTAX === */
+  /* Code highlighting — warm-shifted from GitHub dark */
+  --syntax-keyword: #c7856a;   /* terracotta */
+  --syntax-string: #8aad6e;    /* sage */
+  --syntax-number: #7a9ec7;    /* slate blue */
+  --syntax-comment: #6b6560;   /* matches --text-muted */
+  --syntax-function: #c49a6a;  /* warm sand */
+  --syntax-type: #8a7eb8;      /* matches --status-info */
+  --syntax-literal: #7a9ec7;   /* matches --syntax-number */
+  --syntax-tag: #8aad6e;       /* matches --syntax-string */
+  --syntax-attr: #c7856a;      /* matches --syntax-keyword */
+  --syntax-property: #b8a07a;  /* aged parchment */
+  --syntax-meta: #6b8fa3;      /* steel */
+  --syntax-builtin: #c49a6a;   /* matches --syntax-function */
+  --syntax-deleted: #c75450;   /* matches --status-error */
+  --syntax-inserted: #4a9a5b;  /* matches --status-success */
+
+  /* === TYPOGRAPHY === */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
+  /* === LAYOUT === */
   --sidebar-width: 260px;
   --topbar-height: 48px;
-  --radius: 8px;
-  --radius-sm: 6px;
 
-  /* Safe area insets for notch/dynamic island/home bar */
+  /* === RADIUS === */
+  /* Three sizes. Containers, elements, pills. */
+  --radius: 8px;        /* containers, cards, modals */
+  --radius-sm: 4px;     /* buttons, badges, inputs, code */
+  --radius-pill: 14px;  /* pills, status lines, scroll button */
+
+  /* === SHADOWS === */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* === TRANSITIONS === */
+  /* Two speeds. Quick for hover/focus. Measured for layout/state. */
+  --transition-quick: 0.15s ease;
+  --transition-measured: 0.3s ease;
+
+  /* === SAFE AREAS === */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -51,17 +126,16 @@ body {
   font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Prevent iOS bounce/overscroll */
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
 }
 
 #app {
-  height: 100dvh; /* dynamic viewport height — respects iOS keyboard */
-  height: 100vh; /* fallback for older browsers */
+  height: 100dvh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -80,7 +154,6 @@ button {
   cursor: pointer;
 }
 
-/* Keyboard focus — visible only when using keyboard navigation */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -91,7 +164,7 @@ button {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
+  width: var(--space-2);
 }
 
 ::-webkit-scrollbar-track {
@@ -100,7 +173,7 @@ button {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -108,7 +181,7 @@ button {
 }
 
 ::selection {
-  background: rgba(154, 123, 79, 0.3);
+  background: var(--accent-muted);
 }
 
 @media (max-width: 768px) {
@@ -117,13 +190,11 @@ button {
     --topbar-height: 44px;
   }
 
-  /* Prevent double-tap zoom on interactive elements */
   button, a, input, textarea, select, label {
     touch-action: manipulation;
   }
 }
 
-/* iOS keyboard handling — use dvh when available */
 @supports (height: 100dvh) {
   #app {
     height: 100dvh;

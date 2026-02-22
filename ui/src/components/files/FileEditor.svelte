@@ -333,7 +333,7 @@
     border-bottom: 1px solid var(--border);
   }
   .tree-title {
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     flex: 1;
   }
@@ -345,10 +345,10 @@
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     color: var(--text);
     padding: 3px 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-sans);
   }
   .tree-filter input:focus {
@@ -363,7 +363,7 @@
   .tree-msg {
     padding: 12px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -377,7 +377,7 @@
     background: none;
     border: none;
     color: var(--text);
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-align: left;
     cursor: pointer;
     white-space: nowrap;
@@ -385,17 +385,17 @@
   }
   .tree-item:hover { background: var(--surface-hover); }
   .tree-item.active { background: var(--surface); color: var(--accent); }
-  .tree-item.modified .tree-name { color: var(--yellow); }
-  .tree-item.added .tree-name { color: var(--green); }
+  .tree-item.modified .tree-name { color: var(--status-warning); }
+  .tree-item.added .tree-name { color: var(--status-success); }
   .tree-chevron {
     width: 10px;
-    font-size: 9px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
     flex-shrink: 0;
   }
   .tree-ficon {
     width: 16px;
-    font-size: 8px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     flex-shrink: 0;
@@ -425,7 +425,7 @@
   }
   .file-path {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -437,28 +437,28 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--yellow);
+    background: var(--status-warning);
     flex-shrink: 0;
   }
   .icon-btn {
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     line-height: 1;
   }
   .icon-btn:hover { color: var(--text); background: var(--surface-hover); }
-  .close-btn { margin-left: auto; font-size: 18px; }
+  .close-btn { margin-left: auto; font-size: var(--text-xl); }
   .toolbar-btn {
     background: none;
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 3px;
-    font-size: 11px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
     cursor: pointer;
   }
   .toolbar-btn:hover { color: var(--text); background: var(--surface); }
@@ -475,9 +475,9 @@
   .save-error {
     padding: 4px 8px;
     background: rgba(248, 81, 73, 0.1);
-    border-bottom: 1px solid var(--red);
-    color: var(--red);
-    font-size: 12px;
+    border-bottom: 1px solid var(--status-error);
+    color: var(--status-error);
+    font-size: var(--text-sm);
   }
   .editor-content {
     flex: 1;
@@ -493,7 +493,7 @@
     width: 100%;
     height: 100%;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .cm-wrapper {
     width: 100%;
@@ -507,19 +507,19 @@
     flex: 1;
     overflow: auto;
     padding: 16px 24px;
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1.6;
     color: var(--text);
   }
-  .preview-pane :global(h1) { font-size: 24px; margin: 16px 0 8px; }
-  .preview-pane :global(h2) { font-size: 20px; margin: 14px 0 6px; }
-  .preview-pane :global(h3) { font-size: 16px; margin: 12px 0 4px; }
+  .preview-pane :global(h1) { font-size: var(--text-2xl); margin: 16px 0 8px; }
+  .preview-pane :global(h2) { font-size: var(--text-xl); margin: 14px 0 6px; }
+  .preview-pane :global(h3) { font-size: var(--text-lg); margin: 12px 0 4px; }
   .preview-pane :global(code) {
     background: var(--surface);
     padding: 1px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .preview-pane :global(strong) { color: var(--text); }
   .preview-pane :global(li) {

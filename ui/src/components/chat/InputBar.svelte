@@ -271,8 +271,8 @@
   });
 
   let contextColor = $derived(
-    contextPercent > 80 ? "var(--red)" :
-    contextPercent > 60 ? "var(--yellow)" :
+    contextPercent > 80 ? "var(--status-error)" :
+    contextPercent > 60 ? "var(--status-warning)" :
     "var(--accent)"
   );
 
@@ -408,7 +408,7 @@
   }
   .context-fill {
     height: 100%;
-    transition: width 0.5s ease, background 0.5s ease;
+    transition: width var(--transition-measured), background var(--transition-measured);
   }
   .input-area {
     position: relative;
@@ -422,7 +422,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 4px 4px 4px 8px;
-    transition: border-color 0.15s;
+    transition: border-color var(--transition-quick);
   }
   .input-wrapper:focus-within {
     border-color: var(--accent);
@@ -436,7 +436,7 @@
     border: none;
     color: var(--text);
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1.5;
     resize: none;
     min-height: 40px;
@@ -458,7 +458,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--transition-quick), background var(--transition-quick);
     align-self: flex-end;
     margin-bottom: 2px;
     cursor: pointer;
@@ -470,7 +470,7 @@
   .stop-btn {
     background: rgba(248, 81, 73, 0.1);
     border: 1px solid rgba(248, 81, 73, 0.3);
-    color: var(--red);
+    color: var(--status-error);
     width: 36px;
     height: 36px;
     border-radius: var(--radius-sm);
@@ -478,7 +478,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
     align-self: flex-end;
     margin-bottom: 2px;
   }
@@ -486,7 +486,7 @@
     background: rgba(248, 81, 73, 0.2);
   }
   .stop-icon {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     line-height: 1;
   }
   .send-btn {
@@ -495,10 +495,10 @@
     color: #0f1114;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
     flex-shrink: 0;
-    transition: background 0.15s, opacity 0.15s;
+    transition: background var(--transition-quick), opacity var(--transition-quick);
   }
   .send-btn:hover:not(:disabled) {
     background: var(--accent-hover);
@@ -508,7 +508,7 @@
     cursor: not-allowed;
   }
   .send-btn.queuing {
-    background: var(--yellow);
+    background: var(--status-warning);
   }
   .send-btn.queuing:hover {
     background: #e0a820;
@@ -522,8 +522,8 @@
     background: rgba(210, 153, 34, 0.1);
     border: 1px solid rgba(210, 153, 34, 0.3);
     border-radius: var(--radius-sm);
-    font-size: 12px;
-    color: var(--yellow);
+    font-size: var(--text-sm);
+    color: var(--status-warning);
   }
   .queued-text {
     flex: 1;
@@ -534,8 +534,8 @@
   .queued-cancel {
     background: none;
     border: none;
-    color: var(--yellow);
-    font-size: 16px;
+    color: var(--status-warning);
+    font-size: var(--text-lg);
     padding: 0 4px;
     opacity: 0.7;
     line-height: 1;
@@ -572,7 +572,7 @@
     background: var(--surface);
   }
   .file-emoji {
-    font-size: 28px;
+    font-size: var(--text-3xl);
   }
   .attachment-thumb .remove-btn {
     position: absolute;
@@ -584,14 +584,14 @@
     background: rgba(0, 0, 0, 0.7);
     border: none;
     color: #fff;
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: opacity var(--transition-quick);
   }
   .attachment-thumb:hover .remove-btn {
     opacity: 1;
@@ -604,7 +604,7 @@
     padding: 2px 4px;
     background: rgba(0, 0, 0, 0.7);
     color: #fff;
-    font-size: 9px;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -631,7 +631,7 @@
   }
   .drag-label {
     color: var(--accent);
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 500;
   }
   .slash-menu {
@@ -656,9 +656,9 @@
     background: transparent;
     border: none;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
-    transition: background 0.1s;
+    transition: background var(--transition-quick);
   }
   .slash-item:hover,
   .slash-item.selected {
@@ -668,12 +668,12 @@
     font-family: var(--font-mono);
     color: var(--accent);
     font-weight: 600;
-    font-size: 13px;
+    font-size: var(--text-sm);
     min-width: 60px;
   }
   .slash-desc {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
 
   @media (max-width: 768px) {
@@ -684,13 +684,13 @@
       padding: 2px 2px 2px 6px;
     }
     textarea {
-      font-size: 16px; /* Prevents iOS zoom on focus */
+      font-size: var(--text-lg); /* Prevents iOS zoom on focus */
       min-height: 36px;
       padding: 6px 0;
     }
     .send-btn {
       padding: 8px 12px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
     .attach-btn {
       width: 32px;

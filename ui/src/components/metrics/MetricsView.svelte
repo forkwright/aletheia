@@ -155,7 +155,7 @@
     padding: 16px;
   }
   .card-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -163,11 +163,11 @@
     margin-bottom: 4px;
   }
   .card-value {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
   }
   .card-sub {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     margin-top: 4px;
   }
@@ -181,7 +181,7 @@
     margin-bottom: 24px;
   }
   .section h3 {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -191,7 +191,7 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   th {
     text-align: left;
@@ -199,7 +199,7 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
     font-weight: 600;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   td {
     padding: 8px 12px;
@@ -213,7 +213,7 @@
   }
   .mono {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .loading, .error {
     padding: 32px;
@@ -221,6 +221,6 @@
     color: var(--text-muted);
   }
   .error {
-    color: var(--red);
+    color: var(--status-error);
   }
 </style>

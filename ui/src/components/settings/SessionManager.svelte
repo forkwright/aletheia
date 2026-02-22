@@ -112,12 +112,12 @@
     gap: 8px;
   }
   .session-loading, .session-error, .session-empty {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
     padding: 4px 0;
   }
   .session-error {
-    color: var(--red);
+    color: var(--status-error);
   }
   .session-list {
     display: flex;
@@ -129,7 +129,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .session-row + .session-row {
     border-top: 1px solid rgba(48, 54, 61, 0.4);
@@ -146,7 +146,7 @@
   }
   .session-ip {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .session-time {
     color: var(--text-muted);
@@ -154,18 +154,18 @@
   .session-current {
     background: var(--accent);
     color: #0f1114;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     padding: 1px 6px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-weight: 500;
   }
   .revoke-btn {
     background: none;
-    border: 1px solid var(--red);
-    color: var(--red);
+    border: 1px solid var(--status-error);
+    color: var(--status-error);
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .revoke-btn:hover {
     background: rgba(248, 81, 73, 0.1);
@@ -176,11 +176,11 @@
     color: var(--text-secondary);
     padding: 6px 12px;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--text-sm);
     margin-top: 4px;
   }
   .revoke-all-btn:hover {
-    color: var(--red);
-    border-color: var(--red);
+    color: var(--status-error);
+    border-color: var(--status-error);
   }
 </style>

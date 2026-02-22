@@ -131,21 +131,21 @@
     justify-content: center;
     height: 100%;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     gap: 8px;
   }
   .empty-name {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--text-secondary);
     margin-top: 4px;
   }
   .empty-hint {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
   }
   .empty-emoji {
-    font-size: 48px;
+    font-size: var(--text-4xl);
     line-height: 1;
     width: 64px;
     height: 64px;
@@ -154,7 +154,7 @@
     justify-content: center;
   }
   .empty-initials {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
     width: 64px;
     height: 64px;
@@ -176,10 +176,10 @@
     color: #0f1114;
     border: none;
     padding: 6px 16px;
-    border-radius: 16px;
-    font-size: 12px;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-sm);
     z-index: 10;
   }
   .scroll-btn:hover {
@@ -190,7 +190,7 @@
     .scroll-btn {
       bottom: 8px;
       padding: 8px 20px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
     .empty-state {
       padding: 0 20px;

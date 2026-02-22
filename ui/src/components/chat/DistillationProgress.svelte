@@ -82,8 +82,8 @@
     margin: 4px 0;
     background: rgba(154, 123, 79, 0.06);
     border: 1px solid rgba(154, 123, 79, 0.2);
-    border-radius: 8px;
-    font-size: 12px;
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     animation: fade-in 0.2s ease;
   }
@@ -104,8 +104,8 @@
     flex-shrink: 0;
   }
   .done-icon {
-    color: var(--green);
-    font-size: 12px;
+    color: var(--status-success);
+    font-size: var(--text-sm);
     font-weight: 700;
   }
   .distill-info {
@@ -121,21 +121,21 @@
   }
   .distill-agent {
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: var(--text-2xs);
   }
   .distill-track {
     height: 3px;
     background: var(--surface);
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
   }
   .distill-fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 2px;
-    transition: width 0.4s ease;
+    border-radius: var(--radius-sm);
+    transition: width var(--transition-measured);
   }
   .distill-bar.complete .distill-fill {
-    background: var(--green);
+    background: var(--status-success);
   }
 </style>

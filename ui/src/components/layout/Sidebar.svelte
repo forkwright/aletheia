@@ -129,7 +129,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     flex-shrink: 0;
-    transition: width 0.2s ease, opacity 0.2s ease;
+    transition: width var(--transition-quick), opacity var(--transition-quick);
   }
   .sidebar.collapsed {
     width: 0;
@@ -223,7 +223,7 @@
       z-index: 100;
       width: var(--sidebar-width);
       box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
-      transition: transform 0.2s ease, opacity 0.2s ease;
+      transition: transform var(--transition-measured), opacity var(--transition-measured);
       padding-bottom: var(--safe-bottom);
     }
     .sidebar.collapsed {

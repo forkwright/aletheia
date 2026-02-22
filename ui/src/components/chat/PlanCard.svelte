@@ -147,21 +147,21 @@
     margin-bottom: 10px;
   }
   .plan-icon {
-    font-size: 16px;
+    font-size: var(--text-lg);
   }
   .plan-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text);
     flex: 1;
   }
   .plan-cost {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--text-secondary);
     background: var(--surface);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-pill);
   }
   .plan-steps {
     display: flex;
@@ -176,8 +176,8 @@
     padding: 6px 8px;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.1s;
-    font-size: 13px;
+    transition: background var(--transition-quick);
+    font-size: var(--text-sm);
   }
   .plan-step:hover {
     background: var(--surface);
@@ -193,7 +193,7 @@
     cursor: pointer;
   }
   .step-role {
-    font-size: 14px;
+    font-size: var(--text-base);
     flex-shrink: 0;
     width: 20px;
     text-align: center;
@@ -204,14 +204,14 @@
     line-height: 1.3;
   }
   .step-cost {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     font-family: var(--font-mono);
     flex-shrink: 0;
   }
   .plan-error {
-    font-size: 11px;
-    color: var(--red);
+    font-size: var(--text-xs);
+    color: var(--status-error);
     margin-bottom: 6px;
   }
   .plan-actions {
@@ -220,7 +220,7 @@
     justify-content: space-between;
   }
   .plan-summary {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
   .plan-buttons {
@@ -234,28 +234,28 @@
     padding: 5px 14px;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);
-    color: var(--green, #3fb950);
+    color: var(--status-success);
     border-color: rgba(63, 185, 80, 0.3);
   }
   .btn-approve:hover:not(:disabled) {
     background: rgba(63, 185, 80, 0.25);
-    border-color: var(--green, #3fb950);
+    border-color: var(--status-success);
   }
   .btn-cancel {
     background: rgba(248, 81, 73, 0.1);
-    color: var(--red, #f85149);
+    color: var(--status-error);
     border-color: rgba(248, 81, 73, 0.2);
   }
   .btn-cancel:hover:not(:disabled) {
     background: rgba(248, 81, 73, 0.2);
-    border-color: var(--red, #f85149);
+    border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-cancel:disabled {
     opacity: 0.5;
@@ -269,7 +269,7 @@
     }
     .plan-step {
       padding: 8px 6px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
     .plan-actions {
       flex-direction: column;

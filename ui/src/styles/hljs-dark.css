@@ -1,56 +1,67 @@
-/* GitHub dark theme for highlight.js */
+/* Aletheia syntax theme — warm-shifted, earth-grounded */
 .hljs {
-  color: #e6edf3;
+  color: var(--text);
   background: transparent;
 }
 .hljs-comment,
 .hljs-quote {
-  color: #8b949e;
+  color: var(--syntax-comment);
   font-style: italic;
 }
 .hljs-keyword,
-.hljs-selector-tag,
-.hljs-addition {
-  color: #ff7b72;
+.hljs-selector-tag {
+  color: var(--syntax-keyword);
 }
 .hljs-number,
-.hljs-string,
-.hljs-meta .hljs-meta-string,
 .hljs-literal,
 .hljs-doctag,
 .hljs-regexp {
-  color: #a5d6ff;
+  color: var(--syntax-number);
+}
+.hljs-string,
+.hljs-meta .hljs-meta-string {
+  color: var(--syntax-string);
 }
 .hljs-title,
 .hljs-section,
-.hljs-name,
 .hljs-selector-id,
 .hljs-selector-class {
-  color: #d2a8ff;
+  color: var(--syntax-function);
+}
+.hljs-name,
+.hljs-tag {
+  color: var(--syntax-tag);
 }
 .hljs-attribute,
-.hljs-tag,
+.hljs-selector-attr {
+  color: var(--syntax-attr);
+}
 .hljs-variable,
 .hljs-template-variable,
 .hljs-type,
-.hljs-selector-pseudo,
-.hljs-selector-attr {
-  color: #7ee787;
+.hljs-selector-pseudo {
+  color: var(--syntax-type);
+}
+.hljs-property {
+  color: var(--syntax-property);
 }
 .hljs-symbol,
 .hljs-bullet,
 .hljs-subst,
 .hljs-meta,
 .hljs-link {
-  color: #79c0ff;
+  color: var(--syntax-meta);
+}
+.hljs-built_in {
+  color: var(--syntax-builtin);
 }
 .hljs-deletion {
-  color: #ffa198;
-  background: rgba(248, 81, 73, 0.1);
+  color: var(--syntax-deleted);
+  background: rgba(199, 84, 80, 0.1);
 }
 .hljs-addition {
-  color: #7ee787;
-  background: rgba(63, 185, 80, 0.1);
+  color: var(--syntax-inserted);
+  background: rgba(74, 154, 91, 0.1);
 }
 .hljs-emphasis {
   font-style: italic;

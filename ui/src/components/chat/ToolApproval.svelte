@@ -133,7 +133,7 @@
     padding: 12px 16px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--yellow, #d29922);
+    border-left: 3px solid var(--status-warning);
     border-radius: var(--radius-sm);
     animation: fade-in 0.2s ease;
   }
@@ -148,29 +148,29 @@
     margin-bottom: 6px;
   }
   .approval-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text);
   }
   .risk-badge {
     display: inline-block;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
   }
   .risk-badge.destructive {
     background: rgba(248, 81, 73, 0.15);
-    color: var(--red, #f85149);
+    color: var(--status-error);
   }
   .risk-badge.irreversible {
     background: rgba(210, 153, 34, 0.15);
-    color: var(--yellow, #d29922);
+    color: var(--status-warning);
   }
   .approval-reason {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     margin-bottom: 8px;
   }
@@ -181,7 +181,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;
@@ -190,8 +190,8 @@
     overflow: auto;
   }
   .approval-error {
-    font-size: 11px;
-    color: var(--red);
+    font-size: var(--text-xs);
+    color: var(--status-error);
     margin-bottom: 6px;
   }
   .approval-actions {
@@ -204,7 +204,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     cursor: pointer;
   }
@@ -213,10 +213,10 @@
   }
   .always-allow code {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     background: var(--surface);
     padding: 1px 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-sm);
   }
   .approval-buttons {
     display: flex;
@@ -229,28 +229,28 @@
     padding: 5px 14px;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
     background: rgba(63, 185, 80, 0.15);
-    color: var(--green, #3fb950);
+    color: var(--status-success);
     border-color: rgba(63, 185, 80, 0.3);
   }
   .btn-approve:hover:not(:disabled) {
     background: rgba(63, 185, 80, 0.25);
-    border-color: var(--green, #3fb950);
+    border-color: var(--status-success);
   }
   .btn-deny {
     background: rgba(248, 81, 73, 0.1);
-    color: var(--red, #f85149);
+    color: var(--status-error);
     border-color: rgba(248, 81, 73, 0.2);
   }
   .btn-deny:hover:not(:disabled) {
     background: rgba(248, 81, 73, 0.2);
-    border-color: var(--red, #f85149);
+    border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-deny:disabled {
     opacity: 0.5;
@@ -276,7 +276,7 @@
       padding: 8px 14px;
     }
     .approval-input {
-      font-size: 11px;
+      font-size: var(--text-xs);
       max-height: 150px;
     }
   }

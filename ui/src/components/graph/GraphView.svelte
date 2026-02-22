@@ -34,25 +34,26 @@
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
 
+  /* Earth-toned graph palette — warm, distinct, not neon */
   const PALETTE = [
-    "#9A7B4F", "#3fb950", "#d29922", "#f85149", "#bc8cff",
-    "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
-    "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
-    "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
+    "#9A7B4F", "#4a9a5b", "#b8922f", "#c75450", "#8a7eb8",
+    "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
+    "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
+    "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
   ];
 
   const AGENT_COLORS: Record<string, string> = {
-    syn: "#9A7B4F",
-    demiurge: "#d29922",
-    syl: "#f778ba",
-    akron: "#3fb950",
-    eiron: "#bc8cff",
-    arbor: "#56d4dd",
-    unknown: "#8b949e",
+    syn: "#9A7B4F",      /* aged brass */
+    demiurge: "#b8922f",  /* raw sienna */
+    syl: "#b07a8a",       /* dusty rose */
+    akron: "#4a9a5b",     /* iron-mordanted green */
+    eiron: "#8a7eb8",     /* muted violet */
+    arbor: "#6b8fa3",     /* steel blue */
+    unknown: "#6b6560",   /* warm grey */
   };
 
   function communityColor(community: number): string {
-    if (community < 0) return "#30363d";
+    if (community < 0) return "#2e3038";
     return PALETTE[community % PALETTE.length]!;
   }
 
@@ -283,7 +284,7 @@
           <button
             class="pill agent-pill"
             class:active={selectedAgentFilter === agent}
-            style="--pill-color: {AGENT_COLORS[agent] ?? '#8b949e'}"
+            style="--pill-color: {AGENT_COLORS[agent] ?? '#6b6560'}"
             onclick={() => setSelectedAgentFilter(selectedAgentFilter === agent ? null : agent)}
           >{agent}</button>
         {/each}
@@ -452,7 +453,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 5px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-family: var(--font-sans);
     width: 180px;
     flex-shrink: 0;
@@ -475,10 +476,10 @@
     border: none;
     color: var(--text-muted);
     padding: 3px 10px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--transition-quick), color var(--transition-quick);
   }
   .toggle-btn:hover { color: var(--text); }
   .toggle-btn.active {
@@ -501,10 +502,10 @@
     background: none;
     border: none;
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
     position: relative;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
     line-height: 1;
   }
   .overlay-btn:hover { background: var(--surface); }
@@ -516,12 +517,12 @@
     position: absolute;
     top: -2px;
     right: 0;
-    background: var(--yellow, #d29922);
+    background: var(--status-warning);
     color: #000;
-    font-size: 8px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     padding: 1px 3px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     min-width: 12px;
     text-align: center;
     line-height: 1.2;
@@ -549,11 +550,11 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 11px;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
     white-space: nowrap;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--transition-quick);
   }
   .pill:hover {
     border-color: var(--pill-color, var(--text-muted));
@@ -581,18 +582,18 @@
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     padding: 2px 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
 
   .load-more {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     padding: 2px 6px;
   }
 
   .graph-stats {
     margin-left: auto;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     white-space: nowrap;
     flex-shrink: 0;
@@ -610,12 +611,12 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 14px;
+    font-size: var(--text-base);
     z-index: 10;
     pointer-events: none;
   }
   .graph-loading { color: var(--text-secondary); }
-  .graph-error { color: var(--red); }
+  .graph-error { color: var(--status-error); }
 
   .edge-filter-panel {
     position: absolute;

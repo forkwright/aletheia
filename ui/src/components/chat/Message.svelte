@@ -168,13 +168,13 @@
   }
   .segment-label {
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     background: none;
     border: none;
     padding: 2px 6px;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     white-space: nowrap;
   }
   .segment-label:hover {
@@ -185,7 +185,7 @@
     padding: 10px 16px;
     margin: 0 0 8px;
     border-left: 2px solid var(--border);
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-muted);
     background: var(--surface);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
@@ -200,14 +200,14 @@
     margin: 4px 0;
   }
   .topic-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--accent);
     background: var(--surface);
     padding: 3px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--border);
   }
 
@@ -222,19 +222,19 @@
     margin-top: 4px;
   }
   .timestamp {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
   .cost-badge {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 1px 6px;
     cursor: default;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--transition-quick), border-color var(--transition-quick);
   }
   .cost-badge:hover {
     color: var(--text-secondary);
@@ -262,7 +262,7 @@
     padding: 0;
     overflow: hidden;
     cursor: pointer;
-    transition: border-color 0.15s;
+    transition: border-color var(--transition-quick);
   }
   .media-thumb:hover {
     border-color: var(--accent);
@@ -289,11 +289,11 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
   .file-att-icon {
-    font-size: 20px;
+    font-size: var(--text-xl);
     flex-shrink: 0;
   }
   .file-att-name {
@@ -301,7 +301,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
 
   /* Lightbox */
@@ -333,12 +333,12 @@
     background: rgba(255, 255, 255, 0.15);
     border: none;
     color: #fff;
-    font-size: 24px;
+    font-size: var(--text-2xl);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background var(--transition-quick);
   }
   .lightbox-close:hover {
     background: rgba(255, 255, 255, 0.25);
@@ -368,7 +368,7 @@
       flex-wrap: wrap;
     }
     .cost-badge {
-      font-size: 9px;
+      font-size: var(--text-2xs);
     }
     .segment-summary {
       padding: 8px 12px;
