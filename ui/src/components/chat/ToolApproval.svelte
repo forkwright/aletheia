@@ -148,13 +148,13 @@
     margin-bottom: 6px;
   }
   .approval-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text);
   }
   .risk-badge {
     display: inline-block;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -170,7 +170,7 @@
     color: var(--yellow, #d29922);
   }
   .approval-reason {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     margin-bottom: 8px;
   }
@@ -181,7 +181,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;
@@ -190,8 +190,8 @@
     overflow: auto;
   }
   .approval-error {
-    font-size: 11px;
-    color: var(--red);
+    font-size: var(--text-xs);
+    color: var(--status-error);
     margin-bottom: 6px;
   }
   .approval-actions {
@@ -204,7 +204,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     cursor: pointer;
   }
@@ -213,7 +213,7 @@
   }
   .always-allow code {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     background: var(--surface);
     padding: 1px 4px;
     border-radius: 2px;
@@ -229,7 +229,7 @@
     padding: 5px 14px;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
@@ -276,7 +276,7 @@
       padding: 8px 14px;
     }
     .approval-input {
-      font-size: 11px;
+      font-size: var(--text-xs);
       max-height: 150px;
     }
   }

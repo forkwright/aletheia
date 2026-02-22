@@ -41,7 +41,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 14px;
+    font-size: var(--text-base);
     text-align: left;
     transition: background 0.15s, border-color 0.15s;
   }
@@ -66,11 +66,11 @@
     border-radius: var(--radius-sm);
   }
   .emoji {
-    font-size: 20px;
+    font-size: var(--text-xl);
     line-height: 1;
   }
   .initials {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     width: 28px;
     height: 28px;
@@ -95,7 +95,7 @@
     white-space: nowrap;
   }
   .activity {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
   .unread-badge {
@@ -106,7 +106,7 @@
     border-radius: 9px;
     background: var(--accent);
     color: #0f1114;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 700;
     display: flex;
     align-items: center;

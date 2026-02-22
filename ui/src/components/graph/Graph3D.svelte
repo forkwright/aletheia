@@ -20,14 +20,14 @@
   } = $props();
 
   const PALETTE = [
-    "#9A7B4F", "#3fb950", "#d29922", "#f85149", "#bc8cff",
-    "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
-    "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
-    "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
+    "#9A7B4F", "#4a9a5b", "#b8922f", "#c75450", "#8a7eb8",
+    "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
+    "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
+    "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
   ];
 
   function communityColor(community: number): string {
-    if (community < 0) return "#30363d";
+    if (community < 0) return "#2e3038";
     return PALETTE[community % PALETTE.length]!;
   }
 
@@ -233,7 +233,7 @@
       .nodeLabel((node: any) => {
         const pr = node.pagerank ? node.pagerank.toFixed(4) : "\u2014";
         const comm = node.community >= 0 ? node.community : "\u2014";
-        return `<span style="color:#e6edf3;font-family:system-ui;font-size:12px">
+        return `<span style="color:#e8e6e3;font-family:system-ui;font-size:12px">
           <b>${node.id}</b><br/>
           Community ${comm} \u00b7 PR ${pr}
         </span>`;
@@ -246,7 +246,7 @@
       .linkOpacity(0.6)
       .linkDirectionalArrowLength(3)
       .linkDirectionalArrowRelPos(1)
-      .linkLabel((link: any) => `<span style="color:#8b949e;font-size:11px">${link.rel_type}</span>`)
+      .linkLabel((link: any) => `<span style="color:#6b6560;font-size:11px">${link.rel_type}</span>`)
       .onNodeClick((node: any) => {
         onNodeClick?.(node.id);
       })

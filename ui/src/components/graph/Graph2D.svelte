@@ -34,14 +34,14 @@
   let staleSet = $derived(new Set(driftData?.stale_entities?.map(e => e.name) ?? []));
 
   const PALETTE = [
-    "#9A7B4F", "#3fb950", "#d29922", "#f85149", "#bc8cff",
-    "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
-    "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
-    "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
+    "#9A7B4F", "#4a9a5b", "#b8922f", "#c75450", "#8a7eb8",
+    "#b07a8a", "#6b8fa3", "#7a9a8a", "#c49a6a", "#8b6a4a",
+    "#6b7b6b", "#8aad6e", "#a07a5a", "#7a6b8a", "#9a8a6a",
+    "#6a8a7a", "#a08060", "#8a7060", "#7a8a9a", "#6a7a5a",
   ];
 
   function communityColor(community: number): string {
-    if (community < 0) return "#30363d";
+    if (community < 0) return "#2e3038";
     return PALETTE[community % PALETTE.length]!;
   }
 
@@ -109,7 +109,7 @@
           const nodeInfo = agentOverlay.node_agents[node.id];
           if (!nodeInfo) return "rgba(48, 54, 61, 0.3)"; // Unowned node — dim
           if (agentFilter && nodeInfo.primary !== agentFilter) return "rgba(48, 54, 61, 0.25)";
-          return agentColors[nodeInfo.primary] ?? "#8b949e";
+          return agentColors[nodeInfo.primary] ?? "#6b6560";
         }
 
         // Drift overlay mode
@@ -177,7 +177,7 @@
             const dotSize = Math.max(2, size / 4);
             ctx.beginPath();
             ctx.arc(node.x + size / 2 + 1, node.y - size / 2 - 1, dotSize, 0, 2 * Math.PI);
-            ctx.fillStyle = agentColors[nodeInfo.primary] ?? "#8b949e";
+            ctx.fillStyle = agentColors[nodeInfo.primary] ?? "#6b6560";
             ctx.fill();
           }
         }

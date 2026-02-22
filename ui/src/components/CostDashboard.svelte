@@ -101,7 +101,7 @@
   }
   .cost-header h3 {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -109,7 +109,7 @@
   }
   .refresh-btn {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     color: var(--text);
@@ -125,7 +125,7 @@
     cursor: not-allowed;
   }
   .cost-error {
-    color: var(--red);
+    color: var(--status-error);
     padding: 32px;
     text-align: center;
   }
@@ -145,18 +145,18 @@
     border: 1px solid var(--border);
   }
   .card-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-muted);
   }
   .card-value {
-    font-size: 28px;
+    font-size: var(--text-3xl);
     font-weight: 700;
   }
   .section-title {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -173,7 +173,7 @@
     gap: 12px;
     align-items: center;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -191,7 +191,7 @@
   }
   .cost-loading {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
     padding: 32px;
     text-align: center;
   }

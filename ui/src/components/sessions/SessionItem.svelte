@@ -30,7 +30,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
     transition: background 0.15s;
   }
@@ -48,7 +48,7 @@
   .key {
     font-family: var(--font-mono);
     color: var(--accent);
-    font-size: 12px;
+    font-size: var(--text-sm);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -56,7 +56,7 @@
   }
   .meta {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .dot {
     margin: 0 3px;

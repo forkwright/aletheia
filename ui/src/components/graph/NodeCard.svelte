@@ -322,7 +322,7 @@
   }
 
   .entity-name {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
     margin: 0;
     flex: 1;
@@ -332,7 +332,7 @@
   }
 
   .confidence-badge {
-    font-size: 12px;
+    font-size: var(--text-sm);
     flex-shrink: 0;
   }
 
@@ -340,7 +340,7 @@
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 18px;
+    font-size: var(--text-xl);
     cursor: pointer;
     padding: 0 4px;
     line-height: 1;
@@ -353,7 +353,7 @@
     align-items: center;
     gap: 6px;
     margin-top: 4px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 
@@ -366,7 +366,7 @@
 
   .meta-pagerank {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
   }
 
   .header-labels {
@@ -381,7 +381,7 @@
     border: 1px solid var(--border);
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-secondary);
   }
 
@@ -391,7 +391,7 @@
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 
@@ -422,7 +422,7 @@
     border-bottom: 2px solid transparent;
     color: var(--text-muted);
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
@@ -470,12 +470,12 @@
     align-items: center;
     gap: 6px;
     margin-bottom: 4px;
-    font-size: 10px;
+    font-size: var(--text-2xs);
   }
 
   .memory-source {
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1;
     color: var(--text-muted);
   }
@@ -496,14 +496,14 @@
     border: 1px solid var(--border);
     padding: 0 4px;
     border-radius: 3px;
-    font-size: 9px;
+    font-size: var(--text-2xs);
     color: var(--text-secondary);
     text-transform: uppercase;
   }
 
   .memory-text {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: var(--text-secondary);
     overflow: hidden;
@@ -528,7 +528,7 @@
 
   .rel-type-badge {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-secondary);
     background: var(--surface);
     border: 1px solid var(--border);
@@ -538,7 +538,7 @@
   }
 
   .rel-count {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
   }
 
@@ -553,7 +553,7 @@
     background: none;
     border: none;
     color: var(--accent);
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 3px;
@@ -570,13 +570,13 @@
   }
 
   .rel-arrow {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     margin-right: 2px;
     opacity: 0.5;
   }
 
   .overflow-label {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     padding: 2px 4px;
   }
@@ -592,12 +592,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
 
   .edge-type {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
     min-width: 80px;
   }
@@ -607,7 +607,7 @@
     border: none;
     color: var(--accent);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--text-sm);
     padding: 0;
   }
   .connection-target:hover { text-decoration: underline; }
@@ -616,7 +616,7 @@
   .empty-state {
     text-align: center;
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--text-sm);
     padding: 20px 0;
   }
 
@@ -627,7 +627,7 @@
     background: none;
     border: none;
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
     padding: 6px 0;
     text-align: center;
@@ -651,8 +651,8 @@
   }
 
   .confirm-label {
-    font-size: 12px;
-    color: var(--red);
+    font-size: var(--text-sm);
+    color: var(--status-error);
     font-weight: 600;
     flex: 1;
   }
@@ -663,7 +663,7 @@
     color: var(--text-secondary);
     padding: 4px 12px;
     border-radius: var(--radius-sm);
-    font-size: 11px;
+    font-size: var(--text-xs);
     cursor: pointer;
     transition: all 0.15s;
   }
@@ -671,18 +671,18 @@
   .action-btn:disabled { opacity: 0.4; cursor: default; }
 
   .action-btn.danger {
-    background: var(--red);
-    border-color: var(--red);
+    background: var(--status-error);
+    border-color: var(--status-error);
     color: #fff;
   }
 
   .action-btn.danger-outline {
-    border-color: var(--red);
-    color: var(--red);
+    border-color: var(--status-error);
+    color: var(--status-error);
     background: none;
   }
   .action-btn.danger-outline:hover {
-    background: var(--red);
+    background: var(--status-error);
     color: #fff;
   }
 
@@ -707,7 +707,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-sans);
   }
   .merge-input:focus { outline: none; border-color: var(--accent); }

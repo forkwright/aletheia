@@ -153,7 +153,7 @@
     border: 1px solid var(--border);
     border-radius: 14px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-family: var(--font-sans);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -172,7 +172,7 @@
   }
   .tool-status-line.has-errors {
     border-color: rgba(248, 81, 73, 0.3);
-    color: var(--red);
+    color: var(--status-error);
   }
   .status-indicator {
     display: flex;
@@ -183,13 +183,13 @@
     flex-shrink: 0;
   }
   .icon-done {
-    color: var(--green);
-    font-size: 11px;
+    color: var(--status-success);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   .icon-error {
-    color: var(--red);
-    font-size: 11px;
+    color: var(--status-error);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   .status-text {
@@ -200,13 +200,13 @@
   }
   .status-count {
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
     flex-shrink: 0;
   }
   .chevron {
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     flex-shrink: 0;
     transition: transform 0.15s;
   }
@@ -217,7 +217,7 @@
 
   @media (max-width: 768px) {
     .tool-status-line {
-      font-size: 11px;
+      font-size: var(--text-xs);
       padding: 4px 8px;
       max-width: calc(100vw - 80px);
     }

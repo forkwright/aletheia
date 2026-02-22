@@ -71,10 +71,10 @@
     margin-bottom: 6px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-left: 3px solid var(--amber);
+    border-left: 3px solid var(--status-active);
     border-radius: 14px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-sm);
     font-family: var(--font-sans);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -84,11 +84,11 @@
   }
   .thinking-status-line:hover {
     background: var(--surface-hover);
-    border-color: var(--amber);
+    border-color: var(--status-active);
     color: var(--text);
   }
   .thinking-status-line.active {
-    border-color: var(--amber);
+    border-color: var(--status-active);
     color: var(--text);
   }
   .status-indicator {
@@ -100,8 +100,8 @@
     flex-shrink: 0;
   }
   .icon-done {
-    color: var(--amber);
-    font-size: 11px;
+    color: var(--status-active);
+    font-size: var(--text-xs);
     font-weight: 700;
   }
   .status-text {
@@ -112,18 +112,18 @@
   }
   .chevron {
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: var(--text-base);
     flex-shrink: 0;
     transition: transform 0.15s;
   }
   .thinking-status-line:hover .chevron {
     transform: translateX(1px);
-    color: var(--amber);
+    color: var(--status-active);
   }
 
   @media (max-width: 768px) {
     .thinking-status-line {
-      font-size: 11px;
+      font-size: var(--text-xs);
       padding: 4px 8px;
       max-width: calc(100vw - 80px);
     }

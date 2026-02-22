@@ -215,7 +215,7 @@
     margin: 0 auto;
   }
   .settings-heading {
-    font-size: 20px;
+    font-size: var(--text-xl);
     font-weight: 600;
     margin-bottom: 24px;
   }
@@ -227,7 +227,7 @@
     padding: 16px;
   }
   .section-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -239,7 +239,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 6px 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .setting-row + .setting-row {
     border-top: 1px solid var(--border);
@@ -254,20 +254,20 @@
     color: var(--text-muted);
   }
   .agent-emoji {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
   .setting-value {
     color: var(--text-secondary);
   }
   .setting-value.mono {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .status-ok {
-    color: var(--green);
+    color: var(--status-success);
   }
   .status-err {
-    color: var(--red);
+    color: var(--status-error);
   }
   .toggle-group {
     display: flex;
@@ -281,7 +281,7 @@
     border: none;
     color: var(--text-secondary);
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     border-radius: 4px;
     transition: all 0.15s;
   }
@@ -304,7 +304,7 @@
     width: 28px;
     height: 28px;
     border-radius: var(--radius-sm);
-    font-size: 16px;
+    font-size: var(--text-lg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -314,7 +314,7 @@
   }
   .size-value {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     min-width: 36px;
     text-align: center;
@@ -328,7 +328,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
   }
   .settings-input {
@@ -337,7 +337,7 @@
     border-radius: var(--radius-sm);
     color: var(--text);
     padding: 8px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-family: var(--font-mono);
     width: 100%;
   }
@@ -355,7 +355,7 @@
     color: #0f1114;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
   .btn-primary:hover {
@@ -363,11 +363,11 @@
   }
   .btn-danger {
     background: none;
-    border: 1px solid var(--red);
-    color: var(--red);
+    border: 1px solid var(--status-error);
+    color: var(--status-error);
     padding: 8px 16px;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .btn-danger:hover {
     background: rgba(248, 81, 73, 0.1);

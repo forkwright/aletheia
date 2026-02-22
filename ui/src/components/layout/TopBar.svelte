@@ -191,7 +191,7 @@
     color: var(--text-secondary);
   }
   .title {
-    font-size: 16px;
+    font-size: var(--text-lg);
     font-weight: 600;
     letter-spacing: -0.02em;
     white-space: nowrap;
@@ -204,10 +204,10 @@
     flex-shrink: 0;
   }
   .status-dot.connected {
-    background: var(--green);
+    background: var(--status-success);
   }
   .status-dot.connecting {
-    background: var(--yellow);
+    background: var(--status-warning);
     animation: pulse 1.5s ease infinite;
   }
   @keyframes pulse {
@@ -215,7 +215,7 @@
     50% { opacity: 0.4; }
   }
   .active-agent {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     font-weight: 500;
     display: flex;
@@ -224,7 +224,7 @@
     min-width: 0;
   }
   .agent-emoji {
-    font-size: 14px;
+    font-size: var(--text-base);
     flex-shrink: 0;
   }
   .agent-name {
@@ -233,7 +233,7 @@
     white-space: nowrap;
   }
   .session-cost {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     background: var(--surface);
@@ -242,11 +242,11 @@
     padding: 1px 6px;
   }
   .update-badge {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
-    color: var(--green);
-    background: color-mix(in srgb, var(--green) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+    color: var(--status-success);
+    background: color-mix(in srgb, var(--status-success) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
     border-radius: 8px;
     padding: 1px 6px;
     cursor: default;
@@ -262,7 +262,7 @@
     color: var(--text-secondary);
     padding: 4px 10px;
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: var(--text-sm);
     transition: all 0.15s;
   }
   .topbar-btn:hover {
@@ -283,7 +283,7 @@
     margin-left: 4px;
   }
   .logout-btn:hover {
-    color: var(--red);
+    color: var(--status-error);
   }
 
   /* Mobile menu button */
@@ -366,7 +366,7 @@
       background: none;
       border: none;
       color: var(--text-secondary);
-      font-size: 14px;
+      font-size: var(--text-base);
       font-weight: 500;
       text-align: left;
       transition: background 0.1s;
@@ -381,7 +381,7 @@
       border-bottom: 1px solid var(--border);
     }
     .mm-icon {
-      font-size: 16px;
+      font-size: var(--text-lg);
       width: 24px;
       text-align: center;
     }

@@ -79,17 +79,17 @@
     gap: 8px;
   }
   .panel-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text);
     flex: 1;
   }
   .live-badge {
-    font-size: 10px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--amber);
+    color: var(--status-active);
     background: rgba(232, 169, 42, 0.1);
     padding: 2px 6px;
     border-radius: 8px;
@@ -109,7 +109,7 @@
     border: none;
     background: none;
     color: var(--text-muted);
-    font-size: 16px;
+    font-size: var(--text-lg);
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: background 0.15s, color 0.15s;
@@ -127,22 +127,22 @@
     min-height: 0;
   }
   .thinking-content {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     line-height: 1.5;
   }
   .thinking-content :global(.markdown-body) {
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .thinking-content :global(p) {
     margin: 0 0 6px;
   }
   .thinking-content :global(pre) {
-    font-size: 12px;
+    font-size: var(--text-sm);
   }
   .empty-thinking {
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: center;
     padding: 24px;
   }
@@ -159,7 +159,7 @@
       padding: 10px;
     }
     .thinking-content {
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
   }
 </style>

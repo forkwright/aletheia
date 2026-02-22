@@ -51,7 +51,7 @@
 
 <style>
   .usage-chart h3 {
-    font-size: 14px;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
@@ -62,10 +62,10 @@
     padding: 16px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .chart-error {
-    color: var(--red);
+    color: var(--status-error);
   }
   .chart-container {
     display: flex;
@@ -100,13 +100,13 @@
   .chart-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 10px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
     font-family: var(--font-mono);
     padding: 0 2px;
   }
   .chart-summary {
-    font-size: 12px;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     text-align: center;
     margin-top: 4px;
