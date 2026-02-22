@@ -749,7 +749,7 @@ program
   .description("Show per-section bootstrap token breakdown for an agent")
   .action(async (agentId: string | undefined) => {
     const { auditTokens } = await import("./nous/audit.js");
-    const id = agentId ?? "main";
+    const id = agentId ?? "syn";
     await auditTokens(id);
   });
 
