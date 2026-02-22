@@ -8,16 +8,11 @@ that evolve with the system.
 
 ## Active Specs
 
-### In Progress
-
-| # | Spec | Status | Scope | Notes |
-|---|------|--------|-------|-------|
-| 5 | [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | 4/6 phases | Agent scaffolding, CLI, onboarding | Needed for public adoption |
-
 ### Draft
 
 | # | Spec | Status | Scope | Notes |
 |---|------|--------|-------|-------|
+| 28 | [TUI](28_tui.md) | Draft | Ratatui terminal client | Thin client, SSE streaming, agent switching |
 | 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI | Nice-to-have |
 | 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | Semantic space analysis, concept drift | Research-grade |
 | 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine | A2A premature per Cody |
@@ -32,7 +27,8 @@ that evolve with the system.
 ### Priority Order
 
 **Draft:**
-1. **25** Integrated IDE
+1. **28** TUI — terminal client
+2. **25** Integrated IDE
 3. **27** Embedding Space Intelligence
 4. **22** Interop & Workflows
 5. **24** Aletheia Linux — long-term
@@ -41,6 +37,7 @@ that evolve with the system.
 
 | Spec | Implemented | Summary |
 |------|-------------|---------|
+| [Plug-and-Play Onboarding](05_plug-and-play-onboarding.md) | PRs #137, #138 | CLI scaffolding, onboarding SOUL.md, web UI agent creation, `aletheia init` wizard |
 | [Recursive Self-Improvement](26_recursive-self-improvement.md) | PRs #106, #107, #128 | Self-authored tools, skill learning, competence model, code patching, evolutionary config search |
 | [Agent Portability](21_agent-portability.md) | PRs #100, #124, #128 | Agent file export/import, scheduled backups, checkpoint time-travel (session forking) |
 | [Auth & Updates](03_auth-and-updates.md) | PRs #50, #70, #99, #126 | OAuth login, session mgmt, update daemon, release workflow, credential failover, update notification UI |
@@ -68,7 +65,7 @@ that evolve with the system.
 | [Tool Call Governance](archive/spec-tool-call-governance.md) | PR #22 | Approval gates, timeouts, LoopDetector |
 | [Distillation Persistence](archive/spec-distillation-memory-persistence.md) | Hooks | Workspace flush on distillation |
 
-**Score: 26 archived, 1 in progress, 4 draft/skeleton.**
+**Score: 27 archived, 0 in progress, 5 draft/skeleton.**
 
 ## Conventions
 
@@ -80,7 +77,7 @@ that evolve with the system.
 
 ## Adding a Spec
 
-1. Create `NN_<topic>.md` in this directory (next available number: 28)
+1. Create `NN_<topic>.md` in this directory (next available number: 29)
 2. Add it to the index above
 3. Start with Draft status
 4. PR for review when ready

@@ -24,6 +24,103 @@ const program = new Command()
   .description("Aletheia distributed cognition runtime")
   .version(getVersion());
 
+// --- Init ---
+
+program
+  .command("init")
+  .description("First-run setup wizard — configure credentials, create first agent")
+  .action(async () => {
+    const { existsSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { paths } = await import("./taxis/paths.js");
+    const { writeJson } = await import("./koina/fs.js");
+    const { scaffoldAgent } = await import("./taxis/scaffold.js");
+    const readline = await import("node:readline");
+
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const ask = (q: string): Promise<string> =>
+      new Promise((resolve) => rl.question(q, resolve));
+
+    try {
+      const configPath = paths.configFile();
+
+      if (existsSync(configPath)) {
+        const answer = await ask(`Config exists at ${configPath}. Overwrite? (y/N) `);
+        if (answer.trim().toLowerCase() !== "y") {
+          console.log("Aborted.");
+          return;
+        }
+      }
+
+      // API key
+      const apiKey = (await ask("Anthropic API key (sk-ant-...): ")).trim();
+      if (!apiKey) {
+        console.error("API key is required.");
+        return;
+      }
+
+      // Gateway port
+      const portStr = (await ask("Gateway port [18789]: ")).trim();
+      const port = portStr ? parseInt(portStr, 10) : 18789;
+      if (isNaN(port) || port < 1 || port > 65535) {
+        console.error("Invalid port number.");
+        return;
+      }
+
+      // First agent
+      const agentName = (await ask("First agent name (e.g. Atlas): ")).trim();
+      if (!agentName) {
+        console.error("Agent name is required.");
+        return;
+      }
+      const agentId = agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const agentEmoji = (await ask("Agent emoji [🤖]: ")).trim() || "🤖";
+
+      // Write credentials
+      const credDir = join(paths.configDir(), "credentials");
+      mkdirSync(credDir, { recursive: true });
+      const credPath = join(credDir, "anthropic.json");
+      writeFileSync(credPath, JSON.stringify({ apiKey }, null, 2) + "\n", { mode: 0o600 });
+      console.log(`  Credentials: ${credPath}`);
+
+      // Write base config (scaffoldAgent will append agent + binding)
+      mkdirSync(paths.configDir(), { recursive: true });
+      writeJson(configPath, {
+        agents: { defaults: {}, list: [] },
+        bindings: [],
+        gateway: { port },
+      });
+
+      // Scaffold agent
+      mkdirSync(paths.nous, { recursive: true });
+      const templateDir = join(paths.nous, "_example");
+      if (!existsSync(templateDir)) {
+        mkdirSync(templateDir, { recursive: true });
+      }
+
+      const result = scaffoldAgent({
+        id: agentId,
+        name: agentName,
+        emoji: agentEmoji,
+        nousDir: paths.nous,
+        configPath,
+        templateDir,
+      });
+
+      console.log(`\nSetup complete.`);
+      console.log(`  Config: ${configPath}`);
+      console.log(`  Agent: ${agentName} (${agentId}) → ${result.workspace}`);
+      console.log(`\nStart the gateway:`);
+      console.log(`  aletheia gateway start`);
+      console.log(`\nThen open:`);
+      console.log(`  http://localhost:${port}/ui`);
+    } finally {
+      rl.close();
+    }
+  });
+
+// --- Gateway ---
+
 const gateway = program
   .command("gateway")
   .description("Gateway management");
