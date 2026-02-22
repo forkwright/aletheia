@@ -44,6 +44,7 @@
     refreshSessions,
     createNewSession,
     loadSessions,
+    isSessionsLoading,
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
@@ -148,6 +149,9 @@
       } else {
         loadHistory(currentAgentId, sessionId);
       }
+    } else if (!sessionId && currentAgentId && !isSessionsLoading()) {
+      prevSessionId = null;
+      loadSessions(currentAgentId);
     } else if (!sessionId && prevSessionId) {
       prevSessionId = null;
       if (currentAgentId) clearMessages(currentAgentId);
