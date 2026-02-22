@@ -66,7 +66,8 @@
       {:else}
         <div class="empty-initials">{initials}</div>
       {/if}
-      <p>Send a message to start a conversation.</p>
+      <p class="empty-name">{agentName ?? "Agent"}</p>
+      <p class="empty-hint">Ready when you are.</p>
     </div>
   {:else}
     {#each messages as message (message.id)}
@@ -131,7 +132,17 @@
     height: 100%;
     color: var(--text-muted);
     font-size: 14px;
-    gap: 12px;
+    gap: 8px;
+  }
+  .empty-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+  .empty-hint {
+    font-size: 13px;
+    color: var(--text-muted);
   }
   .empty-emoji {
     font-size: 48px;
@@ -152,7 +163,7 @@
     justify-content: center;
     border-radius: var(--radius);
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
     letter-spacing: 1px;
   }
 
@@ -162,7 +173,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
     border: none;
     padding: 6px 16px;
     border-radius: 16px;

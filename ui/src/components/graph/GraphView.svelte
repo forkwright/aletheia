@@ -35,14 +35,14 @@
   let showEdgeFilter = $state(true);
 
   const PALETTE = [
-    "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
+    "#c9a84c", "#3fb950", "#d29922", "#f85149", "#bc8cff",
     "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
     "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
     "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
   ];
 
   const AGENT_COLORS: Record<string, string> = {
-    syn: "#58a6ff",
+    syn: "#c9a84c",
     demiurge: "#d29922",
     syl: "#f778ba",
     akron: "#3fb950",
@@ -483,7 +483,7 @@
   .toggle-btn:hover { color: var(--text); }
   .toggle-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
   }
 
   /* Overlay toggles */

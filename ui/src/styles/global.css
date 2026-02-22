@@ -1,17 +1,20 @@
 :root {
-  --bg: #0d1117;
-  --bg-elevated: #161b22;
-  --surface: #1c2128;
-  --surface-hover: #242b35;
-  --border: #30363d;
-  --border-accent: #58a6ff;
+  /* Backgrounds — warm dark, not cold blue-black */
+  --bg: #0f1114;
+  --bg-elevated: #181a1f;
+  --surface: #1e2025;
+  --surface-hover: #26282e;
+  --border: #2e3038;
+  --border-accent: #c9a84c;
 
-  --text: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #656d76;
+  /* Text — slightly warm white, not blue-tinted */
+  --text: #e8e6e3;
+  --text-secondary: #9a9590;
+  --text-muted: #6b6560;
 
-  --accent: #58a6ff;
-  --accent-hover: #79c0ff;
+  /* Accent — warm gold, truth as light */
+  --accent: #c9a84c;
+  --accent-hover: #dbbe65;
   --green: #3fb950;
   --red: #f85149;
   --yellow: #d29922;
@@ -105,7 +108,7 @@ button {
 }
 
 ::selection {
-  background: rgba(88, 166, 255, 0.3);
+  background: rgba(201, 168, 76, 0.3);
 }
 
 @media (max-width: 768px) {

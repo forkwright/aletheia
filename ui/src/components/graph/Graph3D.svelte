@@ -20,7 +20,7 @@
   } = $props();
 
   const PALETTE = [
-    "#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff",
+    "#c9a84c", "#3fb950", "#d29922", "#f85149", "#bc8cff",
     "#f778ba", "#79c0ff", "#56d4dd", "#e3b341", "#db6d28",
     "#8b949e", "#7ee787", "#a5d6ff", "#ffa657", "#ff7b72",
     "#d2a8ff", "#ffd8b5", "#89dceb", "#f9e2af", "#a6e3a1",
@@ -43,7 +43,7 @@
     const temporal = ["PRECEDES", "FOLLOWS", "OCCURRED_AT", "MENTIONS"];
 
     if (social.includes(relType)) return "rgba(63, 185, 80, 0.35)";
-    if (structural.includes(relType)) return "rgba(88, 166, 255, 0.35)";
+    if (structural.includes(relType)) return "rgba(201, 168, 76, 0.35)";
     if (temporal.includes(relType)) return "rgba(210, 153, 34, 0.35)";
     return "rgba(139, 148, 158, 0.25)";
   }

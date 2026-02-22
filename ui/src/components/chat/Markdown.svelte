@@ -259,7 +259,7 @@
   .markdown-body :global(input[type="checkbox"]:checked::after) {
     content: "\2713";
     display: block;
-    color: #fff;
+    color: #0f1114;
     font-size: 10px;
     font-weight: 700;
     text-align: center;

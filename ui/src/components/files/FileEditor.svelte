@@ -470,7 +470,7 @@
   }
   .save-btn:not(:disabled):hover {
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
   }
   .save-error {
     padding: 4px 8px;

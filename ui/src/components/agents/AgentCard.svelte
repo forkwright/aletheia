@@ -79,7 +79,7 @@
     justify-content: center;
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
     letter-spacing: 0.5px;
   }
   .info {
@@ -105,7 +105,7 @@
     padding: 0 5px;
     border-radius: 9px;
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
     font-size: 10px;
     font-weight: 700;
     display: flex;

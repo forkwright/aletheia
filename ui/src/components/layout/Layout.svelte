@@ -279,7 +279,7 @@
   .token-submit {
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: #0f1114;
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     font-size: 14px;

@@ -287,7 +287,7 @@
   }
   .toggle-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: #0f1114;
   }
   .toggle-btn:not(.active):hover {
     color: var(--text);
@@ -352,7 +352,7 @@
   .btn-primary {
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: #0f1114;
     padding: 8px 16px;
     border-radius: var(--radius-sm);
     font-size: 13px;
