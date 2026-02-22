@@ -125,6 +125,7 @@ describe("runBufferedPipeline", () => {
       text: "response",
       nousId: "syn",
       sessionId: "ses_1",
+      model: "claude-sonnet-4-6",
       toolCalls: 0,
       inputTokens: 100,
       outputTokens: 50,

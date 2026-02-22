@@ -42,7 +42,7 @@ function makeManager(streamEvents?: Array<Record<string, unknown>>) {
     { type: "turn_start", sessionId: "ses_1", nousId: "syn" },
     { type: "text_delta", text: "hello" },
     { type: "text_delta", text: " world" },
-    { type: "turn_complete", outcome: { text: "hello world", nousId: "syn", sessionId: "ses_1", toolCalls: 0, inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+    { type: "turn_complete", outcome: { text: "hello world", nousId: "syn", sessionId: "ses_1", model: "claude-sonnet-4-6", toolCalls: 0, inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 } },
   ];
 
   return {
