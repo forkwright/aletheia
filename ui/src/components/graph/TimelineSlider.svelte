@@ -73,8 +73,8 @@
   }
 
   .timeline-slider.active {
-    background: color-mix(in srgb, var(--accent, #c9a84c) 8%, var(--bg-elevated, #181a1f));
-    border-bottom-color: var(--accent, #c9a84c);
+    background: color-mix(in srgb, var(--accent, #9A7B4F) 8%, var(--bg-elevated, #181a1f));
+    border-bottom-color: var(--accent, #9A7B4F);
   }
 
   .timeline-row {
@@ -107,7 +107,7 @@
   }
   .preset-btn:hover {
     color: var(--text, #e6edf3);
-    border-color: var(--accent, #c9a84c);
+    border-color: var(--accent, #9A7B4F);
   }
 
   .date-inputs {
@@ -128,7 +128,7 @@
   }
   .date-input:focus {
     outline: none;
-    border-color: var(--accent, #c9a84c);
+    border-color: var(--accent, #9A7B4F);
   }
 
   .date-separator {
@@ -137,7 +137,7 @@
   }
 
   .apply-btn {
-    background: var(--accent, #c9a84c);
+    background: var(--accent, #9A7B4F);
     border: none;
     color: #0f1114;
     padding: 2px 10px;

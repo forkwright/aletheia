@@ -41,8 +41,8 @@
 }
 
 .chat-avatar.agent {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: rgba(154, 123, 79, 0.15);
+  border-color: rgba(154, 123, 79, 0.4);
 }
 
 .chat-avatar-emoji {
@@ -59,7 +59,7 @@
 }
 
 .chat-avatar.agent .chat-avatar-text {
-  color: #0f1114;
+  color: var(--accent);
 }
 
 .chat-body {

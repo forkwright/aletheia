@@ -180,10 +180,10 @@
     font-size: 12px;
     font-family: var(--font-sans, system-ui);
   }
-  .lookup-input:focus { outline: none; border-color: var(--accent, #c9a84c); }
+  .lookup-input:focus { outline: none; border-color: var(--accent, #9A7B4F); }
 
   .search-btn {
-    background: var(--accent, #c9a84c);
+    background: var(--accent, #9A7B4F);
     border: none;
     color: #0f1114;
     padding: 5px 10px;
@@ -249,7 +249,7 @@
   }
 
   .detail-preview {
-    border-top: 1px solid var(--accent, #c9a84c);
+    border-top: 1px solid var(--accent, #9A7B4F);
     padding: 8px;
     overflow-y: auto;
     max-height: 300px;

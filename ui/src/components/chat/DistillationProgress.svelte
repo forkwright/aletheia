@@ -80,8 +80,8 @@
     gap: 8px;
     padding: 6px 12px;
     margin: 4px 0;
-    background: rgba(201, 168, 76, 0.06);
-    border: 1px solid rgba(201, 168, 76, 0.2);
+    background: rgba(154, 123, 79, 0.06);
+    border: 1px solid rgba(154, 123, 79, 0.2);
     border-radius: 8px;
     font-size: 12px;
     color: var(--text-secondary);
