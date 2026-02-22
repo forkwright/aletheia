@@ -4,6 +4,7 @@ import type { Session } from "../lib/types";
 let sessions = $state<Session[]>([]);
 let activeSessionId = $state<string | null>(null);
 let loading = $state(false);
+let loadGeneration = 0;
 
 export function getSessions(): Session[] {
   return sessions;
@@ -22,9 +23,11 @@ export function isSessionsLoading(): boolean {
 }
 
 export async function loadSessions(nousId: string): Promise<void> {
+  const gen = ++loadGeneration;
   loading = true;
   try {
     const all = await fetchSessions(nousId);
+    if (gen !== loadGeneration) return; // Stale — a newer loadSessions call superseded us
     // Filter out background/system sessions
     sessions = all.filter((s) =>
       !s.sessionKey.startsWith("cron:") &&
@@ -42,7 +45,7 @@ export async function loadSessions(nousId: string): Promise<void> {
       activeSessionId = null;
     }
   } finally {
-    loading = false;
+    if (gen === loadGeneration) loading = false;
   }
 }
 

@@ -9,7 +9,7 @@ let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 const HEARTBEAT_TIMEOUT_MS = 45_000; // Server sends pings every ~30s
 const listeners = new Set<EventCallback>();
-let lastActiveTurns: Record<string, number> = {};
+let lastActiveTurns = $state<Record<string, number>>({});
 
 export function onGlobalEvent(cb: EventCallback): () => void {
   listeners.add(cb);
@@ -92,9 +92,9 @@ function connect() {
     } catch { /* ignore */ }
   });
 
-  // Forward all other event types
+  // Forward server event types (only types the server SSE route actually emits)
   const eventTypes = [
-    "turn:before", "turn:after", "turn:text_delta", "turn:tool_start", "turn:tool_result",
+    "turn:before", "turn:after",
     "tool:called", "tool:failed", "session:created", "session:archived",
     "distill:before", "distill:stage", "distill:after",
   ];
@@ -104,9 +104,9 @@ function connect() {
       try {
         const data = JSON.parse((e as MessageEvent).data);
         if (type === "turn:before" && data.nousId) {
-          lastActiveTurns[data.nousId] = (lastActiveTurns[data.nousId] ?? 0) + 1;
+          lastActiveTurns = { ...lastActiveTurns, [data.nousId]: (lastActiveTurns[data.nousId] ?? 0) + 1 };
         } else if (type === "turn:after" && data.nousId) {
-          lastActiveTurns[data.nousId] = Math.max(0, (lastActiveTurns[data.nousId] ?? 1) - 1);
+          lastActiveTurns = { ...lastActiveTurns, [data.nousId]: Math.max(0, (lastActiveTurns[data.nousId] ?? 1) - 1) };
         }
         dispatch(type, data);
       } catch { /* ignore */ }
@@ -114,7 +114,6 @@ function connect() {
   }
 
   // SSE comment lines (:ping) don't fire event listeners, but onmessage catches them
-  // Use a catch-all to reset heartbeat on any server activity
   source.onmessage = () => { resetHeartbeat(); };
 }
 

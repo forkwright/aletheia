@@ -47,7 +47,7 @@
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent, getActiveTurns } from "../../lib/events";
+  import { onGlobalEvent, getActiveTurns } from "../../lib/events.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
@@ -77,7 +77,7 @@
         }
         // Reload history on reconnect to catch any missed messages
         const sid = getActiveSessionId();
-        if (sid) loadHistory(agentId, sid);
+        if (sid && !hasLocalStream(agentId)) loadHistory(agentId, sid);
       }
 
       if (event === "turn:after") {

@@ -1,4 +1,4 @@
-import { initEventSource, closeEventSource, onGlobalEvent } from "../lib/events";
+import { initEventSource, closeEventSource, onGlobalEvent } from "../lib/events.svelte";
 
 let status = $state<"connected" | "disconnected" | "connecting">("disconnected");
 let unsub: (() => void) | null = null;

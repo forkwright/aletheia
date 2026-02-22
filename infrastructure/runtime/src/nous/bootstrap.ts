@@ -45,6 +45,18 @@ const DEGRADATION_GUIDANCE: Record<string, string> = {
   "signal-cli": "Signal messaging unavailable. You can process but not respond.",
 };
 
+const RESPONSE_HYGIENE = `
+
+---
+
+## Response Hygiene
+
+Your visible response is what the user reads. Keep it focused on their request.
+
+- Internal planning, self-narration, context management thoughts, and memory/distillation concerns belong in your thinking, never in your response text.
+- Do not narrate what you are about to do — just do it. If you need to use tools, use them without announcing each step.
+- Never tell the user you are "saving to memory", "preparing for distillation", or "noting for context". These are invisible internal operations.`;
+
 export interface BootstrapResult {
   staticBlocks: SystemBlock[];
   dynamicBlocks: SystemBlock[];
@@ -160,9 +172,10 @@ export function assembleBootstrap(
 
   // Static group — combine into one block with cache breakpoint
   if (staticFiles.length > 0) {
-    const text = staticFiles
+    const fileSections = staticFiles
       .map((f) => `## ${f.name}\n\n${f.content}`)
       .join("\n\n---\n\n");
+    const text = fileSections + RESPONSE_HYGIENE;
     staticBlocks.push({
       type: "text",
       text,
