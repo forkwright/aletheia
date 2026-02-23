@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 const DEFAULT_URL: &str = "http://localhost:18789";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigFile {
     pub url: Option<String>,
     pub token: Option<String>,
@@ -75,16 +75,5 @@ impl Config {
         let path = Self::config_path().ok()?;
         let contents = std::fs::read_to_string(&path).ok()?;
         toml::from_str(&contents).ok()
-    }
-}
-
-impl Default for ConfigFile {
-    fn default() -> Self {
-        ConfigFile {
-            url: None,
-            token: None,
-            default_agent: None,
-            default_session: None,
-        }
     }
 }

@@ -35,7 +35,9 @@ pub fn stream_message(
         let mut es = match EventSource::new(builder) {
             Ok(es) => es,
             Err(e) => {
-                let _ = tx.send(StreamEvent::Error(format!("failed to connect: {e}"))).await;
+                let _ = tx
+                    .send(StreamEvent::Error(format!("failed to connect: {e}")))
+                    .await;
                 return;
             }
         };
@@ -61,7 +63,9 @@ pub fn stream_message(
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(StreamEvent::Error(format!("stream error: {e}"))).await;
+                    let _ = tx
+                        .send(StreamEvent::Error(format!("stream error: {e}")))
+                        .await;
                     es.close();
                     break;
                 }

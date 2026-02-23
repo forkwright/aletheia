@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use crossterm::event::{Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
 use ratatui::Frame;
@@ -38,6 +40,23 @@ pub struct AgentState {
     pub has_notification: bool,
 }
 
+// --- Tool call info for inline rendering ---
+
+#[derive(Debug, Clone)]
+pub struct ToolCallInfo {
+    pub name: String,
+    pub duration_ms: Option<u64>,
+    pub is_error: bool,
+}
+
+// --- Saved scroll state per agent ---
+
+#[derive(Debug, Clone, Default)]
+struct SavedScrollState {
+    scroll_offset: usize,
+    auto_scroll: bool,
+}
+
 // --- Chat message ---
 
 #[derive(Debug, Clone)]
@@ -47,6 +66,7 @@ pub struct ChatMessage {
     pub timestamp: Option<String>,
     pub model: Option<String>,
     pub is_streaming: bool,
+    pub tool_calls: Vec<ToolCallInfo>,
 }
 
 // --- Input state ---
@@ -125,6 +145,7 @@ pub struct App {
     pub active_turn_id: Option<String>,
     pub streaming_text: String,
     pub streaming_thinking: String,
+    pub streaming_tool_calls: Vec<ToolCallInfo>,
     stream_rx: Option<mpsc::Receiver<StreamEvent>>,
 
     // SSE
@@ -134,6 +155,11 @@ pub struct App {
     // Scroll
     pub scroll_offset: usize,
     pub auto_scroll: bool,
+    scroll_states: HashMap<String, SavedScrollState>,
+
+    // Markdown cache — avoid re-parsing on every frame
+    pub cached_markdown_text: String,
+    pub cached_markdown_lines: Vec<ratatui::text::Line<'static>>,
 
     // Tick counter for spinner animation
     pub tick_count: u64,
@@ -163,11 +189,15 @@ impl App {
             active_turn_id: None,
             streaming_text: String::new(),
             streaming_thinking: String::new(),
+            streaming_tool_calls: Vec::new(),
             stream_rx: None,
             sse: None,
             sse_connected: false,
             scroll_offset: 0,
             auto_scroll: true,
+            scroll_states: HashMap::new(),
+            cached_markdown_text: String::new(),
+            cached_markdown_lines: Vec::new(),
             tick_count: 0,
         };
 
@@ -194,7 +224,9 @@ impl App {
                 }
                 "token" => {
                     if self.client.token().is_none() {
-                        anyhow::bail!("gateway requires token auth. Pass --token or set ALETHEIA_TOKEN");
+                        anyhow::bail!(
+                            "gateway requires token auth. Pass --token or set ALETHEIA_TOKEN"
+                        );
                     }
                 }
                 _ => {
@@ -267,6 +299,24 @@ impl App {
             None => return,
         };
 
+        // Ensure sessions are loaded for this agent (lazy fetch on first switch)
+        {
+            let needs_load = self
+                .agents
+                .iter()
+                .find(|a| a.id == agent_id)
+                .map(|a| a.sessions.is_empty())
+                .unwrap_or(false);
+
+            if needs_load {
+                if let Ok(sessions) = self.client.sessions(&agent_id).await {
+                    if let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
+                        agent.sessions = sessions;
+                    }
+                }
+            }
+        }
+
         let agent = match self.agents.iter().find(|a| a.id == agent_id) {
             Some(a) => a,
             None => return,
@@ -319,6 +369,7 @@ impl App {
                                 timestamp: m.created_at,
                                 model: m.model,
                                 is_streaming: false,
+                                tool_calls: Vec::new(),
                             })
                         })
                         .collect();
@@ -414,9 +465,7 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::ClearLine),
 
             // Char input
-            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
-                Some(Msg::CharInput(c))
-            }
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
         }
@@ -481,13 +530,9 @@ impl App {
                 nous_id,
                 session_id,
             },
-            SseEvent::ToolCalled {
-                nous_id,
-                tool_name,
-            } => Msg::SseToolCalled {
-                nous_id,
-                tool_name,
-            },
+            SseEvent::ToolCalled { nous_id, tool_name } => {
+                Msg::SseToolCalled { nous_id, tool_name }
+            }
             SseEvent::ToolFailed {
                 nous_id,
                 tool_name,
@@ -497,9 +542,7 @@ impl App {
                 tool_name,
                 error,
             },
-            SseEvent::StatusUpdate { nous_id, status } => {
-                Msg::SseStatusUpdate { nous_id, status }
-            }
+            SseEvent::StatusUpdate { nous_id, status } => Msg::SseStatusUpdate { nous_id, status },
             SseEvent::SessionCreated {
                 nous_id,
                 session_id,
@@ -515,9 +558,7 @@ impl App {
                 session_id,
             },
             SseEvent::DistillBefore { nous_id } => Msg::SseDistillBefore { nous_id },
-            SseEvent::DistillStage { nous_id, stage } => {
-                Msg::SseDistillStage { nous_id, stage }
-            }
+            SseEvent::DistillStage { nous_id, stage } => Msg::SseDistillStage { nous_id, stage },
             SseEvent::DistillAfter { nous_id } => Msg::SseDistillAfter { nous_id },
             SseEvent::Ping => Msg::Tick, // Treat ping as a tick
         }
@@ -536,13 +577,9 @@ impl App {
             },
             StreamEvent::TextDelta(text) => Msg::StreamTextDelta(text),
             StreamEvent::ThinkingDelta(text) => Msg::StreamThinkingDelta(text),
-            StreamEvent::ToolStart {
-                tool_name,
-                tool_id,
-            } => Msg::StreamToolStart {
-                tool_name,
-                tool_id,
-            },
+            StreamEvent::ToolStart { tool_name, tool_id } => {
+                Msg::StreamToolStart { tool_name, tool_id }
+            }
             StreamEvent::ToolResult {
                 tool_name,
                 tool_id,
@@ -569,13 +606,9 @@ impl App {
                 risk,
                 reason,
             },
-            StreamEvent::ToolApprovalResolved {
-                tool_id,
-                decision,
-            } => Msg::StreamToolApprovalResolved {
-                tool_id,
-                decision,
-            },
+            StreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                Msg::StreamToolApprovalResolved { tool_id, decision }
+            }
             StreamEvent::PlanProposed { plan } => Msg::StreamPlanProposed { plan },
             StreamEvent::PlanStepStart { plan_id, step_id } => {
                 Msg::StreamPlanStepStart { plan_id, step_id }
@@ -664,23 +697,21 @@ impl App {
                     self.input.cursor = self.input.text.len();
                 }
             }
-            Msg::HistoryDown => {
-                match self.input.history_index {
-                    Some(0) => {
-                        self.input.history_index = None;
-                        self.input.text.clear();
-                        self.input.cursor = 0;
-                    }
-                    Some(i) => {
-                        let idx = i - 1;
-                        self.input.history_index = Some(idx);
-                        self.input.text =
-                            self.input.history[self.input.history.len() - 1 - idx].clone();
-                        self.input.cursor = self.input.text.len();
-                    }
-                    None => {}
+            Msg::HistoryDown => match self.input.history_index {
+                Some(0) => {
+                    self.input.history_index = None;
+                    self.input.text.clear();
+                    self.input.cursor = 0;
                 }
-            }
+                Some(i) => {
+                    let idx = i - 1;
+                    self.input.history_index = Some(idx);
+                    self.input.text =
+                        self.input.history[self.input.history.len() - 1 - idx].clone();
+                    self.input.cursor = self.input.text.len();
+                }
+                None => {}
+            },
             Msg::Submit => {
                 let text = self.input.text.trim().to_string();
                 if text.is_empty() {
@@ -723,24 +754,29 @@ impl App {
                 self.auto_scroll = true;
             }
             Msg::FocusAgent(id) => {
+                self.save_scroll_state();
                 // Clear notification on the agent we're switching to
                 if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
                     agent.has_notification = false;
                 }
                 self.focused_agent = Some(id.clone());
                 self.load_focused_session().await;
+                self.restore_scroll_state();
             }
             Msg::NextAgent => {
+                self.save_scroll_state();
                 if let Some(ref current) = self.focused_agent {
                     if let Some(idx) = self.agents.iter().position(|a| a.id == *current) {
                         let next = (idx + 1) % self.agents.len();
                         let id = self.agents[next].id.clone();
                         self.focused_agent = Some(id);
                         self.load_focused_session().await;
+                        self.restore_scroll_state();
                     }
                 }
             }
             Msg::PrevAgent => {
+                self.save_scroll_state();
                 if let Some(ref current) = self.focused_agent {
                     if let Some(idx) = self.agents.iter().position(|a| a.id == *current) {
                         let prev = if idx == 0 {
@@ -751,6 +787,7 @@ impl App {
                         let id = self.agents[prev].id.clone();
                         self.focused_agent = Some(id);
                         self.load_focused_session().await;
+                        self.restore_scroll_state();
                     }
                 }
             }
@@ -890,19 +927,14 @@ impl App {
                     }
                 }
                 // Reload history if this is our focused agent/session
-                if is_focused {
-                    if self.focused_session_id.as_deref() == Some(&session_id) {
-                        // Only reload if we're not currently streaming (we already have the data)
-                        if self.active_turn_id.is_none() {
-                            self.load_focused_session().await;
-                        }
-                    }
+                if is_focused
+                    && self.focused_session_id.as_deref() == Some(&session_id)
+                    && self.active_turn_id.is_none()
+                {
+                    self.load_focused_session().await;
                 }
             }
-            Msg::SseToolCalled {
-                nous_id,
-                tool_name,
-            } => {
+            Msg::SseToolCalled { nous_id, tool_name } => {
                 if let Some(agent) = self.agents.iter_mut().find(|a| a.id == nous_id) {
                     agent.active_tool = Some(tool_name);
                     agent.tool_started_at = Some(std::time::Instant::now());
@@ -932,7 +964,10 @@ impl App {
                     }
                 }
             }
-            Msg::SseSessionArchived { nous_id, session_id } => {
+            Msg::SseSessionArchived {
+                nous_id,
+                session_id,
+            } => {
                 if let Some(agent) = self.agents.iter_mut().find(|a| a.id == nous_id) {
                     agent.sessions.retain(|s| s.id != session_id);
                 }
@@ -960,16 +995,31 @@ impl App {
             }
 
             // --- Streaming ---
-            Msg::StreamTurnStart { turn_id, nous_id, .. } => {
+            Msg::StreamTurnStart {
+                turn_id, nous_id, ..
+            } => {
                 self.active_turn_id = Some(turn_id);
                 self.streaming_text.clear();
                 self.streaming_thinking.clear();
+                self.streaming_tool_calls.clear();
+                self.cached_markdown_text.clear();
+                self.cached_markdown_lines.clear();
                 if let Some(agent) = self.agents.iter_mut().find(|a| a.id == nous_id) {
                     agent.status = AgentStatus::Streaming;
                 }
             }
             Msg::StreamTextDelta(text) => {
                 self.streaming_text.push_str(&text);
+                // Debounced markdown cache: re-parse every 64 chars of new content
+                // or when a newline arrives (likely block boundary).
+                let delta =
+                    self.streaming_text.len() as i64 - self.cached_markdown_text.len() as i64;
+                if delta >= 64 || text.contains('\n') {
+                    let width = 120; // approximate — real width comes from render
+                    self.cached_markdown_lines =
+                        crate::markdown::render(&self.streaming_text, width, &self.theme);
+                    self.cached_markdown_text = self.streaming_text.clone();
+                }
                 if self.auto_scroll {
                     self.scroll_offset = 0;
                 }
@@ -978,6 +1028,11 @@ impl App {
                 self.streaming_thinking.push_str(&text);
             }
             Msg::StreamToolStart { tool_name, .. } => {
+                self.streaming_tool_calls.push(ToolCallInfo {
+                    name: tool_name.clone(),
+                    duration_ms: None,
+                    is_error: false,
+                });
                 if let Some(ref agent_id) = self.focused_agent {
                     if let Some(agent) = self.agents.iter_mut().find(|a| a.id == *agent_id) {
                         agent.active_tool = Some(tool_name);
@@ -985,7 +1040,22 @@ impl App {
                     }
                 }
             }
-            Msg::StreamToolResult { .. } => {
+            Msg::StreamToolResult {
+                tool_name,
+                is_error,
+                duration_ms,
+                ..
+            } => {
+                // Update the most recent matching tool call with result info
+                if let Some(tc) = self
+                    .streaming_tool_calls
+                    .iter_mut()
+                    .rev()
+                    .find(|t| t.name == tool_name)
+                {
+                    tc.duration_ms = Some(duration_ms);
+                    tc.is_error = is_error;
+                }
                 if let Some(ref agent_id) = self.focused_agent {
                     if let Some(agent) = self.agents.iter_mut().find(|a| a.id == *agent_id) {
                         agent.active_tool = None;
@@ -1046,10 +1116,14 @@ impl App {
                         timestamp: None,
                         model: Some(outcome.model),
                         is_streaming: false,
+                        tool_calls: std::mem::take(&mut self.streaming_tool_calls),
                     });
                 }
                 self.streaming_text.clear();
                 self.streaming_thinking.clear();
+                self.streaming_tool_calls.clear();
+                self.cached_markdown_text.clear();
+                self.cached_markdown_lines.clear();
                 self.active_turn_id = None;
                 self.stream_rx = None;
                 if let Some(ref agent_id) = self.focused_agent {
@@ -1112,6 +1186,7 @@ impl App {
                             timestamp: m.created_at,
                             model: m.model,
                             is_streaming: false,
+                            tool_calls: Vec::new(),
                         })
                     })
                     .collect();
@@ -1162,6 +1237,7 @@ impl App {
             timestamp: None,
             model: None,
             is_streaming: false,
+            tool_calls: Vec::new(),
         });
         self.scroll_to_bottom();
 
@@ -1170,14 +1246,14 @@ impl App {
             .focused_agent
             .as_ref()
             .and_then(|id| {
-                self.agents
-                    .iter()
-                    .find(|a| a.id == *id)
-                    .and_then(|a| {
-                        self.focused_session_id.as_ref().and_then(|sid| {
-                            a.sessions.iter().find(|s| s.id == *sid).map(|s| s.key.clone())
-                        })
+                self.agents.iter().find(|a| a.id == *id).and_then(|a| {
+                    self.focused_session_id.as_ref().and_then(|sid| {
+                        a.sessions
+                            .iter()
+                            .find(|s| s.id == *sid)
+                            .map(|s| s.key.clone())
                     })
+                })
             })
             .unwrap_or_else(|| "main".to_string());
 
@@ -1195,6 +1271,29 @@ impl App {
     fn scroll_to_bottom(&mut self) {
         self.scroll_offset = 0;
         self.auto_scroll = true;
+    }
+
+    fn save_scroll_state(&mut self) {
+        if let Some(ref id) = self.focused_agent {
+            self.scroll_states.insert(
+                id.clone(),
+                SavedScrollState {
+                    scroll_offset: self.scroll_offset,
+                    auto_scroll: self.auto_scroll,
+                },
+            );
+        }
+    }
+
+    fn restore_scroll_state(&mut self) {
+        if let Some(ref id) = self.focused_agent {
+            if let Some(state) = self.scroll_states.get(id) {
+                self.scroll_offset = state.scroll_offset;
+                self.auto_scroll = state.auto_scroll;
+            } else {
+                self.scroll_to_bottom();
+            }
+        }
     }
 
     fn prev_char_boundary(&self, pos: usize) -> usize {
@@ -1219,7 +1318,6 @@ impl App {
         view::render(self, frame);
     }
 }
-
 
 /// Extract only text content from a JSON array of Anthropic content blocks.
 /// Tool_use blocks are silently skipped — if a message is purely tool calls,

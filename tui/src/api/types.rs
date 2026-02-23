@@ -108,17 +108,49 @@ pub struct Plan {
 pub enum SseEvent {
     Connected,
     Disconnected,
-    Init { active_turns: Vec<ActiveTurn> },
-    TurnBefore { nous_id: String, session_id: String, turn_id: String },
-    TurnAfter { nous_id: String, session_id: String },
-    ToolCalled { nous_id: String, tool_name: String },
-    ToolFailed { nous_id: String, tool_name: String, error: String },
-    StatusUpdate { nous_id: String, status: String },
-    SessionCreated { nous_id: String, session_id: String },
-    SessionArchived { nous_id: String, session_id: String },
-    DistillBefore { nous_id: String },
-    DistillStage { nous_id: String, stage: String },
-    DistillAfter { nous_id: String },
+    Init {
+        active_turns: Vec<ActiveTurn>,
+    },
+    TurnBefore {
+        nous_id: String,
+        session_id: String,
+        turn_id: String,
+    },
+    TurnAfter {
+        nous_id: String,
+        session_id: String,
+    },
+    ToolCalled {
+        nous_id: String,
+        tool_name: String,
+    },
+    ToolFailed {
+        nous_id: String,
+        tool_name: String,
+        error: String,
+    },
+    StatusUpdate {
+        nous_id: String,
+        status: String,
+    },
+    SessionCreated {
+        nous_id: String,
+        session_id: String,
+    },
+    SessionArchived {
+        nous_id: String,
+        session_id: String,
+    },
+    DistillBefore {
+        nous_id: String,
+    },
+    DistillStage {
+        nous_id: String,
+        stage: String,
+    },
+    DistillAfter {
+        nous_id: String,
+    },
     Ping,
 }
 

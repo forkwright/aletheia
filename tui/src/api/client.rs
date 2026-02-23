@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, Response, StatusCode};
 
 use super::types::*;
 
@@ -99,6 +99,7 @@ impl ApiClient {
             .send()
             .await
             .context("failed to load agents")?;
+        Self::check_auth(&resp)?;
         resp.error_for_status_ref()
             .context("agents request failed")?;
         let wrapper: AgentsResponse = resp.json().await?;
@@ -109,10 +110,14 @@ impl ApiClient {
 
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
         let resp = self
-            .request(reqwest::Method::GET, &format!("/api/sessions?nousId={nous_id}"))
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/sessions?nousId={nous_id}"),
+            )
             .send()
             .await
             .context("failed to load sessions")?;
+        Self::check_auth(&resp)?;
         resp.error_for_status_ref()
             .context("sessions request failed")?;
         let wrapper: SessionsResponse = resp.json().await?;
@@ -121,10 +126,14 @@ impl ApiClient {
 
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
         let resp = self
-            .request(reqwest::Method::GET, &format!("/api/sessions/{session_id}/history"))
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/sessions/{session_id}/history"),
+            )
             .send()
             .await
             .context("failed to load history")?;
+        Self::check_auth(&resp)?;
         resp.error_for_status_ref()
             .context("history request failed")?;
         let wrapper: HistoryResponse = resp.json().await?;
@@ -132,24 +141,30 @@ impl ApiClient {
     }
 
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
-        self.request(reqwest::Method::POST, &format!("/api/sessions/{session_id}/archive"))
-            .send()
-            .await
-            .context("failed to archive session")?
-            .error_for_status_ref()
-            .context("archive request failed")?;
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/sessions/{session_id}/archive"),
+        )
+        .send()
+        .await
+        .context("failed to archive session")?
+        .error_for_status_ref()
+        .context("archive request failed")?;
         Ok(())
     }
 
     // --- Turns ---
 
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
-        self.request(reqwest::Method::POST, &format!("/api/turns/{turn_id}/abort"))
-            .send()
-            .await
-            .context("failed to abort turn")?
-            .error_for_status_ref()
-            .context("abort request failed")?;
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/turns/{turn_id}/abort"),
+        )
+        .send()
+        .await
+        .context("failed to abort turn")?
+        .error_for_status_ref()
+        .context("abort request failed")?;
         Ok(())
     }
 
@@ -182,22 +197,28 @@ impl ApiClient {
     // --- Plans ---
 
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
-        self.request(reqwest::Method::POST, &format!("/api/plans/{plan_id}/approve"))
-            .send()
-            .await
-            .context("failed to approve plan")?
-            .error_for_status_ref()
-            .context("plan approve failed")?;
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/plans/{plan_id}/approve"),
+        )
+        .send()
+        .await
+        .context("failed to approve plan")?
+        .error_for_status_ref()
+        .context("plan approve failed")?;
         Ok(())
     }
 
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
-        self.request(reqwest::Method::POST, &format!("/api/plans/{plan_id}/cancel"))
-            .send()
-            .await
-            .context("failed to cancel plan")?
-            .error_for_status_ref()
-            .context("plan cancel failed")?;
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/plans/{plan_id}/cancel"),
+        )
+        .send()
+        .await
+        .context("failed to cancel plan")?
+        .error_for_status_ref()
+        .context("plan cancel failed")?;
         Ok(())
     }
 
@@ -221,14 +242,30 @@ impl ApiClient {
     // --- Message queue (mid-turn) ---
 
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
-        self.request(reqwest::Method::POST, &format!("/api/sessions/{session_id}/queue"))
-            .json(&serde_json::json!({ "text": text }))
-            .send()
-            .await
-            .context("failed to queue message")?
-            .error_for_status_ref()
-            .context("queue request failed")?;
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/sessions/{session_id}/queue"),
+        )
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .context("failed to queue message")?
+        .error_for_status_ref()
+        .context("queue request failed")?;
         Ok(())
+    }
+
+    /// Check a response for 401 and return a typed error.
+    fn check_auth(resp: &Response) -> Result<()> {
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            anyhow::bail!("UNAUTHORIZED: token expired or invalid");
+        }
+        Ok(())
+    }
+
+    /// Returns true if the error message indicates an auth failure (401).
+    pub fn is_auth_error(err: &anyhow::Error) -> bool {
+        format!("{err}").contains("UNAUTHORIZED")
     }
 
     /// Get the raw reqwest client for SSE/streaming (they manage their own connections)

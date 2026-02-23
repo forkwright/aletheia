@@ -5,8 +5,8 @@ mod sidebar;
 mod status_bar;
 mod title_bar;
 
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::Frame;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::app::App;
 
@@ -18,7 +18,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),  // title bar
+            Constraint::Length(1), // title bar
             Constraint::Min(5),    // body
             Constraint::Length(1), // status bar
         ])
@@ -33,7 +33,7 @@ pub fn render(app: &App, frame: &mut Frame) {
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(22), // sidebar (slightly wider for padding)
-                Constraint::Min(40),   // chat
+                Constraint::Min(40),    // chat
             ])
             .split(vertical[1]);
 
@@ -60,8 +60,8 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),                    // messages
-            Constraint::Length(input_height),       // input (grows with text)
+            Constraint::Min(3),               // messages
+            Constraint::Length(input_height), // input (grows with text)
         ])
         .split(area);
 
