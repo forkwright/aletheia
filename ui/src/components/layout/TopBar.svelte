@@ -4,7 +4,7 @@
   import { getAgents, getActiveAgent, getActiveAgentId, setActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
-  import { clearToken } from "../../lib/api";
+  import { clearToken, getEffectiveToken } from "../../lib/api";
   import { getMessages } from "../../stores/chat.svelte";
   import { formatCost, calculateMessageCost } from "../../lib/format";
   import { getActiveTurns, getAgentStatus } from "../../lib/events.svelte";
@@ -14,10 +14,9 @@
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
-  let { onSetView, activeView, onAgentSelect }: {
+  let { onSetView, activeView }: {
     onSetView: (view: ViewId) => void;
     activeView: ViewId;
-    onAgentSelect?: () => void;
   } = $props();
 
   let agent = $derived(getActiveAgent());
@@ -42,7 +41,6 @@
     loadSessions(id);
     markRead(id);
     if (activeView !== "chat") onSetView("chat");
-    onAgentSelect?.();
   }
 
   function handleMobileNav(view: ViewId) {
@@ -58,7 +56,10 @@
 
   onMount(async () => {
     try {
-      const res = await fetch("/api/system/update-status");
+      const token = getEffectiveToken();
+      const res = await fetch("/api/system/update-status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.available) {
@@ -66,7 +67,7 @@
           updateVersion = data.latest ?? "";
         }
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("Update check failed:", e); }
   });
 </script>
 
@@ -340,7 +341,7 @@
       position: fixed;
       inset: 0;
       top: calc(var(--topbar-height) + var(--safe-top));
-      background: rgba(0, 0, 0, 0.4);
+      background: var(--overlay-mid);
       z-index: 199;
       border: none;
       cursor: default;

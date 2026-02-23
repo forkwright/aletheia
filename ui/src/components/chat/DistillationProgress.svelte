@@ -88,8 +88,8 @@
     animation: fade-in 0.2s ease;
   }
   .distill-bar.complete {
-    border-color: rgba(63, 185, 80, 0.3);
-    background: rgba(63, 185, 80, 0.06);
+    border-color: var(--status-success-border);
+    background: var(--status-success-bg);
   }
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(-4px); }

@@ -17,6 +17,16 @@
 
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
 
+  function readLocalStorage(key: string): string | null {
+    try { return localStorage.getItem(key); }
+    catch { return null; }
+  }
+
+  function writeLocalStorage(key: string, value: string): void {
+    try { localStorage.setItem(key, value); }
+    catch { /* private/incognito mode */ }
+  }
+
   let activeView = $state<ViewId>("chat");
   loadBranding();
 
@@ -32,10 +42,10 @@
         // Try refreshing an existing session (httpOnly cookie may be valid)
         const ok = await refresh();
         authState = ok ? "authenticated" : "login";
-      } else if (mode.mode === "none" || mode.mode === "token" && !getToken() === false) {
-        // None mode or already have a static token
-        authState = getToken() || mode.mode === "none" ? "authenticated" : "token-setup";
+      } else if (mode.mode === "none") {
+        authState = "authenticated";
       } else {
+        // token mode
         authState = getToken() ? "authenticated" : "token-setup";
       }
     } catch {
@@ -54,7 +64,7 @@
     location.reload();
   }
   let filePanelOpen = $state(false);
-  let filePanelWidth = $state(Number(localStorage.getItem(FILE_PANEL_WIDTH_KEY)) || 520);
+  let filePanelWidth = $state(Number(readLocalStorage(FILE_PANEL_WIDTH_KEY)) || 520);
   let resizing = $state(false);
 
   function handleTokenSubmit(e: Event) {
@@ -91,7 +101,7 @@
 
     function onMouseUp() {
       resizing = false;
-      localStorage.setItem(FILE_PANEL_WIDTH_KEY, String(filePanelWidth));
+      writeLocalStorage(FILE_PANEL_WIDTH_KEY, String(filePanelWidth));
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     }

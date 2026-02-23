@@ -308,7 +308,7 @@
   .lightbox {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.9);
+    background: var(--overlay-dark);
     display: flex;
     align-items: center;
     justify-content: center;

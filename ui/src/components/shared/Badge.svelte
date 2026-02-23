@@ -19,15 +19,15 @@
     color: var(--text-secondary);
   }
   .success {
-    background: rgba(63, 185, 80, 0.15);
+    background: var(--status-success-bg-strong);
     color: var(--status-success);
   }
   .error {
-    background: rgba(248, 81, 73, 0.15);
+    background: var(--status-error-bg-strong);
     color: var(--status-error);
   }
   .warning {
-    background: rgba(210, 153, 34, 0.15);
+    background: var(--status-warning-bg-strong);
     color: var(--status-warning);
   }
 </style>

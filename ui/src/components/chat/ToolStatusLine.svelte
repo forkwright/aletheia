@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { ToolCallState } from "../../lib/types";
   import { getToolCategory } from "../../lib/tools";
   import Spinner from "../shared/Spinner.svelte";
@@ -81,10 +82,12 @@
 
   $effect(() => {
     if (running.length > 0) {
-      if (!runStart) runStart = Date.now();
-      elapsed = Math.floor((Date.now() - runStart) / 1000);
+      // untrack runStart reads to avoid reactive cycle (read+write same state)
+      if (!untrack(() => runStart)) runStart = Date.now();
+      const start = untrack(() => runStart);
+      elapsed = Math.floor((Date.now() - start) / 1000);
       const iv = setInterval(() => {
-        elapsed = Math.floor((Date.now() - runStart) / 1000);
+        elapsed = Math.floor((Date.now() - start) / 1000);
       }, 1000);
       return () => clearInterval(iv);
     } else {
@@ -101,7 +104,7 @@
   let statusText = $derived.by(() => {
     if (running.length > 0) {
       const current = running[running.length - 1]!;
-      const icon = TOOL_CATEGORIES[current.name]?.icon ?? "\u2699";
+      const icon = getToolCategory(current.name).icon;
       const hint = inputHint(current);
       const label = humanizeTool(current.name);
       const time = elapsed > 0 ? ` (${formatElapsed(elapsed)})` : "";
@@ -171,7 +174,7 @@
     color: var(--text);
   }
   .tool-status-line.has-errors {
-    border-color: rgba(248, 81, 73, 0.3);
+    border-color: var(--status-error-border);
     color: var(--status-error);
   }
   .status-indicator {
