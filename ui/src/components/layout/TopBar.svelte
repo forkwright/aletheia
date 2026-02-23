@@ -4,7 +4,7 @@
   import { getAgents, getActiveAgent, getActiveAgentId, setActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
-  import { clearToken } from "../../lib/api";
+  import { clearToken, getEffectiveToken } from "../../lib/api";
   import { getMessages } from "../../stores/chat.svelte";
   import { formatCost, calculateMessageCost } from "../../lib/format";
   import { getActiveTurns, getAgentStatus } from "../../lib/events.svelte";
@@ -56,7 +56,10 @@
 
   onMount(async () => {
     try {
-      const res = await fetch("/api/system/update-status");
+      const token = getEffectiveToken();
+      const res = await fetch("/api/system/update-status", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.available) {

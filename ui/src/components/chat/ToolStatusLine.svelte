@@ -101,7 +101,7 @@
   let statusText = $derived.by(() => {
     if (running.length > 0) {
       const current = running[running.length - 1]!;
-      const icon = TOOL_CATEGORIES[current.name]?.icon ?? "\u2699";
+      const icon = getToolCategory(current.name).icon;
       const hint = inputHint(current);
       const label = humanizeTool(current.name);
       const time = elapsed > 0 ? ` (${formatElapsed(elapsed)})` : "";
