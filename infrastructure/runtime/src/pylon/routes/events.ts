@@ -13,7 +13,7 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
     const stream = new ReadableStream({
       start(controller) {
-        const activeTurns = manager.getActiveTurnsByNous();
+        const activeTurns = manager.getActiveTurnDetails();
         controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify({ activeTurns })}\n\n`));
 
         const forward = (eventName: string) => (data: unknown) => {
