@@ -10,3 +10,5 @@ export type {
   PlanningResearch,
 } from "./types.js";
 export { PLANNING_V20_DDL } from "./schema.js";
+export { transition, VALID_TRANSITIONS } from "./machine.js";
+export type { PlanningEvent } from "./machine.js";

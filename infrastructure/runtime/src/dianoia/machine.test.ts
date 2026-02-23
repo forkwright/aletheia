@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { transition, VALID_TRANSITIONS } from "./machine.js";
 import { AletheiaError } from "../koina/errors.js";
 import type { DianoiaState, PlanningEvent } from "./machine.js";
