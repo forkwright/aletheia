@@ -1,8 +1,7 @@
 # Spec 28 — Aletheia TUI
 
-**Status:** Draft  
-**Component:** `tui/` — Rust terminal client  
-**Replaces:** Previous draft spec (Claude Code, 2026-02-22)  
+**Status:** Phase 1 — In Progress (~70% complete)  
+**Component:** `tui/` — Rust terminal client (3,240 LOC as of 2026-02-23)  
 **Interface:** Primary working interface alongside Signal (mobile)  
 **Gateway dependency:** Hono REST API + SSE on `:18789` — zero gateway changes  
 **Design target:** Level 2 dashboard — multi-agent visibility with split panes  
@@ -22,6 +21,50 @@ The TUI replaces the web UI as the primary working interface. Signal remains the
 - Bearer token authentication
 - Markdown rendering sufficient for agent responses
 - Sub-millisecond input latency
+
+---
+
+## 0.5. Current State (as of 2026-02-23)
+
+The TUI is a working application at 3,240 lines across 18 source files. It is not greenfield — the following is already implemented and functional:
+
+**Working:**
+- TEA architecture (App struct, Msg enum, async update, pure view functions)
+- Tokio event loop with `tokio::select!` over terminal + SSE + tick
+- Bearer token auth with login flow and `~/.config/aletheia/tui.toml` config
+- Agent sidebar with status indicators (streaming/working/idle/compacting)
+- Agent switching via `Ctrl+A` overlay with arrow navigation
+- Chat rendering with scrollable message list
+- SSE global event stream with all turn/tool/distill lifecycle events
+- Streaming responses via POST `/api/sessions/stream` with text + thinking deltas
+- Tool status display (name + elapsed time in status bar)
+- Tool approval overlay (A to approve, D to deny)
+- Plan approval overlay (Space to toggle steps, A to approve, C to cancel)
+- Input with cursor movement, history (Up/Down), `Ctrl+W` (delete word), `Ctrl+U` (clear line)
+- Input text wrapping with dynamic height (3-8 rows)
+- Markdown rendering: bold, italic, inline code, code blocks, headings, lists
+- Message queuing during active turns (prompt changes to yellow "queued ›")
+- Mouse scroll in chat area
+- Session selection by most recently updated (handles distillation count resets)
+- Distillation lifecycle display (before/stage/after indicators)
+- `bin/aletheia` CLI wrapper with subcommands (status, health, agents, costs, logs, token)
+- File-based tracing via tracing-appender
+
+**Not yet implemented:**
+- Syntax highlighting in code blocks (no `syntect` dep yet)
+- Clipboard operations (no `arboard` dep yet)
+- `Ctrl+E` compose mode ($EDITOR delegation)
+- `@agent` Tab completion in input
+- Session browser overlay
+- Cost summary overlay
+- Help overlay
+- Fuzzy filtering in overlays
+- OSC 8 hyperlinks for URLs
+- Table rendering in markdown
+- Reconnection with exponential backoff (basic reconnect exists)
+- State recovery on reconnect
+- Responsive layout degradation for small terminals
+- Comprehensive test suite
 
 ---
 
@@ -114,14 +157,14 @@ Three multiplexed event sources via `tokio::select!`:
 
 ## 2. Verified Dependencies
 
-All versions confirmed against crates.io/docs.rs as of 2026-02-23.
+### Current Cargo.toml (as of 2026-02-23)
 
 ```toml
 [package]
 name = "aletheia-tui"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.85"
 
 [dependencies]
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29
@@ -129,10 +172,10 @@ ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
 
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 
 # HTTP + SSE
-reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls", "cookies"], default-features = false }
 reqwest-eventsource = "0.6"
 
 # Serialization
@@ -142,15 +185,12 @@ serde_json = "1"
 # Markdown rendering
 pulldown-cmark = "0.13"
 
-# Syntax highlighting
-syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
-
 # Text utilities
 textwrap = "0.16"
 unicode-width = "0.2"
 
 # CLI
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 
 # Config
 toml = "0.8"
@@ -161,14 +201,24 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
-# Clipboard
-arboard = "3"
+# Error handling
+anyhow = "1"
+
+# Futures
+futures-util = "0.3"
 
 [profile.release]
 strip = true
 lto = "thin"
-opt-level = "z"  # Optimize for size
+opt-level = "z"
 ```
+
+### Future dependencies (add when implementing)
+
+| Crate | Version | Phase | Purpose |
+|-------|---------|-------|---------|
+| `syntect` | 5.3 | Phase 2 | Syntax highlighting in fenced code blocks |
+| `arboard` | 3 | Phase 2 | Clipboard operations (with OSC52 fallback for SSH) |
 
 ### Resolved: Crossterm 0.29
 
@@ -764,14 +814,16 @@ tui/
 │   │   ├── mod.rs                  # Top-level view() dispatch
 │   │   ├── sidebar.rs              # Agent list + session list
 │   │   ├── chat.rs                 # Message list rendering
-│   │   ├── input.rs                # Input widget (custom)
+│   │   ├── input.rs                # Input widget (custom, wrapping)
 │   │   ├── status_bar.rs           # Agent activity summary
-│   │   ├── overlay.rs              # Modal overlays (help, picker, etc.)
-│   │   └── markdown.rs             # pulldown-cmark → ratatui spans
+│   │   ├── title_bar.rs            # App name + daily cost
+│   │   └── overlay.rs              # Modal overlays (agent picker, tool/plan approval)
 │   │
-│   ├── events.rs                   # EventStream multiplexer (terminal + SSE + tick)
-│   ├── highlight.rs                # syntect code highlighting
-│   └── clipboard.rs                # Clipboard operations (arboard + OSC52 fallback)
+│   ├── markdown.rs                 # pulldown-cmark → ratatui spans
+│   ├── events.rs                   # Event type definitions (SSE + stream)
+│   ├── msg.rs                      # Msg enum (all state transitions)
+│   ├── highlight.rs                # (Phase 2) syntect code highlighting
+│   └── clipboard.rs                # (Phase 2) Clipboard operations (arboard + OSC52)
 │
 └── tests/
     ├── update_tests.rs             # Unit tests for state transitions
@@ -788,15 +840,15 @@ tui/
 - **Edition:** 2024 (requires rustc 1.86+)
 - **Clippy:** `#![deny(clippy::all, clippy::pedantic)]` with explicit `#[allow()]` for justified exceptions
 - **Formatting:** `rustfmt` with default settings, enforced in CI
-- **Error handling:** `thiserror` for library errors, `anyhow` banned (errors must be typed)
+- **Error handling:** `anyhow` for application errors (this is an application, not a library). Typed errors via `thiserror` only if we extract reusable library crates later.
 - **Unsafe:** Zero `unsafe` blocks. No exceptions.
-- **Unwrap:** Zero `.unwrap()` in non-test code. Use `.expect("reason")` only for provably-infallible cases.
+- **Unwrap:** Zero `.unwrap()` in non-test code (currently holds). Use `.expect("reason")` only for provably-infallible cases.
 - **Dependencies:** Minimal. Every dependency must be justified. Prefer `default-features = false`.
 
 ### 12.2 Architecture Rules
 
 - **No widget-local state.** All state lives in `App`. View functions are `&self` only.
-- **No I/O in update.** The `update()` function returns `Option<Command>` for effects (API calls, clipboard, etc.). Effects are executed in the event loop, not in update.
+- **Minimize I/O in update.** The `update()` method is async and currently performs I/O directly (API calls, spawned tasks). Acceptable for an application of this scope. If update logic grows significantly, consider extracting a `Command` pattern where update returns effects to be executed in the event loop.
 - **No panics.** Every error path returns `Result` or logs and continues.
 - **No blocking.** All I/O is async. Terminal event reading uses crossterm's async `EventStream`.
 - **No global state.** No `static mut`, no `lazy_static` for mutable data.
@@ -812,61 +864,68 @@ tui/
 
 ## 13. Implementation Phases
 
-### Phase 1: Dashboard MVP (5-7 days)
+### Phase 1: Dashboard MVP (~70% complete)
 
 **Milestone:** Multi-agent dashboard with streaming chat, sidebar, and real-time status. Usable as primary interface.
 
-The dashboard layout is structural — not bolted on later. Every component below exists from the first working build.
-
 **Foundation**
-- [ ] `Cargo.toml` with verified deps
-- [ ] `config.rs`: Load `~/.config/aletheia/tui.toml` + CLI args
-- [ ] `api/client.rs`: reqwest client with bearer token auth, login flow, token refresh on 401
-- [ ] `main.rs`: `ratatui::run()` with TEA event loop
-- [ ] `app.rs`: `App` struct with full `update()`/`view()` split
-- [ ] `msg.rs`: All message types
-- [ ] `events.rs`: `tokio::select!` multiplexer (terminal + SSE + tick)
+- [x] `Cargo.toml` with verified deps
+- [x] `config.rs`: Load `~/.config/aletheia/tui.toml` + CLI args
+- [x] `api/client.rs`: reqwest client with bearer token auth, login flow
+- [x] `main.rs`: `ratatui::run()` with TEA event loop
+- [x] `app.rs`: `App` struct with `update()`/`view()` split (1,266 lines)
+- [x] `msg.rs`: All message types (110 lines, 40+ variants)
+- [x] `events.rs`: Event type definitions for SSE + streaming
+- [ ] Token refresh on 401 (currently requires re-login)
 - [ ] CI: `cargo clippy`, `cargo test`, `cargo fmt --check`
 
-**Dashboard layout (built first, not added later)**
-- [ ] Three-region layout: sidebar | chat + status + input
-- [ ] `view/sidebar.rs`: Agent list with status indicators (`●` streaming, `◐` working, `○` idle)
-- [ ] `view/sidebar.rs`: Session list under agents
-- [ ] `view/status_bar.rs`: All-agent one-line activity summary with tool names and elapsed time
-- [ ] Agent switching: click or `Ctrl+A`, load history, restore scroll position
-- [ ] Focused mode toggle (`Ctrl+F`) — hide sidebar, expand chat
+**Dashboard layout**
+- [x] Three-region layout: sidebar | chat + status + input
+- [x] `view/sidebar.rs`: Agent list with status indicators (`●` streaming, `◐` working, `○` idle)
+- [ ] `view/sidebar.rs`: Session list under agents (sessions loaded but not rendered in sidebar)
+- [x] `view/status_bar.rs`: All-agent one-line activity summary with tool names and elapsed time
+- [x] Agent switching: `Ctrl+A` overlay with arrow navigation, loads history
+- [x] Focused mode toggle (`Ctrl+F`) — hide sidebar, expand chat
+- [ ] Restore scroll position when switching agents (currently resets to bottom)
 
 **Chat + streaming**
-- [ ] `view/chat.rs`: Scrollable message list with bordered message blocks
-- [ ] `view/input.rs`: Custom single-line input with cursor, history (Up/Down), Ctrl+U/Ctrl+W
-- [ ] `api/streaming.rs`: POST `/api/sessions/stream`, yield SSE events as `Msg` variants
-- [ ] `view/markdown.rs`: Core subset — bold, italic, inline code, code blocks (no highlighting yet), headings, lists
-- [ ] Streaming cursor `▌`, debounced markdown re-parse at 100ms
-- [ ] Send message → stream response → render in chat → store in state
+- [x] `view/chat.rs`: Scrollable message list with role-labeled blocks
+- [x] `view/input.rs`: Custom input with cursor, history (Up/Down), Ctrl+U/Ctrl+W, text wrapping
+- [x] `api/streaming.rs`: POST `/api/sessions/stream`, yields SSE events as `Msg` variants
+- [x] `markdown.rs`: Core subset — bold, italic, inline code, code blocks, headings, lists
+- [x] Streaming cursor `▌`
+- [x] Send message → stream response → render in chat → store in state
+- [x] Message queuing during active turns (yellow "queued ›" prompt)
+- [ ] Debounced markdown re-parse during streaming (currently re-parses every chunk)
 
-**Multi-agent awareness (from first boot)**
-- [ ] `api/sse.rs`: Global SSE event stream with heartbeat detection + exponential backoff reconnect
-- [ ] SSE `init` → sync all agent statuses
-- [ ] SSE `turn:before`/`turn:after` → update agent status in sidebar + status bar
-- [ ] SSE `tool:called` → show tool name + spinner in status bar for that agent
+**Multi-agent awareness**
+- [x] `api/sse.rs`: Global SSE event stream with heartbeat detection
+- [x] SSE `init` → sync all agent statuses
+- [x] SSE `turn:before`/`turn:after` → update agent status in sidebar + status bar
+- [x] SSE `tool:called` → show tool name in status bar for that agent
+- [x] `distill:before/stage/after` → compaction indicator on agent
+- [ ] Exponential backoff reconnect (basic reconnect exists, no backoff)
 - [ ] On `turn:after` for focused agent → reload history automatically
-- [ ] `distill:before/stage/after` → compaction indicator on agent status pill
 
 ### Phase 2: Rich Rendering + Overlays (3-4 days)
 
 **Milestone:** Code highlighting, thinking blocks, tables, all modal overlays, compose mode.
 
 - [ ] `highlight.rs`: syntect integration for fenced code blocks (top 15 languages)
-- [ ] `view/markdown.rs`: Tables, blockquotes, links (OSC 8 hyperlinks), nested lists
-- [ ] Thinking block collapse/expand (`Ctrl+T`)
-- [ ] `view/overlay.rs`: Modal overlay system (centered floating block over main view)
-- [ ] Overlays: Help (`Ctrl+?`), agent picker (`Ctrl+A`), session browser (`Ctrl+S`), cost summary (`Ctrl+$`), system status (`Ctrl+I`)
+- [ ] `markdown.rs`: Tables, blockquotes, links (OSC 8 hyperlinks), nested lists
+- [x] Thinking block toggle (`Ctrl+T`)
+- [x] `view/overlay.rs`: Modal overlay system (centered floating block over main view)
+- [x] Agent picker overlay (`Ctrl+A`)
+- [ ] Help overlay (`F1`)
+- [ ] Session browser overlay (`Ctrl+S`)
+- [ ] Cost summary overlay (`F2`)
+- [ ] System status overlay (`Ctrl+I`)
 - [ ] Fuzzy filtering in overlays (`/` to search, arrow keys to navigate)
 - [ ] `clipboard.rs`: Copy last response (`Ctrl+Y`) — arboard with OSC52 fallback
 - [ ] `Ctrl+E` compose mode: suspend TUI, spawn `$EDITOR`, send on save+quit
 - [ ] New session / topic boundary (`Ctrl+N`)
-- [ ] Tool approval overlay: render on `tool_approval_required`, A/D to approve/deny
-- [ ] Plan approval overlay: render on `plan_proposed`, toggle steps, approve/cancel
+- [x] Tool approval overlay: render on `tool_approval_required`, A/D to approve/deny
+- [x] Plan approval overlay: render on `plan_proposed`, toggle steps, approve/cancel
 - [ ] Plan execution progress: persistent mini-widget during plan execution
 
 ### Phase 3: Polish + Production Hardening (3-4 days)
@@ -876,11 +935,13 @@ The dashboard layout is structural — not bolted on later. Every component belo
 - [ ] Reconnection resilience: network drops, gateway restarts, laptop sleep/wake
 - [ ] State recovery on reconnect: reload history for stale agents, restore streaming state
 - [ ] `@agent` mention completion in input (Tab to cycle)
-- [ ] Mouse support: click agent in sidebar to switch, scroll wheel in chat, click session
+- [x] Mouse support: scroll wheel in chat
+- [ ] Mouse support: click agent in sidebar to switch, click session
 - [ ] Error display: inline toast with auto-dismiss after 5s, persistent errors in status bar
 - [ ] Responsive layout: graceful degradation for small terminals (hide sidebar < 60 cols)
-- [ ] Tracing to file (`~/.local/share/aletheia/tui.log`) with rotation
-- [ ] `aletheia-tui logout` subcommand
+- [x] Tracing to file via tracing-appender
+- [ ] Log rotation configuration
+- [ ] `aletheia logout` subcommand
 - [ ] Comprehensive tests: state transitions, markdown rendering snapshots, API type round-trips
 - [ ] README with screenshots and install instructions
 
@@ -892,7 +953,7 @@ The dashboard layout is structural — not bolted on later. Every component belo
 2. **Notification:** Terminal bell (`\x07`) on turn completion when TUI is backgrounded? Desktop notification via `notify-rust`? Or silent?
 3. **Inline images:** Kitty/Sixel protocol support for image-capable terminals, or always punt to web UI? Low priority — most agent responses are text.
 4. **tmux integration:** Detect tmux, handle passthrough sequences for OSC 8 links and clipboard? Many users will run inside tmux.
-5. **Message queue UX:** When an agent is mid-turn, the TUI can POST to `/api/sessions/:id/queue` for mid-turn course correction. How should this be surfaced? Different prompt color? Explicit "queue" indicator?
+5. ~~**Message queue UX:**~~ **Resolved.** Prompt changes to yellow "queued ›" when agent is mid-turn. Messages sent during active turns POST to `/api/sessions/:id/queue`. No additional UX needed.
 6. **Session forking:** The gateway supports `POST /api/sessions/:id/fork` with checkpoints. Worth exposing in TUI? Probably Phase 3 overlay.
 7. **Cost display granularity:** Title bar shows daily total. Should the status overlay show per-agent breakdown? Per-session? The API supports both (`/api/costs/agent/:id`, `/api/costs/session/:id`).
 
@@ -909,5 +970,5 @@ The web UI (`ui/`) enters maintenance mode:
 ---
 
 *Drafted: 2026-02-23 by Syn*  
-*Based on research of: ratatui 0.30, crossterm 0.28/0.29, Rust TUI architecture patterns*  
+*Revised: 2026-02-23 — reconciled with implementation (3,240 LOC), fixed dep list, marked completed items*  
 *Gateway API verified against: infrastructure/runtime/src/pylon/routes/*
