@@ -1196,43 +1196,27 @@ impl App {
 }
 
 
-/// Extract text content blocks from a JSON array of Anthropic content blocks.
+/// Extract only text content from a JSON array of Anthropic content blocks.
+/// Tool_use blocks are silently skipped — if a message is purely tool calls,
+/// this returns None and the message is filtered out of the chat view.
 fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
     let mut texts = Vec::new();
-    let mut tool_summaries = Vec::new();
 
     for block in arr {
-        match block.get("type").and_then(|t| t.as_str()) {
-            Some("text") => {
-                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                    if !t.is_empty() {
-                        texts.push(t.to_string());
-                    }
+        if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+            if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                if !t.is_empty() {
+                    texts.push(t.to_string());
                 }
             }
-            Some("tool_use") => {
-                let name = block
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("unknown");
-                tool_summaries.push(format!("▸ *{}*", name));
-            }
-            _ => {}
         }
     }
 
-    if texts.is_empty() && tool_summaries.is_empty() {
-        return None;
+    if texts.is_empty() {
+        None
+    } else {
+        Some(texts.join("\n"))
     }
-
-    let mut result = texts.join("\n");
-    if !tool_summaries.is_empty() {
-        if !result.is_empty() {
-            result.push('\n');
-        }
-        result.push_str(&tool_summaries.join("\n"));
-    }
-    Some(result)
 }
 
 /// Extract displayable text from a history message's content field.
