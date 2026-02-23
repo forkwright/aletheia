@@ -1,5 +1,6 @@
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
+import { setActiveCredentialLabel } from "./credentials.svelte";
 import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem, PendingApproval, PlanProposal } from "../lib/types";
 
 interface AgentChatState {
@@ -321,6 +322,10 @@ export async function sendMessage(
 
         case "turn_complete": {
           flushStreamBuffer(state);
+          // Update active credential label for topbar pill
+          if (event.outcome.credentialLabel) {
+            setActiveCredentialLabel(event.outcome.credentialLabel);
+          }
           const assistantMsg: ChatMessage = {
             id: `assistant-${Date.now()}`,
             role: "assistant",

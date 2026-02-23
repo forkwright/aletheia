@@ -1,5 +1,8 @@
 // System routes — health, status, update, config reload
 import { Hono } from "hono";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
 import { tryReloadConfig } from "../../taxis/loader.js";
 import { eventBus } from "../../koina/event-bus.js";
@@ -54,6 +57,33 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(`System update failed: ${msg}`);
       return c.json({ error: msg }, 500);
+    }
+  });
+
+  // Credential labels — exposes configured credential names (no secrets)
+  app.get("/api/system/credentials", (c) => {
+    const credPath = join(
+      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
+      "credentials", "anthropic.json",
+    );
+    try {
+      const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
+      const primary = typeof raw["label"] === "string" ? raw["label"] : "primary";
+      const authType = typeof raw["token"] === "string" ? "oauth" : typeof raw["apiKey"] === "string" ? "api" : "unknown";
+      const backups: Array<{ label: string; type: string }> = [];
+      const backupCreds = raw["backupCredentials"];
+      if (Array.isArray(backupCreds)) {
+        for (let i = 0; i < backupCreds.length; i++) {
+          const cred = backupCreds[i] as Record<string, unknown> | undefined;
+          if (!cred || typeof cred !== "object") continue;
+          const label = typeof cred["label"] === "string" ? cred["label"] : `backup-${i + 1}`;
+          const type = cred["type"] === "oauth" ? "oauth" : "api";
+          backups.push({ label, type });
+        }
+      }
+      return c.json({ primary: { label: primary, type: authType }, backups });
+    } catch {
+      return c.json({ primary: { label: "default", type: "unknown" }, backups: [] });
     }
   });
 

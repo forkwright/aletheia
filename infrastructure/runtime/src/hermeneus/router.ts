@@ -187,7 +187,24 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   // (the router's claude-* fallback handles unregistered models)
   const configModels = config?.providers?.["anthropic"]?.models?.map((m) => m.id) ?? [];
 
-  const providerOpts = authToken ? { authToken } : fileApiKey ? { apiKey: fileApiKey } : undefined;
+  // Read credential label from file (default: "primary" for file-based, "default" for env)
+  let primaryLabel = "default";
+  {
+    const home2 = process.env["HOME"] ?? "/tmp";
+    const credPath2 = join(home2, ".aletheia", "credentials", "anthropic.json");
+    try {
+      const raw = JSON.parse(readFileSync(credPath2, "utf-8")) as Record<string, unknown>;
+      if (typeof raw["label"] === "string" && raw["label"].length > 0) {
+        primaryLabel = raw["label"];
+      }
+    } catch { /* use default */ }
+  }
+
+  const providerOpts = authToken
+    ? { authToken, label: primaryLabel }
+    : fileApiKey
+      ? { apiKey: fileApiKey, label: primaryLabel }
+      : { label: primaryLabel };
   const anthropic = new AnthropicProvider(providerOpts);
   router.registerProvider("anthropic", anthropic, configModels);
 
@@ -200,16 +217,18 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
     const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
     const backups: AnthropicProvider[] = [];
 
-    // New format: typed backup credentials (oauth tokens + API keys)
+    // New format: typed backup credentials (oauth tokens + API keys) with optional labels
     const backupCreds = raw["backupCredentials"];
     if (Array.isArray(backupCreds)) {
-      for (const cred of backupCreds) {
+      for (let bi = 0; bi < backupCreds.length; bi++) {
+        const cred = backupCreds[bi];
         if (typeof cred !== "object" || cred === null) continue;
         const c = cred as Record<string, unknown>;
+        const label = typeof c["label"] === "string" ? c["label"] : `backup-${bi + 1}`;
         if (c["type"] === "oauth" && typeof c["token"] === "string" && (c["token"] as string).length > 0) {
-          backups.push(new AnthropicProvider({ authToken: c["token"] as string }));
+          backups.push(new AnthropicProvider({ authToken: c["token"] as string, label }));
         } else if (typeof c["apiKey"] === "string" && (c["apiKey"] as string).length > 0) {
-          backups.push(new AnthropicProvider({ apiKey: c["apiKey"] as string }));
+          backups.push(new AnthropicProvider({ apiKey: c["apiKey"] as string, label }));
         }
       }
     }
@@ -217,9 +236,10 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
     // Legacy format: plain API key strings
     const backupKeys = raw["backupKeys"];
     if (Array.isArray(backupKeys)) {
-      for (const key of backupKeys) {
+      for (let bi = 0; bi < backupKeys.length; bi++) {
+        const key = backupKeys[bi];
         if (typeof key === "string" && key.length > 0) {
-          backups.push(new AnthropicProvider({ apiKey: key }));
+          backups.push(new AnthropicProvider({ apiKey: key, label: `backup-${bi + 1}` }));
         }
       }
     }

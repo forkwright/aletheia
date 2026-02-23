@@ -358,3 +358,15 @@ export async function fetchToolStats(agentId?: string, window = "7d"): Promise<u
   sp.set("window", window);
   return fetchJson(`/api/tool-stats?${sp.toString()}`);
 }
+
+
+// --- Credential Info ---
+
+export interface CredentialInfo {
+  primary: { label: string; type: string };
+  backups: Array<{ label: string; type: string }>;
+}
+
+export async function fetchCredentialInfo(): Promise<CredentialInfo> {
+  return fetchJson("/api/system/credentials");
+}
