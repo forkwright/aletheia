@@ -44,6 +44,15 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         if (typeof pk === "string" && pk.length > 0) {
           apiKey = pk;
           log.info("Auto-detected API key from ~/.claude.json");
+        } else {
+          // File exists but no API key — likely OAuth-only Claude Code install
+          const hasOAuth = typeof raw["oauthAccount"] === "object" || typeof raw["token"] === "string";
+          if (hasOAuth) {
+            return c.json({
+              success: false,
+              error: "Claude Code is using OAuth login, which doesn't include an API key. Get a separate API key at https://console.anthropic.com/keys",
+            }, 400);
+          }
         }
       } catch {
         log.debug("~/.claude.json not found or unreadable");
@@ -51,11 +60,12 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
 
     if (!apiKey) {
-      return c.json({ success: false, error: "No API key found. Provide one manually or sign in to Claude Code first." }, 400);
+      return c.json({ success: false, error: "No API key found. Provide one manually or get one at https://console.anthropic.com/keys" }, 400);
     }
 
-    if (!apiKey.startsWith("sk-ant-")) {
-      return c.json({ success: false, error: "Invalid key format — expected sk-ant-..." }, 400);
+    // Validate key format and minimum viable length (sk-ant- prefix + at least 10 chars)
+    if (!apiKey.startsWith("sk-ant-") || apiKey.length < 20) {
+      return c.json({ success: false, error: "Invalid key format — expected sk-ant-... (full key required)" }, 400);
     }
 
     try {

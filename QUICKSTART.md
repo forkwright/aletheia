@@ -8,6 +8,8 @@ cd aletheia
 
 Your browser will open automatically. Follow the setup wizard — it takes about two minutes.
 
+If the browser doesn't open, visit: **http://localhost:18789**
+
 ## What setup.sh does
 
 1. Checks Node.js 20+ is present
@@ -18,7 +20,7 @@ Your browser will open automatically. Follow the setup wizard — it takes about
 
 ## Credential detection
 
-The wizard will attempt to auto-detect your Anthropic API key from Claude Code's config (`~/.claude.json`). If you don't have Claude Code installed, enter an API key manually at `https://console.anthropic.com/keys`.
+The wizard will attempt to auto-detect your Anthropic API key from Claude Code's config (`~/.claude.json`). If you use Claude Code via OAuth (browser login), or don't have Claude Code installed, enter an API key manually — get one at `https://console.anthropic.com/keys`.
 
 ## After setup
 
