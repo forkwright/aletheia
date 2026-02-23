@@ -1,4 +1,6 @@
 // SQLite DDL — embedded as string constants for migrations
+import { PLANNING_V20_DDL } from "../dianoia/schema.js";
+
 export const SCHEMA_VERSION = 1;
 
 export const DDL = `
@@ -416,5 +418,9 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       UPDATE tool_stats SET nous_id = 'syn' WHERE nous_id = 'main';
       UPDATE plans SET nous_id = 'syn' WHERE nous_id = 'main';
     `,
+  },
+  {
+    version: 20,
+    sql: PLANNING_V20_DDL,
   },
 ];
