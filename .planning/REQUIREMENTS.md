@@ -103,9 +103,9 @@
 
 ### Planning Config
 
-- [ ] **CONF-01**: Planning config stored per-project in `planning_projects.config` JSON column (depth, parallelization, model profile, workflow flags)
-- [ ] **CONF-02**: Default planning config read from `~/.aletheia/aletheia.json` `planning` section
-- [ ] **CONF-03**: Config supports: depth (quick/standard/comprehensive), parallelization (true/false), research (true/false), plan_check (true/false), verifier (true/false), mode (yolo/interactive)
+- [x] **CONF-01**: Planning config stored per-project in `planning_projects.config` JSON column (depth, parallelization, model profile, workflow flags)
+- [x] **CONF-02**: Default planning config read from `~/.aletheia/aletheia.json` `planning` section
+- [x] **CONF-03**: Config supports: depth (quick/standard/comprehensive), parallelization (true/false), research (true/false), plan_check (true/false), verifier (true/false), mode (yolo/interactive)
 
 ### Spec & Documentation
 
@@ -231,9 +231,9 @@
 | INTG-03 | Phase 3: Project Context & API | Pending |
 | INTG-04 | Phase 3: Project Context & API | Pending |
 | INTG-05 | Phase 3: Project Context & API | Pending |
-| CONF-01 | Phase 1: Foundation | Pending |
-| CONF-02 | Phase 1: Foundation | Pending |
-| CONF-03 | Phase 1: Foundation | Pending |
+| CONF-01 | Phase 1: Foundation | Complete |
+| CONF-02 | Phase 1: Foundation | Complete |
+| CONF-03 | Phase 1: Foundation | Complete |
 | DOCS-01 | Phase 9: Polish & Migration | Pending |
 | DOCS-02 | Phase 9: Polish & Migration | Pending |
 | DOCS-03 | Phase 9: Polish & Migration | Pending |
