@@ -8,6 +8,7 @@ interface ToastItem {
 }
 
 let toasts = $state<ToastItem[]>([]);
+const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function showToast(
   agentName: string,
@@ -17,9 +18,10 @@ export function showToast(
 ): void {
   const id = `toast-${Date.now()}`;
   toasts = [...toasts, { id, agentName, emoji, preview, agentId }];
-  setTimeout(() => {
+  timeouts.set(id, setTimeout(() => {
     toasts = toasts.filter((t) => t.id !== id);
-  }, 5000);
+    timeouts.delete(id);
+  }, 5000));
 }
 
 export function getToasts(): ToastItem[] {
@@ -27,5 +29,10 @@ export function getToasts(): ToastItem[] {
 }
 
 export function dismissToast(id: string): void {
+  const tid = timeouts.get(id);
+  if (tid !== undefined) {
+    clearTimeout(tid);
+    timeouts.delete(id);
+  }
   toasts = toasts.filter((t) => t.id !== id);
 }
