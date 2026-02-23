@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
   import { getToolCategory } from "../../lib/tools";
@@ -13,11 +14,11 @@
 
   let expandedIds = $state<Set<string>>(new Set());
 
-  // Auto-expand errors
+  // Auto-expand errors — untrack expandedIds to avoid reactive cycle
   $effect(() => {
     const errorIds = tools.filter(t => t.status === "error").map(t => t.id);
     if (errorIds.length > 0) {
-      expandedIds = new Set([...expandedIds, ...errorIds]);
+      expandedIds = new Set([...untrack(() => expandedIds), ...errorIds]);
     }
   });
 
@@ -180,21 +181,29 @@
     }).join("\n");
   }
 
+  // Cache highlighted output per tool — avoids re-running hljs/DOMPurify on every tools update
+  const resultCache = new Map<string, { raw: string; html: string }>();
+
   function highlightResult(tool: ToolCallState): string {
     if (!tool.result) return "";
-    // Render diffs with diff coloring
+    const cached = resultCache.get(tool.id);
+    if (cached && cached.raw === tool.result) return cached.html;
+    let html: string;
     if (isDiffResult(tool)) {
-      return DOMPurify.sanitize(renderDiff(tool.result), { ADD_ATTR: ["class"] });
+      html = DOMPurify.sanitize(renderDiff(tool.result), { ADD_ATTR: ["class"] });
+    } else {
+      const lang = inferLanguage(tool.name, tool.result);
+      if (lang) {
+        html = DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
+      } else {
+        html = tool.result
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
     }
-    const lang = inferLanguage(tool.name, tool.result);
-    if (lang) {
-      return DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
-    }
-    // Escape HTML for non-highlighted results
-    return tool.result
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+    resultCache.set(tool.id, { raw: tool.result, html });
+    return html;
   }
 </script>
 
@@ -386,7 +395,7 @@
     border-bottom: none;
   }
   .tool-item.error {
-    background: rgba(248, 81, 73, 0.04);
+    background: var(--status-error-bg);
   }
   .tool-row {
     display: flex;
@@ -544,13 +553,13 @@
   /* Diff rendering */
   .tool-result :global(.diff-add) {
     color: var(--syntax-inserted);
-    background: rgba(74, 154, 91, 0.15);
+    background: var(--diff-add-bg);
     display: inline-block;
     width: 100%;
   }
   .tool-result :global(.diff-del) {
     color: var(--syntax-deleted);
-    background: rgba(199, 84, 80, 0.15);
+    background: var(--diff-del-bg);
     display: inline-block;
     width: 100%;
   }
@@ -572,8 +581,8 @@
   .tool-result :global(.hljs-tag) { color: var(--syntax-tag); }
   .tool-result :global(.hljs-name) { color: var(--syntax-tag); }
   .tool-result :global(.hljs-attr) { color: var(--syntax-number); }
-  .tool-result :global(.hljs-addition) { color: var(--syntax-inserted); background: rgba(74, 154, 91, 0.15); }
-  .tool-result :global(.hljs-deletion) { color: var(--syntax-deleted); background: rgba(199, 84, 80, 0.15); }
+  .tool-result :global(.hljs-addition) { color: var(--syntax-inserted); background: var(--diff-add-bg); }
+  .tool-result :global(.hljs-deletion) { color: var(--syntax-deleted); background: var(--diff-del-bg); }
 
   @media (max-width: 768px) {
     .tool-panel {

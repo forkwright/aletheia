@@ -9,6 +9,7 @@
 
   let scrollContainer = $state<HTMLDivElement | null>(null);
   let autoScroll = $state(true);
+  let scrollRaf: number | null = null;
 
   function checkScroll() {
     if (!scrollContainer) return;
@@ -20,8 +21,10 @@
   $effect(() => {
     void thinkingText;
     if (autoScroll && scrollContainer) {
-      requestAnimationFrame(() => {
+      if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+      scrollRaf = requestAnimationFrame(() => {
         if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        scrollRaf = null;
       });
     }
   });
@@ -44,7 +47,7 @@
   >
     {#if thinkingText}
       <div class="thinking-content">
-        <Markdown content={thinkingText} />
+        <Markdown content={thinkingText} streaming={isStreaming} />
       </div>
     {:else}
       <div class="empty-thinking">No thinking content yet.</div>

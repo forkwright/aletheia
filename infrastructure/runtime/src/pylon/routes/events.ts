@@ -13,7 +13,7 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
     const stream = new ReadableStream({
       start(controller) {
-        const activeTurns = manager.getActiveTurnsByNous();
+        const activeTurns = manager.getActiveTurnDetails();
         controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify({ activeTurns })}\n\n`));
 
         const forward = (eventName: string) => (data: unknown) => {
@@ -40,9 +40,13 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           eventBus.on(event, handler);
         }
 
+        // Send keepalive as a named event (not a comment) so the browser's
+        // EventSource actually delivers it to listeners. SSE comments (": ping")
+        // are silently consumed by the parser and never fire onmessage or
+        // addEventListener — making them invisible to client heartbeat detection.
         const pingInterval = setInterval(() => {
           if (closed) return;
-          try { controller.enqueue(encoder.encode(`: ping\n\n`)); }
+          try { controller.enqueue(encoder.encode(`event: ping\ndata: {}\n\n`)); }
           catch { closed = true; }
         }, 15_000);
 

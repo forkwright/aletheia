@@ -168,7 +168,7 @@
     font-size: var(--text-xs);
   }
   .revoke-btn:hover {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
   }
   .revoke-all-btn {
     background: none;

@@ -162,11 +162,11 @@
     border-radius: var(--radius-sm);
   }
   .risk-badge.destructive {
-    background: rgba(248, 81, 73, 0.15);
+    background: var(--status-error-bg-strong);
     color: var(--status-error);
   }
   .risk-badge.irreversible {
-    background: rgba(210, 153, 34, 0.15);
+    background: var(--status-warning-bg-strong);
     color: var(--status-warning);
   }
   .approval-reason {
@@ -235,21 +235,21 @@
     transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
-    background: rgba(63, 185, 80, 0.15);
+    background: var(--status-success-bg-strong);
     color: var(--status-success);
-    border-color: rgba(63, 185, 80, 0.3);
+    border-color: var(--status-success-border);
   }
   .btn-approve:hover:not(:disabled) {
-    background: rgba(63, 185, 80, 0.25);
+    background: var(--status-success-bg-strong);
     border-color: var(--status-success);
   }
   .btn-deny {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
     color: var(--status-error);
-    border-color: rgba(248, 81, 73, 0.2);
+    border-color: var(--status-error-border);
   }
   .btn-deny:hover:not(:disabled) {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--status-error-bg-strong);
     border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-deny:disabled {

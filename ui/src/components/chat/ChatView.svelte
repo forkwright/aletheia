@@ -52,7 +52,7 @@
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand, queueMessage } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent } from "../../lib/events.svelte";
+  import { onGlobalEvent, getActiveTurns } from "../../lib/events.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
@@ -67,75 +67,99 @@
   onMount(() => {
     fetchCommands().then((cmds) => { serverCommands = cmds; }).catch(() => {});
 
+    // On mount (including agent switch), sync streaming state from SSE tracker
+    const mountAgentId = getActiveAgentId();
+    if (mountAgentId) {
+      const activeTurns = getActiveTurns();
+      if (activeTurns[mountAgentId] && activeTurns[mountAgentId] > 0) {
+        setRemoteStreaming(mountAgentId, true);
+      }
+    }
+
     unsubEvents = onGlobalEvent((event, data) => {
-      const agentId = getActiveAgentId();
-      if (!agentId) return;
+      // NOTE: Event handlers must track state for ALL agents, not just the
+      // currently viewed one. The viewed agent can change at any time via
+      // agent pill clicks, and state (remoteStreaming, toolCalls, etc.) must
+      // be pre-populated so switching agents shows the right thing immediately.
+      const viewedAgent = getActiveAgentId();
 
       if (event === "init") {
         const initData = data as { activeTurns?: Record<string, number> };
         const activeTurns = initData.activeTurns ?? {};
-        // Set or clear remote streaming based on server's authoritative state
-        if (activeTurns[agentId] && activeTurns[agentId] > 0) {
-          setRemoteStreaming(agentId, true);
-        } else {
-          setRemoteStreaming(agentId, false);
-        }
-        // Reload history on reconnect to catch any missed messages
-        const sid = getActiveSessionId();
-        if (sid && !hasLocalStream(agentId)) loadHistory(agentId, sid);
-      }
-
-      if (event === "turn:after") {
-        const turnData = data as { nousId?: string; sessionId?: string; text?: string };
-        if (turnData.nousId === agentId) {
-          setRemoteStreaming(agentId, false);
-          setTurnStartedAt(agentId, null);
-          if (!hasLocalStream(agentId)) {
-            const sessionId = getActiveSessionId();
-            if (sessionId) {
-              loadHistory(agentId, sessionId);
-            }
+        // Set remote streaming for ALL agents based on server's authoritative state
+        for (const agent of getAgents()) {
+          if (activeTurns[agent.id] && activeTurns[agent.id] > 0) {
+            setRemoteStreaming(agent.id, true);
+          } else {
+            setRemoteStreaming(agent.id, false);
           }
-          refreshSessions(agentId);
         }
-
-        // Notification for non-active agents
-        if (turnData.nousId && turnData.nousId !== agentId) {
-          const agent = getAgents().find((a) => a.id === turnData.nousId);
-          if (agent) {
-            const preview = turnData.text?.slice(0, 100) ?? "New message";
-            addNotification(turnData.nousId, agent.name, preview);
-            showToast(agent.name, agent.emoji, preview, turnData.nousId);
-          }
+        // Reload history for viewed agent on reconnect
+        if (viewedAgent) {
+          const sid = getActiveSessionId();
+          if (sid && !hasLocalStream(viewedAgent)) loadHistory(viewedAgent, sid);
         }
       }
 
       if (event === "turn:before") {
         const turnData = data as { nousId?: string };
-        if (turnData.nousId === agentId) {
-          setRemoteStreaming(agentId, true);
-          setTurnStartedAt(agentId, Date.now());
+        const nousId = turnData.nousId;
+        if (nousId) {
+          setRemoteStreaming(nousId, true);
+          setTurnStartedAt(nousId, Date.now());
+        }
+      }
+
+      if (event === "turn:after") {
+        const turnData = data as { nousId?: string; sessionId?: string; text?: string };
+        const nousId = turnData.nousId;
+        if (nousId) {
+          setRemoteStreaming(nousId, false);
+          setTurnStartedAt(nousId, null);
+
+          // If this is the viewed agent, reload history to show the response
+          if (nousId === viewedAgent && !hasLocalStream(nousId)) {
+            const sessionId = getActiveSessionId();
+            if (sessionId) {
+              loadHistory(nousId, sessionId);
+            }
+            refreshSessions(nousId);
+          }
+
+          // Notification for non-viewed agents
+          if (nousId !== viewedAgent) {
+            const agent = getAgents().find((a) => a.id === nousId);
+            if (agent) {
+              const preview = turnData.text?.slice(0, 100) ?? "New message";
+              addNotification(nousId, agent.name, preview);
+              showToast(agent.name, agent.emoji, preview, nousId);
+            }
+          }
         }
       }
 
       if (event === "tool:called") {
         const toolData = data as { nousId?: string; tool?: string; durationMs?: number };
-        if (toolData.nousId === agentId && toolData.tool) {
-          addRemoteToolCall(agentId, toolData.tool, toolData.durationMs);
+        const nousId = toolData.nousId;
+        // Track tool calls for ALL agents so switching shows progress
+        if (nousId && toolData.tool) {
+          addRemoteToolCall(nousId, toolData.tool, toolData.durationMs);
         }
       }
 
       if (event === "connection") {
         const { status } = data as { status: string };
         if (status === "disconnected") {
-          // Clear remote streaming — we can't trust it without SSE
-          setRemoteStreaming(agentId, false);
+          // Clear remote streaming for ALL agents — can't trust state without SSE
+          for (const agent of getAgents()) {
+            setRemoteStreaming(agent.id, false);
+          }
           if (!pollInterval) {
             pollInterval = setInterval(() => {
               const id = getActiveAgentId();
               const sid = getActiveSessionId();
               if (id && sid) loadHistory(id, sid);
-            }, 5_000); // Poll every 5s while disconnected
+            }, 5_000);
           }
         } else if (status === "connected") {
           if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }

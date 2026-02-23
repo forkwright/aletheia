@@ -111,6 +111,24 @@
   --radius-sm: 4px;     /* buttons, badges, inputs, code */
   --radius-pill: 14px;  /* pills, status lines, scroll button */
 
+  /* === STATUS SURFACES === */
+  /* Semantic background/border tokens — derived from status colors */
+  --status-error-bg:           rgba(199, 84, 80, 0.1);   /* subtle error tint */
+  --status-error-bg-strong:    rgba(199, 84, 80, 0.15);  /* stronger error tint */
+  --status-error-border:       rgba(199, 84, 80, 0.3);   /* error border/outline */
+  --status-success-bg:         rgba(74, 154, 91, 0.15);  /* subtle success tint */
+  --status-success-bg-strong:  rgba(74, 154, 91, 0.25);  /* stronger success tint */
+  --status-success-border:     rgba(74, 154, 91, 0.3);   /* success border/outline */
+  --status-warning-bg:         rgba(184, 146, 47, 0.1);  /* subtle warning tint */
+  --status-warning-bg-strong:  rgba(184, 146, 47, 0.15); /* stronger warning tint */
+  --status-warning-border:     rgba(184, 146, 47, 0.3);  /* warning border/outline */
+  /* Overlays */
+  --overlay-mid:  rgba(0, 0, 0, 0.4);   /* menus, dropdowns, mobile sheet */
+  --overlay-dark: rgba(0, 0, 0, 0.85);  /* lightbox, modal backdrops */
+  /* Diff highlights — code addition/deletion */
+  --diff-add-bg:  rgba(74, 154, 91, 0.15);
+  --diff-del-bg:  rgba(199, 84, 80, 0.15);
+
   /* === SHADOWS === */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);

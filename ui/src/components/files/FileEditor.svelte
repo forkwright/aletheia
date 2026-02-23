@@ -474,7 +474,7 @@
   }
   .save-error {
     padding: 4px 8px;
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
     border-bottom: 1px solid var(--status-error);
     color: var(--status-error);
     font-size: var(--text-sm);

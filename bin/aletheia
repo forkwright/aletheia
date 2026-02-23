@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# aletheia — unified CLI for the Aletheia system
+set -euo pipefail
+
+# --- Config ---
+WORKER=100.87.6.45
+WORKER_USER=forkwright
+GATEWAY_URL="http://localhost:18789"
+TUI_BIN="/mnt/ssd/aletheia/tui/target/release/aletheia-tui"
+TOKEN_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/aletheia/token"
+
+# Load token
+load_token() {
+    if [[ -n "${ALETHEIA_TOKEN:-}" ]]; then
+        return
+    fi
+    if [[ -f "$TOKEN_FILE" ]]; then
+        ALETHEIA_TOKEN="$(cat "$TOKEN_FILE")"
+        export ALETHEIA_TOKEN
+    else
+        echo "No token found. Set ALETHEIA_TOKEN or put it in $TOKEN_FILE"
+        exit 1
+    fi
+}
+
+# --- Commands ---
+
+cmd_tui() {
+    load_token
+    exec ssh -t "${WORKER_USER}@${WORKER}" \
+        "ALETHEIA_TOKEN=${ALETHEIA_TOKEN} ${TUI_BIN} $*"
+}
+
+cmd_health() {
+    load_token
+    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/health" | python3 -m json.tool 2>/dev/null \
+        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/health"
+}
+
+cmd_agents() {
+    load_token
+    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/agents" | python3 -m json.tool 2>/dev/null \
+        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/agents"
+}
+
+cmd_costs() {
+    load_token
+    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/costs/daily" | python3 -m json.tool 2>/dev/null \
+        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/costs/daily"
+}
+
+cmd_logs() {
+    ssh "${WORKER_USER}@${WORKER}" \
+        "journalctl -u aletheia --no-pager -n ${1:-50} -f"
+}
+
+cmd_status() {
+    load_token
+    echo "=== Health ==="
+    cmd_health
+    echo ""
+    echo "=== Agents ==="
+    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
+        "http://${WORKER}:18789/api/agents" 2>/dev/null \
+        | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    emoji = a.get('emoji', '')
+    print(f\"  {emoji} {a['name']:12s}  ({a['id']})\")
+" 2>/dev/null || echo "  (couldn't reach gateway)"
+}
+
+cmd_token() {
+    mkdir -p "$(dirname "$TOKEN_FILE")"
+    if [[ -n "${1:-}" ]]; then
+        echo -n "$1" > "$TOKEN_FILE"
+        chmod 600 "$TOKEN_FILE"
+        echo "Token saved to $TOKEN_FILE"
+    else
+        echo "Usage: aletheia token <your-token>"
+        echo "Stores at: $TOKEN_FILE"
+    fi
+}
+
+cmd_help() {
+    cat <<'EOF'
+aletheia — Aletheia system CLI
+
+Usage: aletheia <command> [args]
+
+Commands:
+  tui              Launch the terminal UI (connects via SSH)
+  status           System overview (health + agents)
+  health           Gateway health check
+  agents           List agents
+  costs            Daily cost summary
+  logs [n]         Tail gateway logs (default: 50 lines, follows)
+  token <tok>      Save API token to ~/.config/aletheia/token
+
+No arguments launches the TUI.
+EOF
+}
+
+# --- Dispatch ---
+
+case "${1:-tui}" in
+    tui)        shift 2>/dev/null || true; cmd_tui "$@" ;;
+    health)     cmd_health ;;
+    agents)     cmd_agents ;;
+    costs)      cmd_costs ;;
+    logs)       shift; cmd_logs "${1:-50}" ;;
+    status)     cmd_status ;;
+    token)      shift; cmd_token "${1:-}" ;;
+    help|--help|-h) cmd_help ;;
+    *)          echo "Unknown command: $1"; cmd_help; exit 1 ;;
+esac

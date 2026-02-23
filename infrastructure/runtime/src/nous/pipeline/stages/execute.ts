@@ -113,6 +113,9 @@ export async function* executeStreaming(
   const narrationEnabled = services.config.agents.defaults.narrationFilter !== false;
   const narrationFilter = narrationEnabled ? new NarrationFilter() : null;
 
+  // Track which credential was used (updated each loop from streamResult)
+  let lastCredentialLabel: string | undefined;
+
   for (let loop = 0; ; loop++) {
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
@@ -171,6 +174,7 @@ export async function* executeStreaming(
 
     if (!streamResult) throw new PipelineError("Stream ended without message_complete", { code: "PIPELINE_STREAM_INCOMPLETE" });
 
+    lastCredentialLabel = streamResult.credentialLabel;
     totalInputTokens += streamResult.usage.inputTokens;
     totalOutputTokens += streamResult.usage.outputTokens;
     totalCacheReadTokens += streamResult.usage.cacheReadTokens;
@@ -212,6 +216,7 @@ export async function* executeStreaming(
         text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
+        ...(lastCredentialLabel ? { credentialLabel: lastCredentialLabel } : {}),
       };
 
       trace.setUsage(totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens);
@@ -428,6 +433,7 @@ export async function* executeStreaming(
             text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
+            ...(lastCredentialLabel ? { credentialLabel: lastCredentialLabel } : {}),
           };
           yield { type: "turn_complete", outcome: state.outcome };
           return state;
@@ -577,6 +583,7 @@ export async function executeBuffered(
         text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
+        ...(result.credentialLabel ? { credentialLabel: result.credentialLabel } : {}),
       };
 
       return state;
@@ -732,6 +739,7 @@ export async function executeBuffered(
             text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
             inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
             cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
+            ...(result.credentialLabel ? { credentialLabel: result.credentialLabel } : {}),
           };
           return state;
         }

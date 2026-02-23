@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { renderMarkdown } from "../../lib/markdown";
+  import { renderMarkdown, renderMarkdownFast } from "../../lib/markdown";
 
-  let { content }: { content: string } = $props();
+  let { content, streaming = false }: { content: string; streaming?: boolean } = $props();
 
   let safeContent = $derived(typeof content === "string" ? content : String(content ?? ""));
-  let html = $derived(renderMarkdown(safeContent));
+  let html = $derived(streaming ? renderMarkdownFast(safeContent) : renderMarkdown(safeContent));
   let container = $state<HTMLDivElement | null>(null);
 
-  // Add copy buttons to code blocks after render
+  // Add copy buttons to code blocks after render — skipped during streaming
+  // to avoid repeated querySelectorAll on every debounce flush
   $effect(() => {
+    if (streaming) return;
     void html;
     if (!container) return;
 
@@ -123,8 +125,8 @@
   .markdown-body :global(.hljs-selector-id),
   .markdown-body :global(.hljs-selector-tag) { color: var(--syntax-tag); }
   .markdown-body :global(.hljs-meta) { color: var(--syntax-meta); }
-  .markdown-body :global(.hljs-addition) { color: var(--syntax-inserted); background: rgba(74, 154, 91, 0.15); }
-  .markdown-body :global(.hljs-deletion) { color: var(--syntax-deleted); background: rgba(199, 84, 80, 0.15); }
+  .markdown-body :global(.hljs-addition) { color: var(--syntax-inserted); background: var(--diff-add-bg); }
+  .markdown-body :global(.hljs-deletion) { color: var(--syntax-deleted); background: var(--diff-del-bg); }
   .markdown-body :global(.hljs-punctuation) { color: var(--text-secondary); }
   .markdown-body :global(pre .copy-btn) {
     position: absolute;

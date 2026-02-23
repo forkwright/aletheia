@@ -1,4 +1,4 @@
-// Web UI — Svelte SPA served at /ui, SSE events at /api/events
+// Web UI — Svelte SPA served from ui/dist/
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { Hono } from "hono";
@@ -6,23 +6,13 @@ import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import { paths } from "../taxis/paths.js";
 
-interface EventClient {
-  controller: ReadableStreamDefaultController;
-  lastPing: number;
-}
-
-const eventClients = new Set<EventClient>();
-
-export function broadcastEvent(event: string, data: unknown): void {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  const encoded = new TextEncoder().encode(payload);
-  for (const client of eventClients) {
-    try {
-      client.controller.enqueue(encoded);
-    } catch { /* UI file read failed */
-      eventClients.delete(client);
-    }
-  }
+// Legacy broadcastEvent — kept as no-op for backward compatibility.
+// SSE events are now served exclusively by routes/events.ts via eventBus.
+// This was previously feeding a dead Set<EventClient> since the /api/events
+// route in this file was shadowed by the one in routes/events.ts.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function broadcastEvent(_event: string, _data: unknown): void {
+  // no-op — events delivered by routes/events.ts via eventBus
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -45,58 +35,13 @@ interface ManagerLike {
 
 export function createUiRoutes(
   config: AletheiaConfig,
-  manager: ManagerLike | null,
-  store: SessionStore,
+  _manager: ManagerLike | null,
+  _store: SessionStore,
 ): Hono {
   const app = new Hono();
 
-  // SSE event stream — real-time updates
-  app.get("/api/events", (c) => {
-    const stream = new ReadableStream({
-      start(controller) {
-        const client: EventClient = { controller, lastPing: Date.now() };
-        eventClients.add(client);
-
-        const ping = setInterval(() => {
-          try {
-            controller.enqueue(new TextEncoder().encode(": ping\n\n"));
-            client.lastPing = Date.now();
-          } catch { /* UI asset read failed */
-            clearInterval(ping);
-            eventClients.delete(client);
-          }
-        }, 30_000);
-
-        // Send initial state
-        const metrics = store.getMetrics();
-        const initData = {
-          agents: config.agents.list.map((a) => ({
-            id: a.id,
-            name: a.name ?? a.id,
-          })),
-          uptime: Math.round(process.uptime()),
-          usage: metrics.usage,
-          activeTurns: manager?.getActiveTurnsByNous() ?? {},
-        };
-        controller.enqueue(
-          new TextEncoder().encode(`event: init\ndata: ${JSON.stringify(initData)}\n\n`),
-        );
-
-        c.req.raw.signal?.addEventListener("abort", () => {
-          clearInterval(ping);
-          eventClients.delete(client);
-        });
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
-  });
+  // SSE events are served by routes/events.ts (mounted in createGateway).
+  // This file only serves the static UI assets.
 
   // Serve built Svelte UI from ui/dist/, fall back to inline dashboard
   const distDir = join(paths.root, "ui", "dist");

@@ -1,5 +1,11 @@
 <script lang="ts">
   import type { MediaItem } from "../../lib/types";
+  import {
+    IMAGE_TYPES, DOC_TYPES, TEXT_TYPES, ACCEPTED_TYPES,
+    isImageType, isTextLikeType,
+  } from "../../lib/media";
+  import SlashMenu from "./SlashMenu.svelte";
+  import AttachmentBar from "./AttachmentBar.svelte";
 
   let {
     isStreaming,
@@ -27,21 +33,6 @@
   let isDragOver = $state(false);
 
   const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
-  const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-  const DOC_TYPES = ["application/pdf"];
-  const TEXT_TYPES = [
-    "text/plain", "text/csv", "text/markdown", "text/html", "text/xml",
-    "application/json", "application/xml",
-  ];
-  const ACCEPTED_TYPES = [...IMAGE_TYPES, ...DOC_TYPES, ...TEXT_TYPES];
-
-  function isTextLikeType(type: string): boolean {
-    return TEXT_TYPES.includes(type) || type.startsWith("text/");
-  }
-
-  function isImageType(type: string): boolean {
-    return IMAGE_TYPES.includes(type);
-  }
 
   let filteredCommands = $derived(
     text.startsWith("/")
@@ -263,13 +254,10 @@
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + "px";
   }
 
-  function selectSlashCommand(idx: number) {
-    const cmd = filteredCommands[idx];
-    if (cmd) {
-      text = cmd.command;
-      showSlashMenu = false;
-      submit();
-    }
+  function handleSlashSelect(cmd: { command: string; description: string }) {
+    text = cmd.command;
+    showSlashMenu = false;
+    submit();
   }
 
   $effect(() => {
@@ -304,18 +292,11 @@
   {/if}
   <div class="input-area">
     {#if showSlashMenu}
-      <div class="slash-menu">
-        {#each filteredCommands as cmd, i}
-          <button
-            class="slash-item"
-            class:selected={i === selectedSlashIdx}
-            onclick={() => selectSlashCommand(i)}
-          >
-            <span class="slash-cmd">{cmd.command}</span>
-            <span class="slash-desc">{cmd.description}</span>
-          </button>
-        {/each}
-      </div>
+      <SlashMenu
+        commands={filteredCommands}
+        selectedIndex={selectedSlashIdx}
+        onSelect={handleSlashSelect}
+      />
     {/if}
     {#if queued}
       <div class="queued-indicator">
@@ -323,31 +304,7 @@
         <button class="queued-cancel" onclick={() => { queued = null; }} aria-label="Cancel queued message">×</button>
       </div>
     {/if}
-    {#if attachments.length > 0}
-      <div class="attachment-preview">
-        {#each attachments as att, i}
-          <div class="attachment-thumb">
-            {#if isImageType(att.contentType)}
-              <img src="data:{att.contentType};base64,{att.data}" alt={att.filename ?? "attachment"} />
-            {:else}
-              <div class="file-icon">
-                {#if att.contentType === "application/pdf"}
-                  <span class="file-emoji">📄</span>
-                {:else if isTextLikeType(att.contentType)}
-                  <span class="file-emoji">📝</span>
-                {:else}
-                  <span class="file-emoji">📎</span>
-                {/if}
-              </div>
-            {/if}
-            <button class="remove-btn" onclick={() => removeAttachment(i)} aria-label="Remove attachment">×</button>
-            {#if att.filename}
-              <span class="attachment-name">{att.filename}</span>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    {/if}
+    <AttachmentBar {attachments} onRemove={removeAttachment} />
     <div class="input-wrapper" class:streaming={isStreaming}>
       {#if isStreaming}
         <button class="stop-btn" onclick={onAbort} aria-label="Stop generating" title="Stop generating (Esc)">
@@ -404,8 +361,6 @@
     background: var(--bg-elevated);
     flex-shrink: 0;
     position: relative;
-    /* Use safe-area when no keyboard, but don't double-pad when keyboard is open
-       (keyboard replaces the home indicator area) */
     padding-bottom: var(--safe-bottom);
   }
   .input-bar.drag-over {
@@ -475,11 +430,11 @@
   }
   .attach-btn:hover {
     color: var(--accent);
-    background: rgba(154, 123, 79, 0.1);
+    background: var(--accent-muted);
   }
   .stop-btn {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
+    background: var(--status-error-bg);
+    border: 1px solid var(--status-error-border);
     color: var(--status-error);
     width: 36px;
     height: 36px;
@@ -493,7 +448,7 @@
     margin-bottom: 2px;
   }
   .stop-btn:hover {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--status-error-bg-strong);
   }
   .stop-icon {
     font-size: var(--text-2xs);
@@ -521,7 +476,7 @@
     background: var(--status-warning);
   }
   .send-btn.queuing:hover {
-    background: #e0a820;
+    background: var(--status-active);
   }
   .queued-indicator {
     display: flex;
@@ -529,8 +484,8 @@
     gap: 8px;
     padding: 4px 12px;
     margin-bottom: 6px;
-    background: rgba(210, 153, 34, 0.1);
-    border: 1px solid rgba(210, 153, 34, 0.3);
+    background: var(--status-warning-bg);
+    border: 1px solid var(--status-warning-border);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
     color: var(--status-warning);
@@ -553,72 +508,7 @@
   .queued-cancel:hover {
     opacity: 1;
   }
-  .attachment-preview {
-    display: flex;
-    gap: 8px;
-    padding: 8px 0;
-    flex-wrap: wrap;
-  }
-  .attachment-thumb {
-    position: relative;
-    width: 80px;
-    height: 80px;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    border: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .attachment-thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .file-icon {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--surface);
-  }
-  .file-emoji {
-    font-size: var(--text-3xl);
-  }
-  .attachment-thumb .remove-btn {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.7);
-    border: none;
-    color: #fff;
-    font-size: var(--text-base);
-    line-height: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity var(--transition-quick);
-  }
-  .attachment-thumb:hover .remove-btn {
-    opacity: 1;
-  }
-  .attachment-thumb .attachment-name {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 2px 4px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    font-size: var(--text-2xs);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+
   .hidden-file-input {
     position: absolute;
     width: 0;
@@ -630,7 +520,7 @@
   .drag-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(154, 123, 79, 0.08);
+    background: var(--accent-muted);
     border: 2px dashed var(--accent);
     border-radius: var(--radius);
     display: flex;
@@ -643,47 +533,6 @@
     color: var(--accent);
     font-size: var(--text-base);
     font-weight: 500;
-  }
-  .slash-menu {
-    position: absolute;
-    bottom: 100%;
-    left: 16px;
-    right: 16px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    margin-bottom: 4px;
-    overflow: hidden;
-    z-index: 20;
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
-  }
-  .slash-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 8px 12px;
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-size: var(--text-sm);
-    text-align: left;
-    transition: background var(--transition-quick);
-  }
-  .slash-item:hover,
-  .slash-item.selected {
-    background: var(--surface-hover);
-  }
-  .slash-cmd {
-    font-family: var(--font-mono);
-    color: var(--accent);
-    font-weight: 600;
-    font-size: var(--text-sm);
-    min-width: 60px;
-  }
-  .slash-desc {
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
   }
 
   @media (max-width: 768px) {
@@ -701,7 +550,6 @@
     .send-btn {
       padding: 10px 14px;
       font-size: var(--text-sm);
-      /* Larger touch target on mobile */
       min-height: 40px;
       min-width: 56px;
     }
@@ -712,23 +560,6 @@
     .stop-btn {
       width: 40px;
       height: 40px;
-    }
-    .attachment-thumb {
-      width: 64px;
-      height: 64px;
-    }
-    .slash-menu {
-      left: 10px;
-      right: 10px;
-      /* On mobile keyboard open, slash menu shouldn't extend off-screen */
-      max-height: 40vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .slash-item {
-      padding: 12px 14px;
-      /* Minimum 44px tap target per Apple HIG */
-      min-height: 44px;
     }
   }
 </style>

@@ -7,7 +7,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
-const HEARTBEAT_TIMEOUT_MS = 45_000; // Server sends pings every ~30s
+const HEARTBEAT_TIMEOUT_MS = 45_000; // Server sends named "ping" events every ~15s
 const listeners = new Set<EventCallback>();
 let lastActiveTurns = $state<Record<string, number>>({});
 let agentStatuses = $state<Record<string, string>>({});
@@ -21,7 +21,7 @@ export function onGlobalEvent(cb: EventCallback): () => void {
 
 function dispatch(event: string, data: unknown) {
   for (const cb of listeners) {
-    try { cb(event, data); } catch { /* ignore */ }
+    try { cb(event, data); } catch (e) { console.warn("[events] listener error:", e); }
   }
 }
 
@@ -148,7 +148,7 @@ function connect() {
         lastActiveTurns = newActiveTurns;
       }
       dispatch("init", { ...data, activeTurns: lastActiveTurns });
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("[events] SSE init parse error:", e); }
   });
 
   // Forward server event types (only types the server SSE route actually emits)
@@ -175,12 +175,14 @@ function connect() {
           agentStatuses = { ...agentStatuses, [data.nousId]: data.status };
         }
         dispatch(type, data);
-      } catch { /* ignore */ }
+      } catch (e) { console.warn("[events] SSE event parse error:", e, "type:", type); }
     });
   }
 
-  // SSE comment lines (:ping) don't fire event listeners, but onmessage catches them
-  source.onmessage = () => { resetHeartbeat(); };
+  // Server sends named "ping" events (not SSE comments) so they're actually
+  // delivered to listeners. SSE comments (": ping") are silently consumed by
+  // the browser's EventSource parser and never fire any handler.
+  source.addEventListener("ping", () => { resetHeartbeat(); });
 }
 
 function scheduleReconnect() {
