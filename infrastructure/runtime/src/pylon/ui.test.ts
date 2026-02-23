@@ -45,18 +45,13 @@ describe("createUiRoutes", () => {
     expect(html).toContain("<!DOCTYPE html>");
   });
 
-  it("/api/events returns SSE stream", async () => {
-    const app = createUiRoutes(makeConfig(), null, makeStore());
-    const res = await app.request("/api/events");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("text/event-stream");
-    expect(res.headers.get("Cache-Control")).toBe("no-cache");
-  });
+  // SSE events are now served by routes/events.ts, not ui.ts
 });
 
 describe("broadcastEvent", () => {
-  it("is exported and callable", () => {
+  it("is exported as no-op for backward compatibility", () => {
     expect(typeof broadcastEvent).toBe("function");
+    // Should not throw — it's a no-op now
     broadcastEvent("test", { hello: "world" });
   });
 });
