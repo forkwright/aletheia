@@ -51,12 +51,12 @@ Plans:
   3. `aletheia plan` CLI subcommand starts planning mode directly
   4. A planning session started in one session is resumable from any later session with the same nous
   5. Intent detection unit tests cover true-positive and false-positive scenarios
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: DianoiaOrchestrator core (side-effectful state driver)
-- [ ] 02-02: /plan slash command and CLI subcommand
-- [ ] 02-03: Intent detection hook (turn:before)
+- [ ] 02-01-PLAN.md — DianoiaOrchestrator core, SessionStore.getDb(), planning EventNames, RuntimeServices wiring
+- [ ] 02-02-PLAN.md — /plan slash command, aletheia plan CLI subcommand, orchestrator unit tests
+- [ ] 02-03-PLAN.md — detectPlanningIntent() pure function (TDD), context.ts intent injection
 
 ### Phase 3: Project Context & API
 **Goal**: Planning projects gather context through conversation and expose state via HTTP API
@@ -185,7 +185,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Complete   | 2026-02-23 |
+| 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 0/3 | Not started | - |
 | 3. Project Context & API | 0/4 | Not started | - |
 | 4. Research Pipeline | 0/2 | Not started | - |
