@@ -21,7 +21,7 @@ export function onGlobalEvent(cb: EventCallback): () => void {
 
 function dispatch(event: string, data: unknown) {
   for (const cb of listeners) {
-    try { cb(event, data); } catch { /* ignore */ }
+    try { cb(event, data); } catch (e) { console.warn("[events] listener error:", e); }
   }
 }
 
@@ -148,7 +148,7 @@ function connect() {
         lastActiveTurns = newActiveTurns;
       }
       dispatch("init", { ...data, activeTurns: lastActiveTurns });
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("[events] SSE init parse error:", e); }
   });
 
   // Forward server event types (only types the server SSE route actually emits)
@@ -175,7 +175,7 @@ function connect() {
           agentStatuses = { ...agentStatuses, [data.nousId]: data.status };
         }
         dispatch(type, data);
-      } catch { /* ignore */ }
+      } catch (e) { console.warn("[events] SSE event parse error:", e, "type:", type); }
     });
   }
 

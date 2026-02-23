@@ -101,23 +101,31 @@ const markedFast = new Marked({
 markedFast.use(tableRenderer);
 
 export function renderMarkdownFast(text: string): string {
+  const t0 = performance.now();
   if (typeof text !== "string") text = String(text ?? "");
   const raw = markedFast.parse(text, { async: false });
   const html = typeof raw === "string" ? raw : String(raw ?? "");
-  return DOMPurify.sanitize(html, {
+  const result = DOMPurify.sanitize(html, {
     ADD_ATTR: ["class", "type", "checked", "disabled"],
     ADD_TAGS: ["input"],
   });
+  const ms = performance.now() - t0;
+  if (ms > 10) console.warn(`[perf] renderMarkdownFast ${ms.toFixed(1)}ms (${text.length} chars)`);
+  return result;
 }
 
 export function renderMarkdown(text: string): string {
+  const t0 = performance.now();
   if (typeof text !== "string") text = String(text ?? "");
   const raw = marked.parse(text, { async: false });
   const html = typeof raw === "string" ? raw : String(raw ?? "");
-  return DOMPurify.sanitize(html, {
+  const result = DOMPurify.sanitize(html, {
     ADD_ATTR: ["class", "type", "checked", "disabled"],
     ADD_TAGS: ["input"],
   });
+  const ms = performance.now() - t0;
+  if (ms > 20) console.warn(`[perf] renderMarkdown ${ms.toFixed(1)}ms (${text.length} chars)`);
+  return result;
 }
 
 /** Infer a highlight.js language from a file path or tool name */
