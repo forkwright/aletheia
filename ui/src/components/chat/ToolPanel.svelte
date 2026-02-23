@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
   import { getToolCategory } from "../../lib/tools";
@@ -13,11 +14,11 @@
 
   let expandedIds = $state<Set<string>>(new Set());
 
-  // Auto-expand errors
+  // Auto-expand errors — untrack expandedIds to avoid reactive cycle
   $effect(() => {
     const errorIds = tools.filter(t => t.status === "error").map(t => t.id);
     if (errorIds.length > 0) {
-      expandedIds = new Set([...expandedIds, ...errorIds]);
+      expandedIds = new Set([...untrack(() => expandedIds), ...errorIds]);
     }
   });
 
@@ -180,21 +181,29 @@
     }).join("\n");
   }
 
+  // Cache highlighted output per tool — avoids re-running hljs/DOMPurify on every tools update
+  const resultCache = new Map<string, { raw: string; html: string }>();
+
   function highlightResult(tool: ToolCallState): string {
     if (!tool.result) return "";
-    // Render diffs with diff coloring
+    const cached = resultCache.get(tool.id);
+    if (cached && cached.raw === tool.result) return cached.html;
+    let html: string;
     if (isDiffResult(tool)) {
-      return DOMPurify.sanitize(renderDiff(tool.result), { ADD_ATTR: ["class"] });
+      html = DOMPurify.sanitize(renderDiff(tool.result), { ADD_ATTR: ["class"] });
+    } else {
+      const lang = inferLanguage(tool.name, tool.result);
+      if (lang) {
+        html = DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
+      } else {
+        html = tool.result
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
     }
-    const lang = inferLanguage(tool.name, tool.result);
-    if (lang) {
-      return DOMPurify.sanitize(highlightCode(tool.result, lang), { ADD_ATTR: ["class"] });
-    }
-    // Escape HTML for non-highlighted results
-    return tool.result
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+    resultCache.set(tool.id, { raw: tool.result, html });
+    return html;
   }
 </script>
 
