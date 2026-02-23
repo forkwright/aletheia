@@ -1,7 +1,7 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::App;
@@ -9,29 +9,26 @@ use crate::app::App;
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let is_streaming = app.active_turn_id.is_some();
 
-    let prompt = if is_streaming {
-        Span::styled("queued › ", Style::default().fg(Color::Yellow))
-    } else {
-        Span::styled("› ", Style::default().fg(Color::Cyan))
-    };
+    let prompt_str = if is_streaming { "queued › " } else { "› " };
+    let prompt_color = if is_streaming { Color::Yellow } else { Color::Cyan };
 
+    let prompt = Span::styled(prompt_str, Style::default().fg(prompt_color));
     let input_text = &app.input.text;
 
-    let line = Line::from(vec![
-        prompt,
-        Span::raw(input_text.clone()),
-    ]);
+    let line = Line::from(vec![prompt, Span::raw(input_text.clone())]);
 
     let block = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    let paragraph = Paragraph::new(line).block(block);
+    let paragraph = Paragraph::new(line).block(block).wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 
-    // Place cursor
-    let prompt_width = if is_streaming { 9 } else { 2 };
-    let cursor_x = area.x + prompt_width + app.input.cursor as u16;
-    let cursor_y = area.y + 1; // +1 for border
+    // Calculate cursor position with wrapping
+    let prompt_width = prompt_str.len() as u16;
+    let content_width = area.width.saturating_sub(1); // account for possible border
+    let total_offset = prompt_width + app.input.cursor as u16;
+    let cursor_y = area.y + 1 + (total_offset / content_width); // +1 for top border
+    let cursor_x = area.x + (total_offset % content_width);
     frame.set_cursor_position((cursor_x, cursor_y));
 }
