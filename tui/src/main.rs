@@ -1,7 +1,9 @@
 mod api;
 mod app;
+mod clipboard;
 mod config;
 mod events;
+mod highlight;
 mod markdown;
 mod msg;
 mod theme;

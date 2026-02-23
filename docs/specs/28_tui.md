@@ -1,7 +1,7 @@
 # Spec 28 — Aletheia TUI
 
 **Status:** Phase 1 — Complete ✅  
-**Component:** `tui/` — Rust terminal client (4,070 LOC as of 2026-02-23)  
+**Component:** `tui/` — Rust terminal client (4,431 LOC as of 2026-02-23)  
 **Interface:** Primary working interface alongside Signal (mobile)  
 **Gateway dependency:** Hono REST API + SSE on `:18789` — zero gateway changes  
 **Design target:** Level 2 dashboard — multi-agent visibility with split panes  
@@ -64,16 +64,14 @@ The TUI is a working application at 4,070 lines across 18 source files. Phase 1 
 - CI pipeline: clippy + fmt + build + test via GitHub Actions
 - All code passes `cargo clippy -- -D warnings` and `cargo fmt --check`
 
-**Not yet implemented (Phase 2+):**
-- Syntax highlighting in code blocks (no `syntect` dep yet)
-- Clipboard operations (no `arboard` dep yet)
-- `Ctrl+E` compose mode ($EDITOR delegation)
+**Not yet implemented (Phase 2-3):**
 - `@agent` Tab completion in input
 - Session browser overlay
 - Cost summary overlay
+- System status overlay (`Ctrl+I`)
 - Fuzzy filtering in overlays
 - OSC 8 hyperlinks for URLs
-- Table rendering in markdown
+- Plan execution progress widget
 - State recovery on reconnect (reload stale agent data)
 - Responsive layout degradation for small terminals
 - Mouse click in sidebar to switch agent
@@ -1026,25 +1024,27 @@ tui/
 - [x] Exponential backoff reconnect (1s → 30s max, reset on successful connection)
 - [x] On `turn:after` for focused agent → reload history automatically
 
-### Phase 2: Rich Rendering + Overlays (3-4 days)
+### Phase 2: Rich Rendering + Overlays (~75% complete)
 
 **Milestone:** Code highlighting, thinking blocks, tables, all modal overlays, compose mode.
 
-- [ ] `highlight.rs`: syntect integration for fenced code blocks (top 15 languages)
-- [ ] `markdown.rs`: Tables, blockquotes, links (OSC 8 hyperlinks), nested lists
+- [x] `highlight.rs`: syntect integration for fenced code blocks (base16-ocean.dark theme)
+- [x] `markdown.rs`: Tables (box-drawing chars), blockquotes, nested lists, horizontal rules
 - [x] Thinking block toggle (`Ctrl+T`)
 - [x] `view/overlay.rs`: Modal overlay system (centered floating block over main view)
 - [x] Agent picker overlay (`Ctrl+A`)
-- [ ] Help overlay (`F1`)
+- [x] Help overlay (`F1`) — Navigation, Input, Scroll, During Turns sections
 - [ ] Token summary overlay (`F2`) — nice-to-have, not priority
 - [ ] System status overlay (`Ctrl+I`)
 - [ ] Fuzzy filtering in overlays (`/` to search, arrow keys to navigate)
-- [ ] `clipboard.rs`: Copy last response (`Ctrl+Y`) — arboard with OSC52 fallback
-- [ ] `Ctrl+E` compose mode: suspend TUI, spawn `$EDITOR`, send on save+quit
+- [x] `clipboard.rs`: Copy last response (`Ctrl+Y`) — arboard native with OSC52 fallback
+- [x] `Ctrl+E` compose mode: suspend TUI, spawn `$EDITOR`, send on save+quit
 - [ ] New session / topic boundary (`Ctrl+N`)
 - [x] Tool approval overlay: render on `tool_approval_required`, A/D to approve/deny
 - [x] Plan approval overlay: render on `plan_proposed`, toggle steps, approve/cancel
 - [ ] Plan execution progress: persistent mini-widget during plan execution
+- [ ] OSC 8 hyperlinks for URLs
+- [ ] `markdown.rs`: Links as OSC 8 clickable hyperlinks
 
 ### Phase 3: Polish + Production Hardening (3-4 days)
 

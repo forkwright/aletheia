@@ -122,6 +122,7 @@ pub struct App {
     pub config: Config,
     pub client: ApiClient,
     pub theme: ThemePalette,
+    pub highlighter: crate::highlight::Highlighter,
     pub should_quit: bool,
 
     // Dashboard state
@@ -176,6 +177,7 @@ impl App {
             config,
             client,
             theme,
+            highlighter: crate::highlight::Highlighter::new(),
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
@@ -463,6 +465,8 @@ impl App {
             (_, KeyCode::Down) => Some(Msg::HistoryDown),
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::ClearLine),
+            (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
+            (KeyModifiers::CONTROL, KeyCode::Char('e')) => Some(Msg::ComposeInEditor),
 
             // Char input
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
@@ -722,6 +726,32 @@ impl App {
                 self.input.cursor = 0;
                 self.input.history_index = None;
                 self.send_message(&text);
+            }
+            Msg::CopyLastResponse => {
+                if let Some(msg) = self.messages.iter().rev().find(|m| m.role == "assistant") {
+                    if let Err(e) = crate::clipboard::copy_to_clipboard(&msg.text) {
+                        tracing::error!("clipboard copy failed: {e}");
+                    }
+                }
+            }
+            Msg::ComposeInEditor => {
+                let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                let tmpfile = std::env::temp_dir().join("aletheia-compose.md");
+                let _ = std::fs::write(&tmpfile, "");
+                ratatui::restore();
+                let status = std::process::Command::new(&editor).arg(&tmpfile).status();
+                let _ = ratatui::init();
+                if let Ok(s) = status {
+                    if s.success() {
+                        if let Ok(text) = std::fs::read_to_string(&tmpfile) {
+                            let text = text.trim().to_string();
+                            if !text.is_empty() {
+                                self.send_message(&text);
+                            }
+                        }
+                    }
+                }
+                let _ = std::fs::remove_file(&tmpfile);
             }
 
             // --- Navigation ---
@@ -1016,8 +1046,12 @@ impl App {
                     self.streaming_text.len() as i64 - self.cached_markdown_text.len() as i64;
                 if delta >= 64 || text.contains('\n') {
                     let width = 120; // approximate — real width comes from render
-                    self.cached_markdown_lines =
-                        crate::markdown::render(&self.streaming_text, width, &self.theme);
+                    self.cached_markdown_lines = crate::markdown::render(
+                        &self.streaming_text,
+                        width,
+                        &self.theme,
+                        &self.highlighter,
+                    );
                     self.cached_markdown_text = self.streaming_text.clone();
                 }
                 if self.auto_scroll {

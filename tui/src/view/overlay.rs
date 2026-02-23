@@ -82,13 +82,20 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             key_style,
             desc_style,
         ),
+        help_line("  F1         ", "This help screen", key_style, desc_style),
         Line::raw(""),
         Line::from(Span::styled("  Input", section_style)),
         Line::raw(""),
         help_line("  Enter      ", "Send message", key_style, desc_style),
         help_line("  Ctrl+U     ", "Clear input line", key_style, desc_style),
         help_line("  Ctrl+W     ", "Delete word", key_style, desc_style),
-        help_line("  Ctrl+E     ", "Open $EDITOR", key_style, desc_style),
+        help_line(
+            "  Ctrl+E     ",
+            "Open $EDITOR for compose",
+            key_style,
+            desc_style,
+        ),
+        help_line("  Ctrl+Y     ", "Copy last response", key_style, desc_style),
         help_line("  Up/Down    ", "Input history", key_style, desc_style),
         Line::raw(""),
         Line::from(Span::styled("  Scroll", section_style)),
@@ -96,13 +103,32 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         help_line("  Shift+Up   ", "Scroll up", key_style, desc_style),
         help_line("  Shift+Down ", "Scroll down", key_style, desc_style),
         help_line("  PgUp/PgDn  ", "Page scroll", key_style, desc_style),
+        help_line("  End        ", "Scroll to bottom", key_style, desc_style),
         Line::raw(""),
-        help_line("  Ctrl+Q     ", "Quit", key_style, desc_style),
-        help_line("  Esc        ", "Close this overlay", key_style, desc_style),
+        Line::from(Span::styled("  During Turns", section_style)),
+        Line::raw(""),
+        help_line(
+            "  A          ",
+            "Approve tool / plan",
+            key_style,
+            desc_style,
+        ),
+        help_line("  D          ", "Deny tool call", key_style, desc_style),
+        help_line("  Space      ", "Toggle plan step", key_style, desc_style),
+        Line::raw(""),
+        help_line("  Ctrl+C/Q   ", "Quit", key_style, desc_style),
+        help_line(
+            "  Esc        ",
+            "Close overlay / cancel",
+            key_style,
+            desc_style,
+        ),
     ];
 
-    let block = overlay_block("Help", theme);
-    let paragraph = Paragraph::new(lines).block(block);
+    let block = overlay_block("Help — F1", theme);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
 

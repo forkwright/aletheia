@@ -46,6 +46,8 @@ anyhow = "1"
 
 # Futures
 futures-util = "0.3"
+syntect = "5"
+arboard = "3"
 
 [profile.release]
 strip = true
