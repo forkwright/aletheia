@@ -10,10 +10,11 @@
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
   import { getActiveAgentId, isFirstRun, loadAgents } from "../../stores/agents.svelte";
   import Welcome from "../onboarding/Welcome.svelte";
+  import SetupWizard from "../onboarding/SetupWizard.svelte";
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "settings";
-  type AuthState = "loading" | "login" | "token-setup" | "authenticated";
+  type AuthState = "loading" | "needs-setup" | "login" | "token-setup" | "authenticated";
 
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
 
@@ -37,6 +38,16 @@
   // Determine auth mode on mount
   (async () => {
     try {
+      // Check setup state before auth — wizard runs before any auth concerns
+      const setupStatus = await fetch("/api/setup/status")
+        .then((r) => r.json() as Promise<{ setupComplete: boolean }>)
+        .catch(() => ({ setupComplete: false }));
+
+      if (!setupStatus.setupComplete) {
+        authState = "needs-setup";
+        return;
+      }
+
       const mode = await fetchAuthMode();
       if (mode.sessionAuth) {
         // Try refreshing an existing session (httpOnly cookie may be valid)
@@ -53,6 +64,25 @@
       authState = getToken() ? "authenticated" : "token-setup";
     }
   })();
+
+  async function handleSetupComplete() {
+    // Load agents before transitioning so isFirstRun() is false when authenticated renders
+    authState = "loading";
+    await loadAgents();
+    try {
+      const mode = await fetchAuthMode();
+      if (mode.sessionAuth) {
+        const ok = await refresh();
+        authState = ok ? "authenticated" : "login";
+      } else if (mode.mode === "none") {
+        authState = "authenticated";
+      } else {
+        authState = getToken() ? "authenticated" : "token-setup";
+      }
+    } catch {
+      authState = getToken() ? "authenticated" : "token-setup";
+    }
+  }
 
   // Handle session expiry — redirect to login
   setAuthFailureHandler(() => {
@@ -118,6 +148,8 @@
       <p style="color: var(--text-muted)">Connecting...</p>
     </div>
   </div>
+{:else if authState === "needs-setup"}
+  <SetupWizard onComplete={handleSetupComplete} />
 {:else if authState === "login"}
   <Login onSuccess={handleLoginSuccess} />
 {:else if authState === "token-setup"}
