@@ -17,10 +17,11 @@ The TUI replaces the web UI as the primary working interface. Signal remains the
 **Non-negotiable requirements:**
 - Multi-agent dashboard: see all agents' status simultaneously, not just the one you're talking to
 - Real-time SSE streaming with proper reconnection
-- Works over SSH
+- Works over SSH, on Linux (Fedora/GNOME Terminal) and macOS
 - Bearer token authentication
 - Markdown rendering sufficient for agent responses
 - Sub-millisecond input latency
+- **Looks good.** Not "functional but dated." Beautiful, modern, on par with the best terminal apps. This is the primary working interface — it needs to feel like it.
 
 ---
 
@@ -65,6 +66,52 @@ The TUI is a working application at 3,240 lines across 18 source files. It is no
 - State recovery on reconnect
 - Responsive layout degradation for small terminals
 - Comprehensive test suite
+
+---
+
+## 0.6. Design Philosophy
+
+### One Agent, One Conversation
+
+Aletheia's core UX principle is **single engagement point per agent**. Users talk to an agent — not a session. Background sessions, sub-agents, distillation cycles, and cross-agent routing are infrastructure. They never surface to the user. The TUI auto-selects the canonical conversation session and presents it as continuous history. There is no session browser, no session picker, no session management UI. If we're doing our job, the user never thinks about sessions.
+
+### Visual Quality
+
+The current TUI renders with basic 16-color ANSI. It works. It looks like 2003. That's not acceptable for a primary working interface.
+
+**Target quality:** On par with modern terminal apps (lazygit, gitui, bottom) and Claude Code. Specific improvements:
+
+- **True color (24-bit RGB).** Detect capability, fall back gracefully. GNOME Terminal, iTerm2, Kitty, WezTerm all support it. Over SSH, `COLORTERM=truecolor` env var is the signal.
+- **Theme system.** A coherent color palette — not ad-hoc `Color::Cyan` / `Color::Green` scattered across view files. Use `ratatui-themes` or define our own `ThemePalette` struct with semantic colors: `accent`, `muted`, `surface`, `error`, `success`, `info`. Default to a dark theme that matches Aletheia's identity (deep blues/teals, warm accents — not generic terminal green).
+- **Rounded borders** where supported (`symbols::border::ROUNDED`). Clean visual separation without the brutalist box-drawing look.
+- **Whitespace is design.** Padding inside panels. Breathing room between messages. Not every pixel needs content.
+- **Typography via formatting.** Bold for agent names, dim for metadata (timestamps, model names), italic for thinking blocks. Intentional use of modifiers, not decoration.
+- **Code blocks with visible boundaries.** Background color differentiation (dark surface), language label, padding. Even without syntect highlighting, a code block should look like a code block.
+- **Braille spinner for streaming.** Claude Code uses braille characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) for a smoother animation than our current `◐◓◑◒`.
+
+### WebUI Replacement, Not Supplement
+
+The TUI must handle everything the web UI handles for working sessions:
+- Full tool call visualization (not just name in status bar — show context, results)
+- Thinking block content with expand/collapse
+- Plan approval with individual step control
+- Streaming with proper markdown
+- Multi-agent status awareness
+
+Things the web UI handles that the TUI won't (and that's fine):
+- Memory graph visualization → separate concern
+- Image rendering → punt to web or Kitty protocol later
+- Sharing / external access → web stays for this
+
+### Platform Support
+
+Must work on:
+- **Linux:** GNOME Terminal (Fedora default), Kitty, Alacritty, WezTerm, any VTE-based terminal
+- **macOS:** Terminal.app (limited — 256 color only), iTerm2, Kitty, WezTerm, Ghostty
+- **Over SSH:** No X11/Wayland forwarding assumed. OSC52 for clipboard. True color if `COLORTERM` set.
+- **Inside tmux:** Passthrough for OSC sequences. Handle `TERM=screen-256color`.
+
+Detection strategy: Check `COLORTERM`, `TERM`, `TERM_PROGRAM` env vars at startup. Degrade color depth gracefully (24-bit → 256 → 16). Log detected capabilities at debug level.
 
 ---
 
@@ -228,7 +275,11 @@ Benefits: OSC52 clipboard copy (works over SSH without X11 forwarding), `query_k
 
 ### Resolved: Custom Input Widget
 
-`tui-textarea` 0.7.0 depends on `ratatui ^0.29` — incompatible with ratatui 0.30. Forking adds maintenance burden. Our input needs are specific enough (single-line + compose mode + `@agent` completion + input history) that a custom widget is the right call. Scope: single-line text editing with cursor movement, backspace/delete, Ctrl+U (clear), Ctrl+W (delete word), Up/Down (history), Tab (@agent completion). Multi-line delegates to `$EDITOR` via `Ctrl+E`.
+`tui-textarea` 0.7.0 depends on `ratatui ^0.29` — incompatible with ratatui 0.30. Forking adds maintenance burden. Custom widget is the right call. Current implementation handles: cursor movement, backspace/delete, Ctrl+U (clear), Ctrl+W (delete word), Up/Down (history), text wrapping with dynamic height (3-8 rows).
+
+**Multi-line input:** `Shift+Enter` inserts a newline. `Enter` sends. This matches Claude Code and user expectation. Requires crossterm's `event-stream` feature with keyboard enhancement detection — most modern terminals (GNOME Terminal, iTerm2, Kitty, WezTerm) report Shift+Enter distinctly. For terminals that don't, fall back to `Ctrl+E` to open `$EDITOR`.
+
+**Still needed:** `@agent` Tab completion, `Ctrl+E` $EDITOR delegation.
 
 ### Resolved: Custom Markdown Renderer
 
@@ -263,11 +314,11 @@ Benefits: OSC52 clipboard copy (works over SSH without X11 forwarding), `query_k
 
 | Region | Widget | Size | Content |
 |--------|--------|------|---------|
-| **Sidebar** | Agent list + session list | Fixed 10 cols | Agent status pills, session picker |
+| **Sidebar** | Agent list | Fixed 20 cols | Agent names with status + notification indicators |
 | **Chat area** | Scrollable message list | Flex fill | Conversation with focused agent |
-| **Status bar** | Agent activity summary | Fixed 1 row | All agents' current state, one line |
-| **Input area** | Custom text input | 1–5 rows (auto) | Message composition with `@` completion |
-| **Title bar** | Block title | 1 row | App name + daily cost |
+| **Status bar** | Agent activity summary | Fixed 1 row | Active agent states, keybinding hints |
+| **Input area** | Custom text input | 3–8 rows (auto) | Message composition with Shift+Enter multiline |
+| **Title bar** | App header | 1 row | App name, focused agent, SSE indicator |
 
 ### 3.3 Focused Mode (Toggle: `Ctrl+F`)
 
@@ -558,26 +609,28 @@ Keyring was considered but rejected — heavy dependency, doesn't work over SSH,
 
 ### 7.1 Normal Mode (input focused)
 
-| Key | Action |
-|-----|--------|
-| `Enter` | Send message |
-| `Ctrl+E` | Open `$EDITOR` for compose mode (multi-line) |
-| `Ctrl+C` | Abort streaming response / exit if idle |
-| `Ctrl+D` | Exit |
-| `Ctrl+A` | Agent picker overlay |
-| `Ctrl+S` | Session browser overlay |
-| `Ctrl+N` | New session (topic boundary) |
-| `Ctrl+F` | Toggle focused mode (hide/show sidebar) |
-| `Ctrl+T` | Toggle thinking block visibility |
-| `Ctrl+Y` | Copy last response to clipboard |
-| `Ctrl+U` | Clear input line |
-| `Ctrl+?` / `F1` | Help overlay |
-| `Ctrl+$` | Cost summary overlay |
-| `Ctrl+I` | System status overlay |
-| `PageUp` / `PageDown` | Scroll message history |
-| `Up` / `Down` | Input history (when input is empty) or scroll |
-| `Tab` | Cycle `@agent` completion |
-| `Esc` | Close overlay / deselect |
+| Key | Action | Status |
+|-----|--------|--------|
+| `Enter` | Send message | ✅ |
+| `Shift+Enter` | Insert newline (multi-line input) | — |
+| `Ctrl+E` | Open `$EDITOR` for complex input | — |
+| `Ctrl+C` / `Ctrl+Q` | Quit | ✅ |
+| `Ctrl+A` | Agent picker overlay | ✅ |
+| `Ctrl+F` | Toggle sidebar | ✅ |
+| `Ctrl+T` | Toggle thinking block visibility | ✅ |
+| `Ctrl+Y` | Copy last response to clipboard | — |
+| `Ctrl+U` | Clear input line | ✅ |
+| `Ctrl+W` | Delete word | ✅ |
+| `F1` | Help overlay | — |
+| `F2` | Token/cost summary overlay | — |
+| `Ctrl+I` | System status overlay | — |
+| `PageUp` / `PageDown` | Scroll message history | ✅ |
+| `Shift+Up` / `Shift+Down` | Scroll message history | ✅ |
+| `Up` / `Down` | Input history | ✅ |
+| `Tab` | Cycle `@agent` completion | — |
+| `Esc` | Close overlay | ✅ |
+
+**Removed from spec:** `Ctrl+S` (session browser) — sessions are not a user-facing concept. `Ctrl+N` (new session) — continuity model means no manual session boundaries. `Ctrl+$` — unreliable terminal keybinding.
 
 ### 7.2 Overlay Mode
 
@@ -604,19 +657,36 @@ This is proven, portable, handles arbitrarily long input, and — notably — fi
 
 ### 8.1 Message Rendering
 
-Each message is a `ChatMessage` rendered as a bordered block:
+Messages are **not** individually bordered — that's too heavy. Instead, use visual hierarchy:
 
 ```
-╭─ syn ──────────────────────────────────────────────╮
-│ The heartbeat mechanism uses SSE comment pings     │
-│ which browsers silently **discard**.               │
-│                                                    │
-│ ```rust                                            │
-│ // This never fires onmessage                      │
-│ controller.enqueue(": ping\n\n");                  │
-│ ```                                                │
-╰────────────────────────────────────────────────────╯
+  you                                                      4:18 PM
+  Review the updated TUI spec and give me your honest thoughts
+
+  🌀 Syn                                                   4:19 PM
+  Good spec. Honest assessment:
+
+  **What's strong:**
+  - The "why" is right. Web UI maintenance cost is real…
+  - TEA architecture is the correct call.
+
+  ✓ read  (0.1s)
+  ╰─ docs/specs/28_tui.md
+
+  **What's off:**
+  1. Status is "Draft" but we already have a working TUI…
 ```
+
+- **Agent name** in bold + agent color, with emoji. Timestamps right-aligned in dim.
+- **User messages** in default fg, no special treatment.
+- **Blank line** between messages. No borders — whitespace is the separator.
+- **Tool calls** render inline between text blocks (see §8.5).
+- **Code blocks** get a subtle background color shift + language label + left border:
+  ```
+  │ rust
+  │ controller.enqueue(": ping\n\n");
+  │ let x = foo.bar();
+  ```
 
 ### 8.2 Markdown Subset
 
@@ -645,15 +715,45 @@ During streaming:
 Collapsed by default: `▶ thinking (142 tokens)`  
 Expanded (`Ctrl+T`): Full content in dim italic with `│` left border.
 
-### 8.5 Tool Status
+### 8.5 Tool Call Rendering (Inline)
 
-In the status bar, one-line summary per working agent:
+Tool calls are **not** just status bar items. They render inline in the chat, like Claude Code does. This is critical for the TUI to replace the web UI.
+
+**During execution:**
+```
+  ⠹ exec  (2.3s)
+  ├─ command: git log --oneline -10
+```
+
+**After completion:**
+```
+  ✓ exec  (1.2s)
+  ├─ command: git log --oneline -10
+  ╰─ 10 lines returned
+
+  ✓ read  (0.1s)
+  ├─ path: src/app.rs
+  ╰─ 1,266 lines
+```
+
+**On error:**
+```
+  ✗ exec  (0.5s)  ← red
+  ├─ command: rm -rf /
+  ╰─ denied: requires approval
+```
+
+Tool calls are collapsible — show the summary line by default, expand to see full input/output on selection. This keeps the chat clean while making all tool activity inspectable.
+
+### 8.5.1 Status Bar (Agent Summary)
+
+The status bar summarizes *all* agents' state in one line:
 
 ```
-⚙ syn: exec (3.2s) │ ◐ demi: web_search (1.4s) │ syl: idle │ akron: idle
+ ⠹ syn: exec (3.2s) │ ⠸ demi: web_search (1.4s) │ syl │ akron
 ```
 
-Spinner characters cycle on tick: `◐ ◓ ◑ ◒`
+Braille spinner characters cycle on tick: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (smooth 10-frame animation vs. current 4-frame).
 
 ### 8.6 Tool Approval Flow
 
@@ -812,7 +912,7 @@ tui/
 │   │
 │   ├── view/
 │   │   ├── mod.rs                  # Top-level view() dispatch
-│   │   ├── sidebar.rs              # Agent list + session list
+│   │   ├── sidebar.rs              # Agent list with status + notification indicators
 │   │   ├── chat.rs                 # Message list rendering
 │   │   ├── input.rs                # Input widget (custom, wrapping)
 │   │   ├── status_bar.rs           # Agent activity summary
@@ -878,11 +978,16 @@ tui/
 - [x] `events.rs`: Event type definitions for SSE + streaming
 - [ ] Token refresh on 401 (currently requires re-login)
 - [ ] CI: `cargo clippy`, `cargo test`, `cargo fmt --check`
+- [ ] **Theme system:** Define `ThemePalette` struct, replace all ad-hoc `Color::` with semantic colors
+- [ ] **Rounded borders** (`symbols::border::ROUNDED`) on overlays and code blocks
+- [ ] **True color detection:** Check `COLORTERM`, `TERM_PROGRAM`, degrade to 256/16 gracefully
+- [ ] **Braille spinner:** Replace `◐◓◑◒` with `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
 
 **Dashboard layout**
 - [x] Three-region layout: sidebar | chat + status + input
 - [x] `view/sidebar.rs`: Agent list with status indicators (`●` streaming, `◐` working, `○` idle)
-- [ ] `view/sidebar.rs`: Session list under agents (sessions loaded but not rendered in sidebar)
+- [ ] **Notification dot:** Subtle indicator next to agent name when a turn completes while that agent isn't focused (e.g., dim `•` or color change). Clears when you switch to that agent.
+- [ ] ~~Session list under agents~~ — removed. Sessions are not user-facing. Sidebar shows agents only.
 - [x] `view/status_bar.rs`: All-agent one-line activity summary with tool names and elapsed time
 - [x] Agent switching: `Ctrl+A` overlay with arrow navigation, loads history
 - [x] Focused mode toggle (`Ctrl+F`) — hide sidebar, expand chat
@@ -896,6 +1001,9 @@ tui/
 - [x] Streaming cursor `▌`
 - [x] Send message → stream response → render in chat → store in state
 - [x] Message queuing during active turns (yellow "queued ›" prompt)
+- [ ] `Shift+Enter` for multi-line input (newline insertion)
+- [ ] **Inline tool call rendering** — tool calls in chat flow, not just status bar
+- [ ] **Message layout overhaul** — no per-message borders, use whitespace + typography (see §8.1)
 - [ ] Debounced markdown re-parse during streaming (currently re-parses every chunk)
 
 **Multi-agent awareness**
@@ -917,8 +1025,7 @@ tui/
 - [x] `view/overlay.rs`: Modal overlay system (centered floating block over main view)
 - [x] Agent picker overlay (`Ctrl+A`)
 - [ ] Help overlay (`F1`)
-- [ ] Session browser overlay (`Ctrl+S`)
-- [ ] Cost summary overlay (`F2`)
+- [ ] Token summary overlay (`F2`) — nice-to-have, not priority
 - [ ] System status overlay (`Ctrl+I`)
 - [ ] Fuzzy filtering in overlays (`/` to search, arrow keys to navigate)
 - [ ] `clipboard.rs`: Copy last response (`Ctrl+Y`) — arboard with OSC52 fallback
@@ -936,7 +1043,7 @@ tui/
 - [ ] State recovery on reconnect: reload history for stale agents, restore streaming state
 - [ ] `@agent` mention completion in input (Tab to cycle)
 - [x] Mouse support: scroll wheel in chat
-- [ ] Mouse support: click agent in sidebar to switch, click session
+- [ ] Mouse support: click agent in sidebar to switch
 - [ ] Error display: inline toast with auto-dismiss after 5s, persistent errors in status bar
 - [ ] Responsive layout: graceful degradation for small terminals (hide sidebar < 60 cols)
 - [x] Tracing to file via tracing-appender
@@ -954,8 +1061,8 @@ tui/
 3. **Inline images:** Kitty/Sixel protocol support for image-capable terminals, or always punt to web UI? Low priority — most agent responses are text.
 4. **tmux integration:** Detect tmux, handle passthrough sequences for OSC 8 links and clipboard? Many users will run inside tmux.
 5. ~~**Message queue UX:**~~ **Resolved.** Prompt changes to yellow "queued ›" when agent is mid-turn. Messages sent during active turns POST to `/api/sessions/:id/queue`. No additional UX needed.
-6. **Session forking:** The gateway supports `POST /api/sessions/:id/fork` with checkpoints. Worth exposing in TUI? Probably Phase 3 overlay.
-7. **Cost display granularity:** Title bar shows daily total. Should the status overlay show per-agent breakdown? Per-session? The API supports both (`/api/costs/agent/:id`, `/api/costs/session/:id`).
+6. ~~**Session forking:**~~ **Deferred.** Sessions are not user-facing. Forking is an infrastructure concern exposed via API if needed.
+7. ~~**Cost display granularity:**~~ **Resolved.** Cost is not a priority feature. Token count is a nice-to-have in a status overlay (`F2`), not a dashboard element. Remove daily cost from title bar — replace with something more useful or leave clean.
 
 ---
 
