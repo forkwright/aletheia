@@ -34,6 +34,7 @@
 
   let container = $state<HTMLDivElement | null>(null);
   let isNearBottom = $state(true);
+  let scrollRaf: number | null = null;
 
   function checkScroll() {
     if (!container) return;
@@ -52,10 +53,13 @@
     void messages.length;
     void streamingText;
     void thinkingText;
-    void activeToolCalls.length;
 
     if (isNearBottom) {
-      requestAnimationFrame(scrollToBottom);
+      if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+      scrollRaf = requestAnimationFrame(() => {
+        scrollToBottom();
+        scrollRaf = null;
+      });
     }
   });
 
@@ -124,7 +128,7 @@
           {/if}
           {#if streamingText}
             <div class="chat-content">
-              <Markdown content={streamingText} />
+              <Markdown content={streamingText} streaming={isStreaming} />
             </div>
           {:else if activeToolCalls.length === 0 && !thinkingText}
             <StreamingIndicator startedAt={turnStartedAt} />
