@@ -103,13 +103,25 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         }
     }
 
-    // Calculate scroll
+    // Calculate scroll — must account for line wrapping.
+    // Paragraph with Wrap counts visual lines differently from Vec<Line> length.
     let visible_height = area.height.saturating_sub(2) as usize;
-    let total_lines = lines.len();
+    let wrap_width = area.width.saturating_sub(2).max(1) as usize;
+    let total_visual_lines: usize = lines
+        .iter()
+        .map(|line| {
+            let line_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+            if line_width == 0 {
+                1
+            } else {
+                (line_width + wrap_width - 1) / wrap_width
+            }
+        })
+        .sum();
     let scroll = if app.auto_scroll {
-        total_lines.saturating_sub(visible_height)
+        total_visual_lines.saturating_sub(visible_height)
     } else {
-        total_lines
+        total_visual_lines
             .saturating_sub(visible_height)
             .saturating_sub(app.scroll_offset)
     };
