@@ -57,7 +57,7 @@ const marked = new Marked({
 
 // Explicit table renderer — bypasses potential internal state issues with
 // marked's default table rendering in browser bundles
-marked.use({
+const tableRenderer = {
   renderer: {
     table({ header, rows }: Tokens.Table): string {
       const cell = (c: Tokens.TableCell): string => {
@@ -73,7 +73,42 @@ marked.use({
       return `<table>\n<thead>\n${head}</thead>\n${body ? `<tbody>${body}</tbody>` : ""}</table>\n`;
     },
   },
+};
+
+marked.use(tableRenderer);
+
+// Fast renderer for streaming — skips highlight.js to avoid blocking the main thread.
+// Code blocks are HTML-escaped only; syntax highlighting fires once after streaming ends.
+const markedFast = new Marked({
+  breaks: false,
+  gfm: true,
+  renderer: {
+    code({ text, lang }: { text: string; lang?: string }) {
+      const language = lang?.split(/\s/)[0] ?? "";
+      const label = language ? `<span class="code-lang">${language}</span>` : "";
+      const escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return `<pre class="code-block">${label}<code>${escaped}</code></pre>`;
+    },
+    table({ header, body }: { header: string; body: string }) {
+      return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+    },
+  },
 });
+
+markedFast.use(tableRenderer);
+
+export function renderMarkdownFast(text: string): string {
+  if (typeof text !== "string") text = String(text ?? "");
+  const raw = markedFast.parse(text, { async: false });
+  const html = typeof raw === "string" ? raw : String(raw ?? "");
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ["class", "type", "checked", "disabled"],
+    ADD_TAGS: ["input"],
+  });
+}
 
 export function renderMarkdown(text: string): string {
   if (typeof text !== "string") text = String(text ?? "");

@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { renderMarkdown } from "../../lib/markdown";
+  import { renderMarkdown, renderMarkdownFast } from "../../lib/markdown";
 
-  let { content }: { content: string } = $props();
+  let { content, streaming = false }: { content: string; streaming?: boolean } = $props();
 
   let safeContent = $derived(typeof content === "string" ? content : String(content ?? ""));
-  let html = $derived(renderMarkdown(safeContent));
+  let html = $derived(streaming ? renderMarkdownFast(safeContent) : renderMarkdown(safeContent));
   let container = $state<HTMLDivElement | null>(null);
 
-  // Add copy buttons to code blocks after render
+  // Add copy buttons to code blocks after render — skipped during streaming
+  // to avoid repeated querySelectorAll on every debounce flush
   $effect(() => {
+    if (streaming) return;
     void html;
     if (!container) return;
 
