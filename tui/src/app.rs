@@ -264,12 +264,25 @@ impl App {
             None => return,
         };
 
-        // Use explicit session or find the main session
+        // Use explicit session, or find the most active primary session
         let session = if let Some(ref key) = self.config.default_session {
             agent.sessions.iter().find(|s| s.key == *key)
         } else {
-            agent.sessions.iter().find(|s| s.key == "main")
+            // Prefer the session with the most messages (most active conversation),
+            // excluding background sessions (cron, prosoche) and archived sessions
+            agent
+                .sessions
+                .iter()
+                .filter(|s| {
+                    s.session_type.as_deref() != Some("background")
+                        && !s.key.contains(":archived:")
+                        && !s.key.starts_with("cron:")
+                        && !s.key.starts_with("prosoche")
+                        && !s.key.starts_with("agent:")
+                })
+                .max_by_key(|s| s.message_count)
         }
+        .or_else(|| agent.sessions.iter().find(|s| s.key == "main"))
         .or_else(|| agent.sessions.first());
 
         if let Some(session) = session {
