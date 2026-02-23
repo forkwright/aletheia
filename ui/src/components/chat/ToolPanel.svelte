@@ -386,7 +386,7 @@
     border-bottom: none;
   }
   .tool-item.error {
-    background: rgba(248, 81, 73, 0.04);
+    background: var(--status-error-bg);
   }
   .tool-row {
     display: flex;
@@ -544,13 +544,13 @@
   /* Diff rendering */
   .tool-result :global(.diff-add) {
     color: var(--syntax-inserted);
-    background: rgba(74, 154, 91, 0.15);
+    background: var(--diff-add-bg);
     display: inline-block;
     width: 100%;
   }
   .tool-result :global(.diff-del) {
     color: var(--syntax-deleted);
-    background: rgba(199, 84, 80, 0.15);
+    background: var(--diff-del-bg);
     display: inline-block;
     width: 100%;
   }
@@ -572,8 +572,8 @@
   .tool-result :global(.hljs-tag) { color: var(--syntax-tag); }
   .tool-result :global(.hljs-name) { color: var(--syntax-tag); }
   .tool-result :global(.hljs-attr) { color: var(--syntax-number); }
-  .tool-result :global(.hljs-addition) { color: var(--syntax-inserted); background: rgba(74, 154, 91, 0.15); }
-  .tool-result :global(.hljs-deletion) { color: var(--syntax-deleted); background: rgba(199, 84, 80, 0.15); }
+  .tool-result :global(.hljs-addition) { color: var(--syntax-inserted); background: var(--diff-add-bg); }
+  .tool-result :global(.hljs-deletion) { color: var(--syntax-deleted); background: var(--diff-del-bg); }
 
   @media (max-width: 768px) {
     .tool-panel {

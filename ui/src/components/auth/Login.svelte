@@ -127,7 +127,7 @@
     accent-color: var(--accent);
   }
   .error {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
     border: 1px solid var(--status-error);
     border-radius: var(--radius-sm);
     color: var(--status-error);

@@ -338,7 +338,7 @@
       position: fixed;
       inset: 0;
       top: calc(var(--topbar-height) + var(--safe-top));
-      background: rgba(0, 0, 0, 0.4);
+      background: var(--overlay-mid);
       z-index: 199;
       border: none;
       cursor: default;

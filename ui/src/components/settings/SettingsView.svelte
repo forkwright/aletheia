@@ -375,7 +375,7 @@
     font-size: var(--text-sm);
   }
   .btn-danger:hover {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
   }
   .btn-add {
     width: 100%;
