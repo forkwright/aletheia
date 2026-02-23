@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 1 of 9 (Foundation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-23 -- Plan 01-01 complete (PlanningStore + migration v20)
+Last activity: 2026-02-23 -- Plan 01-02 complete (DianoiaFSM pure state machine)
 
-Progress: [█░░░░░░░░░] 4%
+Progress: [█░░░░░░░░░] 7%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 8 min
-- Total execution time: 0.13 hours
+- Total plans completed: 2
+- Average duration: 5 min
+- Total execution time: 0.15 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 1/3 | 8 min | 8 min |
+| 01-foundation | 2/3 | 9 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 8 min
-- Trend: -
+- Last 5 plans: 8 min, 1 min
+- Trend: faster
 
 *Updated after each plan completion*
 
@@ -48,6 +48,9 @@ Recent decisions affecting current work:
 - [01-01]: planning_checkpoints has no updated_at (append-only, decisions immutable once recorded)
 - [01-01]: contextHash is SHA-256(goal|nousId|createdAt) truncated to 16 hex -- not recomputable without original createdAt
 - [01-01]: PlanningStore uses injected-db pattern; wiring to SessionStore db deferred to Phase 2
+- [01-02]: NEXT_PHASE + ALL_PHASES_COMPLETE split (not single PHASE_PASSED) -- orchestrator controls "are there more phases?", FSM stays self-contained
+- [01-02]: VALID_TRANSITIONS and TRANSITION_RESULT kept as two separate structures -- VALID_TRANSITIONS is public API for display, TRANSITION_RESULT is internal lookup
+- [01-02]: DianoiaState re-exported from machine.ts via type-only re-export -- consumers import both state and event types from one location
 
 ### Pending Todos
 
@@ -62,5 +65,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 01-01-PLAN.md (PlanningStore + migration v20)
+Stopped at: Completed 01-02-PLAN.md (DianoiaFSM pure state machine)
 Resume file: None

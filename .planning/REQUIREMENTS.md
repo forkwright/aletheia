@@ -10,7 +10,7 @@
 ### Foundation -- State & Persistence
 
 - [x] **FOUND-01**: User's planning project state persists across sessions in SQLite (project survives runtime restart)
-- [ ] **FOUND-02**: Planning project has a well-defined state machine with named states (idle, questioning, researching, requirements, roadmap, phase-planning, executing, verifying, complete, blocked, abandoned)
+- [x] **FOUND-02**: Planning project has a well-defined state machine with named states (idle, questioning, researching, requirements, roadmap, phase-planning, executing, verifying, complete, blocked, abandoned)
 - [x] **FOUND-03**: All multi-step planning state mutations are wrapped in explicit SQLite transactions (no partial-write corruption)
 - [x] **FOUND-04**: Planning state stores a context hash at project creation and checks freshness before phase execution
 - [x] **FOUND-05**: Planning schema added via SQLite migration v20 following existing mneme migration pattern
@@ -115,7 +115,7 @@
 
 ### Tests
 
-- [ ] **TEST-01**: Unit tests for state machine transitions (pure FSM -- all paths covered)
+- [x] **TEST-01**: Unit tests for state machine transitions (pure FSM -- all paths covered)
 - [x] **TEST-02**: Unit tests for PlanningStore CRUD operations using in-memory SQLite
 - [ ] **TEST-03**: Unit tests for intent detection hook (true positive and false positive scenarios)
 - [ ] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
@@ -171,7 +171,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FOUND-01 | Phase 1: Foundation | Complete |
-| FOUND-02 | Phase 1: Foundation | Pending |
+| FOUND-02 | Phase 1: Foundation | Complete |
 | FOUND-03 | Phase 1: Foundation | Complete |
 | FOUND-04 | Phase 1: Foundation | Complete |
 | FOUND-05 | Phase 1: Foundation | Complete |
@@ -237,7 +237,7 @@
 | DOCS-01 | Phase 9: Polish & Migration | Pending |
 | DOCS-02 | Phase 9: Polish & Migration | Pending |
 | DOCS-03 | Phase 9: Polish & Migration | Pending |
-| TEST-01 | Phase 1: Foundation | Pending |
+| TEST-01 | Phase 1: Foundation | Complete |
 | TEST-02 | Phase 1: Foundation | Complete |
 | TEST-03 | Phase 2: Orchestrator & Entry | Pending |
 | TEST-04 | Phase 9: Polish & Migration | Pending |
