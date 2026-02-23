@@ -192,20 +192,42 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   router.registerProvider("anthropic", anthropic, configModels);
 
   // Read backup credentials for failover on 429/5xx
+  // Supports both legacy "backupKeys" (API key strings) and
+  // "backupCredentials" (typed objects with oauth/apiKey support)
   const home = process.env["HOME"] ?? "/tmp";
   const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
   try {
     const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
-    const backupKeys = raw["backupKeys"];
-    if (Array.isArray(backupKeys)) {
-      const backups = backupKeys
-        .filter((k): k is string => typeof k === "string" && k.length > 0)
-        .map((key) => new AnthropicProvider({ apiKey: key }));
-      if (backups.length > 0) {
-        router.registerBackupCredentials(backups);
+    const backups: AnthropicProvider[] = [];
+
+    // New format: typed backup credentials (oauth tokens + API keys)
+    const backupCreds = raw["backupCredentials"];
+    if (Array.isArray(backupCreds)) {
+      for (const cred of backupCreds) {
+        if (typeof cred !== "object" || cred === null) continue;
+        const c = cred as Record<string, unknown>;
+        if (c["type"] === "oauth" && typeof c["token"] === "string" && (c["token"] as string).length > 0) {
+          backups.push(new AnthropicProvider({ authToken: c["token"] as string }));
+        } else if (typeof c["apiKey"] === "string" && (c["apiKey"] as string).length > 0) {
+          backups.push(new AnthropicProvider({ apiKey: c["apiKey"] as string }));
+        }
       }
     }
-  } catch { /* no backup keys configured */ }
+
+    // Legacy format: plain API key strings
+    const backupKeys = raw["backupKeys"];
+    if (Array.isArray(backupKeys)) {
+      for (const key of backupKeys) {
+        if (typeof key === "string" && key.length > 0) {
+          backups.push(new AnthropicProvider({ apiKey: key }));
+        }
+      }
+    }
+
+    if (backups.length > 0) {
+      router.registerBackupCredentials(backups);
+    }
+  } catch { /* no backup credentials configured */ }
 
   return router;
 }
