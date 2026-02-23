@@ -88,7 +88,23 @@ export class ProviderRouter {
     const entry = this.resolve(request.model);
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
     log.debug(`Streaming ${request.model} via ${entry.name} (model=${model})`);
-    yield* entry.provider.completeStreaming({ ...request, model });
+    try {
+      yield* entry.provider.completeStreaming({ ...request, model });
+    } catch (error) {
+      if (!(error instanceof ProviderError) || !error.recoverable || this.backupProviders.length === 0) {
+        throw error;
+      }
+      for (let i = 0; i < this.backupProviders.length; i++) {
+        log.warn(`Primary credential failed (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
+        try {
+          yield* this.backupProviders[i]!.completeStreaming({ ...request, model });
+          return;
+        } catch { /* backup also failed — try next */
+          continue;
+        }
+      }
+      throw error;
+    }
   }
 
   async completeWithFailover(
