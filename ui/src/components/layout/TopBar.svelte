@@ -14,10 +14,9 @@
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
 
-  let { onSetView, activeView, onAgentSelect }: {
+  let { onSetView, activeView }: {
     onSetView: (view: ViewId) => void;
     activeView: ViewId;
-    onAgentSelect?: () => void;
   } = $props();
 
   let agent = $derived(getActiveAgent());
@@ -42,7 +41,6 @@
     loadSessions(id);
     markRead(id);
     if (activeView !== "chat") onSetView("chat");
-    onAgentSelect?.();
   }
 
   function handleMobileNav(view: ViewId) {
