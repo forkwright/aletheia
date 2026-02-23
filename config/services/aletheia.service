@@ -1,0 +1,58 @@
+[Unit]
+Description=Aletheia AI Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+EnvironmentFile=%h/.aletheia/env
+ExecStart=/usr/bin/node %h/aletheia/infrastructure/runtime/dist/entry.mjs
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+
+# Usage:
+#   cp aletheia.service ~/.config/systemd/user/aletheia.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now aletheia
+#
+# Create ~/.aletheia/env with:
+#   ALETHEIA_ROOT=/home/<user>/aletheia
+
+# =============================================================================
+# macOS launchd equivalent (~/.config/aletheia/com.aletheia.plist):
+# =============================================================================
+#
+# <?xml version="1.0" encoding="UTF-8"?>
+# <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+#   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+# <plist version="1.0">
+# <dict>
+#   <key>Label</key>
+#   <string>com.aletheia</string>
+#   <key>ProgramArguments</key>
+#   <array>
+#     <string>/usr/local/bin/node</string>
+#     <string>/Users/<user>/aletheia/infrastructure/runtime/dist/entry.mjs</string>
+#   </array>
+#   <key>EnvironmentVariables</key>
+#   <dict>
+#     <key>ALETHEIA_ROOT</key>
+#     <string>/Users/<user>/aletheia</string>
+#   </dict>
+#   <key>RunAtLoad</key>
+#   <true/>
+#   <key>KeepAlive</key>
+#   <true/>
+#   <key>StandardOutPath</key>
+#   <string>/tmp/aletheia.log</string>
+#   <key>StandardErrorPath</key>
+#   <string>/tmp/aletheia.log</string>
+# </dict>
+# </plist>
+#
+# launchctl load ~/Library/LaunchAgents/com.aletheia.plist

@@ -34,6 +34,7 @@ import { memoryRoutes } from "./routes/memory.js";
 import { exportRoutes } from "./routes/export.js";
 import { blackboardRoutes } from "./routes/blackboard.js";
 import { workspaceRoutes } from "./routes/workspace.js";
+import { setupRoutes } from "./routes/setup.js";
 
 const log = createLogger("pylon");
 
@@ -180,6 +181,7 @@ export function createGateway(
 
   // Mount all route modules
   const modules = [
+    setupRoutes,
     systemRoutes,
     authRoutes,
     auditRoutes,

@@ -60,6 +60,9 @@ export function createAuthMiddleware(
     "/api/auth/login",
     "/api/auth/refresh",
     "/api/auth/mode",
+    "/api/setup/status",
+    "/api/setup/credentials",
+    "/api/setup/complete",
   ]);
 
   return async (c: Context, next: Next) => {
