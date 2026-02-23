@@ -17,8 +17,8 @@ pub fn stream_message(
     let url = format!("{}/api/sessions/stream", base_url.trim_end_matches('/'));
 
     let body = serde_json::json!({
-        "text": text,
-        "nousId": nous_id,
+        "message": text,
+        "agentId": nous_id,
         "sessionKey": session_key,
     });
 

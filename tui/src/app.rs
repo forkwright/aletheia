@@ -1196,33 +1196,67 @@ impl App {
 }
 
 
+/// Extract text content blocks from a JSON array of Anthropic content blocks.
+fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
+    let mut texts = Vec::new();
+    let mut tool_summaries = Vec::new();
+
+    for block in arr {
+        match block.get("type").and_then(|t| t.as_str()) {
+            Some("text") => {
+                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                    if !t.is_empty() {
+                        texts.push(t.to_string());
+                    }
+                }
+            }
+            Some("tool_use") => {
+                let name = block
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown");
+                tool_summaries.push(format!("▸ *{}*", name));
+            }
+            _ => {}
+        }
+    }
+
+    if texts.is_empty() && tool_summaries.is_empty() {
+        return None;
+    }
+
+    let mut result = texts.join("\n");
+    if !tool_summaries.is_empty() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&tool_summaries.join("\n"));
+    }
+    Some(result)
+}
+
 /// Extract displayable text from a history message's content field.
-/// Content can be: a plain string, a JSON array of content blocks, or null.
+/// Content can be: a plain string, a stringified JSON array, a JSON array, or null.
 fn extract_text_content(content: &Option<serde_json::Value>) -> Option<String> {
     let content = content.as_ref()?;
 
-    // Plain string content
+    // Plain string content — but might be a stringified JSON array
     if let Some(s) = content.as_str() {
-        return if s.is_empty() { None } else { Some(s.to_string()) };
+        if s.is_empty() {
+            return None;
+        }
+        // Try parsing as JSON array (double-stringified content from API)
+        if s.starts_with('[') {
+            if let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(s) {
+                return extract_texts_from_array(&parsed);
+            }
+        }
+        return Some(s.to_string());
     }
 
-    // Array of content blocks (Anthropic format)
+    // Already a JSON array of content blocks
     if let Some(arr) = content.as_array() {
-        let texts: Vec<&str> = arr
-            .iter()
-            .filter_map(|block| {
-                if block.get("type")?.as_str()? == "text" {
-                    block.get("text")?.as_str()
-                } else {
-                    None
-                }
-            })
-            .collect();
-        return if texts.is_empty() {
-            None
-        } else {
-            Some(texts.join("\n"))
-        };
+        return extract_texts_from_array(arr);
     }
 
     None
