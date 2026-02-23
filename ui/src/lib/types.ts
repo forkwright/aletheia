@@ -111,6 +111,7 @@ export interface TurnOutcome {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  credentialLabel?: string;
 }
 
 export interface MetricsData {
