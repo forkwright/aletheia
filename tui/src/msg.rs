@@ -16,8 +16,10 @@ pub enum Msg {
     ClearLine,  // Ctrl+U
     HistoryUp,
     HistoryDown,
-    Submit, // Enter — send message
-    Quit,   // Ctrl+C or Ctrl+Q
+    Submit,           // Enter — send message
+    CopyLastResponse, // Ctrl+Y — copy last assistant response to clipboard
+    ComposeInEditor,  // Ctrl+E — open $EDITOR for multi-line compose
+    Quit,             // Ctrl+C or Ctrl+Q
 
     // --- Navigation ---
     ScrollUp,

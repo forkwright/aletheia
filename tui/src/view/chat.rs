@@ -107,8 +107,13 @@ fn render_message(
         render_tool_summary(&msg.tool_calls, lines, theme);
     }
 
-    // Message content — markdown parsed, indented
-    let rendered = markdown::render(&msg.text, inner_width.saturating_sub(2), theme);
+    // Message content — markdown parsed with syntax highlighting
+    let rendered = markdown::render(
+        &msg.text,
+        inner_width.saturating_sub(2),
+        theme,
+        &app.highlighter,
+    );
     for line in rendered {
         let mut padded_spans = vec![Span::raw(" ")];
         padded_spans.extend(line.spans);
@@ -246,7 +251,12 @@ fn render_streaming(
         let rendered = if app.cached_markdown_text == app.streaming_text {
             app.cached_markdown_lines.clone()
         } else {
-            markdown::render(&app.streaming_text, inner_width.saturating_sub(2), theme)
+            markdown::render(
+                &app.streaming_text,
+                inner_width.saturating_sub(2),
+                theme,
+                &app.highlighter,
+            )
         };
 
         for line in rendered {
