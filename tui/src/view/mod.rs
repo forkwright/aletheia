@@ -12,6 +12,7 @@ use crate::app::App;
 
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
+    let theme = &app.theme;
 
     // Top-level vertical split: title bar | body | status bar
     let vertical = Layout::default()
@@ -23,32 +24,32 @@ pub fn render(app: &App, frame: &mut Frame) {
         ])
         .split(area);
 
-    title_bar::render(app, frame, vertical[0]);
-    status_bar::render(app, frame, vertical[2]);
+    title_bar::render(app, frame, vertical[0], theme);
+    status_bar::render(app, frame, vertical[2], theme);
 
     // Body: sidebar | chat area
     if app.sidebar_visible {
         let horizontal = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(20), // sidebar
+                Constraint::Length(22), // sidebar (slightly wider for padding)
                 Constraint::Min(40),   // chat
             ])
             .split(vertical[1]);
 
-        sidebar::render(app, frame, horizontal[0]);
-        render_chat_area(app, frame, horizontal[1]);
+        sidebar::render(app, frame, horizontal[0], theme);
+        render_chat_area(app, frame, horizontal[1], theme);
     } else {
-        render_chat_area(app, frame, vertical[1]);
+        render_chat_area(app, frame, vertical[1], theme);
     }
 
     // Render overlay on top if present
     if app.overlay.is_some() {
-        overlay::render(app, frame, area);
+        overlay::render(app, frame, area, theme);
     }
 }
 
-fn render_chat_area(app: &App, frame: &mut Frame, area: Rect) {
+fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::theme::ThemePalette) {
     // Dynamically size input area based on text length (wrapping)
     let prompt_len: u16 = if app.active_turn_id.is_some() { 9 } else { 2 };
     let text_len = app.input.text.len() as u16 + prompt_len;
@@ -64,6 +65,6 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    chat::render(app, frame, layout[0]);
-    input::render(app, frame, layout[1]);
+    chat::render(app, frame, layout[0], theme);
+    input::render(app, frame, layout[1], theme);
 }

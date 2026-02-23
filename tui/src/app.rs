@@ -10,6 +10,7 @@ use crate::api::types::*;
 use crate::config::Config;
 use crate::events::{Event, StreamEvent};
 use crate::msg::{Msg, OverlayKind};
+use crate::theme::ThemePalette;
 use crate::view;
 
 // --- Agent state ---
@@ -32,6 +33,9 @@ pub struct AgentState {
     pub tool_started_at: Option<std::time::Instant>,
     pub sessions: Vec<Session>,
     pub compaction_stage: Option<String>,
+    /// Indicates this agent completed a turn while not focused.
+    /// Cleared when the user switches to this agent.
+    pub has_notification: bool,
 }
 
 // --- Chat message ---
@@ -61,8 +65,6 @@ pub struct InputState {
 pub enum Overlay {
     Help,
     AgentPicker { cursor: usize },
-    SessionBrowser { cursor: usize },
-    CostSummary,
     SystemStatus,
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
@@ -99,6 +101,7 @@ pub struct PlanStepApproval {
 pub struct App {
     pub config: Config,
     pub client: ApiClient,
+    pub theme: ThemePalette,
     pub should_quit: bool,
 
     // Dashboard state
@@ -140,9 +143,13 @@ impl App {
     pub async fn init(config: Config) -> Result<Self> {
         let client = ApiClient::new(&config.url, config.token.clone())?;
 
+        let theme = ThemePalette::detect();
+        tracing::info!("detected color depth: {:?}", theme.depth);
+
         let mut app = Self {
             config,
             client,
+            theme,
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
@@ -218,6 +225,7 @@ impl App {
                 tool_started_at: None,
                 sessions: Vec::new(),
                 compaction_stage: None,
+                has_notification: false,
             })
             .collect();
 
@@ -381,6 +389,7 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
 
             // Overlays
+            (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
             }
@@ -714,6 +723,10 @@ impl App {
                 self.auto_scroll = true;
             }
             Msg::FocusAgent(id) => {
+                // Clear notification on the agent we're switching to
+                if let Some(agent) = self.agents.iter_mut().find(|a| a.id == id) {
+                    agent.has_notification = false;
+                }
                 self.focused_agent = Some(id.clone());
                 self.load_focused_session().await;
             }
@@ -749,8 +762,6 @@ impl App {
                 self.overlay = Some(match kind {
                     OverlayKind::Help => Overlay::Help,
                     OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
-                    OverlayKind::SessionBrowser => Overlay::SessionBrowser { cursor: 0 },
-                    OverlayKind::CostSummary => Overlay::CostSummary,
                     OverlayKind::SystemStatus => Overlay::SystemStatus,
                 });
             }
@@ -785,9 +796,6 @@ impl App {
                 Some(Overlay::AgentPicker { cursor }) => {
                     *cursor = cursor.saturating_sub(1);
                 }
-                Some(Overlay::SessionBrowser { cursor }) => {
-                    *cursor = cursor.saturating_sub(1);
-                }
                 Some(Overlay::PlanApproval(plan)) => {
                     plan.cursor = plan.cursor.saturating_sub(1);
                 }
@@ -796,15 +804,6 @@ impl App {
             Msg::OverlayDown => match &mut self.overlay {
                 Some(Overlay::AgentPicker { cursor }) => {
                     let max = self.agents.len().saturating_sub(1);
-                    *cursor = (*cursor + 1).min(max);
-                }
-                Some(Overlay::SessionBrowser { cursor }) => {
-                    let max = self
-                        .focused_agent
-                        .as_ref()
-                        .and_then(|id| self.agents.iter().find(|a| a.id == *id))
-                        .map(|a| a.sessions.len().saturating_sub(1))
-                        .unwrap_or(0);
                     *cursor = (*cursor + 1).min(max);
                 }
                 Some(Overlay::PlanApproval(plan)) => {
@@ -816,7 +815,8 @@ impl App {
             Msg::OverlaySelect => {
                 match &self.overlay {
                     Some(Overlay::AgentPicker { cursor }) => {
-                        if let Some(agent) = self.agents.get(*cursor) {
+                        if let Some(agent) = self.agents.get_mut(*cursor) {
+                            agent.has_notification = false;
                             let id = agent.id.clone();
                             self.focused_agent = Some(id);
                             self.overlay = None;
@@ -879,13 +879,18 @@ impl App {
                 nous_id,
                 session_id,
             } => {
+                let is_focused = self.focused_agent.as_deref() == Some(&nous_id);
                 if let Some(agent) = self.agents.iter_mut().find(|a| a.id == nous_id) {
                     agent.status = AgentStatus::Idle;
                     agent.active_tool = None;
                     agent.tool_started_at = None;
+                    // Set notification if this agent isn't currently focused
+                    if !is_focused {
+                        agent.has_notification = true;
+                    }
                 }
                 // Reload history if this is our focused agent/session
-                if self.focused_agent.as_deref() == Some(&nous_id) {
+                if is_focused {
                     if self.focused_session_id.as_deref() == Some(&session_id) {
                         // Only reload if we're not currently streaming (we already have the data)
                         if self.active_turn_id.is_none() {
@@ -1084,6 +1089,7 @@ impl App {
                         tool_started_at: None,
                         sessions: Vec::new(),
                         compaction_stage: None,
+                        has_notification: false,
                     })
                     .collect();
             }

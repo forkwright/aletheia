@@ -4,6 +4,7 @@ mod config;
 mod events;
 mod markdown;
 mod msg;
+mod theme;
 mod view;
 
 use anyhow::Result;

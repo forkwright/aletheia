@@ -1,52 +1,61 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
+use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{AgentStatus, App};
+use crate::theme::{self, ThemePalette};
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let mut lines: Vec<Line> = Vec::new();
+
+    // Small top padding
+    lines.push(Line::raw(""));
 
     for agent in &app.agents {
         let is_focused = app.focused_agent.as_deref() == Some(&agent.id);
 
         let status_icon = match agent.status {
-            AgentStatus::Idle => Span::styled("○", Style::default().fg(Color::DarkGray)),
+            AgentStatus::Idle => Span::styled("○", theme.style_dim()),
             AgentStatus::Working => {
-                let spinners = ['◐', '◓', '◑', '◒'];
-                let idx = (app.tick_count / 4) as usize % spinners.len();
-                Span::styled(
-                    spinners[idx].to_string(),
-                    Style::default().fg(Color::Yellow),
-                )
+                let ch = theme::spinner_frame(app.tick_count);
+                Span::styled(ch.to_string(), Style::default().fg(theme.spinner))
             }
-            AgentStatus::Streaming => Span::styled("●", Style::default().fg(Color::Green)),
-            AgentStatus::Compacting => Span::styled("◉", Style::default().fg(Color::Magenta)),
+            AgentStatus::Streaming => Span::styled("●", Style::default().fg(theme.streaming)),
+            AgentStatus::Compacting => Span::styled("◉", Style::default().fg(theme.compacting)),
         };
 
         let name_style = if is_focused {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme.fg)
         };
 
         let emoji = agent.emoji.as_deref().unwrap_or("");
         let name = if emoji.is_empty() {
             agent.name.clone()
         } else {
-            format!("{}{}", emoji, agent.name)
+            format!("{} {}", emoji, agent.name)
         };
 
-        lines.push(Line::from(vec![
-            Span::raw(" "),
+        // Build the line: indicator + name + notification dot
+        let mut spans = vec![
+            Span::raw("  "),
             status_icon,
             Span::raw(" "),
             Span::styled(name, name_style),
-        ]));
+        ];
+
+        // Notification dot — shows when an unfocused agent completed a turn
+        if !is_focused && agent.has_notification {
+            spans.push(Span::styled(" ●", Style::default().fg(theme.accent)));
+        }
+
+        lines.push(Line::from(spans));
 
         // Show active tool under working agents
         if let Some(ref tool) = agent.active_tool {
@@ -54,11 +63,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                 .tool_started_at
                 .map(|t| t.elapsed().as_secs_f32())
                 .unwrap_or(0.0);
+            let ch = theme::spinner_frame(app.tick_count);
             lines.push(Line::from(vec![
-                Span::raw("   "),
+                Span::raw("     "),
                 Span::styled(
-                    format!("⚙ {} ({:.1}s)", tool, elapsed),
-                    Style::default().fg(Color::DarkGray),
+                    format!("{} {} {:.1}s", ch, tool, elapsed),
+                    theme.style_muted(),
                 ),
             ]));
         }
@@ -66,18 +76,19 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         // Show compaction stage
         if let Some(ref stage) = agent.compaction_stage {
             lines.push(Line::from(vec![
-                Span::raw("   "),
+                Span::raw("     "),
                 Span::styled(
                     format!("↻ {}", stage),
-                    Style::default().fg(Color::Magenta),
+                    Style::default().fg(theme.compacting),
                 ),
             ]));
         }
     }
 
     let block = Block::default()
-        .title(" Agents ")
-        .borders(Borders::RIGHT);
+        .borders(Borders::RIGHT)
+        .border_set(symbols::border::PLAIN)
+        .border_style(Style::default().fg(theme.separator));
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);

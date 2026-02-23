@@ -97,8 +97,6 @@ pub enum Msg {
 pub enum OverlayKind {
     Help,
     AgentPicker,
-    SessionBrowser,
-    CostSummary,
     SystemStatus,
 }
 

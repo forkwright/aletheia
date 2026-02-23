@@ -1,12 +1,14 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
+use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{App, Overlay};
+use crate::theme::ThemePalette;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let overlay = match &app.overlay {
         Some(o) => o,
         None => return,
@@ -18,88 +20,137 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Clear, popup_area);
 
     match overlay {
-        Overlay::Help => render_help(frame, popup_area),
-        Overlay::AgentPicker { cursor } => render_agent_picker(app, frame, popup_area, *cursor),
-        Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval),
-        Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan),
+        Overlay::Help => render_help(frame, popup_area, theme),
+        Overlay::AgentPicker { cursor } => {
+            render_agent_picker(app, frame, popup_area, *cursor, theme)
+        }
+        Overlay::ToolApproval(approval) => {
+            render_tool_approval(frame, popup_area, approval, theme)
+        }
+        Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         _ => {
-            let block = Block::default()
-                .title(" TODO ")
-                .borders(Borders::ALL)
-                .style(Style::default().bg(Color::Black));
+            let block = overlay_block(" TODO ", theme);
             frame.render_widget(block, popup_area);
         }
     }
 }
 
-fn render_help(frame: &mut Frame, area: Rect) {
+/// Standard overlay block with rounded borders.
+fn overlay_block<'a>(title: &str, theme: &ThemePalette) -> Block<'a> {
+    Block::default()
+        .title(format!(" {} ", title.trim()))
+        .title_style(theme.style_accent_bold())
+        .borders(Borders::ALL)
+        .border_set(symbols::border::ROUNDED)
+        .border_style(theme.style_border())
+        .style(Style::default().bg(theme.surface))
+}
+
+/// Highlighted overlay block (for warnings/approvals).
+fn overlay_block_accent(title: &str, accent_color: ratatui::style::Color, theme: &ThemePalette) -> Block<'static> {
+    Block::default()
+        .title(format!(" {} ", title.trim()))
+        .title_style(Style::default().fg(accent_color).add_modifier(Modifier::BOLD))
+        .borders(Borders::ALL)
+        .border_set(symbols::border::ROUNDED)
+        .border_style(Style::default().fg(accent_color))
+        .style(Style::default().bg(theme.surface))
+}
+
+fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+    let key_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+    let desc_style = theme.style_fg();
+    let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
+
     let lines = vec![
-        Line::from(Span::styled(
-            "Keybindings",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
         Line::raw(""),
-        Line::raw("  Ctrl+Q     Quit"),
-        Line::raw("  Ctrl+F     Toggle sidebar"),
-        Line::raw("  Ctrl+A     Agent picker"),
-        Line::raw("  Ctrl+T     Toggle thinking blocks"),
-        Line::raw("  Ctrl+U     Clear input"),
-        Line::raw("  Ctrl+W     Delete word"),
-        Line::raw("  Ctrl+E     Open $EDITOR"),
-        Line::raw("  Enter      Send message"),
-        Line::raw("  Up/Down    Input history"),
-        Line::raw("  Shift+Up   Scroll up"),
-        Line::raw("  Shift+Down Scroll down"),
-        Line::raw("  PgUp/PgDn  Page scroll"),
-        Line::raw("  Esc        Close overlay"),
+        Line::from(Span::styled("  Navigation", section_style)),
+        Line::raw(""),
+        help_line("  Ctrl+A     ", "Switch agent", key_style, desc_style),
+        help_line("  Ctrl+F     ", "Toggle sidebar", key_style, desc_style),
+        help_line("  Ctrl+T     ", "Toggle thinking blocks", key_style, desc_style),
+        Line::raw(""),
+        Line::from(Span::styled("  Input", section_style)),
+        Line::raw(""),
+        help_line("  Enter      ", "Send message", key_style, desc_style),
+        help_line("  Ctrl+U     ", "Clear input line", key_style, desc_style),
+        help_line("  Ctrl+W     ", "Delete word", key_style, desc_style),
+        help_line("  Ctrl+E     ", "Open $EDITOR", key_style, desc_style),
+        help_line("  Up/Down    ", "Input history", key_style, desc_style),
+        Line::raw(""),
+        Line::from(Span::styled("  Scroll", section_style)),
+        Line::raw(""),
+        help_line("  Shift+Up   ", "Scroll up", key_style, desc_style),
+        help_line("  Shift+Down ", "Scroll down", key_style, desc_style),
+        help_line("  PgUp/PgDn  ", "Page scroll", key_style, desc_style),
+        Line::raw(""),
+        help_line("  Ctrl+Q     ", "Quit", key_style, desc_style),
+        help_line("  Esc        ", "Close this overlay", key_style, desc_style),
     ];
 
-    let block = Block::default()
-        .title(" Help ")
-        .borders(Borders::ALL)
-        .style(Style::default().bg(Color::Black));
-
+    let block = overlay_block("Help", theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 
-fn render_agent_picker(app: &App, frame: &mut Frame, area: Rect, cursor: usize) {
+fn help_line<'a>(
+    key: &'a str,
+    desc: &'a str,
+    key_style: Style,
+    desc_style: Style,
+) -> Line<'a> {
+    Line::from(vec![
+        Span::styled(key, key_style),
+        Span::styled(desc, desc_style),
+    ])
+}
+
+fn render_agent_picker(
+    app: &App,
+    frame: &mut Frame,
+    area: Rect,
+    cursor: usize,
+    theme: &ThemePalette,
+) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
     for (i, agent) in app.agents.iter().enumerate() {
         let selected = i == cursor;
-        let marker = if selected { "▸ " } else { "  " };
+        let marker = if selected { "▸" } else { " " };
         let emoji = agent.emoji.as_deref().unwrap_or("");
 
         let style = if selected {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            theme.style_fg()
         };
 
         lines.push(Line::from(vec![
-            Span::raw(format!("  {}", marker)),
+            Span::raw(format!("  {} ", marker)),
             Span::styled(
-                format!("{}{} ({})", emoji, agent.name, agent.id),
+                format!("{} {} ", emoji, agent.name),
                 style,
+            ),
+            Span::styled(
+                format!("({})", agent.id),
+                theme.style_dim(),
             ),
         ]));
     }
 
     lines.push(Line::raw(""));
-    lines.push(Line::from(Span::styled(
-        "  Enter to select, Esc to cancel",
-        Style::default().fg(Color::DarkGray),
-    )));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Enter", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(" select  ", theme.style_muted()),
+        Span::styled("Esc", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(" cancel", theme.style_muted()),
+    ]));
 
-    let block = Block::default()
-        .title(" Switch Agent ")
-        .borders(Borders::ALL)
-        .style(Style::default().bg(Color::Black));
-
+    let block = overlay_block("Switch Agent", theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
@@ -108,36 +159,31 @@ fn render_tool_approval(
     frame: &mut Frame,
     area: Rect,
     approval: &crate::app::ToolApprovalOverlay,
+    theme: &ThemePalette,
 ) {
     let mut lines = vec![
         Line::raw(""),
         Line::from(vec![
-            Span::raw("  Tool: "),
+            Span::styled("  Tool: ", theme.style_muted()),
             Span::styled(
                 &approval.tool_name,
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.warning)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(vec![
-            Span::raw("  Risk: "),
-            Span::styled(
-                &approval.risk,
-                Style::default().fg(Color::Red),
-            ),
+            Span::styled("  Risk: ", theme.style_muted()),
+            Span::styled(&approval.risk, theme.style_error()),
         ]),
         Line::from(vec![
-            Span::raw("  Reason: "),
-            Span::styled(
-                &approval.reason,
-                Style::default().fg(Color::White),
-            ),
+            Span::styled("  Reason: ", theme.style_muted()),
+            Span::styled(&approval.reason, theme.style_fg()),
         ]),
         Line::raw(""),
         Line::from(Span::styled(
             "  Input:",
-            Style::default().add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         )),
     ];
 
@@ -146,26 +192,25 @@ fn render_tool_approval(
     for line in input_str.lines().take(10) {
         lines.push(Line::from(Span::styled(
             format!("  {}", line),
-            Style::default().fg(Color::DarkGray),
+            theme.style_dim(),
         )));
+    }
+    if input_str.lines().count() > 10 {
+        lines.push(Line::from(Span::styled("  …", theme.style_dim())));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
-        Span::styled("  [A]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-        Span::raw("pprove    "),
-        Span::styled("[D]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-        Span::raw("eny    "),
-        Span::styled("[Esc]", Style::default().fg(Color::DarkGray)),
-        Span::raw(" cancel"),
+        Span::raw("  "),
+        Span::styled("[A]", theme.style_success_bold()),
+        Span::styled("pprove  ", theme.style_muted()),
+        Span::styled("[D]", theme.style_error_bold()),
+        Span::styled("eny  ", theme.style_muted()),
+        Span::styled("[Esc]", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(" cancel", theme.style_muted()),
     ]));
 
-    let block = Block::default()
-        .title(" ⚠ Tool Approval Required ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .style(Style::default().bg(Color::Black));
-
+    let block = overlay_block_accent("⚠ Tool Approval Required", theme.warning, theme);
     let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
@@ -174,9 +219,10 @@ fn render_plan_approval(
     frame: &mut Frame,
     area: Rect,
     plan: &crate::app::PlanApprovalOverlay,
+    theme: &ThemePalette,
 ) {
     let cost = format!("${:.2}", plan.total_cost_cents as f64 / 100.0);
-    let title = format!(" Plan ({} steps, ~{}) ", plan.steps.len(), cost);
+    let title = format!("Plan ({} steps, ~{})", plan.steps.len(), cost);
 
     let mut lines = vec![Line::raw("")];
 
@@ -185,45 +231,46 @@ fn render_plan_approval(
         let check = if step.checked { "✓" } else { " " };
         let marker = if selected { "▸" } else { " " };
 
+        let check_style = if step.checked {
+            theme.style_success()
+        } else {
+            theme.style_dim()
+        };
+
         let style = if selected {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            theme.style_fg()
         };
 
         lines.push(Line::from(vec![
-            Span::raw(format!("  {} [{}] {}. ", marker, check, step.id)),
+            Span::raw(format!("  {} ", marker)),
+            Span::styled(format!("[{}]", check), check_style),
+            Span::styled(format!(" {}. ", step.id), theme.style_dim()),
             Span::styled(&step.label, style),
-            Span::styled(
-                format!(" ({})", step.role),
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled(format!(" ({})", step.role), theme.style_dim()),
         ]));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
-        Span::styled("  [A]", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-        Span::raw("pprove all    "),
-        Span::styled("[Space]", Style::default().fg(Color::Cyan)),
-        Span::raw(" toggle    "),
-        Span::styled("[C]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-        Span::raw("ancel"),
+        Span::raw("  "),
+        Span::styled("[A]", theme.style_success_bold()),
+        Span::styled("pprove all  ", theme.style_muted()),
+        Span::styled("[Space]", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(" toggle  ", theme.style_muted()),
+        Span::styled("[C]", theme.style_error_bold()),
+        Span::styled("ancel", theme.style_muted()),
     ]));
 
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .style(Style::default().bg(Color::Black));
-
+    let block = overlay_block_accent(&title, theme.accent, theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 
-/// Create a centered rect within the given area
+/// Create a centered rect within the given area.
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

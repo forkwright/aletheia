@@ -1,19 +1,22 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use crate::theme::ThemePalette;
+
 /// Render markdown text into ratatui Lines.
-/// Phase 1: bold, italic, code, headings, lists, code blocks.
+/// Phase 1: bold, italic, code, headings, lists, code blocks, blockquotes, rules.
 /// Phase 2 adds: tables, links, syntax highlighting.
-pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
+pub fn render(text: &str, _width: usize, theme: &ThemePalette) -> Vec<Line<'static>> {
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
     let parser = Parser::new_ext(text, options);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
-    let mut style_stack: Vec<Style> = vec![Style::default()];
+    let mut style_stack: Vec<Style> = vec![Style::default().fg(theme.fg)];
     let mut in_code_block = false;
     let mut code_block_lines: Vec<String> = Vec::new();
+    let mut code_block_lang: Option<String> = None;
     let mut list_depth: usize = 0;
 
     for event in parser {
@@ -21,9 +24,7 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
                     flush_line(&mut lines, &mut current_spans);
-                    let style = Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD);
+                    let style = theme.style_accent_bold();
                     style_stack.push(style);
                     let prefix = match level {
                         pulldown_cmark::HeadingLevel::H1 => "# ",
@@ -41,10 +42,17 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
                     let style = current_style(&style_stack).add_modifier(Modifier::ITALIC);
                     style_stack.push(style);
                 }
-                Tag::CodeBlock(_) => {
+                Tag::CodeBlock(kind) => {
                     flush_line(&mut lines, &mut current_spans);
                     in_code_block = true;
                     code_block_lines.clear();
+                    code_block_lang = match kind {
+                        pulldown_cmark::CodeBlockKind::Fenced(lang) => {
+                            let l = lang.to_string();
+                            if l.is_empty() { None } else { Some(l) }
+                        }
+                        _ => None,
+                    };
                 }
                 Tag::List(_) => {
                     list_depth += 1;
@@ -52,15 +60,21 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
                 Tag::Item => {
                     flush_line(&mut lines, &mut current_spans);
                     let indent = "  ".repeat(list_depth.saturating_sub(1));
-                    current_spans.push(Span::raw(format!("{}• ", indent)));
+                    current_spans.push(Span::styled(
+                        format!("{}• ", indent),
+                        theme.style_muted(),
+                    ));
                 }
                 Tag::Paragraph => {
                     flush_line(&mut lines, &mut current_spans);
                 }
                 Tag::BlockQuote(_) => {
-                    let style = Style::default().fg(Color::DarkGray);
+                    let style = theme.style_muted();
                     style_stack.push(style);
-                    current_spans.push(Span::styled("│ ".to_string(), style));
+                    current_spans.push(Span::styled(
+                        "│ ".to_string(),
+                        Style::default().fg(theme.border),
+                    ));
                 }
                 _ => {}
             },
@@ -73,16 +87,42 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
                     style_stack.pop();
                 }
                 TagEnd::CodeBlock => {
-                    // Render code block with background
-                    let code_style = Style::default().fg(Color::White).bg(Color::Rgb(40, 40, 40));
-                    for code_line in &code_block_lines {
+                    // Language label
+                    if let Some(ref lang) = code_block_lang {
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!(" ╭─ {} ", lang),
+                                Style::default().fg(theme.code_lang),
+                            ),
+                            Span::styled(
+                                "─".repeat(20),
+                                Style::default().fg(theme.code_lang),
+                            ),
+                        ]));
+                    } else {
                         lines.push(Line::from(Span::styled(
-                            format!(" {} ", code_line),
-                            code_style,
+                            " ╭──────────────────────",
+                            Style::default().fg(theme.code_lang),
                         )));
                     }
+
+                    // Code lines with background
+                    let code_style = theme.style_code();
+                    for code_line in &code_block_lines {
+                        lines.push(Line::from(vec![
+                            Span::styled(" │ ", Style::default().fg(theme.code_lang)),
+                            Span::styled(code_line.to_string(), code_style),
+                        ]));
+                    }
+
+                    lines.push(Line::from(Span::styled(
+                        " ╰──────────────────────",
+                        Style::default().fg(theme.code_lang),
+                    )));
+
                     in_code_block = false;
                     code_block_lines.clear();
+                    code_block_lang = None;
                 }
                 TagEnd::List(_) => {
                     list_depth = list_depth.saturating_sub(1);
@@ -110,10 +150,10 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
                 }
             }
             Event::Code(code) => {
-                let style = Style::default()
-                    .fg(Color::Yellow)
-                    .bg(Color::Rgb(40, 40, 40));
-                current_spans.push(Span::styled(format!("`{}`", code), style));
+                current_spans.push(Span::styled(
+                    format!("`{}`", code),
+                    theme.style_inline_code(),
+                ));
             }
             Event::SoftBreak => {
                 current_spans.push(Span::raw(" "));
@@ -125,7 +165,7 @@ pub fn render(text: &str, _width: usize) -> Vec<Line<'static>> {
                 flush_line(&mut lines, &mut current_spans);
                 lines.push(Line::from(Span::styled(
                     "─".repeat(40),
-                    Style::default().fg(Color::DarkGray),
+                    theme.style_dim(),
                 )));
             }
             _ => {}

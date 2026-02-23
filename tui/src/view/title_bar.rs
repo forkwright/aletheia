@@ -1,12 +1,12 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use crate::app::App;
+use crate::theme::ThemePalette;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let agent_name = app
         .focused_agent
         .as_ref()
@@ -22,29 +22,20 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or_else(|| "no agent".to_string());
 
     let sse_indicator = if app.sse_connected {
-        Span::styled("●", Style::default().fg(Color::Green))
+        Span::styled("●", theme.style_success())
     } else {
-        Span::styled("○", Style::default().fg(Color::Red))
+        Span::styled("○", theme.style_error())
     };
 
-    let cost = format!("${:.2} today", app.daily_cost_cents as f64 / 100.0);
-
     let title = Line::from(vec![
-        Span::styled(" Aletheia", Style::default().fg(Color::Cyan)),
-        Span::raw(" │ "),
-        Span::styled(agent_name, Style::default().fg(Color::White)),
+        Span::styled(" ✦ ", theme.style_accent_bold()),
+        Span::styled("aletheia", theme.style_accent()),
+        Span::styled(" │ ", theme.style_dim()),
+        Span::styled(agent_name, theme.style_fg()),
         Span::raw(" "),
         sse_indicator,
-        // Right-align cost — fill with spaces
-        Span::raw(" ".repeat(
-            area.width
-                .saturating_sub(30 + cost.len() as u16)
-                .into(),
-        )),
-        Span::styled(cost, Style::default().fg(Color::Yellow)),
-        Span::raw(" "),
     ]);
 
-    let bar = Paragraph::new(title).style(Style::default().bg(Color::DarkGray));
+    let bar = Paragraph::new(title).style(theme.style_surface());
     frame.render_widget(bar, area);
 }
