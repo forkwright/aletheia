@@ -5,7 +5,7 @@ use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::app::{App, Overlay};
+use crate::app::{AgentStatus, App, Overlay};
 use crate::theme::ThemePalette;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -26,10 +26,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         }
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
-        _ => {
-            let block = overlay_block(" TODO ", theme);
-            frame.render_widget(block, popup_area);
-        }
+        Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
     }
 }
 
@@ -82,11 +79,19 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             key_style,
             desc_style,
         ),
+        help_line("  Ctrl+I     ", "System status", key_style, desc_style),
+        help_line(
+            "  Ctrl+N     ",
+            "New session / topic",
+            key_style,
+            desc_style,
+        ),
         help_line("  F1         ", "This help screen", key_style, desc_style),
         Line::raw(""),
         Line::from(Span::styled("  Input", section_style)),
         Line::raw(""),
         help_line("  Enter      ", "Send message", key_style, desc_style),
+        help_line("  @agent Tab ", "Mention completion", key_style, desc_style),
         help_line("  Ctrl+U     ", "Clear input line", key_style, desc_style),
         help_line("  Ctrl+W     ", "Delete word", key_style, desc_style),
         help_line(
@@ -104,6 +109,12 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         help_line("  Shift+Down ", "Scroll down", key_style, desc_style),
         help_line("  PgUp/PgDn  ", "Page scroll", key_style, desc_style),
         help_line("  End        ", "Scroll to bottom", key_style, desc_style),
+        help_line(
+            "  Mouse      ",
+            "Scroll / click agent",
+            key_style,
+            desc_style,
+        ),
         Line::raw(""),
         Line::from(Span::styled("  During Turns", section_style)),
         Line::raw(""),
@@ -317,6 +328,96 @@ fn render_plan_approval(
 
     let block = overlay_block_accent(&title, theme.accent, theme);
     let paragraph = Paragraph::new(lines).block(block);
+    frame.render_widget(paragraph, area);
+}
+
+fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+    let mut lines = vec![Line::raw("")];
+    let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
+
+    // Connection status
+    lines.push(Line::from(Span::styled("  Connection", section_style)));
+    lines.push(Line::raw(""));
+    let sse_status = if app.sse_connected {
+        Span::styled("  SSE: connected ●", Style::default().fg(theme.success))
+    } else {
+        Span::styled("  SSE: disconnected ○", Style::default().fg(theme.error))
+    };
+    lines.push(Line::from(sse_status));
+    lines.push(Line::from(Span::styled(
+        format!("  Gateway: {}", app.config.url),
+        theme.style_muted(),
+    )));
+    lines.push(Line::from(Span::styled(
+        format!("  Terminal: {}×{}", app.terminal_width, app.terminal_height),
+        theme.style_muted(),
+    )));
+    lines.push(Line::raw(""));
+
+    // Agents
+    lines.push(Line::from(Span::styled("  Agents", section_style)));
+    lines.push(Line::raw(""));
+
+    for agent in &app.agents {
+        let status_str = match agent.status {
+            AgentStatus::Idle => Span::styled("idle", theme.style_dim()),
+            AgentStatus::Working => Span::styled("working", Style::default().fg(theme.spinner)),
+            AgentStatus::Streaming => {
+                Span::styled("streaming", Style::default().fg(theme.streaming))
+            }
+            AgentStatus::Compacting => {
+                let stage = agent.compaction_stage.as_deref().unwrap_or("...");
+                Span::styled(
+                    format!("compacting ({})", stage),
+                    Style::default().fg(theme.compacting),
+                )
+            }
+        };
+
+        let emoji = agent.emoji.as_deref().unwrap_or("");
+        let session_count = agent.sessions.len();
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {} {} ", emoji, agent.name),
+                theme.style_accent_bold(),
+            ),
+            Span::styled(format!("({}) ", agent.id), theme.style_dim()),
+            status_str,
+        ]));
+        lines.push(Line::from(Span::styled(
+            format!("     {} sessions", session_count),
+            theme.style_dim(),
+        )));
+    }
+
+    lines.push(Line::raw(""));
+
+    // Cost
+    let cost = app.daily_cost_cents as f64 / 100.0;
+    lines.push(Line::from(Span::styled("  Today", section_style)));
+    lines.push(Line::raw(""));
+    lines.push(Line::from(Span::styled(
+        format!("  Cost: ${:.2}", cost),
+        theme.style_muted(),
+    )));
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" close", theme.style_muted()),
+    ]));
+
+    let block = overlay_block("System Status — Ctrl+I", theme);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
 
