@@ -1,4 +1,8 @@
 // TypeScript interfaces for the dianoia (planning) module
+import type { PlanningConfigSchema } from "../taxis/schema.js";
+
+export type PlanningConfig = PlanningConfigSchema;
+
 export type DianoiaState =
   | "idle"
   | "questioning"
@@ -11,15 +15,6 @@ export type DianoiaState =
   | "complete"
   | "blocked"
   | "abandoned";
-
-export interface PlanningConfig {
-  depth: "quick" | "standard" | "comprehensive";
-  parallelization: boolean;
-  research: boolean;
-  plan_check: boolean;
-  verifier: boolean;
-  mode: "yolo" | "interactive";
-}
 
 export interface PlanningProject {
   id: string;
