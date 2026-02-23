@@ -1,10 +1,10 @@
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui::Frame;
 
-use crate::app::App;
+use crate::app::{App, ToolCallInfo};
 use crate::markdown;
 use crate::theme::{self, ThemePalette};
 
@@ -21,7 +21,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     }
 
     // Streaming response (in progress)
-    if !app.streaming_text.is_empty() || !app.streaming_thinking.is_empty() {
+    if !app.streaming_text.is_empty()
+        || !app.streaming_thinking.is_empty()
+        || app.active_turn_id.is_some()
+    {
         render_streaming(app, &mut lines, inner_width, theme);
     }
 
@@ -35,7 +38,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             if line_width == 0 {
                 1
             } else {
-                (line_width + wrap_width - 1) / wrap_width
+                line_width.div_ceil(wrap_width)
             }
         })
         .sum();
@@ -77,15 +80,11 @@ fn render_message(
         _ => ("system".to_string(), theme.style_muted()),
     };
 
-    // Header: role name + optional model (dim) + timestamp right-aligned
+    // Header: role name + optional model (dim) + timestamp
     let mut header_spans = vec![Span::styled(format!(" {}", role_label), role_style)];
 
     if let Some(ref model) = msg.model {
-        // Extract just the model name (strip provider prefix if present)
-        let short_model = model
-            .split('/')
-            .last()
-            .unwrap_or(model);
+        let short_model = model.split('/').next_back().unwrap_or(model);
         header_spans.push(Span::styled(
             format!(" · {}", short_model),
             theme.style_dim(),
@@ -93,31 +92,68 @@ fn render_message(
     }
 
     if let Some(ref ts) = msg.timestamp {
-        // Show just the time portion if available
         let time_str = ts
             .split('T')
             .nth(1)
             .and_then(|t| t.split('.').next())
             .unwrap_or(ts);
-        header_spans.push(Span::styled(
-            format!("  {}", time_str),
-            theme.style_dim(),
-        ));
+        header_spans.push(Span::styled(format!("  {}", time_str), theme.style_dim()));
     }
 
     lines.push(Line::from(header_spans));
 
+    // Inline tool call summary (compact, between header and content)
+    if !msg.tool_calls.is_empty() {
+        render_tool_summary(&msg.tool_calls, lines, theme);
+    }
+
     // Message content — markdown parsed, indented
     let rendered = markdown::render(&msg.text, inner_width.saturating_sub(2), theme);
     for line in rendered {
-        // Add left padding for visual hierarchy
         let mut padded_spans = vec![Span::raw(" ")];
         padded_spans.extend(line.spans);
         lines.push(Line::from(padded_spans));
     }
 
-    // Blank line between messages (breathing room)
+    // Breathing room between messages
     lines.push(Line::raw(""));
+}
+
+/// Render a compact tool call summary line:
+///   ╰─ exec (0.3s) → read (0.1s) → grep (0.2s)
+fn render_tool_summary(
+    tools: &[ToolCallInfo],
+    lines: &mut Vec<Line<'static>>,
+    theme: &ThemePalette,
+) {
+    let mut spans: Vec<Span> = vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
+
+    for (i, tc) in tools.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" → ", theme.style_dim()));
+        }
+
+        let color = if tc.is_error {
+            theme.error
+        } else {
+            theme.fg_dim
+        };
+        let icon = if tc.is_error { "✗ " } else { "" };
+
+        let label = if let Some(ms) = tc.duration_ms {
+            if ms >= 1000 {
+                format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+            } else {
+                format!("{}{}  ({}ms)", icon, tc.name, ms)
+            }
+        } else {
+            format!("{}{}", icon, tc.name)
+        };
+
+        spans.push(Span::styled(label, Style::default().fg(color)));
+    }
+
+    lines.push(Line::from(spans));
 }
 
 fn render_streaming(
@@ -126,6 +162,13 @@ fn render_streaming(
     inner_width: usize,
     theme: &ThemePalette,
 ) {
+    let name = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
+        .map(|a| a.name.to_lowercase())
+        .unwrap_or_else(|| "assistant".to_string());
+
     // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
@@ -139,10 +182,7 @@ fn render_streaming(
         for line in app.streaming_thinking.lines() {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(
-                    line.to_string(),
-                    Style::default().fg(theme.thinking),
-                ),
+                Span::styled(line.to_string(), Style::default().fg(theme.thinking)),
             ]));
         }
         lines.push(Line::from(vec![
@@ -154,27 +194,68 @@ fn render_streaming(
         ]));
     }
 
+    // Active tool calls during streaming (show completed + current)
+    if !app.streaming_tool_calls.is_empty() {
+        let mut tool_spans: Vec<Span> =
+            vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
+
+        for (i, tc) in app.streaming_tool_calls.iter().enumerate() {
+            if i > 0 {
+                tool_spans.push(Span::styled(" → ", theme.style_dim()));
+            }
+
+            if tc.duration_ms.is_some() {
+                // Completed tool
+                let color = if tc.is_error {
+                    theme.error
+                } else {
+                    theme.fg_dim
+                };
+                let icon = if tc.is_error { "✗ " } else { "" };
+                let label = if let Some(ms) = tc.duration_ms {
+                    if ms >= 1000 {
+                        format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+                    } else {
+                        format!("{}{} ({}ms)", icon, tc.name, ms)
+                    }
+                } else {
+                    tc.name.clone()
+                };
+                tool_spans.push(Span::styled(label, Style::default().fg(color)));
+            } else {
+                // Currently running tool — animated
+                let ch = theme::spinner_frame(app.tick_count);
+                tool_spans.push(Span::styled(
+                    format!("{} {}", ch, tc.name),
+                    Style::default().fg(theme.spinner),
+                ));
+            }
+        }
+
+        lines.push(Line::from(tool_spans));
+    }
+
     // Streaming text with cursor
     if !app.streaming_text.is_empty() {
-        let name = app
-            .focused_agent
-            .as_ref()
-            .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-            .map(|a| a.name.to_lowercase())
-            .unwrap_or_else(|| "assistant".to_string());
+        lines.push(Line::from(vec![Span::styled(
+            format!(" {}", name),
+            theme.style_assistant(),
+        )]));
 
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {}", name), theme.style_assistant()),
-        ]));
+        // Use cached markdown if available
+        let rendered = if app.cached_markdown_text == app.streaming_text {
+            app.cached_markdown_lines.clone()
+        } else {
+            markdown::render(&app.streaming_text, inner_width.saturating_sub(2), theme)
+        };
 
-        let rendered = markdown::render(&app.streaming_text, inner_width.saturating_sub(2), theme);
         for line in rendered {
             let mut padded_spans = vec![Span::raw(" ")];
             padded_spans.extend(line.spans);
             lines.push(Line::from(padded_spans));
         }
 
-        // Braille cursor instead of block cursor
+        // Braille cursor
         let ch = theme::spinner_frame(app.tick_count);
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -186,21 +267,12 @@ fn render_streaming(
             ),
         ]));
     } else if app.active_turn_id.is_some() {
-        // Thinking but no text yet — show spinner
+        // No text yet — show spinner with agent name
         let ch = theme::spinner_frame(app.tick_count);
-        let name = app
-            .focused_agent
-            .as_ref()
-            .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-            .map(|a| a.name.to_lowercase())
-            .unwrap_or_else(|| "assistant".to_string());
 
         lines.push(Line::from(vec![
             Span::styled(format!(" {}", name), theme.style_assistant()),
-            Span::styled(
-                format!(" {} thinking…", ch),
-                theme.style_muted(),
-            ),
+            Span::styled(format!(" {} thinking…", ch), theme.style_muted()),
         ]));
     }
 }

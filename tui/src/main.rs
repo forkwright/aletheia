@@ -13,7 +13,7 @@ use crossterm::event::EventStream;
 use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::app::App;
 use crate::config::Config;
@@ -140,7 +140,9 @@ async fn recv_sse(sse: &mut Option<api::sse::SseConnection>) -> Option<api::type
     }
 }
 
-async fn recv_stream(rx: &mut Option<tokio::sync::mpsc::Receiver<events::StreamEvent>>) -> Option<events::StreamEvent> {
+async fn recv_stream(
+    rx: &mut Option<tokio::sync::mpsc::Receiver<events::StreamEvent>>,
+) -> Option<events::StreamEvent> {
     match rx {
         Some(r) => r.recv().await,
         None => std::future::pending().await,

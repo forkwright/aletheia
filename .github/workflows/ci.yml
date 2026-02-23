@@ -6,6 +6,7 @@ on:
     paths:
       - "infrastructure/runtime/**"
       - "shared/bin/**"
+      - "tui/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
@@ -120,3 +121,23 @@ jobs:
             fi
           done < <(find shared/bin -type f -executable 2>/dev/null)
           exit $failed
+
+  # --- TUI (Rust) ---
+  tui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+      - name: Format check
+        run: cd tui && cargo fmt --check
+      - name: Clippy
+        run: cd tui && cargo clippy -- -D warnings -A dead_code
+      - name: Build
+        run: cd tui && cargo build --release
+      - name: Test
+        run: cd tui && cargo test

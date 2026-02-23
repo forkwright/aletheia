@@ -1,9 +1,9 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-use ratatui::Frame;
 
 use crate::app::{App, Overlay};
 use crate::theme::ThemePalette;
@@ -24,9 +24,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Overlay::AgentPicker { cursor } => {
             render_agent_picker(app, frame, popup_area, *cursor, theme)
         }
-        Overlay::ToolApproval(approval) => {
-            render_tool_approval(frame, popup_area, approval, theme)
-        }
+        Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         _ => {
             let block = overlay_block(" TODO ", theme);
@@ -47,10 +45,18 @@ fn overlay_block<'a>(title: &str, theme: &ThemePalette) -> Block<'a> {
 }
 
 /// Highlighted overlay block (for warnings/approvals).
-fn overlay_block_accent(title: &str, accent_color: ratatui::style::Color, theme: &ThemePalette) -> Block<'static> {
+fn overlay_block_accent(
+    title: &str,
+    accent_color: ratatui::style::Color,
+    theme: &ThemePalette,
+) -> Block<'static> {
     Block::default()
         .title(format!(" {} ", title.trim()))
-        .title_style(Style::default().fg(accent_color).add_modifier(Modifier::BOLD))
+        .title_style(
+            Style::default()
+                .fg(accent_color)
+                .add_modifier(Modifier::BOLD),
+        )
         .borders(Borders::ALL)
         .border_set(symbols::border::ROUNDED)
         .border_style(Style::default().fg(accent_color))
@@ -58,7 +64,9 @@ fn overlay_block_accent(title: &str, accent_color: ratatui::style::Color, theme:
 }
 
 fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
-    let key_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+    let key_style = Style::default()
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
     let desc_style = theme.style_fg();
     let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
 
@@ -68,7 +76,12 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Line::raw(""),
         help_line("  Ctrl+A     ", "Switch agent", key_style, desc_style),
         help_line("  Ctrl+F     ", "Toggle sidebar", key_style, desc_style),
-        help_line("  Ctrl+T     ", "Toggle thinking blocks", key_style, desc_style),
+        help_line(
+            "  Ctrl+T     ",
+            "Toggle thinking blocks",
+            key_style,
+            desc_style,
+        ),
         Line::raw(""),
         Line::from(Span::styled("  Input", section_style)),
         Line::raw(""),
@@ -93,12 +106,7 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     frame.render_widget(paragraph, area);
 }
 
-fn help_line<'a>(
-    key: &'a str,
-    desc: &'a str,
-    key_style: Style,
-    desc_style: Style,
-) -> Line<'a> {
+fn help_line<'a>(key: &'a str, desc: &'a str, key_style: Style, desc_style: Style) -> Line<'a> {
     Line::from(vec![
         Span::styled(key, key_style),
         Span::styled(desc, desc_style),
@@ -130,23 +138,27 @@ fn render_agent_picker(
 
         lines.push(Line::from(vec![
             Span::raw(format!("  {} ", marker)),
-            Span::styled(
-                format!("{} {} ", emoji, agent.name),
-                style,
-            ),
-            Span::styled(
-                format!("({})", agent.id),
-                theme.style_dim(),
-            ),
+            Span::styled(format!("{} {} ", emoji, agent.name), style),
+            Span::styled(format!("({})", agent.id), theme.style_dim()),
         ]));
     }
 
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("Enter", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" select  ", theme.style_muted()),
-        Span::styled("Esc", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" cancel", theme.style_muted()),
     ]));
 
@@ -206,12 +218,19 @@ fn render_tool_approval(
         Span::styled("pprove  ", theme.style_muted()),
         Span::styled("[D]", theme.style_error_bold()),
         Span::styled("eny  ", theme.style_muted()),
-        Span::styled("[Esc]", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Esc]",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" cancel", theme.style_muted()),
     ]));
 
     let block = overlay_block_accent("⚠ Tool Approval Required", theme.warning, theme);
-    let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
 
@@ -259,7 +278,12 @@ fn render_plan_approval(
         Span::raw("  "),
         Span::styled("[A]", theme.style_success_bold()),
         Span::styled("pprove all  ", theme.style_muted()),
-        Span::styled("[Space]", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Space]",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" toggle  ", theme.style_muted()),
         Span::styled("[C]", theme.style_error_bold()),
         Span::styled("ancel", theme.style_muted()),

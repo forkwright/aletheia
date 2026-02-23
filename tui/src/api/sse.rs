@@ -30,12 +30,14 @@ impl SseConnection {
                 let mut es = EventSource::new(req).expect("valid SSE request");
 
                 let _ = tx.send(SseEvent::Connected).await;
-                backoff_secs = 1; // Reset on successful connect
+                let mut connected = false;
 
                 while let Some(event) = es.next().await {
                     match event {
                         Ok(EsEvent::Open) => {
                             tracing::info!("SSE connected");
+                            connected = true;
+                            backoff_secs = 1; // Reset backoff on successful connection
                         }
                         Ok(EsEvent::Message(msg)) => {
                             if let Some(parsed) = parse_sse_event(&msg.event, &msg.data) {
@@ -53,9 +55,11 @@ impl SseConnection {
                 }
 
                 let _ = tx.send(SseEvent::Disconnected).await;
+                if !connected {
+                    backoff_secs = (backoff_secs * 2).min(30);
+                }
                 tracing::info!("SSE reconnecting in {backoff_secs}s");
                 tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-                backoff_secs = (backoff_secs * 2).min(30);
             }
         });
 
@@ -75,10 +79,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
 
     match event_type {
         "init" => {
-            let active_turns = serde_json::from_value(
-                json.get("activeTurns")?.clone(),
-            )
-            .ok()?;
+            let active_turns = serde_json::from_value(json.get("activeTurns")?.clone()).ok()?;
             Some(SseEvent::Init { active_turns })
         }
         "turn:before" => Some(SseEvent::TurnBefore {

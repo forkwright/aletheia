@@ -126,34 +126,34 @@ impl ThemePalette {
     fn color256() -> Self {
         Self {
             bg: Color::Reset,
-            surface: Color::Indexed(235),       // #262626
+            surface: Color::Indexed(235),        // #262626
             surface_bright: Color::Indexed(237), // #3a3a3a
             surface_dim: Color::Indexed(233),    // #121212
 
-            fg: Color::Indexed(253),            // #dadada
-            fg_muted: Color::Indexed(245),      // #8a8a8a
-            fg_dim: Color::Indexed(240),        // #585858
+            fg: Color::Indexed(253),       // #dadada
+            fg_muted: Color::Indexed(245), // #8a8a8a
+            fg_dim: Color::Indexed(240),   // #585858
 
-            accent: Color::Indexed(111),        // #87afff
-            accent_dim: Color::Indexed(67),     // #5f87af
+            accent: Color::Indexed(111),    // #87afff
+            accent_dim: Color::Indexed(67), // #5f87af
 
-            success: Color::Indexed(114),       // #87d787
-            warning: Color::Indexed(221),       // #ffd75f
-            error: Color::Indexed(167),         // #d75f5f
-            info: Color::Indexed(111),          // #87afff
+            success: Color::Indexed(114), // #87d787
+            warning: Color::Indexed(221), // #ffd75f
+            error: Color::Indexed(167),   // #d75f5f
+            info: Color::Indexed(111),    // #87afff
 
             user: Color::Indexed(111),
             assistant: Color::Indexed(114),
             system: Color::Indexed(245),
 
             selected: Color::Indexed(111),
-            border: Color::Indexed(238),        // #444444
+            border: Color::Indexed(238), // #444444
             border_focused: Color::Indexed(111),
-            separator: Color::Indexed(236),     // #303030
+            separator: Color::Indexed(236), // #303030
 
-            code_fg: Color::Indexed(252),       // #d0d0d0
-            code_bg: Color::Indexed(236),       // #303030
-            code_lang: Color::Indexed(242),     // #6c6c6c
+            code_fg: Color::Indexed(252),   // #d0d0d0
+            code_bg: Color::Indexed(236),   // #303030
+            code_lang: Color::Indexed(242), // #6c6c6c
 
             thinking: Color::Indexed(242),
             thinking_border: Color::Indexed(238),
@@ -161,7 +161,7 @@ impl ThemePalette {
             spinner: Color::Indexed(221),
             idle: Color::Indexed(240),
             streaming: Color::Indexed(114),
-            compacting: Color::Indexed(177),    // #d787ff
+            compacting: Color::Indexed(177), // #d787ff
 
             depth: ColorDepth::Color256,
         }
@@ -231,7 +231,9 @@ impl ThemePalette {
     }
 
     pub fn style_accent_bold(&self) -> Style {
-        Style::default().fg(self.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn style_success(&self) -> Style {
@@ -247,7 +249,9 @@ impl ThemePalette {
     }
 
     pub fn style_success_bold(&self) -> Style {
-        Style::default().fg(self.success).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.success)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn style_error_bold(&self) -> Style {
@@ -259,7 +263,9 @@ impl ThemePalette {
     }
 
     pub fn style_assistant(&self) -> Style {
-        Style::default().fg(self.assistant).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.assistant)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn style_code(&self) -> Style {

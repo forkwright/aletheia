@@ -60,10 +60,7 @@ pub fn render(text: &str, _width: usize, theme: &ThemePalette) -> Vec<Line<'stat
                 Tag::Item => {
                     flush_line(&mut lines, &mut current_spans);
                     let indent = "  ".repeat(list_depth.saturating_sub(1));
-                    current_spans.push(Span::styled(
-                        format!("{}• ", indent),
-                        theme.style_muted(),
-                    ));
+                    current_spans.push(Span::styled(format!("{}• ", indent), theme.style_muted()));
                 }
                 Tag::Paragraph => {
                     flush_line(&mut lines, &mut current_spans);
@@ -94,10 +91,7 @@ pub fn render(text: &str, _width: usize, theme: &ThemePalette) -> Vec<Line<'stat
                                 format!(" ╭─ {} ", lang),
                                 Style::default().fg(theme.code_lang),
                             ),
-                            Span::styled(
-                                "─".repeat(20),
-                                Style::default().fg(theme.code_lang),
-                            ),
+                            Span::styled("─".repeat(20), Style::default().fg(theme.code_lang)),
                         ]));
                     } else {
                         lines.push(Line::from(Span::styled(
@@ -163,10 +157,7 @@ pub fn render(text: &str, _width: usize, theme: &ThemePalette) -> Vec<Line<'stat
             }
             Event::Rule => {
                 flush_line(&mut lines, &mut current_spans);
-                lines.push(Line::from(Span::styled(
-                    "─".repeat(40),
-                    theme.style_dim(),
-                )));
+                lines.push(Line::from(Span::styled("─".repeat(40), theme.style_dim())));
             }
             _ => {}
         }

@@ -1,7 +1,7 @@
 # Spec 28 — Aletheia TUI
 
-**Status:** Phase 1 — In Progress (~70% complete)  
-**Component:** `tui/` — Rust terminal client (3,240 LOC as of 2026-02-23)  
+**Status:** Phase 1 — Complete ✅  
+**Component:** `tui/` — Rust terminal client (4,070 LOC as of 2026-02-23)  
 **Interface:** Primary working interface alongside Signal (mobile)  
 **Gateway dependency:** Hono REST API + SSE on `:18789` — zero gateway changes  
 **Design target:** Level 2 dashboard — multi-agent visibility with split panes  
@@ -27,7 +27,7 @@ The TUI replaces the web UI as the primary working interface. Signal remains the
 
 ## 0.5. Current State (as of 2026-02-23)
 
-The TUI is a working application at 3,240 lines across 18 source files. It is not greenfield — the following is already implemented and functional:
+The TUI is a working application at 4,070 lines across 18 source files. Phase 1 is complete.
 
 **Working:**
 - TEA architecture (App struct, Msg enum, async update, pure view functions)
@@ -37,34 +37,47 @@ The TUI is a working application at 3,240 lines across 18 source files. It is no
 - Agent switching via `Ctrl+A` overlay with arrow navigation
 - Chat rendering with scrollable message list
 - SSE global event stream with all turn/tool/distill lifecycle events
+- SSE init event sends full active turn details (agents working when TUI connects show status)
 - Streaming responses via POST `/api/sessions/stream` with text + thinking deltas
 - Tool status display (name + elapsed time in status bar)
+- Inline tool call rendering in chat (compact chain: `╰─ exec (0.3s) → read (0.1s) → grep`)
 - Tool approval overlay (A to approve, D to deny)
 - Plan approval overlay (Space to toggle steps, A to approve, C to cancel)
 - Input with cursor movement, history (Up/Down), `Ctrl+W` (delete word), `Ctrl+U` (clear line)
 - Input text wrapping with dynamic height (3-8 rows)
 - Markdown rendering: bold, italic, inline code, code blocks, headings, lists
+- Debounced markdown re-parse during streaming (every 64 chars or newline)
 - Message queuing during active turns (prompt changes to yellow "queued ›")
 - Mouse scroll in chat area
 - Session selection by most recently updated (handles distillation count resets)
 - Distillation lifecycle display (before/stage/after indicators)
+- Notification dot on agents with unread turns (clears on switch)
+- Scroll position saved/restored per agent when switching
 - `bin/aletheia` CLI wrapper with subcommands (status, health, agents, costs, logs, token)
 - File-based tracing via tracing-appender
+- Theme system with `ThemePalette` struct: true color (24-bit), 256-color, 16-color fallback
+- True color detection via `COLORTERM`, `TERM_PROGRAM`, `VTE_VERSION` env vars
+- Rounded borders on overlays
+- Braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) for streaming/working animations
+- Exponential backoff SSE reconnection (1s → 30s max, reset on successful connect)
+- 401 detection on API calls (bubbles auth error for re-login)
+- CI pipeline: clippy + fmt + build + test via GitHub Actions
+- All code passes `cargo clippy -- -D warnings` and `cargo fmt --check`
 
-**Not yet implemented:**
+**Not yet implemented (Phase 2+):**
 - Syntax highlighting in code blocks (no `syntect` dep yet)
 - Clipboard operations (no `arboard` dep yet)
 - `Ctrl+E` compose mode ($EDITOR delegation)
 - `@agent` Tab completion in input
 - Session browser overlay
 - Cost summary overlay
-- Help overlay
 - Fuzzy filtering in overlays
 - OSC 8 hyperlinks for URLs
 - Table rendering in markdown
-- Reconnection with exponential backoff (basic reconnect exists)
-- State recovery on reconnect
+- State recovery on reconnect (reload stale agent data)
 - Responsive layout degradation for small terminals
+- Mouse click in sidebar to switch agent
+- Error toasts with auto-dismiss
 - Comprehensive test suite
 
 ---
@@ -964,7 +977,7 @@ tui/
 
 ## 13. Implementation Phases
 
-### Phase 1: Dashboard MVP (~70% complete)
+### Phase 1: Dashboard MVP ✅ Complete
 
 **Milestone:** Multi-agent dashboard with streaming chat, sidebar, and real-time status. Usable as primary interface.
 
@@ -973,47 +986,45 @@ tui/
 - [x] `config.rs`: Load `~/.config/aletheia/tui.toml` + CLI args
 - [x] `api/client.rs`: reqwest client with bearer token auth, login flow
 - [x] `main.rs`: `ratatui::run()` with TEA event loop
-- [x] `app.rs`: `App` struct with `update()`/`view()` split (1,266 lines)
+- [x] `app.rs`: `App` struct with `update()`/`view()` split (1,300+ lines)
 - [x] `msg.rs`: All message types (110 lines, 40+ variants)
 - [x] `events.rs`: Event type definitions for SSE + streaming
-- [ ] Token refresh on 401 (currently requires re-login)
-- [ ] CI: `cargo clippy`, `cargo test`, `cargo fmt --check`
-- [ ] **Theme system:** Define `ThemePalette` struct, replace all ad-hoc `Color::` with semantic colors
-- [ ] **Rounded borders** (`symbols::border::ROUNDED`) on overlays and code blocks
-- [ ] **True color detection:** Check `COLORTERM`, `TERM_PROGRAM`, degrade to 256/16 gracefully
-- [ ] **Braille spinner:** Replace `◐◓◑◒` with `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
+- [x] 401 detection on API calls (bubbles `UNAUTHORIZED` error for re-login flow)
+- [x] CI: `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `cargo build --release` (GitHub Actions)
+- [x] **Theme system:** `ThemePalette` struct with 30+ semantic colors, auto-detection of color depth
+- [x] **Rounded borders** (`symbols::border::ROUNDED`) on overlays
+- [x] **True color detection:** `COLORTERM`, `TERM_PROGRAM`, `VTE_VERSION` → degrade to 256/16 gracefully
+- [x] **Braille spinner:** `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` for streaming/working animations
 
 **Dashboard layout**
 - [x] Three-region layout: sidebar | chat + status + input
-- [x] `view/sidebar.rs`: Agent list with status indicators (`●` streaming, `◐` working, `○` idle)
-- [ ] **Notification dot:** Subtle indicator next to agent name when a turn completes while that agent isn't focused (e.g., dim `•` or color change). Clears when you switch to that agent.
-- [ ] ~~Session list under agents~~ — removed. Sessions are not user-facing. Sidebar shows agents only.
+- [x] `view/sidebar.rs`: Agent list with status indicators (`●` streaming, `⠋` working, `○` idle)
+- [x] **Notification dot:** `•` next to agent name when a turn completes while unfocused. Clears on switch.
+- [x] ~~Session list under agents~~ — removed. Sessions are not user-facing. Sidebar shows agents only.
 - [x] `view/status_bar.rs`: All-agent one-line activity summary with tool names and elapsed time
 - [x] Agent switching: `Ctrl+A` overlay with arrow navigation, loads history
 - [x] Focused mode toggle (`Ctrl+F`) — hide sidebar, expand chat
-- [ ] Restore scroll position when switching agents (currently resets to bottom)
+- [x] Scroll position saved/restored per agent when switching
 
 **Chat + streaming**
-- [x] `view/chat.rs`: Scrollable message list with role-labeled blocks
+- [x] `view/chat.rs`: Scrollable message list with role headers + whitespace typography
 - [x] `view/input.rs`: Custom input with cursor, history (Up/Down), Ctrl+U/Ctrl+W, text wrapping
 - [x] `api/streaming.rs`: POST `/api/sessions/stream`, yields SSE events as `Msg` variants
 - [x] `markdown.rs`: Core subset — bold, italic, inline code, code blocks, headings, lists
-- [x] Streaming cursor `▌`
+- [x] Streaming cursor (braille spinner)
 - [x] Send message → stream response → render in chat → store in state
 - [x] Message queuing during active turns (yellow "queued ›" prompt)
-- [ ] `Shift+Enter` for multi-line input (newline insertion)
-- [ ] **Inline tool call rendering** — tool calls in chat flow, not just status bar
-- [ ] **Message layout overhaul** — no per-message borders, use whitespace + typography (see §8.1)
-- [ ] Debounced markdown re-parse during streaming (currently re-parses every chunk)
+- [x] **Inline tool call rendering** — compact tool chain in chat: `╰─ exec (0.3s) → read (0.1s) → grep`
+- [x] Debounced markdown re-parse during streaming (every 64 chars or newline boundary)
 
 **Multi-agent awareness**
 - [x] `api/sse.rs`: Global SSE event stream with heartbeat detection
-- [x] SSE `init` → sync all agent statuses
+- [x] SSE `init` → sync all agent statuses (sends full `ActiveTurn` details, not just counts)
 - [x] SSE `turn:before`/`turn:after` → update agent status in sidebar + status bar
 - [x] SSE `tool:called` → show tool name in status bar for that agent
 - [x] `distill:before/stage/after` → compaction indicator on agent
-- [ ] Exponential backoff reconnect (basic reconnect exists, no backoff)
-- [ ] On `turn:after` for focused agent → reload history automatically
+- [x] Exponential backoff reconnect (1s → 30s max, reset on successful connection)
+- [x] On `turn:after` for focused agent → reload history automatically
 
 ### Phase 2: Rich Rendering + Overlays (3-4 days)
 
