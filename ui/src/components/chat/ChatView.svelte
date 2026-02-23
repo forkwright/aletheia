@@ -52,7 +52,7 @@
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand, queueMessage } from "../../lib/api";
   import type { CommandInfo } from "../../lib/types";
-  import { onGlobalEvent } from "../../lib/events.svelte";
+  import { onGlobalEvent, getActiveTurns } from "../../lib/events.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";
   import { showToast } from "../../stores/toast.svelte";
