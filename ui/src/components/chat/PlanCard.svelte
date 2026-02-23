@@ -240,21 +240,21 @@
     transition: background var(--transition-quick), border-color var(--transition-quick);
   }
   .btn-approve {
-    background: rgba(63, 185, 80, 0.15);
+    background: var(--status-success-bg-strong);
     color: var(--status-success);
-    border-color: rgba(63, 185, 80, 0.3);
+    border-color: var(--status-success-border);
   }
   .btn-approve:hover:not(:disabled) {
-    background: rgba(63, 185, 80, 0.25);
+    background: var(--status-success-bg-strong);
     border-color: var(--status-success);
   }
   .btn-cancel {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
     color: var(--status-error);
-    border-color: rgba(248, 81, 73, 0.2);
+    border-color: var(--status-error-border);
   }
   .btn-cancel:hover:not(:disabled) {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--status-error-bg-strong);
     border-color: var(--status-error);
   }
   .btn-approve:disabled, .btn-cancel:disabled {

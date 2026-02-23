@@ -291,11 +291,11 @@
     align-self: flex-start;
   }
   .delete-btn {
-    background: rgba(248, 81, 73, 0.1);
+    background: var(--status-error-bg);
     border-color: var(--status-error);
     color: var(--status-error);
   }
-  .delete-btn:hover:not(:disabled) { background: rgba(248, 81, 73, 0.25); }
+  .delete-btn:hover:not(:disabled) { background: var(--status-error-bg-strong); }
   .delete-btn:disabled { opacity: 0.4; cursor: default; }
 
   .drift-row {

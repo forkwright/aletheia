@@ -171,7 +171,7 @@
     color: var(--text);
   }
   .tool-status-line.has-errors {
-    border-color: rgba(248, 81, 73, 0.3);
+    border-color: var(--status-error-border);
     color: var(--status-error);
   }
   .status-indicator {

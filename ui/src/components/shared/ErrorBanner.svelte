@@ -15,8 +15,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
+    background: var(--status-error-bg);
+    border: 1px solid var(--status-error-border);
     border-radius: var(--radius-sm);
     color: var(--status-error);
     font-size: var(--text-sm);

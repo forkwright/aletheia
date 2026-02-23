@@ -478,8 +478,8 @@
     background: rgba(154, 123, 79, 0.1);
   }
   .stop-btn {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
+    background: var(--status-error-bg);
+    border: 1px solid var(--status-error-border);
     color: var(--status-error);
     width: 36px;
     height: 36px;
@@ -493,7 +493,7 @@
     margin-bottom: 2px;
   }
   .stop-btn:hover {
-    background: rgba(248, 81, 73, 0.2);
+    background: var(--status-error-bg-strong);
   }
   .stop-icon {
     font-size: var(--text-2xs);
@@ -529,8 +529,8 @@
     gap: 8px;
     padding: 4px 12px;
     margin-bottom: 6px;
-    background: rgba(210, 153, 34, 0.1);
-    border: 1px solid rgba(210, 153, 34, 0.3);
+    background: var(--status-warning-bg);
+    border: 1px solid var(--status-warning-border);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
     color: var(--status-warning);
@@ -591,7 +591,7 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--overlay-dark);
     border: none;
     color: #fff;
     font-size: var(--text-base);
@@ -612,7 +612,7 @@
     left: 0;
     right: 0;
     padding: 2px 4px;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--overlay-dark);
     color: #fff;
     font-size: var(--text-2xs);
     white-space: nowrap;
