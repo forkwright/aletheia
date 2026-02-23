@@ -272,10 +272,29 @@ export class AnthropicProvider {
 
     const betaHeader = this.buildBetaHeader(contextManagement);
 
-    const stream = await this.client.messages.create(streamParams, {
-      ...(signal ? { signal } : {}),
-      ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
-    });
+    let stream: Awaited<ReturnType<typeof this.client.messages.create>>;
+    try {
+      stream = await this.client.messages.create(streamParams, {
+        ...(signal ? { signal } : {}),
+        ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
+      });
+    } catch (error) {
+      if (error instanceof Anthropic.APIError) {
+        const status = error.status;
+        log.error(`Anthropic API ${status}: ${error.message}`);
+        const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
+          : status === 529 ? "PROVIDER_OVERLOADED" as const
+          : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
+          : "PROVIDER_INVALID_RESPONSE" as const;
+        const recoverable = status === 429 || status === 529 || status >= 500;
+        throw new ProviderError(`Anthropic API error: ${status} ${error.message}`, {
+          cause: error, code, recoverable,
+          ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
+          context: { status, model },
+        });
+      }
+      throw error;
+    }
 
     const contentBlocks: ContentBlock[] = [];
     let stopReason = "end_turn";
