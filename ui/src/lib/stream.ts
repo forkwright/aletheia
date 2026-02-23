@@ -80,8 +80,8 @@ export async function* streamMessage(
           try {
             const parsed = JSON.parse(data) as TurnStreamEvent;
             yield parsed;
-          } catch {
-            // Skip malformed events
+          } catch (e) {
+            console.warn("SSE parse error:", e, "raw:", data);
           }
           eventType = null;
           data = null;

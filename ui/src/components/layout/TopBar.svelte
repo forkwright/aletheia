@@ -66,7 +66,7 @@
           updateVersion = data.latest ?? "";
         }
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("Update check failed:", e); }
   });
 </script>
 
