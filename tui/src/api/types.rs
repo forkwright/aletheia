@@ -27,6 +27,8 @@ pub struct Session {
     pub message_count: u32,
     #[serde(rename = "sessionType", default)]
     pub session_type: Option<String>,
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: Option<String>,
 }
 
 // --- History ---
