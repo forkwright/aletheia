@@ -140,6 +140,22 @@ impl ApiClient {
         Ok(wrapper.messages)
     }
 
+    pub async fn create_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
+        let resp = self
+            .request(reqwest::Method::POST, "/api/sessions")
+            .json(&serde_json::json!({
+                "nousId": nous_id,
+                "sessionKey": session_key,
+            }))
+            .send()
+            .await
+            .context("failed to create session")?;
+        Self::check_auth(&resp)?;
+        resp.error_for_status_ref()
+            .context("create session request failed")?;
+        Ok(resp.json().await?)
+    }
+
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
