@@ -1,0 +1,72 @@
+// SQLite DDL for the dianoia (planning) module — all 5 planning tables
+export const PLANNING_V20_DDL = `
+CREATE TABLE IF NOT EXISTS planning_projects (
+  id TEXT PRIMARY KEY,
+  nous_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'idle' CHECK(state IN ('idle', 'questioning', 'researching', 'requirements', 'roadmap', 'phase-planning', 'executing', 'verifying', 'complete', 'blocked', 'abandoned')),
+  config TEXT NOT NULL DEFAULT '{}',
+  context_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_projects_nous ON planning_projects(nous_id);
+
+CREATE TABLE IF NOT EXISTS planning_phases (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  requirements TEXT NOT NULL DEFAULT '[]',
+  success_criteria TEXT NOT NULL DEFAULT '[]',
+  plan TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'executing', 'complete', 'failed', 'skipped')),
+  phase_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_phases_project ON planning_phases(project_id, phase_order);
+
+CREATE TABLE IF NOT EXISTS planning_requirements (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT,
+  req_id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  category TEXT NOT NULL,
+  tier TEXT NOT NULL DEFAULT 'v1' CHECK(tier IN ('v1', 'v2', 'out-of-scope')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'validated', 'skipped')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_requirements_project ON planning_requirements(project_id);
+
+CREATE TABLE IF NOT EXISTS planning_checkpoints (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  question TEXT NOT NULL,
+  decision TEXT,
+  context TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_checkpoints_project ON planning_checkpoints(project_id);
+
+CREATE TABLE IF NOT EXISTS planning_research (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase TEXT NOT NULL,
+  dimension TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_research_project ON planning_research(project_id);
+`;
+
+export const PLANNING_V20_MIGRATION_ENTRY = PLANNING_V20_DDL;
