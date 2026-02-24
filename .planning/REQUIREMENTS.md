@@ -18,11 +18,11 @@
 
 ### Entry & Discovery
 
-- [ ] **ENTRY-01**: User can initiate planning via `/plan` slash command in any session
+- [x] **ENTRY-01**: User can initiate planning via `/plan` slash command in any session
 - [ ] **ENTRY-02**: Agent detects planning intent in the turn pipeline via `turn:before` hook and offers to engage planning mode
 - [x] **ENTRY-03**: Both entry paths (command and agent-detected) route to the same DianoiaOrchestrator state machine
 - [x] **ENTRY-04**: Planning session is associated with the initiating nous and session, resumable from any later session with the same nous
-- [ ] **ENTRY-05**: `aletheia plan` CLI subcommand starts planning mode directly
+- [x] **ENTRY-05**: `aletheia plan` CLI subcommand starts planning mode directly
 
 ### Project Context Gathering
 
@@ -176,11 +176,11 @@
 | FOUND-04 | Phase 1: Foundation | Complete |
 | FOUND-05 | Phase 1: Foundation | Complete |
 | FOUND-06 | Phase 1: Foundation | Complete |
-| ENTRY-01 | Phase 2: Orchestrator & Entry | Pending |
+| ENTRY-01 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-02 | Phase 2: Orchestrator & Entry | Pending |
 | ENTRY-03 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-04 | Phase 2: Orchestrator & Entry | Complete |
-| ENTRY-05 | Phase 2: Orchestrator & Entry | Pending |
+| ENTRY-05 | Phase 2: Orchestrator & Entry | Complete |
 | PROJ-01 | Phase 3: Project Context & API | Pending |
 | PROJ-02 | Phase 3: Project Context & API | Pending |
 | PROJ-03 | Phase 3: Project Context & API | Pending |
