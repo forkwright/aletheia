@@ -10,7 +10,8 @@ export type {
   PlanningProject,
   PlanningRequirement,
   PlanningResearch,
+  ProjectContext,
 } from "./types.js";
-export { PLANNING_V20_DDL } from "./schema.js";
+export { PLANNING_V20_DDL, PLANNING_V21_MIGRATION } from "./schema.js";
 export { transition, VALID_TRANSITIONS } from "./machine.js";
 export type { PlanningEvent } from "./machine.js";

@@ -70,3 +70,5 @@ CREATE INDEX IF NOT EXISTS idx_planning_research_project ON planning_research(pr
 `;
 
 export const PLANNING_V20_MIGRATION_ENTRY = PLANNING_V20_DDL;
+
+export const PLANNING_V21_MIGRATION = `ALTER TABLE planning_projects ADD COLUMN project_context TEXT`;

@@ -1,5 +1,5 @@
 // SQLite DDL — embedded as string constants for migrations
-import { PLANNING_V20_DDL } from "../dianoia/schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION } from "../dianoia/schema.js";
 
 export const SCHEMA_VERSION = 1;
 
@@ -422,5 +422,9 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
   {
     version: 20,
     sql: PLANNING_V20_DDL,
+  },
+  {
+    version: 21,
+    sql: PLANNING_V21_MIGRATION,
   },
 ];

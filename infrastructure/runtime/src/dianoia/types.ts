@@ -3,6 +3,14 @@ import type { PlanningConfigSchema } from "../taxis/schema.js";
 
 export type PlanningConfig = PlanningConfigSchema;
 
+export interface ProjectContext {
+  goal?: string;
+  coreValue?: string;
+  constraints?: string[];
+  keyDecisions?: string[];
+  rawTranscript?: Array<{ turn: number; text: string }>;
+}
+
 export type DianoiaState =
   | "idle"
   | "questioning"
@@ -26,6 +34,7 @@ export interface PlanningProject {
   contextHash: string;
   createdAt: string;
   updatedAt: string;
+  projectContext: ProjectContext | null;
 }
 
 export interface PlanningPhase {

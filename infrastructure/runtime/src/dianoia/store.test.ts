@@ -2,7 +2,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanningError } from "../koina/errors.js";
-import { PLANNING_V20_DDL } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 
 let db: Database.Database;
@@ -29,6 +29,7 @@ beforeEach(() => {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(PLANNING_V20_DDL);
+  db.exec(PLANNING_V21_MIGRATION);
   store = new PlanningStore(db);
 });
 
@@ -311,5 +312,78 @@ describe("transaction isolation", () => {
       db.prepare("SELECT COUNT(*) as cnt FROM planning_projects").get() as { cnt: number }
     ).cnt;
     expect(countAfter).toBe(countBefore);
+  });
+});
+
+describe("updateProjectGoal", () => {
+  it("updates the goal column and reflects the change on read-back", () => {
+    const project = store.createProject(defaultProject);
+    store.updateProjectGoal(project.id, "Updated goal text");
+    const updated = store.getProjectOrThrow(project.id);
+    expect(updated.goal).toBe("Updated goal text");
+  });
+
+  it("throws PLANNING_PROJECT_NOT_FOUND for missing id", () => {
+    expect(() => store.updateProjectGoal("nonexistent", "goal")).toThrow(PlanningError);
+    try {
+      store.updateProjectGoal("nonexistent", "goal");
+    } catch (e) {
+      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    }
+  });
+});
+
+describe("updateProjectContext", () => {
+  it("persists and round-trips a full ProjectContext including constraints and rawTranscript", () => {
+    const project = store.createProject(defaultProject);
+    const ctx = {
+      goal: "Build a CLI tool",
+      coreValue: "Developer productivity",
+      constraints: ["TypeScript only", "No new DB"],
+      keyDecisions: ["Use SQLite", "File-based config"],
+      rawTranscript: [
+        { turn: 1, text: "I'm building a CLI tool for local dev workflows" },
+        { turn: 2, text: "TypeScript only, must not add new databases" },
+      ],
+    };
+    store.updateProjectContext(project.id, ctx);
+    const updated = store.getProjectOrThrow(project.id);
+    expect(updated.projectContext).toEqual(ctx);
+    expect(updated.projectContext?.constraints).toHaveLength(2);
+    expect(updated.projectContext?.rawTranscript).toHaveLength(2);
+    expect(updated.projectContext?.rawTranscript?.[0]?.turn).toBe(1);
+  });
+
+  it("returns projectContext: null on a new project before synthesis", () => {
+    const project = store.createProject(defaultProject);
+    const fetched = store.getProjectOrThrow(project.id);
+    expect(fetched.projectContext).toBeNull();
+  });
+
+  it("throws PLANNING_PROJECT_NOT_FOUND for missing id", () => {
+    expect(() => store.updateProjectContext("nonexistent", { goal: "x" })).toThrow(PlanningError);
+    try {
+      store.updateProjectContext("nonexistent", { goal: "x" });
+    } catch (e) {
+      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    }
+  });
+});
+
+describe("mapProject projectContext null handling", () => {
+  it("returns null projectContext when project_context column is NULL", () => {
+    const project = store.createProject(defaultProject);
+    const fetched = store.getProjectOrThrow(project.id);
+    expect(fetched.projectContext).toBeNull();
+  });
+
+  it("returns null projectContext when project_context column contains invalid JSON", () => {
+    const project = store.createProject(defaultProject);
+    db.prepare("UPDATE planning_projects SET project_context = ? WHERE id = ?").run(
+      "not-valid-json{{",
+      project.id,
+    );
+    const fetched = store.getProjectOrThrow(project.id);
+    expect(fetched.projectContext).toBeNull();
   });
 });

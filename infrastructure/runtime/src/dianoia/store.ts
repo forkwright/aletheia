@@ -12,6 +12,7 @@ import type {
   PlanningProject,
   PlanningRequirement,
   PlanningResearch,
+  ProjectContext,
 } from "./types.js";
 
 const log = createLogger("dianoia");
@@ -114,6 +115,40 @@ export class PlanningStore {
           `UPDATE planning_projects SET config = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
         )
         .run(JSON.stringify(config), id);
+      if (result.changes === 0) {
+        throw new PlanningError(`Planning project not found: ${id}`, {
+          code: "PLANNING_PROJECT_NOT_FOUND",
+          context: { id },
+        });
+      }
+    });
+    update();
+  }
+
+  updateProjectGoal(id: string, goal: string): void {
+    const update = this.db.transaction(() => {
+      const result = this.db
+        .prepare(
+          `UPDATE planning_projects SET goal = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+        )
+        .run(goal, id);
+      if (result.changes === 0) {
+        throw new PlanningError(`Planning project not found: ${id}`, {
+          code: "PLANNING_PROJECT_NOT_FOUND",
+          context: { id },
+        });
+      }
+    });
+    update();
+  }
+
+  updateProjectContext(id: string, context: ProjectContext): void {
+    const update = this.db.transaction(() => {
+      const result = this.db
+        .prepare(
+          `UPDATE planning_projects SET project_context = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+        )
+        .run(JSON.stringify(context), id);
       if (result.changes === 0) {
         throw new PlanningError(`Planning project not found: ${id}`, {
           code: "PLANNING_PROJECT_NOT_FOUND",
@@ -337,6 +372,14 @@ export class PlanningStore {
         cause,
       });
     }
+    let projectContext: ProjectContext | null = null;
+    if (row["project_context"]) {
+      try {
+        projectContext = JSON.parse(row["project_context"] as string) as ProjectContext;
+      } catch {
+        projectContext = null;
+      }
+    }
     return {
       id: row["id"] as string,
       nousId: row["nous_id"] as string,
@@ -347,6 +390,7 @@ export class PlanningStore {
       contextHash: row["context_hash"] as string,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
+      projectContext,
     };
   }
 
