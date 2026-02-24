@@ -17,6 +17,7 @@ export type DianoiaState =
   | "researching"
   | "requirements"
   | "roadmap"
+  | "discussing"
   | "phase-planning"
   | "executing"
   | "verifying"
@@ -32,6 +33,7 @@ export interface PlanningProject {
   state: DianoiaState;
   config: PlanningConfig;
   contextHash: string;
+  projectDir: string | null;
   createdAt: string;
   updatedAt: string;
   projectContext: ProjectContext | null;
@@ -86,6 +88,29 @@ export interface PlanningResearch {
   status: "complete" | "partial" | "failed";
   createdAt: string;
 }
+
+// --- Discussion types (Spec 32 — discuss-per-phase) ---
+
+export interface DiscussionOption {
+  label: string;
+  rationale: string;
+}
+
+export interface DiscussionQuestion {
+  id: string;
+  projectId: string;
+  phaseId: string;
+  question: string;
+  options: DiscussionOption[];
+  recommendation: string | null;
+  decision: string | null;
+  userNote: string | null;
+  status: "pending" | "answered" | "skipped";
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Spawn / Verification types ---
 
 // Phase 6+ stubs — populated when execution/verification phases are complete
 export interface SpawnRecord {

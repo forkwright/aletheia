@@ -6,6 +6,8 @@ import { PlanningError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import type {
   DianoiaState,
+  DiscussionOption,
+  DiscussionQuestion,
   PlanningCheckpoint,
   PlanningConfig,
   PlanningPhase,
@@ -474,6 +476,119 @@ export class PlanningStore {
       .run(JSON.stringify(result), id);
   }
 
+  // --- Project Directory ---
+
+  updateProjectDir(id: string, projectDir: string): void {
+    const result = this.db
+      .prepare(
+        `UPDATE planning_projects SET project_dir = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(projectDir, id);
+    if (result.changes === 0) {
+      throw new PlanningError(`Planning project not found: ${id}`, {
+        code: "PLANNING_PROJECT_NOT_FOUND",
+        context: { id },
+      });
+    }
+  }
+
+  // --- Discussions (Spec 32) ---
+
+  createDiscussionQuestion(opts: {
+    projectId: string;
+    phaseId: string;
+    question: string;
+    options: DiscussionOption[];
+    recommendation?: string | null;
+  }): DiscussionQuestion {
+    const id = generateId("disc");
+    const now = new Date().toISOString();
+
+    this.db
+      .prepare(
+        `INSERT INTO planning_discussions (id, project_id, phase_id, question, options, recommendation, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      )
+      .run(
+        id,
+        opts.projectId,
+        opts.phaseId,
+        opts.question,
+        JSON.stringify(opts.options),
+        opts.recommendation ?? null,
+        now,
+        now,
+      );
+
+    return this.getDiscussionQuestionOrThrow(id);
+  }
+
+  answerDiscussionQuestion(id: string, decision: string, userNote?: string | null): void {
+    const result = this.db
+      .prepare(
+        `UPDATE planning_discussions SET decision = ?, user_note = ?, status = 'answered', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(decision, userNote ?? null, id);
+    if (result.changes === 0) {
+      throw new PlanningError(`Discussion question not found: ${id}`, {
+        code: "PLANNING_DISCUSSION_NOT_FOUND",
+        context: { id },
+      });
+    }
+  }
+
+  skipDiscussionQuestion(id: string): void {
+    const result = this.db
+      .prepare(
+        `UPDATE planning_discussions SET status = 'skipped', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(id);
+    if (result.changes === 0) {
+      throw new PlanningError(`Discussion question not found: ${id}`, {
+        code: "PLANNING_DISCUSSION_NOT_FOUND",
+        context: { id },
+      });
+    }
+  }
+
+  listDiscussionQuestions(projectId: string, phaseId?: string): DiscussionQuestion[] {
+    const rows = phaseId
+      ? (this.db
+          .prepare("SELECT * FROM planning_discussions WHERE project_id = ? AND phase_id = ? ORDER BY created_at ASC")
+          .all(projectId, phaseId) as Array<Record<string, unknown>>)
+      : (this.db
+          .prepare("SELECT * FROM planning_discussions WHERE project_id = ? ORDER BY created_at ASC")
+          .all(projectId) as Array<Record<string, unknown>>);
+    return rows.map((r) => this.mapDiscussionQuestion(r));
+  }
+
+  getPendingDiscussionQuestions(projectId: string, phaseId: string): DiscussionQuestion[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM planning_discussions WHERE project_id = ? AND phase_id = ? AND status = 'pending' ORDER BY created_at ASC",
+      )
+      .all(projectId, phaseId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.mapDiscussionQuestion(r));
+  }
+
+  getDiscussionQuestion(id: string): DiscussionQuestion | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM planning_discussions WHERE id = ?")
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapDiscussionQuestion(row) : undefined;
+  }
+
+  getDiscussionQuestionOrThrow(id: string): DiscussionQuestion {
+    const q = this.getDiscussionQuestion(id);
+    if (!q) {
+      throw new PlanningError(`Discussion question not found: ${id}`, {
+        code: "PLANNING_DISCUSSION_NOT_FOUND",
+        context: { id },
+      });
+    }
+    return q;
+  }
+
   // --- Private mappers ---
 
   private mapProject(row: Record<string, unknown>): PlanningProject {
@@ -503,6 +618,7 @@ export class PlanningStore {
       state: row["state"] as DianoiaState,
       config,
       contextHash: row["context_hash"] as string,
+      projectDir: (row["project_dir"] as string | null) ?? null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
       projectContext,
@@ -589,6 +705,28 @@ export class PlanningStore {
       content: row["content"] as string,
       status: (row["status"] as "complete" | "partial" | "failed") ?? "complete",
       createdAt: row["created_at"] as string,
+    };
+  }
+
+  private mapDiscussionQuestion(row: Record<string, unknown>): DiscussionQuestion {
+    let options: DiscussionOption[];
+    try {
+      options = JSON.parse(row["options"] as string) as DiscussionOption[];
+    } catch {
+      options = [];
+    }
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: row["phase_id"] as string,
+      question: row["question"] as string,
+      options,
+      recommendation: (row["recommendation"] as string | null) ?? null,
+      decision: (row["decision"] as string | null) ?? null,
+      userNote: (row["user_note"] as string | null) ?? null,
+      status: row["status"] as DiscussionQuestion["status"],
+      createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
     };
   }
 

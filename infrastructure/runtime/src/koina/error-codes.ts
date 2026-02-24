@@ -93,6 +93,7 @@ export const ERROR_CODES = {
   PLANNING_CONSTRAINT_VIOLATION: "Planning operation violates a database constraint",
   PLANNING_INVALID_TRANSITION: "FSM transition is not valid from the current state",
   PLANNING_SPAWN_NOT_FOUND: "Spawn record ID does not exist",
+  PLANNING_DISCUSSION_NOT_FOUND: "Discussion question ID does not exist",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

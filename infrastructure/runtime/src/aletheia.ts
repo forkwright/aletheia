@@ -271,8 +271,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   const planningStore = new PlanningStore(store.getDb());
   const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
+  planningOrchestrator.setWorkspaceRoot(defaultWorkspace);
   manager.setPlanningOrchestrator(planningOrchestrator);
-  log.info("Dianoia planning orchestrator initialized");
+  log.info("Dianoia planning orchestrator initialized", { workspace: defaultWorkspace });
 
   const plugins = new PluginRegistry(config);
 
