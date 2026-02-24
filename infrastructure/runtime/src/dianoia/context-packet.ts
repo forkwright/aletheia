@@ -253,33 +253,40 @@ function assembleSections(sections: ContextSection[], maxTokens: number): string
   const sorted = [...sections].sort((a, b) => a.priority - b.priority);
 
   const parts: string[] = [];
-  let currentChars = 0;
+  let currentTokens = 0;
 
   for (const section of sorted) {
     const sectionText = `## ${section.header}\n\n${section.content}\n\n`;
-    const sectionChars = sectionText.length;
+    const sectionTokens = countTokens(sectionText);
 
-    if (currentChars + sectionChars <= maxChars) {
+    if (currentTokens + sectionTokens <= maxTokens) {
       // Fits entirely
       parts.push(sectionText);
-      currentChars += sectionChars;
+      currentTokens += sectionTokens;
     } else {
-      // Partial fit — truncate and add ellipsis
-      const remaining = maxChars - currentChars;
-      if (remaining > 100) {
+      // Partial fit — truncate by tokens and add ellipsis
+      const remainingTokens = maxTokens - currentTokens;
+      if (remainingTokens > 50) {
         // Only include if we can fit a meaningful chunk
-        const truncated = sectionText.slice(0, remaining - 20) + "\n\n[...truncated]";
-        parts.push(truncated);
-        currentChars = maxChars;
+        // Estimate chars that would fit in remaining tokens (rough approximation)
+        const estimatedCharsToFit = remainingTokens * 4;
+        const truncated = sectionText.slice(0, estimatedCharsToFit - 50) + "\n\n[...truncated]";
+        const finalTokens = countTokens(truncated);
+        if (currentTokens + finalTokens <= maxTokens) {
+          parts.push(truncated);
+          currentTokens += finalTokens;
+        }
       }
       break;
     }
   }
 
   const result = parts.join("").trim();
-  const estimatedTokens = Math.ceil(result.length / CHARS_PER_TOKEN);
-  log.debug(`Context packet assembled: ${sorted.length} sections, ~${estimatedTokens} tokens`, {
+  const actualTokens = countTokens(result);
+  log.debug(`Context packet assembled: ${sorted.length} sections, ${actualTokens} tokens`, {
     includedSections: sorted.map((s) => s.header),
+    tokenBudget: maxTokens,
+    utilization: `${Math.round((actualTokens / maxTokens) * 100)}%`,
   });
 
   return result;

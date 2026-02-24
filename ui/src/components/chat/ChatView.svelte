@@ -4,7 +4,7 @@
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
   import PlanningStatusLine from "./PlanningStatusLine.svelte";
-  import PlanningPanel from "./PlanningPanel.svelte";
+  import PlanningDashboard from "./PlanningDashboard.svelte";
   import ToolApproval from "./ToolApproval.svelte";
   import PlanCard from "./PlanCard.svelte";
   import DistillationProgress from "./DistillationProgress.svelte";
@@ -487,7 +487,7 @@
       />
     {/if}
     {#if selectedPlanningProjectId}
-      <PlanningPanel
+      <PlanningDashboard
         projectId={selectedPlanningProjectId}
         onClose={() => { selectedPlanningProjectId = null; }}
       />

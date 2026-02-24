@@ -205,4 +205,137 @@ describe("RequirementsOrchestrator.validateCoverage()", () => {
 
     expect(orch.validateCoverage(projectId, ["AUTH"])).toBe(true);
   });
+
+  // CTX-03 enhancements
+  it("returns false when fewer than minimum categories presented (default 2)", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    const decisions: ScopingDecision[] = [
+      { name: "Login with email/password", tier: "v1" },
+    ];
+    orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
+
+    // Only 1 category, should fail minimum gate
+    expect(orch.validateCoverage(projectId, ["AUTH"])).toBe(false);
+  });
+
+  it("passes with custom minimum category count", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    const decisions: ScopingDecision[] = [
+      { name: "Login with email/password", tier: "v1" },
+    ];
+    orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
+
+    // Allow single category with minimumCategories=1
+    expect(orch.validateCoverage(projectId, ["AUTH"], 1)).toBe(true);
+  });
+});
+
+describe("RequirementsOrchestrator.persistCategory() - CTX-03 enhancements", () => {
+  it("throws on duplicate reqId", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    // First persist
+    const decisions1: ScopingDecision[] = [
+      { name: "Login with email/password", tier: "v1" },
+    ];
+    orch.persistCategory(projectId, AUTH_CATEGORY, decisions1);
+
+    // Create another category that would generate the same reqId
+    const conflictCategory: CategoryProposal = {
+      category: "AUTH",
+      categoryName: "Authentication Conflict",
+      tableStakes: [{
+        name: "Different feature",
+        description: "different description",
+        isTableStakes: true,
+        proposedTier: "v1",
+      }],
+      differentiators: [],
+    };
+
+    // This should generate AUTH-01 again, which should conflict
+    const store = new PlanningStore(db);
+    // Manually create a req with AUTH-01 to simulate conflict
+    store.createRequirement({
+      projectId,
+      reqId: "AUTH-01",
+      description: "Existing AUTH-01",
+      category: "OTHER",
+      tier: "v1",
+      rationale: null,
+    });
+
+    const decisions2: ScopingDecision[] = [
+      { name: "Different feature", tier: "v1" },
+    ];
+
+    expect(() => {
+      orch.persistCategory(projectId, conflictCategory, decisions2);
+    }).toThrow("Duplicate requirement ID: AUTH-01");
+  });
+
+  it("throws when table-stakes feature is out-of-scope without rationale", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    const decisions: ScopingDecision[] = [
+      { 
+        name: "Login with email/password", 
+        tier: "out-of-scope",
+        // No rationale provided for table-stakes feature
+      },
+    ];
+
+    expect(() => {
+      orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
+    }).toThrow('Table-stakes feature "Login with email/password" marked as out-of-scope without rationale');
+  });
+
+  it("allows table-stakes feature out-of-scope with rationale", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    const decisions: ScopingDecision[] = [
+      { 
+        name: "Login with email/password", 
+        tier: "out-of-scope",
+        rationale: "Using third-party auth only"
+      },
+    ];
+
+    // Should not throw
+    expect(() => {
+      orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
+    }).not.toThrow();
+
+    const store = new PlanningStore(db);
+    const reqs = store.listRequirements(projectId);
+    expect(reqs[0]!.rationale).toBe("Using third-party auth only");
+  });
+
+  it("allows non-table-stakes features out-of-scope without rationale", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+    const orch = new RequirementsOrchestrator(db);
+
+    const decisions: ScopingDecision[] = [
+      { name: "Login with email/password", tier: "v1" }, // table-stakes
+      { name: "SSO", tier: "out-of-scope" }, // differentiator, no rationale required
+    ];
+
+    // Should not throw
+    expect(() => {
+      orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
+    }).not.toThrow();
+  });
 });

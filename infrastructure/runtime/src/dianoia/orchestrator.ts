@@ -36,24 +36,26 @@ const ACTIVE_STATES = new Set([
 function verifyFileWritten(filePath: string, fileType: string): void {
   if (!existsSync(filePath)) {
     throw new PlanningError(`${fileType} file was not written: ${filePath}`, {
-      code: "FILE_WRITE_FAILED",
+      code: "FILE_NOT_FOUND",
       context: { filePath, fileType, reason: "file_not_found" }
     });
   }
 
+  let content: string;
   try {
-    const content = readFileSync(filePath, "utf-8");
-    if (content.length === 0) {
-      throw new PlanningError(`${fileType} file is empty: ${filePath}`, {
-        code: "FILE_WRITE_FAILED", 
-        context: { filePath, fileType, reason: "empty_file" }
-      });
-    }
+    content = readFileSync(filePath, "utf-8");
   } catch (err) {
     throw new PlanningError(`Failed to read ${fileType} file: ${filePath}`, {
-      code: "FILE_READ_FAILED",
+      code: "FILE_PERMISSION_DENIED",
       context: { filePath, fileType },
       cause: err
+    });
+  }
+
+  if (content.length === 0) {
+    throw new PlanningError(`${fileType} file is empty: ${filePath}`, {
+      code: "PLANNING_STATE_CORRUPT", 
+      context: { filePath, fileType, reason: "empty_file" }
     });
   }
 }

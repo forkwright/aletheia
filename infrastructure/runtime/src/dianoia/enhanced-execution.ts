@@ -10,16 +10,13 @@ import type { PhasePlan } from "./roadmap.js";
 import { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
 import { 
   StructuredExtractor, 
-  mapTaskToRole, 
-  parseStructuredResultWithZod,
+  mapTaskToRole,
   type SubAgentResult,
   type ExecutionResult,
   SubAgentResultSchema
 } from "./structured-extraction.js";
 
 const log = createLogger("dianoia:enhanced-execution");
-const ZOMBIE_THRESHOLD_SECONDS = 600;
-const MAX_RETRY_ATTEMPTS = 1; // EXEC-04: one retry with error feedback
 
 export interface EnhancedExecutionOptions {
   /** Enable wave-based concurrency for independent tasks (EXEC-03) */
@@ -387,8 +384,7 @@ export class EnhancedExecutionOrchestrator {
               const retryResult = await this.retryWithFeedback(
                 plan,
                 result.result,
-                extractionResult.validationErrors || [],
-                i
+                extractionResult.validationErrors || []
               );
               
               if (retryResult.success) {
@@ -459,8 +455,7 @@ export class EnhancedExecutionOrchestrator {
   private async retryWithFeedback(
     plan: PlanningPhase,
     originalResult: string,
-    validationErrors: string[],
-    taskIndex: number
+    validationErrors: string[]
   ): Promise<{ success: boolean; data?: SubAgentResult; error?: string }> {
     if (!this.options.enableAutoRetry || validationErrors.length === 0) {
       return { success: false, error: "Retry not enabled or no validation errors" };
@@ -468,13 +463,6 @@ export class EnhancedExecutionOrchestrator {
 
     // Create feedback prompt
     const feedback = this.extractor.createValidationFeedback(validationErrors, plan.goal);
-    const retryPrompt = [
-      originalResult,
-      "",
-      "---",
-      "",
-      feedback
-    ].join("\n");
 
     try {
       // Use task-to-role mapping for retry

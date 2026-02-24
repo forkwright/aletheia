@@ -3,6 +3,7 @@
   import ChatView from "../chat/ChatView.svelte";
   import MetricsView from "../metrics/MetricsView.svelte";
   import SettingsView from "../settings/SettingsView.svelte";
+  import PlanningView from "../planning/PlanningView.svelte";
   import FileEditor from "../files/FileEditor.svelte";
   import Login from "../auth/Login.svelte";
   import { getToken, setToken } from "../../lib/api";
@@ -13,7 +14,7 @@
   import SetupWizard from "../onboarding/SetupWizard.svelte";
   import Toast from "../shared/Toast.svelte";
 
-  type ViewId = "chat" | "metrics" | "graph" | "settings";
+  type ViewId = "chat" | "metrics" | "graph" | "planning" | "settings";
   type AuthState = "loading" | "needs-setup" | "login" | "token-setup" | "authenticated";
 
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
@@ -186,6 +187,8 @@
         {:catch}
           <div style="padding:2rem;color:var(--text-secondary)">Failed to load graph view</div>
         {/await}
+      {:else if activeView === "planning"}
+        <PlanningView />
       {:else if activeView === "settings"}
         <SettingsView onNavigate={handleSetView} />
       {:else}
