@@ -16,6 +16,7 @@ import {
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
 import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext } from "./types.js";
+import { RetrospectiveGenerator } from "./retrospective.js";
 
 const log = createLogger("dianoia:orchestrator");
 
@@ -27,10 +28,12 @@ const ACTIVE_STATES = new Set([
 
 export class DianoiaOrchestrator {
   private store: PlanningStore;
+  private retroGenerator: RetrospectiveGenerator;
   private workspaceRoot: string | null = null;
 
   constructor(db: Database.Database, private defaultConfig: PlanningConfigSchema) {
     this.store = new PlanningStore(db);
+    this.retroGenerator = new RetrospectiveGenerator(db);
   }
 
   /** Set the workspace root for file-backed state. Must be called before file writes work. */
@@ -103,6 +106,10 @@ export class DianoiaOrchestrator {
   abandon(projectId: string): void {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "ABANDON"));
+
+    // Generate retrospective even on abandon — failure patterns are valuable
+    this.generateRetro(projectId);
+
     log.info(`Abandoned planning project ${projectId}`);
   }
 
@@ -238,12 +245,20 @@ export class DianoiaOrchestrator {
       projectId,
       transition(project.state, "ALL_PHASES_COMPLETE"),
     );
+
+    // Generate retrospective on project completion
+    this.generateRetro(projectId);
+
     eventBus.emit("planning:complete", { projectId, nousId, sessionId });
     log.info(`Project complete: ${projectId}`);
   }
 
   completeAllPhases(projectId: string, nousId: string, sessionId: string): void {
     this.store.updateProjectState(projectId, transition("verifying", "ALL_PHASES_COMPLETE"));
+
+    // Generate retrospective on project completion
+    this.generateRetro(projectId);
+
     eventBus.emit("planning:complete", { projectId, nousId, sessionId });
     log.info("All phases complete", { projectId });
   }
@@ -320,6 +335,28 @@ export class DianoiaOrchestrator {
 
   updateContext(projectId: string, context: ProjectContext): void {
     this.store.updateProjectContext(projectId, context);
+  }
+
+  // --- Retrospective (Spec 32 Phase 4) ---
+
+  /** Generate and persist retrospective for a project */
+  private generateRetro(projectId: string): void {
+    try {
+      const retro = this.retroGenerator.generate(projectId);
+      if (this.workspaceRoot) {
+        this.retroGenerator.writeRetroFile(this.workspaceRoot, retro);
+        this.retroGenerator.writeRetroJson(this.workspaceRoot, retro);
+      }
+      log.info(`Retrospective generated for project ${projectId}: ${retro.patterns.length} patterns`);
+    } catch (err) {
+      // Don't let retro failure block project state transitions
+      log.warn(`Failed to generate retrospective for ${projectId}`, { err });
+    }
+  }
+
+  /** Explicitly generate retrospective (e.g., for mid-project review) */
+  generateRetrospective(projectId: string): import("./retrospective.js").RetrospectiveEntry {
+    return this.retroGenerator.generate(projectId);
   }
 
   // --- Discussion flow (Spec 32) ---
