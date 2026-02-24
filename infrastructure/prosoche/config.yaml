@@ -6,11 +6,12 @@ gateway:
 quiet_hours:
   start: '23:00'
   end: 06:00
-  timezone: UTC
+  timezone: America/Chicago
 rhythm:
-  morning_prep: 07:45
+  morning_prep: '07:45'
   midday_check: '12:00'
   evening_review: '17:00'
+  weekly_maintenance: '09:00'
 budget:
   max_wakes_per_nous_per_hour: 2
   max_wakes_total_per_hour: 6
@@ -37,18 +38,49 @@ signals:
     services:
     - aletheia
     - aletheia-memory
+    - aletheia-prosoche
     - docker
     disk_warn_pct: 85
     disk_critical_pct: 95
     docker_containers:
     - qdrant
     - neo4j
-    - langfuse
+    - mouseion
   memory:
     enabled: true
     interval_seconds: 900
     sidecar_url: http://127.0.0.1:8230
     cross_nous_threshold: 5
+  git:
+    enabled: true
+    interval_seconds: 1800
+    repo: forkwright/aletheia
+    stale_branch_days: 7
+  nas:
+    enabled: true
+    interval_seconds: 600
+    host: 192.168.0.120
+    ssh_port: 22
+    mounts:
+    - /mnt/nas/Media
+    - /mnt/nas/docker
+    - /mnt/nas/photos
+    - /mnt/nas/vpn_media
+  credentials:
+    enabled: true
+    interval_seconds: 3600
+    warn_age_seconds: 518400     # 6 days
+    critical_age_seconds: 1123200  # 13 days
+    token_files:
+    - path: /home/syn/.aletheia/credentials/anthropic.json
+      label: Anthropic OAuth (primary)
+    - path: /home/syn/.aletheia/credentials/oauth.json
+      label: OAuth backup
+  sessions:
+    enabled: true
+    interval_seconds: 1800
+    stale_hours: 24
+    dormant_hours: 72
 nous:
   syn:
     role: orchestrator
@@ -57,6 +89,10 @@ nous:
       tasks: 0.8
       health: 0.9
       memory: 0.7
+      git: 0.6
+      nas: 0.8
+      credentials: 0.9
+      sessions: 0.5
   syl:
     role: general
     weights:
