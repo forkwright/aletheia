@@ -9,7 +9,7 @@ import {
   PLANNING_V24_MIGRATION,
   PLANNING_V25_MIGRATION,
 } from "./schema.js";
-import { PlanningStore } from "./store.js";
+import type { PlanningStore } from "./store.js";
 import { CheckpointSystem } from "./checkpoint.js";
 import { eventBus } from "../koina/event-bus.js";
 import type { PlanningConfig } from "./types.js";
