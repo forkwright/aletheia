@@ -52,7 +52,7 @@ import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
-import { CheckpointSystem, createPlanCreateTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
+import { CheckpointSystem, createPlanCreateTool, createPlanDiscussTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -388,6 +388,10 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   roadmapOrchestrator.setWorkspaceRoot(defaultWorkspace);
   const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
   tools.register(planRoadmapTool);
+
+  // Planning discussion tool — bridges 'discussing' state between roadmap and phase-planning
+  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, store.getDb());
+  tools.register(planDiscussTool);
 
   // Planning execution orchestrator — wired after dispatchTool is available
   const executionOrchestrator = new ExecutionOrchestrator(store.getDb(), dispatchTool);

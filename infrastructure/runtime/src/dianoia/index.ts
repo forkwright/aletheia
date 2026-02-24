@@ -52,6 +52,9 @@ export {
   readPlanFile,
 } from "./project-files.js";
 
+// Discussion tool (Spec 32 Phase 3)
+export { createPlanDiscussTool } from "./discuss-tool.js";
+
 // Context engineering (Spec 32 Phase 2)
 export { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
 export type { SubAgentRole, ContextPacketOptions, ModelTier } from "./context-packet.js";
