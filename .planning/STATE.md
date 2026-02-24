@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 2 of 9 (Orchestrator and Entry)
-Plan: 2 of 3 in current phase
+Plan: 3 of 3 in current phase — PHASE COMPLETE
 Status: Executing
-Last activity: 2026-02-24 -- Plan 02-02 complete (/plan command and CLI entry)
+Last activity: 2026-02-24 -- Plan 02-03 complete (intent detection hook)
 
-Progress: [██░░░░░░░░] 18%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 4 min
-- Total execution time: 0.37 hours
+- Total plans completed: 6
+- Average duration: 3 min
+- Total execution time: 0.40 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
-| 02-orchestrator-and-entry | 2/3 | 5 min | 2.5 min |
+| 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 8 min, 1 min, 5 min, 3 min, 2 min
+- Last 5 plans: 1 min, 5 min, 3 min, 2 min, 2 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -59,6 +59,9 @@ Recent decisions affecting current work:
 - [02-01]: DianoiaOrchestrator instantiated in createRuntime() not startRuntime() -- available in tests and CLI commands calling createRuntime() directly
 - [Phase 02-02]: execute() in /plan command uses Promise.resolve(sync) not async — satisfies CommandHandler interface without oxlint require-await
 - [Phase 02-02]: getPlanningOrchestrator() getter added to NousManager — avoids adding orchestrator to AletheiaRuntime interface
+- [02-03]: Two-signal detection required for build/create verbs (project-scale noun must co-occur) to prevent false positives
+- [02-03]: Explicit phrases (help me plan, new project, /plan) are single-signal sufficient
+- [02-03]: Intent offer is else-branch of activeProject check — clean mutual exclusion, single pass
 
 ### Pending Todos
 
@@ -73,5 +76,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 02-02-PLAN.md (/plan command and CLI entry)
+Stopped at: Completed 02-03-PLAN.md (intent detection hook — Phase 2 complete)
 Resume file: None

@@ -13,7 +13,7 @@ Dianoia transforms Aletheia from a session-scoped AI assistant into a project-aw
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - SQLite schema, pure state machine, planning store, and config persistence (completed 2026-02-23)
-- [ ] **Phase 2: Orchestrator & Entry** - DianoiaOrchestrator, /plan command, intent detection, CLI subcommand
+- [x] **Phase 2: Orchestrator & Entry** - DianoiaOrchestrator, /plan command, intent detection, CLI subcommand (completed 2026-02-24)
 - [ ] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring
 - [ ] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling
 - [ ] **Phase 5: Requirements Definition** - Interactive scoping, REQ-ID assignment, persistence, coverage validation
@@ -186,7 +186,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
-| 2. Orchestrator & Entry | 2/3 | In Progress|  |
+| 2. Orchestrator & Entry | 3/3 | Complete   | 2026-02-24 |
 | 3. Project Context & API | 0/4 | Not started | - |
 | 4. Research Pipeline | 0/2 | Not started | - |
 | 5. Requirements Definition | 0/2 | Not started | - |

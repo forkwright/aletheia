@@ -19,7 +19,7 @@
 ### Entry & Discovery
 
 - [x] **ENTRY-01**: User can initiate planning via `/plan` slash command in any session
-- [ ] **ENTRY-02**: Agent detects planning intent in the turn pipeline via `turn:before` hook and offers to engage planning mode
+- [x] **ENTRY-02**: Agent detects planning intent in the turn pipeline via `turn:before` hook and offers to engage planning mode
 - [x] **ENTRY-03**: Both entry paths (command and agent-detected) route to the same DianoiaOrchestrator state machine
 - [x] **ENTRY-04**: Planning session is associated with the initiating nous and session, resumable from any later session with the same nous
 - [x] **ENTRY-05**: `aletheia plan` CLI subcommand starts planning mode directly
@@ -117,7 +117,7 @@
 
 - [x] **TEST-01**: Unit tests for state machine transitions (pure FSM -- all paths covered)
 - [x] **TEST-02**: Unit tests for PlanningStore CRUD operations using in-memory SQLite
-- [ ] **TEST-03**: Unit tests for intent detection hook (true positive and false positive scenarios)
+- [x] **TEST-03**: Unit tests for intent detection hook (true positive and false positive scenarios)
 - [ ] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
 - [ ] **TEST-05**: `npx tsc --noEmit` passes with zero new type errors
 - [ ] **TEST-06**: `npx oxlint src/` passes with zero new lint errors
@@ -177,7 +177,7 @@
 | FOUND-05 | Phase 1: Foundation | Complete |
 | FOUND-06 | Phase 1: Foundation | Complete |
 | ENTRY-01 | Phase 2: Orchestrator & Entry | Complete |
-| ENTRY-02 | Phase 2: Orchestrator & Entry | Pending |
+| ENTRY-02 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-03 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-04 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-05 | Phase 2: Orchestrator & Entry | Complete |
@@ -239,7 +239,7 @@
 | DOCS-03 | Phase 9: Polish & Migration | Pending |
 | TEST-01 | Phase 1: Foundation | Complete |
 | TEST-02 | Phase 1: Foundation | Complete |
-| TEST-03 | Phase 2: Orchestrator & Entry | Pending |
+| TEST-03 | Phase 2: Orchestrator & Entry | Complete |
 | TEST-04 | Phase 9: Polish & Migration | Pending |
 | TEST-05 | Phase 9: Polish & Migration | Pending |
 | TEST-06 | Phase 9: Polish & Migration | Pending |
