@@ -5,7 +5,8 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
-import { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
+import { buildContextPacket } from "./context-packet.js";
+import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
 
 const log = createLogger("dianoia:execution");
 const ZOMBIE_THRESHOLD_SECONDS = 600; // 2x default 300s plan timeout
@@ -15,10 +16,27 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   // Uses PhasePlan.dependencies (plan-to-plan), NOT PlanStep.dependsOn (step-to-step within a plan).
   const idSet = new Set(phases.map((p) => p.id));
   const deps = new Map<string, Set<string>>();
+
+  // First pass: collect explicit phase-ID dependencies from plans
+  let hasExplicitDeps = false;
   for (const phase of phases) {
     const plan = phase.plan as PhasePlan | null;
     const planDeps = (plan?.dependencies ?? []).filter((d) => idSet.has(d));
     deps.set(phase.id, new Set(planDeps));
+    if (planDeps.length > 0) hasExplicitDeps = true;
+  }
+
+  // Fallback: if NO phase has valid inter-phase dependencies, infer sequential
+  // ordering from phaseOrder. This handles the common case where the LLM fills
+  // PhasePlan.dependencies with package names instead of phase IDs.
+  if (!hasExplicitDeps && phases.length > 1) {
+    const sorted = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1]!;
+      const curr = sorted[i]!;
+      deps.get(curr.id)!.add(prev.id);
+    }
+    log.info(`No explicit inter-phase dependencies found; inferred sequential order from phaseOrder (${sorted.map(p => p.phaseOrder).join(" → ")})`);
   }
 
   const waves: PlanningPhase[][] = [];
@@ -143,9 +161,7 @@ export class ExecutionOrchestrator {
         spawnIds.push(record.id);
       }
 
-      const modelTier = selectModelForRole("executor");
-      const role = modelTierToRole(modelTier);
-
+      // Map each plan to appropriate role based on its task content
       const tasks = activePlans.map((plan) => {
         // Build scoped context packet from file-backed state
         const contextPacket = this.workspaceRoot
@@ -163,34 +179,58 @@ export class ExecutionOrchestrator {
             })
           : buildExecutionPrompt(plan, project.goal); // Fallback if no workspace
 
+        // Select role based on task content rather than fixed "executor" role
+        const selectedRole = selectRoleForTask(plan.goal + " " + plan.successCriteria.join(" "));
+
         return {
-          role: role as "coder",
+          role: selectedRole,
           task: contextPacket,
           timeoutSeconds: 300,
         };
       });
 
-      let output: {
-        results: Array<{ status: string; result?: string; error?: string; durationMs: number }>;
-      };
+      let dispatchResult: Awaited<ReturnType<typeof parseDispatchResponse>>;
+      
       try {
         const raw = await this.dispatchTool.execute({ tasks }, toolContext);
-        output = JSON.parse(raw as string) as typeof output;
+        
+        // Try structured extraction with retry capability
+        dispatchResult = await parseDispatchResponse(raw as string, async (errorMessage) => {
+          log.warn(`Dispatch response parsing failed: ${errorMessage}. Retrying...`);
+          // For retry, we could re-dispatch with error feedback, but for now we just fail
+          // In a more sophisticated implementation, we might retry the dispatch with better prompts
+          throw new Error(`Response parsing failed: ${errorMessage}`);
+        });
+        
+        if (!dispatchResult) {
+          throw new Error("Failed to parse dispatch response after retry");
+        }
       } catch (err) {
-        // Dispatch itself failed — mark all as failed
-        output = {
-          results: activePlans.map(() => ({
-            status: "error",
+        // Dispatch or parsing failed — mark all as failed
+        dispatchResult = {
+          taskCount: activePlans.length,
+          succeeded: 0,
+          failed: activePlans.length,
+          results: activePlans.map((_, index) => ({
+            index,
+            task: activePlans[index]?.goal ?? "unknown",
+            status: "error" as const,
             error: String(err),
             durationMs: 0,
           })),
+          timing: {
+            wallClockMs: 0,
+            sequentialMs: 0,
+            savedMs: 0,
+          },
+          totalTokens: 0,
         };
       }
 
       for (let i = 0; i < activePlans.length; i++) {
         const plan = activePlans[i]!;
         const spawnId = spawnIds[i]!;
-        const result = output.results[i];
+        const result = dispatchResult.results[i];
 
         if (result?.status === "success") {
           this.store.updateSpawnRecord(spawnId, {

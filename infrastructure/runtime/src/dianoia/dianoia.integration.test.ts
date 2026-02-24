@@ -8,6 +8,7 @@ import {
   PLANNING_V23_MIGRATION,
   PLANNING_V24_MIGRATION,
   PLANNING_V25_MIGRATION,
+  PLANNING_V26_MIGRATION,
 } from "./schema.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { ExecutionOrchestrator } from "./execution.js";
@@ -44,6 +45,7 @@ function makeDb(): Database.Database {
   db.exec(PLANNING_V23_MIGRATION);
   db.exec(PLANNING_V24_MIGRATION);
   db.exec(PLANNING_V25_MIGRATION);
+  db.exec(PLANNING_V26_MIGRATION);
   return db;
 }
 
@@ -106,6 +108,7 @@ describe("Dianoia integration — full pipeline", () => {
     db = makeDb();
     store = new PlanningStore(db);
     orchestrator = new DianoiaOrchestrator(db, DEFAULT_CONFIG);
+    orchestrator.setWorkspaceRoot("/tmp/integration-test");
   });
 
   it("drives idle → complete via full pipeline", async () => {

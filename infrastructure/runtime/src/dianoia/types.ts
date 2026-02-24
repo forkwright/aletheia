@@ -147,3 +147,24 @@ export interface VerificationResult {
   overridden?: boolean | undefined;
   overrideNote?: string | undefined;
 }
+
+// --- Rollback Plan types (ORCH-04) ---
+
+export interface RollbackAction {
+  id: string;
+  type: "fix-verification-gap" | "verify-phase" | "manual-review";
+  description: string;
+  detail: string;
+  proposedFix: string;
+  priority: "low" | "medium" | "high";
+}
+
+export interface RollbackPlan {
+  failedPhaseId: string;
+  phaseName: string;
+  failureReason: string;
+  gapCount: number;
+  actions: RollbackAction[];
+  estimatedEffort: "low" | "medium" | "high";
+  createdAt: string;
+}

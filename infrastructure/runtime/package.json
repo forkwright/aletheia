@@ -23,10 +23,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@hono/node-server": "^1.14.0",
+    "@instructor-ai/instructor": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^12.6.2",
     "commander": "^14.0.3",
     "hono": "^4.12.2",
+    "js-tiktoken": "^1.0.21",
     "playwright-core": "^1.58.2",
     "tslog": "^4.9.3",
     "zod": "^3.24.2"

@@ -1,4 +1,5 @@
 // DianoiaOrchestrator — single state driver for all planning entry points
+import { existsSync, readFileSync } from "node:fs";
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
 import { PlanningStore } from "./store.js";
@@ -13,9 +14,11 @@ import {
   writePlanFile,
   writeVerifyFile,
 } from "./project-files.js";
+import { PlanningError } from "../koina/errors.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext } from "./types.js";
+import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext, VerificationGap, RollbackPlan, RollbackAction } from "./types.js";
+import type { PhasePlan } from "./roadmap.js";
 import { RetrospectiveGenerator } from "./retrospective.js";
 
 const log = createLogger("dianoia:orchestrator");
@@ -25,6 +28,37 @@ const ACTIVE_STATES = new Set([
   "requirements", "roadmap", "phase-planning",
   "executing", "verifying", "blocked",
 ]);
+
+/**
+ * Verify a file was written successfully - checks existence and non-empty content.
+ * Throws PlanningError on failure for fail-fast behavior.
+ */
+function verifyFileWritten(filePath: string, fileType: string): void {
+  if (!existsSync(filePath)) {
+    throw new PlanningError(`${fileType} file was not written: ${filePath}`, {
+      code: "FILE_NOT_FOUND",
+      context: { filePath, fileType, reason: "file_not_found" }
+    });
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf-8");
+  } catch (err) {
+    throw new PlanningError(`Failed to read ${fileType} file: ${filePath}`, {
+      code: "FILE_PERMISSION_DENIED",
+      context: { filePath, fileType },
+      cause: err
+    });
+  }
+
+  if (content.length === 0) {
+    throw new PlanningError(`${fileType} file is empty: ${filePath}`, {
+      code: "PLANNING_STATE_CORRUPT", 
+      context: { filePath, fileType, reason: "empty_file" }
+    });
+  }
+}
 
 export class DianoiaOrchestrator {
   private store: PlanningStore;
@@ -184,6 +218,10 @@ export class DianoiaOrchestrator {
     if (this.workspaceRoot) {
       const updated = this.store.getProjectOrThrow(projectId);
       writeProjectFile(this.workspaceRoot, updated, merged);
+      
+      // Verify PROJECT.md was written successfully
+      const projectPath = `${updated.projectDir}/PROJECT.md`;
+      verifyFileWritten(projectPath, "PROJECT.md");
     }
 
     eventBus.emit("planning:phase-started", {
@@ -227,6 +265,11 @@ export class DianoiaOrchestrator {
     if (this.workspaceRoot) {
       const reqs = this.store.listRequirements(projectId);
       writeRequirementsFile(this.workspaceRoot, projectId, reqs);
+      
+      // Verify REQUIREMENTS.md was written successfully
+      const project = this.store.getProjectOrThrow(projectId);
+      const requirementsPath = `${project.projectDir}/REQUIREMENTS.md`;
+      verifyFileWritten(requirementsPath, "REQUIREMENTS.md");
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "requirements" });
@@ -273,6 +316,10 @@ export class DianoiaOrchestrator {
     if (this.workspaceRoot) {
       const phases = this.store.listPhases(projectId);
       writeRoadmapFile(this.workspaceRoot, projectId, phases);
+      
+      // Verify ROADMAP.md was written successfully  
+      const roadmapPath = `${project.projectDir}/ROADMAP.md`;
+      verifyFileWritten(roadmapPath, "ROADMAP.md");
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
@@ -308,6 +355,101 @@ export class DianoiaOrchestrator {
     this.store.updateProjectState(projectId, transition(project.state, "PHASE_FAILED"));
     log.info(`Verification failed for project ${projectId} — blocked`);
     return "Verification failed. Project is blocked pending gap closure.";
+  }
+
+  /**
+   * ORCH-04: Auto-skip downstream phases on verification failure and generate rollback plan
+   * Called when a phase fails verification to cascade-skip dependent phases
+   */
+  skipDownstreamPhasesOnVerificationFailure(
+    projectId: string, 
+    failedPhaseId: string, 
+    verificationGaps: VerificationGap[]
+  ): { skippedPhases: string[], rollbackPlan: RollbackPlan } {
+    const allPhases = this.store.listPhases(projectId);
+    const dependentPhases = this.findDirectDependentPhases(failedPhaseId, allPhases);
+    
+    // Skip direct dependents only (following execution.ts pattern)
+    const skippedPhases: string[] = [];
+    for (const phase of dependentPhases) {
+      if (phase.status === "pending" || phase.status === "executing") {
+        this.store.updatePhaseStatus(phase.id, "skipped");
+        skippedPhases.push(phase.id);
+        log.info(`Skipped phase ${phase.id} (${phase.name}) due to failed dependency ${failedPhaseId}`);
+      }
+    }
+
+    // Generate rollback plan from verification gaps
+    const rollbackPlan = this.generateRollbackPlan(failedPhaseId, verificationGaps, allPhases);
+
+    log.info(`Verification failure cascade: skipped ${skippedPhases.length} dependent phases for ${failedPhaseId}`);
+    
+    return { skippedPhases, rollbackPlan };
+  }
+
+  /**
+   * Find phases that directly depend on the failed phase
+   * Mirrors directDependents logic from execution.ts
+   */
+  private findDirectDependentPhases(failedPhaseId: string, allPhases: import("./types.js").PlanningPhase[]) {
+    return allPhases.filter((phase) => {
+      const plan = phase.plan as PhasePlan | null;
+      const dependencies = plan?.dependencies ?? [];
+      return dependencies.includes(failedPhaseId);
+    });
+  }
+
+  /**
+   * Generate rollback plan that surfaces verification gaps as concrete actions
+   */
+  private generateRollbackPlan(
+    failedPhaseId: string, 
+    gaps: VerificationGap[], 
+    allPhases: import("./types.js").PlanningPhase[]
+  ): RollbackPlan {
+    const failedPhase = allPhases.find(p => p.id === failedPhaseId);
+    const phaseName = failedPhase?.name ?? "Unknown Phase";
+
+    const actions: RollbackAction[] = gaps.map((gap, index) => ({
+      id: `gap-${index + 1}`,
+      type: "fix-verification-gap",
+      description: gap.criterion ?? "Unknown criterion",
+      detail: gap.detail ?? "No details provided", 
+      proposedFix: gap.proposedFix ?? "Manual review required",
+      priority: gap.status === "not-met" ? "high" : "medium"
+    }));
+
+    // Add phase completion action
+    actions.push({
+      id: "rerun-verification", 
+      type: "verify-phase",
+      description: `Re-run verification for ${phaseName}`,
+      detail: `After addressing gaps, verify phase ${failedPhaseId} meets all success criteria`,
+      proposedFix: "Use plan_verify tool with action=run",
+      priority: "high"
+    });
+
+    return {
+      failedPhaseId,
+      phaseName,
+      failureReason: `Verification failed: ${gaps.length} gaps found`,
+      gapCount: gaps.length,
+      actions,
+      estimatedEffort: this.estimateRollbackEffort(gaps),
+      createdAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Estimate effort required to address verification gaps
+   */
+  private estimateRollbackEffort(gaps: VerificationGap[]): "low" | "medium" | "high" {
+    const criticalGaps = gaps.filter(g => g.status === "not-met").length;
+    const partialGaps = gaps.filter(g => g.status === "partially-met").length;
+    
+    if (criticalGaps > 2) return "high";
+    if (criticalGaps > 0 || partialGaps > 3) return "medium";
+    return "low";
   }
 
   pauseExecution(projectId: string): string {

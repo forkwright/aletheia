@@ -9,6 +9,7 @@ import {
   modelTierToRole,
   type SubAgentRole,
 } from "./context-packet.js";
+import { getEncoding } from "js-tiktoken";
 import {
   ensureProjectDir,
   ensurePhaseDir,
@@ -340,5 +341,69 @@ describe("modelTierToRole", () => {
 
   it("maps sonnet to coder", () => {
     expect(modelTierToRole("sonnet")).toBe("coder");
+  });
+});
+
+describe("Token budget accuracy (CTX-01)", () => {
+  it("respects maxTokens budget within 5% margin", () => {
+    const phase = makePhase();
+    const requirements = [makeRequirement(), makeRequirement({ reqId: "AUTH-02", description: "Session management" })];
+    
+    // Create some substantial content to test truncation
+    const largeContent = "This is a large piece of content. ".repeat(1000);
+    
+    writeProjectFile(workspaceRoot, {
+      id: TEST_PROJECT_ID,
+      goal: largeContent,
+      state: "idle",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      projectContext: null,
+    });
+    
+    writeRequirementsFile(workspaceRoot, TEST_PROJECT_ID, requirements);
+    
+    const maxTokens = 500;
+    const packet = buildContextPacket({
+      workspaceRoot,
+      projectId: TEST_PROJECT_ID,
+      phaseId: TEST_PHASE_ID,
+      role: "executor",
+      phase,
+      projectGoal: "Build authentication",
+      maxTokens,
+    });
+
+    // Count actual tokens using tiktoken
+    const encoder = getEncoding("cl100k_base");
+    const actualTokens = encoder.encode(packet).length;
+    
+    // Should be within 5% of budget (not exceed it significantly)
+    expect(actualTokens).toBeLessThanOrEqual(maxTokens * 1.05);
+    
+    // Should use a reasonable portion of the budget (not be too conservative) - but only if there's enough content
+    expect(actualTokens).toBeGreaterThan(Math.min(maxTokens * 0.3, 100)); // At least 30% or 100 tokens, whichever is smaller
+  });
+
+  it("includes correct sections for executor role", () => {
+    const phase = makePhase();
+    const requirements = [makeRequirement()];
+    
+    const packet = buildContextPacket({
+      workspaceRoot,
+      projectId: TEST_PROJECT_ID,
+      phaseId: TEST_PHASE_ID,
+      role: "executor",
+      phase,
+      requirements,
+      maxTokens: 2000,
+    });
+
+    // Executor should get: phase goal, plan, discussion, requirements, supplementary
+    // but NOT: project context, roadmap, research
+    expect(packet).toContain("Phase Objective");
+    expect(packet).toContain("Requirements");
+    expect(packet).not.toContain("Research Findings");
+    expect(packet).not.toContain("Roadmap Overview");
   });
 });

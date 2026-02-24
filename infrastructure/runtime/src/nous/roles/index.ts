@@ -20,16 +20,16 @@ export interface SubAgentResult {
   status: "success" | "partial" | "failed";
   summary: string;
   details: Record<string, unknown>;
-  filesChanged?: string[];
-  issues?: SubAgentIssue[];
+  filesChanged?: string[] | undefined;
+  issues?: SubAgentIssue[] | undefined;
   confidence: number;
 }
 
 export interface SubAgentIssue {
   severity: "error" | "warning" | "info";
-  location?: string;
+  location?: string | undefined;
   message: string;
-  suggestion?: string;
+  suggestion?: string | undefined;
 }
 
 export type RoleName = "coder" | "reviewer" | "researcher" | "explorer" | "runner";

@@ -275,3 +275,92 @@ describe("ResearchOrchestrator partial result surfacing", () => {
     expect(partialRow?.dimension).toBe("pitfalls");
   });
 });
+
+describe("ResearchOrchestrator - CTX-04 enhancements", () => {
+  it("validates JSON response structure and marks invalid as partial", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+
+    const mockDispatch: ToolHandler = {
+      definition: { name: "mock", description: "", input_schema: {} },
+      execute: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          results: [
+            {
+              index: 0,
+              status: "success",
+              result: `Valid JSON response: \`\`\`json\n{"summary":"good summary","details":"good details","confidence":"high"}\n\`\`\``,
+              durationMs: 1000,
+            },
+            {
+              index: 1,
+              status: "success",
+              result: "Invalid response with no JSON block at all",
+              durationMs: 1000,
+            },
+            {
+              index: 2,
+              status: "success",
+              result: `Invalid JSON structure: \`\`\`json\n{"wrong":"fields","missing":"required"}\n\`\`\``,
+              durationMs: 1000,
+            },
+            {
+              index: 3,
+              status: "success",
+              result: `Malformed JSON: \`\`\`json\n{"summary":"test", bad json\n\`\`\``,
+              durationMs: 1000,
+            },
+          ],
+        }),
+      ),
+    };
+
+    const orchestrator = new ResearchOrchestrator(db, mockDispatch);
+    
+    return orchestrator.runResearch(projectId, "Build a planning tool", TOOL_CONTEXT)
+      .then(result => {
+        expect(result.stored).toBe(1); // Only first one valid
+        expect(result.partial).toBe(3); // Others marked as partial due to validation failures
+
+        const store = new PlanningStore(db);
+        const rows = store.listResearch(projectId);
+        
+        const stackRow = rows.find(r => r.dimension === "stack");
+        expect(stackRow?.status).toBe("complete");
+        expect(stackRow?.content).toContain('"confidence": "high"'); // Structured JSON
+
+        const featuresRow = rows.find(r => r.dimension === "features");
+        expect(featuresRow?.status).toBe("partial");
+        expect(featuresRow?.content).toContain("Invalid response with no JSON block"); // Raw text
+
+        const architectureRow = rows.find(r => r.dimension === "architecture");
+        expect(architectureRow?.status).toBe("partial");
+        expect(architectureRow?.content).toContain("Invalid JSON structure"); // Raw text
+      });
+  });
+
+  it("throws PlanningError when all dimensions fail", () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+
+    const mockDispatch: ToolHandler = {
+      definition: { name: "mock", description: "", input_schema: {} },
+      execute: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          results: [
+            { index: 0, status: "error", error: "Failed", durationMs: 1000 },
+            { index: 1, status: "error", error: "Failed", durationMs: 1000 },
+            { index: 2, status: "error", error: "Failed", durationMs: 1000 },
+            { index: 3, status: "error", error: "Failed", durationMs: 1000 },
+          ],
+        }),
+      ),
+    };
+
+    const orchestrator = new ResearchOrchestrator(db, mockDispatch);
+    
+    return expect(
+      orchestrator.runResearch(projectId, "Build a planning tool", TOOL_CONTEXT)
+    ).rejects.toThrow("Research failed: No dimensions completed successfully");
+  });
+});
