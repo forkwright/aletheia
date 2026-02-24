@@ -336,15 +336,17 @@ export class PlanningStore {
     phase: string;
     dimension: string;
     content: string;
+    status?: "complete" | "partial" | "failed";
   }): PlanningResearch {
     const id = generateId("res");
+    const status = opts.status ?? "complete";
 
     this.db
       .prepare(
-        `INSERT INTO planning_research (id, project_id, phase, dimension, content)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO planning_research (id, project_id, phase, dimension, content, status)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, opts.projectId, opts.phase, opts.dimension, opts.content);
+      .run(id, opts.projectId, opts.phase, opts.dimension, opts.content, status);
 
     const row = this.db
       .prepare("SELECT * FROM planning_research WHERE id = ?")
@@ -468,6 +470,7 @@ export class PlanningStore {
       phase: row["phase"] as string,
       dimension: row["dimension"] as string,
       content: row["content"] as string,
+      status: (row["status"] as "complete" | "partial" | "failed") ?? "complete",
       createdAt: row["created_at"] as string,
     };
   }

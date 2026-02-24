@@ -80,5 +80,6 @@ export interface PlanningResearch {
   phase: string;
   dimension: string;
   content: string;
+  status: "complete" | "partial" | "failed";
   createdAt: string;
 }
