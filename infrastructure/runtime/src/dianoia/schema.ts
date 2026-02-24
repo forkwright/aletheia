@@ -76,3 +76,25 @@ export const PLANNING_V21_MIGRATION = `ALTER TABLE planning_projects ADD COLUMN 
 export const PLANNING_V22_MIGRATION = `ALTER TABLE planning_research ADD COLUMN status TEXT NOT NULL DEFAULT 'complete' CHECK(status IN ('complete', 'partial', 'failed'))`;
 
 export const PLANNING_V23_MIGRATION = `ALTER TABLE planning_requirements ADD COLUMN rationale TEXT`;
+
+export const PLANNING_V24_MIGRATION = `ALTER TABLE planning_phases ADD COLUMN verification_result TEXT`;
+
+export const PLANNING_V25_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_spawn_records (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT NOT NULL REFERENCES planning_phases(id) ON DELETE CASCADE,
+  agent_session_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'complete', 'failed', 'done', 'skipped', 'zombie')),
+  result TEXT,
+  wave INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT,
+  completed_at TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_project ON planning_spawn_records(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_phase ON planning_spawn_records(phase_id);
+`;

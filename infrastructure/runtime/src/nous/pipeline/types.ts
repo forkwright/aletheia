@@ -154,6 +154,7 @@ export interface RuntimeServices {
   approvalMode?: ApprovalMode;
   memoryTarget?: MemoryFlushTarget;
   planningOrchestrator?: DianoiaOrchestrator;
+  executionOrchestrator?: import("../../dianoia/execution.js").ExecutionOrchestrator;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */

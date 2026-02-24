@@ -27,6 +27,7 @@ export type EventName =
   | "planning:project-resumed"
   | "planning:phase-started"
   | "planning:phase-complete"
+  | "planning:checkpoint"
   | "planning:complete";
 
 export type EventPayload = Record<string, unknown>;

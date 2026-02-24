@@ -13,6 +13,8 @@ import type {
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
+  SpawnRecord,
+  VerificationResult,
 } from "./types.js";
 
 const log = createLogger("dianoia");
@@ -340,7 +342,7 @@ export class PlanningStore {
     return this.mapCheckpoint(row);
   }
 
-  resolveCheckpoint(id: string, decision: string): void {
+  resolveCheckpoint(id: string, decision: string, _meta?: Record<string, unknown>): void {
     const update = this.db.transaction(() => {
       this.db
         .prepare("UPDATE planning_checkpoints SET decision = ? WHERE id = ?")
@@ -386,6 +388,75 @@ export class PlanningStore {
       .prepare("SELECT * FROM planning_research WHERE project_id = ? ORDER BY created_at ASC")
       .all(projectId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.mapResearch(r));
+  }
+
+  // --- Spawn Records (Phase 7+) ---
+
+  createSpawnRecord(opts: {
+    projectId: string;
+    phaseId: string;
+    agentSessionId?: string;
+    wave?: number;
+    waveNumber?: number;
+  }): SpawnRecord {
+    const id = generateId("spawn");
+    const now = new Date().toISOString();
+    const waveNum = opts.waveNumber ?? opts.wave ?? 0;
+    const agentSessionId = opts.agentSessionId ?? "";
+
+    this.db
+      .prepare(
+        `INSERT INTO planning_spawn_records (id, project_id, phase_id, agent_session_id, status, wave, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      )
+      .run(id, opts.projectId, opts.phaseId, agentSessionId, waveNum, now, now);
+
+    return {
+      id,
+      projectId: opts.projectId,
+      phaseId: opts.phaseId,
+      agentSessionId,
+      status: "pending",
+      result: null,
+      wave: waveNum,
+      waveNumber: waveNum,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  updateSpawnRecord(id: string, updates: { status?: SpawnRecord["status"]; result?: string; startedAt?: string; completedAt?: string; errorMessage?: string }): void {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (updates.status !== undefined) { sets.push("status = ?"); vals.push(updates.status); }
+    if (updates.result !== undefined) { sets.push("result = ?"); vals.push(updates.result); }
+    if (updates.startedAt !== undefined) { sets.push("started_at = ?"); vals.push(updates.startedAt); }
+    if (updates.completedAt !== undefined) { sets.push("completed_at = ?"); vals.push(updates.completedAt); }
+    if (updates.errorMessage !== undefined) { sets.push("error_message = ?"); vals.push(updates.errorMessage); }
+    if (sets.length === 0) return;
+    sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    vals.push(id);
+    this.db.prepare(`UPDATE planning_spawn_records SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+  }
+
+  listSpawnRecords(projectId: string): SpawnRecord[] {
+    const rows = this.db
+      .prepare("SELECT * FROM planning_spawn_records WHERE project_id = ? ORDER BY wave ASC, created_at ASC")
+      .all(projectId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.mapSpawnRecord(r));
+  }
+
+  // --- Phase Verification ---
+
+  updatePhaseVerificationResult(id: string, result: VerificationResult): void {
+    this.db
+      .prepare(
+        `UPDATE planning_phases SET verification_result = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(JSON.stringify(result), id);
   }
 
   // --- Private mappers ---
@@ -448,6 +519,9 @@ export class PlanningStore {
       plan,
       status: row["status"] as PlanningPhase["status"],
       phaseOrder: row["phase_order"] as number,
+      verificationResult: row["verification_result"]
+        ? (JSON.parse(row["verification_result"] as string) as VerificationResult)
+        : null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
     };
@@ -500,6 +574,25 @@ export class PlanningStore {
       content: row["content"] as string,
       status: (row["status"] as "complete" | "partial" | "failed") ?? "complete",
       createdAt: row["created_at"] as string,
+    };
+  }
+
+  private mapSpawnRecord(row: Record<string, unknown>): SpawnRecord {
+    const wave = row["wave"] as number;
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: row["phase_id"] as string,
+      agentSessionId: row["agent_session_id"] as string,
+      status: row["status"] as SpawnRecord["status"],
+      result: (row["result"] as string | null) ?? null,
+      wave,
+      waveNumber: wave,
+      startedAt: (row["started_at"] as string | null) ?? null,
+      completedAt: (row["completed_at"] as string | null) ?? null,
+      errorMessage: (row["error_message"] as string | null) ?? null,
+      createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
     };
   }
 }

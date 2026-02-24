@@ -52,7 +52,7 @@ import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
-import { ResearchOrchestrator, createPlanResearchTool, RequirementsOrchestrator, createPlanRequirementsTool } from "./dianoia/index.js";
+import { CheckpointSystem, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -270,6 +270,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     verifier: true,
     mode: "interactive" as const,
   };
+  const planningStore = new PlanningStore(store.getDb());
   const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
   manager.setPlanningOrchestrator(planningOrchestrator);
   log.info("Dianoia planning orchestrator initialized");
@@ -377,6 +378,29 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb());
   const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
   tools.register(planRequirementsTool);
+
+  // Planning roadmap orchestrator — wired after dispatchTool is available
+  const roadmapOrchestrator = new RoadmapOrchestrator(store.getDb(), dispatchTool);
+  const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
+  tools.register(planRoadmapTool);
+
+  // Planning execution orchestrator — wired after dispatchTool is available
+  const executionOrchestrator = new ExecutionOrchestrator(store.getDb(), dispatchTool);
+  const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator);
+  tools.register(planExecuteTool);
+  manager.setExecutionOrchestrator(executionOrchestrator);
+
+  // Planning verifier and checkpoint system — wired after executionOrchestrator
+  const verifierOrchestrator = new GoalBackwardVerifier(store.getDb(), dispatchTool);
+  const checkpointSystem = new CheckpointSystem(planningStore, planningConfig);
+  const planVerifyTool = createPlanVerifyTool(
+    planningOrchestrator,
+    verifierOrchestrator,
+    checkpointSystem,
+    planningStore,
+  );
+  tools.register(planVerifyTool);
+  log.info("Dianoia verifier and checkpoint system initialized");
 
   return {
     config,

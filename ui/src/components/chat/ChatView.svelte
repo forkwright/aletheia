@@ -3,6 +3,8 @@
   import InputBar from "./InputBar.svelte";
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
+  import PlanningStatusLine from "./PlanningStatusLine.svelte";
+  import PlanningPanel from "./PlanningPanel.svelte";
   import ToolApproval from "./ToolApproval.svelte";
   import PlanCard from "./PlanCard.svelte";
   import DistillationProgress from "./DistillationProgress.svelte";
@@ -387,6 +389,43 @@
     thinkingIsLive = false;
   }
 
+  // Planning panel state
+  let selectedPlanningProjectId = $state<string | null>(null);
+
+  interface ActiveProject {
+    id: string;
+    state: string;
+    activeWave: number | null;
+  }
+
+  let activeProject = $state<ActiveProject | null>(null);
+
+  $effect(() => {
+    const nousId = currentAgentId;
+    if (!nousId) return;
+
+    async function fetchActiveProject(): Promise<void> {
+      try {
+        const res = await fetch(`/api/planning/projects?nousId=${encodeURIComponent(nousId!)}`, {
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { projects: ActiveProject[] };
+        const projects: ActiveProject[] = data.projects ?? [];
+        const found = projects.find(
+          (p) => p.state !== "complete" && p.state !== "abandoned",
+        ) ?? null;
+        activeProject = found;
+      } catch {
+        // best-effort: leave existing activeProject unchanged on transient error
+      }
+    }
+
+    fetchActiveProject();
+    const iv = setInterval(fetchActiveProject, 5000);
+    return () => clearInterval(iv);
+  });
+
   // Thinking panel persistence — capture thinking content when turn completes
   let previouslyLive = false;
   $effect(() => {
@@ -447,12 +486,28 @@
         onClose={closeThinkingPanel}
       />
     {/if}
+    {#if selectedPlanningProjectId}
+      <PlanningPanel
+        projectId={selectedPlanningProjectId}
+        onClose={() => { selectedPlanningProjectId = null; }}
+      />
+    {/if}
   </div>
   {#if pendingPlan}
     <PlanCard plan={pendingPlan} onResolved={handlePlanResolved} />
   {/if}
   {#if pendingApproval}
     <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
+  {/if}
+  {#if activeProject}
+    <div class="planning-pill-row">
+      <PlanningStatusLine
+        projectId={activeProject.id}
+        state={activeProject.state}
+        activeWave={activeProject.activeWave}
+        onclick={() => { selectedPlanningProjectId = activeProject!.id; }}
+      />
+    </div>
   {/if}
   <DistillationProgress />
   <InputBar
@@ -480,6 +535,11 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+  .planning-pill-row {
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
   }
 
   @media (max-width: 768px) {

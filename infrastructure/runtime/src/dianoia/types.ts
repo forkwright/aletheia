@@ -47,6 +47,7 @@ export interface PlanningPhase {
   plan: unknown | null;
   status: "pending" | "executing" | "complete" | "failed" | "skipped";
   phaseOrder: number;
+  verificationResult?: VerificationResult | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,4 +85,40 @@ export interface PlanningResearch {
   content: string;
   status: "complete" | "partial" | "failed";
   createdAt: string;
+}
+
+// Phase 6+ stubs — populated when execution/verification phases are complete
+export interface SpawnRecord {
+  id: string;
+  projectId: string;
+  phaseId: string;
+  agentSessionId: string;
+  status: "pending" | "running" | "complete" | "failed" | "done" | "skipped" | "zombie";
+  result: string | null;
+  wave: number;
+  waveNumber: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VerificationGap {
+  requirement?: string;
+  criterion?: string;
+  status: "met" | "partially-met" | "not-met";
+  detail?: string;
+  proposedFix?: string;
+}
+
+export interface VerificationResult {
+  phaseId?: string;
+  overallStatus?: "met" | "partially-met" | "not-met";
+  status?: "met" | "partially-met" | "not-met" | undefined;
+  gaps: VerificationGap[];
+  summary: string;
+  verifiedAt?: string | undefined;
+  overridden?: boolean | undefined;
+  overrideNote?: string | undefined;
 }

@@ -191,4 +191,63 @@ export class DianoiaOrchestrator {
     eventBus.emit("planning:complete", { projectId, nousId, sessionId });
     log.info(`Project complete: ${projectId}`);
   }
+
+  // --- Phase 6+ stubs: Roadmap, Execution, Verification ---
+
+  completeRoadmap(projectId: string, nousId: string, sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "ROADMAP_COMPLETE"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
+    log.info(`Roadmap complete for project ${projectId}`);
+    return "Roadmap complete. Moving to phase planning.";
+  }
+
+  advanceToExecution(projectId: string, nousId: string, sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "PLAN_READY"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "phase-planning" });
+    log.info(`Advancing to execution for project ${projectId}`);
+    return "Plan ready. Advancing to execution.";
+  }
+
+  advanceToVerification(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "VERIFY"));
+    log.info(`Advancing to verification for project ${projectId}`);
+    return "Execution complete. Moving to verification.";
+  }
+
+  advanceToNextPhase(projectId: string, nousId: string, sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "NEXT_PHASE"));
+    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId });
+    log.info(`Next phase started for project ${projectId}`);
+    return "Moving to next phase.";
+  }
+
+  blockOnVerificationFailure(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "PHASE_FAILED"));
+    log.info(`Verification failed for project ${projectId} — blocked`);
+    return "Verification failed. Project is blocked pending gap closure.";
+  }
+
+  pauseExecution(projectId: string): string {
+    this.store.getProjectOrThrow(projectId); // validate exists
+    log.info(`Execution paused for project ${projectId}`);
+    return `Execution paused for project ${projectId}. Resume with resumeExecution().`;
+  }
+
+  resumeExecution(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (project.state === "blocked") {
+      this.store.updateProjectState(projectId, transition(project.state, "RESUME"));
+    }
+    log.info(`Execution resumed for project ${projectId}`);
+    return `Execution resumed for project ${projectId}.`;
+  }
+
+  listPhases(projectId: string): import("./types.js").PlanningPhase[] {
+    return this.store.listPhases(projectId);
+  }
 }
