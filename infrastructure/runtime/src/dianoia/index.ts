@@ -52,6 +52,10 @@ export {
   readPlanFile,
 } from "./project-files.js";
 
+// Retrospective (Spec 32 Phase 4)
+export { RetrospectiveGenerator } from "./retrospective.js";
+export type { RetrospectiveEntry, PhaseRetrospective, Pattern } from "./retrospective.js";
+
 // Discussion tool (Spec 32 Phase 3)
 export { createPlanDiscussTool } from "./discuss-tool.js";
 
