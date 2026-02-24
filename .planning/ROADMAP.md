@@ -68,13 +68,13 @@ Plans:
   3. GET `/api/planning/projects` returns all projects; GET `/api/planning/projects/:id` returns full project state
   4. Planning events fire on the event bus (planning:project-created, planning:phase-started, planning:phase-complete, planning:checkpoint, planning:complete)
   5. Existing plan_create/plan_propose tools are marked deprecated with documented migration path (not removed)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Conversational project context gathering
-- [ ] 03-02: Pylon API routes (/api/planning/*)
-- [ ] 03-03: Event bus integration and working-state injection
-- [ ] 03-04: Legacy tool deprecation markers
+- [ ] 03-01-PLAN.md — Migration v21, ProjectContext persistence, questioning loop (processAnswer, getNextQuestion, confirmSynthesis)
+- [ ] 03-02-PLAN.md — Pylon API routes: GET /api/planning/projects and GET /api/planning/projects/:id
+- [ ] 03-03-PLAN.md — Planning context block enrichment (coreValue, constraints, keyDecisions, next question injection)
+- [ ] 03-04-PLAN.md — Legacy tool deprecation: plan_propose and plan_create marked @deprecated with JSON warning keys
 
 ### Phase 4: Research Pipeline
 **Goal**: Agent can spawn parallel domain researchers and produce a consolidated research summary
@@ -186,7 +186,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
-| 2. Orchestrator & Entry | 3/3 | Complete   | 2026-02-24 |
+| 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
 | 3. Project Context & API | 0/4 | Not started | - |
 | 4. Research Pipeline | 0/2 | Not started | - |
 | 5. Requirements Definition | 0/2 | Not started | - |
