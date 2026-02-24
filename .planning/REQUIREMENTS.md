@@ -88,9 +88,9 @@
 ### Human-in-Loop Checkpoints
 
 - [x] **CHKP-01**: Checkpoints fire on the event bus as `planning:checkpoint` events
-- [ ] **CHKP-02**: Checkpoints are risk-based: low-cost reversible decisions auto-approved; high-cost or irreversible decisions require human input
+- [x] **CHKP-02**: Checkpoints are risk-based: low-cost reversible decisions auto-approved; high-cost or irreversible decisions require human input
 - [x] **CHKP-03**: Checkpoint decisions are persisted to `planning_checkpoints` table (full audit trail)
-- [ ] **CHKP-04**: In YOLO mode, all checkpoints except blocking errors are auto-approved
+- [x] **CHKP-04**: In YOLO mode, all checkpoints except blocking errors are auto-approved
 - [x] **CHKP-05**: User can inject notes/constraints into a checkpoint decision (context captured with the decision)
 
 ### API & Integration
@@ -222,9 +222,9 @@
 | VERI-04 | Phase 8: Verification & Checkpoints | Pending |
 | VERI-05 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-01 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-02 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-02 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-03 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-04 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-04 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-05 | Phase 8: Verification & Checkpoints | Complete |
 | INTG-01 | Phase 3: Project Context & API | Complete |
 | INTG-02 | Phase 3: Project Context & API | Complete |

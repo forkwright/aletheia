@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 8 of 9 (Verification and Checkpoints) — IN PROGRESS
-Plan: 2 of ? in current phase — 08-02 complete
-Status: Phase 8 Plan 2 complete — GoalBackwardVerifier TDD, 6 new tests, 189 total green
-Last activity: 2026-02-24 -- Phase 8 Plan 2 complete (GoalBackwardVerifier: verify() dispatches sub-agent, parses VerificationResult, persists via updatePhaseVerificationResult; generateGapPlans() returns PhasePlan[] from gaps)
+Plan: 3 of ? in current phase — 08-03 complete
+Status: Phase 8 Plan 3 complete — CheckpointSystem TDD, 5 new tests, 194 total green
+Last activity: 2026-02-24 -- Phase 8 Plan 3 complete (CheckpointSystem: 5-branch evaluate() logic, TrueBlockerCategory type, YOLO mode auto-approval, true-blocker bypass)
 
 Progress: [████████░░] 83%
 
@@ -41,6 +41,7 @@ Progress: [████████░░] 83%
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 08-verification-checkpoints P03 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,9 @@ Recent decisions affecting current work:
 - [08-02]: generateGapPlans returns PhasePlan & {id, name} extended shape — PhasePlan interface has no id/name; structural typing permits extra properties
 - [08-02]: verify() fallback on parse error returns partially-met with summary "(verification unavailable)" — consistent with researcher synthesis fallback
 - [08-02]: Phase re-fetched inside runVerifierAgent (not in verify()) — avoids TS6133 unused-variable when disabled branch returns early
+- [Phase 08-03]: CheckpointSystem takes (store, config) not (db, config) — store already created in createRuntime() before instantiation
+- [Phase 08-03]: true-blocker branch checked first (before riskLevel) — trueBlockerCategory presence is the discriminator, not a riskLevel value
+- [Phase 08-03]: vi.spyOn(eventBus, 'emit') preferred over getter spy pattern — simpler, consistent with orchestrator.test.ts
 
 ### Pending Todos
 
@@ -143,5 +147,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 08-02-PLAN.md (GoalBackwardVerifier TDD: verify() + generateGapPlans(), 6 tests, 189 total green)
+Stopped at: Completed 08-03-PLAN.md (CheckpointSystem TDD: 5-branch evaluate(), TrueBlockerCategory, 5 tests, 194 total green)
 Resume file: None
