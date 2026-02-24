@@ -416,7 +416,7 @@ export class PlanningStore {
       .get(id) as Record<string, unknown> | undefined;
     if (!row) {
       throw new PlanningError(`Spawn record not found: ${id}`, {
-        code: "PLANNING_NOT_FOUND",
+        code: "PLANNING_SPAWN_NOT_FOUND",
         context: { id },
       });
     }

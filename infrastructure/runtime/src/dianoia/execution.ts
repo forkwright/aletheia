@@ -72,7 +72,7 @@ export class ExecutionOrchestrator {
   private store: PlanningStore;
 
   constructor(
-    private db: Database.Database,
+    db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);

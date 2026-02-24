@@ -92,6 +92,7 @@ export const ERROR_CODES = {
   PLANNING_STATE_CORRUPT: "Planning project state failed integrity check",
   PLANNING_CONSTRAINT_VIOLATION: "Planning operation violates a database constraint",
   PLANNING_INVALID_TRANSITION: "FSM transition is not valid from the current state",
+  PLANNING_SPAWN_NOT_FOUND: "Spawn record ID does not exist",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
