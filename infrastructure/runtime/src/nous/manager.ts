@@ -79,6 +79,7 @@ export class NousManager {
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
   setPlanningOrchestrator(orchestrator: DianoiaOrchestrator): void { this.planningOrchestrator = orchestrator; }
+  getPlanningOrchestrator(): DianoiaOrchestrator | undefined { return this.planningOrchestrator; }
 
   reloadConfig(newConfig: AletheiaConfig): { added: string[]; removed: string[] } {
     const oldIds = new Set(this.config.agents.list.map((n) => n.id));

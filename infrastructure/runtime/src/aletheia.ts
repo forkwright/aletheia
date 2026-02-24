@@ -529,6 +529,22 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
   setCommandsRef(commandRegistry);
 
+  // /plan and !plan — route to DianoiaOrchestrator.handle()
+  const planOrch = runtime.manager.getPlanningOrchestrator();
+  if (planOrch) {
+    commandRegistry.register({
+      name: "plan",
+      description: "Start or resume a Dianoia planning project",
+      execute(_args, ctx) {
+        const session = ctx.sessionId ? ctx.store.findSessionById(ctx.sessionId) : undefined;
+        const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
+        const sessionId = ctx.sessionId ?? "";
+        return Promise.resolve(planOrch.handle(nousId, sessionId));
+      },
+    });
+    log.debug("Registered /plan command");
+  }
+
   // --- Signal ---
   let watchdog: Watchdog | null = null;
   const abortController = new AbortController();
