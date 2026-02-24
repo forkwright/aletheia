@@ -52,7 +52,7 @@ import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
-import { CheckpointSystem, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
+import { CheckpointSystem, createPlanCreateTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -206,8 +206,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   sessionStatusTool.category = "available";
   tools.register(sessionStatusTool);
 
-  // Planning tools (available on-demand)
+  // Legacy planning tools — deprecated, available on-demand
   for (const planTool of createPlanTools(store)) {
+    if (planTool.definition.name === "plan_create") continue; // replaced by Dianoia create-tool
     planTool.category = "available";
     tools.register(planTool);
   }
@@ -368,6 +369,10 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   dispatchTool.category = "available";
   tools.register(dispatchTool);
   tools.register(createDeliberateTool(auditDispatcher));
+
+  // Dianoia project creation — replaces old plan_create
+  const planCreateTool = createPlanCreateTool(planningOrchestrator);
+  tools.register(planCreateTool);
 
   // Planning research orchestrator — wired after dispatchTool is available
   const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool);

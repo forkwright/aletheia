@@ -29,3 +29,4 @@ export { createPlanExecuteTool } from "./execution-tool.js";
 export { GoalBackwardVerifier } from "./verifier.js";
 export { createPlanVerifyTool } from "./verifier-tool.js";
 export { CheckpointSystem } from "./checkpoint.js";
+export { createPlanCreateTool } from "./create-tool.js";

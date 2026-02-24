@@ -256,4 +256,12 @@ export class DianoiaOrchestrator {
   listPhases(projectId: string): import("./types.js").PlanningPhase[] {
     return this.store.listPhases(projectId);
   }
+
+  updateGoal(projectId: string, goal: string): void {
+    this.store.updateProjectGoal(projectId, goal);
+  }
+
+  updateContext(projectId: string, context: ProjectContext): void {
+    this.store.updateProjectContext(projectId, context);
+  }
 }
