@@ -256,7 +256,7 @@ describe("GoalBackwardVerifier.generateGapPlans", () => {
     expect(plans).toEqual([]);
   });
 
-  it("returns one PhasePlan per gap with criterion-derived name and proposedFix acceptance criteria", () => {
+  it("returns one PhasePlan per gap with criterion-derived name and proposedFix as acceptance criteria", () => {
     const mockDispatch = {
       definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object" as const, properties: {} } },
       execute: vi.fn(),
@@ -282,12 +282,16 @@ describe("GoalBackwardVerifier.generateGapPlans", () => {
 
     expect(plans).toHaveLength(2);
 
+    // Each plan has one step, step description derived from criterion
     expect(plans[0]!.steps).toHaveLength(1);
-    expect(plans[0]!.steps[0]!.acceptanceCriteria).toContain("Implement POST /auth/login");
-    expect(plans[0]!.id).toBeDefined();
-    expect(plans[0]!.id).toMatch(/^vrfy_/);
+    expect(plans[0]!.acceptanceCriteria).toContain("Implement POST /auth/login");
 
     expect(plans[1]!.steps).toHaveLength(1);
-    expect(plans[1]!.steps[0]!.acceptanceCriteria).toContain("Add SQLite database layer");
+    expect(plans[1]!.acceptanceCriteria).toContain("Add SQLite database layer");
+
+    // Plans have ids prefixed with vrfy_
+    const anyPlan = plans[0] as { id?: string };
+    expect(typeof anyPlan["id"]).toBe("string");
+    expect(anyPlan["id"]).toMatch(/^vrfy_/);
   });
 });
