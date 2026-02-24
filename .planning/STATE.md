@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 1: Foundation
+**Current focus:** Phase 2: Orchestrator and Entry
 
 ## Current Position
 
-Phase: 1 of 9 (Foundation)
-Plan: 3 of 3 in current phase (phase complete)
+Phase: 2 of 9 (Orchestrator and Entry)
+Plan: 1 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-23 -- Plan 01-03 complete (PlanningConfig Zod schema in taxis/schema.ts)
+Last activity: 2026-02-24 -- Plan 02-01 complete (DianoiaOrchestrator wiring)
 
-Progress: [█░░░░░░░░░] 11%
+Progress: [█░░░░░░░░░] 14%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 5 min
-- Total execution time: 0.30 hours
+- Total execution time: 0.35 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
+| 02-orchestrator-and-entry | 1/3 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 8 min, 1 min, 5 min
+- Last 5 plans: 8 min, 1 min, 5 min, 3 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -53,6 +54,9 @@ Recent decisions affecting current work:
 - [01-02]: DianoiaState re-exported from machine.ts via type-only re-export -- consumers import both state and event types from one location
 - [Phase 01-03]: Zod schema in taxis/schema.ts is authoritative for PlanningConfig; dianoia/types.ts re-exports PlanningConfigSchema via import type
 - [Phase 01-03]: Import direction preserved: dianoia imports from taxis (no circular dependency); PlanningConfigSchema re-export keeps dianoia/index.ts public API intact
+- [02-01]: handle() and abandon() are sync (no async) -- oxlint require-await forbids async with no await; confirmResume() also sync; future plans can change signature
+- [02-01]: pendingConfirmation flag stored in project.config JSON via cast-through-unknown -- avoids schema migration for ephemeral confirmation state
+- [02-01]: DianoiaOrchestrator instantiated in createRuntime() not startRuntime() -- available in tests and CLI commands calling createRuntime() directly
 
 ### Pending Todos
 
@@ -66,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-23
-Stopped at: Completed 01-03-PLAN.md (PlanningConfig Zod schema in taxis/schema.ts)
+Last session: 2026-02-24
+Stopped at: Completed 02-01-PLAN.md (DianoiaOrchestrator wiring)
 Resume file: None

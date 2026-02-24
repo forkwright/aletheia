@@ -54,7 +54,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — DianoiaOrchestrator core, SessionStore.getDb(), planning EventNames, RuntimeServices wiring
+- [x] 02-01-PLAN.md — DianoiaOrchestrator core, SessionStore.getDb(), planning EventNames, RuntimeServices wiring (completed 2026-02-24)
 - [ ] 02-02-PLAN.md — /plan slash command, aletheia plan CLI subcommand, orchestrator unit tests
 - [ ] 02-03-PLAN.md — detectPlanningIntent() pure function (TDD), context.ts intent injection
 
