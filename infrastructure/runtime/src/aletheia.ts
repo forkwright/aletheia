@@ -50,6 +50,7 @@ import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
+import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -258,6 +259,19 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
+
+  const planningConfig = config.planning ?? {
+    depth: "standard" as const,
+    parallelization: true,
+    research: true,
+    plan_check: true,
+    verifier: true,
+    mode: "interactive" as const,
+  };
+  const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
+  manager.setPlanningOrchestrator(planningOrchestrator);
+  log.info("Dianoia planning orchestrator initialized");
+
   const plugins = new PluginRegistry(config);
 
   // Memory flush target — connects distillation/reflection extraction to memory sidecar

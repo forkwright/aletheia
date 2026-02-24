@@ -153,6 +153,19 @@ export async function buildContext(
     });
   }
 
+  // Planning context injection — soft presence pattern (only when project is active)
+  const planningOrchestrator = services.planningOrchestrator;
+  if (planningOrchestrator) {
+    const activeProject = planningOrchestrator.getActiveProject(nousId);
+    if (activeProject) {
+      const hasPending = planningOrchestrator.hasPendingConfirmation(activeProject);
+      systemPrompt.push({
+        type: "text",
+        text: `## Active Dianoia Planning Project\n\nProject ID: ${activeProject.id}\nState: ${activeProject.state}\nGoal: ${activeProject.goal || "(not yet set)"}\n${hasPending ? "\nAwaiting resume confirmation from user." : ""}`,
+      });
+    }
+  }
+
   // Post-distillation priming — inject extracted context from the most recent distillation.
   // This ensures the agent's first turn after distillation has full awareness of what was
   // compressed, independent of recall similarity matching. Consumed once and cleared.

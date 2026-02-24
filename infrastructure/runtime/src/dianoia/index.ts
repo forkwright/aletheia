@@ -1,5 +1,6 @@
 // dianoia — planning module public API
 export { PlanningStore } from "./store.js";
+export { DianoiaOrchestrator } from "./orchestrator.js";
 export type {
   DianoiaState,
   PlanningCheckpoint,
