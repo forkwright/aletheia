@@ -95,7 +95,7 @@ async def trigger_wake(score: NousScore, config: dict) -> bool:
     payload = json.dumps({
         "agentId": agent_id,
         "message": event_text,
-        "sessionKey": "prosoche",
+        "sessionKey": "cron:prosoche",
     }).encode()
 
     url = f"{base_url}/api/sessions/send"
