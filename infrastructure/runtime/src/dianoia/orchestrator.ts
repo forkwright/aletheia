@@ -5,7 +5,7 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { PlanningProject, ProjectContext } from "./types.js";
+import type { PlanningPhase, PlanningProject, ProjectContext } from "./types.js";
 
 const log = createLogger("dianoia:orchestrator");
 
@@ -190,5 +190,27 @@ export class DianoiaOrchestrator {
     );
     eventBus.emit("planning:complete", { projectId, nousId, sessionId });
     log.info(`Project complete: ${projectId}`);
+  }
+
+  completeRoadmap(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("roadmap", "ROADMAP_COMPLETE"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
+    log.info(`Roadmap complete for project ${projectId}; advancing to phase-planning`);
+    return "Roadmap committed. Starting phase planning.";
+  }
+
+  advanceToExecution(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("phase-planning", "PLAN_READY"));
+    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId, fromState: "phase-planning", toState: "executing" });
+    log.info(`Phase planning complete for project ${projectId}; advancing to executing`);
+    return "All phase plans ready. Moving to execution.";
+  }
+
+  listPhases(projectId: string): PlanningPhase[] {
+    return this.store.listPhases(projectId);
+  }
+
+  getPhase(phaseId: string): PlanningPhase | undefined {
+    return this.store.getPhase(phaseId);
   }
 }
