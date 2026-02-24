@@ -9,6 +9,7 @@ const ALL_EVENTS: PlanningEvent[] = [
   "RESEARCH_COMPLETE",
   "REQUIREMENTS_COMPLETE",
   "ROADMAP_COMPLETE",
+  "DISCUSSION_COMPLETE",
   "PLAN_READY",
   "VERIFY",
   "NEXT_PHASE",
@@ -65,8 +66,16 @@ describe("DianoiaFSM — valid transitions", () => {
     expect(transition("requirements", "ABANDON")).toBe("abandoned");
   });
 
-  it("roadmap + ROADMAP_COMPLETE -> phase-planning", () => {
-    expect(transition("roadmap", "ROADMAP_COMPLETE")).toBe("phase-planning");
+  it("roadmap + ROADMAP_COMPLETE -> discussing", () => {
+    expect(transition("roadmap", "ROADMAP_COMPLETE")).toBe("discussing");
+  });
+
+  it("discussing + DISCUSSION_COMPLETE -> phase-planning", () => {
+    expect(transition("discussing", "DISCUSSION_COMPLETE")).toBe("phase-planning");
+  });
+
+  it("discussing + ABANDON -> abandoned", () => {
+    expect(transition("discussing", "ABANDON")).toBe("abandoned");
   });
 
   it("roadmap + ABANDON -> abandoned", () => {
@@ -93,8 +102,8 @@ describe("DianoiaFSM — valid transitions", () => {
     expect(transition("executing", "ABANDON")).toBe("abandoned");
   });
 
-  it("verifying + NEXT_PHASE -> phase-planning", () => {
-    expect(transition("verifying", "NEXT_PHASE")).toBe("phase-planning");
+  it("verifying + NEXT_PHASE -> discussing", () => {
+    expect(transition("verifying", "NEXT_PHASE")).toBe("discussing");
   });
 
   it("verifying + ALL_PHASES_COMPLETE -> complete", () => {
@@ -145,8 +154,8 @@ describe("DianoiaFSM — invalid transitions", () => {
 });
 
 describe("DianoiaFSM — VALID_TRANSITIONS completeness", () => {
-  it("covers all 11 states", () => {
-    expect(Object.keys(VALID_TRANSITIONS).length).toBe(11);
+  it("covers all 12 states", () => {
+    expect(Object.keys(VALID_TRANSITIONS).length).toBe(12);
   });
 
   it("complete state has no valid transitions", () => {
@@ -157,13 +166,14 @@ describe("DianoiaFSM — VALID_TRANSITIONS completeness", () => {
     expect(VALID_TRANSITIONS["abandoned"].length).toBe(0);
   });
 
-  it("all 11 DianoiaState values are present as keys", () => {
+  it("all 12 DianoiaState values are present as keys", () => {
     const expected: DianoiaState[] = [
       "idle",
       "questioning",
       "researching",
       "requirements",
       "roadmap",
+      "discussing",
       "phase-planning",
       "executing",
       "verifying",
@@ -189,6 +199,8 @@ describe("DianoiaFSM — state reachability (sequential scenarios)", () => {
     s = transition(s, "REQUIREMENTS_COMPLETE");
     expect(s).toBe("roadmap");
     s = transition(s, "ROADMAP_COMPLETE");
+    expect(s).toBe("discussing");
+    s = transition(s, "DISCUSSION_COMPLETE");
     expect(s).toBe("phase-planning");
     s = transition(s, "PLAN_READY");
     expect(s).toBe("executing");
@@ -204,9 +216,11 @@ describe("DianoiaFSM — state reachability (sequential scenarios)", () => {
     expect(s).toBe("executing");
   });
 
-  it("traces multi-phase loop: verifying -> phase-planning (NEXT_PHASE)", () => {
+  it("traces multi-phase loop: verifying -> discussing -> phase-planning (NEXT_PHASE)", () => {
     let s: DianoiaState = "verifying";
     s = transition(s, "NEXT_PHASE");
+    expect(s).toBe("discussing");
+    s = transition(s, "DISCUSSION_COMPLETE");
     expect(s).toBe("phase-planning");
     s = transition(s, "PLAN_READY");
     expect(s).toBe("executing");

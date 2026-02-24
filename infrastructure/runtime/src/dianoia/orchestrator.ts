@@ -3,9 +3,19 @@ import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
+import {
+  ensureProjectDir,
+  writeProjectFile,
+  writeRequirementsFile,
+  writeResearchFile,
+  writeRoadmapFile,
+  writeDiscussFile,
+  writePlanFile,
+  writeVerifyFile,
+} from "./project-files.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { PlanningProject, ProjectContext } from "./types.js";
+import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext } from "./types.js";
 
 const log = createLogger("dianoia:orchestrator");
 
@@ -17,9 +27,22 @@ const ACTIVE_STATES = new Set([
 
 export class DianoiaOrchestrator {
   private store: PlanningStore;
+  private workspaceRoot: string | null = null;
 
   constructor(db: Database.Database, private defaultConfig: PlanningConfigSchema) {
     this.store = new PlanningStore(db);
+  }
+
+  /** Set the workspace root for file-backed state. Must be called before file writes work. */
+  setWorkspaceRoot(root: string): void {
+    this.workspaceRoot = root;
+  }
+
+  getWorkspaceOrThrow(): string {
+    if (!this.workspaceRoot) {
+      throw new Error("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first");
+    }
+    return this.workspaceRoot;
   }
 
   handle(nousId: string, sessionId: string): string {
@@ -41,6 +64,13 @@ export class DianoiaOrchestrator {
       config: this.defaultConfig,
     });
     this.store.updateProjectState(project.id, transition("idle", "START_QUESTIONING"));
+
+    // Set up file-backed state directory
+    if (this.workspaceRoot) {
+      const dir = ensureProjectDir(this.workspaceRoot, project.id);
+      this.store.updateProjectDir(project.id, dir);
+    }
+
     eventBus.emit("planning:project-created", { projectId: project.id, nousId, sessionId });
     log.info(`Created planning project ${project.id} for nous ${nousId}`);
     return "Starting a Dianoia planning project. First: what are you building?";
@@ -143,6 +173,12 @@ export class DianoiaOrchestrator {
     // Transition FSM: questioning -> researching (event: START_RESEARCH)
     this.store.updateProjectState(projectId, transition("questioning", "START_RESEARCH"));
 
+    // Write PROJECT.md with confirmed context
+    if (this.workspaceRoot) {
+      const updated = this.store.getProjectOrThrow(projectId);
+      writeProjectFile(this.workspaceRoot, updated, merged);
+    }
+
     eventBus.emit("planning:phase-started", {
       projectId,
       nousId,
@@ -165,6 +201,13 @@ export class DianoiaOrchestrator {
 
   skipResearch(projectId: string, nousId: string, sessionId: string): string {
     this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));
+
+    // Write RESEARCH.md even if skipped (records what was available)
+    if (this.workspaceRoot) {
+      const research = this.store.listResearch(projectId);
+      if (research.length > 0) writeResearchFile(this.workspaceRoot, projectId, research);
+    }
+
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "research" });
     log.info(`Research skipped for project ${projectId}; advancing to requirements`);
     return "Research skipped. Proceeding to requirements definition.";
@@ -172,6 +215,13 @@ export class DianoiaOrchestrator {
 
   completeRequirements(projectId: string, nousId: string, sessionId: string): string {
     this.store.updateProjectState(projectId, transition("requirements", "REQUIREMENTS_COMPLETE"));
+
+    // Write REQUIREMENTS.md
+    if (this.workspaceRoot) {
+      const reqs = this.store.listRequirements(projectId);
+      writeRequirementsFile(this.workspaceRoot, projectId, reqs);
+    }
+
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "requirements" });
     log.info(`Requirements complete for project ${projectId}; advancing to roadmap`);
     return "Requirements confirmed. Advancing to roadmap generation.";
@@ -203,9 +253,16 @@ export class DianoiaOrchestrator {
   completeRoadmap(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "ROADMAP_COMPLETE"));
+
+    // Write ROADMAP.md
+    if (this.workspaceRoot) {
+      const phases = this.store.listPhases(projectId);
+      writeRoadmapFile(this.workspaceRoot, projectId, phases);
+    }
+
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
-    log.info(`Roadmap complete for project ${projectId}`);
-    return "Roadmap complete. Moving to phase planning.";
+    log.info(`Roadmap complete for project ${projectId}; advancing to discussion`);
+    return "Roadmap complete. Moving to phase discussion.";
   }
 
   advanceToExecution(projectId: string, nousId: string, sessionId: string): string {
@@ -263,5 +320,90 @@ export class DianoiaOrchestrator {
 
   updateContext(projectId: string, context: ProjectContext): void {
     this.store.updateProjectContext(projectId, context);
+  }
+
+  // --- Discussion flow (Spec 32) ---
+
+  /** Create a discussion question for a phase */
+  addDiscussionQuestion(
+    projectId: string,
+    phaseId: string,
+    question: string,
+    options: DiscussionOption[],
+    recommendation?: string | null,
+  ): DiscussionQuestion {
+    return this.store.createDiscussionQuestion({
+      projectId,
+      phaseId,
+      question,
+      options,
+      recommendation: recommendation ?? null,
+    });
+  }
+
+  /** Answer a discussion question */
+  answerDiscussion(questionId: string, decision: string, userNote?: string | null): void {
+    this.store.answerDiscussionQuestion(questionId, decision, userNote);
+  }
+
+  /** Skip a discussion question (agent uses its recommendation) */
+  skipDiscussion(questionId: string): void {
+    this.store.skipDiscussionQuestion(questionId);
+  }
+
+  /** Get pending questions for a phase */
+  getPendingDiscussions(projectId: string, phaseId: string): DiscussionQuestion[] {
+    return this.store.getPendingDiscussionQuestions(projectId, phaseId);
+  }
+
+  /** Get all discussion questions for a phase */
+  getPhaseDiscussions(projectId: string, phaseId: string): DiscussionQuestion[] {
+    return this.store.listDiscussionQuestions(projectId, phaseId);
+  }
+
+  /** Complete discussion phase — writes DISCUSS.md and advances to planning */
+  completeDiscussion(projectId: string, phaseId: string, nousId: string, sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "DISCUSSION_COMPLETE"));
+
+    // Write DISCUSS.md with all questions and decisions
+    if (this.workspaceRoot) {
+      const questions = this.store.listDiscussionQuestions(projectId, phaseId);
+      writeDiscussFile(this.workspaceRoot, projectId, phaseId, questions);
+    }
+
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "discussing" });
+    log.info(`Discussion complete for phase ${phaseId} in project ${projectId}; advancing to planning`);
+    return "Discussion complete. Advancing to phase planning.";
+  }
+
+  /** Advance to next phase — now goes to discussing instead of phase-planning */
+  advanceToNextPhaseDiscussion(projectId: string, nousId: string, sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "NEXT_PHASE"));
+    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId });
+    log.info(`Next phase discussion started for project ${projectId}`);
+    return "Moving to discussion for next phase.";
+  }
+
+  // --- File sync helpers ---
+
+  /** Write/update the PROJECT.md file with current state */
+  syncProjectFile(projectId: string): void {
+    if (!this.workspaceRoot) return;
+    const project = this.store.getProjectOrThrow(projectId);
+    writeProjectFile(this.workspaceRoot, project);
+  }
+
+  /** Write execution plan file for a phase */
+  syncPlanFile(projectId: string, phaseId: string, plan: unknown): void {
+    if (!this.workspaceRoot) return;
+    writePlanFile(this.workspaceRoot, projectId, phaseId, plan);
+  }
+
+  /** Write verification results for a phase */
+  syncVerifyFile(projectId: string, phaseId: string, verification: Record<string, unknown>): void {
+    if (!this.workspaceRoot) return;
+    writeVerifyFile(this.workspaceRoot, projectId, phaseId, verification);
   }
 }

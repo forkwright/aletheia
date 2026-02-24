@@ -98,3 +98,47 @@ CREATE TABLE IF NOT EXISTS planning_spawn_records (
 CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_project ON planning_spawn_records(project_id);
 CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_phase ON planning_spawn_records(phase_id);
 `;
+
+// Spec 32 — Dianoia v2 Phase 1: file-backed state + discussion loop
+// SQLite CHECK constraints can't be ALTERed, so we recreate the projects table
+// to add 'discussing' state and project_dir column.
+export const PLANNING_V26_MIGRATION = `
+CREATE TABLE planning_projects_v26 (
+  id TEXT PRIMARY KEY,
+  nous_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'idle' CHECK(state IN ('idle', 'questioning', 'researching', 'requirements', 'roadmap', 'discussing', 'phase-planning', 'executing', 'verifying', 'complete', 'blocked', 'abandoned')),
+  config TEXT NOT NULL DEFAULT '{}',
+  context_hash TEXT NOT NULL,
+  project_context TEXT,
+  project_dir TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+INSERT INTO planning_projects_v26 (id, nous_id, session_id, goal, state, config, context_hash, project_context, created_at, updated_at)
+  SELECT id, nous_id, session_id, goal, state, config, context_hash, project_context, created_at, updated_at
+  FROM planning_projects;
+
+DROP TABLE planning_projects;
+ALTER TABLE planning_projects_v26 RENAME TO planning_projects;
+CREATE INDEX IF NOT EXISTS idx_planning_projects_nous ON planning_projects(nous_id);
+
+CREATE TABLE IF NOT EXISTS planning_discussions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT NOT NULL,
+  question TEXT NOT NULL,
+  options TEXT NOT NULL DEFAULT '[]',
+  recommendation TEXT,
+  decision TEXT,
+  user_note TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'answered', 'skipped')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_discussions_project ON planning_discussions(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_discussions_phase ON planning_discussions(phase_id);
+`;
