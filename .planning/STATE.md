@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 9 of 9 (Polish and Migration) — IN PROGRESS
-Plan: 4 of 4 in current phase — 09-01 now complete (all 4 plans done)
-Status: Phase 9 Plan 1 complete — docs/specs/31_dianoia.md (597 lines, 7 sections, full DDL v20-v25, Mermaid diagram, 5 API routes); all 4 Phase 9 plans now complete
-Last activity: 2026-02-24 -- Phase 9 Plan 1 complete (spec document 09-01 was skipped in prior session, now complete; DOCS-01/DOCS-02 satisfied)
+Phase: 9 of 9 (Polish and Migration) — COMPLETE
+Plan: 4 of 4 in current phase — all 4 plans complete
+Status: Phase 9 complete — PlanningStatusLine + PlanningPanel + ChatView wiring (09-04); TEST-05 satisfied; all 9 phases done
+Last activity: 2026-02-24 -- Phase 9 Plan 4 complete (Svelte 5 status pill UI, human-verified in running UI)
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [█████████░] 91%
 | Phase 08-verification-checkpoints P04 | 3 | 2 tasks | 4 files |
 | Phase 09-polish-migration P03 | 1 | 2 tasks | 4 files |
 | Phase 09-polish-migration P02 | 2 | 1 task | 1 file |
+| Phase 09-polish-migration P04 | 15 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,8 @@ Recent decisions affecting current work:
 - [09-02]: Integration tests use vitest.integration.config.ts (*.integration.test.ts include) — excluded from unit suite by vitest.config.ts; pre-existing config already handles this
 - [09-02]: executePhase second param is ToolContext (not phaseId) — plan pseudocode correction to match actual ExecutionOrchestrator signature
 - [09-02]: Error dispatch path uses status: 'error' in dispatch results to trigger execution.ts failed-phase branch; ToolContext mock requires workspace field per interface
+- [Phase 09-polish-migration]: Pill polls /api/planning/projects every 5s (coarse); panel polls /:id/execution every 2.5s when open (fine-grained)
+- [Phase 09-polish-migration]: Pill hidden for complete and abandoned states — no need to show resolved projects in chat chrome
 
 ### Pending Todos
 
@@ -157,5 +160,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 09-01-PLAN.md (docs/specs/31_dianoia.md: 597 lines, 7 sections, full DDL, Mermaid FSM, 5 API routes; DOCS-01/DOCS-02 satisfied)
+Stopped at: Completed 09-04-PLAN.md (PlanningStatusLine, PlanningPanel, ChatView wiring; TEST-05 satisfied; all 9 phases complete)
 Resume file: None
