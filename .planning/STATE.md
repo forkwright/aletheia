@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 9 of 9 (Polish and Migration) — IN PROGRESS
-Plan: 3 of ? in current phase — 09-03 complete
-Status: Phase 9 Plan 3 complete — CONTRIBUTING.md Dianoia section (4 gotchas), V24/V25 migration exports from index.ts, 0 oxlint errors
-Last activity: 2026-02-24 -- Phase 9 Plan 3 complete (CONTRIBUTING.md Dianoia module section, tsc/oxlint clean, DOCS-03/TEST-05/TEST-06 satisfied)
+Plan: 4 of 4 in current phase — 09-01 now complete (all 4 plans done)
+Status: Phase 9 Plan 1 complete — docs/specs/31_dianoia.md (597 lines, 7 sections, full DDL v20-v25, Mermaid diagram, 5 API routes); all 4 Phase 9 plans now complete
+Last activity: 2026-02-24 -- Phase 9 Plan 1 complete (spec document 09-01 was skipped in prior session, now complete; DOCS-01/DOCS-02 satisfied)
 
 Progress: [█████████░] 91%
 
