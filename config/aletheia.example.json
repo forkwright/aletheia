@@ -121,7 +121,7 @@
       {
         "name": "eval-feedback",
         "schedule": "0 3 * * *",
-        "command": "python3 /mnt/ssd/aletheia/infrastructure/evaluation/scripts/eval-feedback.py",
+        "command": "python3 /path/to/aletheia/infrastructure/evaluation/scripts/eval-feedback.py",
         "timeoutSeconds": 120
       }
     ]

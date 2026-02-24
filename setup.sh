@@ -7,12 +7,12 @@ PORT="${ALETHEIA_PORT:-18789}"
 
 echo "[1/6] Checking prerequisites..."
 if ! command -v node &>/dev/null; then
-  echo "Error: Node.js not found. Install from https://nodejs.org (v20+)"
+  echo "Error: Node.js not found. Install from https://nodejs.org (v22+)"
   exit 1
 fi
 NODE_MAJOR=$(node -e "process.stdout.write(process.version.slice(1).split('.')[0])")
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  echo "Error: Node.js 20+ required (found $(node --version))"
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Error: Node.js 22+ required (found $(node --version))"
   exit 1
 fi
 if ! command -v npm &>/dev/null; then
