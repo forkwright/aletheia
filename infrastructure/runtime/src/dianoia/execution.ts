@@ -5,6 +5,7 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
+import { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
 
 const log = createLogger("dianoia:execution");
 const ZOMBIE_THRESHOLD_SECONDS = 600; // 2x default 300s plan timeout
@@ -70,12 +71,18 @@ export function findResumeWave(records: SpawnRecord[]): number {
 
 export class ExecutionOrchestrator {
   private store: PlanningStore;
+  private workspaceRoot: string | null = null;
 
   constructor(
     db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);
+  }
+
+  /** Set workspace root for context packet assembly from file-backed state */
+  setWorkspaceRoot(root: string): void {
+    this.workspaceRoot = root;
   }
 
   async executePhase(
@@ -136,11 +143,32 @@ export class ExecutionOrchestrator {
         spawnIds.push(record.id);
       }
 
-      const tasks = activePlans.map((plan) => ({
-        role: "coder" as const,
-        task: buildExecutionPrompt(plan, project.goal),
-        timeoutSeconds: 300,
-      }));
+      const modelTier = selectModelForRole("executor");
+      const role = modelTierToRole(modelTier);
+
+      const tasks = activePlans.map((plan) => {
+        // Build scoped context packet from file-backed state
+        const contextPacket = this.workspaceRoot
+          ? buildContextPacket({
+              workspaceRoot: this.workspaceRoot,
+              projectId,
+              phaseId: plan.id,
+              role: "executor",
+              phase: plan,
+              projectGoal: project.goal,
+              requirements: this.store
+                .listRequirements(projectId)
+                .filter((r) => r.tier === "v1" && plan.requirements.includes(r.reqId)),
+              maxTokens: 12000,
+            })
+          : buildExecutionPrompt(plan, project.goal); // Fallback if no workspace
+
+        return {
+          role: role as "coder",
+          task: contextPacket,
+          timeoutSeconds: 300,
+        };
+      });
 
       let output: {
         results: Array<{ status: string; result?: string; error?: string; durationMs: number }>;

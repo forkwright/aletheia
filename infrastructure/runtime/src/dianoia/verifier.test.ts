@@ -132,12 +132,12 @@ describe("GoalBackwardVerifier.verify — verifier enabled, phase met", () => {
     expect(result.verifiedAt).toBeDefined();
     expect((mockDispatch as { execute: ReturnType<typeof vi.fn> }).execute).toHaveBeenCalledOnce();
 
-    // Dispatch payload contains phase goal and success criteria
+    // Dispatch payload contains phase goal and success criteria (now in task field via context packet)
     const dispatchCall = (mockDispatch as { execute: ReturnType<typeof vi.fn> }).execute.mock.calls[0]!;
     const dispatchInput = dispatchCall[0] as Record<string, unknown>;
-    const tasks = dispatchInput["tasks"] as Array<{ context: string }>;
-    expect(tasks[0]?.context).toContain("implement authentication");
-    expect(tasks[0]?.context).toContain("Users can login");
+    const tasks = dispatchInput["tasks"] as Array<{ task: string }>;
+    expect(tasks[0]?.task).toContain("implement authentication");
+    expect(tasks[0]?.task).toContain("Users can login");
 
     // Side effect: persisted
     const updated = store.getPhaseOrThrow(phase.id);
