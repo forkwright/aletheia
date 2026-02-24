@@ -10,6 +10,7 @@ import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
 import { indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
+import { detectPlanningIntent } from "../../../dianoia/intent.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
@@ -52,6 +53,7 @@ export async function buildContext(
   // Pre-flight context overflow guard:
   // If the last API-reported token count is ≥90% of the context window, distill
   // NOW — before building history — so this turn doesn't hit the 200K hard limit.
+  let preflightDistilled = false;
   {
     const preflightContextTokens = services.config.agents.defaults.contextTokens;
     if (preflightContextTokens > 0) {
@@ -82,6 +84,7 @@ export async function buildContext(
             } : {}),
           });
           log.info(`Emergency distillation complete for ${nousId} — context cleared`);
+          preflightDistilled = true;
         } catch (distillErr) {
           log.error(`Emergency distillation failed: ${distillErr instanceof Error ? distillErr.message : distillErr}`);
         }
@@ -199,6 +202,30 @@ export async function buildContext(
     systemPrompt.push({ type: "text", text: `## Broadcasts\n\n${broadcastLines}` });
   }
 
+  // Degraded services — surface watchdog status so the agent doesn't silently fail
+  if (degradedServices.length > 0) {
+    systemPrompt.push({
+      type: "text",
+      text:
+        `## Degraded Services\n\n` +
+        `The following services are currently unhealthy:\n` +
+        `${degradedServices.map((s) => `- ${s}`).join("\n")}\n\n` +
+        `Memory recall and dependent tool operations may be limited.`,
+    });
+  }
+
+  // Bootstrap truncation — agent should know which workspace files were not loaded
+  if (bootstrap.droppedFiles.length > 0) {
+    systemPrompt.push({
+      type: "text",
+      text:
+        `## Bootstrap Truncated\n\n` +
+        `These workspace files exceeded the token budget and were not loaded:\n` +
+        `${bootstrap.droppedFiles.map((f) => `- ${f}`).join("\n")}\n\n` +
+        `The files exist on disk — use read_file to access them directly.`,
+    });
+  }
+
   // Working state injection — semantic task context from post-turn extraction
   const currentSession = services.store.findSessionById(sessionId);
   const workingState = currentSession?.workingState;
@@ -209,13 +236,64 @@ export async function buildContext(
     });
   }
 
+  // Planning context injection — soft presence pattern (only when project is active)
+  const planningOrchestrator = services.planningOrchestrator;
+  if (planningOrchestrator) {
+    const activeProject = planningOrchestrator.getActiveProject(nousId);
+    if (activeProject) {
+      const hasPending = planningOrchestrator.hasPendingConfirmation(activeProject);
+      const ctx = activeProject.projectContext;
+      const nextQuestion = activeProject.state === "questioning"
+        ? planningOrchestrator.getNextQuestion(activeProject.id)
+        : null;
+
+      const lines: string[] = [
+        `## Active Dianoia Planning Project`,
+        ``,
+        `Project ID: ${activeProject.id}`,
+        `State: ${activeProject.state}`,
+        `Goal: ${activeProject.goal || "(not yet set)"}`,
+      ];
+
+      if (ctx?.coreValue) {
+        lines.push(`Core Value: ${ctx.coreValue}`);
+      }
+      if (ctx?.constraints && ctx.constraints.length > 0) {
+        lines.push(`Constraints: ${ctx.constraints.join("; ")}`);
+      }
+      if (ctx?.keyDecisions && ctx.keyDecisions.length > 0) {
+        lines.push(`Key Decisions: ${ctx.keyDecisions.join("; ")}`);
+      }
+      if (hasPending) {
+        lines.push(``, `Awaiting resume confirmation from user.`);
+      }
+      if (nextQuestion) {
+        lines.push(``, `## Planning Question`, ``, nextQuestion);
+      }
+
+      systemPrompt.push({
+        type: "text",
+        text: lines.join("\n"),
+      });
+    } else if (detectPlanningIntent(msg.text ?? "")) {
+      systemPrompt.push({
+        type: "text",
+        text: "## Planning Offer\n\nThis message sounds like a planning task — if you'd like structured planning support, say 'yes, start planning' and I'll open a Dianoia project.",
+      });
+    }
+  }
+
   // Post-distillation priming — inject extracted context from the most recent distillation.
   // This ensures the agent's first turn after distillation has full awareness of what was
   // compressed, independent of recall similarity matching. Consumed once and cleared.
   const priming = services.store.getDistillationPriming(sessionId);
   if (priming) {
     const sections: string[] = [];
-    sections.push(`Context was distilled (compression #${priming.distillationNumber}). Key extracted context below.`);
+    sections.push(
+      preflightDistilled
+        ? `Context hit the 90% ceiling — distillation ran automatically before this response (compression #${priming.distillationNumber}). Key extracted context below.`
+        : `Context was distilled (compression #${priming.distillationNumber}). Key extracted context below.`,
+    );
     if (priming.facts.length > 0) {
       sections.push(`**Facts:**\n${priming.facts.map(f => `- ${f}`).join("\n")}`);
     }
@@ -258,15 +336,34 @@ export async function buildContext(
     }
   }
 
-  // Session metrics + cost — injected every 8th turn for self-awareness
+  // Context utilization — hoisted for both pressure warning and session metrics
   const msgCount = currentSession?.messageCount ?? 0;
+  const contextTokens = services.config.agents.defaults.contextTokens;
+  const utilization = contextTokens > 0
+    ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / contextTokens) * 100)
+    : 0;
+
+  // Context pressure warning — fires every turn at ≥75% utilization.
+  // Replaces the improvised "save everything" panic loop with an explicit protocol.
+  if (utilization >= 75) {
+    const urgent = utilization >= 85;
+    systemPrompt.push({
+      type: "text",
+      text:
+        `## Context Pressure — Turn ${msgCount}\n\n` +
+        `Context at ${utilization}% of window. Distillation auto-triggers at 90%.\n\n` +
+        `Preserved automatically: facts, decisions, open items → long-term memory\n` +
+        `Not preserved: uncommitted filesystem changes\n\n` +
+        (urgent
+          ? `Commit any uncommitted work now, then stop. Do not repeat save attempts — one commit is sufficient.`
+          : `No action needed unless you have uncommitted file changes.`),
+    });
+  }
+
+  // Session metrics + cost — injected every 8th turn for self-awareness
   if (msgCount > 0 && msgCount % 8 === 0) {
     const elapsed = currentSession?.createdAt
       ? Math.round((Date.now() - new Date(currentSession.createdAt).getTime()) / 60000)
-      : 0;
-    const contextTokens = services.config.agents.defaults.contextTokens;
-    const utilization = contextTokens > 0
-      ? Math.round(((currentSession?.tokenCountEstimate ?? 0) / contextTokens) * 100)
       : 0;
 
     // Cost summary from usage records
@@ -325,7 +422,6 @@ export async function buildContext(
 
   // Return recallTokens + bootstrap data for history budget calculation
   const toolDefTokens = estimateToolDefTokens(toolDefs);
-  const contextTokens = services.config.agents.defaults.contextTokens;
   const maxOutput = services.config.agents.defaults.maxOutputTokens;
   const historyBudget = Math.max(0, contextTokens - bootstrap.totalTokens - toolDefTokens - maxOutput - recallTokens);
 

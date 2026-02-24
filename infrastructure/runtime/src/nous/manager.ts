@@ -19,6 +19,7 @@ import { resolveNousId } from "./pipeline/stages/resolve.js";
 import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
 import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
 import type { SkillRegistry } from "../organon/skills.js";
+import type { DianoiaOrchestrator } from "../dianoia/orchestrator.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
@@ -51,6 +52,7 @@ export class NousManager {
   private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
   private skills?: SkillRegistry;
+  private planningOrchestrator?: DianoiaOrchestrator;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
@@ -79,6 +81,8 @@ export class NousManager {
   setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
+  setPlanningOrchestrator(orchestrator: DianoiaOrchestrator): void { this.planningOrchestrator = orchestrator; }
+  getPlanningOrchestrator(): DianoiaOrchestrator | undefined { return this.planningOrchestrator; }
 
   reloadConfig(newConfig: AletheiaConfig): { added: string[]; removed: string[] } {
     const oldIds = new Set(this.config.agents.list.map((n) => n.id));
@@ -137,6 +141,7 @@ export class NousManager {
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.planningOrchestrator ? { planningOrchestrator: this.planningOrchestrator } : {}),
     };
   }
 

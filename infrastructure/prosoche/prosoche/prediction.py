@@ -55,17 +55,28 @@ class ActivityModel:
         }, indent=2))
 
     def record_activity(self, nous_id: str, dt: datetime) -> None:
-        """Record that a nous was active at a given time."""
+        """Record that a nous was active at a given time and persist."""
         key = f"{dt.weekday()}:{dt.hour}"
         if nous_id not in self.observations:
             self.observations[nous_id] = {}
         current = self.observations[nous_id].get(key, 0)
         self.observations[nous_id][key] = current + 1
+        self._save()
 
     def record_day(self, nous_id: str) -> None:
         """Mark that we've observed another day for this nous."""
         self.total_days[nous_id] = self.total_days.get(nous_id, 0) + 1
         self._save()
+
+    def maybe_record_day(self, nous_id: str, dt: datetime) -> None:
+        """Record a new day observation if we haven't already for this date.
+        Call once per main-loop iteration; tracks last-seen date per nous."""
+        date_key = dt.strftime("%Y-%m-%d")
+        if not hasattr(self, "_last_day_recorded"):
+            self._last_day_recorded: dict[str, str] = {}
+        if self._last_day_recorded.get(nous_id) != date_key:
+            self.record_day(nous_id)
+            self._last_day_recorded[nous_id] = date_key
 
     def has_enough_data(self, nous_id: str) -> bool:
         return self.total_days.get(nous_id, 0) >= MIN_OBSERVATIONS

@@ -51,6 +51,8 @@ import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js"
 import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
+import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
+import { ResearchOrchestrator, createPlanResearchTool, RequirementsOrchestrator, createPlanRequirementsTool } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -259,6 +261,19 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   store.migrateSessionsToThreads();
 
   const manager = new NousManager(config, store, router, tools);
+
+  const planningConfig = config.planning ?? {
+    depth: "standard" as const,
+    parallelization: true,
+    research: true,
+    plan_check: true,
+    verifier: true,
+    mode: "interactive" as const,
+  };
+  const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
+  manager.setPlanningOrchestrator(planningOrchestrator);
+  log.info("Dianoia planning orchestrator initialized");
+
   const plugins = new PluginRegistry(config);
 
   // Memory flush target — connects distillation/reflection extraction to memory sidecar
@@ -352,6 +367,16 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   dispatchTool.category = "available";
   tools.register(dispatchTool);
   tools.register(createDeliberateTool(auditDispatcher));
+
+  // Planning research orchestrator — wired after dispatchTool is available
+  const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool);
+  const planResearchTool = createPlanResearchTool(planningOrchestrator, researchOrchestrator);
+  tools.register(planResearchTool);
+
+  // Planning requirements orchestrator — wired after research orchestrator
+  const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb());
+  const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
+  tools.register(planRequirementsTool);
 
   return {
     config,
@@ -519,6 +544,22 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.info(`Loaded ${registered} custom commands from shared/commands/`);
   }
   setCommandsRef(commandRegistry);
+
+  // /plan and !plan — route to DianoiaOrchestrator.handle()
+  const planOrch = runtime.manager.getPlanningOrchestrator();
+  if (planOrch) {
+    commandRegistry.register({
+      name: "plan",
+      description: "Start or resume a Dianoia planning project",
+      execute(_args, ctx) {
+        const session = ctx.sessionId ? ctx.store.findSessionById(ctx.sessionId) : undefined;
+        const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
+        const sessionId = ctx.sessionId ?? "";
+        return Promise.resolve(planOrch.handle(nousId, sessionId));
+      },
+    });
+    log.debug("Registered /plan command");
+  }
 
   // --- Signal ---
   let watchdog: Watchdog | null = null;

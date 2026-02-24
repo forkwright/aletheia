@@ -250,6 +250,8 @@ const VALID_EVENTS: Set<string> = new Set([
   "exec:denied",
   "pipeline:error",
   "history:orphan_repair",
+  "planning:project-created", "planning:project-resumed",
+  "planning:phase-started", "planning:phase-complete", "planning:complete",
 ]);
 
 function isValidEventName(event: string): event is EventName {

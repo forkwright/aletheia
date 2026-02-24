@@ -184,6 +184,10 @@ export class SessionStore {
     this.init();
   }
 
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   private init(): void {
     const version = this.getSchemaVersion();
 

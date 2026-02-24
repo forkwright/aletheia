@@ -6,6 +6,7 @@ projects/
 # === Secrets ===
 *.env
 **/credentials*
+!**/credentials.py
 **/secrets*
 **/*.key
 **/*.pem

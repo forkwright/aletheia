@@ -330,6 +330,40 @@ program
   });
 
 program
+  .command("plan")
+  .description("Start or resume a Dianoia planning project")
+  .option("-a, --agent <id>", "Agent ID to plan for")
+  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
+  .option("-t, --token <token>", "Auth token")
+  .action(async (opts: { agent?: string; url: string; token?: string }) => {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (opts.token) headers["Authorization"] = `Bearer ${opts.token}`;
+
+      const res = await fetch(`${opts.url}/api/sessions/send`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          agentId: opts.agent ?? "syn",
+          message: "/plan",
+          sessionKey: "cli:plan",
+        }),
+        signal: AbortSignal.timeout(120000),
+      });
+
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        console.error(`Error: ${(data["error"] as string | undefined) ?? res.statusText}`);
+        process.exit(1);
+      }
+      console.log((data["response"] as string | undefined) ?? "(no response)");
+    } catch (err) {
+      console.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("sessions")
   .description("List sessions")
   .option("-a, --agent <id>", "Filter by agent ID")

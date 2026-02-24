@@ -35,6 +35,7 @@ import { exportRoutes } from "./routes/export.js";
 import { blackboardRoutes } from "./routes/blackboard.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { setupRoutes } from "./routes/setup.js";
+import { planningRoutes } from "../dianoia/routes.js";
 
 const log = createLogger("pylon");
 
@@ -161,6 +162,7 @@ export function createGateway(
   });
 
   // Build shared dependencies and refs for route modules
+  const planningOrchestrator = manager.getPlanningOrchestrator();
   const deps: RouteDeps = {
     config,
     manager,
@@ -169,6 +171,7 @@ export function createGateway(
     authSessionStore,
     auditLog,
     authRoutes: authRouteFns,
+    ...(planningOrchestrator ? { planningOrchestrator } : {}),
   };
 
   const refs: RouteRefs = {
@@ -201,6 +204,7 @@ export function createGateway(
     exportRoutes,
     blackboardRoutes,
     workspaceRoutes,
+    planningRoutes,
   ];
 
   for (const factory of modules) {
