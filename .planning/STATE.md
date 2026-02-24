@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 7: Execution Orchestration
+**Current focus:** Phase 8: Verification and Checkpoints
 
 ## Current Position
 
-Phase: 7 of 9 (Execution Orchestration) — COMPLETE
-Plan: 4 of 4 in current phase — 07-04 complete
-Status: Phase 7 fully complete — all gaps closed (EXEC-04, EXEC-05), 183 tests green
-Last activity: 2026-02-24 -- Phase 7 Plan 4 complete (isPaused reads pause_between_phases, reapZombies cascade-skips dependents, 4 new unit tests)
+Phase: 8 of 9 (Verification and Checkpoints) — IN PROGRESS
+Plan: 1 of ? in current phase — 08-01 complete
+Status: Phase 8 Plan 1 complete — v25 migration, VerificationResult types, store foundation, 183 tests green
+Last activity: 2026-02-24 -- Phase 8 Plan 1 complete (v25 migration adds risk_level/auto_approved/user_note/verification_result, VerificationResult type hierarchy, updatePhaseVerificationResult, extended resolveCheckpoint)
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: 4 min
-- Total execution time: 0.90 hours
+- Total execution time: 0.97 hours
 
 **By Phase:**
 
@@ -34,6 +34,7 @@ Progress: [████████░░] 78%
 | 05-requirements-definition | 2/? | 6 min | 3 min |
 | 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
 | 07-execution-orchestration | 4/4 | 28 min | 7 min |
+| 08-verification-checkpoints | 1/? | 4 min | 4 min |
 
 **Recent Trend:**
 - Last 5 plans: 1 min, 3 min, 10 min, 8 min, 8 min
@@ -120,6 +121,10 @@ Recent decisions affecting current work:
 - [07-04]: Zombie cascade uses waveNumber+1 for skipped records — consistent with executePhase cascade pattern using waveIndex+1
 - [07-04]: store.createPhase() has no plan param; tests use store.updatePhasePlan() to set dependencies after creation
 - [07-04]: pause_between_phases test expects 0 dispatch calls — isPaused fires before every wave including wave 0; plan comment was incorrect
+- [08-01]: VerificationResult.overridden uses optional property (overridden?: boolean) not boolean | undefined — exactOptionalPropertyTypes compatibility
+- [08-01]: resolveCheckpoint opts is optional second arg object — backwards-compatible; existing callers unaffected
+- [08-01]: verificationResult JSON parse inside existing mapPhase() try/catch block — consistent PLANNING_STATE_CORRUPT error surface
+- [08-01]: planning:checkpoint inserted between planning:phase-complete and planning:complete in EventName union — logical event ordering
 
 ### Pending Todos
 
@@ -134,5 +139,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 07-04-PLAN.md (isPaused reads pause_between_phases, reapZombies cascade-skips dependents, 4 new tests, EXEC-04/EXEC-05 closed)
+Stopped at: Completed 08-01-PLAN.md (v25 migration, VerificationResult types, updatePhaseVerificationResult, extended resolveCheckpoint, 183 tests green)
 Resume file: None

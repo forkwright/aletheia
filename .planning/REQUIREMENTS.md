@@ -80,18 +80,18 @@
 ### Verification
 
 - [ ] **VERI-01**: After each phase executes, a verifier agent performs goal-backward verification (truths -> artifacts -> wiring)
-- [ ] **VERI-02**: Verifier reports: phase goal met / partially met / not met, with specific gap analysis
+- [x] **VERI-02**: Verifier reports: phase goal met / partially met / not met, with specific gap analysis
 - [ ] **VERI-03**: If phase goal not met, agent proposes gap-closure steps before advancing
 - [ ] **VERI-04**: User can override verification failure and advance anyway (recorded in `planning_checkpoints`)
 - [ ] **VERI-05**: Verification can be disabled per-project in planning config
 
 ### Human-in-Loop Checkpoints
 
-- [ ] **CHKP-01**: Checkpoints fire on the event bus as `planning:checkpoint` events
+- [x] **CHKP-01**: Checkpoints fire on the event bus as `planning:checkpoint` events
 - [ ] **CHKP-02**: Checkpoints are risk-based: low-cost reversible decisions auto-approved; high-cost or irreversible decisions require human input
-- [ ] **CHKP-03**: Checkpoint decisions are persisted to `planning_checkpoints` table (full audit trail)
+- [x] **CHKP-03**: Checkpoint decisions are persisted to `planning_checkpoints` table (full audit trail)
 - [ ] **CHKP-04**: In YOLO mode, all checkpoints except blocking errors are auto-approved
-- [ ] **CHKP-05**: User can inject notes/constraints into a checkpoint decision (context captured with the decision)
+- [x] **CHKP-05**: User can inject notes/constraints into a checkpoint decision (context captured with the decision)
 
 ### API & Integration
 
@@ -217,15 +217,15 @@
 | EXEC-05 | Phase 7: Execution Orchestration | Complete |
 | EXEC-06 | Phase 7: Execution Orchestration | Complete |
 | VERI-01 | Phase 8: Verification & Checkpoints | Pending |
-| VERI-02 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-02 | Phase 8: Verification & Checkpoints | Complete |
 | VERI-03 | Phase 8: Verification & Checkpoints | Pending |
 | VERI-04 | Phase 8: Verification & Checkpoints | Pending |
 | VERI-05 | Phase 8: Verification & Checkpoints | Pending |
-| CHKP-01 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-01 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-02 | Phase 8: Verification & Checkpoints | Pending |
-| CHKP-03 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-03 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-04 | Phase 8: Verification & Checkpoints | Pending |
-| CHKP-05 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-05 | Phase 8: Verification & Checkpoints | Complete |
 | INTG-01 | Phase 3: Project Context & API | Complete |
 | INTG-02 | Phase 3: Project Context & API | Complete |
 | INTG-03 | Phase 3: Project Context & API | Complete |

@@ -153,12 +153,13 @@ Plans:
   3. Checkpoints fire on the event bus as planning:checkpoint events with risk-based triggering (low-cost reversible auto-approved, high-cost requires human input)
   4. All checkpoint decisions are persisted to planning_checkpoints table with full audit trail including user notes
   5. In YOLO mode, all checkpoints except blocking errors are auto-approved; verification can be disabled per-project
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 08-01: GoalBackwardVerifier agent
-- [ ] 08-02: Risk-based checkpoint system
-- [ ] 08-03: Checkpoint persistence and YOLO mode
+- [ ] 08-01-PLAN.md — v25 migration, VerificationResult types, store methods, planning:checkpoint EventName, test makeDb() updates
+- [ ] 08-02-PLAN.md — GoalBackwardVerifier class (TDD): verify(), generateGapPlans(), verifier-disabled path
+- [ ] 08-03-PLAN.md — CheckpointSystem class (TDD): 3-tier evaluate(), YOLO mode, true-blocker category, audit logging
+- [ ] 08-04-PLAN.md — plan_verify tool (5 actions), DianoiaOrchestrator FSM methods, dianoia/index.ts exports, aletheia.ts wiring
 
 ### Phase 9: Polish & Migration
 **Goal**: Dianoia is documented, linted, type-clean, and integration-tested -- ready for PR
@@ -193,5 +194,5 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 5. Requirements Definition | 2/2 | Complete   | 2026-02-24 |
 | 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
 | 7. Execution Orchestration | 4/4 | Complete | 2026-02-24 |
-| 8. Verification & Checkpoints | 0/3 | Not started | - |
+| 8. Verification & Checkpoints | 1/4 | In Progress|  |
 | 9. Polish & Migration | 0/3 | Not started | - |
