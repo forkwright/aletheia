@@ -74,8 +74,8 @@
 - [x] **EXEC-02**: Wave executor computes dependency graph before execution; dependent plans wait for prerequisites
 - [x] **EXEC-03**: Subagent spawn records are stored in SQLite (not just in-memory) to survive restarts and enable zombie detection
 - [x] **EXEC-04**: Failed plans cascade-skip dependent plans; non-dependent plans continue executing
-- [ ] **EXEC-05**: Execution can be paused at phase boundaries and resumed in a later session
-- [ ] **EXEC-06**: Execution progress is accessible via `/api/planning/projects/:id/phases/:phaseId/status`
+- [x] **EXEC-05**: Execution can be paused at phase boundaries and resumed in a later session
+- [x] **EXEC-06**: Execution progress is accessible via `/api/planning/projects/:id/phases/:phaseId/status`
 
 ### Verification
 
@@ -214,8 +214,8 @@
 | EXEC-02 | Phase 7: Execution Orchestration | Complete |
 | EXEC-03 | Phase 7: Execution Orchestration | Complete |
 | EXEC-04 | Phase 7: Execution Orchestration | Complete |
-| EXEC-05 | Phase 7: Execution Orchestration | Pending |
-| EXEC-06 | Phase 7: Execution Orchestration | Pending |
+| EXEC-05 | Phase 7: Execution Orchestration | Complete |
+| EXEC-06 | Phase 7: Execution Orchestration | Complete |
 | VERI-01 | Phase 8: Verification & Checkpoints | Pending |
 | VERI-02 | Phase 8: Verification & Checkpoints | Pending |
 | VERI-03 | Phase 8: Verification & Checkpoints | Pending |
