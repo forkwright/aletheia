@@ -81,16 +81,16 @@ Plans:
 **Depends on**: Phase 2
 **Requirements**: RESR-01, RESR-02, RESR-03, RESR-04, RESR-05, RESR-06
 **Success Criteria** (what must be TRUE):
-  1. Four parallel researcher agents (stack, features, architecture, pitfalls) spawn via sessions_dispatch with dimension-specific ephemeralSoul definitions
-  2. Research results are stored per-dimension in planning_research table
-  3. A synthesizer agent produces a consolidated summary after all researchers complete
-  4. Research phase can be skipped entirely (user already knows the domain)
+  1. Four parallel researcher agents (stack, features, architecture, pitfalls) spawn via sessions_dispatch with dimension-specific soul instructions injected via context field
+  2. Research results are stored per-dimension in planning_research table with status column (complete/partial/failed)
+  3. A synthesizer agent produces a consolidated summary after all researchers complete, stored as dimension="synthesis"
+  4. Research phase can be skipped entirely (user already knows the domain); FSM advances directly to requirements
   5. Research has a timeout; partial results are captured and surfaced if one researcher stalls
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: ResearchOrchestrator and dimension-specific souls
-- [ ] 04-02: Research storage, synthesis, and skip/timeout handling
+- [ ] 04-01-PLAN.md — Migration v22, ResearchOrchestrator class with dimension souls, sessions_dispatch wiring, plan_research tool
+- [ ] 04-02-PLAN.md — synthesizeResearch(), skipResearch(), timeout surfacing, FSM transition to requirements
 
 ### Phase 5: Requirements Definition
 **Goal**: Agent and user collaboratively define scoped, testable requirements with full persistence
@@ -187,7 +187,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
-| 3. Project Context & API | 4/4 | Complete   | 2026-02-24 |
+| 3. Project Context & API | 4/4 | Complete    | 2026-02-24 |
 | 4. Research Pipeline | 0/2 | Not started | - |
 | 5. Requirements Definition | 0/2 | Not started | - |
 | 6. Roadmap & Phase Planning | 0/3 | Not started | - |
