@@ -22,10 +22,17 @@ export const NotesConfigSchema = z.object({
   tokenCap: z.number().int().min(100).max(10000).default(2000),
 }).default({});
 
+export const WorkspaceIndexConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  highlightLimit: z.number().int().min(1).max(20).default(5),
+  manifestLimit: z.number().int().min(10).max(500).default(100),
+}).default({});
+
 export const PipelineConfigSchema = z.object({
   recall: RecallConfigSchema,
   tools: ToolsConfigSchema,
   notes: NotesConfigSchema,
+  workspaceIndex: WorkspaceIndexConfigSchema,
 }).default({});
 
 export type PipelineConfig = z.infer<typeof PipelineConfigSchema>;

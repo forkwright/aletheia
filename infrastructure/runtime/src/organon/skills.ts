@@ -10,6 +10,8 @@ export interface SkillDefinition {
   name: string;
   description: string;
   instructions: string;
+  tools?: string[];
+  domains?: string[];
 }
 
 export class SkillRegistry {
@@ -67,6 +69,10 @@ export class SkillRegistry {
     return this.skills.size;
   }
 
+  getSkillsForDomain(domain: string): SkillDefinition[] {
+    return [...this.skills.values()].filter((s) => s.domains?.includes(domain));
+  }
+
   toBootstrapSection(): string {
     if (this.skills.size === 0) return "";
     const lines = ["## Available Skills", ""];
@@ -77,8 +83,39 @@ export class SkillRegistry {
   }
 }
 
+function parseYamlInlineArray(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
+  return trimmed
+    .slice(1, -1)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseFrontmatter(raw: string): { meta: Record<string, string[]>; body: string } {
+  if (!raw.startsWith("---\n")) return { meta: {}, body: raw };
+  const endIdx = raw.indexOf("\n---\n", 4);
+  if (endIdx === -1) return { meta: {}, body: raw };
+
+  const fmBlock = raw.slice(4, endIdx);
+  const body = raw.slice(endIdx + 5);
+  const meta: Record<string, string[]> = {};
+
+  for (const line of fmBlock.split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    meta[key] = parseYamlInlineArray(value);
+  }
+
+  return { meta, body };
+}
+
 function parseSkillMd(id: string, content: string): SkillDefinition | null {
-  const lines = content.split("\n");
+  const { meta, body } = parseFrontmatter(content);
+  const lines = body.split("\n");
 
   // Extract title from first heading
   const titleLine = lines.find((l) => l.startsWith("# "));
@@ -100,6 +137,8 @@ function parseSkillMd(id: string, content: string): SkillDefinition | null {
     id,
     name,
     description,
-    instructions: content,
+    instructions: body,
+    ...(meta["tools"] && meta["tools"].length > 0 ? { tools: meta["tools"] } : {}),
+    ...(meta["domains"] && meta["domains"].length > 0 ? { domains: meta["domains"] } : {}),
   };
 }

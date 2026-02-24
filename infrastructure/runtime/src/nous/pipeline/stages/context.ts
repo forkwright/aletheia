@@ -8,6 +8,7 @@ import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
+import { indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
@@ -133,6 +134,61 @@ export async function buildContext(
     }
   }
 
+  // Domain-based proactive tool activation + skill-declared tool activation
+  const domain = classifyDomain(msg.text ?? "");
+  if (domain) {
+    const activated = services.tools.enableToolsForDomains([domain], sessionId, state.seq ?? 0);
+    if (activated.length > 0) {
+      log.info(`Domain "${domain}": pre-activated tools for ${nousId}: ${activated.join(", ")}`);
+    }
+    if (services.skills) {
+      const domainSkills = services.skills.getSkillsForDomain(domain);
+      const skillTools = [...new Set(domainSkills.flatMap((s) => s.tools ?? []))];
+      if (skillTools.length > 0) {
+        for (const toolName of skillTools) {
+          services.tools.enableTool(toolName, sessionId, state.seq ?? 0);
+        }
+        log.info(`Skill tools pre-activated for domain "${domain}": ${skillTools.join(", ")}`);
+      }
+    }
+    const remaining = services.tools.getAvailableToolNamesExcluding(sessionId);
+    if (remaining.length > 0) {
+      systemPrompt.push({
+        type: "text",
+        text: `## Available Tools (not yet loaded)\n\nCall \`enable_tool\` to activate: ${remaining.join(", ")}`,
+      });
+    }
+  }
+
+  // Workspace index injection — pre-computed file manifest to reduce exploratory ls/find calls
+  const wsConfig = pipelineConfig.workspaceIndex;
+  if (workspace && wsConfig.enabled) {
+    try {
+      const indexConfig = await loadIndexConfig(workspace);
+      const index = await indexWorkspace(workspace, indexConfig.extraPaths);
+      if (index.files.length > 0) {
+        const relevant = queryIndex(index, msg.text ?? "", wsConfig.highlightLimit);
+        const manifestLines = index.files
+          .slice(0, wsConfig.manifestLimit)
+          .map((f) => `- ${f.path}`)
+          .join("\n");
+        const highlightLines = relevant
+          .map((f) => `- ${f.path}${f.firstLine ? `: ${f.firstLine}` : ""}`)
+          .join("\n");
+        systemPrompt.push({
+          type: "text",
+          text:
+            `## Workspace Index\n\n${index.files.length} files indexed.\n\n` +
+            (relevant.length > 0 ? `**Relevant to this query:**\n${highlightLines}\n\n` : "") +
+            `**Manifest (${Math.min(index.files.length, wsConfig.manifestLimit)} of ${index.files.length} shown):**\n${manifestLines}`,
+        });
+        log.debug(`Workspace index injected for ${nousId}: ${index.files.length} files, ${relevant.length} relevant`);
+      }
+    } catch (idxErr) {
+      log.debug(`Workspace index unavailable: ${idxErr instanceof Error ? idxErr.message : idxErr}`);
+    }
+  }
+
   // Broadcasts
   const broadcasts = services.store.blackboardReadPrefix("broadcast:");
   if (broadcasts.length > 0) {
@@ -237,7 +293,6 @@ export async function buildContext(
   // Pre-turn competence suggestion — if this agent scores low in the detected domain
   // and another agent scores high, suggest delegation
   if (services.competence) {
-    const domain = classifyDomain(msg.text);
     if (domain) {
       const agentScore = services.competence.getScore(nousId, domain);
       if (agentScore < 0.3) {
