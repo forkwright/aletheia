@@ -85,3 +85,18 @@ export interface PlanningResearch {
   status: "complete" | "partial" | "failed";
   createdAt: string;
 }
+
+export interface SpawnRecord {
+  id: string;
+  projectId: string;
+  phaseId: string;
+  waveNumber: number;
+  sessionKey: string | null;
+  status: "pending" | "running" | "done" | "failed" | "skipped" | "zombie";
+  errorMessage: string | null;
+  partialOutput: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

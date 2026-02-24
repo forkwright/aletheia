@@ -13,6 +13,7 @@ import type {
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
+  SpawnRecord,
 } from "./types.js";
 
 const log = createLogger("dianoia");
@@ -388,6 +389,96 @@ export class PlanningStore {
     return rows.map((r) => this.mapResearch(r));
   }
 
+  // --- Spawn Records ---
+
+  createSpawnRecord(opts: {
+    projectId: string;
+    phaseId: string;
+    waveNumber: number;
+  }): SpawnRecord {
+    const id = generateId("spawn");
+    const insert = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO planning_spawn_records
+           (id, project_id, phase_id, wave_number, status)
+           VALUES (?, ?, ?, ?, 'pending')`,
+        )
+        .run(id, opts.projectId, opts.phaseId, opts.waveNumber);
+    });
+    insert();
+    return this.getSpawnRecordOrThrow(id);
+  }
+
+  getSpawnRecordOrThrow(id: string): SpawnRecord {
+    const row = this.db
+      .prepare(`SELECT * FROM planning_spawn_records WHERE id = ?`)
+      .get(id) as Record<string, unknown> | undefined;
+    if (!row) {
+      throw new PlanningError(`Spawn record not found: ${id}`, {
+        code: "PLANNING_NOT_FOUND",
+        context: { id },
+      });
+    }
+    return this.mapSpawnRecord(row);
+  }
+
+  updateSpawnRecord(
+    id: string,
+    updates: Partial<
+      Pick<
+        SpawnRecord,
+        "status" | "sessionKey" | "errorMessage" | "partialOutput" | "startedAt" | "completedAt"
+      >
+    >,
+  ): void {
+    const cols: string[] = [];
+    const vals: unknown[] = [];
+    const fieldMap: Record<string, string> = {
+      status: "status",
+      sessionKey: "session_key",
+      errorMessage: "error_message",
+      partialOutput: "partial_output",
+      startedAt: "started_at",
+      completedAt: "completed_at",
+    };
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (key in updates) {
+        cols.push(`${col} = ?`);
+        vals.push(updates[key as keyof typeof updates] ?? null);
+      }
+    }
+    if (cols.length === 0) return;
+    cols.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    vals.push(id);
+    this.db
+      .prepare(`UPDATE planning_spawn_records SET ${cols.join(", ")} WHERE id = ?`)
+      .run(...(vals as Parameters<ReturnType<Database.Database["prepare"]>["run"]>));
+  }
+
+  listSpawnRecords(projectId: string, phaseId?: string): SpawnRecord[] {
+    if (phaseId) {
+      return (
+        this.db
+          .prepare(
+            `SELECT * FROM planning_spawn_records WHERE project_id = ? AND phase_id = ? ORDER BY wave_number, created_at`,
+          )
+          .all(projectId, phaseId) as Record<string, unknown>[]
+      ).map((r) => this.mapSpawnRecord(r));
+    }
+    return (
+      this.db
+        .prepare(
+          `SELECT * FROM planning_spawn_records WHERE project_id = ? ORDER BY wave_number, created_at`,
+        )
+        .all(projectId) as Record<string, unknown>[]
+    ).map((r) => this.mapSpawnRecord(r));
+  }
+
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   // --- Private mappers ---
 
   private mapProject(row: Record<string, unknown>): PlanningProject {
@@ -500,6 +591,23 @@ export class PlanningStore {
       content: row["content"] as string,
       status: (row["status"] as "complete" | "partial" | "failed") ?? "complete",
       createdAt: row["created_at"] as string,
+    };
+  }
+
+  private mapSpawnRecord(row: Record<string, unknown>): SpawnRecord {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: row["phase_id"] as string,
+      waveNumber: row["wave_number"] as number,
+      sessionKey: (row["session_key"] as string | null) ?? null,
+      status: row["status"] as SpawnRecord["status"],
+      errorMessage: (row["error_message"] as string | null) ?? null,
+      partialOutput: (row["partial_output"] as string | null) ?? null,
+      startedAt: (row["started_at"] as string | null) ?? null,
+      completedAt: (row["completed_at"] as string | null) ?? null,
+      createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
     };
   }
 }
