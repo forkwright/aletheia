@@ -19,6 +19,7 @@ import { resolveNousId } from "./pipeline/stages/resolve.js";
 import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
 import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
 import type { DianoiaOrchestrator } from "../dianoia/orchestrator.js";
+import type { ExecutionOrchestrator } from "../dianoia/execution.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
@@ -51,6 +52,7 @@ export class NousManager {
   private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
   private planningOrchestrator?: DianoiaOrchestrator;
+  private executionOrchestrator?: ExecutionOrchestrator;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
@@ -80,6 +82,8 @@ export class NousManager {
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
   setPlanningOrchestrator(orchestrator: DianoiaOrchestrator): void { this.planningOrchestrator = orchestrator; }
   getPlanningOrchestrator(): DianoiaOrchestrator | undefined { return this.planningOrchestrator; }
+  setExecutionOrchestrator(orchestrator: ExecutionOrchestrator): void { this.executionOrchestrator = orchestrator; }
+  getExecutionOrchestrator(): ExecutionOrchestrator | undefined { return this.executionOrchestrator; }
 
   reloadConfig(newConfig: AletheiaConfig): { added: string[]; removed: string[] } {
     const oldIds = new Set(this.config.agents.list.map((n) => n.id));
