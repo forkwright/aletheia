@@ -162,7 +162,7 @@ Plans:
 - [ ] 08-04-PLAN.md — plan_verify tool (5 actions), DianoiaOrchestrator FSM methods, dianoia/index.ts exports, aletheia.ts wiring
 
 ### Phase 9: Polish & Migration
-**Goal**: Dianoia is documented, linted, type-clean, and integration-tested -- ready for PR
+**Goal**: Dianoia is documented, linted, type-clean, and integration-tested — ready for PR
 **Depends on**: Phase 8
 **Requirements**: DOCS-01, DOCS-02, DOCS-03, TEST-04, TEST-05, TEST-06
 **Success Criteria** (what must be TRUE):
@@ -171,12 +171,13 @@ Plans:
   3. Integration test for the full planning pipeline passes (mock sessions_dispatch, exercise idle through complete)
   4. `npx tsc --noEmit` passes with zero new type errors across the entire codebase
   5. `npx oxlint src/` passes with zero new lint errors across the entire codebase
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 09-01: Spec document (31_dianoia.md)
-- [ ] 09-02: Integration test (full pipeline)
-- [ ] 09-03: Final type-check, lint, and CONTRIBUTING.md update
+- [ ] 09-01-PLAN.md — Spec document docs/specs/31_dianoia.md (7 sections: Problem, Design, SQLite schema, state machine, API surface, Implementation Order, Success Criteria)
+- [ ] 09-02-PLAN.md — Integration test dianoia.integration.test.ts (idle → complete happy path + blocked failure path)
+- [ ] 09-03-PLAN.md — CONTRIBUTING.md Dianoia section (4 gotchas) + oxlint fixes + tsc gate + index.ts V24/V25 exports
+- [ ] 09-04-PLAN.md — Status pill UI: PlanningStatusLine.svelte + PlanningPanel.svelte + ChatView.svelte wiring
 
 ## Progress
 
@@ -195,4 +196,4 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
 | 7. Execution Orchestration | 4/4 | Complete | 2026-02-24 |
 | 8. Verification & Checkpoints | 4/4 | Complete   | 2026-02-24 |
-| 9. Polish & Migration | 0/3 | Not started | - |
+| 9. Polish & Migration | 0/4 | Not started | - |
