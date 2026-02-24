@@ -42,13 +42,13 @@
 
 ### Requirements Definition
 
-- [ ] **REQS-01**: Agent presents features by category with table-stakes vs. differentiator classification
-- [ ] **REQS-02**: User can scope each category (v1 / v2 / out of scope) through structured interaction
-- [ ] **REQS-03**: Requirements are assigned REQ-IDs in format `[CATEGORY]-[NUMBER]` (e.g., AUTH-01, CONT-02)
+- [x] **REQS-01**: Agent presents features by category with table-stakes vs. differentiator classification
+- [x] **REQS-02**: User can scope each category (v1 / v2 / out of scope) through structured interaction
+- [x] **REQS-03**: Requirements are assigned REQ-IDs in format `[CATEGORY]-[NUMBER]` (e.g., AUTH-01, CONT-02)
 - [x] **REQS-04**: Requirements are persisted to `planning_requirements` table with tier (v1/v2/out-of-scope)
-- [ ] **REQS-05**: Requirements are user-centric, specific, and testable ("User can X", not "System does Y")
+- [x] **REQS-05**: Requirements are user-centric, specific, and testable ("User can X", not "System does Y")
 - [x] **REQS-06**: Out-of-scope requirements include rationale (prevents re-adding later)
-- [ ] **REQS-07**: Requirements coverage is validated before advancing (all v1 requirements must map to phases)
+- [x] **REQS-07**: Requirements coverage is validated before advancing (all v1 requirements must map to phases)
 
 ### Roadmap Generation
 
@@ -191,13 +191,13 @@
 | RESR-04 | Phase 4: Research Pipeline | Complete |
 | RESR-05 | Phase 4: Research Pipeline | Complete |
 | RESR-06 | Phase 4: Research Pipeline | Complete |
-| REQS-01 | Phase 5: Requirements Definition | Pending |
-| REQS-02 | Phase 5: Requirements Definition | Pending |
-| REQS-03 | Phase 5: Requirements Definition | Pending |
+| REQS-01 | Phase 5: Requirements Definition | Complete |
+| REQS-02 | Phase 5: Requirements Definition | Complete |
+| REQS-03 | Phase 5: Requirements Definition | Complete |
 | REQS-04 | Phase 5: Requirements Definition | Complete |
-| REQS-05 | Phase 5: Requirements Definition | Pending |
+| REQS-05 | Phase 5: Requirements Definition | Complete |
 | REQS-06 | Phase 5: Requirements Definition | Complete |
-| REQS-07 | Phase 5: Requirements Definition | Pending |
+| REQS-07 | Phase 5: Requirements Definition | Complete |
 | ROAD-01 | Phase 6: Roadmap & Phase Planning | Pending |
 | ROAD-02 | Phase 6: Roadmap & Phase Planning | Pending |
 | ROAD-03 | Phase 6: Roadmap & Phase Planning | Pending |
