@@ -313,25 +313,31 @@ export async function buildContext(
   }
 
   // Agent notes injection — explicit notes written by the agent that survive distillation
-  const notes = services.store.getNotes(sessionId, { limit: 20 });
+  // No count limit — token budget controls how many are injected. Most recent first.
+  const notes = services.store.getNotes(sessionId, { limit: 500 });
   if (notes.length > 0) {
     const NOTE_TOKEN_CAP = pipelineConfig.notes.tokenCap;
     const header = "## Agent Notes\n\nNotes you wrote during this session. These survive context distillation.\n\n";
     let tokenCount = estimateTokens(header);
     const noteLines: string[] = [];
+    let dropped = 0;
 
     for (const note of notes) {
       const line = `- [${note.category}] ${note.content}`;
       const lineTokens = estimateTokens(line + "\n");
-      if (tokenCount + lineTokens > NOTE_TOKEN_CAP) break;
+      if (tokenCount + lineTokens > NOTE_TOKEN_CAP) {
+        dropped++;
+        continue;
+      }
       noteLines.push(line);
       tokenCount += lineTokens;
     }
 
     if (noteLines.length > 0) {
+      const suffix = dropped > 0 ? `\n\n*${dropped} older notes stored but excluded from context (token budget).*` : "";
       systemPrompt.push({
         type: "text",
-        text: header + noteLines.join("\n"),
+        text: header + noteLines.join("\n") + suffix,
       });
     }
   }

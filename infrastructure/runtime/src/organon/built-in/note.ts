@@ -4,7 +4,6 @@ import type { SessionStore } from "../../mneme/store.js";
 
 const VALID_CATEGORIES = ["task", "decision", "preference", "correction", "context"] as const;
 type NoteCategory = (typeof VALID_CATEGORIES)[number];
-const MAX_NOTES_PER_SESSION = 50;
 const MAX_NOTE_LENGTH = 500;
 
 export function createNoteTool(store: SessionStore): ToolHandler {
@@ -28,8 +27,9 @@ export function createNoteTool(store: SessionStore): ToolHandler {
         "- Actions: 'add', 'list', 'delete'\n" +
         "- Categories: task, decision, preference, correction, context\n" +
         "- Notes are per-session, ordered by creation time\n" +
-        "- Max 50 notes per session, 500 chars each\n" +
-        "- Notes are injected into your system prompt automatically",
+        "- No count limit — oldest notes drop from context injection when token budget is full\n" +
+        "- Max 500 chars per note\n" +
+        "- Notes are injected into your system prompt automatically (most recent first, within token budget)",
       input_schema: {
         type: "object",
         properties: {
@@ -82,12 +82,6 @@ export function createNoteTool(store: SessionStore): ToolHandler {
             ? (rawCategory as NoteCategory)
             : "context";
 
-          // Check note limit
-          const existing = store.getNotes(sessionId, { limit: MAX_NOTES_PER_SESSION + 1 });
-          if (existing.length >= MAX_NOTES_PER_SESSION) {
-            return `Error: Maximum ${MAX_NOTES_PER_SESSION} notes per session reached. Delete old notes first.`;
-          }
-
           const id = store.addNote(sessionId, nousId, category, trimmed);
           return `Note #${id} saved (${category}): "${trimmed}"`;
         }
@@ -95,7 +89,7 @@ export function createNoteTool(store: SessionStore): ToolHandler {
         case "list": {
           const filterCategory = input["category"] as string | undefined;
           const notes = store.getNotes(sessionId, {
-            limit: 50,
+            limit: 500,
             ...(filterCategory && VALID_CATEGORIES.includes(filterCategory as NoteCategory)
               ? { category: filterCategory as NoteCategory }
               : {}),
