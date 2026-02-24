@@ -11,8 +11,20 @@ let workspaceRoot: string;
 function makeProject(): PlanningProject {
   return {
     id: "proj_test123",
+    nousId: "test-nous",
+    sessionId: "test-session",
     goal: "Test Project",
     state: "idle",
+    config: {
+      depth: "standard",
+      parallelization: true,
+      research: true,
+      plan_check: true,
+      verifier: true,
+      mode: "interactive",
+    },
+    contextHash: "hash123",
+    projectDir: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     projectContext: null,
@@ -21,13 +33,13 @@ function makeProject(): PlanningProject {
 
 function makeRequirement(): PlanningRequirement {
   return {
-    id: 1,
+    id: "req_1",
     projectId: "proj_test123",
     reqId: "AUTH-01",
     description: "User can log in via OAuth",
     category: "authentication",
     tier: "v1",
-    status: "accepted",
+    status: "pending",
     rationale: null,
     createdAt: "2026-01-01T00:00:00Z",
   };
@@ -35,7 +47,7 @@ function makeRequirement(): PlanningRequirement {
 
 function makeResearch(): PlanningResearch {
   return {
-    id: 1,
+    id: "research_1",
     projectId: "proj_test123",
     phase: "research",
     dimension: "stack",

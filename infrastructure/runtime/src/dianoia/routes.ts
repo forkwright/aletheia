@@ -215,6 +215,36 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   });
 
+  // Roadmap endpoint for legacy UI compatibility
+  app.get("/api/planning/projects/:id/roadmap", (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    
+    const projectId = c.req.param("id");
+    const project = orch.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    
+    const phases = orch.listPhases(projectId);
+    
+    return c.json({
+      projectId,
+      phases: phases.map(phase => ({
+        id: phase.id,
+        name: phase.name,
+        goal: phase.goal,
+        dependencies: [],
+        requirements: phase.requirements,
+        state: phase.status,
+        order: phase.phaseOrder,
+        status: phase.status,
+        phaseOrder: phase.phaseOrder,
+        successCriteria: phase.successCriteria,
+        verificationResult: phase.verificationResult,
+        createdAt: phase.createdAt,
+        updatedAt: phase.updatedAt,
+      }))
+    });
+  });
+
   // Timeline endpoint for milestone visualization
   app.get("/api/planning/projects/:id/timeline", (c) => {
     if (!orch) return c.json({ error: "Planning not enabled" }, 503);

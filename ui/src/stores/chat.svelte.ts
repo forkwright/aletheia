@@ -266,6 +266,7 @@ export async function sendMessage(
       switch (event.type) {
         case "turn_start":
           resolvedSessionId = event.sessionId;
+          state.activeTurnId = event.turnId;
           break;
 
         case "thinking_delta":
@@ -398,6 +399,7 @@ export async function sendMessage(
     state.abortController = null;
     state.pendingApproval = null;
     state.turnStartedAt = null;
+    state.activeTurnId = null;
   }
   return resolvedSessionId;
 }
@@ -409,9 +411,31 @@ export function hasLocalStream(agentId: string): boolean {
 export function abortStream(agentId: string): void {
   const s = states[agentId];
   if (s) {
+    // Abort the browser-side SSE connection
     s.abortController?.abort();
     s.remoteStreaming = false;
+
+    // Also abort the server-side turn (kills tool execution + spawned sub-agents)
+    const turnId = s.activeTurnId;
+    if (turnId) {
+      s.activeTurnId = null;
+      abortServerTurn(turnId).catch(() => {
+        // Best-effort — server may have already finished
+      });
+    }
   }
+}
+
+async function abortServerTurn(turnId: string): Promise<void> {
+  const base = import.meta.env.DEV ? "" : window.location.origin;
+  const token = localStorage.getItem("aletheia_token");
+  await fetch(`${base}/api/turns/${encodeURIComponent(turnId)}/abort`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
