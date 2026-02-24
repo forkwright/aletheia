@@ -102,11 +102,11 @@ Plans:
   3. Requirements are assigned REQ-IDs in CATEGORY-NUMBER format and persisted to planning_requirements table
   4. All requirements are user-centric and testable; out-of-scope requirements include rationale
   5. Requirements coverage is validated before the state machine advances to roadmap phase
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: Requirements scoping interaction flow
-- [ ] 05-02: Requirements persistence and coverage validation
+- [ ] 05-01-PLAN.md — v23 migration (rationale column), PlanningStore.updateRequirement(), type and test updates
+- [ ] 05-02-PLAN.md — RequirementsOrchestrator, plan_requirements tool, completeRequirements() wiring, aletheia.ts registration
 
 ### Phase 6: Roadmap & Phase Planning
 **Goal**: Requirements are transformed into a phased roadmap with plans, and a plan checker validates goal alignment
