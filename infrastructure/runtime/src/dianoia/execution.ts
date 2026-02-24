@@ -245,7 +245,10 @@ export class ExecutionOrchestrator {
 
   private reapZombies(projectId: string): void {
     const records = this.store.listSpawnRecords(projectId);
+    const allPhases = this.store.listPhases(projectId);
     const now = Date.now();
+    const skippedIds = new Set(records.filter((r) => r.status === "skipped").map((r) => r.phaseId));
+
     for (const record of records) {
       if (record.status === "running" && record.startedAt) {
         const ageSeconds = (now - new Date(record.startedAt).getTime()) / 1000;
@@ -255,6 +258,24 @@ export class ExecutionOrchestrator {
             status: "zombie",
             completedAt: new Date().toISOString(),
           });
+
+          // Cascade-skip direct dependents (same logic as failed plans in executePhase)
+          const dependents = directDependents(record.phaseId, allPhases);
+          for (const dep of dependents) {
+            if (!skippedIds.has(dep.id)) {
+              const depRecord = this.store.createSpawnRecord({
+                projectId,
+                phaseId: dep.id,
+                waveNumber: record.waveNumber + 1,
+              });
+              this.store.updateSpawnRecord(depRecord.id, {
+                status: "skipped",
+                completedAt: new Date().toISOString(),
+              });
+              this.store.updatePhaseStatus(dep.id, "skipped");
+              skippedIds.add(dep.id);
+            }
+          }
         }
       }
     }
@@ -262,7 +283,7 @@ export class ExecutionOrchestrator {
 
   private isPaused(projectId: string): boolean {
     const project = this.store.getProjectOrThrow(projectId);
-    return project.state === "blocked";
+    return project.state === "blocked" || project.config.pause_between_phases === true;
   }
 }
 
