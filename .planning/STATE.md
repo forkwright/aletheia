@@ -157,5 +157,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 09-03-PLAN.md (CONTRIBUTING.md Dianoia section, V24/V25 exports, 0 oxlint errors)
+Stopped at: Completed 09-01-PLAN.md (docs/specs/31_dianoia.md: 597 lines, 7 sections, full DDL, Mermaid FSM, 5 API routes; DOCS-01/DOCS-02 satisfied)
 Resume file: None

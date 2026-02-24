@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker (completed 2026-02-24)
 - [x] **Phase 7: Execution Orchestration** - Wave-based parallel execution, dependency graph, restart resilience (completed 2026-02-24)
 - [x] **Phase 8: Verification & Checkpoints** - Goal-backward verification, risk-based checkpoints, audit trail (completed 2026-02-24)
-- [ ] **Phase 9: Polish & Migration** - Spec document, legacy tool deprecation, CONTRIBUTING.md update, final lint/type pass
+- [x] **Phase 9: Polish & Migration** - Spec document, legacy tool deprecation, CONTRIBUTING.md update, final lint/type pass (completed 2026-02-24)
 
 ## Phase Details
 
@@ -174,7 +174,7 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 09-01-PLAN.md — Spec document docs/specs/31_dianoia.md (7 sections: Problem, Design, SQLite schema, state machine, API surface, Implementation Order, Success Criteria)
+- [x] 09-01-PLAN.md — Spec document docs/specs/31_dianoia.md (7 sections: Problem, Design, SQLite schema, state machine, API surface, Implementation Order, Success Criteria) (completed 2026-02-24)
 - [ ] 09-02-PLAN.md — Integration test dianoia.integration.test.ts (idle → complete happy path + blocked failure path)
 - [ ] 09-03-PLAN.md — CONTRIBUTING.md Dianoia section (4 gotchas) + oxlint fixes + tsc gate + index.ts V24/V25 exports
 - [ ] 09-04-PLAN.md — Status pill UI: PlanningStatusLine.svelte + PlanningPanel.svelte + ChatView.svelte wiring
@@ -196,4 +196,4 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
 | 7. Execution Orchestration | 4/4 | Complete | 2026-02-24 |
 | 8. Verification & Checkpoints | 4/4 | Complete   | 2026-02-24 |
-| 9. Polish & Migration | 3/4 | In Progress|  |
+| 9. Polish & Migration | 4/4 | Complete | 2026-02-24 |

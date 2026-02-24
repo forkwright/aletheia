@@ -109,8 +109,8 @@
 
 ### Spec & Documentation
 
-- [ ] **DOCS-01**: Spec document `docs/specs/31_dianoia.md` follows established Aletheia spec format (Problem, Design, Implementation Order, Success Criteria)
-- [ ] **DOCS-02**: Spec includes SQLite schema definitions, state machine diagram, and API surface
+- [x] **DOCS-01**: Spec document `docs/specs/31_dianoia.md` follows established Aletheia spec format (Problem, Design, Implementation Order, Success Criteria)
+- [x] **DOCS-02**: Spec includes SQLite schema definitions, state machine diagram, and API surface
 - [x] **DOCS-03**: CONTRIBUTING.md updated to note Dianoia module conventions
 
 ### Tests
@@ -234,8 +234,8 @@
 | CONF-01 | Phase 1: Foundation | Complete |
 | CONF-02 | Phase 1: Foundation | Complete |
 | CONF-03 | Phase 1: Foundation | Complete |
-| DOCS-01 | Phase 9: Polish & Migration | Pending |
-| DOCS-02 | Phase 9: Polish & Migration | Pending |
+| DOCS-01 | Phase 9: Polish & Migration | Complete |
+| DOCS-02 | Phase 9: Polish & Migration | Complete |
 | DOCS-03 | Phase 9: Polish & Migration | Complete |
 | TEST-01 | Phase 1: Foundation | Complete |
 | TEST-02 | Phase 1: Foundation | Complete |
