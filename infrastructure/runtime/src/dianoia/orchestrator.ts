@@ -170,6 +170,13 @@ export class DianoiaOrchestrator {
     return "Research skipped. Proceeding to requirements definition.";
   }
 
+  completeRequirements(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("requirements", "REQUIREMENTS_COMPLETE"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "requirements" });
+    log.info(`Requirements complete for project ${projectId}; advancing to roadmap`);
+    return "Requirements confirmed. Advancing to roadmap generation.";
+  }
+
   completePhase(projectId: string, nousId: string, sessionId: string, phase: string): void {
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase });
     log.info(`Phase complete: ${phase} for project ${projectId}`);
