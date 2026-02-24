@@ -500,6 +500,7 @@ const PlanningConfig = z
     plan_check: z.boolean().default(true),
     verifier: z.boolean().default(true),
     mode: z.enum(["yolo", "interactive"]).default("interactive"),
+    pause_between_phases: z.boolean().default(false),
   })
   .default({});
 

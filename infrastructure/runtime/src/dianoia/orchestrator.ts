@@ -206,6 +206,25 @@ export class DianoiaOrchestrator {
     return "All phase plans ready. Moving to execution.";
   }
 
+  advanceToVerification(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("executing", "VERIFY"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, fromState: "executing", toState: "verifying" });
+    log.info(`Execution complete for project ${projectId}; advancing to verifying`);
+    return "Phase execution complete. Advancing to verification.";
+  }
+
+  pauseExecution(projectId: string): void {
+    this.store.updateProjectState(projectId, transition("executing", "BLOCK"));
+    log.info(`Execution paused for project ${projectId}`);
+  }
+
+  resumeExecution(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("blocked", "RESUME"));
+    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId, fromState: "blocked", toState: "executing" });
+    log.info(`Execution resumed for project ${projectId}`);
+    return "Execution resumed.";
+  }
+
   listPhases(projectId: string): PlanningPhase[] {
     return this.store.listPhases(projectId);
   }
