@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 3 of 9 (Project Context and API)
-Plan: 1 of 3 in current phase — COMPLETE
+Plan: 2 of 3 in current phase — COMPLETE
 Status: Executing
-Last activity: 2026-02-24 -- Plan 03-01 complete (project context persistence and questioning loop)
+Last activity: 2026-02-24 -- Plan 03-02 complete (planning HTTP API routes)
 
 Progress: [███░░░░░░░] 26%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 3 min
 - Total execution time: 0.40 hours
 
@@ -29,10 +29,10 @@ Progress: [███░░░░░░░] 26%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
-| 03-project-context-and-api | 1/3 | 5 min | 5 min |
+| 03-project-context-and-api | 2/3 | 7 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min, 3 min, 2 min, 2 min, 5 min
+- Last 5 plans: 2 min, 3 min, 2 min, 2 min, 5 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -67,6 +67,9 @@ Recent decisions affecting current work:
 - [03-01]: planning:checkpoint event not in EventName union; confirmSynthesis emits planning:phase-started instead
 - [03-01]: confirmSynthesis preserves rawTranscript from existing context, not from caller's synthesizedContext
 - [03-01]: exactOptionalPropertyTypes requires conditional spread for optional array fields in merged context objects
+- [03-02]: exactOptionalPropertyTypes requires conditional spread for optional RouteDeps fields (planningOrchestrator) — direct undefined assignment fails type check
+- [03-02]: listAllProjects() and getProject() added as thin public accessors on DianoiaOrchestrator delegating to store — routes never reach through to store directly
+- [03-02]: GET /api/planning/projects returns summary fields only; full snapshot only on /:id
 
 ### Pending Todos
 
@@ -81,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 03-01-PLAN.md (project context persistence and questioning loop)
+Stopped at: Completed 03-02-PLAN.md (planning HTTP API routes)
 Resume file: None

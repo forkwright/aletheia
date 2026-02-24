@@ -95,8 +95,8 @@
 
 ### API & Integration
 
-- [ ] **INTG-01**: Dianoia exposes `/api/planning/projects` CRUD routes in pylon
-- [ ] **INTG-02**: Planning project state is accessible via GET `/api/planning/projects/:id`
+- [x] **INTG-01**: Dianoia exposes `/api/planning/projects` CRUD routes in pylon
+- [x] **INTG-02**: Planning project state is accessible via GET `/api/planning/projects/:id`
 - [ ] **INTG-03**: Planning fires events on Aletheia's event bus (`planning:project-created`, `planning:phase-started`, `planning:phase-complete`, `planning:checkpoint`, `planning:complete`)
 - [ ] **INTG-04**: Planning state is injected into agent working-state so the nous knows the active planning context
 - [ ] **INTG-05**: Existing `plan_create`/`plan_propose` tools are marked deprecated but not removed (documented migration path to Dianoia tools)
@@ -226,8 +226,8 @@
 | CHKP-03 | Phase 8: Verification & Checkpoints | Pending |
 | CHKP-04 | Phase 8: Verification & Checkpoints | Pending |
 | CHKP-05 | Phase 8: Verification & Checkpoints | Pending |
-| INTG-01 | Phase 3: Project Context & API | Pending |
-| INTG-02 | Phase 3: Project Context & API | Pending |
+| INTG-01 | Phase 3: Project Context & API | Complete |
+| INTG-02 | Phase 3: Project Context & API | Complete |
 | INTG-03 | Phase 3: Project Context & API | Pending |
 | INTG-04 | Phase 3: Project Context & API | Pending |
 | INTG-05 | Phase 3: Project Context & API | Pending |
