@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 3 of 9 (Project Context and API)
-Plan: 2 of 3 in current phase — COMPLETE
+Plan: 3 of 3 in current phase — COMPLETE
 Status: Executing
-Last activity: 2026-02-24 -- Plan 03-02 complete (planning HTTP API routes)
+Last activity: 2026-02-24 -- Plan 03-03 complete (enriched planning context block with synthesized fields and next question)
 
-Progress: [███░░░░░░░] 26%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 3 min
-- Total execution time: 0.40 hours
+- Total execution time: 0.41 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [███░░░░░░░] 26%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
-| 03-project-context-and-api | 2/3 | 7 min | 4 min |
+| 03-project-context-and-api | 3/3 | 8 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 3 min, 2 min, 2 min, 5 min
+- Last 5 plans: 3 min, 2 min, 2 min, 5 min, 1 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -70,6 +70,10 @@ Recent decisions affecting current work:
 - [03-02]: exactOptionalPropertyTypes requires conditional spread for optional RouteDeps fields (planningOrchestrator) — direct undefined assignment fails type check
 - [03-02]: listAllProjects() and getProject() added as thin public accessors on DianoiaOrchestrator delegating to store — routes never reach through to store directly
 - [03-02]: GET /api/planning/projects returns summary fields only; full snapshot only on /:id
+- [03-03]: getNextQuestion(projectId) called with activeProject.id (not nousId) — matches orchestrator signature
+- [03-03]: nextQuestion guard uses state === 'questioning' before calling getNextQuestion — avoids unnecessary DB reads
+- [03-03]: Planning Question rendered as ## Planning Question H2 section for clear LLM salience
+- [03-03]: No distillation pipeline changes needed — context block re-reads from DB each turn (PROJ-04 satisfied structurally)
 
 ### Pending Todos
 
@@ -79,10 +83,10 @@ None yet.
 
 - CONCERNS.md flags "No Transactional Guarantees for Multi-Step Operations" in existing store -- Dianoia must not inherit this; FOUND-03 requires explicit transactions
 - 3-ephemeral-agent hard limit may conflict with 4 parallel researchers; research recommends sessions_dispatch (not ephemeral) for RESR-01
-- Context distillation may eat planning state; need undistillable marker or high-priority bootstrap injection (PROJ-04)
+- Context distillation may eat planning state — RESOLVED in 03-03: context block re-reads from DB each turn, so synthesized fields survive distillation automatically (PROJ-04)
 
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 03-02-PLAN.md (planning HTTP API routes)
+Stopped at: Completed 03-03-PLAN.md (enriched planning context block)
 Resume file: None
