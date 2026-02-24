@@ -33,7 +33,7 @@ import { createSessionsDispatchTool } from "./organon/built-in/sessions-dispatch
 import { createConfigReadTool } from "./organon/built-in/config-read.js";
 import { createSessionStatusTool } from "./organon/built-in/session-status.js";
 import { createPlanTools } from "./organon/built-in/plan.js";
-import { createPlanProposeHandler } from "./organon/built-in/plan-propose.js";
+// plan-propose removed — deprecated in favor of Dianoia orchestrator
 import { traceLookupTool } from "./organon/built-in/trace-lookup.js";
 import { createCheckCalibrationTool } from "./organon/built-in/check-calibration.js";
 import { createSelfEvaluateTool } from "./organon/built-in/self-evaluate.js";
@@ -213,9 +213,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     tools.register(planTool);
   }
 
-  // Plan proposal tool (always available)
-  const planProposeHandler = createPlanProposeHandler();
-  tools.register(planProposeHandler);
+  // plan_propose removed — Dianoia orchestrator replaces it
 
   // Self-authoring tools (available on-demand)
   const defaultWorkspace = config.agents.list[0]?.workspace ?? "/tmp";
