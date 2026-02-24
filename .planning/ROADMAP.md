@@ -141,7 +141,7 @@ Plans:
 - [x] 07-01-PLAN.md — V24 migration (spawn records), PlanningStore spawn CRUD, ExecutionOrchestrator (TDD): wave computation, cascade-skip, resume logic
 - [x] 07-02-PLAN.md — plan_execute tool (7 actions), DianoiaOrchestrator FSM methods (advanceToVerification, pauseExecution, resumeExecution), pause_between_phases config
 - [x] 07-03-PLAN.md — Execution API routes (/execution, /phases/:phaseId/status), dianoia/index.ts exports, aletheia.ts wiring
-- [ ] 07-04-PLAN.md — Gap closure: isPaused() reads pause_between_phases config; reapZombies() cascade-skips dependents
+- [x] 07-04-PLAN.md — Gap closure: isPaused() reads pause_between_phases config; reapZombies() cascade-skips dependents (completed 2026-02-24)
 
 ### Phase 8: Verification & Checkpoints
 **Goal**: Completed phases are verified against their goals, and human-in-loop checkpoints gate high-risk decisions
@@ -192,6 +192,6 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 4. Research Pipeline | 2/2 | Complete    | 2026-02-24 |
 | 5. Requirements Definition | 2/2 | Complete   | 2026-02-24 |
 | 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
-| 7. Execution Orchestration | 3/4 | Gap closure in progress | 2026-02-24 |
+| 7. Execution Orchestration | 4/4 | Complete | 2026-02-24 |
 | 8. Verification & Checkpoints | 0/3 | Not started | - |
 | 9. Polish & Migration | 0/3 | Not started | - |

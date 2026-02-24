@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 7 of 9 (Execution Orchestration) — COMPLETE
-Plan: 3 of 3 in current phase — 07-03 complete
-Status: Phase 7 complete — execution API routes, RouteDeps wiring, plan_execute tool registered
-Last activity: 2026-02-24 -- Phase 7 Plan 3 complete (two execution HTTP routes, ExecutionOrchestrator in RouteDeps, plan_execute tool in createRuntime())
+Plan: 4 of 4 in current phase — 07-04 complete
+Status: Phase 7 fully complete — all gaps closed (EXEC-04, EXEC-05), 183 tests green
+Last activity: 2026-02-24 -- Phase 7 Plan 4 complete (isPaused reads pause_between_phases, reapZombies cascade-skips dependents, 4 new unit tests)
 
-Progress: [████████░░] 75%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 4 min
-- Total execution time: 0.88 hours
+- Total execution time: 0.90 hours
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [████████░░] 75%
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
 | 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
-| 07-execution-orchestration | 3/3 | 20 min | 7 min |
+| 07-execution-orchestration | 4/4 | 28 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min, 1 min, 3 min, 10 min, 8 min
+- Last 5 plans: 1 min, 3 min, 10 min, 8 min, 8 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -115,6 +115,11 @@ Recent decisions affecting current work:
 - [07-03]: executionOrchestrator stored on NousManager via setter/getter — matches planningOrchestrator pattern; server.ts retrieves via manager.getExecutionOrchestrator()
 - [07-03]: RouteDeps.executionOrchestrator uses conditional spread in server.ts — exactOptionalPropertyTypes requires this (consistent with planningOrchestrator)
 - [07-03]: Routes return 503 when executionOrchestrator not available — defensive guard matches existing planning route pattern
+- [07-04]: isPaused() combines state===blocked and pause_between_phases===true in one OR — both halt before every wave including wave 0
+- [07-04]: reapZombies reads allPhases via store.listPhases() internally — no method signature change, keeps call sites clean
+- [07-04]: Zombie cascade uses waveNumber+1 for skipped records — consistent with executePhase cascade pattern using waveIndex+1
+- [07-04]: store.createPhase() has no plan param; tests use store.updatePhasePlan() to set dependencies after creation
+- [07-04]: pause_between_phases test expects 0 dispatch calls — isPaused fires before every wave including wave 0; plan comment was incorrect
 
 ### Pending Todos
 
@@ -129,5 +134,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 07-03-PLAN.md (execution API routes, ExecutionOrchestrator/createPlanExecuteTool in dianoia/index.ts, plan_execute tool in createRuntime(), RouteDeps wiring)
+Stopped at: Completed 07-04-PLAN.md (isPaused reads pause_between_phases, reapZombies cascade-skips dependents, 4 new tests, EXEC-04/EXEC-05 closed)
 Resume file: None
