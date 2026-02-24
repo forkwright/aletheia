@@ -118,7 +118,7 @@ async function runSimpleDemo() {
   store.updateSpawnRecord(spawnAuth.id, { status: "done" });
   console.log(`   ✅ Auth phase completed`);
 
-  const spawnAPI = store.createSpawnRecord({
+  store.createSpawnRecord({
     projectId: project.id,
     phaseId: phaseAPI.id,
     waveNumber: 1
@@ -156,8 +156,8 @@ async function runSimpleDemo() {
   store.updatePhaseVerificationResult(phaseAPI.id, failedVerification);
   console.log(`   ❌ API verification: ${failedVerification.status}`);
   console.log(`      Gaps found: ${failedVerification.gaps.length}`);
-  console.log(`      Gap: ${failedVerification.gaps[0].detail}`);
-  console.log(`      Fix: ${failedVerification.gaps[0].proposedFix}`);
+  console.log(`      Gap: ${failedVerification.gaps[0]?.detail}`);
+  console.log(`      Fix: ${failedVerification.gaps[0]?.proposedFix}`);
 
   // ORCH-04: Rollback planning
   console.log("\n🔄 ORCH-04: Rollback Plan Generation");
@@ -174,7 +174,7 @@ async function runSimpleDemo() {
   console.log(`   Failed phase: ${store.getPhase(failedPhaseId)?.name}`);
   console.log(`   Dependent phases that would be skipped: ${dependentPhases.length}`);
   console.log(`   Rollback actions needed:`);
-  console.log(`     - Fix: ${failedVerification.gaps[0].proposedFix}`);
+  console.log(`     - Fix: ${failedVerification.gaps[0]?.proposedFix}`);
   console.log(`     - Re-run verification`);
   if (dependentPhases.length > 0) {
     console.log(`     - Manual review of ${dependentPhases.length} dependent phases`);

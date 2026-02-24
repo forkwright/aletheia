@@ -215,13 +215,12 @@ export function createSessionsDispatchTool(
             });
           }
 
-          return {
+          const dispatchResult: DispatchResult = {
             index,
             role: roleName,
             task: taskDef.task,
             status: "success",
             result: outcome.text,
-            ...(structured ? { structuredResult: structured } : {}),
             tokens: {
               input: outcome.inputTokens ?? 0,
               output: outcome.outputTokens ?? 0,
@@ -229,6 +228,8 @@ export function createSessionsDispatchTool(
             },
             durationMs,
           };
+          if (structured) dispatchResult.structuredResult = structured;
+          return dispatchResult;
         } catch (err) {
           clearTimeout(timer!);
           const durationMs = Date.now() - taskStart;

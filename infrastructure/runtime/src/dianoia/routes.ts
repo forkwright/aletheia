@@ -198,7 +198,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   app.post("/api/planning/projects/:id/discuss", async (c) => {
     if (!orch) return c.json({ error: "Planning not enabled" }, 503);
     
-    const projectId = c.req.param("id");
+    c.req.param("id"); // projectId - used for route matching
     const body = await c.req.json();
     const { questionId, decision, userNote } = body;
     

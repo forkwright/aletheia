@@ -71,9 +71,9 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
         required: ["action", "projectId"]
       }
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
-      const action = input.action as string;
-      const projectId = input.projectId as string;
+    async execute(input: Record<string, unknown>, _context: ToolContext): Promise<string> {
+      const action = input['action'] as string;
+      const projectId = input['projectId'] as string;
 
       try {
         // Validate project exists
@@ -86,14 +86,14 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
 
         switch (action) {
           case "state_transition": {
-            const event = input.event as string;
+            const event = input['event'] as string;
             if (!event) {
               return JSON.stringify({
                 error: "Event parameter required for state_transition"
               });
             }
 
-            const metadata = input.metadata as Record<string, unknown> || {};
+            const metadata = input['metadata'] as Record<string, unknown> || {};
             const result = orchestrator.executeStateTransition(projectId, event, metadata);
 
             return JSON.stringify({
@@ -103,7 +103,7 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
               success: result.success,
               message: result.success 
                 ? `State transition: ${result.fromState} → ${result.toState}`
-                : `Transition failed: ${result.metadata?.error}`
+                : `Transition failed: ${result.metadata?.['error']}`
             }, null, 2);
           }
 
@@ -135,8 +135,8 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
           }
 
           case "verify_analysis": {
-            const phaseId = input.phaseId as string;
-            const verificationResult = input.verificationResult as VerificationResult;
+            const phaseId = input['phaseId'] as string;
+            const verificationResult = input['verificationResult'] as VerificationResult;
             
             if (!phaseId) {
               return JSON.stringify({ error: "phaseId required for verify_analysis" });
@@ -171,9 +171,9 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
           }
 
           case "rollback_plan": {
-            const phaseId = input.phaseId as string;
-            const verificationResult = input.verificationResult as VerificationResult;
-            const failureReason = input.failureReason as string || "Phase verification failed";
+            const phaseId = input['phaseId'] as string;
+            const verificationResult = input['verificationResult'] as VerificationResult;
+            const failureReason = input['failureReason'] as string || "Phase verification failed";
             
             if (!phaseId) {
               return JSON.stringify({ error: "phaseId required for rollback_plan" });
@@ -211,7 +211,7 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
           }
 
           case "discussion_questions": {
-            const phaseId = input.phaseId as string;
+            const phaseId = input['phaseId'] as string;
             
             if (!phaseId) {
               return JSON.stringify({ error: "phaseId required for discussion_questions" });
