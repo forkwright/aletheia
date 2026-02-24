@@ -25,26 +25,44 @@ export function createPlanResearchTool(
       },
     },
     async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
-      const projectId = input["projectId"] as string;
-      const skip = input["skip"] as boolean | undefined;
+      try {
+        const projectId = (input as unknown as { projectId: string }).projectId;
+        const skip = (input as unknown as { skip?: boolean }).skip;
 
-      if (skip === true) {
-        log.warn(`Research skipped for project ${projectId} — skipResearch() not yet wired (plan 04-02)`);
-        return JSON.stringify({ status: "skipped", projectId });
+        if (skip === true) {
+          const message = orchestrator.skipResearch(projectId, context.nousId, context.sessionId);
+          log.info(`Research skipped for project ${projectId}`);
+          return JSON.stringify({ status: "skipped", message });
+        }
+
+        const project = orchestrator.getProject(projectId);
+        const projectGoal = project?.goal ?? "";
+
+        log.info(`Starting research for project ${projectId}: "${projectGoal}"`);
+
+        const { stored, partial, failed } = await researchOrchestrator.runResearch(
+          projectId,
+          projectGoal,
+          context,
+        );
+
+        researchOrchestrator.transitionToRequirements(projectId);
+
+        let message: string;
+        if (partial > 0) {
+          message = `Research complete (${stored} dimensions, ${partial} timed out). Synthesized from ${stored} of ${stored + partial + failed} dimensions. Moving to requirements.`;
+        } else if (failed > 0) {
+          message = `Research complete (${stored} dimensions, ${failed} failed). Moving to requirements.`;
+        } else {
+          message = "Research complete across all 4 dimensions. Moving to requirements.";
+        }
+
+        return JSON.stringify({ status: "complete", stored, partial, failed, message });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(`plan_research failed: ${message}`);
+        return JSON.stringify({ error: message });
       }
-
-      const project = orchestrator.getProject(projectId);
-      const projectGoal = project?.goal ?? "";
-
-      log.info(`Starting research for project ${projectId}: "${projectGoal}"`);
-
-      const { stored, partial, failed } = await researchOrchestrator.runResearch(
-        projectId,
-        projectGoal,
-        context,
-      );
-
-      return JSON.stringify({ status: "complete", stored, partial, failed });
     },
   };
 }
