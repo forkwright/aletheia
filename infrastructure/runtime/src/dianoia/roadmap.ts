@@ -6,6 +6,7 @@ import { PlanningError } from "../koina/errors.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import type { PlanningPhase } from "./types.js";
+import { buildContextPacket } from "./context-packet.js";
 
 const log = createLogger("dianoia:roadmap");
 
@@ -46,12 +47,18 @@ interface DispatchOutput {
 
 export class RoadmapOrchestrator {
   private store: PlanningStore;
+  private workspaceRoot: string | null = null;
 
   constructor(
     private db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);
+  }
+
+  /** Set workspace root for context packet assembly from file-backed state */
+  setWorkspaceRoot(root: string): void {
+    this.workspaceRoot = root;
   }
 
   async generateRoadmap(
@@ -215,7 +222,7 @@ export class RoadmapOrchestrator {
     const depth = project.config.depth ?? "standard";
     const depthInstruction = this.depthToInstruction(depth);
 
-    let plan = await this.generatePlanForPhase(phase, depthInstruction, toolContext);
+    let plan = await this.generatePlanForPhase(phase, depthInstruction, toolContext, projectId, project.goal);
 
     if (config.plan_check === true) {
       for (let attempt = 1; attempt <= MAX_ITERATIONS; attempt++) {
@@ -291,14 +298,37 @@ export class RoadmapOrchestrator {
     phase: PlanningPhase,
     depthInstruction: string,
     toolContext: ToolContext,
+    projectId?: string,
+    projectGoal?: string,
   ): Promise<PhasePlan> {
+    // Build context packet from file-backed state if available
+    let contextSection = "";
+    if (this.workspaceRoot && projectId) {
+      const allPhases = this.store.listPhases(projectId);
+      contextSection = buildContextPacket({
+        workspaceRoot: this.workspaceRoot,
+        projectId,
+        phaseId: phase.id,
+        role: "planner",
+        phase,
+        allPhases,
+        projectGoal: projectGoal ?? "",
+        requirements: this.store
+          .listRequirements(projectId)
+          .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
+        maxTokens: 10000,
+      });
+    }
+
     const task = {
       role: "planner",
       task: [
         `Generate an implementation plan for this phase: "${phase.name}"`,
-        `Goal: ${phase.goal}`,
-        `Requirements to cover: ${phase.requirements.join(", ") || "(none)"}`,
-        `Success criteria: ${phase.successCriteria.join("; ") || "(none)"}`,
+        ...(contextSection ? ["", contextSection] : [
+          `Goal: ${phase.goal}`,
+          `Requirements to cover: ${phase.requirements.join(", ") || "(none)"}`,
+          `Success criteria: ${phase.successCriteria.join("; ") || "(none)"}`,
+        ]),
         "",
         depthInstruction,
         "",

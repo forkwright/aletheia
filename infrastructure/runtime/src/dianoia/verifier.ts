@@ -6,6 +6,7 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningProject, VerificationGap, VerificationResult } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
+import { buildContextPacket } from "./context-packet.js";
 
 const log = createLogger("dianoia:verifier");
 
@@ -27,12 +28,18 @@ interface DispatchOutput {
 
 export class GoalBackwardVerifier {
   private store: PlanningStore;
+  private workspaceRoot: string | null = null;
 
   constructor(
     db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);
+  }
+
+  /** Set workspace root for context packet assembly from file-backed state */
+  setWorkspaceRoot(root: string): void {
+    this.workspaceRoot = root;
   }
 
   async verify(
@@ -88,21 +95,41 @@ export class GoalBackwardVerifier {
     toolContext: ToolContext,
   ): Promise<VerificationResult> {
     const phase = this.store.getPhaseOrThrow(phaseId);
+    const allPhases = this.store.listPhases(project.id);
 
-    const contextText = [
-      `Phase goal: ${phase.goal}`,
-      "",
-      `Success criteria:\n${phase.successCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
-      "",
-      `Project goal: ${project.goal}`,
-      "",
-      "Gaps must include criterion, found, expected, and proposedFix fields.",
-    ].join("\n");
+    // Build rich context packet from file-backed state
+    const contextPacket = this.workspaceRoot
+      ? buildContextPacket({
+          workspaceRoot: this.workspaceRoot,
+          projectId: project.id,
+          phaseId,
+          role: "verifier",
+          phase,
+          allPhases,
+          projectGoal: project.goal,
+          requirements: this.store
+            .listRequirements(project.id)
+            .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
+          maxTokens: 10000,
+        })
+      : [
+          `Phase goal: ${phase.goal}`,
+          "",
+          `Success criteria:\n${phase.successCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+          "",
+          `Project goal: ${project.goal}`,
+        ].join("\n");
 
     const task = {
       role: "reviewer" as const,
-      task: "You are a goal-backward verifier. Given phase goal, success criteria, and artifacts list, report verification status as JSON with fields: status, summary, gaps[]",
-      context: contextText,
+      task: [
+        "You are a goal-backward verifier. Evaluate whether this phase's success criteria are met.",
+        "",
+        contextPacket,
+        "",
+        "Report as JSON: { status: 'met'|'partially-met'|'not-met', summary: string, gaps: Array<{ criterion, status, detail, proposedFix }> }",
+        "Each gap must include criterion (which criterion), status ('met'|'partially-met'|'not-met'), detail (evidence), and proposedFix (concrete next step).",
+      ].join("\n"),
       timeoutSeconds: 120,
     };
 
