@@ -88,6 +88,7 @@ export const ERROR_CODES = {
   // dianoia (planning)
   PLANNING_PROJECT_NOT_FOUND: "Planning project ID does not exist",
   PLANNING_PHASE_NOT_FOUND: "Planning phase ID does not exist",
+  PLANNING_REQUIREMENT_NOT_FOUND: "Planning requirement ID does not exist",
   PLANNING_STATE_CORRUPT: "Planning project state failed integrity check",
   PLANNING_CONSTRAINT_VIOLATION: "Planning operation violates a database constraint",
   PLANNING_INVALID_TRANSITION: "FSM transition is not valid from the current state",

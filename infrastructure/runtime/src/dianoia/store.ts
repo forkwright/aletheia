@@ -255,14 +255,15 @@ export class PlanningStore {
     description: string;
     category: string;
     tier: "v1" | "v2" | "out-of-scope";
+    rationale?: string | null;
   }): PlanningRequirement {
     const id = generateId("req");
 
     const insert = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO planning_requirements (id, project_id, phase_id, req_id, description, category, tier)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO planning_requirements (id, project_id, phase_id, req_id, description, category, tier, rationale)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -272,6 +273,7 @@ export class PlanningStore {
           opts.description,
           opts.category,
           opts.tier,
+          opts.rationale ?? null,
         );
     });
 
@@ -288,6 +290,31 @@ export class PlanningStore {
       .prepare("SELECT * FROM planning_requirements WHERE project_id = ? ORDER BY created_at ASC")
       .all(projectId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.mapRequirement(r));
+  }
+
+  updateRequirement(
+    id: string,
+    updates: { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null },
+  ): void {
+    const update = this.db.transaction(() => {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (updates.tier !== undefined) { sets.push("tier = ?"); vals.push(updates.tier); }
+      if (updates.rationale !== undefined) { sets.push("rationale = ?"); vals.push(updates.rationale); }
+      if (sets.length === 0) return;
+      sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+      vals.push(id);
+      const result = this.db
+        .prepare(`UPDATE planning_requirements SET ${sets.join(", ")} WHERE id = ?`)
+        .run(...vals);
+      if (result.changes === 0) {
+        throw new PlanningError(`Planning requirement not found: ${id}`, {
+          code: "PLANNING_REQUIREMENT_NOT_FOUND",
+          context: { id },
+        });
+      }
+    });
+    update();
   }
 
   // --- Checkpoints ---
@@ -436,6 +463,7 @@ export class PlanningStore {
       category: row["category"] as string,
       tier: row["tier"] as PlanningRequirement["tier"],
       status: row["status"] as PlanningRequirement["status"],
+      rationale: (row["rationale"] as string | null) ?? null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
     };

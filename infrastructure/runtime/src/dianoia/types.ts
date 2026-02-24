@@ -60,6 +60,8 @@ export interface PlanningRequirement {
   category: string;
   tier: "v1" | "v2" | "out-of-scope";
   status: "pending" | "validated" | "skipped";
+  // Only meaningful when tier is "out-of-scope" — explains why the requirement was deferred
+  rationale: string | null;
   createdAt: string;
   updatedAt: string;
 }
