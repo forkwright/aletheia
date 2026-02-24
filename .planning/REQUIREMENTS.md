@@ -111,16 +111,16 @@
 
 - [ ] **DOCS-01**: Spec document `docs/specs/31_dianoia.md` follows established Aletheia spec format (Problem, Design, Implementation Order, Success Criteria)
 - [ ] **DOCS-02**: Spec includes SQLite schema definitions, state machine diagram, and API surface
-- [ ] **DOCS-03**: CONTRIBUTING.md updated to note Dianoia module conventions
+- [x] **DOCS-03**: CONTRIBUTING.md updated to note Dianoia module conventions
 
 ### Tests
 
 - [x] **TEST-01**: Unit tests for state machine transitions (pure FSM -- all paths covered)
 - [x] **TEST-02**: Unit tests for PlanningStore CRUD operations using in-memory SQLite
 - [x] **TEST-03**: Unit tests for intent detection hook (true positive and false positive scenarios)
-- [ ] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
-- [ ] **TEST-05**: `npx tsc --noEmit` passes with zero new type errors
-- [ ] **TEST-06**: `npx oxlint src/` passes with zero new lint errors
+- [x] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
+- [x] **TEST-05**: `npx tsc --noEmit` passes with zero new type errors
+- [x] **TEST-06**: `npx oxlint src/` passes with zero new lint errors
 
 ---
 
@@ -236,13 +236,13 @@
 | CONF-03 | Phase 1: Foundation | Complete |
 | DOCS-01 | Phase 9: Polish & Migration | Pending |
 | DOCS-02 | Phase 9: Polish & Migration | Pending |
-| DOCS-03 | Phase 9: Polish & Migration | Pending |
+| DOCS-03 | Phase 9: Polish & Migration | Complete |
 | TEST-01 | Phase 1: Foundation | Complete |
 | TEST-02 | Phase 1: Foundation | Complete |
 | TEST-03 | Phase 2: Orchestrator & Entry | Complete |
-| TEST-04 | Phase 9: Polish & Migration | Pending |
-| TEST-05 | Phase 9: Polish & Migration | Pending |
-| TEST-06 | Phase 9: Polish & Migration | Pending |
+| TEST-04 | Phase 9: Polish & Migration | Complete |
+| TEST-05 | Phase 9: Polish & Migration | Complete |
+| TEST-06 | Phase 9: Polish & Migration | Complete |
 
 **Coverage:**
 - v1 requirements: 60 total

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 8: Verification and Checkpoints
+**Current focus:** Phase 9: Polish and Migration
 
 ## Current Position
 
-Phase: 8 of 9 (Verification and Checkpoints) — COMPLETE
-Plan: 4 of 4 in current phase — 08-04 complete
-Status: Phase 8 complete — plan_verify tool (5 actions), 3 FSM methods, dianoia exports, aletheia.ts wiring; 194 tests green
-Last activity: 2026-02-24 -- Phase 8 Plan 4 complete (plan_verify tool: advanceToNextPhase/completeAllPhases/blockOnVerificationFailure FSM methods, 5-action tool surface wired in aletheia.ts)
+Phase: 9 of 9 (Polish and Migration) — IN PROGRESS
+Plan: 3 of ? in current phase — 09-03 complete
+Status: Phase 9 Plan 3 complete — CONTRIBUTING.md Dianoia section (4 gotchas), V24/V25 migration exports from index.ts, 0 oxlint errors
+Last activity: 2026-02-24 -- Phase 9 Plan 3 complete (CONTRIBUTING.md Dianoia module section, tsc/oxlint clean, DOCS-03/TEST-05/TEST-06 satisfied)
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -43,6 +43,8 @@ Progress: [█████████░] 89%
 *Updated after each plan completion*
 | Phase 08-verification-checkpoints P03 | 2 | 2 tasks | 2 files |
 | Phase 08-verification-checkpoints P04 | 3 | 2 tasks | 4 files |
+| Phase 09-polish-migration P03 | 1 | 2 tasks | 4 files |
+| Phase 09-polish-migration P02 | 2 | 1 task | 1 file |
 
 ## Accumulated Context
 
@@ -136,6 +138,11 @@ Recent decisions affecting current work:
 - [Phase 08-03]: vi.spyOn(eventBus, 'emit') preferred over getter spy pattern — simpler, consistent with orchestrator.test.ts
 - [Phase 08-04]: planningStore created as separate PlanningStore instance in createRuntime() — shared by CheckpointSystem and plan_verify tool rather than creating duplicates
 - [Phase 08-04]: plan_verify action=run calls blockOnVerificationFailure() for both not-met and partially-met — both states halt the FSM in blocked state requiring user action
+- [Phase 09-03]: checkpoint.test.ts uses PlanningStore as type-only (no new PlanningStore) — import type is correct
+- [Phase 09-03]: PLANNING_V24_MIGRATION and PLANNING_V25_MIGRATION now re-exported from dianoia/index.ts public API
+- [09-02]: Integration tests use vitest.integration.config.ts (*.integration.test.ts include) — excluded from unit suite by vitest.config.ts; pre-existing config already handles this
+- [09-02]: executePhase second param is ToolContext (not phaseId) — plan pseudocode correction to match actual ExecutionOrchestrator signature
+- [09-02]: Error dispatch path uses status: 'error' in dispatch results to trigger execution.ts failed-phase branch; ToolContext mock requires workspace field per interface
 
 ### Pending Todos
 
@@ -150,5 +157,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 08-04-PLAN.md (plan_verify tool: 5 actions, 3 FSM methods, dianoia exports, aletheia.ts wiring; Phase 8 complete)
+Stopped at: Completed 09-03-PLAN.md (CONTRIBUTING.md Dianoia section, V24/V25 exports, 0 oxlint errors)
 Resume file: None
