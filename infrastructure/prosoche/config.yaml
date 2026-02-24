@@ -74,8 +74,6 @@ signals:
     token_files:
     - path: /home/syn/.aletheia/credentials/anthropic.json
       label: Anthropic OAuth (primary)
-    - path: /home/syn/.aletheia/credentials/oauth.json
-      label: OAuth backup
   sessions:
     enabled: true
     interval_seconds: 1800

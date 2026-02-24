@@ -169,20 +169,44 @@ export function createPlanRoadmapTool(
           const project = orchestrator.getProject(projectId);
           const config = (project?.config ?? {}) as { plan_check?: boolean; depth?: string };
 
-          return phaseIds
-            .reduce(
-              (chain, phaseId) =>
-                chain.then(() => roadmapOrchestrator.planPhase(projectId, phaseId, config, context)),
-              Promise.resolve() as Promise<unknown>,
-            )
-            .then(() => {
+          // Plan all phases in parallel to avoid sequential timeout
+          return Promise.allSettled(
+            phaseIds.map((phaseId) =>
+              roadmapOrchestrator.planPhase(projectId, phaseId, config, context),
+            ),
+          ).then((results) => {
+            const succeeded = results.filter((r) => r.status === "fulfilled").length;
+            const failed = results
+              .map((r, i) => (r.status === "rejected" ? { phaseId: phaseIds[i], error: String((r as PromiseRejectedResult).reason) } : null))
+              .filter(Boolean);
+
+            if (succeeded === phaseIds.length) {
               orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
               log.info(`All ${phaseIds.length} phase plans generated for project ${projectId}`);
               return JSON.stringify({
                 planned: phaseIds.length,
                 message: "All phase plans generated. Ready for execution.",
               });
+            }
+
+            // Partial success — advance if at least one phase planned
+            if (succeeded > 0) {
+              orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
+              log.warn(`${succeeded}/${phaseIds.length} phase plans generated; ${failed.length} failed`, { failed });
+              return JSON.stringify({
+                planned: succeeded,
+                failed: failed.length,
+                failures: failed,
+                message: `${succeeded} of ${phaseIds.length} phase plans generated. Failed phases can be retried.`,
+              });
+            }
+
+            log.error(`All ${phaseIds.length} phase plans failed`, { failed });
+            return JSON.stringify({
+              error: "All phase plans failed",
+              failures: failed,
             });
+          });
         }
 
         return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));

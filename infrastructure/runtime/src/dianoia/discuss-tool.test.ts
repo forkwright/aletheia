@@ -281,4 +281,34 @@ describe("plan_discuss — complete", () => {
 
     expect(result.complete).toBe(true);
   });
+
+  it("idempotent: completes discussion when project already in phase-planning", async () => {
+    // Simulate Phase 1 discussion already completed — project is in phase-planning
+    const project = store.createProject({
+      nousId: "test-nous",
+      sessionId: "test-session",
+      goal: "Multi-phase project",
+      config: defaultConfig,
+    });
+    store.updateProjectState(project.id, "phase-planning");
+
+    const phase2 = store.createPhase({
+      projectId: project.id,
+      name: "Phase 2",
+      goal: "Second phase",
+      requirements: ["CTX-01"],
+      successCriteria: ["Works"],
+      phaseOrder: 1,
+    });
+
+    // Phase 2 discussion completes while project is already in phase-planning
+    const result = JSON.parse(
+      await tool.execute({ action: "complete", projectId: project.id, phaseId: phase2.id }, toolContext),
+    );
+
+    expect(result.complete).toBe(true);
+    // Project should remain in phase-planning (idempotent)
+    const updated = store.getProjectOrThrow(project.id);
+    expect(updated.state).toBe("phase-planning");
+  });
 });

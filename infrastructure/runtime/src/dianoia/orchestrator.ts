@@ -398,10 +398,20 @@ export class DianoiaOrchestrator {
     return this.store.listDiscussionQuestions(projectId, phaseId);
   }
 
-  /** Complete discussion phase — writes DISCUSS.md and advances to planning */
+  /** Complete discussion phase — writes DISCUSS.md and advances to planning.
+   *  Idempotent: if project is already in phase-planning (another phase's discussion
+   *  already completed), skips the FSM transition but still writes the DISCUSS.md file. */
   completeDiscussion(projectId: string, phaseId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
-    this.store.updateProjectState(projectId, transition(project.state, "DISCUSSION_COMPLETE"));
+
+    // Only transition if still in 'discussing' — subsequent phase discussions
+    // complete while project is already in 'phase-planning', which is fine
+    if (project.state === "discussing") {
+      this.store.updateProjectState(projectId, transition(project.state, "DISCUSSION_COMPLETE"));
+    } else if (project.state !== "phase-planning") {
+      // Unexpected state — let the FSM throw so we don't silently corrupt
+      this.store.updateProjectState(projectId, transition(project.state, "DISCUSSION_COMPLETE"));
+    }
 
     // Write DISCUSS.md with all questions and decisions
     if (this.workspaceRoot) {
