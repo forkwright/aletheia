@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 3 of 9 (Project Context and API) — COMPLETE
-Plan: 4 of 4 in current phase — all plans complete
-Status: Ready for Phase 4
-Last activity: 2026-02-24 -- Phase 3 complete (all 4 plans executed: store/questions, API routes, context enrichment, tool deprecation)
+Phase: 4 of 9 (Research Pipeline) — IN PROGRESS
+Plan: 1 of 2 in current phase — 04-01 complete
+Status: Executing Phase 4
+Last activity: 2026-02-24 -- Phase 4 Plan 1 complete (migration v22, ResearchOrchestrator, plan_research tool)
 
-Progress: [████░░░░░░] 33%
+Progress: [████░░░░░░] 36%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 3 min
-- Total execution time: 0.41 hours
+- Total execution time: 0.46 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [████░░░░░░] 33%
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
+| 04-research-pipeline | 1/2 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 2 min, 2 min, 5 min, 1 min
+- Last 5 plans: 2 min, 2 min, 5 min, 1 min, 3 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -76,6 +77,11 @@ Recent decisions affecting current work:
 - [03-03]: No distillation pipeline changes needed — context block re-reads from DB each turn (PROJ-04 satisfied structurally)
 - [03-04]: deprecationWarning placed as JSON key inside JSON.stringify payload — never prepended as text — preserves PLAN_PROPOSED_MARKER JSON.parse compatibility
 - [03-04]: plan_status, plan_step_complete, plan_step_fail left unchanged — deprecation deferred to Phase 9 per CONTEXT.md
+- [04-01]: ResearchOrchestrator takes (db, dispatchTool) and creates own PlanningStore internally — matches DianoiaOrchestrator pattern
+- [04-01]: context field used for soul injection in sessions_dispatch (not ephemeralSoul — that param does not exist on DispatchTask interface)
+- [04-01]: planning_research.status DEFAULT 'complete' — backward compatible with existing rows, no data migration needed
+- [04-01]: plan_research skip branch returns {status: skipped} — skipResearch() deferred to plan 04-02
+- [04-01]: test makeDb() must include all migrations through current version — V22 added to store.test.ts and researcher.test.ts
 
 ### Pending Todos
 
@@ -84,11 +90,11 @@ None yet.
 ### Blockers/Concerns
 
 - CONCERNS.md flags "No Transactional Guarantees for Multi-Step Operations" in existing store -- Dianoia must not inherit this; FOUND-03 requires explicit transactions
-- 3-ephemeral-agent hard limit may conflict with 4 parallel researchers; research recommends sessions_dispatch (not ephemeral) for RESR-01
+- 3-ephemeral-agent hard limit may conflict with 4 parallel researchers — RESOLVED in 04-01: sessions_dispatch (not ephemeral) used for RESR-01, no limit conflict
 - Context distillation may eat planning state — RESOLVED in 03-03: context block re-reads from DB each turn, so synthesized fields survive distillation automatically (PROJ-04)
 
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 03-04-PLAN.md (deprecated plan_propose and plan_create tools)
+Stopped at: Completed 04-01-PLAN.md (migration v22, ResearchOrchestrator, plan_research tool)
 Resume file: None

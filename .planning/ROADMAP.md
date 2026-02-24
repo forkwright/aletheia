@@ -89,7 +89,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Migration v22, ResearchOrchestrator class with dimension souls, sessions_dispatch wiring, plan_research tool
+- [x] 04-01-PLAN.md — Migration v22, ResearchOrchestrator class with dimension souls, sessions_dispatch wiring, plan_research tool (completed 2026-02-24)
 - [ ] 04-02-PLAN.md — synthesizeResearch(), skipResearch(), timeout surfacing, FSM transition to requirements
 
 ### Phase 5: Requirements Definition
@@ -188,7 +188,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
 | 3. Project Context & API | 4/4 | Complete    | 2026-02-24 |
-| 4. Research Pipeline | 0/2 | Not started | - |
+| 4. Research Pipeline | 1/2 | In Progress | - |
 | 5. Requirements Definition | 0/2 | Not started | - |
 | 6. Roadmap & Phase Planning | 0/3 | Not started | - |
 | 7. Execution Orchestration | 0/3 | Not started | - |

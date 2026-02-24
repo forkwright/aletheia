@@ -33,11 +33,11 @@
 
 ### Research Pipeline
 
-- [ ] **RESR-01**: Agent can spawn 4 parallel domain researchers (stack, features, architecture, pitfalls dimensions) via sessions_dispatch
-- [ ] **RESR-02**: Research results are stored in `planning_research` table per-dimension
+- [x] **RESR-01**: Agent can spawn 4 parallel domain researchers (stack, features, architecture, pitfalls dimensions) via sessions_dispatch
+- [x] **RESR-02**: Research results are stored in `planning_research` table per-dimension
 - [ ] **RESR-03**: A synthesizer agent produces a consolidated research summary after all 4 researchers complete
 - [ ] **RESR-04**: Research can be skipped (user already knows the domain)
-- [ ] **RESR-05**: Researcher subagents use ephemeralSoul definitions specific to each research dimension
+- [x] **RESR-05**: Researcher subagents use ephemeralSoul definitions specific to each research dimension
 - [ ] **RESR-06**: Research phase has a timeout; partial results are captured if one researcher stalls
 
 ### Requirements Definition
@@ -185,11 +185,11 @@
 | PROJ-02 | Phase 3: Project Context & API | Complete |
 | PROJ-03 | Phase 3: Project Context & API | Complete |
 | PROJ-04 | Phase 3: Project Context & API | Complete |
-| RESR-01 | Phase 4: Research Pipeline | Pending |
-| RESR-02 | Phase 4: Research Pipeline | Pending |
+| RESR-01 | Phase 4: Research Pipeline | Complete |
+| RESR-02 | Phase 4: Research Pipeline | Complete |
 | RESR-03 | Phase 4: Research Pipeline | Pending |
 | RESR-04 | Phase 4: Research Pipeline | Pending |
-| RESR-05 | Phase 4: Research Pipeline | Pending |
+| RESR-05 | Phase 4: Research Pipeline | Complete |
 | RESR-06 | Phase 4: Research Pipeline | Pending |
 | REQS-01 | Phase 5: Requirements Definition | Pending |
 | REQS-02 | Phase 5: Requirements Definition | Pending |
