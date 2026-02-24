@@ -2,7 +2,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanningError } from "../koina/errors.js";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 
 let db: Database.Database;
@@ -32,6 +32,8 @@ beforeEach(() => {
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
   db.exec(PLANNING_V23_MIGRATION);
+  db.exec(PLANNING_V24_MIGRATION);
+  db.exec(PLANNING_V25_MIGRATION);
   store = new PlanningStore(db);
 });
 

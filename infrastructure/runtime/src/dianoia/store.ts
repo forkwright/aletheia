@@ -14,6 +14,7 @@ import type {
   PlanningResearch,
   ProjectContext,
   SpawnRecord,
+  VerificationResult,
 } from "./types.js";
 
 const log = createLogger("dianoia");
@@ -247,6 +248,18 @@ export class PlanningStore {
     update();
   }
 
+  updatePhaseVerificationResult(id: string, result: VerificationResult): void {
+    const update = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE planning_phases SET verification_result = ?,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+        )
+        .run(JSON.stringify(result), id);
+    });
+    update();
+  }
+
   // --- Requirements ---
 
   createRequirement(opts: {
@@ -341,11 +354,17 @@ export class PlanningStore {
     return this.mapCheckpoint(row);
   }
 
-  resolveCheckpoint(id: string, decision: string): void {
+  resolveCheckpoint(
+    id: string,
+    decision: string,
+    opts?: { autoApproved?: boolean; userNote?: string },
+  ): void {
     const update = this.db.transaction(() => {
       this.db
-        .prepare("UPDATE planning_checkpoints SET decision = ? WHERE id = ?")
-        .run(decision, id);
+        .prepare(
+          `UPDATE planning_checkpoints SET decision = ?, auto_approved = ?, user_note = ? WHERE id = ?`,
+        )
+        .run(decision, opts?.autoApproved ? 1 : 0, opts?.userNote ?? null, id);
     });
     update();
   }
@@ -518,10 +537,14 @@ export class PlanningStore {
     let requirements: string[];
     let successCriteria: string[];
     let plan: unknown | null;
+    let verificationResult: VerificationResult | null = null;
     try {
       requirements = JSON.parse(row["requirements"] as string) as string[];
       successCriteria = JSON.parse(row["success_criteria"] as string) as string[];
       plan = row["plan"] ? (JSON.parse(row["plan"] as string) as unknown) : null;
+      if (row["verification_result"]) {
+        verificationResult = JSON.parse(row["verification_result"] as string) as VerificationResult;
+      }
     } catch (cause) {
       throw new PlanningError("Corrupt JSON in planning_phases", {
         code: "PLANNING_STATE_CORRUPT",
@@ -541,6 +564,7 @@ export class PlanningStore {
       phaseOrder: row["phase_order"] as number,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
+      verificationResult,
     };
   }
 
@@ -579,6 +603,9 @@ export class PlanningStore {
       decision: (row["decision"] as string | null) ?? null,
       context,
       createdAt: row["created_at"] as string,
+      riskLevel: ((row["risk_level"] as string | null) ?? "low") as "low" | "medium" | "high",
+      autoApproved: row["auto_approved"] === 1,
+      userNote: (row["user_note"] as string | null) ?? null,
     };
   }
 
