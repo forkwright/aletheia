@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - SQLite schema, pure state machine, planning store, and config persistence (completed 2026-02-23)
 - [x] **Phase 2: Orchestrator & Entry** - DianoiaOrchestrator, /plan command, intent detection, CLI subcommand (completed 2026-02-24)
-- [ ] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring
+- [x] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring (completed 2026-02-24)
 - [ ] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling
 - [ ] **Phase 5: Requirements Definition** - Interactive scoping, REQ-ID assignment, persistence, coverage validation
 - [ ] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker
@@ -72,9 +72,9 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Migration v21, ProjectContext persistence, questioning loop (processAnswer, getNextQuestion, confirmSynthesis) (completed 2026-02-24)
-- [ ] 03-02-PLAN.md — Pylon API routes: GET /api/planning/projects and GET /api/planning/projects/:id
-- [ ] 03-03-PLAN.md — Planning context block enrichment (coreValue, constraints, keyDecisions, next question injection)
-- [ ] 03-04-PLAN.md — Legacy tool deprecation: plan_propose and plan_create marked @deprecated with JSON warning keys
+- [x] 03-02-PLAN.md — Pylon API routes: GET /api/planning/projects and GET /api/planning/projects/:id (completed 2026-02-24)
+- [x] 03-03-PLAN.md — Planning context block enrichment (coreValue, constraints, keyDecisions, next question injection) (completed 2026-02-24)
+- [x] 03-04-PLAN.md — Legacy tool deprecation: plan_propose and plan_create marked @deprecated with JSON warning keys (completed 2026-02-24)
 
 ### Phase 4: Research Pipeline
 **Goal**: Agent can spawn parallel domain researchers and produce a consolidated research summary
@@ -187,7 +187,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
-| 3. Project Context & API | 3/4 | In Progress|  |
+| 3. Project Context & API | 4/4 | Complete   | 2026-02-24 |
 | 4. Research Pipeline | 0/2 | Not started | - |
 | 5. Requirements Definition | 0/2 | Not started | - |
 | 6. Roadmap & Phase Planning | 0/3 | Not started | - |

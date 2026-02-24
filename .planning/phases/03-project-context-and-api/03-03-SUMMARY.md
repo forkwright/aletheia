@@ -71,7 +71,7 @@ Each task was committed atomically:
 
 1. **Task 1: Enrich planning context block and inject next question** - `2ca94a6` (feat)
 
-**Plan metadata:** (pending docs commit)
+**Plan metadata:** `e98e980` (docs: complete enriched planning context block plan)
 
 ## Files Created/Modified
 

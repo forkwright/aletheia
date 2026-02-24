@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 3: Project Context and API
+**Current focus:** Phase 4: Research Pipeline
 
 ## Current Position
 
-Phase: 3 of 9 (Project Context and API)
-Plan: 3 of 3 in current phase — COMPLETE
-Status: Executing
-Last activity: 2026-02-24 -- Plan 03-03 complete (enriched planning context block with synthesized fields and next question)
+Phase: 3 of 9 (Project Context and API) — COMPLETE
+Plan: 4 of 4 in current phase — all plans complete
+Status: Ready for Phase 4
+Last activity: 2026-02-24 -- Phase 3 complete (all 4 plans executed: store/questions, API routes, context enrichment, tool deprecation)
 
-Progress: [███░░░░░░░] 29%
+Progress: [████░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 10
 - Average duration: 3 min
 - Total execution time: 0.41 hours
 
@@ -29,7 +29,7 @@ Progress: [███░░░░░░░] 29%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
-| 03-project-context-and-api | 3/3 | 8 min | 3 min |
+| 03-project-context-and-api | 4/4 | 9 min | 2 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 2 min, 2 min, 5 min, 1 min
@@ -74,6 +74,8 @@ Recent decisions affecting current work:
 - [03-03]: nextQuestion guard uses state === 'questioning' before calling getNextQuestion — avoids unnecessary DB reads
 - [03-03]: Planning Question rendered as ## Planning Question H2 section for clear LLM salience
 - [03-03]: No distillation pipeline changes needed — context block re-reads from DB each turn (PROJ-04 satisfied structurally)
+- [03-04]: deprecationWarning placed as JSON key inside JSON.stringify payload — never prepended as text — preserves PLAN_PROPOSED_MARKER JSON.parse compatibility
+- [03-04]: plan_status, plan_step_complete, plan_step_fail left unchanged — deprecation deferred to Phase 9 per CONTEXT.md
 
 ### Pending Todos
 
@@ -88,5 +90,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 03-03-PLAN.md (enriched planning context block)
+Stopped at: Completed 03-04-PLAN.md (deprecated plan_propose and plan_create tools)
 Resume file: None
