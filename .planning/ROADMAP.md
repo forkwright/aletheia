@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring (completed 2026-02-24)
 - [x] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling (completed 2026-02-24)
 - [x] **Phase 5: Requirements Definition** - Interactive scoping, REQ-ID assignment, persistence, coverage validation (completed 2026-02-24)
-- [ ] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker
+- [x] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker (completed 2026-02-24)
 - [ ] **Phase 7: Execution Orchestration** - Wave-based parallel execution, dependency graph, restart resilience
 - [ ] **Phase 8: Verification & Checkpoints** - Goal-backward verification, risk-based checkpoints, audit trail
 - [ ] **Phase 9: Polish & Migration** - Spec document, legacy tool deprecation, CONTRIBUTING.md update, final lint/type pass
@@ -190,7 +190,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 3. Project Context & API | 4/4 | Complete    | 2026-02-24 |
 | 4. Research Pipeline | 2/2 | Complete    | 2026-02-24 |
 | 5. Requirements Definition | 2/2 | Complete   | 2026-02-24 |
-| 6. Roadmap & Phase Planning | 2/3 | In Progress|  |
+| 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
 | 7. Execution Orchestration | 0/3 | Not started | - |
 | 8. Verification & Checkpoints | 0/3 | Not started | - |
 | 9. Polish & Migration | 0/3 | Not started | - |

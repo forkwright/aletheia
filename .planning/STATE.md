@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 6 of 9 (Roadmap & Phase Planning) — IN PROGRESS
-Plan: 2 of 3 in current phase — 06-02 complete
-Status: Phase 6 Plan 2 complete; ready for 06-03 (wire plan_roadmap tool into registry)
-Last activity: 2026-02-24 -- Phase 6 Plan 2 complete (plan_roadmap tool, 7 tests, orchestrator FSM methods)
+Phase: 6 of 9 (Roadmap & Phase Planning) — COMPLETE
+Plan: 3 of 3 in current phase — 06-03 complete
+Status: Phase 6 complete; all 3 plans done (store+FSM, orchestrator+tool, route+registration)
+Last activity: 2026-02-24 -- Phase 6 Plan 3 complete (roadmap API route, index.ts exports, plan_roadmap tool registered)
 
-Progress: [█████░░░░░] 54%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 16
+- Total plans completed: 17
 - Average duration: 4 min
 - Total execution time: 0.80 hours
 
@@ -32,7 +32,7 @@ Progress: [█████░░░░░] 54%
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
-| 06-roadmap-phase-planning | 2/3 | 13 min | 7 min |
+| 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min, 2 min, 5 min, 1 min, 3 min
@@ -100,6 +100,8 @@ Recent decisions affecting current work:
 - [06-02]: plan_roadmap generate commits roadmap draft in both interactive and yolo modes (write-on-generate); yolo additionally calls completeRoadmap immediately
 - [06-02]: plan_phases uses sequential reduce chain (not Promise.all) — PHAS-01 requires sequential phase planning
 - [06-02]: completeRoadmap and advanceToExecution on DianoiaOrchestrator (not RoadmapOrchestrator) — FSM transitions are orchestrator's domain
+- [06-03]: No additional JSON.parse in routes.ts — PlanningStore.mapPhase() already parses requirements/successCriteria from SQLite JSON strings into string[]
+- [06-03]: RoadmapOrchestrator constructed with (store.getDb(), dispatchTool) — matches ResearchOrchestrator pattern; dispatchTool already available at wiring point
 
 ### Pending Todos
 
@@ -114,5 +116,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 06-02-PLAN.md (plan_roadmap tool, 7 behavioral tests, completeRoadmap/advanceToExecution orchestrator methods)
+Stopped at: Completed 06-03-PLAN.md (roadmap API route, dianoia/index.ts exports, plan_roadmap tool registered in aletheia.ts)
 Resume file: None

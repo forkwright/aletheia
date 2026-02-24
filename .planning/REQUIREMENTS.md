@@ -57,14 +57,14 @@
 - [x] **ROAD-03**: Each phase has: name, goal (one sentence), mapped REQ-IDs, and 2-5 observable success criteria
 - [x] **ROAD-04**: Phases are stored in `planning_phases` table with order, goal, and success criteria
 - [x] **ROAD-05**: User can adjust the roadmap before it's committed (interactive mode) or it's auto-committed (YOLO mode)
-- [ ] **ROAD-06**: Roadmap is accessible via `/api/planning/projects/:id/roadmap`
+- [x] **ROAD-06**: Roadmap is accessible via `/api/planning/projects/:id/roadmap`
 
 ### Phase Planning
 
-- [ ] **PHAS-01**: Planning state machine advances through phases sequentially; current phase is tracked in `planning_projects`
+- [x] **PHAS-01**: Planning state machine advances through phases sequentially; current phase is tracked in `planning_projects`
 - [x] **PHAS-02**: For each phase, a planning agent produces a PLAN with steps, dependencies, and acceptance criteria
 - [x] **PHAS-03**: Plan checker agent verifies the plan will achieve the phase goal (goal-backward analysis) before execution starts
-- [ ] **PHAS-04**: Phase plans are stored in `planning_phases.plan` JSON column
+- [x] **PHAS-04**: Phase plans are stored in `planning_phases.plan` JSON column
 - [x] **PHAS-05**: User can skip the plan checker for a given phase (override in config)
 - [x] **PHAS-06**: Phase planning respects project depth config (quick: 1-3 plans per phase, comprehensive: 5-10)
 
@@ -203,11 +203,11 @@
 | ROAD-03 | Phase 6: Roadmap & Phase Planning | Complete |
 | ROAD-04 | Phase 6: Roadmap & Phase Planning | Complete |
 | ROAD-05 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-06 | Phase 6: Roadmap & Phase Planning | Pending |
-| PHAS-01 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-06 | Phase 6: Roadmap & Phase Planning | Complete |
+| PHAS-01 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-02 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-03 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-04 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-04 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-05 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-06 | Phase 6: Roadmap & Phase Planning | Complete |
 | EXEC-01 | Phase 7: Execution Orchestration | Pending |
