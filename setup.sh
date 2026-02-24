@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${ALETHEIA_PORT:-18789}"
 
-echo "[1/5] Checking prerequisites..."
+echo "[1/6] Checking prerequisites..."
 if ! command -v node &>/dev/null; then
   echo "Error: Node.js not found. Install from https://nodejs.org (v20+)"
   exit 1
@@ -20,17 +20,17 @@ if ! command -v npm &>/dev/null; then
   exit 1
 fi
 
-echo "[2/5] Building runtime..."
+echo "[2/6] Building runtime..."
 cd "$REPO_DIR/infrastructure/runtime"
 npm install --silent
 npx tsdown --silent
 
-echo "[3/5] Building UI..."
+echo "[3/6] Building UI..."
 cd "$REPO_DIR/ui"
 npm install --silent
 npm run build --silent
 
-echo "[4/5] Writing default config..."
+echo "[4/6] Writing default config..."
 CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
 CONFIG_FILE="$CONFIG_DIR/aletheia.json"
 mkdir -p "$CONFIG_DIR"
@@ -47,7 +47,18 @@ EOF
   echo "   Created $CONFIG_FILE"
 fi
 
-echo "[5/5] Starting Aletheia..."
+echo "[5/6] Installing aletheia CLI..."
+INSTALL_DIR="$HOME/.local/bin"
+mkdir -p "$INSTALL_DIR"
+chmod +x "$REPO_DIR/bin/aletheia"
+ln -sf "$REPO_DIR/bin/aletheia" "$INSTALL_DIR/aletheia"
+echo "   Installed: aletheia → $INSTALL_DIR/aletheia"
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+  echo "   Note: add to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "         Fish: fish_add_path ~/.local/bin"
+fi
+
+echo "[6/6] Starting Aletheia..."
 ENTRY="$REPO_DIR/infrastructure/runtime/dist/entry.mjs"
 if [ ! -f "$ENTRY" ]; then
   echo "Error: Build output not found at $ENTRY — build may have failed"

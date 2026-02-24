@@ -3,32 +3,37 @@
 ```bash
 git clone https://github.com/forkwright/aletheia
 cd aletheia
-./setup.sh
+./setup.sh        # builds, installs CLI, opens browser
+aletheia start    # from next time on
 ```
 
-Your browser will open automatically. Follow the setup wizard — it takes about two minutes.
-
-## What setup.sh does
-
-1. Checks Node.js 20+ is present
-2. Builds the runtime and UI
-3. Creates a minimal config at `~/.aletheia/aletheia.json` if one doesn't exist
-4. Starts the gateway on port 18789
-5. Opens your browser
-
-## Credential detection
-
-The wizard will attempt to auto-detect your Anthropic API key from Claude Code's config (`~/.claude.json`). If you don't have Claude Code installed, enter an API key manually at `https://console.anthropic.com/keys`.
+The browser opens automatically. Follow the setup wizard — it takes about two minutes.
 
 ## After setup
 
-Your agent's workspace lives at `<repo>/nous/<agent-id>/`. It starts with an onboarding SOUL.md — your first conversation calibrates the agent to your domain and style.
+| Task | Command |
+|------|---------|
+| Start | `aletheia start` |
+| Stop | `aletheia stop` |
+| Restart | `aletheia restart` |
+| View logs | `aletheia logs -f` |
+| Health check | `aletheia status` |
+| Diagnose issues | `aletheia doctor` |
 
-## Manual start (after first run)
+Run `aletheia help` for the full command reference.
 
-```bash
-ALETHEIA_ROOT=$(pwd) node infrastructure/runtime/dist/entry.mjs
-```
+## Credential detection
+
+The wizard auto-detects your Anthropic API key from Claude Code's config (`~/.claude.json`).
+If you don't have Claude Code installed, enter a key manually at https://console.anthropic.com/keys.
+
+> **OAuth users:** Claude Code's OAuth session doesn't include an API key. Get a separate key at the link above.
+
+## Memory services
+
+If you have Podman or Docker installed and `infrastructure/memory/docker-compose.yml` is present,
+`aletheia start` will automatically bring up Qdrant and Neo4j for persistent cross-session memory.
+Skip with `aletheia start --no-memory`.
 
 ## Advanced configuration
 

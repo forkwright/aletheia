@@ -95,13 +95,17 @@ Svelte 5 at `/ui`. Streaming responses, file upload, syntax highlighting, thinki
 
 | Command | Purpose |
 |---------|---------|
-| `aletheia gateway` | Start the runtime |
-| `aletheia status` | System status |
+| `aletheia start` | Start memory services + gateway, open browser |
+| `aletheia stop [--all]` | Stop gateway (--all includes memory containers) |
+| `aletheia restart` | Stop then start |
+| `aletheia logs [-f]` | View gateway logs |
+| `aletheia tui` | Launch terminal UI |
+| `aletheia status` | System health and agent list |
+| `aletheia doctor [--fix]` | Validate config and connectivity |
 | `aletheia send -a <agent> -m "..."` | Send message to agent |
 | `aletheia sessions [-a <agent>]` | List sessions |
 | `aletheia cron list\|trigger <id>` | Manage cron jobs |
 | `aletheia update [version]` | Self-update with rollback |
-| `aletheia doctor` | Connectivity checks |
 
 ### API
 
