@@ -121,7 +121,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — RoadmapOrchestrator class (TDD): roadmap generation, coverage validation, phase planning, checker loop, depth calibration
+- [x] 06-01-PLAN.md — RoadmapOrchestrator class (TDD): roadmap generation, coverage validation, phase planning, checker loop, depth calibration
 - [ ] 06-02-PLAN.md — plan_roadmap tool (4 actions) and orchestrator methods (completeRoadmap, advanceToExecution, listPhases, getPhase)
 - [ ] 06-03-PLAN.md — API route /roadmap, dianoia/index.ts exports, aletheia.ts registration
 

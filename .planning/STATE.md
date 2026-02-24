@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 5: Requirements Definition
+**Current focus:** Phase 6: Roadmap & Phase Planning
 
 ## Current Position
 
-Phase: 5 of 9 (Requirements Definition) — IN PROGRESS
-Plan: 2 of ? in current phase — 05-02 complete
-Status: Phase 5 Plan 2 complete; ready for 05-03 (if any) or Phase 6
-Last activity: 2026-02-24 -- Phase 5 Plan 2 complete (RequirementsOrchestrator, plan_requirements tool, completeRequirements, 8 new tests)
+Phase: 6 of 9 (Roadmap & Phase Planning) — IN PROGRESS
+Plan: 1 of ? in current phase — 06-01 complete
+Status: Phase 6 Plan 1 complete; ready for 06-02 (plan_roadmap tool)
+Last activity: 2026-02-24 -- Phase 6 Plan 1 complete (RoadmapOrchestrator, 20 unit tests, checker loop)
 
-Progress: [████░░░░░░] 47%
+Progress: [█████░░░░░] 52%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 3 min
-- Total execution time: 0.58 hours
+- Total plans completed: 15
+- Average duration: 4 min
+- Total execution time: 0.75 hours
 
 **By Phase:**
 
@@ -32,6 +32,7 @@ Progress: [████░░░░░░] 47%
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
+| 06-roadmap-phase-planning | 1/? | 10 min | 10 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min, 2 min, 5 min, 1 min, 3 min
@@ -92,6 +93,10 @@ Recent decisions affecting current work:
 - [05-02]: Promise.resolve() wrapping used in ToolHandler.execute() (no async keyword) to satisfy oxlint require-await while returning Promise<string>
 - [05-02]: persistCategory finds MAX existing reqId number by parsing -NN suffix — enables safe re-presentation without duplicate IDs
 - [05-02]: description user-centric enforcement prefixes 'User can' only when description lacks observable action verbs — minimal intervention
+- [06-01]: depthToInstruction is a public method on RoadmapOrchestrator — directly testable without indirect dispatch
+- [06-01]: commitRoadmap stores this.db as instance field alongside this.store — required for db.transaction() wrapper spanning multiple createPhase() calls
+- [06-01]: checkPlan dispatch failure returns {pass: true} — best-effort avoids checker blocking plan generation
+- [06-01]: planPhase reads depth from store.getProjectOrThrow(projectId).config.depth — orchestrator owns depth selection
 
 ### Pending Todos
 
@@ -106,5 +111,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 05-02-PLAN.md (RequirementsOrchestrator, plan_requirements tool, completeRequirements, 8 new tests)
+Stopped at: Completed 06-01-PLAN.md (RoadmapOrchestrator, 20 unit tests, atomic commitRoadmap, planPhase checker loop)
 Resume file: None

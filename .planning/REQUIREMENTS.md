@@ -52,21 +52,21 @@
 
 ### Roadmap Generation
 
-- [ ] **ROAD-01**: Roadmap generation spawns a specialist agent that produces phases from requirements (bottom-up, not top-down)
-- [ ] **ROAD-02**: Every v1 requirement maps to exactly one phase; roadmap agent validates 100% coverage
-- [ ] **ROAD-03**: Each phase has: name, goal (one sentence), mapped REQ-IDs, and 2-5 observable success criteria
-- [ ] **ROAD-04**: Phases are stored in `planning_phases` table with order, goal, and success criteria
-- [ ] **ROAD-05**: User can adjust the roadmap before it's committed (interactive mode) or it's auto-committed (YOLO mode)
+- [x] **ROAD-01**: Roadmap generation spawns a specialist agent that produces phases from requirements (bottom-up, not top-down)
+- [x] **ROAD-02**: Every v1 requirement maps to exactly one phase; roadmap agent validates 100% coverage
+- [x] **ROAD-03**: Each phase has: name, goal (one sentence), mapped REQ-IDs, and 2-5 observable success criteria
+- [x] **ROAD-04**: Phases are stored in `planning_phases` table with order, goal, and success criteria
+- [x] **ROAD-05**: User can adjust the roadmap before it's committed (interactive mode) or it's auto-committed (YOLO mode)
 - [ ] **ROAD-06**: Roadmap is accessible via `/api/planning/projects/:id/roadmap`
 
 ### Phase Planning
 
 - [ ] **PHAS-01**: Planning state machine advances through phases sequentially; current phase is tracked in `planning_projects`
-- [ ] **PHAS-02**: For each phase, a planning agent produces a PLAN with steps, dependencies, and acceptance criteria
-- [ ] **PHAS-03**: Plan checker agent verifies the plan will achieve the phase goal (goal-backward analysis) before execution starts
+- [x] **PHAS-02**: For each phase, a planning agent produces a PLAN with steps, dependencies, and acceptance criteria
+- [x] **PHAS-03**: Plan checker agent verifies the plan will achieve the phase goal (goal-backward analysis) before execution starts
 - [ ] **PHAS-04**: Phase plans are stored in `planning_phases.plan` JSON column
-- [ ] **PHAS-05**: User can skip the plan checker for a given phase (override in config)
-- [ ] **PHAS-06**: Phase planning respects project depth config (quick: 1-3 plans per phase, comprehensive: 5-10)
+- [x] **PHAS-05**: User can skip the plan checker for a given phase (override in config)
+- [x] **PHAS-06**: Phase planning respects project depth config (quick: 1-3 plans per phase, comprehensive: 5-10)
 
 ### Execution Orchestration
 
@@ -198,18 +198,18 @@
 | REQS-05 | Phase 5: Requirements Definition | Complete |
 | REQS-06 | Phase 5: Requirements Definition | Complete |
 | REQS-07 | Phase 5: Requirements Definition | Complete |
-| ROAD-01 | Phase 6: Roadmap & Phase Planning | Pending |
-| ROAD-02 | Phase 6: Roadmap & Phase Planning | Pending |
-| ROAD-03 | Phase 6: Roadmap & Phase Planning | Pending |
-| ROAD-04 | Phase 6: Roadmap & Phase Planning | Pending |
-| ROAD-05 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-01 | Phase 6: Roadmap & Phase Planning | Complete |
+| ROAD-02 | Phase 6: Roadmap & Phase Planning | Complete |
+| ROAD-03 | Phase 6: Roadmap & Phase Planning | Complete |
+| ROAD-04 | Phase 6: Roadmap & Phase Planning | Complete |
+| ROAD-05 | Phase 6: Roadmap & Phase Planning | Complete |
 | ROAD-06 | Phase 6: Roadmap & Phase Planning | Pending |
 | PHAS-01 | Phase 6: Roadmap & Phase Planning | Pending |
-| PHAS-02 | Phase 6: Roadmap & Phase Planning | Pending |
-| PHAS-03 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-02 | Phase 6: Roadmap & Phase Planning | Complete |
+| PHAS-03 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-04 | Phase 6: Roadmap & Phase Planning | Pending |
-| PHAS-05 | Phase 6: Roadmap & Phase Planning | Pending |
-| PHAS-06 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-05 | Phase 6: Roadmap & Phase Planning | Complete |
+| PHAS-06 | Phase 6: Roadmap & Phase Planning | Complete |
 | EXEC-01 | Phase 7: Execution Orchestration | Pending |
 | EXEC-02 | Phase 7: Execution Orchestration | Pending |
 | EXEC-03 | Phase 7: Execution Orchestration | Pending |
