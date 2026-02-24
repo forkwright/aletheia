@@ -163,6 +163,13 @@ export class DianoiaOrchestrator {
     return this.store.getProject(id);
   }
 
+  skipResearch(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "research" });
+    log.info(`Research skipped for project ${projectId}; advancing to requirements`);
+    return "Research skipped. Proceeding to requirements definition.";
+  }
+
   completePhase(projectId: string, nousId: string, sessionId: string, phase: string): void {
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase });
     log.info(`Phase complete: ${phase} for project ${projectId}`);

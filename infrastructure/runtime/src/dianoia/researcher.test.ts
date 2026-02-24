@@ -3,6 +3,8 @@ import Database from "better-sqlite3";
 import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { ResearchOrchestrator } from "./researcher.js";
+import { DianoiaOrchestrator } from "./orchestrator.js";
+import { transition } from "./machine.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 
 function makeDb(): Database.Database {
@@ -19,20 +21,22 @@ const TOOL_CONTEXT: ToolContext = {
   workspace: "/tmp",
 };
 
+const DEFAULT_CONFIG = {
+  depth: "standard" as const,
+  parallelization: true,
+  research: true,
+  plan_check: true,
+  verifier: true,
+  mode: "interactive" as const,
+};
+
 function makeProject(db: Database.Database): string {
   const store = new PlanningStore(db);
   const project = store.createProject({
     nousId: "test-nous",
     sessionId: "test-session",
     goal: "Build a planning tool",
-    config: {
-      depth: "standard",
-      parallelization: true,
-      research: true,
-      plan_check: true,
-      verifier: true,
-      mode: "interactive",
-    },
+    config: DEFAULT_CONFIG,
   });
   return project.id;
 }
@@ -55,14 +59,18 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const mockDispatch: ToolHandler = {
       definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object", properties: {}, required: [] } },
-      execute: vi.fn().mockResolvedValue(
-        makeDispatchResult([
-          { status: "success" },
-          { status: "success" },
-          { status: "success" },
-          { status: "success" },
-        ]),
-      ),
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          makeDispatchResult([
+            { status: "success" },
+            { status: "success" },
+            { status: "success" },
+            { status: "success" },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeDispatchResult([{ status: "success", result: "Consolidated synthesis" }]),
+        ),
     };
 
     const orchestrator = new ResearchOrchestrator(db, mockDispatch);
@@ -74,12 +82,14 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const store = new PlanningStore(db);
     const rows = store.listResearch(projectId);
-    expect(rows).toHaveLength(4);
-    for (const row of rows) {
+    expect(rows).toHaveLength(5); // 4 dimensions + synthesis
+
+    const dimRows = rows.filter(r => r.dimension !== "synthesis");
+    for (const row of dimRows) {
       expect(row.status).toBe("complete");
     }
 
-    const dimensions = rows.map(r => r.dimension);
+    const dimensions = dimRows.map(r => r.dimension);
     expect(dimensions).toContain("stack");
     expect(dimensions).toContain("features");
     expect(dimensions).toContain("architecture");
@@ -92,14 +102,18 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const mockDispatch: ToolHandler = {
       definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object", properties: {}, required: [] } },
-      execute: vi.fn().mockResolvedValue(
-        makeDispatchResult([
-          { status: "success" },
-          { status: "timeout", durationMs: 90000 },
-          { status: "success" },
-          { status: "success" },
-        ]),
-      ),
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          makeDispatchResult([
+            { status: "success" },
+            { status: "timeout", durationMs: 90000 },
+            { status: "success" },
+            { status: "success" },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeDispatchResult([{ status: "success", result: "Partial synthesis" }]),
+        ),
     };
 
     const orchestrator = new ResearchOrchestrator(db, mockDispatch);
@@ -111,14 +125,14 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const store = new PlanningStore(db);
     const rows = store.listResearch(projectId);
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5); // 4 dimensions + synthesis
 
     const timedOut = rows.find(r => r.dimension === "features");
     expect(timedOut?.status).toBe("partial");
     const timedOutContent = JSON.parse(timedOut!.content) as { reason: string };
     expect(timedOutContent.reason).toBe("timeout");
 
-    const complete = rows.filter(r => r.dimension !== "features");
+    const complete = rows.filter(r => r.dimension !== "features" && r.dimension !== "synthesis");
     for (const row of complete) {
       expect(row.status).toBe("complete");
     }
@@ -130,14 +144,18 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const mockDispatch: ToolHandler = {
       definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object", properties: {}, required: [] } },
-      execute: vi.fn().mockResolvedValue(
-        makeDispatchResult([
-          { status: "success" },
-          { status: "success" },
-          { status: "error", error: "agent crashed", durationMs: 500 },
-          { status: "success" },
-        ]),
-      ),
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          makeDispatchResult([
+            { status: "success" },
+            { status: "success" },
+            { status: "error", error: "agent crashed", durationMs: 500 },
+            { status: "success" },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeDispatchResult([{ status: "success", result: "Error synthesis" }]),
+        ),
     };
 
     const orchestrator = new ResearchOrchestrator(db, mockDispatch);
@@ -149,7 +167,7 @@ describe("ResearchOrchestrator.runResearch()", () => {
 
     const store = new PlanningStore(db);
     const rows = store.listResearch(projectId);
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5); // 4 dimensions + synthesis
 
     const errored = rows.find(r => r.dimension === "architecture");
     expect(errored?.status).toBe("failed");
@@ -157,9 +175,102 @@ describe("ResearchOrchestrator.runResearch()", () => {
     expect(erroredContent.reason).toBe("error");
     expect(erroredContent.error).toBe("agent crashed");
 
-    const complete = rows.filter(r => r.dimension !== "architecture");
+    const complete = rows.filter(r => r.dimension !== "architecture" && r.dimension !== "synthesis");
     for (const row of complete) {
       expect(row.status).toBe("complete");
     }
+  });
+
+  it("stores a synthesis row with dimension='synthesis' after all dimensions complete", async () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+
+    const mockDispatch: ToolHandler = {
+      definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object", properties: {}, required: [] } },
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          makeDispatchResult([
+            { status: "success" },
+            { status: "success" },
+            { status: "success" },
+            { status: "success" },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeDispatchResult([{ status: "success", result: "## Stack\nNode.js\n## Features\nCore features" }]),
+        ),
+    };
+
+    const orchestrator = new ResearchOrchestrator(db, mockDispatch);
+    await orchestrator.runResearch(projectId, "Build a planning tool", TOOL_CONTEXT);
+
+    const store = new PlanningStore(db);
+    const rows = store.listResearch(projectId);
+    const synthesis = rows.find(r => r.dimension === "synthesis");
+
+    expect(synthesis).toBeDefined();
+    expect(synthesis?.status).toBe("complete");
+    expect(synthesis?.content).toContain("## Stack");
+  });
+});
+
+describe("DianoiaOrchestrator.skipResearch()", () => {
+  it("transitions project from researching to requirements without creating research rows", () => {
+    const db = makeDb();
+    const store = new PlanningStore(db);
+    const project = store.createProject({
+      nousId: "test-nous",
+      sessionId: "test-session",
+      goal: "Build something",
+      config: DEFAULT_CONFIG,
+    });
+
+    store.updateProjectState(project.id, transition("idle", "START_QUESTIONING"));
+    store.updateProjectState(project.id, transition("questioning", "START_RESEARCH"));
+
+    const orchestrator = new DianoiaOrchestrator(db, DEFAULT_CONFIG);
+    const message = orchestrator.skipResearch(project.id, "nous-1", "session-1");
+
+    const updated = store.getProjectOrThrow(project.id);
+    expect(updated.state).toBe("requirements");
+    expect(message).toBe("Research skipped. Proceeding to requirements definition.");
+
+    const researchRows = store.listResearch(project.id);
+    expect(researchRows).toHaveLength(0);
+  });
+});
+
+describe("ResearchOrchestrator partial result surfacing", () => {
+  it("returns partial=1 when one dimension times out and the row has status=partial", async () => {
+    const db = makeDb();
+    const projectId = makeProject(db);
+
+    const mockDispatch: ToolHandler = {
+      definition: { name: "sessions_dispatch", description: "", input_schema: { type: "object", properties: {}, required: [] } },
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          makeDispatchResult([
+            { status: "success" },
+            { status: "success" },
+            { status: "success" },
+            { status: "timeout", durationMs: 90000 },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeDispatchResult([{ status: "success", result: "Synthesis with partial data" }]),
+        ),
+    };
+
+    const orchestrator = new ResearchOrchestrator(db, mockDispatch);
+    const result = await orchestrator.runResearch(projectId, "Build a planning tool", TOOL_CONTEXT);
+
+    expect(result.partial).toBe(1);
+    expect(result.stored).toBe(3);
+
+    const store = new PlanningStore(db);
+    const rows = store.listResearch(projectId);
+    const partialRow = rows.find(r => r.status === "partial");
+    expect(partialRow).toBeDefined();
+    expect(partialRow?.dimension).toBe("pitfalls");
   });
 });
