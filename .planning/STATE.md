@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 8 of 9 (Verification and Checkpoints) — IN PROGRESS
-Plan: 3 of ? in current phase — 08-03 complete
-Status: Phase 8 Plan 3 complete — CheckpointSystem TDD, 5 new tests, 194 total green
-Last activity: 2026-02-24 -- Phase 8 Plan 3 complete (CheckpointSystem: 5-branch evaluate() logic, TrueBlockerCategory type, YOLO mode auto-approval, true-blocker bypass)
+Phase: 8 of 9 (Verification and Checkpoints) — COMPLETE
+Plan: 4 of 4 in current phase — 08-04 complete
+Status: Phase 8 complete — plan_verify tool (5 actions), 3 FSM methods, dianoia exports, aletheia.ts wiring; 194 tests green
+Last activity: 2026-02-24 -- Phase 8 Plan 4 complete (plan_verify tool: advanceToNextPhase/completeAllPhases/blockOnVerificationFailure FSM methods, 5-action tool surface wired in aletheia.ts)
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -34,7 +34,7 @@ Progress: [████████░░] 83%
 | 05-requirements-definition | 2/? | 6 min | 3 min |
 | 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
 | 07-execution-orchestration | 4/4 | 28 min | 7 min |
-| 08-verification-checkpoints | 2/? | 7 min | 3.5 min |
+| 08-verification-checkpoints | 4/4 | 13 min | 3.25 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 1 min, 3 min, 10 min, 8 min
@@ -42,6 +42,7 @@ Progress: [████████░░] 83%
 
 *Updated after each plan completion*
 | Phase 08-verification-checkpoints P03 | 2 | 2 tasks | 2 files |
+| Phase 08-verification-checkpoints P04 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,8 @@ Recent decisions affecting current work:
 - [Phase 08-03]: CheckpointSystem takes (store, config) not (db, config) — store already created in createRuntime() before instantiation
 - [Phase 08-03]: true-blocker branch checked first (before riskLevel) — trueBlockerCategory presence is the discriminator, not a riskLevel value
 - [Phase 08-03]: vi.spyOn(eventBus, 'emit') preferred over getter spy pattern — simpler, consistent with orchestrator.test.ts
+- [Phase 08-04]: planningStore created as separate PlanningStore instance in createRuntime() — shared by CheckpointSystem and plan_verify tool rather than creating duplicates
+- [Phase 08-04]: plan_verify action=run calls blockOnVerificationFailure() for both not-met and partially-met — both states halt the FSM in blocked state requiring user action
 
 ### Pending Todos
 
@@ -147,5 +150,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 08-03-PLAN.md (CheckpointSystem TDD: 5-branch evaluate(), TrueBlockerCategory, 5 tests, 194 total green)
+Stopped at: Completed 08-04-PLAN.md (plan_verify tool: 5 actions, 3 FSM methods, dianoia exports, aletheia.ts wiring; Phase 8 complete)
 Resume file: None
