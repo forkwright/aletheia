@@ -458,7 +458,7 @@ export class PlanningStore {
     const record = this.getSpawnRecord(id);
     if (!record) {
       throw new PlanningError(`Spawn record not found: ${id}`, {
-        code: ErrorCode.PLANNING_SPAWN_NOT_FOUND,
+        code: "PLANNING_SPAWN_NOT_FOUND",
       });
     }
     return record;
