@@ -448,7 +448,7 @@ export async function executeBuffered(
 ): Promise<TurnState> {
   const {
     nousId, sessionId, sessionKey, model, toolDefs, toolContext,
-    systemPrompt, trace,
+    systemPrompt, trace, abortSignal,
   } = state;
 
   let { currentMessages } = state;

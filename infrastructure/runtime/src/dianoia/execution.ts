@@ -5,7 +5,7 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
-import { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
+import { buildContextPacket } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
 
 const log = createLogger("dianoia:execution");

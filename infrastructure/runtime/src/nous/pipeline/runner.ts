@@ -97,9 +97,10 @@ export async function* runStreamingPipeline(
 export async function runBufferedPipeline(
   msg: InboundMessage,
   services: RuntimeServices,
+  opts?: { abortSignal?: AbortSignal },
 ): Promise<TurnOutcome> {
   // Stage 1: Resolve
-  const state = resolveStage(msg, services);
+  const state = resolveStage(msg, services, opts?.abortSignal);
   if (!state) {
     throw new PipelineError(`Unknown nous: ${msg.nousId ?? "default"}`, {
       code: "AGENT_NOT_FOUND", context: { nousId: msg.nousId },

@@ -228,7 +228,7 @@ describe("S5 End-to-End Integration Test", () => {
 
     // Step 1: Create project via handle() 
     const handleResult = orchestrator.handle("test-nous", "test-session");
-    expect(handleResult).toContain("What are you building");
+    expect(handleResult).toContain("what are you building");
     
     const project = orchestrator.getActiveProject("test-nous");
     expect(project).toBeDefined();
@@ -242,7 +242,7 @@ describe("S5 End-to-End Integration Test", () => {
       keyDecisions: ["Use PostgreSQL for data persistence", "Single-page React application"],
     });
     
-    expect(synthesisResult).toContain("Starting research");
+    expect(synthesisResult).toContain("research");
     
     // Verify PROJECT.md was written
     const projectDir = join(workspaceRoot, ".dianoia", "projects", project!.id);

@@ -301,6 +301,8 @@ export class NousManager {
       return outcome;
     } finally {
       this.trackTurnEnd(nousId);
+      this.turnAbortControllers.delete(turnId);
+      this.turnMeta.delete(turnId);
     }
   }
 
