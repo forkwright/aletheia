@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - SQLite schema, pure state machine, planning store, and config persistence (completed 2026-02-23)
 - [x] **Phase 2: Orchestrator & Entry** - DianoiaOrchestrator, /plan command, intent detection, CLI subcommand (completed 2026-02-24)
 - [x] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring (completed 2026-02-24)
-- [ ] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling
+- [x] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling (completed 2026-02-24)
 - [ ] **Phase 5: Requirements Definition** - Interactive scoping, REQ-ID assignment, persistence, coverage validation
 - [ ] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker
 - [ ] **Phase 7: Execution Orchestration** - Wave-based parallel execution, dependency graph, restart resilience
@@ -90,7 +90,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md — Migration v22, ResearchOrchestrator class with dimension souls, sessions_dispatch wiring, plan_research tool (completed 2026-02-24)
-- [ ] 04-02-PLAN.md — synthesizeResearch(), skipResearch(), timeout surfacing, FSM transition to requirements
+- [x] 04-02-PLAN.md — synthesizeResearch(), skipResearch(), timeout surfacing, FSM transition to requirements (completed 2026-02-24)
 
 ### Phase 5: Requirements Definition
 **Goal**: Agent and user collaboratively define scoped, testable requirements with full persistence
@@ -188,7 +188,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
 | 3. Project Context & API | 4/4 | Complete    | 2026-02-24 |
-| 4. Research Pipeline | 1/2 | In Progress | - |
+| 4. Research Pipeline | 2/2 | Complete    | 2026-02-24 |
 | 5. Requirements Definition | 0/2 | Not started | - |
 | 6. Roadmap & Phase Planning | 0/3 | Not started | - |
 | 7. Execution Orchestration | 0/3 | Not started | - |

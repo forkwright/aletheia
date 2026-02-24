@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 
 ## Current Position
 
-Phase: 4 of 9 (Research Pipeline) — IN PROGRESS
-Plan: 1 of 2 in current phase — 04-01 complete
-Status: Executing Phase 4
-Last activity: 2026-02-24 -- Phase 4 Plan 1 complete (migration v22, ResearchOrchestrator, plan_research tool)
+Phase: 4 of 9 (Research Pipeline) — COMPLETE
+Plan: 2 of 2 in current phase — 04-02 complete
+Status: Phase 4 complete; ready for Phase 5
+Last activity: 2026-02-24 -- Phase 4 Plan 2 complete (synthesizeResearch, skipResearch, research-tool wiring)
 
-Progress: [████░░░░░░] 36%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 3 min
-- Total execution time: 0.46 hours
+- Total execution time: 0.51 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: [████░░░░░░] 36%
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
-| 04-research-pipeline | 1/2 | 3 min | 3 min |
+| 04-research-pipeline | 2/2 | 6 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 2 min, 5 min, 1 min, 3 min
+- Last 5 plans: 2 min, 5 min, 1 min, 3 min, 3 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -82,6 +82,9 @@ Recent decisions affecting current work:
 - [04-01]: planning_research.status DEFAULT 'complete' — backward compatible with existing rows, no data migration needed
 - [04-01]: plan_research skip branch returns {status: skipped} — skipResearch() deferred to plan 04-02
 - [04-01]: test makeDb() must include all migrations through current version — V22 added to store.test.ts and researcher.test.ts
+- [04-02]: ResearchOrchestrator.transitionToRequirements() co-located with research completion -- research-tool drives sequence, orchestrator owns state
+- [04-02]: synthesizeResearch() reuses dispatchTool for synthesis dispatch -- no separate spawn tool needed
+- [04-02]: koina/safe.ts trySafeAsync is (label, fn, fallback) not Result pattern -- use direct try/catch for error boundaries in tool execute() bodies
 
 ### Pending Todos
 
@@ -96,5 +99,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 04-01-PLAN.md (migration v22, ResearchOrchestrator, plan_research tool)
+Stopped at: Completed 04-02-PLAN.md (synthesizeResearch, skipResearch, research-tool wiring, 6 tests)
 Resume file: None
