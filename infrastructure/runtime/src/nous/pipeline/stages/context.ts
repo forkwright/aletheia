@@ -9,6 +9,7 @@ import { distillSession } from "../../../distillation/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
+import { detectPlanningIntent } from "../../../dianoia/intent.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
@@ -162,6 +163,11 @@ export async function buildContext(
       systemPrompt.push({
         type: "text",
         text: `## Active Dianoia Planning Project\n\nProject ID: ${activeProject.id}\nState: ${activeProject.state}\nGoal: ${activeProject.goal || "(not yet set)"}\n${hasPending ? "\nAwaiting resume confirmation from user." : ""}`,
+      });
+    } else if (detectPlanningIntent(msg.text ?? "")) {
+      systemPrompt.push({
+        type: "text",
+        text: "## Planning Offer\n\nThis message sounds like a planning task — if you'd like structured planning support, say 'yes, start planning' and I'll open a Dianoia project.",
       });
     }
   }

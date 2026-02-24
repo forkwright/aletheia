@@ -1,6 +1,7 @@
 // dianoia — planning module public API
 export { PlanningStore } from "./store.js";
 export { DianoiaOrchestrator } from "./orchestrator.js";
+export { detectPlanningIntent } from "./intent.js";
 export type {
   DianoiaState,
   PlanningCheckpoint,
