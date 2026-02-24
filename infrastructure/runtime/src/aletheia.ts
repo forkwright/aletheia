@@ -48,6 +48,7 @@ import { createDeliberateTool } from "./organon/built-in/deliberate.js";
 import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.js";
 import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
+import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
@@ -173,12 +174,12 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(lsTool);
 
   // Web access (available on-demand)
-  tools.register({ ...webFetchTool, category: "available" as const });
+  tools.register({ ...webFetchTool, category: "available" as const, domains: ["research", "writing"] });
   if (process.env["BRAVE_API_KEY"]) {
-    tools.register({ ...braveSearchTool, category: "available" as const });
+    tools.register({ ...braveSearchTool, category: "available" as const, domains: ["research", "writing"] });
     log.info("Web search: Brave (API key found)");
   } else {
-    tools.register({ ...webSearchTool, category: "available" as const });
+    tools.register({ ...webSearchTool, category: "available" as const, domains: ["research", "writing"] });
     log.info("Web search: DuckDuckGo (no BRAVE_API_KEY)");
   }
 
@@ -193,7 +194,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Browser (requires chromium on host)
   if (process.env["CHROMIUM_PATH"] || process.env["ENABLE_BROWSER"]) {
-    tools.register({ ...browserTool, category: "available" as const });
+    tools.register({ ...browserTool, category: "available" as const, domains: ["research"] });
     log.info("Browser tool registered");
   }
 
@@ -333,6 +334,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const pipelineCfgTool = createPipelineConfigTool();
   pipelineCfgTool.category = "available";
   tools.register(pipelineCfgTool);
+
+  // Workspace index — file manifest for reducing exploratory ls/find calls
+  tools.register(createWorkspaceIndexTool());
 
   // Cross-agent blackboard — persistent shared state with auto-expiry
   tools.register(createBlackboardTool(store));
@@ -516,6 +520,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   if (skillsSection) {
     runtime.manager.setSkillsSection(skillsSection);
   }
+  runtime.manager.setSkills(skills);
   setSkillsRef(skills);
 
   // --- MCP Client ---

@@ -18,6 +18,7 @@ import { AsyncChannel } from "./async-channel.js";
 import { resolveNousId } from "./pipeline/stages/resolve.js";
 import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
 import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
+import type { SkillRegistry } from "../organon/skills.js";
 import type { DianoiaOrchestrator } from "../dianoia/orchestrator.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
@@ -50,6 +51,7 @@ export class NousManager {
   private watchdog?: Watchdog;
   private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
+  private skills?: SkillRegistry;
   private planningOrchestrator?: DianoiaOrchestrator;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
@@ -76,6 +78,7 @@ export class NousManager {
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
+  setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
   setPlanningOrchestrator(orchestrator: DianoiaOrchestrator): void { this.planningOrchestrator = orchestrator; }
@@ -134,6 +137,7 @@ export class NousManager {
       ...(this.competence ? { competence: this.competence } : {}),
       ...(this.uncertainty ? { uncertainty: this.uncertainty } : {}),
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
+      ...(this.skills ? { skills: this.skills } : {}),
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
