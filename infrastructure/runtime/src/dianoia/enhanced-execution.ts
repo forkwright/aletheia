@@ -197,7 +197,7 @@ export class EnhancedExecutionOrchestrator {
     });
 
     // Execute tasks concurrently using sessions_spawn parallel dispatch
-    let output: { parallel: boolean; results: Array<{ status: string; result?: string; error?: string; durationMs: number; index: number }> };
+    let output: { parallel: boolean; count?: number; results: Array<{ status?: string; result?: string; error?: string; durationMs?: number; index?: number }> };
     
     try {
       const dispatchInput = {
@@ -237,11 +237,12 @@ export class EnhancedExecutionOrchestrator {
           }
         }
         
-        output = { parallel: true, results: orderedResults };
+        output = { parallel: true, count: orderedResults.length, results: orderedResults };
       } else {
         // Fallback - treat as single result
         output = {
           parallel: false,
+          count: 1,
           results: [{
             status: parsed.error ? "error" : "success",
             result: parsed.result,
@@ -256,6 +257,7 @@ export class EnhancedExecutionOrchestrator {
       // Dispatch failed - mark all tasks as failed
       output = {
         parallel: false,
+        count: activePlans.length,
         results: activePlans.map((_, index) => ({
           status: "error",
           error: String(err),
@@ -266,7 +268,12 @@ export class EnhancedExecutionOrchestrator {
     }
 
     return {
-      results: output.results,
+      results: output.results.map(r => ({
+        status: r.status === "error" ? "error" : "success",
+        result: r.result,
+        error: r.error,
+        durationMs: r.durationMs || 0
+      })),
       waveNumber: 0, // Will be set by caller
       totalDuration: Date.now() - startTime
     };
@@ -453,44 +460,16 @@ export class EnhancedExecutionOrchestrator {
    * Retry execution with validation error feedback (EXEC-04)
    */
   private async retryWithFeedback(
-    plan: PlanningPhase,
-    originalResult: string,
+    _plan: PlanningPhase,
+    _originalResult: string,
     validationErrors: string[]
   ): Promise<{ success: boolean; data?: SubAgentResult; error?: string }> {
     if (!this.options.enableAutoRetry || validationErrors.length === 0) {
       return { success: false, error: "Retry not enabled or no validation errors" };
     }
 
-    // Create feedback prompt
-    const feedback = this.extractor.createValidationFeedback(validationErrors, plan.goal);
-
-    try {
-      // Use task-to-role mapping for retry
-      let retryRole: string;
-      if (this.options.useIntelligentDispatch) {
-        const mapping = mapTaskToRole(plan.goal, this.options.availableRoles);
-        retryRole = mapping.role;
-      } else {
-        const modelTier = selectModelForRole("executor");
-        retryRole = modelTierToRole(modelTier);
-      }
-
-      // Execute retry (this would need access to toolContext, simplified for now)
-      log.debug("Retry would be executed here", { 
-        phaseId: plan.id,
-        role: retryRole,
-        errorCount: validationErrors.length 
-      });
-      
-      // For now, return failure since we'd need to restructure to pass toolContext
-      return { success: false, error: "Retry implementation requires toolContext access" };
-      
-    } catch (retryError) {
-      return { 
-        success: false, 
-        error: retryError instanceof Error ? retryError.message : String(retryError)
-      };
-    }
+    // For now, return failure since we'd need to restructure to pass toolContext
+    return { success: false, error: "Retry implementation requires toolContext access" };
   }
 
   private buildTaskContext(plan: PlanningPhase, projectGoal: string): string {
@@ -532,11 +511,11 @@ export class EnhancedExecutionOrchestrator {
     ].join("\n");
   }
 
-  private skipDependents(dependents: PlanningPhase[], projectId: string, waveIndex: number): number {
+  private skipDependents(dependents: PlanningPhase[], _projectId: string, waveIndex: number): number {
     let skipped = 0;
     for (const dep of dependents) {
       const depRecord = this.store.createSpawnRecord({
-        projectId,
+        projectId: _projectId,
         phaseId: dep.id,
         waveNumber: waveIndex + 1,
       });
@@ -607,10 +586,22 @@ export class EnhancedExecutionOrchestrator {
 export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   const idSet = new Set(phases.map((p) => p.id));
   const deps = new Map<string, Set<string>>();
+
+  let hasExplicitDeps = false;
   for (const phase of phases) {
     const plan = phase.plan as PhasePlan | null;
     const planDeps = (plan?.dependencies ?? []).filter((d) => idSet.has(d));
     deps.set(phase.id, new Set(planDeps));
+    if (planDeps.length > 0) hasExplicitDeps = true;
+  }
+
+  // Fallback: infer sequential ordering from phaseOrder when no valid phase-ID deps exist
+  if (!hasExplicitDeps && phases.length > 1) {
+    const sorted = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
+    for (let i = 1; i < sorted.length; i++) {
+      deps.get(sorted[i]!.id)!.add(sorted[i - 1]!.id);
+    }
+    log.info(`No explicit inter-phase dependencies; inferred sequential order from phaseOrder`);
   }
 
   const waves: PlanningPhase[][] = [];

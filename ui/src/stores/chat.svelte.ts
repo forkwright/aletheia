@@ -15,6 +15,7 @@ interface AgentChatState {
   pendingApproval: PendingApproval | null;
   pendingPlan: PlanProposal | null;
   turnStartedAt: number | null;
+  activeTurnId: string | null;
   // Debounce buffers — accumulate deltas, flush to reactive state on timer
   _textBuffer: string;
   _thinkingBuffer: string;
@@ -38,6 +39,7 @@ const EMPTY: AgentChatState = {
   pendingApproval: null,
   pendingPlan: null,
   turnStartedAt: null,
+  activeTurnId: null,
   _textBuffer: "",
   _thinkingBuffer: "",
   _flushTimer: null,

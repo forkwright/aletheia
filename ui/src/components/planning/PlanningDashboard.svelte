@@ -8,6 +8,12 @@
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
 
+  // Props from parent component (ChatView)
+  let { projectId: explicitProjectId, onClose }: {
+    projectId?: string;
+    onClose?: () => void;
+  } = $props();
+
   interface Project {
     id: string;
     nousId: string;
@@ -64,7 +70,7 @@
   const agentId = $derived(getActiveAgentId());
 
   async function loadProject() {
-    if (!agentId) {
+    if (!agentId && !explicitProjectId) {
       loading = false;
       return;
     }
@@ -73,25 +79,31 @@
       loading = true;
       error = null;
 
-      // First, get the active project for this agent
-      const projectsRes = await fetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId)}`);
-      if (!projectsRes.ok) {
-        throw new Error("Failed to load projects");
-      }
+      let targetProjectId = explicitProjectId;
+      
+      if (!targetProjectId) {
+        // First, get the active project for this agent
+        const projectsRes = await fetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId!)}`);
+        if (!projectsRes.ok) {
+          throw new Error("Failed to load projects");
+        }
 
-      const projectsData = await projectsRes.json() as { projects: { id: string; state: string; goal: string }[] };
-      const activeProjects = projectsData.projects?.filter(p => 
-        p.state !== "complete" && p.state !== "abandoned"
-      ) || [];
+        const projectsData = await projectsRes.json() as { projects: { id: string; state: string; goal: string }[] };
+        const activeProjects = projectsData.projects?.filter(p => 
+          p.state !== "complete" && p.state !== "abandoned"
+        ) || [];
 
-      if (activeProjects.length === 0) {
-        project = null;
-        loading = false;
-        return;
+        if (activeProjects.length === 0) {
+          project = null;
+          loading = false;
+          return;
+        }
+
+        targetProjectId = activeProjects[0].id;
       }
 
       // Load full project data
-      const projectId = activeProjects[0].id;
+      const projectId = targetProjectId;
       const projectRes = await fetch(`/api/planning/projects/${projectId}`);
       if (!projectRes.ok) {
         throw new Error("Failed to load project details");
@@ -149,9 +161,9 @@
     return [];
   }
 
-  // Load project when agent changes
+  // Load project when agent or explicit project ID changes
   $effect(() => {
-    if (agentId) {
+    if (agentId || explicitProjectId) {
       loadProject();
     }
   });
@@ -214,6 +226,7 @@
         stateLabel={stateLabel(project.state)}
         stateColor={stateColor(project.state)}
         onRefresh={loadProject}
+        onClose={onClose}
       />
 
       <!-- Main Dashboard Grid -->

@@ -110,7 +110,7 @@ describe("Atomic writes", () => {
     const renameSpy = vi.fn().mockImplementation(() => {
       throw new Error("Simulated rename failure");
     });
-    vi.mocked(require("fs").renameSync = renameSpy);
+    vi.mocked(require("fs")).renameSync = renameSpy;
     
     try {
       expect(() => writeProjectFile(workspaceRoot, project)).toThrow("Simulated rename failure");
@@ -139,7 +139,7 @@ describe("Atomic writes", () => {
       }
     });
     
-    vi.mocked(require("fs").renameSync = vi.fn().mockImplementation((tmpPath: string, finalPath: string) => {
+    vi.mocked(require("fs")).renameSync = vi.fn().mockImplementation((tmpPath: string, finalPath: string) => {
       require("fs").writeFileSync(finalPath, "test content");
       unlinkSpy(finalPath); // Remove the file immediately
     });

@@ -4,7 +4,7 @@
   import ToolPanel from "./ToolPanel.svelte";
   import ThinkingPanel from "./ThinkingPanel.svelte";
   import PlanningStatusLine from "./PlanningStatusLine.svelte";
-  import PlanningDashboard from "./PlanningDashboard.svelte";
+  import PlanningDashboard from "../planning/PlanningDashboard.svelte";
   import ToolApproval from "./ToolApproval.svelte";
   import PlanCard from "./PlanCard.svelte";
   import DistillationProgress from "./DistillationProgress.svelte";

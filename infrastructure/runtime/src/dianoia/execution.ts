@@ -16,10 +16,27 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   // Uses PhasePlan.dependencies (plan-to-plan), NOT PlanStep.dependsOn (step-to-step within a plan).
   const idSet = new Set(phases.map((p) => p.id));
   const deps = new Map<string, Set<string>>();
+
+  // First pass: collect explicit phase-ID dependencies from plans
+  let hasExplicitDeps = false;
   for (const phase of phases) {
     const plan = phase.plan as PhasePlan | null;
     const planDeps = (plan?.dependencies ?? []).filter((d) => idSet.has(d));
     deps.set(phase.id, new Set(planDeps));
+    if (planDeps.length > 0) hasExplicitDeps = true;
+  }
+
+  // Fallback: if NO phase has valid inter-phase dependencies, infer sequential
+  // ordering from phaseOrder. This handles the common case where the LLM fills
+  // PhasePlan.dependencies with package names instead of phase IDs.
+  if (!hasExplicitDeps && phases.length > 1) {
+    const sorted = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1]!;
+      const curr = sorted[i]!;
+      deps.get(curr.id)!.add(prev.id);
+    }
+    log.info(`No explicit inter-phase dependencies found; inferred sequential order from phaseOrder (${sorted.map(p => p.phaseOrder).join(" → ")})`);
   }
 
   const waves: PlanningPhase[][] = [];

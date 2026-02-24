@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { createLogger } from "../koina/logger.js";
 import type { RouteDeps, RouteRefs } from "../pylon/routes/deps.js";
 import { PlanningStore } from "./store.js";
-import { PlanningStore } from "./store.js";
 
 const log = createLogger("pylon:planning");
 
@@ -14,7 +13,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   // Get planning store for direct database access
   const getStore = (): PlanningStore | null => {
     try {
-      return deps.sessionStore ? new PlanningStore(deps.sessionStore.getDatabase()) : null;
+      return deps.store ? new PlanningStore(deps.store.getDb()) : null;
     } catch {
       return null;
     }
@@ -93,7 +92,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     const activePlans = plans.filter(p => p.status === "running").map(p => p.phaseId);
     const activeWaveNumbers = plans
       .filter(p => p.status === "running" && p.waveNumber !== null)
-      .map(p => p.waveNumber);
+      .map(p => p.waveNumber as number);
     const activeWave = activeWaveNumbers.length > 0 ? Math.max(...activeWaveNumbers) : null;
     
     return c.json({
@@ -220,21 +219,30 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   app.get("/api/planning/projects/:id/timeline", (c) => {
     if (!orch) return c.json({ error: "Planning not enabled" }, 503);
     
-    const projectId = c.req.param("id");
-    const project = orch.getProject(projectId);
+    const timelineProjectId = c.req.param("id");
+    const project = orch.getProject(timelineProjectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
     
-    const phases = orch.listPhases(projectId);
+    const phases = orch.listPhases(timelineProjectId);
     const store = getStore();
     
-    const requirements = store ? store.listRequirements(projectId) : [];
+    const requirements = store ? store.listRequirements(timelineProjectId) : [];
     
     // Create timeline milestones
-    const milestones = [
+    const milestones: Array<{
+      id: string;
+      name: string;
+      type: "builtin" | "phase";
+      status: "pending" | "active" | "complete" | "failed";
+      order: number;
+      goal?: string;
+      requirements?: string[];
+      requirementCount?: number;
+    }> = [
       {
         id: "research",
         name: "Research",
-        type: "builtin",
+        type: "builtin" as const,
         status: project.state === "researching" ? "active" : 
                 ["requirements", "roadmap", "discussing", "planning", "executing", "verifying", "complete"].includes(project.state) ? "complete" : "pending",
         order: 0,
@@ -242,7 +250,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       {
         id: "requirements",
         name: "Requirements",
-        type: "builtin",
+        type: "builtin" as const,
         status: project.state === "requirements" ? "active" : 
                 ["roadmap", "discussing", "planning", "executing", "verifying", "complete"].includes(project.state) ? "complete" : "pending",
         order: 1,
@@ -259,8 +267,8 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       milestones.push({
         id: phase.id,
         name: phase.name,
-        type: "phase",
-        status,
+        type: "phase" as const,
+        status: status as "pending" | "active" | "complete" | "failed",
         order: 2 + index,
         goal: phase.goal,
         requirements: phase.requirements,
@@ -269,7 +277,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     });
     
     return c.json({
-      projectId,
+      projectId: timelineProjectId,
       goal: project.goal,
       state: project.state,
       milestones: milestones.sort((a, b) => a.order - b.order),

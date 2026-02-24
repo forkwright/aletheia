@@ -374,12 +374,12 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(planCreateTool);
 
   // Planning research orchestrator — wired after dispatchTool is available
-  const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool);
+  const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool, defaultWorkspace);
   const planResearchTool = createPlanResearchTool(planningOrchestrator, researchOrchestrator);
   tools.register(planResearchTool);
 
   // Planning requirements orchestrator — wired after research orchestrator
-  const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb());
+  const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb(), defaultWorkspace);
   const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
   tools.register(planRequirementsTool);
 

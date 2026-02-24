@@ -14,11 +14,12 @@
     updatedAt: string;
   }
 
-  let { project, stateLabel, stateColor, onRefresh }: {
+  let { project, stateLabel, stateColor, onRefresh, onClose }: {
     project: Project;
     stateLabel: string;
     stateColor: string;
     onRefresh: () => void;
+    onClose?: () => void;
   } = $props();
 
   let refreshing = $state(false);
@@ -49,19 +50,35 @@
         <div class="status-indicator"></div>
         <span class="status-label">{stateLabel}</span>
       </div>
-      <button 
-        class="refresh-btn" 
-        class:refreshing 
-        onclick={handleRefresh}
-        title="Refresh project data"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path 
-            d="M13.65 2.35C12.18 0.88 10.21 0 8 0C3.58 0 0 3.58 0 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08C12.78 12.04 10.66 14 8 14c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L9 7h7V0l-2.35 2.35z" 
-            fill="currentColor"
-          />
-        </svg>
-      </button>
+      <div class="header-actions">
+        <button 
+          class="refresh-btn" 
+          class:refreshing 
+          onclick={handleRefresh}
+          title="Refresh project data"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path 
+              d="M13.65 2.35C12.18 0.88 10.21 0 8 0C3.58 0 0 3.58 0 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08C12.78 12.04 10.66 14 8 14c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L9 7h7V0l-2.35 2.35z" 
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+        {#if onClose}
+          <button 
+            class="close-btn" 
+            onclick={onClose}
+            title="Close planning dashboard"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path 
+                d="M12.854 4.854a.5.5 0 0 0-.708-.708L8 8.293 3.854 4.146a.5.5 0 1 0-.708.708L7.293 9l-4.147 4.146a.5.5 0 0 0 .708.708L8 9.707l4.146 4.147a.5.5 0 0 0 .708-.708L8.707 9l4.147-4.146z" 
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        {/if}
+      </div>
     </div>
   </div>
 
