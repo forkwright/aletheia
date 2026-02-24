@@ -449,6 +449,21 @@ export class PlanningStore {
     return rows.map((r) => this.mapSpawnRecord(r));
   }
 
+  getSpawnRecord(id: string): SpawnRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM planning_spawn_records WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapSpawnRecord(row) : undefined;
+  }
+
+  getSpawnRecordOrThrow(id: string): SpawnRecord {
+    const record = this.getSpawnRecord(id);
+    if (!record) {
+      throw new PlanningError(`Spawn record not found: ${id}`, {
+        code: ErrorCode.PLANNING_SPAWN_NOT_FOUND,
+      });
+    }
+    return record;
+  }
+
   // --- Phase Verification ---
 
   updatePhaseVerificationResult(id: string, result: VerificationResult): void {

@@ -192,7 +192,13 @@ export class DianoiaOrchestrator {
     log.info(`Project complete: ${projectId}`);
   }
 
-  // --- Phase 6+ stubs: Roadmap, Execution, Verification ---
+  completeAllPhases(projectId: string, nousId: string, sessionId: string): void {
+    this.store.updateProjectState(projectId, transition("verifying", "ALL_PHASES_COMPLETE"));
+    eventBus.emit("planning:complete", { projectId, nousId, sessionId });
+    log.info("All phases complete", { projectId });
+  }
+
+  // --- Roadmap, Execution, Verification ---
 
   completeRoadmap(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
