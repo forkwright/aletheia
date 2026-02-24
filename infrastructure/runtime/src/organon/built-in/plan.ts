@@ -7,10 +7,12 @@ import type { ExecutionPlanStep, SessionStore } from "../../mneme/store.js";
 const log = createLogger("organon.plan");
 
 export function createPlanTools(store: SessionStore): ToolHandler[] {
+  /** @deprecated Use /plan command and Dianoia orchestrator instead. */
   const planCreate: ToolHandler = {
     definition: {
       name: "plan_create",
       description:
+        "DEPRECATED: Use /plan command instead. This tool will be removed in a future release.\n\n" +
         "Create a structured plan with steps, dependencies, and acceptance criteria.\n\n" +
         "USE WHEN:\n" +
         "- Task has 3+ steps that benefit from explicit tracking\n" +
@@ -93,6 +95,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         planId,
         stepCount: steps.length,
         actionableNow: actionable,
+        deprecationWarning: "Deprecated: use /plan instead.",
       });
     },
   };

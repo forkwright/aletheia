@@ -8,9 +8,19 @@
 
 set -euo pipefail
 
-AGENT="${1:-syn}"
-NOUS_ROOT="/mnt/ssd/aletheia/nous"
+AGENT="${1:-}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+NOUS_ROOT="$ALETHEIA_ROOT/nous"
 WORKSPACE="$NOUS_ROOT/$AGENT"
+
+if [ -z "$AGENT" ]; then
+  # Default to first available agent
+  AGENT=$(ls -1 "$NOUS_ROOT" 2>/dev/null | grep -v '^_' | head -1)
+  if [ -z "$AGENT" ]; then
+    echo "Error: No agents found in $NOUS_ROOT" >&2
+    exit 1
+  fi
+fi
 
 if [ ! -d "$WORKSPACE" ]; then
   echo "Error: Workspace not found at $WORKSPACE" >&2
@@ -136,7 +146,7 @@ echo ""
 
 # Tool definitions estimate
 # Count tool definition files in the runtime source
-TOOLS_DIR="/mnt/ssd/aletheia/infrastructure/runtime/src/organon/built-in"
+TOOLS_DIR="$ALETHEIA_ROOT/infrastructure/runtime/src/organon/built-in"
 if [ -d "$TOOLS_DIR" ]; then
   tool_count=$(grep -l 'name:.*"' "$TOOLS_DIR"/*.ts 2>/dev/null | grep -v test | wc -l)
   # Some tools are lazy-loaded (enable_tool), ~60-70% are always active

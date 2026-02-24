@@ -148,15 +148,27 @@ registry.register({
 
 ## CLI
 
+Lifecycle (managed by `bin/aletheia` shell wrapper):
+
 ```
-aletheia gateway start [-c config]
-aletheia doctor [-c config]
+aletheia start [--no-memory]      # start memory services + gateway
+aletheia stop [--all]             # stop gateway (--all includes containers)
+aletheia restart
+aletheia logs [-f]
+aletheia tui
+```
+
+Gateway commands (talk to a running gateway via HTTP):
+
+```
 aletheia status [-u url] [-t token]
+aletheia doctor [-c config]
 aletheia send -a <id> -m <text>
 aletheia sessions [-a agent]
 aletheia update [version] [--edge|--check|--rollback]
 aletheia cron list|trigger <id>
 aletheia replay <session-id> [--live]
+aletheia gateway start [-c config]    # low-level: start gateway in foreground
 ```
 
 ---

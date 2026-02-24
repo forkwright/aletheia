@@ -16,6 +16,7 @@ import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
 import type { MemoryFlushTarget } from "../../distillation/hooks.js";
+import type { DianoiaOrchestrator } from "../../dianoia/orchestrator.js";
 
 // --- Plans ---
 
@@ -150,6 +151,7 @@ export interface RuntimeServices {
   approvalGate?: ApprovalGate;
   approvalMode?: ApprovalMode;
   memoryTarget?: MemoryFlushTarget;
+  planningOrchestrator?: DianoiaOrchestrator;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */
