@@ -5,7 +5,7 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { PlanningProject } from "./types.js";
+import type { PlanningProject, ProjectContext } from "./types.js";
 
 const log = createLogger("dianoia:orchestrator");
 
@@ -82,5 +82,91 @@ export class DianoiaOrchestrator {
 
   hasPendingConfirmation(project: PlanningProject): boolean {
     return (project.config as Record<string, unknown>)["pendingConfirmation"] === true;
+  }
+
+  // Question sequence for gathering project context — adaptive, stops when enough gathered
+  private static readonly QUESTIONS = [
+    "What are you building, and why now? (goal + motivation)",
+    "What are the hard constraints — technology stack, compatibility, time, or team?",
+    "What architectural or approach decisions have you already made?",
+    "Who are the primary users, and what's the one thing this must do well?",
+    "Any integration dependencies or external services involved?",
+  ];
+
+  processAnswer(projectId: string, userText: string): void {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (project.state !== "questioning") return;
+
+    const existing = project.projectContext ?? {};
+    const transcript = existing.rawTranscript ?? [];
+    transcript.push({ turn: transcript.length + 1, text: userText });
+    this.store.updateProjectContext(projectId, { ...existing, rawTranscript: transcript });
+  }
+
+  getNextQuestion(projectId: string): string | null {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (project.state !== "questioning") return null;
+
+    const answered = project.projectContext?.rawTranscript?.length ?? 0;
+    if (answered >= DianoiaOrchestrator.QUESTIONS.length) return null;
+    return DianoiaOrchestrator.QUESTIONS[answered] ?? null;
+  }
+
+  synthesizeContext(projectId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    const transcript = project.projectContext?.rawTranscript ?? [];
+    const lines = transcript.map((t) => `- ${t.text}`).join("\n");
+    return `Here's what I captured:\n\n${lines || "(no answers recorded)"}\n\nDoes this look right? (yes to continue, or tell me what to change)`;
+  }
+
+  confirmSynthesis(
+    projectId: string,
+    nousId: string,
+    sessionId: string,
+    synthesizedContext: ProjectContext,
+  ): string {
+    const project = this.store.getProjectOrThrow(projectId);
+
+    const existing = project.projectContext ?? {};
+    const rawTranscript = existing.rawTranscript;
+    const merged: ProjectContext = {
+      ...existing,
+      ...synthesizedContext,
+      ...(rawTranscript !== undefined ? { rawTranscript } : {}),
+    };
+
+    if (synthesizedContext.goal) {
+      this.store.updateProjectGoal(projectId, synthesizedContext.goal);
+    }
+    this.store.updateProjectContext(projectId, merged);
+
+    // Transition FSM: questioning -> researching (event: START_RESEARCH)
+    this.store.updateProjectState(projectId, transition("questioning", "START_RESEARCH"));
+
+    eventBus.emit("planning:phase-started", {
+      projectId,
+      nousId,
+      sessionId,
+      fromState: "questioning",
+      toState: "researching",
+    });
+
+    log.info(`Context confirmed for project ${projectId}; advancing to researching state`);
+    return "Context saved. Moving to research phase.";
+  }
+
+  completePhase(projectId: string, nousId: string, sessionId: string, phase: string): void {
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase });
+    log.info(`Phase complete: ${phase} for project ${projectId}`);
+  }
+
+  completeProject(projectId: string, nousId: string, sessionId: string): void {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(
+      projectId,
+      transition(project.state, "ALL_PHASES_COMPLETE"),
+    );
+    eventBus.emit("planning:complete", { projectId, nousId, sessionId });
+    log.info(`Project complete: ${projectId}`);
   }
 }
