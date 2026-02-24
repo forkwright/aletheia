@@ -163,7 +163,6 @@ export function createGateway(
 
   // Build shared dependencies and refs for route modules
   const planningOrchestrator = manager.getPlanningOrchestrator();
-  const executionOrchestrator = manager.getExecutionOrchestrator();
   const deps: RouteDeps = {
     config,
     manager,
@@ -173,7 +172,6 @@ export function createGateway(
     auditLog,
     authRoutes: authRouteFns,
     ...(planningOrchestrator ? { planningOrchestrator } : {}),
-    ...(executionOrchestrator ? { executionOrchestrator } : {}),
   };
 
   const refs: RouteRefs = {

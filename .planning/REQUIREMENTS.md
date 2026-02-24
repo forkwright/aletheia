@@ -52,46 +52,46 @@
 
 ### Roadmap Generation
 
-- [x] **ROAD-01**: Roadmap generation spawns a specialist agent that produces phases from requirements (bottom-up, not top-down)
-- [x] **ROAD-02**: Every v1 requirement maps to exactly one phase; roadmap agent validates 100% coverage
-- [x] **ROAD-03**: Each phase has: name, goal (one sentence), mapped REQ-IDs, and 2-5 observable success criteria
-- [x] **ROAD-04**: Phases are stored in `planning_phases` table with order, goal, and success criteria
-- [x] **ROAD-05**: User can adjust the roadmap before it's committed (interactive mode) or it's auto-committed (YOLO mode)
-- [x] **ROAD-06**: Roadmap is accessible via `/api/planning/projects/:id/roadmap`
+- [ ] **ROAD-01**: Roadmap generation spawns a specialist agent that produces phases from requirements (bottom-up, not top-down)
+- [ ] **ROAD-02**: Every v1 requirement maps to exactly one phase; roadmap agent validates 100% coverage
+- [ ] **ROAD-03**: Each phase has: name, goal (one sentence), mapped REQ-IDs, and 2-5 observable success criteria
+- [ ] **ROAD-04**: Phases are stored in `planning_phases` table with order, goal, and success criteria
+- [ ] **ROAD-05**: User can adjust the roadmap before it's committed (interactive mode) or it's auto-committed (YOLO mode)
+- [ ] **ROAD-06**: Roadmap is accessible via `/api/planning/projects/:id/roadmap`
 
 ### Phase Planning
 
-- [x] **PHAS-01**: Planning state machine advances through phases sequentially; current phase is tracked in `planning_projects`
-- [x] **PHAS-02**: For each phase, a planning agent produces a PLAN with steps, dependencies, and acceptance criteria
-- [x] **PHAS-03**: Plan checker agent verifies the plan will achieve the phase goal (goal-backward analysis) before execution starts
-- [x] **PHAS-04**: Phase plans are stored in `planning_phases.plan` JSON column
-- [x] **PHAS-05**: User can skip the plan checker for a given phase (override in config)
-- [x] **PHAS-06**: Phase planning respects project depth config (quick: 1-3 plans per phase, comprehensive: 5-10)
+- [ ] **PHAS-01**: Planning state machine advances through phases sequentially; current phase is tracked in `planning_projects`
+- [ ] **PHAS-02**: For each phase, a planning agent produces a PLAN with steps, dependencies, and acceptance criteria
+- [ ] **PHAS-03**: Plan checker agent verifies the plan will achieve the phase goal (goal-backward analysis) before execution starts
+- [ ] **PHAS-04**: Phase plans are stored in `planning_phases.plan` JSON column
+- [ ] **PHAS-05**: User can skip the plan checker for a given phase (override in config)
+- [ ] **PHAS-06**: Phase planning respects project depth config (quick: 1-3 plans per phase, comprehensive: 5-10)
 
 ### Execution Orchestration
 
-- [x] **EXEC-01**: Phase execution uses wave-based parallelism -- independent plans within a phase run concurrently via sessions_dispatch
-- [x] **EXEC-02**: Wave executor computes dependency graph before execution; dependent plans wait for prerequisites
-- [x] **EXEC-03**: Subagent spawn records are stored in SQLite (not just in-memory) to survive restarts and enable zombie detection
-- [x] **EXEC-04**: Failed plans cascade-skip dependent plans; non-dependent plans continue executing
-- [x] **EXEC-05**: Execution can be paused at phase boundaries and resumed in a later session
-- [x] **EXEC-06**: Execution progress is accessible via `/api/planning/projects/:id/phases/:phaseId/status`
+- [ ] **EXEC-01**: Phase execution uses wave-based parallelism -- independent plans within a phase run concurrently via sessions_dispatch
+- [ ] **EXEC-02**: Wave executor computes dependency graph before execution; dependent plans wait for prerequisites
+- [ ] **EXEC-03**: Subagent spawn records are stored in SQLite (not just in-memory) to survive restarts and enable zombie detection
+- [ ] **EXEC-04**: Failed plans cascade-skip dependent plans; non-dependent plans continue executing
+- [ ] **EXEC-05**: Execution can be paused at phase boundaries and resumed in a later session
+- [ ] **EXEC-06**: Execution progress is accessible via `/api/planning/projects/:id/phases/:phaseId/status`
 
 ### Verification
 
-- [x] **VERI-01**: After each phase executes, a verifier agent performs goal-backward verification (truths -> artifacts -> wiring)
-- [x] **VERI-02**: Verifier reports: phase goal met / partially met / not met, with specific gap analysis
-- [x] **VERI-03**: If phase goal not met, agent proposes gap-closure steps before advancing
-- [x] **VERI-04**: User can override verification failure and advance anyway (recorded in `planning_checkpoints`)
-- [x] **VERI-05**: Verification can be disabled per-project in planning config
+- [ ] **VERI-01**: After each phase executes, a verifier agent performs goal-backward verification (truths -> artifacts -> wiring)
+- [ ] **VERI-02**: Verifier reports: phase goal met / partially met / not met, with specific gap analysis
+- [ ] **VERI-03**: If phase goal not met, agent proposes gap-closure steps before advancing
+- [ ] **VERI-04**: User can override verification failure and advance anyway (recorded in `planning_checkpoints`)
+- [ ] **VERI-05**: Verification can be disabled per-project in planning config
 
 ### Human-in-Loop Checkpoints
 
-- [x] **CHKP-01**: Checkpoints fire on the event bus as `planning:checkpoint` events
-- [x] **CHKP-02**: Checkpoints are risk-based: low-cost reversible decisions auto-approved; high-cost or irreversible decisions require human input
-- [x] **CHKP-03**: Checkpoint decisions are persisted to `planning_checkpoints` table (full audit trail)
-- [x] **CHKP-04**: In YOLO mode, all checkpoints except blocking errors are auto-approved
-- [x] **CHKP-05**: User can inject notes/constraints into a checkpoint decision (context captured with the decision)
+- [ ] **CHKP-01**: Checkpoints fire on the event bus as `planning:checkpoint` events
+- [ ] **CHKP-02**: Checkpoints are risk-based: low-cost reversible decisions auto-approved; high-cost or irreversible decisions require human input
+- [ ] **CHKP-03**: Checkpoint decisions are persisted to `planning_checkpoints` table (full audit trail)
+- [ ] **CHKP-04**: In YOLO mode, all checkpoints except blocking errors are auto-approved
+- [ ] **CHKP-05**: User can inject notes/constraints into a checkpoint decision (context captured with the decision)
 
 ### API & Integration
 
@@ -109,18 +109,18 @@
 
 ### Spec & Documentation
 
-- [x] **DOCS-01**: Spec document `docs/specs/31_dianoia.md` follows established Aletheia spec format (Problem, Design, Implementation Order, Success Criteria)
-- [x] **DOCS-02**: Spec includes SQLite schema definitions, state machine diagram, and API surface
-- [x] **DOCS-03**: CONTRIBUTING.md updated to note Dianoia module conventions
+- [ ] **DOCS-01**: Spec document `docs/specs/31_dianoia.md` follows established Aletheia spec format (Problem, Design, Implementation Order, Success Criteria)
+- [ ] **DOCS-02**: Spec includes SQLite schema definitions, state machine diagram, and API surface
+- [ ] **DOCS-03**: CONTRIBUTING.md updated to note Dianoia module conventions
 
 ### Tests
 
 - [x] **TEST-01**: Unit tests for state machine transitions (pure FSM -- all paths covered)
 - [x] **TEST-02**: Unit tests for PlanningStore CRUD operations using in-memory SQLite
 - [x] **TEST-03**: Unit tests for intent detection hook (true positive and false positive scenarios)
-- [x] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
-- [x] **TEST-05**: `npx tsc --noEmit` passes with zero new type errors
-- [x] **TEST-06**: `npx oxlint src/` passes with zero new lint errors
+- [ ] **TEST-04**: Integration test for the full planning pipeline (mock sessions_dispatch)
+- [ ] **TEST-05**: `npx tsc --noEmit` passes with zero new type errors
+- [ ] **TEST-06**: `npx oxlint src/` passes with zero new lint errors
 
 ---
 
@@ -198,34 +198,34 @@
 | REQS-05 | Phase 5: Requirements Definition | Complete |
 | REQS-06 | Phase 5: Requirements Definition | Complete |
 | REQS-07 | Phase 5: Requirements Definition | Complete |
-| ROAD-01 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-02 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-03 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-04 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-05 | Phase 6: Roadmap & Phase Planning | Complete |
-| ROAD-06 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-01 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-02 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-03 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-04 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-05 | Phase 6: Roadmap & Phase Planning | Complete |
-| PHAS-06 | Phase 6: Roadmap & Phase Planning | Complete |
-| EXEC-01 | Phase 7: Execution Orchestration | Complete |
-| EXEC-02 | Phase 7: Execution Orchestration | Complete |
-| EXEC-03 | Phase 7: Execution Orchestration | Complete |
-| EXEC-04 | Phase 7: Execution Orchestration | Complete |
-| EXEC-05 | Phase 7: Execution Orchestration | Complete |
-| EXEC-06 | Phase 7: Execution Orchestration | Complete |
-| VERI-01 | Phase 8: Verification & Checkpoints | Complete |
-| VERI-02 | Phase 8: Verification & Checkpoints | Complete |
-| VERI-03 | Phase 8: Verification & Checkpoints | Complete |
-| VERI-04 | Phase 8: Verification & Checkpoints | Complete |
-| VERI-05 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-01 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-02 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-03 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-04 | Phase 8: Verification & Checkpoints | Complete |
-| CHKP-05 | Phase 8: Verification & Checkpoints | Complete |
+| ROAD-01 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-02 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-03 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-04 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-05 | Phase 6: Roadmap & Phase Planning | Pending |
+| ROAD-06 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-01 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-02 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-03 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-04 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-05 | Phase 6: Roadmap & Phase Planning | Pending |
+| PHAS-06 | Phase 6: Roadmap & Phase Planning | Pending |
+| EXEC-01 | Phase 7: Execution Orchestration | Pending |
+| EXEC-02 | Phase 7: Execution Orchestration | Pending |
+| EXEC-03 | Phase 7: Execution Orchestration | Pending |
+| EXEC-04 | Phase 7: Execution Orchestration | Pending |
+| EXEC-05 | Phase 7: Execution Orchestration | Pending |
+| EXEC-06 | Phase 7: Execution Orchestration | Pending |
+| VERI-01 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-02 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-03 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-04 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-05 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-01 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-02 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-03 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-04 | Phase 8: Verification & Checkpoints | Pending |
+| CHKP-05 | Phase 8: Verification & Checkpoints | Pending |
 | INTG-01 | Phase 3: Project Context & API | Complete |
 | INTG-02 | Phase 3: Project Context & API | Complete |
 | INTG-03 | Phase 3: Project Context & API | Complete |
@@ -234,15 +234,15 @@
 | CONF-01 | Phase 1: Foundation | Complete |
 | CONF-02 | Phase 1: Foundation | Complete |
 | CONF-03 | Phase 1: Foundation | Complete |
-| DOCS-01 | Phase 9: Polish & Migration | Complete |
-| DOCS-02 | Phase 9: Polish & Migration | Complete |
-| DOCS-03 | Phase 9: Polish & Migration | Complete |
+| DOCS-01 | Phase 9: Polish & Migration | Pending |
+| DOCS-02 | Phase 9: Polish & Migration | Pending |
+| DOCS-03 | Phase 9: Polish & Migration | Pending |
 | TEST-01 | Phase 1: Foundation | Complete |
 | TEST-02 | Phase 1: Foundation | Complete |
 | TEST-03 | Phase 2: Orchestrator & Entry | Complete |
-| TEST-04 | Phase 9: Polish & Migration | Complete |
-| TEST-05 | Phase 9: Polish & Migration | Complete |
-| TEST-06 | Phase 9: Polish & Migration | Complete |
+| TEST-04 | Phase 9: Polish & Migration | Pending |
+| TEST-05 | Phase 9: Polish & Migration | Pending |
+| TEST-06 | Phase 9: Polish & Migration | Pending |
 
 **Coverage:**
 - v1 requirements: 60 total

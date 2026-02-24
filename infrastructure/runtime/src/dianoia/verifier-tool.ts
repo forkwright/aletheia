@@ -92,7 +92,7 @@ async function handleVerifyAction(
           return `${msg}\n\nVerification summary: ${result.summary}`;
         }
 
-        planningOrchestrator.blockOnVerificationFailure(projectId);
+        planningOrchestrator.blockOnVerificationFailure(projectId, nousId, sessionId);
 
         const gapPlans = verifierOrchestrator.generateGapPlans(phaseId, result.gaps);
         const gapPlansSummary = gapPlans.map((p) => (p as { name?: string }).name ?? "unnamed fix").join(", ");

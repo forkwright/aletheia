@@ -1,123 +1,259 @@
 #!/usr/bin/env bash
-# aletheia — unified CLI for the Aletheia system
+# aletheia — unified CLI for the Aletheia gateway
+
 set -euo pipefail
 
-# --- Config ---
-WORKER=100.87.6.45
-WORKER_USER=codykickertz
-GATEWAY_URL="http://localhost:18789"
-TUI_BIN="/mnt/ssd/aletheia/tui/target/release/aletheia-tui"
-TOKEN_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/aletheia/token"
+# Resolve ALETHEIA_HOME by following this script's symlink back to the repo root
+_realpath() {
+  if command -v realpath &>/dev/null; then
+    realpath "$1"
+  else
+    python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+  fi
+}
+SCRIPT_PATH="$(_realpath "${BASH_SOURCE[0]}")"
+ALETHEIA_HOME="${ALETHEIA_HOME:-$(dirname "$(dirname "$SCRIPT_PATH")")}"
 
-# Load token
-load_token() {
-    if [[ -n "${ALETHEIA_TOKEN:-}" ]]; then
-        return
-    fi
-    if [[ -f "$TOKEN_FILE" ]]; then
-        ALETHEIA_TOKEN="$(cat "$TOKEN_FILE")"
-        export ALETHEIA_TOKEN
+ENTRY="$ALETHEIA_HOME/infrastructure/runtime/dist/entry.mjs"
+ALETHEIA_CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
+PID_FILE="$ALETHEIA_CONFIG_DIR/gateway.pid"
+LOG_FILE="$ALETHEIA_CONFIG_DIR/gateway.log"
+MEMORY_COMPOSE="$ALETHEIA_HOME/infrastructure/memory/docker-compose.yml"
+
+declare -A MEMORY_HEALTH=(
+  [qdrant]="http://localhost:6333/healthz"
+  [neo4j]="http://localhost:7474"
+  [mem0]="http://localhost:8230/health"
+)
+
+_read_port() {
+  python3 -c "
+import json, os
+path = os.path.join('$ALETHEIA_CONFIG_DIR', 'aletheia.json')
+try:
+    print(json.load(open(path)).get('gateway', {}).get('port', 18789))
+except Exception:
+    print(18789)
+" 2>/dev/null || echo 18789
+}
+
+_compose_cmd() {
+  if command -v podman &>/dev/null; then
+    echo "podman compose"
+  elif command -v docker &>/dev/null; then
+    echo "docker compose"
+  else
+    echo ""
+  fi
+}
+
+_gateway_running() {
+  [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+_start_memory() {
+  local compose_cmd
+  compose_cmd="$(_compose_cmd)"
+
+  if [[ -z "$compose_cmd" ]] || [[ ! -f "$MEMORY_COMPOSE" ]]; then
+    return 0
+  fi
+
+  echo "Memory services:"
+  $compose_cmd -f "$MEMORY_COMPOSE" up -d 2>/dev/null || true
+  sleep 2
+
+  local all_ok=true
+  for svc in qdrant neo4j; do
+    local url="${MEMORY_HEALTH[$svc]}"
+    if curl -sf "$url" >/dev/null 2>&1; then
+      printf "  %-10s ✓ running\n" "$svc"
     else
-        echo "No token found. Set ALETHEIA_TOKEN or put it in $TOKEN_FILE"
-        exit 1
+      printf "  %-10s ✗ unhealthy — check: %s logs %s\n" "$svc" "$compose_cmd" "$svc"
+      all_ok=false
     fi
+  done
+
+  if curl -sf "${MEMORY_HEALTH[mem0]}" >/dev/null 2>&1; then
+    printf "  %-10s ✓ running\n" "mem0"
+  else
+    printf "  %-10s - not running (optional)\n" "mem0"
+  fi
+  echo ""
+
+  if [[ "$all_ok" == "false" ]]; then
+    echo "Warning: some memory services failed to start. Gateway will continue."
+  fi
 }
 
-# --- Commands ---
-
-cmd_tui() {
-    load_token
-    exec ssh -t "${WORKER_USER}@${WORKER}" \
-        "ALETHEIA_TOKEN=${ALETHEIA_TOKEN} ${TUI_BIN} $*"
+_stop_memory() {
+  local compose_cmd
+  compose_cmd="$(_compose_cmd)"
+  if [[ -z "$compose_cmd" ]] || [[ ! -f "$MEMORY_COMPOSE" ]]; then
+    return 0
+  fi
+  echo "Stopping memory services..."
+  $compose_cmd -f "$MEMORY_COMPOSE" down 2>/dev/null || true
+  echo "Memory services stopped."
 }
 
-cmd_health() {
-    load_token
-    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/health" | python3 -m json.tool 2>/dev/null \
-        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/health"
+cmd_start() {
+  local skip_memory=false
+  for arg in "$@"; do
+    [[ "$arg" == "--no-memory" ]] && skip_memory=true
+  done
+
+  if [[ ! -f "$ENTRY" ]]; then
+    echo "Error: not built. Run: cd $ALETHEIA_HOME && ./setup.sh"
+    exit 1
+  fi
+
+  if _gateway_running; then
+    echo "Already running (PID $(cat "$PID_FILE"))"
+    exit 0
+  fi
+
+  local port
+  port="$(_read_port)"
+
+  if command -v lsof &>/dev/null && lsof -i ":$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "Error: port $port already in use by another process"
+    exit 1
+  fi
+
+  mkdir -p "$ALETHEIA_CONFIG_DIR"
+
+  [[ "$skip_memory" == "false" ]] && _start_memory
+
+  ALETHEIA_ROOT="$ALETHEIA_HOME" \
+  ALETHEIA_CONFIG_DIR="$ALETHEIA_CONFIG_DIR" \
+    node "$ENTRY" gateway start >> "$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+
+  echo -n "Starting gateway"
+  for _ in $(seq 1 15); do
+    if ! _gateway_running; then
+      echo ""
+      echo "Error: gateway crashed on startup. Run: aletheia logs"
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+    if curl -sf "http://localhost:$port/health" >/dev/null 2>&1; then
+      echo ""
+      echo "Aletheia running → http://localhost:$port"
+      if command -v xdg-open &>/dev/null; then
+        xdg-open "http://localhost:$port" 2>/dev/null &
+      elif command -v open &>/dev/null; then
+        open "http://localhost:$port" 2>/dev/null &
+      fi
+      return 0
+    fi
+    echo -n "."
+    sleep 1
+  done
+
+  echo ""
+  echo "Error: gateway did not become ready. Run: aletheia logs"
+  exit 1
 }
 
-cmd_agents() {
-    load_token
-    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/agents" | python3 -m json.tool 2>/dev/null \
-        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/agents"
+cmd_stop() {
+  local stop_all=false
+  for arg in "$@"; do
+    [[ "$arg" == "--all" ]] && stop_all=true
+  done
+
+  if _gateway_running; then
+    kill "$(cat "$PID_FILE")" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    echo "Gateway stopped."
+  else
+    echo "Gateway not running."
+  fi
+
+  [[ "$stop_all" == "true" ]] && _stop_memory
 }
 
-cmd_costs() {
-    load_token
-    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/costs/daily" | python3 -m json.tool 2>/dev/null \
-        || curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/costs/daily"
+cmd_restart() {
+  cmd_stop "$@"
+  sleep 1
+  cmd_start "$@"
 }
 
 cmd_logs() {
-    ssh "${WORKER_USER}@${WORKER}" \
-        "journalctl -u aletheia --no-pager -n ${1:-50} -f"
+  local follow=false
+  for arg in "$@"; do
+    [[ "$arg" == "-f" || "$arg" == "--follow" ]] && follow=true
+  done
+
+  if [[ ! -f "$LOG_FILE" ]]; then
+    echo "No log file at $LOG_FILE"
+    exit 1
+  fi
+
+  if [[ "$follow" == "true" ]]; then
+    tail -f "$LOG_FILE"
+  else
+    tail -100 "$LOG_FILE"
+  fi
 }
 
-cmd_status() {
-    load_token
-    echo "=== Health ==="
-    cmd_health
+cmd_install() {
+  local install_dir="$HOME/.local/bin"
+  mkdir -p "$install_dir"
+  chmod +x "$ALETHEIA_HOME/bin/aletheia"
+  ln -sf "$ALETHEIA_HOME/bin/aletheia" "$install_dir/aletheia"
+  echo "Installed: $install_dir/aletheia → $ALETHEIA_HOME/bin/aletheia"
+
+  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$install_dir"; then
     echo ""
-    echo "=== Agents ==="
-    curl -sf -H "Authorization: Bearer ${ALETHEIA_TOKEN}" \
-        "http://${WORKER}:18789/api/agents" 2>/dev/null \
-        | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for a in data.get('agents', []):
-    emoji = a.get('emoji', '')
-    print(f\"  {emoji} {a['name']:12s}  ({a['id']})\")
-" 2>/dev/null || echo "  (couldn't reach gateway)"
-}
-
-cmd_token() {
-    mkdir -p "$(dirname "$TOKEN_FILE")"
-    if [[ -n "${1:-}" ]]; then
-        echo -n "$1" > "$TOKEN_FILE"
-        chmod 600 "$TOKEN_FILE"
-        echo "Token saved to $TOKEN_FILE"
-    else
-        echo "Usage: aletheia token <your-token>"
-        echo "Stores at: $TOKEN_FILE"
-    fi
+    echo "Add to PATH (add to your shell profile):"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "  # Fish: fish_add_path ~/.local/bin"
+  fi
 }
 
 cmd_help() {
-    cat <<'EOF'
-aletheia — Aletheia system CLI
+  cat <<EOF
+aletheia — unified CLI for the Aletheia gateway
 
-Usage: aletheia <command> [args]
+Lifecycle:
+  start [--no-memory]    Start memory services + gateway, open browser
+  stop [--all]           Stop gateway (--all also stops memory containers)
+  restart                Stop then start
+  logs [-f]              Show gateway logs (-f to follow)
+  tui                    Launch terminal UI
 
-Commands:
-  tui              Launch the terminal UI (connects via SSH)
-  status           System overview (health + agents)
-  health           Gateway health check
-  agents           List agents
-  costs            Daily cost summary
-  logs [n]         Tail gateway logs (default: 50 lines, follows)
-  token <tok>      Save API token to ~/.config/aletheia/token
+Admin (requires running gateway):
+  status                 System health and agent list
+  doctor [--fix]         Validate config and connectivity
+  send -a <id> -m "…"   Send message to agent
+  sessions [-a <id>]     List sessions
+  cron list|trigger      Manage cron jobs
+  update [version]       Self-update (--edge, --check, --rollback)
+  agent create           Scaffold new agent
+  plugins list           List loaded plugins
 
-No arguments launches the TUI.
+Other:
+  install                (Re)install CLI to ~/.local/bin
+  help                   Show this help
+
+Environment:
+  ALETHEIA_HOME          Override repo root (default: resolved from script location)
+  ALETHEIA_CONFIG_DIR    Override config directory (default: ~/.aletheia)
 EOF
 }
 
-# --- Dispatch ---
+COMMAND="${1:-}"
+shift || true
 
-case "${1:-tui}" in
-    tui)        shift 2>/dev/null || true; cmd_tui "$@" ;;
-    health)     cmd_health ;;
-    agents)     cmd_agents ;;
-    costs)      cmd_costs ;;
-    logs)       shift; cmd_logs "${1:-50}" ;;
-    status)     cmd_status ;;
-    token)      shift; cmd_token "${1:-}" ;;
-    help|--help|-h) cmd_help ;;
-    *)          echo "Unknown command: $1"; cmd_help; exit 1 ;;
+case "$COMMAND" in
+  start)    cmd_start "$@" ;;
+  stop)     cmd_stop "$@" ;;
+  restart)  cmd_restart "$@" ;;
+  logs)     cmd_logs "$@" ;;
+  tui)      exec node "$ENTRY" tui "$@" ;;
+  install)  cmd_install ;;
+  ""|-h|--help|help) cmd_help ;;
+  *)        exec node "$ENTRY" "$COMMAND" "$@" ;;
 esac

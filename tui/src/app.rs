@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use crossterm::event::{Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+use crossterm::event::{
+    Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind,
+};
 use ratatui::Frame;
 use tokio::sync::mpsc;
 
@@ -11,7 +13,7 @@ use crate::api::streaming;
 use crate::api::types::*;
 use crate::config::Config;
 use crate::events::{Event, StreamEvent};
-use crate::msg::{Msg, OverlayKind};
+use crate::msg::{ErrorToast, Msg, OverlayKind};
 use crate::theme::ThemePalette;
 use crate::view;
 
@@ -164,6 +166,24 @@ pub struct App {
 
     // Tick counter for spinner animation
     pub tick_count: u64,
+
+    // Error toast (auto-dismiss after 5s)
+    pub error_toast: Option<ErrorToast>,
+
+    // @mention tab completion state
+    pub tab_completion: Option<TabCompletion>,
+
+    // Terminal size for responsive layout
+    pub terminal_width: u16,
+    pub terminal_height: u16,
+}
+
+#[derive(Debug)]
+pub struct TabCompletion {
+    pub prefix: String,
+    pub candidates: Vec<String>,
+    pub index: usize,
+    pub insert_start: usize,
 }
 
 impl App {
@@ -201,6 +221,10 @@ impl App {
             cached_markdown_text: String::new(),
             cached_markdown_lines: Vec::new(),
             tick_count: 0,
+            error_toast: None,
+            tab_completion: None,
+            terminal_width: 120,
+            terminal_height: 40,
         };
 
         // Connect and authenticate
@@ -419,6 +443,31 @@ impl App {
             TermEvent::Mouse(mouse) => match mouse.kind {
                 MouseEventKind::ScrollUp => Some(Msg::ScrollUp),
                 MouseEventKind::ScrollDown => Some(Msg::ScrollDown),
+                MouseEventKind::Down(MouseButton::Left) => {
+                    // Check if click is in sidebar area
+                    let sidebar = crate::view::SIDEBAR_RECT.load_rect();
+                    if sidebar.width > 0
+                        && mouse.column < sidebar.x + sidebar.width
+                        && mouse.row >= sidebar.y
+                    {
+                        // Each agent takes 1-2 rows, starting after 1 row padding
+                        let mut y = sidebar.y + 1;
+                        for agent in &self.agents {
+                            let row_count = if agent.active_tool.is_some()
+                                || agent.compaction_stage.is_some()
+                            {
+                                2u16
+                            } else {
+                                1
+                            };
+                            if mouse.row >= y && mouse.row < y + row_count {
+                                return Some(Msg::FocusAgent(agent.id.clone()));
+                            }
+                            y += row_count;
+                        }
+                    }
+                    None
+                }
                 _ => None,
             },
             TermEvent::Resize(w, h) => Some(Msg::Resize(w, h)),
@@ -445,6 +494,19 @@ impl App {
             (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
+                Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
+
+            // Tab completion for @mentions
+            (_, KeyCode::Tab) => {
+                if self.input.text.contains('@') {
+                    Some(Msg::CharInput('\t')) // Signal tab-complete via special char
+                } else {
+                    None
+                }
             }
 
             // Scroll
@@ -641,9 +703,16 @@ impl App {
         match msg {
             // --- Input ---
             Msg::CharInput(c) => {
-                self.input.text.insert(self.input.cursor, c);
-                self.input.cursor += c.len_utf8();
-                self.input.history_index = None;
+                if c == '\t' {
+                    // Tab completion for @mentions
+                    self.handle_tab_completion();
+                } else {
+                    // Clear tab completion state on any other input
+                    self.tab_completion = None;
+                    self.input.text.insert(self.input.cursor, c);
+                    self.input.cursor += c.len_utf8();
+                    self.input.history_index = None;
+                }
             }
             Msg::Backspace => {
                 if self.input.cursor > 0 {
@@ -856,7 +925,10 @@ impl App {
                 }
                 self.overlay = None;
             }
-            Msg::Resize(_, _) => {} // ratatui handles this
+            Msg::Resize(w, h) => {
+                self.terminal_width = w;
+                self.terminal_height = h;
+            }
 
             // --- Overlay interaction ---
             Msg::OverlayUp => match &mut self.overlay {
@@ -924,7 +996,41 @@ impl App {
 
             // --- SSE ---
             Msg::SseConnected => {
+                let was_disconnected = !self.sse_connected;
                 self.sse_connected = true;
+
+                // On reconnect, reload agent state to sync any missed events
+                if was_disconnected {
+                    tracing::info!("SSE reconnected — reloading agent state");
+                    if let Ok(agents) = self.client.agents().await {
+                        // Preserve notification state across reload
+                        let notifications: HashMap<String, bool> = self
+                            .agents
+                            .iter()
+                            .map(|a| (a.id.clone(), a.has_notification))
+                            .collect();
+
+                        self.agents = agents
+                            .into_iter()
+                            .map(|a| {
+                                let notif = notifications.get(&a.id).copied().unwrap_or(false);
+                                AgentState {
+                                    id: a.id,
+                                    name: a.name,
+                                    emoji: a.emoji,
+                                    status: AgentStatus::Idle,
+                                    active_tool: None,
+                                    tool_started_at: None,
+                                    sessions: Vec::new(),
+                                    compaction_stage: None,
+                                    has_notification: notif,
+                                }
+                            })
+                            .collect();
+                    }
+                    // Reload focused session history
+                    self.load_focused_session().await;
+                }
             }
             Msg::SseDisconnected => {
                 self.sse_connected = false;
@@ -1180,6 +1286,7 @@ impl App {
             }
             Msg::StreamError(msg) => {
                 tracing::error!("stream error: {msg}");
+                self.error_toast = Some(ErrorToast::new(msg));
                 self.active_turn_id = None;
                 self.stream_rx = None;
             }
@@ -1231,12 +1338,52 @@ impl App {
             }
             Msg::AuthResult(_) | Msg::ApiError(_) => {}
 
+            // --- New session ---
+            Msg::NewSession => {
+                if let Some(ref agent_id) = self.focused_agent.clone() {
+                    // Create a visual separator in messages
+                    self.messages.clear();
+                    self.scroll_to_bottom();
+
+                    // Create new session via API
+                    let session_key = format!("tui-{}", chrono_compact_now());
+                    let client = self.client.clone();
+                    let agent_id = agent_id.clone();
+                    let key = session_key.clone();
+                    match client.create_session(&agent_id, &key).await {
+                        Ok(session) => {
+                            self.focused_session_id = Some(session.id.clone());
+                            if let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
+                                agent.sessions.push(session);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("failed to create session: {e}");
+                            self.error_toast =
+                                Some(ErrorToast::new(format!("New session failed: {e}")));
+                        }
+                    }
+                }
+            }
+
+            // --- Error toasts ---
+            Msg::ShowError(msg) => {
+                self.error_toast = Some(ErrorToast::new(msg));
+            }
+            Msg::DismissError => {
+                self.error_toast = None;
+            }
+
             // --- Quit ---
             Msg::Quit => self.should_quit = true,
 
             // --- Tick ---
             Msg::Tick => {
                 self.tick_count = self.tick_count.wrapping_add(1);
+                // Auto-dismiss expired error toasts
+                if self.error_toast.as_ref().is_some_and(|t| t.is_expired()) {
+                    self.error_toast = None;
+                }
             }
         }
     }
@@ -1302,6 +1449,55 @@ impl App {
         self.stream_rx = Some(rx);
     }
 
+    fn handle_tab_completion(&mut self) {
+        // Find the @mention prefix before cursor
+        let text_before_cursor = &self.input.text[..self.input.cursor];
+        if let Some(at_pos) = text_before_cursor.rfind('@') {
+            let prefix = &text_before_cursor[at_pos + 1..];
+
+            if let Some(ref mut tc) = self.tab_completion {
+                // Already completing — cycle to next candidate
+                if tc.prefix == prefix || (!tc.candidates.is_empty() && tc.insert_start == at_pos) {
+                    tc.index = (tc.index + 1) % tc.candidates.len();
+                    let candidate = &tc.candidates[tc.index];
+
+                    // Replace from @ to cursor with @candidate
+                    self.input
+                        .text
+                        .replace_range(at_pos..self.input.cursor, &format!("@{} ", candidate));
+                    self.input.cursor = at_pos + 1 + candidate.len() + 1;
+                    return;
+                }
+            }
+
+            // Build candidate list from agent names
+            let candidates: Vec<String> = self
+                .agents
+                .iter()
+                .filter(|a| {
+                    a.id.starts_with(prefix)
+                        || a.name.to_lowercase().starts_with(&prefix.to_lowercase())
+                })
+                .map(|a| a.id.clone())
+                .collect();
+
+            if !candidates.is_empty() {
+                let first = candidates[0].clone();
+                self.tab_completion = Some(TabCompletion {
+                    prefix: prefix.to_string(),
+                    candidates,
+                    index: 0,
+                    insert_start: at_pos,
+                });
+                // Replace prefix with first match
+                self.input
+                    .text
+                    .replace_range(at_pos..self.input.cursor, &format!("@{} ", first));
+                self.input.cursor = at_pos + 1 + first.len() + 1;
+            }
+        }
+    }
+
     fn scroll_to_bottom(&mut self) {
         self.scroll_offset = 0;
         self.auto_scroll = true;
@@ -1351,6 +1547,16 @@ impl App {
     pub fn view(&self, frame: &mut Frame) {
         view::render(self, frame);
     }
+}
+
+/// Generate a compact timestamp for session key names (no external dep).
+fn chrono_compact_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("{:x}", secs)
 }
 
 /// Extract only text content from a JSON array of Anthropic content blocks.

@@ -47,9 +47,9 @@ export interface PlanningPhase {
   plan: unknown | null;
   status: "pending" | "executing" | "complete" | "failed" | "skipped";
   phaseOrder: number;
+  verificationResult?: VerificationResult | null;
   createdAt: string;
   updatedAt: string;
-  verificationResult: VerificationResult | null;
 }
 
 export interface PlanningRequirement {
@@ -67,24 +67,6 @@ export interface PlanningRequirement {
   updatedAt: string;
 }
 
-export interface VerificationGap {
-  criterion: string;
-  found: string;
-  expected: string;
-  proposedFix: string;
-}
-
-export type VerificationStatus = "met" | "partially-met" | "not-met";
-
-export interface VerificationResult {
-  status: VerificationStatus;
-  summary: string;
-  gaps: VerificationGap[];
-  verifiedAt: string;
-  overridden?: boolean;
-  overrideNote?: string;
-}
-
 export interface PlanningCheckpoint {
   id: string;
   projectId: string;
@@ -93,9 +75,6 @@ export interface PlanningCheckpoint {
   decision: string | null;
   context: Record<string, unknown>;
   createdAt: string;
-  riskLevel: "low" | "medium" | "high";
-  autoApproved: boolean;
-  userNote: string | null;
 }
 
 export interface PlanningResearch {
@@ -108,17 +87,38 @@ export interface PlanningResearch {
   createdAt: string;
 }
 
+// Phase 6+ stubs — populated when execution/verification phases are complete
 export interface SpawnRecord {
   id: string;
   projectId: string;
   phaseId: string;
+  agentSessionId: string;
+  status: "pending" | "running" | "complete" | "failed" | "done" | "skipped" | "zombie";
+  result: string | null;
+  wave: number;
   waveNumber: number;
-  sessionKey: string | null;
-  status: "pending" | "running" | "done" | "failed" | "skipped" | "zombie";
-  errorMessage: string | null;
-  partialOutput: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VerificationGap {
+  requirement?: string;
+  criterion?: string;
+  status: "met" | "partially-met" | "not-met";
+  detail?: string;
+  proposedFix?: string;
+}
+
+export interface VerificationResult {
+  phaseId?: string;
+  overallStatus?: "met" | "partially-met" | "not-met";
+  status?: "met" | "partially-met" | "not-met" | undefined;
+  gaps: VerificationGap[];
+  summary: string;
+  verifiedAt?: string | undefined;
+  overridden?: boolean | undefined;
+  overrideNote?: string | undefined;
 }

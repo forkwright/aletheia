@@ -1,3 +1,8 @@
+---
+tools: [web_fetch]
+domains: [writing, research]
+---
+
 # Summarize Skill
 
 Summarize long-form content: articles, research papers, podcasts, videos.

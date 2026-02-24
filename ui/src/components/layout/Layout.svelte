@@ -41,7 +41,7 @@
       // Check setup state before auth — wizard runs before any auth concerns
       const setupStatus = await fetch("/api/setup/status")
         .then((r) => r.json() as Promise<{ setupComplete: boolean }>)
-        .catch(() => ({ setupComplete: true }));
+        .catch(() => ({ setupComplete: false }));
 
       if (!setupStatus.setupComplete) {
         authState = "needs-setup";
@@ -66,8 +66,9 @@
   })();
 
   async function handleSetupComplete() {
-    // Re-run auth determination now that setup is done
+    // Load agents before transitioning so isFirstRun() is false when authenticated renders
     authState = "loading";
+    await loadAgents();
     try {
       const mode = await fetchAuthMode();
       if (mode.sessionAuth) {
@@ -81,7 +82,6 @@
     } catch {
       authState = getToken() ? "authenticated" : "token-setup";
     }
-    await loadAgents();
   }
 
   // Handle session expiry — redirect to login

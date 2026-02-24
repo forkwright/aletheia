@@ -21,7 +21,8 @@
   let createdEmoji = $state("🤖");
 
   function deriveId(name: string): string {
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+    return id || "agent";
   }
 
   async function autoDetectCredentials() {
@@ -77,12 +78,19 @@
     const emoji = agentEmoji.trim() || "🤖";
     try {
       await createAgent(id, agentName.trim(), emoji);
-      await fetch("/api/setup/complete", { method: "POST" });
+      const completeRes = await fetch("/api/setup/complete", { method: "POST" });
+      if (!completeRes.ok) {
+        const data = await completeRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "Failed to finalize setup");
+      }
       createdName = agentName.trim();
       createdEmoji = emoji;
       step = "ready";
     } catch (err) {
-      agentError = err instanceof Error ? err.message : String(err);
+      const msg = err instanceof Error ? err.message : String(err);
+      agentError = msg.includes("409") || msg.toLowerCase().includes("already exists")
+        ? `An agent named "${agentName.trim()}" already exists — try a different name.`
+        : msg;
     } finally {
       agentCreating = false;
     }
@@ -116,7 +124,7 @@
         {credChecking ? "Detecting..." : "Auto-detect from Claude Code"}
       </button>
 
-      {#if credError && !showManual}
+      {#if credError && !showManual && !credChecking}
         <p class="error">{credError}</p>
       {/if}
 

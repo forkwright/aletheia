@@ -16,6 +16,7 @@ import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
 import type { MemoryFlushTarget } from "../../distillation/hooks.js";
+import type { SkillRegistry } from "../../organon/skills.js";
 import type { DianoiaOrchestrator } from "../../dianoia/orchestrator.js";
 
 // --- Plans ---
@@ -76,6 +77,7 @@ export interface TurnOutcome {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  credentialLabel?: string;
   error?: string;
 }
 
@@ -147,10 +149,12 @@ export interface RuntimeServices {
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   skillsSection?: string;
+  skills?: SkillRegistry;
   approvalGate?: ApprovalGate;
   approvalMode?: ApprovalMode;
   memoryTarget?: MemoryFlushTarget;
   planningOrchestrator?: DianoiaOrchestrator;
+  executionOrchestrator?: import("../../dianoia/execution.js").ExecutionOrchestrator;
 }
 
 /** A pipeline stage that transforms TurnState. Return false to short-circuit. */

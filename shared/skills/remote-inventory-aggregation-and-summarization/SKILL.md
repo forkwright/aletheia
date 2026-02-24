@@ -1,3 +1,8 @@
+---
+tools: [web_fetch]
+domains: [research]
+---
+
 # Remote Inventory Aggregation and Summarization
 Remotely access distributed inventory files on a server, aggregate their contents, and generate a consolidated summary document.
 

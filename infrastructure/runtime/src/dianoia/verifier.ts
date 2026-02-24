@@ -66,17 +66,17 @@ export class GoalBackwardVerifier {
       const stepId = generateId("step");
       const plan: PhasePlan & { id: string; name: string } = {
         id: planId,
-        name: `Fix: ${gap.criterion}`,
+        name: `Fix: ${gap.criterion ?? 'unknown'}`,
         steps: [
           {
             id: stepId,
-            description: gap.criterion,
-            subtasks: [gap.proposedFix],
+            description: gap.criterion ?? "",
+            subtasks: [gap.proposedFix ?? ""],
             dependsOn: [],
           },
         ],
         dependencies: [phaseId],
-        acceptanceCriteria: [gap.proposedFix],
+        acceptanceCriteria: [gap.proposedFix ?? ""],
       };
       return plan;
     });

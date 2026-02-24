@@ -2,47 +2,32 @@
 
 Production setup for running Aletheia as a persistent service.
 
-## Service Account
-
-```bash
-sudo useradd -r -m -s /bin/bash aletheia
-sudo -u aletheia mkdir -p ~/.aletheia/credentials
-```
-
 ## Gateway Service
 
-`/etc/systemd/system/aletheia.service`:
-
-```ini
-[Unit]
-Description=Aletheia Gateway
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=aletheia
-Group=aletheia
-WorkingDirectory=/path/to/aletheia
-EnvironmentFile=/path/to/aletheia/shared/config/aletheia.env
-ExecStart=/usr/bin/node /path/to/aletheia/infrastructure/runtime/aletheia.mjs gateway
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
+Install as a user systemd service (no root required):
 
 ```bash
-sudo systemctl daemon-reload && sudo systemctl enable --now aletheia
+mkdir -p ~/.config/systemd/user
+cp config/services/aletheia.service ~/.config/systemd/user/aletheia.service
+systemctl --user daemon-reload
+systemctl --user enable --now aletheia
 ```
+
+The service file uses `%h` (home directory) specifiers. Create the env file it expects:
+
+```bash
+mkdir -p ~/.aletheia
+echo "ALETHEIA_ROOT=/path/to/aletheia" > ~/.aletheia/env
+```
+
+Alternatively, use `aletheia start` for process-managed startup without systemd.
 
 ## Signal
 
 ### Container (recommended)
 
 ```bash
-docker compose up -d    # Uses docker-compose.yml in repo root
+podman compose up -d    # Uses docker-compose.yml in repo root
 ```
 
 ### Native
@@ -60,26 +45,25 @@ cd infrastructure/memory/sidecar
 uv venv && source .venv/bin/activate && uv pip install -e .
 ```
 
-`/etc/systemd/system/aletheia-memory.service`:
+To run as a user service, create `~/.config/systemd/user/aletheia-memory.service`:
 
 ```ini
 [Unit]
 Description=Aletheia Memory Sidecar
-After=network-online.target docker.service
+After=network-online.target
 
 [Service]
 Type=simple
-User=aletheia
-WorkingDirectory=/path/to/aletheia/infrastructure/memory/sidecar
-EnvironmentFile=/path/to/aletheia/shared/config/aletheia.env
-ExecStart=/path/to/sidecar/.venv/bin/uvicorn aletheia_memory.app:app --host 127.0.0.1 --port 8230
+WorkingDirectory=%h/aletheia/infrastructure/memory/sidecar
+EnvironmentFile=%h/.aletheia/env
+ExecStart=%h/aletheia/infrastructure/memory/sidecar/.venv/bin/uvicorn aletheia_memory.app:app --host 127.0.0.1 --port 8230
 Restart=on-failure
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 ```
 
-Dependencies: `cd infrastructure/memory && docker compose up -d` (Qdrant + Neo4j).
+Dependencies: `cd infrastructure/memory && podman compose up -d` (Qdrant + Neo4j).
 
 Enable the memory plugin in gateway config:
 
@@ -103,7 +87,7 @@ Served at `/ui` by the gateway. Hashed assets get immutable cache headers.
 ## Langfuse (optional)
 
 ```bash
-cd infrastructure/langfuse && docker compose up -d    # Port 3100
+cd infrastructure/langfuse && podman compose up -d    # Port 3100
 ```
 
 Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `aletheia.env`.
@@ -129,10 +113,10 @@ curl -s http://localhost:18789/api/metrics  # Full metrics
 
 ## Troubleshooting
 
-**Service won't start:** `journalctl -u aletheia -n 50 --no-pager`
+**Service won't start:** `journalctl --user -u aletheia -n 50 --no-pager`
 
 **Signal not receiving:** Check signal-cli (`curl localhost:8080/v1/about`), verify phone number matches config, check DM policy.
 
-**Memory extraction failing:** Check sidecar (`journalctl -u aletheia-memory -f`), verify Qdrant/Neo4j running.
+**Memory extraction failing:** Check sidecar logs (`journalctl --user -u aletheia-memory -f`), verify Qdrant/Neo4j running.
 
-**Config changes:** Require `sudo systemctl restart aletheia`.
+**Config changes:** `systemctl --user restart aletheia` or `aletheia restart`.

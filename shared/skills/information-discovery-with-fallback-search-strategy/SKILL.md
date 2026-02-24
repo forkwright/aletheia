@@ -1,3 +1,8 @@
+---
+tools: [web_search, web_fetch]
+domains: [research]
+---
+
 # Information Discovery with Fallback Search Strategy
 Search for information using multiple strategies when initial methods fail, progressively broadening scope and switching approaches.
 

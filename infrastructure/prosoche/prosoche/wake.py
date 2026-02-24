@@ -11,10 +11,6 @@ from loguru import logger
 
 from .scoring import NousScore
 
-# Prosoche config uses "syn" but runtime config uses "main" for Syn (legacy)
-AGENT_ID_MAP = {"syn": "main"}
-
-
 def _signal_fingerprint(signals: list) -> str:
     """Create a hash of the urgent signal summaries to detect duplicates."""
     key = "|".join(sorted(s.summary for s in signals))
@@ -94,12 +90,12 @@ async def trigger_wake(score: NousScore, config: dict) -> bool:
         text_parts.append("Staged context available — check PROSOCHE.md for details.")
 
     event_text = "\n".join(text_parts)
-    agent_id = AGENT_ID_MAP.get(score.nous_id, score.nous_id)
+    agent_id = score.nous_id
 
     payload = json.dumps({
         "agentId": agent_id,
         "message": event_text,
-        "sessionKey": "prosoche",
+        "sessionKey": "cron:prosoche",
     }).encode()
 
     url = f"{base_url}/api/sessions/send"

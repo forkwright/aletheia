@@ -17,10 +17,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Project Context & API** - Conversational project gathering, API routes, integration wiring (completed 2026-02-24)
 - [x] **Phase 4: Research Pipeline** - Parallel researcher spawning, synthesis, timeout handling (completed 2026-02-24)
 - [x] **Phase 5: Requirements Definition** - Interactive scoping, REQ-ID assignment, persistence, coverage validation (completed 2026-02-24)
-- [x] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker (completed 2026-02-24)
-- [x] **Phase 7: Execution Orchestration** - Wave-based parallel execution, dependency graph, restart resilience (completed 2026-02-24)
-- [x] **Phase 8: Verification & Checkpoints** - Goal-backward verification, risk-based checkpoints, audit trail (completed 2026-02-24)
-- [x] **Phase 9: Polish & Migration** - Spec document, legacy tool deprecation, CONTRIBUTING.md update, final lint/type pass (completed 2026-02-24)
+- [ ] **Phase 6: Roadmap & Phase Planning** - Roadmap generation from requirements, phase plan production, plan checker
+- [ ] **Phase 7: Execution Orchestration** - Wave-based parallel execution, dependency graph, restart resilience
+- [ ] **Phase 8: Verification & Checkpoints** - Goal-backward verification, risk-based checkpoints, audit trail
+- [ ] **Phase 9: Polish & Migration** - Spec document, legacy tool deprecation, CONTRIBUTING.md update, final lint/type pass
 
 ## Phase Details
 
@@ -121,7 +121,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [x] 06-01-PLAN.md — RoadmapOrchestrator class (TDD): roadmap generation, coverage validation, phase planning, checker loop, depth calibration
+- [ ] 06-01-PLAN.md — RoadmapOrchestrator class (TDD): roadmap generation, coverage validation, phase planning, checker loop, depth calibration
 - [ ] 06-02-PLAN.md — plan_roadmap tool (4 actions) and orchestrator methods (completeRoadmap, advanceToExecution, listPhases, getPhase)
 - [ ] 06-03-PLAN.md — API route /roadmap, dianoia/index.ts exports, aletheia.ts registration
 
@@ -135,13 +135,12 @@ Plans:
   3. Subagent spawn records are stored in SQLite (survive restart, enable zombie detection)
   4. Failed plans cascade-skip dependent plans while non-dependent plans continue executing
   5. Execution can be paused at phase boundaries and resumed in a later session; progress is accessible via API
-**Plans**: 4 plans
+**Plans**: TBD
 
 Plans:
-- [x] 07-01-PLAN.md — V24 migration (spawn records), PlanningStore spawn CRUD, ExecutionOrchestrator (TDD): wave computation, cascade-skip, resume logic
-- [x] 07-02-PLAN.md — plan_execute tool (7 actions), DianoiaOrchestrator FSM methods (advanceToVerification, pauseExecution, resumeExecution), pause_between_phases config
-- [x] 07-03-PLAN.md — Execution API routes (/execution, /phases/:phaseId/status), dianoia/index.ts exports, aletheia.ts wiring
-- [x] 07-04-PLAN.md — Gap closure: isPaused() reads pause_between_phases config; reapZombies() cascade-skips dependents (completed 2026-02-24)
+- [ ] 07-01: Wave executor and dependency graph
+- [ ] 07-02: SQLite-backed spawn records and restart resilience
+- [ ] 07-03: Execution status API and pause/resume
 
 ### Phase 8: Verification & Checkpoints
 **Goal**: Completed phases are verified against their goals, and human-in-loop checkpoints gate high-risk decisions
@@ -153,16 +152,15 @@ Plans:
   3. Checkpoints fire on the event bus as planning:checkpoint events with risk-based triggering (low-cost reversible auto-approved, high-cost requires human input)
   4. All checkpoint decisions are persisted to planning_checkpoints table with full audit trail including user notes
   5. In YOLO mode, all checkpoints except blocking errors are auto-approved; verification can be disabled per-project
-**Plans**: 4 plans
+**Plans**: TBD
 
 Plans:
-- [ ] 08-01-PLAN.md — v25 migration, VerificationResult types, store methods, planning:checkpoint EventName, test makeDb() updates
-- [ ] 08-02-PLAN.md — GoalBackwardVerifier class (TDD): verify(), generateGapPlans(), verifier-disabled path
-- [ ] 08-03-PLAN.md — CheckpointSystem class (TDD): 3-tier evaluate(), YOLO mode, true-blocker category, audit logging
-- [ ] 08-04-PLAN.md — plan_verify tool (5 actions), DianoiaOrchestrator FSM methods, dianoia/index.ts exports, aletheia.ts wiring
+- [ ] 08-01: GoalBackwardVerifier agent
+- [ ] 08-02: Risk-based checkpoint system
+- [ ] 08-03: Checkpoint persistence and YOLO mode
 
 ### Phase 9: Polish & Migration
-**Goal**: Dianoia is documented, linted, type-clean, and integration-tested — ready for PR
+**Goal**: Dianoia is documented, linted, type-clean, and integration-tested -- ready for PR
 **Depends on**: Phase 8
 **Requirements**: DOCS-01, DOCS-02, DOCS-03, TEST-04, TEST-05, TEST-06
 **Success Criteria** (what must be TRUE):
@@ -171,13 +169,12 @@ Plans:
   3. Integration test for the full planning pipeline passes (mock sessions_dispatch, exercise idle through complete)
   4. `npx tsc --noEmit` passes with zero new type errors across the entire codebase
   5. `npx oxlint src/` passes with zero new lint errors across the entire codebase
-**Plans**: 4 plans
+**Plans**: TBD
 
 Plans:
-- [x] 09-01-PLAN.md — Spec document docs/specs/31_dianoia.md (7 sections: Problem, Design, SQLite schema, state machine, API surface, Implementation Order, Success Criteria) (completed 2026-02-24)
-- [ ] 09-02-PLAN.md — Integration test dianoia.integration.test.ts (idle → complete happy path + blocked failure path)
-- [ ] 09-03-PLAN.md — CONTRIBUTING.md Dianoia section (4 gotchas) + oxlint fixes + tsc gate + index.ts V24/V25 exports
-- [ ] 09-04-PLAN.md — Status pill UI: PlanningStatusLine.svelte + PlanningPanel.svelte + ChatView.svelte wiring
+- [ ] 09-01: Spec document (31_dianoia.md)
+- [ ] 09-02: Integration test (full pipeline)
+- [ ] 09-03: Final type-check, lint, and CONTRIBUTING.md update
 
 ## Progress
 
@@ -193,7 +190,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 | 3. Project Context & API | 4/4 | Complete    | 2026-02-24 |
 | 4. Research Pipeline | 2/2 | Complete    | 2026-02-24 |
 | 5. Requirements Definition | 2/2 | Complete   | 2026-02-24 |
-| 6. Roadmap & Phase Planning | 3/3 | Complete   | 2026-02-24 |
-| 7. Execution Orchestration | 4/4 | Complete | 2026-02-24 |
-| 8. Verification & Checkpoints | 4/4 | Complete   | 2026-02-24 |
-| 9. Polish & Migration | 4/4 | Complete | 2026-02-24 |
+| 6. Roadmap & Phase Planning | 0/3 | Not started | - |
+| 7. Execution Orchestration | 0/3 | Not started | - |
+| 8. Verification & Checkpoints | 0/3 | Not started | - |
+| 9. Polish & Migration | 0/3 | Not started | - |

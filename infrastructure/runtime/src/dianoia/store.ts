@@ -248,18 +248,6 @@ export class PlanningStore {
     update();
   }
 
-  updatePhaseVerificationResult(id: string, result: VerificationResult): void {
-    const update = this.db.transaction(() => {
-      this.db
-        .prepare(
-          `UPDATE planning_phases SET verification_result = ?,
-           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
-        )
-        .run(JSON.stringify(result), id);
-    });
-    update();
-  }
-
   // --- Requirements ---
 
   createRequirement(opts: {
@@ -354,17 +342,11 @@ export class PlanningStore {
     return this.mapCheckpoint(row);
   }
 
-  resolveCheckpoint(
-    id: string,
-    decision: string,
-    opts?: { autoApproved?: boolean; userNote?: string },
-  ): void {
+  resolveCheckpoint(id: string, decision: string, _meta?: Record<string, unknown>): void {
     const update = this.db.transaction(() => {
       this.db
-        .prepare(
-          `UPDATE planning_checkpoints SET decision = ?, auto_approved = ?, user_note = ? WHERE id = ?`,
-        )
-        .run(decision, opts?.autoApproved ? 1 : 0, opts?.userNote ?? null, id);
+        .prepare("UPDATE planning_checkpoints SET decision = ? WHERE id = ?")
+        .run(decision, id);
     });
     update();
   }
@@ -408,94 +390,73 @@ export class PlanningStore {
     return rows.map((r) => this.mapResearch(r));
   }
 
-  // --- Spawn Records ---
+  // --- Spawn Records (Phase 7+) ---
 
   createSpawnRecord(opts: {
     projectId: string;
     phaseId: string;
-    waveNumber: number;
+    agentSessionId?: string;
+    wave?: number;
+    waveNumber?: number;
   }): SpawnRecord {
     const id = generateId("spawn");
-    const insert = this.db.transaction(() => {
-      this.db
-        .prepare(
-          `INSERT INTO planning_spawn_records
-           (id, project_id, phase_id, wave_number, status)
-           VALUES (?, ?, ?, ?, 'pending')`,
-        )
-        .run(id, opts.projectId, opts.phaseId, opts.waveNumber);
-    });
-    insert();
-    return this.getSpawnRecordOrThrow(id);
-  }
+    const now = new Date().toISOString();
+    const waveNum = opts.waveNumber ?? opts.wave ?? 0;
+    const agentSessionId = opts.agentSessionId ?? "";
 
-  getSpawnRecordOrThrow(id: string): SpawnRecord {
-    const row = this.db
-      .prepare(`SELECT * FROM planning_spawn_records WHERE id = ?`)
-      .get(id) as Record<string, unknown> | undefined;
-    if (!row) {
-      throw new PlanningError(`Spawn record not found: ${id}`, {
-        code: "PLANNING_SPAWN_NOT_FOUND",
-        context: { id },
-      });
-    }
-    return this.mapSpawnRecord(row);
-  }
-
-  updateSpawnRecord(
-    id: string,
-    updates: Partial<
-      Pick<
-        SpawnRecord,
-        "status" | "sessionKey" | "errorMessage" | "partialOutput" | "startedAt" | "completedAt"
-      >
-    >,
-  ): void {
-    const cols: string[] = [];
-    const vals: unknown[] = [];
-    const fieldMap: Record<string, string> = {
-      status: "status",
-      sessionKey: "session_key",
-      errorMessage: "error_message",
-      partialOutput: "partial_output",
-      startedAt: "started_at",
-      completedAt: "completed_at",
-    };
-    for (const [key, col] of Object.entries(fieldMap)) {
-      if (key in updates) {
-        cols.push(`${col} = ?`);
-        vals.push(updates[key as keyof typeof updates] ?? null);
-      }
-    }
-    if (cols.length === 0) return;
-    cols.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
-    vals.push(id);
     this.db
-      .prepare(`UPDATE planning_spawn_records SET ${cols.join(", ")} WHERE id = ?`)
-      .run(...(vals as Parameters<ReturnType<Database.Database["prepare"]>["run"]>));
+      .prepare(
+        `INSERT INTO planning_spawn_records (id, project_id, phase_id, agent_session_id, status, wave, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      )
+      .run(id, opts.projectId, opts.phaseId, agentSessionId, waveNum, now, now);
+
+    return {
+      id,
+      projectId: opts.projectId,
+      phaseId: opts.phaseId,
+      agentSessionId,
+      status: "pending",
+      result: null,
+      wave: waveNum,
+      waveNumber: waveNum,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
-  listSpawnRecords(projectId: string, phaseId?: string): SpawnRecord[] {
-    if (phaseId) {
-      return (
-        this.db
-          .prepare(
-            `SELECT * FROM planning_spawn_records WHERE project_id = ? AND phase_id = ? ORDER BY wave_number, created_at`,
-          )
-          .all(projectId, phaseId) as Record<string, unknown>[]
-      ).map((r) => this.mapSpawnRecord(r));
-    }
-    return (
-      this.db
-        .prepare(
-          `SELECT * FROM planning_spawn_records WHERE project_id = ? ORDER BY wave_number, created_at`,
-        )
-        .all(projectId) as Record<string, unknown>[]
-    ).map((r) => this.mapSpawnRecord(r));
+  updateSpawnRecord(id: string, updates: { status?: SpawnRecord["status"]; result?: string; startedAt?: string; completedAt?: string; errorMessage?: string }): void {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (updates.status !== undefined) { sets.push("status = ?"); vals.push(updates.status); }
+    if (updates.result !== undefined) { sets.push("result = ?"); vals.push(updates.result); }
+    if (updates.startedAt !== undefined) { sets.push("started_at = ?"); vals.push(updates.startedAt); }
+    if (updates.completedAt !== undefined) { sets.push("completed_at = ?"); vals.push(updates.completedAt); }
+    if (updates.errorMessage !== undefined) { sets.push("error_message = ?"); vals.push(updates.errorMessage); }
+    if (sets.length === 0) return;
+    sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    vals.push(id);
+    this.db.prepare(`UPDATE planning_spawn_records SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
   }
 
-  getDb(): Database.Database {
-    return this.db;
+  listSpawnRecords(projectId: string): SpawnRecord[] {
+    const rows = this.db
+      .prepare("SELECT * FROM planning_spawn_records WHERE project_id = ? ORDER BY wave ASC, created_at ASC")
+      .all(projectId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.mapSpawnRecord(r));
+  }
+
+  // --- Phase Verification ---
+
+  updatePhaseVerificationResult(id: string, result: VerificationResult): void {
+    this.db
+      .prepare(
+        `UPDATE planning_phases SET verification_result = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .run(JSON.stringify(result), id);
   }
 
   // --- Private mappers ---
@@ -537,14 +498,10 @@ export class PlanningStore {
     let requirements: string[];
     let successCriteria: string[];
     let plan: unknown | null;
-    let verificationResult: VerificationResult | null = null;
     try {
       requirements = JSON.parse(row["requirements"] as string) as string[];
       successCriteria = JSON.parse(row["success_criteria"] as string) as string[];
       plan = row["plan"] ? (JSON.parse(row["plan"] as string) as unknown) : null;
-      if (row["verification_result"]) {
-        verificationResult = JSON.parse(row["verification_result"] as string) as VerificationResult;
-      }
     } catch (cause) {
       throw new PlanningError("Corrupt JSON in planning_phases", {
         code: "PLANNING_STATE_CORRUPT",
@@ -562,9 +519,11 @@ export class PlanningStore {
       plan,
       status: row["status"] as PlanningPhase["status"],
       phaseOrder: row["phase_order"] as number,
+      verificationResult: row["verification_result"]
+        ? (JSON.parse(row["verification_result"] as string) as VerificationResult)
+        : null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
-      verificationResult,
     };
   }
 
@@ -603,9 +562,6 @@ export class PlanningStore {
       decision: (row["decision"] as string | null) ?? null,
       context,
       createdAt: row["created_at"] as string,
-      riskLevel: ((row["risk_level"] as string | null) ?? "low") as "low" | "medium" | "high",
-      autoApproved: row["auto_approved"] === 1,
-      userNote: (row["user_note"] as string | null) ?? null,
     };
   }
 
@@ -622,17 +578,19 @@ export class PlanningStore {
   }
 
   private mapSpawnRecord(row: Record<string, unknown>): SpawnRecord {
+    const wave = row["wave"] as number;
     return {
       id: row["id"] as string,
       projectId: row["project_id"] as string,
       phaseId: row["phase_id"] as string,
-      waveNumber: row["wave_number"] as number,
-      sessionKey: (row["session_key"] as string | null) ?? null,
+      agentSessionId: row["agent_session_id"] as string,
       status: row["status"] as SpawnRecord["status"],
-      errorMessage: (row["error_message"] as string | null) ?? null,
-      partialOutput: (row["partial_output"] as string | null) ?? null,
+      result: (row["result"] as string | null) ?? null,
+      wave,
+      waveNumber: wave,
       startedAt: (row["started_at"] as string | null) ?? null,
       completedAt: (row["completed_at"] as string | null) ?? null,
+      errorMessage: (row["error_message"] as string | null) ?? null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
     };

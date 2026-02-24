@@ -319,7 +319,7 @@ aletheia update --rollback   # Roll back to previous version
 #!/usr/bin/env bash
 set -euo pipefail
 
-ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-/path/to/aletheia}"
 RUNTIME_DIR="$ALETHEIA_ROOT/infrastructure/runtime"
 SERVICE_NAME="aletheia"
 BACKUP_DIR="$ALETHEIA_ROOT/.update-backups"
@@ -590,7 +590,7 @@ The update script writes structured progress to a log file. The API reads that f
 2. **First release:**
 
 ```bash
-cd /mnt/ssd/aletheia/infrastructure/runtime
+cd /path/to/aletheia/infrastructure/runtime
 
 # Set the version (already 0.9.0 — bump to 0.9.1 for first release)
 npm version patch -m "release: v%s"

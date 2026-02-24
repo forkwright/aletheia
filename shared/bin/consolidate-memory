@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""consolidate-memory — prune daily memory files older than retention threshold.
+
+Moves files older than --days (default 14) to memory/archive/.
+Keeps the most recent files for active reference.
+"""
+import argparse
+import os
+import re
+import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
+
+NOUS_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia") + "/nous"
+DATE_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
+
+
+def consolidate(workspace: Path, days: int, dry_run: bool = False) -> list[str]:
+    """Move memory files older than `days` to archive/. Returns list of moved files."""
+    memory_dir = workspace / "memory"
+    if not memory_dir.exists():
+        return []
+
+    archive_dir = memory_dir / "archive"
+    cutoff = datetime.now() - timedelta(days=days)
+    moved: list[str] = []
+
+    for f in sorted(memory_dir.iterdir()):
+        if not f.is_file():
+            continue
+        m = DATE_PATTERN.match(f.name)
+        if not m:
+            continue
+
+        try:
+            file_date = datetime.strptime(m.group(1), "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        if file_date < cutoff:
+            if dry_run:
+                print(f"  [dry-run] Would archive: {f.name}")
+            else:
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                dest = archive_dir / f.name
+                shutil.move(str(f), str(dest))
+                print(f"  Archived: {f.name}")
+            moved.append(f.name)
+
+    return moved
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Consolidate old daily memory files")
+    parser.add_argument("--workspace", "-w", help="Specific workspace path")
+    parser.add_argument("--all", action="store_true", help="Process all nous workspaces")
+    parser.add_argument("--days", type=int, default=14, help="Retention days (default: 14)")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be moved")
+    args = parser.parse_args()
+
+    workspaces: list[Path] = []
+
+    if args.workspace:
+        workspaces.append(Path(args.workspace))
+    elif args.all:
+        nous_root = Path(NOUS_ROOT)
+        if nous_root.exists():
+            for d in sorted(nous_root.iterdir()):
+                if d.is_dir() and (d / "memory").exists():
+                    workspaces.append(d)
+    else:
+        # Default: all workspaces
+        nous_root = Path(NOUS_ROOT)
+        if nous_root.exists():
+            for d in sorted(nous_root.iterdir()):
+                if d.is_dir() and (d / "memory").exists():
+                    workspaces.append(d)
+
+    total_moved = 0
+    for ws in workspaces:
+        print(f"Processing: {ws.name}")
+        moved = consolidate(ws, args.days, args.dry_run)
+        total_moved += len(moved)
+        if not moved:
+            print("  (nothing to archive)")
+
+    action = "would archive" if args.dry_run else "archived"
+    print(f"\nDone: {action} {total_moved} files across {len(workspaces)} workspaces")
+
+
+if __name__ == "__main__":
+    main()

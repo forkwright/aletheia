@@ -158,6 +158,7 @@ do_rollback() {
 
   log "Rolling back: $cur -> $prev_commit"
   git -C "$ALETHEIA_ROOT" checkout "$prev_commit"
+  git -C "$ALETHEIA_ROOT" switch -C main 2>/dev/null || true
 
   log "Rebuilding..."
   (cd "$RUNTIME_DIR" && npm run build) || die "Rollback build failed"

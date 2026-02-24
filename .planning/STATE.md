@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 9: Polish and Migration
+**Current focus:** Phase 5: Requirements Definition
 
 ## Current Position
 
-Phase: 9 of 9 (Polish and Migration) — COMPLETE
-Plan: 4 of 4 in current phase — all 4 plans complete
-Status: Phase 9 complete — PlanningStatusLine + PlanningPanel + ChatView wiring (09-04); TEST-05 satisfied; all 9 phases done
-Last activity: 2026-02-24 -- Phase 9 Plan 4 complete (Svelte 5 status pill UI, human-verified in running UI)
+Phase: 5 of 9 (Requirements Definition) — IN PROGRESS
+Plan: 2 of ? in current phase — 05-02 complete
+Status: Phase 5 Plan 2 complete; ready for 05-03 (if any) or Phase 6
+Last activity: 2026-02-24 -- Phase 5 Plan 2 complete (RequirementsOrchestrator, plan_requirements tool, completeRequirements, 8 new tests)
 
-Progress: [██████████] 100%
+Progress: [████░░░░░░] 47%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
-- Average duration: 4 min
-- Total execution time: 1.02 hours
+- Total plans completed: 14
+- Average duration: 3 min
+- Total execution time: 0.58 hours
 
 **By Phase:**
 
@@ -32,20 +32,12 @@ Progress: [██████████] 100%
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
-| 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
-| 07-execution-orchestration | 4/4 | 28 min | 7 min |
-| 08-verification-checkpoints | 4/4 | 13 min | 3.25 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 1 min, 3 min, 10 min, 8 min
+- Last 5 plans: 4 min, 2 min, 5 min, 1 min, 3 min
 - Trend: stable
 
 *Updated after each plan completion*
-| Phase 08-verification-checkpoints P03 | 2 | 2 tasks | 2 files |
-| Phase 08-verification-checkpoints P04 | 3 | 2 tasks | 4 files |
-| Phase 09-polish-migration P03 | 1 | 2 tasks | 4 files |
-| Phase 09-polish-migration P02 | 2 | 1 task | 1 file |
-| Phase 09-polish-migration P04 | 15 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -100,52 +92,6 @@ Recent decisions affecting current work:
 - [05-02]: Promise.resolve() wrapping used in ToolHandler.execute() (no async keyword) to satisfy oxlint require-await while returning Promise<string>
 - [05-02]: persistCategory finds MAX existing reqId number by parsing -NN suffix — enables safe re-presentation without duplicate IDs
 - [05-02]: description user-centric enforcement prefixes 'User can' only when description lacks observable action verbs — minimal intervention
-- [06-01]: depthToInstruction is a public method on RoadmapOrchestrator — directly testable without indirect dispatch
-- [06-01]: commitRoadmap stores this.db as instance field alongside this.store — required for db.transaction() wrapper spanning multiple createPhase() calls
-- [06-01]: checkPlan dispatch failure returns {pass: true} — best-effort avoids checker blocking plan generation
-- [06-01]: planPhase reads depth from store.getProjectOrThrow(projectId).config.depth — orchestrator owns depth selection
-- [06-02]: plan_roadmap generate commits roadmap draft in both interactive and yolo modes (write-on-generate); yolo additionally calls completeRoadmap immediately
-- [06-02]: plan_phases uses sequential reduce chain (not Promise.all) — PHAS-01 requires sequential phase planning
-- [06-02]: completeRoadmap and advanceToExecution on DianoiaOrchestrator (not RoadmapOrchestrator) — FSM transitions are orchestrator's domain
-- [06-03]: No additional JSON.parse in routes.ts — PlanningStore.mapPhase() already parses requirements/successCriteria from SQLite JSON strings into string[]
-- [06-03]: RoadmapOrchestrator constructed with (store.getDb(), dispatchTool) — matches ResearchOrchestrator pattern; dispatchTool already available at wiring point
-- [07-01]: ExecutionOrchestrator takes (db, dispatchTool) with db not stored as private field — passed to PlanningStore constructor only, avoids TS6138 unused-property error
-- [07-01]: PLANNING_SPAWN_NOT_FOUND added to error-codes.ts alongside other PLANNING_* codes — not inlined as string
-- [07-01]: computeWaves uses PhasePlan.dependencies (plan-to-plan), not PlanStep.dependsOn (step-to-step) as the unit of parallelism
-- [07-01]: Cascade-skip is direct-dependents-only: Plan A fails skips B (B depends A), but C (depends B) continues unless B also fails
-- [07-01]: Spawn records created BEFORE dispatch so crash-before-dispatch leaves a recoverable trace
-- [07-02]: plan_execute execute() method returns handleAction() directly (async fn) — no async keyword on outer, satisfies oxlint require-await
-- [07-02]: phaseId accepted in plan_execute input schema but not used as local — executePhase operates on projectId only (no phaseId param in actual method)
-- [07-02]: nousId/sessionId in plan_execute fall back to context fields when not provided in input — callers don't repeat context
-- [07-02]: All 7 switch cases in plan_execute wrapped in single try/catch returning JSON error — consistent error surface
-- [07-03]: executionOrchestrator stored on NousManager via setter/getter — matches planningOrchestrator pattern; server.ts retrieves via manager.getExecutionOrchestrator()
-- [07-03]: RouteDeps.executionOrchestrator uses conditional spread in server.ts — exactOptionalPropertyTypes requires this (consistent with planningOrchestrator)
-- [07-03]: Routes return 503 when executionOrchestrator not available — defensive guard matches existing planning route pattern
-- [07-04]: isPaused() combines state===blocked and pause_between_phases===true in one OR — both halt before every wave including wave 0
-- [07-04]: reapZombies reads allPhases via store.listPhases() internally — no method signature change, keeps call sites clean
-- [07-04]: Zombie cascade uses waveNumber+1 for skipped records — consistent with executePhase cascade pattern using waveIndex+1
-- [07-04]: store.createPhase() has no plan param; tests use store.updatePhasePlan() to set dependencies after creation
-- [07-04]: pause_between_phases test expects 0 dispatch calls — isPaused fires before every wave including wave 0; plan comment was incorrect
-- [08-01]: VerificationResult.overridden uses optional property (overridden?: boolean) not boolean | undefined — exactOptionalPropertyTypes compatibility
-- [08-01]: resolveCheckpoint opts is optional second arg object — backwards-compatible; existing callers unaffected
-- [08-01]: verificationResult JSON parse inside existing mapPhase() try/catch block — consistent PLANNING_STATE_CORRUPT error surface
-- [08-01]: planning:checkpoint inserted between planning:phase-complete and planning:complete in EventName union — logical event ordering
-- [08-02]: GoalBackwardVerifier constructor does not store db as private field (avoids TS6138) — matches ExecutionOrchestrator pattern
-- [08-02]: generateGapPlans returns PhasePlan & {id, name} extended shape — PhasePlan interface has no id/name; structural typing permits extra properties
-- [08-02]: verify() fallback on parse error returns partially-met with summary "(verification unavailable)" — consistent with researcher synthesis fallback
-- [08-02]: Phase re-fetched inside runVerifierAgent (not in verify()) — avoids TS6133 unused-variable when disabled branch returns early
-- [Phase 08-03]: CheckpointSystem takes (store, config) not (db, config) — store already created in createRuntime() before instantiation
-- [Phase 08-03]: true-blocker branch checked first (before riskLevel) — trueBlockerCategory presence is the discriminator, not a riskLevel value
-- [Phase 08-03]: vi.spyOn(eventBus, 'emit') preferred over getter spy pattern — simpler, consistent with orchestrator.test.ts
-- [Phase 08-04]: planningStore created as separate PlanningStore instance in createRuntime() — shared by CheckpointSystem and plan_verify tool rather than creating duplicates
-- [Phase 08-04]: plan_verify action=run calls blockOnVerificationFailure() for both not-met and partially-met — both states halt the FSM in blocked state requiring user action
-- [Phase 09-03]: checkpoint.test.ts uses PlanningStore as type-only (no new PlanningStore) — import type is correct
-- [Phase 09-03]: PLANNING_V24_MIGRATION and PLANNING_V25_MIGRATION now re-exported from dianoia/index.ts public API
-- [09-02]: Integration tests use vitest.integration.config.ts (*.integration.test.ts include) — excluded from unit suite by vitest.config.ts; pre-existing config already handles this
-- [09-02]: executePhase second param is ToolContext (not phaseId) — plan pseudocode correction to match actual ExecutionOrchestrator signature
-- [09-02]: Error dispatch path uses status: 'error' in dispatch results to trigger execution.ts failed-phase branch; ToolContext mock requires workspace field per interface
-- [Phase 09-polish-migration]: Pill polls /api/planning/projects every 5s (coarse); panel polls /:id/execution every 2.5s when open (fine-grained)
-- [Phase 09-polish-migration]: Pill hidden for complete and abandoned states — no need to show resolved projects in chat chrome
 
 ### Pending Todos
 
@@ -160,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 09-04-PLAN.md (PlanningStatusLine, PlanningPanel, ChatView wiring; TEST-05 satisfied; all 9 phases complete)
+Stopped at: Completed 05-02-PLAN.md (RequirementsOrchestrator, plan_requirements tool, completeRequirements, 8 new tests)
 Resume file: None

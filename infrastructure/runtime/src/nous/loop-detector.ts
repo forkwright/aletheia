@@ -94,7 +94,7 @@ export class LoopDetector {
       log.info(`Loop warning: ${tool} called ${repetitions}x with same input in last ${this.windowSize} calls`);
       return {
         verdict: "warn",
-        reason: `You've called "${tool}" ${repetitions} times with the same input. If you're stuck, try a different approach rather than repeating the same call.`,
+        reason: `You've called "${tool}" ${repetitions} times with the same input (halt triggers at ${this.haltThreshold}). Try a different approach.`,
         tool,
         repetitions,
       };
@@ -109,7 +109,7 @@ export class LoopDetector {
         log.info(`Error streak: ${recentErrors} consecutive tool errors`);
         return {
           verdict: "warn",
-          reason: `The last ${recentErrors} tool calls all failed. Consider stopping to reassess your approach rather than continuing to retry.`,
+          reason: `The last ${recentErrors} consecutive tool calls failed (halt triggers at ${this.consecutiveErrorThreshold * 2}). Stop and reassess rather than continuing to retry.`,
           tool: lastTool,
           repetitions: recentErrors,
         };

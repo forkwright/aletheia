@@ -6,6 +6,7 @@ import { extractSkillCandidate, saveLearnedSkill } from "../../../organon/skill-
 import { extractWorkingState } from "../../working-state.js";
 import { extractTurnFacts } from "../../turn-facts.js";
 import { resolveWorkspace } from "../../../taxis/loader.js";
+import { loadPipelineConfig } from "../../pipeline-config.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { createLogger } from "../../../koina/logger.js";
 import { getSidecarUrl, getUserId } from "../../../koina/memory-client.js";
@@ -23,6 +24,13 @@ export async function finalize(
   } = state;
 
   if (!outcome) return;
+
+  // Expire tools not used in the last N turns — frees definition token budget
+  const pipelineConfig = loadPipelineConfig(workspace);
+  const expired = services.tools.expireUnusedTools(sessionId, seq, pipelineConfig.tools.expiryTurns);
+  if (expired.length > 0) {
+    log.info(`Expired ${expired.length} unused tools for session ${sessionId}: ${expired.join(", ")}`);
+  }
 
   // Persist causal trace
   const finalTrace = trace.finalize();

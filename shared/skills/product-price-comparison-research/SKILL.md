@@ -1,3 +1,8 @@
+---
+tools: [web_search, web_fetch]
+domains: [research, finance]
+---
+
 # Product Price Comparison Research
 Research and compare prices for specific product variants across multiple retailers.
 

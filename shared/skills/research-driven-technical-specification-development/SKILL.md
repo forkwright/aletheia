@@ -1,3 +1,8 @@
+---
+tools: [web_search, web_fetch]
+domains: [research, writing]
+---
+
 # Research-Driven Technical Specification Development
 
 Systematically research emerging technologies and architectural patterns, then synthesize findings into formal technical specifications.

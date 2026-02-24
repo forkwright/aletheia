@@ -5,7 +5,7 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { PlanningPhase, PlanningProject, ProjectContext } from "./types.js";
+import type { PlanningProject, ProjectContext } from "./types.js";
 
 const log = createLogger("dianoia:orchestrator");
 
@@ -192,62 +192,62 @@ export class DianoiaOrchestrator {
     log.info(`Project complete: ${projectId}`);
   }
 
+  // --- Phase 6+ stubs: Roadmap, Execution, Verification ---
+
   completeRoadmap(projectId: string, nousId: string, sessionId: string): string {
-    this.store.updateProjectState(projectId, transition("roadmap", "ROADMAP_COMPLETE"));
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "ROADMAP_COMPLETE"));
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
-    log.info(`Roadmap complete for project ${projectId}; advancing to phase-planning`);
-    return "Roadmap committed. Starting phase planning.";
+    log.info(`Roadmap complete for project ${projectId}`);
+    return "Roadmap complete. Moving to phase planning.";
   }
 
   advanceToExecution(projectId: string, nousId: string, sessionId: string): string {
-    this.store.updateProjectState(projectId, transition("phase-planning", "PLAN_READY"));
-    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId, fromState: "phase-planning", toState: "executing" });
-    log.info(`Phase planning complete for project ${projectId}; advancing to executing`);
-    return "All phase plans ready. Moving to execution.";
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "PLAN_READY"));
+    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "phase-planning" });
+    log.info(`Advancing to execution for project ${projectId}`);
+    return "Plan ready. Advancing to execution.";
   }
 
-  advanceToVerification(projectId: string, nousId: string, sessionId: string): string {
-    this.store.updateProjectState(projectId, transition("executing", "VERIFY"));
-    eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, fromState: "executing", toState: "verifying" });
-    log.info(`Execution complete for project ${projectId}; advancing to verifying`);
-    return "Phase execution complete. Advancing to verification.";
+  advanceToVerification(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "VERIFY"));
+    log.info(`Advancing to verification for project ${projectId}`);
+    return "Execution complete. Moving to verification.";
   }
 
   advanceToNextPhase(projectId: string, nousId: string, sessionId: string): string {
-    this.store.updateProjectState(projectId, transition("verifying", "NEXT_PHASE"));
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "NEXT_PHASE"));
     eventBus.emit("planning:phase-started", { projectId, nousId, sessionId });
-    log.info("Advanced to next phase", { projectId });
-    return "Verification complete. Advancing to next phase.";
+    log.info(`Next phase started for project ${projectId}`);
+    return "Moving to next phase.";
   }
 
-  completeAllPhases(projectId: string, nousId: string, sessionId: string): void {
-    this.store.updateProjectState(projectId, transition("verifying", "ALL_PHASES_COMPLETE"));
-    eventBus.emit("planning:complete", { projectId, nousId, sessionId });
-    log.info("All phases complete", { projectId });
+  blockOnVerificationFailure(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    this.store.updateProjectState(projectId, transition(project.state, "PHASE_FAILED"));
+    log.info(`Verification failed for project ${projectId} — blocked`);
+    return "Verification failed. Project is blocked pending gap closure.";
   }
 
-  blockOnVerificationFailure(projectId: string): void {
-    this.store.updateProjectState(projectId, transition("verifying", "PHASE_FAILED"));
-    log.info("Phase verification failed — blocked", { projectId });
-  }
-
-  pauseExecution(projectId: string): void {
-    this.store.updateProjectState(projectId, transition("executing", "BLOCK"));
+  pauseExecution(projectId: string): string {
+    this.store.getProjectOrThrow(projectId); // validate exists
     log.info(`Execution paused for project ${projectId}`);
+    return `Execution paused for project ${projectId}. Resume with resumeExecution().`;
   }
 
-  resumeExecution(projectId: string, nousId: string, sessionId: string): string {
-    this.store.updateProjectState(projectId, transition("blocked", "RESUME"));
-    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId, fromState: "blocked", toState: "executing" });
+  resumeExecution(projectId: string, _nousId: string, _sessionId: string): string {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (project.state === "blocked") {
+      this.store.updateProjectState(projectId, transition(project.state, "RESUME"));
+    }
     log.info(`Execution resumed for project ${projectId}`);
-    return "Execution resumed.";
+    return `Execution resumed for project ${projectId}.`;
   }
 
-  listPhases(projectId: string): PlanningPhase[] {
+  listPhases(projectId: string): import("./types.js").PlanningPhase[] {
     return this.store.listPhases(projectId);
-  }
-
-  getPhase(phaseId: string): PlanningPhase | undefined {
-    return this.store.getPhase(phaseId);
   }
 }

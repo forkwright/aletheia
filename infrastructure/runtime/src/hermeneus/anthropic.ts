@@ -59,6 +59,7 @@ export interface TurnResult {
     cacheWriteTokens: number;
   };
   model: string;
+  credentialLabel?: string;
 }
 
 export interface MessageParam {
@@ -106,13 +107,15 @@ export type StreamingEvent =
 export class AnthropicProvider {
   private client: Anthropic;
   private isOAuth: boolean;
+  readonly label: string;
 
-  constructor(opts?: { apiKey?: string; authToken?: string }) {
+  constructor(opts?: { apiKey?: string; authToken?: string; label?: string }) {
     // Support both API key (x-api-key) and OAuth token (Bearer auth)
     // OAuth is used for Max/Pro plan routing
     const authToken = opts?.authToken ?? process.env["ANTHROPIC_AUTH_TOKEN"];
     const apiKey = opts?.apiKey ?? process.env["ANTHROPIC_API_KEY"];
 
+    this.label = opts?.label ?? "default";
     this.isOAuth = !!authToken;
     if (authToken) {
       this.client = new Anthropic({
@@ -221,6 +224,7 @@ export class AnthropicProvider {
             (usage as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0,
         },
         model: response.model,
+        credentialLabel: this.label,
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
@@ -398,6 +402,7 @@ export class AnthropicProvider {
         stopReason,
         usage,
         model: responseModel,
+        credentialLabel: this.label,
       },
     };
   }

@@ -5,14 +5,14 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${ALETHEIA_PORT:-18789}"
 
-echo "[1/5] Checking prerequisites..."
+echo "[1/6] Checking prerequisites..."
 if ! command -v node &>/dev/null; then
-  echo "Error: Node.js not found. Install from https://nodejs.org (v20+)"
+  echo "Error: Node.js not found. Install from https://nodejs.org (v22+)"
   exit 1
 fi
 NODE_MAJOR=$(node -e "process.stdout.write(process.version.slice(1).split('.')[0])")
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  echo "Error: Node.js 20+ required (found $(node --version))"
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Error: Node.js 22+ required (found $(node --version))"
   exit 1
 fi
 if ! command -v npm &>/dev/null; then
@@ -20,17 +20,17 @@ if ! command -v npm &>/dev/null; then
   exit 1
 fi
 
-echo "[2/5] Building runtime..."
+echo "[2/6] Building runtime..."
 cd "$REPO_DIR/infrastructure/runtime"
-npm install --silent
-npx tsdown --silent
+npm install 2>&1 | tail -5
+npx tsdown 2>&1 | tail -5
 
-echo "[3/5] Building UI..."
+echo "[3/6] Building UI..."
 cd "$REPO_DIR/ui"
-npm install --silent
-npm run build --silent
+npm install 2>&1 | tail -5
+npm run build 2>&1 | tail -5
 
-echo "[4/5] Writing default config..."
+echo "[4/6] Writing default config..."
 CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
 CONFIG_FILE="$CONFIG_DIR/aletheia.json"
 mkdir -p "$CONFIG_DIR"
@@ -47,14 +47,32 @@ EOF
   echo "   Created $CONFIG_FILE"
 fi
 
-echo "[5/5] Starting Aletheia..."
+echo "[5/6] Installing aletheia CLI..."
+INSTALL_DIR="$HOME/.local/bin"
+mkdir -p "$INSTALL_DIR"
+chmod +x "$REPO_DIR/bin/aletheia"
+ln -sf "$REPO_DIR/bin/aletheia" "$INSTALL_DIR/aletheia"
+echo "   Installed: aletheia → $INSTALL_DIR/aletheia"
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+  echo "   Note: add to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "         Fish: fish_add_path ~/.local/bin"
+fi
+
+echo "[6/6] Starting Aletheia..."
 ENTRY="$REPO_DIR/infrastructure/runtime/dist/entry.mjs"
 if [ ! -f "$ENTRY" ]; then
   echo "Error: Build output not found at $ENTRY — build may have failed"
   exit 1
 fi
 
-# Stop any existing process
+# Check port availability
+if lsof -iTCP:"$PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
+  OCCUPANT=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
+  echo "Error: Port $PORT is already in use (PID $OCCUPANT). Stop that process or set ALETHEIA_PORT to a different port."
+  exit 1
+fi
+
+# Stop any existing aletheia process
 if pgrep -f "entry.mjs" &>/dev/null; then
   echo "   Stopping existing gateway..."
   pkill -f "entry.mjs" 2>/dev/null || true
@@ -65,11 +83,23 @@ ALETHEIA_ROOT="$REPO_DIR" ALETHEIA_CONFIG_DIR="$CONFIG_DIR" \
   node "$ENTRY" >> /tmp/aletheia-setup.log 2>&1 &
 GATEWAY_PID=$!
 echo "   Gateway PID $GATEWAY_PID — logs: /tmp/aletheia-setup.log"
-sleep 2
 
-# Verify it started
-if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
-  echo "Error: Gateway failed to start. Check /tmp/aletheia-setup.log"
+# Wait for the HTTP listener to be ready (up to 15 seconds)
+READY=0
+for i in $(seq 1 15); do
+  if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+    echo "Error: Gateway crashed on startup. Check /tmp/aletheia-setup.log"
+    exit 1
+  fi
+  if curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$READY" -eq 0 ]; then
+  echo "Error: Gateway did not become ready within 15 seconds. Check /tmp/aletheia-setup.log"
   exit 1
 fi
 

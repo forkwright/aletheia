@@ -1,17 +1,15 @@
-import { describe, expect, it, type MockedFunction, vi } from "vitest";
+import { describe, it, expect, vi, type MockedFunction } from "vitest";
 import Database from "better-sqlite3";
 import {
   PLANNING_V20_DDL,
   PLANNING_V21_MIGRATION,
   PLANNING_V22_MIGRATION,
   PLANNING_V23_MIGRATION,
-  PLANNING_V24_MIGRATION,
-  PLANNING_V25_MIGRATION,
 } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { RoadmapOrchestrator } from "./roadmap.js";
 import type { PhaseDefinition, PhasePlan } from "./roadmap.js";
-import type { ToolContext, ToolHandler } from "../organon/registry.js";
+import type { ToolHandler, ToolContext } from "../organon/registry.js";
 import { transition } from "./machine.js";
 
 function makeDb(): Database.Database {
@@ -20,8 +18,6 @@ function makeDb(): Database.Database {
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
   db.exec(PLANNING_V23_MIGRATION);
-  db.exec(PLANNING_V24_MIGRATION);
-  db.exec(PLANNING_V25_MIGRATION);
   return db;
 }
 
@@ -57,10 +53,10 @@ function makeDispatchTool(responses: string[]): ToolHandler {
       description: "Dispatch tasks",
       input_schema: { type: "object" as const, properties: {}, required: [] },
     },
-    execute: vi.fn((_input, _context) => {
+    execute: vi.fn(async (_input, _context) => {
       const response = responses[callCount] ?? responses[responses.length - 1]!;
       callCount++;
-      return Promise.resolve(response);
+      return response;
     }) as MockedFunction<ToolHandler["execute"]>,
   };
 }
@@ -419,6 +415,8 @@ describe("RoadmapOrchestrator.planPhase() — plan_check=true, checker fails 3 t
 describe("depthToInstruction()", () => {
   it("quick returns instruction containing '1-3'", () => {
     const orch = new RoadmapOrchestrator(makeDb(), makeDispatchTool([]));
+    // Access via public or private - test via generateRoadmap indirectly isn't feasible
+    // Instead, expose depthToInstruction as a public method
     expect(orch.depthToInstruction("quick")).toContain("1-3");
   });
 
