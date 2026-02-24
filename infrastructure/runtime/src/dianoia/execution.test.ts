@@ -18,6 +18,7 @@ const defaultConfig = {
   plan_check: true,
   verifier: true,
   mode: "interactive" as const,
+  pause_between_phases: false,
 };
 
 function makeDb(): Database.Database {
@@ -195,5 +196,222 @@ describe("PlanningStore spawn records", () => {
     store.createSpawnRecord({ projectId: project.id, phaseId: phase2.id, waveNumber: 1 });
     const records = store.listSpawnRecords(project.id);
     expect(records).toHaveLength(2);
+  });
+});
+
+// --- isPaused — pause_between_phases config ---
+
+describe("isPaused — pause_between_phases config", () => {
+  it("stops before wave 0 when pause_between_phases is true in project config", async () => {
+    const pauseConfig = { ...defaultConfig, pause_between_phases: true };
+    const project = store.createProject({
+      nousId: "nous-pause",
+      sessionId: "sess-pause",
+      goal: "pause test",
+      config: pauseConfig,
+    });
+    const phaseA = store.createPhase({
+      projectId: project.id,
+      name: "A",
+      goal: "g",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+    const phaseB = store.createPhase({
+      projectId: project.id,
+      name: "B",
+      goal: "g2",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 2,
+    });
+    // Set phaseB to depend on phaseA (wave 1)
+    store.updatePhasePlan(phaseB.id, { steps: [], dependencies: [phaseA.id], acceptanceCriteria: [] });
+
+    let dispatchCallCount = 0;
+    const mockDispatch = {
+      execute: async () => {
+        dispatchCallCount++;
+        return JSON.stringify({
+          results: [{ status: "success", result: "done", durationMs: 100 }],
+        });
+      },
+    } as unknown as import("../organon/registry.js").ToolHandler;
+
+    const orch = new ExecutionOrchestrator(db, mockDispatch);
+    const toolContext = {} as import("../organon/registry.js").ToolContext;
+    await orch.executePhase(project.id, toolContext);
+
+    // pause_between_phases=true: isPaused() fires before wave 0, execution halts immediately
+    // No dispatches should occur
+    expect(dispatchCallCount).toBe(0);
+
+    const records = store.listSpawnRecords(project.id);
+    const doneRecords = records.filter((r) => r.status === "done");
+    expect(doneRecords).toHaveLength(0);
+  });
+
+  it("does not stop execution when pause_between_phases is false", async () => {
+    const project = store.createProject({
+      nousId: "nous-nopause",
+      sessionId: "sess-nopause",
+      goal: "no pause test",
+      config: defaultConfig, // pause_between_phases: false
+    });
+    const phaseA = store.createPhase({
+      projectId: project.id,
+      name: "A",
+      goal: "g",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+    const phaseB = store.createPhase({
+      projectId: project.id,
+      name: "B",
+      goal: "g2",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 2,
+    });
+    store.updatePhasePlan(phaseB.id, { steps: [], dependencies: [phaseA.id], acceptanceCriteria: [] });
+
+    let dispatchCallCount = 0;
+    const mockDispatch = {
+      execute: async () => {
+        dispatchCallCount++;
+        return JSON.stringify({
+          results: [{ status: "success", result: "done", durationMs: 100 }],
+        });
+      },
+    } as unknown as import("../organon/registry.js").ToolHandler;
+
+    const orch = new ExecutionOrchestrator(db, mockDispatch);
+    const toolContext = {} as import("../organon/registry.js").ToolContext;
+    await orch.executePhase(project.id, toolContext);
+
+    // pause_between_phases=false: both waves execute, 2 dispatches
+    expect(dispatchCallCount).toBe(2);
+    const records = store.listSpawnRecords(project.id);
+    expect(records.filter((r) => r.status === "done")).toHaveLength(2);
+  });
+});
+
+// --- reapZombies — cascade-skip dependents ---
+
+describe("reapZombies — cascade-skip dependents", () => {
+  it("creates skipped spawn records for direct dependents of zombie plans", async () => {
+    const project = store.createProject({
+      nousId: "nous-zombie",
+      sessionId: "sess-zombie",
+      goal: "zombie cascade test",
+      config: defaultConfig,
+    });
+    const phaseA = store.createPhase({
+      projectId: project.id,
+      name: "Zombie",
+      goal: "zombie plan",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+    const phaseB = store.createPhase({
+      projectId: project.id,
+      name: "Dependent",
+      goal: "dependent plan",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 2,
+    });
+    store.updatePhasePlan(phaseB.id, { steps: [], dependencies: [phaseA.id], acceptanceCriteria: [] });
+
+    // Manually create a "running" spawn record that is older than 600s
+    const zombieRecord = store.createSpawnRecord({
+      projectId: project.id,
+      phaseId: phaseA.id,
+      waveNumber: 0,
+    });
+    const oldTimestamp = new Date(Date.now() - 700_000).toISOString(); // 700s ago > 600s threshold
+    store.updateSpawnRecord(zombieRecord.id, {
+      status: "running",
+      startedAt: oldTimestamp,
+    });
+
+    const mockDispatch = {
+      execute: async () =>
+        JSON.stringify({ results: [{ status: "success", result: "done", durationMs: 100 }] }),
+    } as unknown as import("../organon/registry.js").ToolHandler;
+
+    const orch = new ExecutionOrchestrator(db, mockDispatch);
+    const toolContext = {} as import("../organon/registry.js").ToolContext;
+
+    // executePhase() calls reapZombies() at the top before the wave loop
+    await orch.executePhase(project.id, toolContext);
+
+    const records = store.listSpawnRecords(project.id);
+
+    // phaseA record should be marked zombie
+    const zombieRec = records.find((r) => r.phaseId === phaseA.id && r.status === "zombie");
+    expect(zombieRec).toBeDefined();
+
+    // phaseB (direct dependent) should have a skipped record created by reapZombies cascade
+    const skippedRec = records.find((r) => r.phaseId === phaseB.id && r.status === "skipped");
+    expect(skippedRec).toBeDefined();
+  });
+
+  it("does not create skipped records for non-dependents of zombie plans", async () => {
+    const project = store.createProject({
+      nousId: "nous-zombie2",
+      sessionId: "sess-zombie2",
+      goal: "zombie non-dep test",
+      config: defaultConfig,
+    });
+    const phaseA = store.createPhase({
+      projectId: project.id,
+      name: "Zombie",
+      goal: "zombie plan",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+    // phaseB has NO dependency on phaseA
+    const phaseB = store.createPhase({
+      projectId: project.id,
+      name: "Independent",
+      goal: "independent plan",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 2,
+    });
+
+    const zombieRecord = store.createSpawnRecord({
+      projectId: project.id,
+      phaseId: phaseA.id,
+      waveNumber: 0,
+    });
+    const oldTimestamp = new Date(Date.now() - 700_000).toISOString();
+    store.updateSpawnRecord(zombieRecord.id, {
+      status: "running",
+      startedAt: oldTimestamp,
+    });
+
+    const mockDispatch = {
+      execute: async () =>
+        JSON.stringify({ results: [{ status: "success", result: "done", durationMs: 100 }] }),
+    } as unknown as import("../organon/registry.js").ToolHandler;
+
+    const orch = new ExecutionOrchestrator(db, mockDispatch);
+    const toolContext = {} as import("../organon/registry.js").ToolContext;
+    await orch.executePhase(project.id, toolContext);
+
+    const records = store.listSpawnRecords(project.id);
+
+    // phaseA is zombie
+    expect(records.find((r) => r.phaseId === phaseA.id && r.status === "zombie")).toBeDefined();
+
+    // phaseB is independent — should NOT be skipped due to zombie cascade
+    const phaseBSkipped = records.find((r) => r.phaseId === phaseB.id && r.status === "skipped");
+    expect(phaseBSkipped).toBeUndefined();
   });
 });
