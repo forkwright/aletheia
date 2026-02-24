@@ -41,6 +41,27 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     });
   });
 
+  app.get("/api/planning/projects/:id/roadmap", (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    const project = orch.getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const phases = orch.listPhases(c.req.param("id"));
+    return c.json({
+      projectId: project.id,
+      state: project.state,
+      phases: phases.map((ph) => ({
+        id: ph.id,
+        name: ph.name,
+        goal: ph.goal,
+        requirements: ph.requirements,
+        successCriteria: ph.successCriteria,
+        phaseOrder: ph.phaseOrder,
+        status: ph.status,
+        hasPlan: ph.plan !== null,
+      })),
+    });
+  });
+
   log.debug("planning routes mounted");
   return app;
 }
