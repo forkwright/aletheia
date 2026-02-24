@@ -26,3 +26,12 @@ export { createPlanRoadmapTool } from "./roadmap-tool.js";
 export { ExecutionOrchestrator } from "./execution.js";
 export type { ExecutionSnapshot, PlanEntry } from "./execution.js";
 export { createPlanExecuteTool } from "./execution-tool.js";
+
+// Verification
+export { GoalBackwardVerifier } from "./verifier.js";
+export type { VerificationGap, VerificationStatus, VerificationResult } from "./types.js";
+export { createPlanVerifyTool } from "./verifier-tool.js";
+
+// Checkpoint
+export { CheckpointSystem } from "./checkpoint.js";
+export type { TrueBlockerCategory } from "./checkpoint.js";

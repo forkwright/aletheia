@@ -51,7 +51,7 @@ import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
-import { createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, ExecutionOrchestrator, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
+import { CheckpointSystem, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -269,6 +269,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     verifier: true,
     mode: "interactive" as const,
   };
+  const planningStore = new PlanningStore(store.getDb());
   const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
   manager.setPlanningOrchestrator(planningOrchestrator);
   log.info("Dianoia planning orchestrator initialized");
@@ -384,6 +385,18 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator);
   tools.register(planExecuteTool);
   manager.setExecutionOrchestrator(executionOrchestrator);
+
+  // Planning verifier and checkpoint system — wired after executionOrchestrator
+  const verifierOrchestrator = new GoalBackwardVerifier(store.getDb(), dispatchTool);
+  const checkpointSystem = new CheckpointSystem(planningStore, planningConfig);
+  const planVerifyTool = createPlanVerifyTool(
+    planningOrchestrator,
+    verifierOrchestrator,
+    checkpointSystem,
+    planningStore,
+  );
+  tools.register(planVerifyTool);
+  log.info("Dianoia verifier and checkpoint system initialized");
 
   return {
     config,
