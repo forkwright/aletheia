@@ -213,6 +213,24 @@ export class DianoiaOrchestrator {
     return "Phase execution complete. Advancing to verification.";
   }
 
+  advanceToNextPhase(projectId: string, nousId: string, sessionId: string): string {
+    this.store.updateProjectState(projectId, transition("verifying", "NEXT_PHASE"));
+    eventBus.emit("planning:phase-started", { projectId, nousId, sessionId });
+    log.info("Advanced to next phase", { projectId });
+    return "Verification complete. Advancing to next phase.";
+  }
+
+  completeAllPhases(projectId: string, nousId: string, sessionId: string): void {
+    this.store.updateProjectState(projectId, transition("verifying", "ALL_PHASES_COMPLETE"));
+    eventBus.emit("planning:complete", { projectId, nousId, sessionId });
+    log.info("All phases complete", { projectId });
+  }
+
+  blockOnVerificationFailure(projectId: string): void {
+    this.store.updateProjectState(projectId, transition("verifying", "PHASE_FAILED"));
+    log.info("Phase verification failed — blocked", { projectId });
+  }
+
   pauseExecution(projectId: string): void {
     this.store.updateProjectState(projectId, transition("executing", "BLOCK"));
     log.info(`Execution paused for project ${projectId}`);
