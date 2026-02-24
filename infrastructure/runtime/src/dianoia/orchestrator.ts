@@ -155,6 +155,14 @@ export class DianoiaOrchestrator {
     return "Context saved. Moving to research phase.";
   }
 
+  listAllProjects(): PlanningProject[] {
+    return this.store.listProjects();
+  }
+
+  getProject(id: string): PlanningProject | undefined {
+    return this.store.getProject(id);
+  }
+
   completePhase(projectId: string, nousId: string, sessionId: string, phase: string): void {
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase });
     log.info(`Phase complete: ${phase} for project ${projectId}`);
