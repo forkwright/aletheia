@@ -105,7 +105,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — v23 migration (rationale column), PlanningStore.updateRequirement(), type and test updates
+- [x] 05-01-PLAN.md — v23 migration (rationale column), PlanningStore.updateRequirement(), type and test updates
 - [ ] 05-02-PLAN.md — RequirementsOrchestrator, plan_requirements tool, completeRequirements() wiring, aletheia.ts registration
 
 ### Phase 6: Roadmap & Phase Planning

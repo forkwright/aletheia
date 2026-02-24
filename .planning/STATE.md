@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 4: Research Pipeline
+**Current focus:** Phase 5: Requirements Definition
 
 ## Current Position
 
-Phase: 4 of 9 (Research Pipeline) — COMPLETE
-Plan: 2 of 2 in current phase — 04-02 complete
-Status: Phase 4 complete; ready for Phase 5
-Last activity: 2026-02-24 -- Phase 4 Plan 2 complete (synthesizeResearch, skipResearch, research-tool wiring)
+Phase: 5 of 9 (Requirements Definition) — IN PROGRESS
+Plan: 1 of ? in current phase — 05-01 complete
+Status: Phase 5 Plan 1 complete; ready for 05-02
+Last activity: 2026-02-23 -- Phase 5 Plan 1 complete (v23 migration, rationale column, updateRequirement)
 
-Progress: [████░░░░░░] 40%
+Progress: [████░░░░░░] 44%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: 3 min
 - Total execution time: 0.51 hours
 
@@ -31,6 +31,7 @@ Progress: [████░░░░░░] 40%
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
+| 05-requirements-definition | 1/? | 2 min | 2 min |
 
 **Recent Trend:**
 - Last 5 plans: 2 min, 5 min, 1 min, 3 min, 3 min
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [04-02]: ResearchOrchestrator.transitionToRequirements() co-located with research completion -- research-tool drives sequence, orchestrator owns state
 - [04-02]: synthesizeResearch() reuses dispatchTool for synthesis dispatch -- no separate spawn tool needed
 - [04-02]: koina/safe.ts trySafeAsync is (label, fn, fallback) not Result pattern -- use direct try/catch for error boundaries in tool execute() bodies
+- [05-01]: PLANNING_REQUIREMENT_NOT_FOUND added to error-codes.ts alongside other PLANNING_* codes — not inlined as string literal
+- [05-01]: updateRequirement uses dynamic SET construction (sets[]/vals[] arrays) — allows updating tier-only, rationale-only, or both atomically in one UPDATE statement
+- [05-01]: createRequirement INSERT always lists rationale column explicitly (passing null when not provided) — avoids conditional column-list logic
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Completed 04-02-PLAN.md (synthesizeResearch, skipResearch, research-tool wiring, 6 tests)
+Last session: 2026-02-23
+Stopped at: Completed 05-01-PLAN.md (v23 migration, rationale column, updateRequirement, 6 new tests)
 Resume file: None
