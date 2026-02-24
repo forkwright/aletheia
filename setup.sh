@@ -22,13 +22,13 @@ fi
 
 echo "[2/6] Building runtime..."
 cd "$REPO_DIR/infrastructure/runtime"
-npm install --silent
-npx tsdown --silent
+npm install 2>&1 | tail -5
+npx tsdown 2>&1 | tail -5
 
 echo "[3/6] Building UI..."
 cd "$REPO_DIR/ui"
-npm install --silent
-npm run build --silent
+npm install 2>&1 | tail -5
+npm run build 2>&1 | tail -5
 
 echo "[4/6] Writing default config..."
 CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
@@ -65,7 +65,14 @@ if [ ! -f "$ENTRY" ]; then
   exit 1
 fi
 
-# Stop any existing process
+# Check port availability
+if lsof -iTCP:"$PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
+  OCCUPANT=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
+  echo "Error: Port $PORT is already in use (PID $OCCUPANT). Stop that process or set ALETHEIA_PORT to a different port."
+  exit 1
+fi
+
+# Stop any existing aletheia process
 if pgrep -f "entry.mjs" &>/dev/null; then
   echo "   Stopping existing gateway..."
   pkill -f "entry.mjs" 2>/dev/null || true
@@ -76,11 +83,23 @@ ALETHEIA_ROOT="$REPO_DIR" ALETHEIA_CONFIG_DIR="$CONFIG_DIR" \
   node "$ENTRY" >> /tmp/aletheia-setup.log 2>&1 &
 GATEWAY_PID=$!
 echo "   Gateway PID $GATEWAY_PID — logs: /tmp/aletheia-setup.log"
-sleep 2
 
-# Verify it started
-if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
-  echo "Error: Gateway failed to start. Check /tmp/aletheia-setup.log"
+# Wait for the HTTP listener to be ready (up to 15 seconds)
+READY=0
+for i in $(seq 1 15); do
+  if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+    echo "Error: Gateway crashed on startup. Check /tmp/aletheia-setup.log"
+    exit 1
+  fi
+  if curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$READY" -eq 0 ]; then
+  echo "Error: Gateway did not become ready within 15 seconds. Check /tmp/aletheia-setup.log"
   exit 1
 fi
 

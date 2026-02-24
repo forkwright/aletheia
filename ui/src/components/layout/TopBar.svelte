@@ -5,11 +5,10 @@
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
   import { clearToken, getEffectiveToken } from "../../lib/api";
-  import { getMessages } from "../../stores/chat.svelte";
-  import { formatCost, calculateMessageCost } from "../../lib/format";
   import { getActiveTurns, getAgentStatus } from "../../lib/events.svelte";
   import { getUnreadCount, markRead } from "../../stores/notifications.svelte";
   import { loadSessions } from "../../stores/sessions.svelte";
+  import { getActiveCredentialLabel, getCredentialConfig, loadCredentialConfig } from "../../stores/credentials.svelte";
   import AgentPill from "../agents/AgentPill.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
@@ -25,15 +24,11 @@
   let updateAvailable = $state(false);
   let updateVersion = $state("");
 
-  let sessionCost = $derived(() => {
-    const agentId = getActiveAgentId();
-    if (!agentId) return 0;
-    const msgs = getMessages(agentId);
-    let total = 0;
-    for (const m of msgs) {
-      if (m.turnOutcome) total += calculateMessageCost(m.turnOutcome);
-    }
-    return total;
+  let credLabel = $derived(getActiveCredentialLabel());
+  let credConfig = $derived(getCredentialConfig());
+  let isBackup = $derived(() => {
+    if (!credConfig) return false;
+    return credLabel !== credConfig.primary.label;
   });
 
   function handleAgentClick(id: string) {
@@ -55,6 +50,9 @@
   }
 
   onMount(async () => {
+    // Load credential configuration
+    loadCredentialConfig();
+
     try {
       const token = getEffectiveToken();
       const res = await fetch("/api/system/update-status", {
@@ -88,8 +86,12 @@
       {/each}
       <button class="add-agent-pill" onclick={() => onSetView("settings")} title="Add agent">+</button>
     </div>
-    {#if sessionCost() > 0}
-      <span class="session-cost" title="Running session cost">{formatCost(sessionCost())}</span>
+    {#if credConfig}
+      <span
+        class="credential-pill"
+        class:is-backup={isBackup()}
+        title={isBackup() ? `Using ${credLabel} (failover)` : `Using ${credLabel}`}
+      >{credLabel}</span>
     {/if}
     {#if updateAvailable}
       <span class="update-badge" title="Update available: v{updateVersion}">v{updateVersion}</span>
@@ -239,14 +241,23 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
-  .session-cost {
+  .credential-pill {
     font-size: var(--text-xs);
     font-family: var(--font-mono);
     color: var(--text-muted);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    padding: 2px 8px;
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+    transition: all var(--transition-quick);
+    flex-shrink: 0;
+  }
+  .credential-pill.is-backup {
+    color: var(--status-warning);
+    background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+    border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
   }
   .update-badge {
     font-size: var(--text-xs);

@@ -21,6 +21,8 @@ pub enum Msg {
     ComposeInEditor,  // Ctrl+E — open $EDITOR for multi-line compose
     Quit,             // Ctrl+C or Ctrl+Q
 
+    NewSession, // Ctrl+N — start new topic
+
     // --- Navigation ---
     ScrollUp,
     ScrollDown,
@@ -162,6 +164,10 @@ pub enum Msg {
     AuthResult(AuthOutcome),
     ApiError(String),
 
+    // --- Errors / toasts ---
+    ShowError(String),
+    DismissError,
+
     // --- Timer ---
     Tick,
 }
@@ -171,6 +177,27 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SystemStatus,
+}
+
+/// Transient error toast that auto-dismisses.
+#[derive(Debug, Clone)]
+pub struct ErrorToast {
+    pub message: String,
+    pub created_at: std::time::Instant,
+}
+
+impl ErrorToast {
+    pub fn new(message: String) -> Self {
+        Self {
+            message,
+            created_at: std::time::Instant::now(),
+        }
+    }
+
+    /// Returns true if this toast has been visible long enough (5s).
+    pub fn is_expired(&self) -> bool {
+        self.created_at.elapsed() > std::time::Duration::from_secs(5)
+    }
 }
 
 #[derive(Debug)]
