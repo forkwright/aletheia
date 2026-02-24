@@ -51,7 +51,7 @@ import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
-import { ResearchOrchestrator, createPlanResearchTool, RequirementsOrchestrator, createPlanRequirementsTool } from "./dianoia/index.js";
+import { ResearchOrchestrator, createPlanResearchTool, RequirementsOrchestrator, createPlanRequirementsTool, RoadmapOrchestrator, createPlanRoadmapTool } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
 import { AuthSessionStore } from "./auth/sessions.js";
@@ -373,6 +373,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb());
   const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
   tools.register(planRequirementsTool);
+
+  // Planning roadmap orchestrator — wired after dispatchTool is available
+  const roadmapOrchestrator = new RoadmapOrchestrator(store.getDb(), dispatchTool);
+  const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
+  tools.register(planRoadmapTool);
 
   return {
     config,

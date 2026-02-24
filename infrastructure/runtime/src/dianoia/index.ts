@@ -20,3 +20,6 @@ export type { PlanningEvent } from "./machine.js";
 export { RequirementsOrchestrator } from "./requirements.js";
 export type { CategoryProposal, FeatureProposal, ScopingDecision } from "./requirements.js";
 export { createPlanRequirementsTool } from "./requirements-tool.js";
+export { RoadmapOrchestrator } from "./roadmap.js";
+export type { PhaseDefinition, PhasePlan, PlanStep } from "./roadmap.js";
+export { createPlanRoadmapTool } from "./roadmap-tool.js";
