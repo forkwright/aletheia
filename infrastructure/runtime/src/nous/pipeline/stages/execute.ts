@@ -473,7 +473,15 @@ export async function executeBuffered(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(bufferedContextMgmt ? { contextManagement: bufferedContextMgmt } : {}),
+      ...(abortSignal ? { signal: abortSignal } : {}),
     });
+
+    // Check abort after each LLM call
+    if (abortSignal?.aborted) {
+      log.info(`Buffered turn aborted for ${nousId}:${sessionId}`);
+      state.totalToolCalls = totalToolCalls;
+      return state;
+    }
 
     totalInputTokens += result.usage.inputTokens;
     totalOutputTokens += result.usage.outputTokens;
@@ -552,6 +560,14 @@ export async function executeBuffered(
     const batches = groupForParallelExecution(toolUses);
 
     for (const batch of batches) {
+      // Abort check before each tool batch
+      if (abortSignal?.aborted) {
+        for (const rem of batch) {
+          toolResults.push({ type: "tool_result", tool_use_id: rem.id, content: "[CANCELLED] Turn aborted.", is_error: true });
+        }
+        break;
+      }
+
       const execResults: Array<{ toolUse: ToolUseBlock; result: string; isError: boolean; durationMs: number }> = [];
 
       if (batch.length === 1) {

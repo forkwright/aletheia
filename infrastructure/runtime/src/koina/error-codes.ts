@@ -94,6 +94,8 @@ export const ERROR_CODES = {
   PLANNING_INVALID_TRANSITION: "FSM transition is not valid from the current state",
   PLANNING_SPAWN_NOT_FOUND: "Spawn record ID does not exist",
   PLANNING_DISCUSSION_NOT_FOUND: "Discussion question ID does not exist",
+  PLANNING_DUPLICATE_REQUIREMENT_ID: "Requirement ID already exists for this project",
+  PLANNING_TABLE_STAKES_OUT_OF_SCOPE: "Table-stakes feature cannot be out-of-scope without rationale",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
