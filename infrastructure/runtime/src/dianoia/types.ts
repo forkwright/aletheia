@@ -49,6 +49,7 @@ export interface PlanningPhase {
   phaseOrder: number;
   createdAt: string;
   updatedAt: string;
+  verificationResult: VerificationResult | null;
 }
 
 export interface PlanningRequirement {
@@ -66,6 +67,24 @@ export interface PlanningRequirement {
   updatedAt: string;
 }
 
+export interface VerificationGap {
+  criterion: string;
+  found: string;
+  expected: string;
+  proposedFix: string;
+}
+
+export type VerificationStatus = "met" | "partially-met" | "not-met";
+
+export interface VerificationResult {
+  status: VerificationStatus;
+  summary: string;
+  gaps: VerificationGap[];
+  verifiedAt: string;
+  overridden?: boolean;
+  overrideNote?: string;
+}
+
 export interface PlanningCheckpoint {
   id: string;
   projectId: string;
@@ -74,6 +93,9 @@ export interface PlanningCheckpoint {
   decision: string | null;
   context: Record<string, unknown>;
   createdAt: string;
+  riskLevel: "low" | "medium" | "high";
+  autoApproved: boolean;
+  userNote: string | null;
 }
 
 export interface PlanningResearch {

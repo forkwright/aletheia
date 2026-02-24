@@ -99,3 +99,11 @@ CREATE INDEX IF NOT EXISTS idx_spawn_records_project
 CREATE INDEX IF NOT EXISTS idx_spawn_records_phase
   ON planning_spawn_records(phase_id, status);
 `;
+
+export const PLANNING_V25_MIGRATION = `
+ALTER TABLE planning_checkpoints ADD COLUMN risk_level TEXT NOT NULL DEFAULT 'low'
+  CHECK(risk_level IN ('low', 'medium', 'high'));
+ALTER TABLE planning_checkpoints ADD COLUMN auto_approved INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE planning_checkpoints ADD COLUMN user_note TEXT;
+ALTER TABLE planning_phases ADD COLUMN verification_result TEXT;
+`;
