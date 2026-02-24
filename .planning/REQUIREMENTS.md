@@ -99,7 +99,7 @@
 - [x] **INTG-02**: Planning project state is accessible via GET `/api/planning/projects/:id`
 - [x] **INTG-03**: Planning fires events on Aletheia's event bus (`planning:project-created`, `planning:phase-started`, `planning:phase-complete`, `planning:checkpoint`, `planning:complete`)
 - [x] **INTG-04**: Planning state is injected into agent working-state so the nous knows the active planning context
-- [ ] **INTG-05**: Existing `plan_create`/`plan_propose` tools are marked deprecated but not removed (documented migration path to Dianoia tools)
+- [x] **INTG-05**: Existing `plan_create`/`plan_propose` tools are marked deprecated but not removed (documented migration path to Dianoia tools)
 
 ### Planning Config
 
@@ -230,7 +230,7 @@
 | INTG-02 | Phase 3: Project Context & API | Complete |
 | INTG-03 | Phase 3: Project Context & API | Complete |
 | INTG-04 | Phase 3: Project Context & API | Complete |
-| INTG-05 | Phase 3: Project Context & API | Pending |
+| INTG-05 | Phase 3: Project Context & API | Complete |
 | CONF-01 | Phase 1: Foundation | Complete |
 | CONF-02 | Phase 1: Foundation | Complete |
 | CONF-03 | Phase 1: Foundation | Complete |
