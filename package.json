@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@instructor-ai/instructor": "^1.7.0"
+  }
+}

@@ -4,8 +4,17 @@ import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
+import { writeResearchFile } from "./project-files.js";
+import { z } from "zod";
 
 const log = createLogger("dianoia:researcher");
+
+// Zod schema for researcher response validation
+const ResearcherResponseSchema = z.object({
+  summary: z.string(),
+  details: z.string(),
+  confidence: z.enum(['high', 'medium', 'low']),
+});
 
 export const DIMENSIONS = ["stack", "features", "architecture", "pitfalls"] as const;
 export type ResearchDimension = (typeof DIMENSIONS)[number];
@@ -39,8 +48,35 @@ export class ResearchOrchestrator {
   constructor(
     db: Database.Database,
     private dispatchTool: ToolHandler,
+    private workspaceRoot?: string,
   ) {
     this.store = new PlanningStore(db);
+  }
+
+  private validateResearcherResponse(rawResult: string, dimension: string): { content: string; status: "complete" | "partial" } {
+    try {
+      // Try to extract JSON from the response (look for ```json blocks)
+      const jsonMatch = rawResult.match(/```json\s*([\s\S]*?)\s*```/);
+      if (!jsonMatch) {
+        log.warn(`No JSON block found in ${dimension} research response, storing raw text as partial`);
+        return { content: rawResult, status: "partial" };
+      }
+
+      const jsonStr = jsonMatch[1]!.trim();
+      const parsed = JSON.parse(jsonStr);
+      const validated = ResearcherResponseSchema.safeParse(parsed);
+
+      if (validated.success) {
+        // Store the validated structured response
+        return { content: JSON.stringify(validated.data, null, 2), status: "complete" };
+      } else {
+        log.warn(`Validation failed for ${dimension} research response: ${validated.error.message}, storing raw text as partial`);
+        return { content: rawResult, status: "partial" };
+      }
+    } catch (err) {
+      log.warn(`Failed to parse ${dimension} research response: ${err instanceof Error ? err.message : String(err)}, storing raw text as partial`);
+      return { content: rawResult, status: "partial" };
+    }
   }
 
   async runResearch(
@@ -82,14 +118,19 @@ export class ResearchOrchestrator {
       }
 
       if (result.status === "success") {
+        const validated = this.validateResearcherResponse(result.result ?? "", dimension);
         this.store.createResearch({
           projectId,
           phase: "research",
           dimension,
-          content: result.result ?? "",
-          status: "complete",
+          content: validated.content,
+          status: validated.status,
         });
-        stored++;
+        if (validated.status === "complete") {
+          stored++;
+        } else {
+          partial++;
+        }
       } else if (result.status === "timeout") {
         this.store.createResearch({
           projectId,
@@ -112,6 +153,11 @@ export class ResearchOrchestrator {
     }
 
     log.info(`Research complete for ${projectId}: stored=${stored}, partial=${partial}, failed=${failed}`);
+
+    // Fail-fast if all dimensions failed
+    if (stored === 0) {
+      throw new Error(`Research failed: No dimensions completed successfully (${failed} failed, ${partial} partial)`);
+    }
 
     const synthesisText = await this.synthesizeResearch(projectId, projectGoal, toolContext);
     return { stored, partial, failed, synthesisText };
@@ -178,6 +224,12 @@ export class ResearchOrchestrator {
   }
 
   transitionToRequirements(projectId: string): void {
+    // Write RESEARCH.md to disk
+    if (this.workspaceRoot) {
+      const research = this.store.listResearch(projectId);
+      writeResearchFile(this.workspaceRoot, projectId, research);
+    }
+    
     this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));
   }
 }

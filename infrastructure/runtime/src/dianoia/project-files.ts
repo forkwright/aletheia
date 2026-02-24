@@ -1,5 +1,5 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, renameSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import type {
@@ -12,6 +12,41 @@ import type {
 } from "./types.js";
 
 const log = createLogger("dianoia:files");
+
+// --- Atomic file writing utility ---
+
+function atomicWriteFile(filePath: string, content: string, encoding: BufferEncoding = "utf-8"): void {
+  const tmpPath = `${filePath}.tmp`;
+  try {
+    writeFileSync(tmpPath, content, encoding);
+    renameSync(tmpPath, filePath);
+  } catch (error) {
+    // Clean up tmp file on error
+    try {
+      if (existsSync(tmpPath)) {
+        unlinkSync(tmpPath);
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+    log.error(`Failed to write file atomically: ${filePath}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Validate that a file exists and is non-empty after write.
+ * Throws if file is missing or empty (fail-fast).
+ */
+function validateFileWritten(filePath: string, operation: string): void {
+  if (!existsSync(filePath)) {
+    throw new Error(`${operation}: File not found after write: ${filePath}`);
+  }
+  const content = readFileSync(filePath, "utf-8");
+  if (content.trim().length === 0) {
+    throw new Error(`${operation}: File is empty after write: ${filePath}`);
+  }
+}
 
 // --- Directory management ---
 
@@ -81,7 +116,8 @@ export function writeProjectFile(
   }
 
   const filePath = join(dir, "PROJECT.md");
-  writeFileSync(filePath, lines.join("\n"), "utf-8");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeProjectFile");
   log.debug(`Wrote PROJECT.md for ${project.id}`);
 }
 
@@ -114,7 +150,9 @@ export function writeRequirementsFile(
     lines.push("");
   }
 
-  writeFileSync(join(dir, "REQUIREMENTS.md"), lines.join("\n"), "utf-8");
+  const filePath = join(dir, "REQUIREMENTS.md");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeRequirementsFile");
   log.debug(`Wrote REQUIREMENTS.md for ${projectId}`);
 }
 
@@ -131,7 +169,9 @@ export function writeResearchFile(
     lines.push(r.content, "");
   }
 
-  writeFileSync(join(dir, "RESEARCH.md"), lines.join("\n"), "utf-8");
+  const filePath = join(dir, "RESEARCH.md");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeResearchFile");
   log.debug(`Wrote RESEARCH.md for ${projectId}`);
 }
 
@@ -162,7 +202,9 @@ export function writeRoadmapFile(
     }
   }
 
-  writeFileSync(join(dir, "ROADMAP.md"), lines.join("\n"), "utf-8");
+  const filePath = join(dir, "ROADMAP.md");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeRoadmapFile");
   log.debug(`Wrote ROADMAP.md for ${projectId}`);
 }
 
@@ -202,7 +244,7 @@ export function writeDiscussFile(
     }
   }
 
-  writeFileSync(join(dir, "DISCUSS.md"), lines.join("\n"), "utf-8");
+  atomicWriteFile(join(dir, "DISCUSS.md"), lines.join("\n"), "utf-8");
   log.debug(`Wrote DISCUSS.md for phase ${phaseId}`);
 }
 
@@ -214,7 +256,7 @@ export function writePlanFile(
 ): void {
   const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
   const content = typeof plan === "string" ? plan : JSON.stringify(plan, null, 2);
-  writeFileSync(join(dir, "PLAN.md"), `# Execution Plan\n\n\`\`\`json\n${content}\n\`\`\`\n`, "utf-8");
+  atomicWriteFile(join(dir, "PLAN.md"), `# Execution Plan\n\n\`\`\`json\n${content}\n\`\`\`\n`, "utf-8");
   log.debug(`Wrote PLAN.md for phase ${phaseId}`);
 }
 
@@ -225,7 +267,7 @@ export function writeStateFile(
   state: Record<string, unknown>,
 ): void {
   const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
-  writeFileSync(
+  atomicWriteFile(
     join(dir, "STATE.md"),
     `# Phase State\n\n\`\`\`json\n${JSON.stringify(state, null, 2)}\n\`\`\`\n`,
     "utf-8",
@@ -262,7 +304,7 @@ export function writeVerifyFile(
     lines.push("");
   }
 
-  writeFileSync(join(dir, "VERIFY.md"), lines.join("\n"), "utf-8");
+  atomicWriteFile(join(dir, "VERIFY.md"), lines.join("\n"), "utf-8");
   log.debug(`Wrote VERIFY.md for phase ${phaseId}`);
 }
 

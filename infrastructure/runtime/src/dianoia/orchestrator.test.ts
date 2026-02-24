@@ -274,3 +274,124 @@ describe("DianoiaOrchestrator.completeProject()", () => {
     spy.mockRestore();
   });
 });
+
+describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-04]", () => {
+  it("skips direct dependent phases when verification fails", () => {
+    const orch = makeOrchestrator();
+    orch.handle("nous-1", "session-1");
+    const project = orch.getActiveProject("nous-1")!;
+
+    // Create test phases with dependencies
+    const db = (orch as any).store.db;
+    const phaseA = db.prepare(`
+      INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("phase-a", project.id, "Phase A", "Build foundation", "[]", "[]", 1, "pending", new Date().toISOString(), new Date().toISOString());
+
+    const phaseB = db.prepare(`
+      INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, plan, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("phase-b", project.id, "Phase B", "Depends on A", "[]", "[]", 2, "pending", 
+      JSON.stringify({ dependencies: ["phase-a"] }), new Date().toISOString(), new Date().toISOString());
+
+    const phaseC = db.prepare(`
+      INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, plan, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("phase-c", project.id, "Phase C", "Independent", "[]", "[]", 3, "pending", 
+      JSON.stringify({ dependencies: [] }), new Date().toISOString(), new Date().toISOString());
+
+    // Phase A fails verification
+    const verificationGaps = [
+      {
+        criterion: "Core functionality must work",
+        status: "not-met" as const,
+        detail: "Tests failing",
+        proposedFix: "Fix unit tests"
+      },
+      {
+        criterion: "Documentation complete",
+        status: "partially-met" as const, 
+        detail: "Missing API docs",
+        proposedFix: "Write API documentation"
+      }
+    ];
+
+    const result = orch.skipDownstreamPhasesOnVerificationFailure(project.id, "phase-a", verificationGaps);
+
+    expect(result.skippedPhases).toEqual(["phase-b"]);
+    expect(result.rollbackPlan.failedPhaseId).toBe("phase-a");
+    expect(result.rollbackPlan.gapCount).toBe(2);
+    expect(result.rollbackPlan.actions).toHaveLength(3); // 2 gaps + 1 verification action
+
+    // Verify phase B was skipped in database
+    const phaseBStatus = db.prepare("SELECT status FROM planning_phases WHERE id = ?").get("phase-b") as { status: string };
+    expect(phaseBStatus.status).toBe("skipped");
+
+    // Verify phase C was not affected
+    const phaseCStatus = db.prepare("SELECT status FROM planning_phases WHERE id = ?").get("phase-c") as { status: string };
+    expect(phaseCStatus.status).toBe("pending");
+  });
+
+  it("generates rollback plan with correct priority levels", () => {
+    const orch = makeOrchestrator();
+    orch.handle("nous-1", "session-1");
+    const project = orch.getActiveProject("nous-1")!;
+
+    const gaps = [
+      {
+        criterion: "Critical feature",
+        status: "not-met" as const,
+        detail: "Completely broken",
+        proposedFix: "Rewrite component"
+      },
+      {
+        criterion: "Nice-to-have feature", 
+        status: "partially-met" as const,
+        detail: "Minor issues",
+        proposedFix: "Tweak styling"
+      }
+    ];
+
+    const result = orch.skipDownstreamPhasesOnVerificationFailure(project.id, "test-phase", gaps);
+
+    const criticalAction = result.rollbackPlan.actions.find(a => a.description === "Critical feature");
+    const minorAction = result.rollbackPlan.actions.find(a => a.description === "Nice-to-have feature");
+    const verifyAction = result.rollbackPlan.actions.find(a => a.type === "verify-phase");
+
+    expect(criticalAction?.priority).toBe("high");
+    expect(minorAction?.priority).toBe("medium");
+    expect(verifyAction?.priority).toBe("high");
+  });
+
+  it("estimates effort correctly based on gap severity", () => {
+    const orch = makeOrchestrator();
+    orch.handle("nous-1", "session-1");
+    const project = orch.getActiveProject("nous-1")!;
+
+    // High effort: 3 critical gaps
+    const highEffortGaps = [
+      { status: "not-met" as const, criterion: "A", detail: "", proposedFix: "" },
+      { status: "not-met" as const, criterion: "B", detail: "", proposedFix: "" },
+      { status: "not-met" as const, criterion: "C", detail: "", proposedFix: "" }
+    ];
+
+    const highResult = orch.skipDownstreamPhasesOnVerificationFailure(project.id, "phase1", highEffortGaps);
+    expect(highResult.rollbackPlan.estimatedEffort).toBe("high");
+
+    // Medium effort: 1 critical gap
+    const mediumEffortGaps = [
+      { status: "not-met" as const, criterion: "A", detail: "", proposedFix: "" }
+    ];
+
+    const mediumResult = orch.skipDownstreamPhasesOnVerificationFailure(project.id, "phase2", mediumEffortGaps);
+    expect(mediumResult.rollbackPlan.estimatedEffort).toBe("medium");
+
+    // Low effort: only partial gaps
+    const lowEffortGaps = [
+      { status: "partially-met" as const, criterion: "A", detail: "", proposedFix: "" }
+    ];
+
+    const lowResult = orch.skipDownstreamPhasesOnVerificationFailure(project.id, "phase3", lowEffortGaps);
+    expect(lowResult.rollbackPlan.estimatedEffort).toBe("low");
+  });
+});

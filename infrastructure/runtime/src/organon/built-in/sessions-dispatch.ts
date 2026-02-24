@@ -3,6 +3,7 @@ import type { ToolContext, ToolHandler } from "../registry.js";
 import type { AgentDispatcher } from "./sessions-spawn.js";
 import { resolveRole, ROLE_NAMES } from "../config/sub-agent-roles.js";
 import { parseStructuredResult } from "../../nous/roles/index.js";
+import { parseSubAgentResponse } from "../../dianoia/structured-extraction.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("organon.dispatch");
@@ -175,7 +176,17 @@ export function createSessionsDispatchTool(
           clearTimeout(timer!);
 
           const durationMs = Date.now() - taskStart;
-          const structured = parseStructuredResult(outcome.text);
+          
+          // Try new structured extraction with retry capability
+          const structuredNew = await parseSubAgentResponse(outcome.text, async (errorMessage) => {
+            log.debug(`Sub-agent result parsing failed for task ${index}: ${errorMessage}. Using fallback.`);
+            // For sub-agent responses, we don't retry the actual call, just fall back to old parsing
+            return outcome.text; // Return original text, parseSubAgentResponse will return null
+          });
+          
+          // Use new structured result if available, fall back to old method
+          const structured = structuredNew ?? parseStructuredResult(outcome.text);
+          
           const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
 
           if (auditId && dispatcher.store) {

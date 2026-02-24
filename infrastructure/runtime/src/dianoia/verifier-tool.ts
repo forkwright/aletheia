@@ -92,6 +92,11 @@ async function handleVerifyAction(
           return `${msg}\n\nVerification summary: ${result.summary}`;
         }
 
+        // ORCH-04: Auto-skip downstream dependent phases and generate rollback plan
+        const { skippedPhases, rollbackPlan } = planningOrchestrator.skipDownstreamPhasesOnVerificationFailure(
+          projectId, phaseId, result.gaps
+        );
+
         planningOrchestrator.blockOnVerificationFailure(projectId, nousId, sessionId);
 
         const gapPlans = verifierOrchestrator.generateGapPlans(phaseId, result.gaps);
@@ -102,6 +107,8 @@ async function handleVerifyAction(
           summary: result.summary,
           gaps: result.gaps,
           gapPlansSummary: gapPlansSummary || "no gap plans generated",
+          skippedPhases: skippedPhases,
+          rollbackPlan: rollbackPlan,
           options: [
             { action: "fix_now", description: "Address the gaps listed above, then re-run verification." },
             { action: "override", description: "Override the failure with a written justification (action=override)." },
