@@ -71,7 +71,7 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Migration v21, ProjectContext persistence, questioning loop (processAnswer, getNextQuestion, confirmSynthesis)
+- [x] 03-01-PLAN.md — Migration v21, ProjectContext persistence, questioning loop (processAnswer, getNextQuestion, confirmSynthesis) (completed 2026-02-24)
 - [ ] 03-02-PLAN.md — Pylon API routes: GET /api/planning/projects and GET /api/planning/projects/:id
 - [ ] 03-03-PLAN.md — Planning context block enrichment (coreValue, constraints, keyDecisions, next question injection)
 - [ ] 03-04-PLAN.md — Legacy tool deprecation: plan_propose and plan_create marked @deprecated with JSON warning keys
@@ -187,7 +187,7 @@ Note: Phase 4 (Research Pipeline) depends only on Phase 2 and can execute in par
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-02-23 |
 | 2. Orchestrator & Entry | 3/3 | Complete    | 2026-02-24 |
-| 3. Project Context & API | 0/4 | Not started | - |
+| 3. Project Context & API | 1/4 | In progress | - |
 | 4. Research Pipeline | 0/2 | Not started | - |
 | 5. Requirements Definition | 0/2 | Not started | - |
 | 6. Roadmap & Phase Planning | 0/3 | Not started | - |

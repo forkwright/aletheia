@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 2: Orchestrator and Entry
+**Current focus:** Phase 3: Project Context and API
 
 ## Current Position
 
-Phase: 2 of 9 (Orchestrator and Entry)
-Plan: 3 of 3 in current phase — PHASE COMPLETE
+Phase: 3 of 9 (Project Context and API)
+Plan: 1 of 3 in current phase — COMPLETE
 Status: Executing
-Last activity: 2026-02-24 -- Plan 02-03 complete (intent detection hook)
+Last activity: 2026-02-24 -- Plan 03-01 complete (project context persistence and questioning loop)
 
-Progress: [██░░░░░░░░] 22%
+Progress: [███░░░░░░░] 26%
 
 ## Performance Metrics
 
@@ -29,9 +29,10 @@ Progress: [██░░░░░░░░] 22%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | 14 min | 5 min |
 | 02-orchestrator-and-entry | 3/3 | 7 min | 2 min |
+| 03-project-context-and-api | 1/3 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 1 min, 5 min, 3 min, 2 min, 2 min
+- Last 5 plans: 5 min, 3 min, 2 min, 2 min, 5 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -62,6 +63,10 @@ Recent decisions affecting current work:
 - [02-03]: Two-signal detection required for build/create verbs (project-scale noun must co-occur) to prevent false positives
 - [02-03]: Explicit phrases (help me plan, new project, /plan) are single-signal sufficient
 - [02-03]: Intent offer is else-branch of activeProject check — clean mutual exclusion, single pass
+- [03-01]: FSM event questioning->researching is START_RESEARCH (not COMPLETE_QUESTIONING — that event doesn't exist in machine.ts)
+- [03-01]: planning:checkpoint event not in EventName union; confirmSynthesis emits planning:phase-started instead
+- [03-01]: confirmSynthesis preserves rawTranscript from existing context, not from caller's synthesizedContext
+- [03-01]: exactOptionalPropertyTypes requires conditional spread for optional array fields in merged context objects
 
 ### Pending Todos
 
@@ -76,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 02-03-PLAN.md (intent detection hook — Phase 2 complete)
+Stopped at: Completed 03-01-PLAN.md (project context persistence and questioning loop)
 Resume file: None

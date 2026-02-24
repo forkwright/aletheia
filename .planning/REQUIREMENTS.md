@@ -26,9 +26,9 @@
 
 ### Project Context Gathering
 
-- [ ] **PROJ-01**: User can answer questions about their project through natural conversation (agent asks, user answers inline)
-- [ ] **PROJ-02**: Project context is persisted to SQLite after questioning phase completes
-- [ ] **PROJ-03**: Agent synthesizes project description, core value, constraints, and key decisions from the conversation
+- [x] **PROJ-01**: User can answer questions about their project through natural conversation (agent asks, user answers inline)
+- [x] **PROJ-02**: Project context is persisted to SQLite after questioning phase completes
+- [x] **PROJ-03**: Agent synthesizes project description, core value, constraints, and key decisions from the conversation
 - [ ] **PROJ-04**: Project context is injected into agent working-state and survives distillation
 
 ### Research Pipeline
@@ -181,9 +181,9 @@
 | ENTRY-03 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-04 | Phase 2: Orchestrator & Entry | Complete |
 | ENTRY-05 | Phase 2: Orchestrator & Entry | Complete |
-| PROJ-01 | Phase 3: Project Context & API | Pending |
-| PROJ-02 | Phase 3: Project Context & API | Pending |
-| PROJ-03 | Phase 3: Project Context & API | Pending |
+| PROJ-01 | Phase 3: Project Context & API | Complete |
+| PROJ-02 | Phase 3: Project Context & API | Complete |
+| PROJ-03 | Phase 3: Project Context & API | Complete |
 | PROJ-04 | Phase 3: Project Context & API | Pending |
 | RESR-01 | Phase 4: Research Pipeline | Pending |
 | RESR-02 | Phase 4: Research Pipeline | Pending |
