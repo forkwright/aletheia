@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
+import { transition } from "./machine.js";
 
 const log = createLogger("dianoia:researcher");
 
@@ -47,7 +48,7 @@ export class ResearchOrchestrator {
     projectGoal: string,
     toolContext: ToolContext,
     timeoutSeconds = 90,
-  ): Promise<{ stored: number; partial: number; failed: number }> {
+  ): Promise<{ stored: number; partial: number; failed: number; synthesisText: string }> {
     const tasks = DIMENSIONS.map((dimension) => ({
       role: "researcher",
       task: `Research the ${dimension} dimension for this project. Return findings as a \`\`\`json block with fields: summary (2-3 sentences), details (full findings), confidence ('high'|'medium'|'low'). Project: ${projectGoal}`,
@@ -111,6 +112,72 @@ export class ResearchOrchestrator {
     }
 
     log.info(`Research complete for ${projectId}: stored=${stored}, partial=${partial}, failed=${failed}`);
-    return { stored, partial, failed };
+
+    const synthesisText = await this.synthesizeResearch(projectId, projectGoal, toolContext);
+    return { stored, partial, failed, synthesisText };
+  }
+
+  async synthesizeResearch(
+    projectId: string,
+    projectGoal: string,
+    toolContext: ToolContext,
+  ): Promise<string> {
+    const rows = this.store.listResearch(projectId).filter((r) => r.dimension !== "synthesis");
+
+    const completedRows = rows.filter((r) => r.status === "complete");
+    const partialRows = rows.filter((r) => r.status !== "complete");
+
+    const dimensionSections = completedRows
+      .map((r) => {
+        const truncated = r.content.slice(0, 1500);
+        return `### ${r.dimension}\n${truncated}`;
+      })
+      .join("\n\n");
+
+    const partialNote =
+      partialRows.length > 0
+        ? `\n\nNote: The following dimensions have partial or missing data: ${partialRows.map((r) => r.dimension).join(", ")}.`
+        : "";
+
+    const synthPrompt =
+      `Produce a consolidated research summary for this project: "${projectGoal}"\n\n` +
+      `Sections required: ## Stack, ## Features, ## Architecture, ## Pitfalls, ## Recommendations\n\n` +
+      `Use the per-dimension findings below. Note any dimensions with partial or missing data.${partialNote}\n\n` +
+      `Per-dimension findings:\n\n${dimensionSections || "(no completed dimensions)"}`;
+
+    log.info(`Synthesizing research for project ${projectId} from ${completedRows.length} completed dimensions`);
+
+    const raw = await this.dispatchTool.execute(
+      {
+        tasks: [
+          {
+            role: "researcher",
+            task: synthPrompt,
+            timeoutSeconds: 120,
+          },
+        ],
+      },
+      toolContext,
+    );
+
+    const dispatchOutput = JSON.parse(raw) as DispatchOutput;
+    const synthResult = dispatchOutput.results[0];
+    const synthesisText =
+      synthResult?.status === "success" ? (synthResult.result ?? "") : "(synthesis unavailable)";
+
+    this.store.createResearch({
+      projectId,
+      phase: "research",
+      dimension: "synthesis",
+      content: synthesisText,
+      status: "complete",
+    });
+
+    log.info(`Synthesis stored for project ${projectId}`);
+    return synthesisText;
+  }
+
+  transitionToRequirements(projectId: string): void {
+    this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));
   }
 }
