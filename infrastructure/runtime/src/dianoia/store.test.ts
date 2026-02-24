@@ -2,7 +2,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlanningError } from "../koina/errors.js";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 
 let db: Database.Database;
@@ -31,6 +31,7 @@ beforeEach(() => {
   db.exec(PLANNING_V20_DDL);
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
+  db.exec(PLANNING_V23_MIGRATION);
   store = new PlanningStore(db);
 });
 
@@ -386,5 +387,98 @@ describe("mapProject projectContext null handling", () => {
     );
     const fetched = store.getProjectOrThrow(project.id);
     expect(fetched.projectContext).toBeNull();
+  });
+});
+
+describe("createRequirement rationale handling", () => {
+  it("persists rationale when provided and returns it in listRequirements", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-10",
+      description: "Nice to have feature",
+      category: "ux",
+      tier: "out-of-scope",
+      rationale: "Not enough bandwidth for v1 — revisit after launch",
+    });
+
+    const requirements = store.listRequirements(project.id);
+    expect(requirements).toHaveLength(1);
+    expect(requirements[0]?.rationale).toBe("Not enough bandwidth for v1 — revisit after launch");
+  });
+
+  it("returns rationale as null when not provided", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-11",
+      description: "Core auth requirement",
+      category: "security",
+      tier: "v1",
+    });
+
+    const requirements = store.listRequirements(project.id);
+    expect(requirements).toHaveLength(1);
+    expect(requirements[0]?.rationale).toBeNull();
+  });
+});
+
+describe("updateRequirement", () => {
+  it("updates tier from v1 to v2", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-20",
+      description: "Pagination support",
+      category: "ux",
+      tier: "v1",
+    });
+
+    store.updateRequirement(req.id, { tier: "v2" });
+
+    const requirements = store.listRequirements(project.id);
+    expect(requirements[0]?.tier).toBe("v2");
+  });
+
+  it("updates rationale for an out-of-scope requirement", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-21",
+      description: "Mobile app support",
+      category: "platform",
+      tier: "out-of-scope",
+    });
+
+    store.updateRequirement(req.id, { rationale: "Web-first for now; mobile in v3" });
+
+    const requirements = store.listRequirements(project.id);
+    expect(requirements[0]?.rationale).toBe("Web-first for now; mobile in v3");
+  });
+
+  it("updates both tier and rationale in one call", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-22",
+      description: "Offline mode",
+      category: "platform",
+      tier: "v1",
+    });
+
+    store.updateRequirement(req.id, { tier: "out-of-scope", rationale: "Too complex for v1 scope" });
+
+    const requirements = store.listRequirements(project.id);
+    expect(requirements[0]?.tier).toBe("out-of-scope");
+    expect(requirements[0]?.rationale).toBe("Too complex for v1 scope");
+  });
+
+  it("throws PLANNING_REQUIREMENT_NOT_FOUND for an unknown id", () => {
+    expect(() => store.updateRequirement("nonexistent-req-id", { tier: "v2" })).toThrow(PlanningError);
+    try {
+      store.updateRequirement("nonexistent-req-id", { tier: "v2" });
+    } catch (e) {
+      expect((e as PlanningError).code).toBe("PLANNING_REQUIREMENT_NOT_FOUND");
+    }
   });
 });
