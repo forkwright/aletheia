@@ -160,9 +160,38 @@ export async function buildContext(
     const activeProject = planningOrchestrator.getActiveProject(nousId);
     if (activeProject) {
       const hasPending = planningOrchestrator.hasPendingConfirmation(activeProject);
+      const ctx = activeProject.projectContext;
+      const nextQuestion = activeProject.state === "questioning"
+        ? planningOrchestrator.getNextQuestion(activeProject.id)
+        : null;
+
+      const lines: string[] = [
+        `## Active Dianoia Planning Project`,
+        ``,
+        `Project ID: ${activeProject.id}`,
+        `State: ${activeProject.state}`,
+        `Goal: ${activeProject.goal || "(not yet set)"}`,
+      ];
+
+      if (ctx?.coreValue) {
+        lines.push(`Core Value: ${ctx.coreValue}`);
+      }
+      if (ctx?.constraints && ctx.constraints.length > 0) {
+        lines.push(`Constraints: ${ctx.constraints.join("; ")}`);
+      }
+      if (ctx?.keyDecisions && ctx.keyDecisions.length > 0) {
+        lines.push(`Key Decisions: ${ctx.keyDecisions.join("; ")}`);
+      }
+      if (hasPending) {
+        lines.push(``, `Awaiting resume confirmation from user.`);
+      }
+      if (nextQuestion) {
+        lines.push(``, `## Planning Question`, ``, nextQuestion);
+      }
+
       systemPrompt.push({
         type: "text",
-        text: `## Active Dianoia Planning Project\n\nProject ID: ${activeProject.id}\nState: ${activeProject.state}\nGoal: ${activeProject.goal || "(not yet set)"}\n${hasPending ? "\nAwaiting resume confirmation from user." : ""}`,
+        text: lines.join("\n"),
       });
     } else if (detectPlanningIntent(msg.text ?? "")) {
       systemPrompt.push({
