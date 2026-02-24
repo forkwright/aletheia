@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Complex AI work stays coherent from first prompt to merged PR -- project state, requirements, and execution history persist across sessions and agents, with multi-agent quality gates at every phase.
-**Current focus:** Phase 6: Roadmap & Phase Planning
+**Current focus:** Phase 7: Execution Orchestration
 
 ## Current Position
 
-Phase: 6 of 9 (Roadmap & Phase Planning) — COMPLETE
-Plan: 3 of 3 in current phase — 06-03 complete
-Status: Phase 6 complete; all 3 plans done (store+FSM, orchestrator+tool, route+registration)
-Last activity: 2026-02-24 -- Phase 6 Plan 3 complete (roadmap API route, index.ts exports, plan_roadmap tool registered)
+Phase: 7 of 9 (Execution Orchestration) — IN PROGRESS
+Plan: 1 of 3 in current phase — 07-01 complete
+Status: Phase 7 plan 1 done (V24 migration, spawn records, ExecutionOrchestrator foundation)
+Last activity: 2026-02-24 -- Phase 7 Plan 1 complete (planning_spawn_records table, PlanningStore CRUD, computeWaves/directDependents/findResumeWave, 14 tests)
 
-Progress: [██████░░░░] 60%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: 4 min
-- Total execution time: 0.80 hours
+- Total execution time: 0.87 hours
 
 **By Phase:**
 
@@ -33,9 +33,10 @@ Progress: [██████░░░░] 60%
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
 | 06-roadmap-phase-planning | 3/3 | 16 min | 5 min |
+| 07-execution-orchestration | 1/3 | 10 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 4 min, 2 min, 5 min, 1 min, 3 min
+- Last 5 plans: 2 min, 5 min, 1 min, 3 min, 10 min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -102,6 +103,11 @@ Recent decisions affecting current work:
 - [06-02]: completeRoadmap and advanceToExecution on DianoiaOrchestrator (not RoadmapOrchestrator) — FSM transitions are orchestrator's domain
 - [06-03]: No additional JSON.parse in routes.ts — PlanningStore.mapPhase() already parses requirements/successCriteria from SQLite JSON strings into string[]
 - [06-03]: RoadmapOrchestrator constructed with (store.getDb(), dispatchTool) — matches ResearchOrchestrator pattern; dispatchTool already available at wiring point
+- [07-01]: ExecutionOrchestrator takes (db, dispatchTool) with db not stored as private field — passed to PlanningStore constructor only, avoids TS6138 unused-property error
+- [07-01]: PLANNING_SPAWN_NOT_FOUND added to error-codes.ts alongside other PLANNING_* codes — not inlined as string
+- [07-01]: computeWaves uses PhasePlan.dependencies (plan-to-plan), not PlanStep.dependsOn (step-to-step) as the unit of parallelism
+- [07-01]: Cascade-skip is direct-dependents-only: Plan A fails skips B (B depends A), but C (depends B) continues unless B also fails
+- [07-01]: Spawn records created BEFORE dispatch so crash-before-dispatch leaves a recoverable trace
 
 ### Pending Todos
 
@@ -116,5 +122,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 06-03-PLAN.md (roadmap API route, dianoia/index.ts exports, plan_roadmap tool registered in aletheia.ts)
+Stopped at: Completed 07-01-PLAN.md (planning_spawn_records V24 migration, PlanningStore spawn CRUD, ExecutionOrchestrator with computeWaves/directDependents/findResumeWave, 14 tests)
 Resume file: None

@@ -70,10 +70,10 @@
 
 ### Execution Orchestration
 
-- [ ] **EXEC-01**: Phase execution uses wave-based parallelism -- independent plans within a phase run concurrently via sessions_dispatch
-- [ ] **EXEC-02**: Wave executor computes dependency graph before execution; dependent plans wait for prerequisites
-- [ ] **EXEC-03**: Subagent spawn records are stored in SQLite (not just in-memory) to survive restarts and enable zombie detection
-- [ ] **EXEC-04**: Failed plans cascade-skip dependent plans; non-dependent plans continue executing
+- [x] **EXEC-01**: Phase execution uses wave-based parallelism -- independent plans within a phase run concurrently via sessions_dispatch
+- [x] **EXEC-02**: Wave executor computes dependency graph before execution; dependent plans wait for prerequisites
+- [x] **EXEC-03**: Subagent spawn records are stored in SQLite (not just in-memory) to survive restarts and enable zombie detection
+- [x] **EXEC-04**: Failed plans cascade-skip dependent plans; non-dependent plans continue executing
 - [ ] **EXEC-05**: Execution can be paused at phase boundaries and resumed in a later session
 - [ ] **EXEC-06**: Execution progress is accessible via `/api/planning/projects/:id/phases/:phaseId/status`
 
@@ -210,10 +210,10 @@
 | PHAS-04 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-05 | Phase 6: Roadmap & Phase Planning | Complete |
 | PHAS-06 | Phase 6: Roadmap & Phase Planning | Complete |
-| EXEC-01 | Phase 7: Execution Orchestration | Pending |
-| EXEC-02 | Phase 7: Execution Orchestration | Pending |
-| EXEC-03 | Phase 7: Execution Orchestration | Pending |
-| EXEC-04 | Phase 7: Execution Orchestration | Pending |
+| EXEC-01 | Phase 7: Execution Orchestration | Complete |
+| EXEC-02 | Phase 7: Execution Orchestration | Complete |
+| EXEC-03 | Phase 7: Execution Orchestration | Complete |
+| EXEC-04 | Phase 7: Execution Orchestration | Complete |
 | EXEC-05 | Phase 7: Execution Orchestration | Pending |
 | EXEC-06 | Phase 7: Execution Orchestration | Pending |
 | VERI-01 | Phase 8: Verification & Checkpoints | Pending |
