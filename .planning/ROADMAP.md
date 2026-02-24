@@ -118,12 +118,12 @@ Plans:
   3. User can adjust the roadmap in interactive mode; roadmap auto-commits in YOLO mode
   4. For each phase, a planning agent produces a plan with steps, dependencies, and acceptance criteria (depth-calibrated)
   5. Plan checker agent verifies the plan will achieve the phase goal before execution starts (skippable per config)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Roadmap generation agent and coverage validation
-- [ ] 06-02: Phase planning agent and plan storage
-- [ ] 06-03: Plan checker (goal-backward analysis)
+- [ ] 06-01-PLAN.md — RoadmapOrchestrator class (TDD): roadmap generation, coverage validation, phase planning, checker loop, depth calibration
+- [ ] 06-02-PLAN.md — plan_roadmap tool (4 actions) and orchestrator methods (completeRoadmap, advanceToExecution, listPhases, getPhase)
+- [ ] 06-03-PLAN.md — API route /roadmap, dianoia/index.ts exports, aletheia.ts registration
 
 ### Phase 7: Execution Orchestration
 **Goal**: Phase plans execute via wave-based parallelism with dependency ordering and restart resilience
