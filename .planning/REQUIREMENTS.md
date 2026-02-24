@@ -79,11 +79,11 @@
 
 ### Verification
 
-- [ ] **VERI-01**: After each phase executes, a verifier agent performs goal-backward verification (truths -> artifacts -> wiring)
+- [x] **VERI-01**: After each phase executes, a verifier agent performs goal-backward verification (truths -> artifacts -> wiring)
 - [x] **VERI-02**: Verifier reports: phase goal met / partially met / not met, with specific gap analysis
-- [ ] **VERI-03**: If phase goal not met, agent proposes gap-closure steps before advancing
+- [x] **VERI-03**: If phase goal not met, agent proposes gap-closure steps before advancing
 - [ ] **VERI-04**: User can override verification failure and advance anyway (recorded in `planning_checkpoints`)
-- [ ] **VERI-05**: Verification can be disabled per-project in planning config
+- [x] **VERI-05**: Verification can be disabled per-project in planning config
 
 ### Human-in-Loop Checkpoints
 
@@ -216,11 +216,11 @@
 | EXEC-04 | Phase 7: Execution Orchestration | Complete |
 | EXEC-05 | Phase 7: Execution Orchestration | Complete |
 | EXEC-06 | Phase 7: Execution Orchestration | Complete |
-| VERI-01 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-01 | Phase 8: Verification & Checkpoints | Complete |
 | VERI-02 | Phase 8: Verification & Checkpoints | Complete |
-| VERI-03 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-03 | Phase 8: Verification & Checkpoints | Complete |
 | VERI-04 | Phase 8: Verification & Checkpoints | Pending |
-| VERI-05 | Phase 8: Verification & Checkpoints | Pending |
+| VERI-05 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-01 | Phase 8: Verification & Checkpoints | Complete |
 | CHKP-02 | Phase 8: Verification & Checkpoints | Pending |
 | CHKP-03 | Phase 8: Verification & Checkpoints | Complete |
