@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 6 of 9 (Roadmap & Phase Planning) — IN PROGRESS
-Plan: 1 of ? in current phase — 06-01 complete
-Status: Phase 6 Plan 1 complete; ready for 06-02 (plan_roadmap tool)
-Last activity: 2026-02-24 -- Phase 6 Plan 1 complete (RoadmapOrchestrator, 20 unit tests, checker loop)
+Plan: 2 of 3 in current phase — 06-02 complete
+Status: Phase 6 Plan 2 complete; ready for 06-03 (wire plan_roadmap tool into registry)
+Last activity: 2026-02-24 -- Phase 6 Plan 2 complete (plan_roadmap tool, 7 tests, orchestrator FSM methods)
 
-Progress: [█████░░░░░] 52%
+Progress: [█████░░░░░] 54%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: 4 min
-- Total execution time: 0.75 hours
+- Total execution time: 0.80 hours
 
 **By Phase:**
 
@@ -32,7 +32,7 @@ Progress: [█████░░░░░] 52%
 | 03-project-context-and-api | 4/4 | 9 min | 2 min |
 | 04-research-pipeline | 2/2 | 6 min | 3 min |
 | 05-requirements-definition | 2/? | 6 min | 3 min |
-| 06-roadmap-phase-planning | 1/? | 10 min | 10 min |
+| 06-roadmap-phase-planning | 2/3 | 13 min | 7 min |
 
 **Recent Trend:**
 - Last 5 plans: 4 min, 2 min, 5 min, 1 min, 3 min
@@ -97,6 +97,9 @@ Recent decisions affecting current work:
 - [06-01]: commitRoadmap stores this.db as instance field alongside this.store — required for db.transaction() wrapper spanning multiple createPhase() calls
 - [06-01]: checkPlan dispatch failure returns {pass: true} — best-effort avoids checker blocking plan generation
 - [06-01]: planPhase reads depth from store.getProjectOrThrow(projectId).config.depth — orchestrator owns depth selection
+- [06-02]: plan_roadmap generate commits roadmap draft in both interactive and yolo modes (write-on-generate); yolo additionally calls completeRoadmap immediately
+- [06-02]: plan_phases uses sequential reduce chain (not Promise.all) — PHAS-01 requires sequential phase planning
+- [06-02]: completeRoadmap and advanceToExecution on DianoiaOrchestrator (not RoadmapOrchestrator) — FSM transitions are orchestrator's domain
 
 ### Pending Todos
 
@@ -111,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 06-01-PLAN.md (RoadmapOrchestrator, 20 unit tests, atomic commitRoadmap, planPhase checker loop)
+Stopped at: Completed 06-02-PLAN.md (plan_roadmap tool, 7 behavioral tests, completeRoadmap/advanceToExecution orchestrator methods)
 Resume file: None
