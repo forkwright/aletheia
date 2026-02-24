@@ -140,12 +140,8 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for full endpoint list.
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
-cd infrastructure/runtime && npm install && npx tsdown && cd ../..
-cd ui && npm install && npm run build && cd ..
-cp .env.example shared/config/aletheia.env  # Edit: API keys, paths
-cp config/aletheia.example.json ~/.aletheia/aletheia.json  # Edit: agents, bindings
-cp -r nous/_example nous/your-agent  # Edit: SOUL.md, IDENTITY.md
-node infrastructure/runtime/aletheia.mjs gateway
+./setup.sh        # builds, installs CLI, opens browser
+aletheia start    # from next time on
 ```
 
 See [QUICKSTART.md](docs/QUICKSTART.md) for full setup, [DEPLOYMENT.md](docs/DEPLOYMENT.md) for production, [RESCUE.md](RESCUE.md) for recovery.
