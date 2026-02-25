@@ -93,7 +93,7 @@ function process(input: any): string {
 }
 ```
 
-**Enforced by:** `typescript/no-explicit-any` (oxlint, currently `warn` — escalates to `error` in Phase 11).
+**Enforced by:** `typescript/no-explicit-any` (oxlint, currently `warn` — deferred to Phase 14, 32 violations).
 
 **Scan count:** 32 violations in non-test runtime source (2026-02-25).
 
@@ -158,7 +158,7 @@ export const myTool: ToolHandler = {
 };
 ```
 
-**Enforced by:** `require-await` (oxlint, currently `warn` — escalates to `error` in Phase 11). See CONTRIBUTING.md Gotcha 3.
+**Enforced by:** `require-await` (oxlint, currently `warn` — deferred to Phase 14, 125 violations). See CONTRIBUTING.md Gotcha 3.
 
 **Scan count:** 125 violations, concentrated in `organon/built-in/*.ts` (the ToolHandler pattern). Non-organon violations are genuine bugs — 0 found outside organon in current scan.
 
@@ -182,7 +182,7 @@ import { type Logger, createLogger } from "../koina/logger.js";
 import { SessionError, AletheiaError, PlanningError } from "../koina/errors.js";
 ```
 
-**Enforced by:** `sort-imports` (oxlint, currently `warn` — escalates to `error` in Phase 11). Note: `ignoreDeclarationSort: true` means statement-level ordering is not enforced — only member-level sorting within a single import statement.
+**Enforced by:** `sort-imports` (oxlint, currently `warn` — deferred to Phase 14, 68 violations). Note: `ignoreDeclarationSort: true` means statement-level ordering is not enforced — only member-level sorting within a single import statement.
 
 **Scan count:** 68 violations in runtime source (2026-02-25).
 
@@ -638,8 +638,10 @@ PR: "fix: typed errors across runtime"
 | No Silent Catch | `no-empty` (oxlint) | `.oxlintrc.json` | Active (error) |
 | No Explicit Any | `typescript/no-explicit-any` (oxlint) | `.oxlintrc.json` | Warn → Error in Phase 11 |
 | Logger Not Console | `no-console` (oxlint) | Phase 11 addition | Not yet active |
-| Typed Promise Returns | `require-await` (oxlint) | `.oxlintrc.json` | Warn → Error in Phase 11 |
-| Sort Named Imports | `sort-imports` (oxlint) | `.oxlintrc.json` | Warn → Error in Phase 11 |
+| Typed Promise Returns | `require-await` (oxlint) | `.oxlintrc.json` | Warn (125 violations — Phase 14) |
+| Sort Named Imports | `sort-imports` (oxlint) | `.oxlintrc.json` | Warn (68 violations — Phase 14) |
+| Prefer await over .then() | `promise/prefer-await-to-then` (oxlint) | `.oxlintrc.json` | Warn (61 violations — Phase 14) |
+| Catch param naming | `unicorn/catch-error-name` (oxlint) | `.oxlintrc.json` | Warn (221 violations — Phase 14) |
 | .js Import Extensions | tsconfig + build | `tsconfig.json` | Active (build fails) |
 | Type-Only Imports | `typescript/consistent-type-imports` (oxlint) | `.oxlintrc.json` | Active (error) |
 | No Floating Promises | `typescript/no-floating-promises` (oxlint) | `.oxlintrc.json` | Active (error) |
