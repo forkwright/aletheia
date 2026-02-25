@@ -27,11 +27,16 @@ function estimateStepCost(role: string): number {
 
 export const PLAN_PROPOSED_MARKER = "__PLAN_PROPOSED__";
 
+/**
+ * @deprecated Use the /plan command and Dianoia orchestrator instead.
+ * Migration: run /plan in any session to start a structured planning project.
+ */
 export function createPlanProposeHandler(): ToolHandler {
   return {
     definition: {
       name: "plan_propose",
       description:
+        "DEPRECATED: Use /plan command instead. This tool will be removed in a future release.\n\n" +
         "Propose a multi-step execution plan for human approval before proceeding. " +
         "The turn will pause and the human sees the plan with cost estimates, " +
         "checkboxes per step, and Approve/Edit/Cancel buttons.\n\n" +
@@ -102,6 +107,7 @@ export function createPlanProposeHandler(): ToolHandler {
       // The execute stage reads this marker and yields plan_proposed
       return JSON.stringify({
         __marker: PLAN_PROPOSED_MARKER,
+        deprecationWarning: "Deprecated: use /plan instead.",
         plan: {
           id: planId,
           sessionId: context.sessionId,

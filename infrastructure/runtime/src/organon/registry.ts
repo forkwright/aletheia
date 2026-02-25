@@ -28,6 +28,7 @@ export interface ToolHandler {
     context: ToolContext,
   ) => Promise<string>;
   category?: "essential" | "available";
+  domains?: string[];
 }
 
 export interface ToolContext {
@@ -112,6 +113,32 @@ export class ToolRegistry {
     this.activeTools.set(key, { sessionId, lastUsedTurn: turnSeq });
     log.info(`Tool ${name} enabled for session ${sessionId}`);
     return true;
+  }
+
+  enableToolsForDomains(domains: string[], sessionId: string, turnSeq: number): string[] {
+    const enabled: string[] = [];
+    for (const tool of this.tools.values()) {
+      if (tool.category !== "available") continue;
+      if (!tool.domains?.some((d) => domains.includes(d))) continue;
+      const key = `${sessionId}:${tool.definition.name}`;
+      if (this.activeTools.has(key)) continue; // already active
+      this.activeTools.set(key, { sessionId, lastUsedTurn: turnSeq });
+      enabled.push(tool.definition.name);
+    }
+    if (enabled.length > 0) {
+      log.info(`Domain-activated tools for session ${sessionId} (${domains.join(",")}): ${enabled.join(", ")}`);
+    }
+    return enabled;
+  }
+
+  getAvailableToolNamesExcluding(sessionId: string): string[] {
+    return Array.from(this.tools.values())
+      .filter((t) => {
+        if (t.category !== "available") return false;
+        const key = `${sessionId}:${t.definition.name}`;
+        return !this.activeTools.has(key);
+      })
+      .map((t) => t.definition.name);
   }
 
   recordToolUse(name: string, sessionId: string, turnSeq: number): void {

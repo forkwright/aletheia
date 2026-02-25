@@ -112,6 +112,19 @@ export class PipelineError extends AletheiaError {
   }
 }
 
+export class PlanningError extends AletheiaError {
+  constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode }) {
+    super({
+      code: opts?.code ?? "PLANNING_PROJECT_NOT_FOUND",
+      module: "dianoia",
+      message,
+      context: opts?.context,
+      cause: opts?.cause,
+    });
+    this.name = "PlanningError";
+  }
+}
+
 export class TransportError extends AletheiaError {
   constructor(message: string, opts?: { cause?: unknown; context?: Record<string, unknown>; code?: ErrorCode; recoverable?: boolean; retryAfterMs?: number }) {
     super({

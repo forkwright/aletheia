@@ -8,7 +8,7 @@ import logging
 import re
 from difflib import SequenceMatcher
 
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
 logger = logging.getLogger("aletheia_memory.entity_resolver")
 
@@ -100,7 +100,7 @@ STOPWORDS = {
     # Common nouns (non-entity)
     "system", "user", "agent", "tool", "command", "output", "input",
     "result", "error", "warning", "info", "debug", "log", "data",
-    "file", "path", "name", "type", "value", "key", "id", "status",
+    "file", "path", "name", "type", "value", "id", "status",
     "ping", "pong", "convo", "conversation", "session", "turn",
     "message", "response", "request", "query", "search",
     "time", "date", "day", "week", "month", "year",
@@ -108,8 +108,7 @@ STOPWORDS = {
     "note", "change", "test", "check", "list", "map",
     "code", "spec", "phase", "step", "stage", "level",
     "line", "text", "word", "block", "chunk", "batch",
-    "state", "mode", "option", "config", "setting",
-    "source", "target", "base", "root", "core",
+    "state", "mode", "option", "config", "source", "target", "base", "root", "core",
     "run", "task", "work", "job", "action", "event",
     "thing", "stuff", "item", "entry", "record",
     "number", "count", "size", "length", "limit",
@@ -131,18 +130,16 @@ STOPWORDS = {
     # Additional garbage from corpus audit
     "add", "values", "cross", "decisions", "author", "token",
     "three", "owns", "verify", "design", "small", "audit", "per",
-    "setup", "init", "init", "default", "local", "global",
+    "setup", "init", "default", "local", "global",
     "direct", "raw", "valid", "invalid", "missing", "broken",
     "simple", "complex", "large", "huge", "tiny",
-    "fine", "great", "nice", "sure", "right", "wrong",
-    "early", "late", "fast", "slow", "hard", "soft",
-    "open", "closed", "free", "safe", "secure",
+    "fine", "great", "nice", "sure", "right", "early", "late", "fast", "slow", "hard", "soft",
+    "open", "free", "safe", "secure",
     "silent", "quiet", "loud", "deep", "shallow",
     "broad", "narrow", "wide", "thin", "thick",
     "heavy", "light", "dark", "bright", "hot", "cold",
     "dry", "wet", "rough", "smooth", "sharp", "flat",
-    "true", "false", "null", "none", "void", "empty",
-    "half", "double", "triple", "zero", "one", "two",
+    "void", "half", "double", "triple", "zero", "one", "two",
     "four", "five", "six", "seven", "eight", "nine", "ten",
     "second", "third", "fourth", "fifth",
     "manual", "auto", "custom", "native", "external", "internal",
@@ -185,27 +182,24 @@ def is_valid_entity(name: str) -> bool:
     # Pure numbers are not entities
     if re.match(r'^\d+$', normalized):
         return False
-    # Single common words
-    if len(normalized.split()) == 1 and normalized in STOPWORDS:
-        return False
-    return True
+    return not (len(normalized.split()) == 1 and normalized in STOPWORDS)
 
 
 def resolve_entity(name: str, existing_names: list[str] | None = None) -> str | None:
     """Resolve an entity name to its canonical form.
-    
+
     Returns:
         Canonical name if resolved, None if the entity should be skipped.
     """
     normalized = normalize_entity_name(name)
-    
+
     if not is_valid_entity(name):
         return None
-    
+
     # Check known aliases first
     if normalized in KNOWN_ALIASES:
         return KNOWN_ALIASES[normalized]
-    
+
     # If we have existing names, try fuzzy matching
     if existing_names:
         for existing in existing_names:
@@ -213,7 +207,7 @@ def resolve_entity(name: str, existing_names: list[str] | None = None) -> str | 
             ratio = SequenceMatcher(None, normalized, existing_norm).ratio()
             if ratio >= FUZZY_THRESHOLD:
                 return existing_norm
-    
+
     return normalized
 
 
@@ -221,7 +215,7 @@ def get_canonical_entities() -> list[str]:
     """Fetch all canonical entity names from Neo4j."""
     if not neo4j_available():
         return []
-    
+
     try:
         driver = neo4j_driver()
         with driver.session() as session:
@@ -241,18 +235,18 @@ def get_canonical_entities() -> list[str]:
 
 def merge_duplicate_entities() -> dict:
     """Find and merge duplicate entity nodes in Neo4j.
-    
+
     Uses the alias table and fuzzy matching to identify duplicates,
     then merges relationships onto the canonical node and deletes duplicates.
     """
     if not neo4j_available():
         return {"ok": False, "reason": "neo4j_unavailable"}
-    
+
     try:
         driver = neo4j_driver()
         merged_count = 0
         deleted_count = 0
-        
+
         with driver.session() as session:
             # Get all entities
             result = session.run(
@@ -260,7 +254,7 @@ def merge_duplicate_entities() -> dict:
                 "RETURN e.name AS name, id(e) AS node_id"
             )
             entities = [(r["name"], r["node_id"]) for r in result if r["name"]]
-        
+
         # Build resolution map
         canonical_map: dict[str, list[tuple[str, int]]] = {}
         for name, node_id in entities:
@@ -274,21 +268,21 @@ def merge_duplicate_entities() -> dict:
                     )
                     deleted_count += 1
                 continue
-            
+
             if resolved not in canonical_map:
                 canonical_map[resolved] = []
             canonical_map[resolved].append((name, node_id))
-        
+
         # Merge duplicates
         for canonical, nodes in canonical_map.items():
             if len(nodes) <= 1:
                 continue
-            
+
             # Keep the first node as canonical, merge others into it
-            keeper_name, keeper_id = nodes[0]
-            
+            _keeper_name, keeper_id = nodes[0]
+
             with driver.session() as session:
-                for dup_name, dup_id in nodes[1:]:
+                for _dup_name, dup_id in nodes[1:]:
                     # Transfer all relationships from duplicate to keeper
                     session.run(
                         """
@@ -327,16 +321,16 @@ def merge_duplicate_entities() -> dict:
                         dup_id=dup_id,
                     )
                     merged_count += 1
-                
+
                 # Update keeper to canonical name
                 session.run(
                     "MATCH (e) WHERE id(e) = $keeper_id SET e.name = $canonical",
                     keeper_id=keeper_id, canonical=canonical,
                 )
-        
+
         driver.close()
         mark_neo4j_ok()
-        
+
         result = {
             "ok": True,
             "entities_checked": len(entities),
@@ -346,7 +340,7 @@ def merge_duplicate_entities() -> dict:
         }
         logger.info(f"Entity merge: {result}")
         return result
-        
+
     except Exception as e:
         mark_neo4j_down()
         logger.exception("Entity merge failed")
@@ -357,7 +351,7 @@ def cleanup_orphan_entities() -> dict:
     """Remove entity nodes with no relationships."""
     if not neo4j_available():
         return {"ok": False, "reason": "neo4j_unavailable"}
-    
+
     try:
         driver = neo4j_driver()
         with driver.session() as session:

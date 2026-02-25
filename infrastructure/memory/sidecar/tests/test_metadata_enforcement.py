@@ -4,7 +4,7 @@
 # and that requests with all required fields proceed past validation.
 # Qdrant and Mem0 calls are mocked so no live services are required.
 
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI

@@ -17,24 +17,21 @@ import argparse
 import logging
 import re
 import sys
-import time
 from collections import Counter
 
 # Must run from sidecar venv
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import PointStruct, SetPayloadOperation, SetPayload, PointIdsList
 except ImportError:
     print("Run from sidecar venv: .venv/bin/python backfill_entities.py")
     sys.exit(1)
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
 from aletheia_memory.entity_resolver import (
-    resolve_entity,
-    is_valid_entity,
+    cleanup_orphan_entities,
     get_canonical_entities,
     merge_duplicate_entities,
-    cleanup_orphan_entities,
+    resolve_entity,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -157,10 +154,10 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
     log.info(f"  Already tagged:  {already_has}")
     log.info(f"  Updated:         {updated}")
     log.info(f"  No entities:     {no_entities}")
-    log.info(f"\n  Entity count distribution:")
+    log.info("\n  Entity count distribution:")
     for count in sorted(entity_counts.keys()):
         log.info(f"    {count} entities: {entity_counts[count]} points")
-    log.info(f"\n  Top 25 resolved entities:")
+    log.info("\n  Top 25 resolved entities:")
     for name, count in all_resolved.most_common(25):
         log.info(f"    {name}: {count}")
 

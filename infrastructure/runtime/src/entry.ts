@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable no-console */
 // CLI entry point
 import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
@@ -325,6 +326,40 @@ program
       }
     } catch (err) {
       console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("plan")
+  .description("Start or resume a Dianoia planning project")
+  .option("-a, --agent <id>", "Agent ID to plan for")
+  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
+  .option("-t, --token <token>", "Auth token")
+  .action(async (opts: { agent?: string; url: string; token?: string }) => {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (opts.token) headers["Authorization"] = `Bearer ${opts.token}`;
+
+      const res = await fetch(`${opts.url}/api/sessions/send`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          agentId: opts.agent ?? "syn",
+          message: "/plan",
+          sessionKey: "cli:plan",
+        }),
+        signal: AbortSignal.timeout(120000),
+      });
+
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        console.error(`Error: ${(data["error"] as string | undefined) ?? res.statusText}`);
+        process.exit(1);
+      }
+      console.log((data["response"] as string | undefined) ?? "(no response)");
+    } catch (err) {
+      console.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
@@ -800,7 +835,7 @@ auditCmd
   .action(async () => {
     const Database = (await import("better-sqlite3")).default;
     const { paths } = await import("./taxis/paths.js");
-    const { verifyAuditChain } = await import("./auth/audit-verify.js");
+    const { verifyAuditChain } = await import("./symbolon/audit-verify.js");
 
     const dbPath = paths.sessionsDb();
     let db: InstanceType<typeof Database>;
@@ -848,7 +883,7 @@ program
   .action(async (opts: { username?: string; password?: string; config?: string }) => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const { paths } = await import("./taxis/paths.js");
-    const { hashPassword } = await import("./auth/passwords.js");
+    const { hashPassword } = await import("./symbolon/passwords.js");
     const { createInterface } = await import("node:readline");
 
     const configPath = opts.config ?? paths.configFile();

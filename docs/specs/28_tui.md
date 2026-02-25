@@ -1,7 +1,7 @@
 # Spec 28 — Aletheia TUI
 
-**Status:** Phase 1 — Complete ✅  
-**Component:** `tui/` — Rust terminal client (4,431 LOC as of 2026-02-23)  
+**Status:** Phase 2 — Complete ✅ (Phase 3 substantially complete)  
+**Component:** `tui/` — Rust terminal client (4,853 LOC as of 2026-02-23)  
 **Interface:** Primary working interface alongside Signal (mobile)  
 **Gateway dependency:** Hono REST API + SSE on `:18789` — zero gateway changes  
 **Design target:** Level 2 dashboard — multi-agent visibility with split panes  
@@ -1024,7 +1024,7 @@ tui/
 - [x] Exponential backoff reconnect (1s → 30s max, reset on successful connection)
 - [x] On `turn:after` for focused agent → reload history automatically
 
-### Phase 2: Rich Rendering + Overlays (~75% complete)
+### Phase 2: Rich Rendering + Overlays ✅ Complete
 
 **Milestone:** Code highlighting, thinking blocks, tables, all modal overlays, compose mode.
 
@@ -1034,34 +1034,34 @@ tui/
 - [x] `view/overlay.rs`: Modal overlay system (centered floating block over main view)
 - [x] Agent picker overlay (`Ctrl+A`)
 - [x] Help overlay (`F1`) — Navigation, Input, Scroll, During Turns sections
-- [ ] Token summary overlay (`F2`) — nice-to-have, not priority
-- [ ] System status overlay (`Ctrl+I`)
-- [ ] Fuzzy filtering in overlays (`/` to search, arrow keys to navigate)
+- [ ] Token summary overlay (`F2`) — deferred, nice-to-have
+- [x] System status overlay (`Ctrl+I`) — connection, agents, sessions, cost
+- [ ] Fuzzy filtering in overlays (`/` to search) — deferred
 - [x] `clipboard.rs`: Copy last response (`Ctrl+Y`) — arboard native with OSC52 fallback
 - [x] `Ctrl+E` compose mode: suspend TUI, spawn `$EDITOR`, send on save+quit
-- [ ] New session / topic boundary (`Ctrl+N`)
+- [x] New session / topic boundary (`Ctrl+N`)
 - [x] Tool approval overlay: render on `tool_approval_required`, A/D to approve/deny
 - [x] Plan approval overlay: render on `plan_proposed`, toggle steps, approve/cancel
-- [ ] Plan execution progress: persistent mini-widget during plan execution
-- [ ] OSC 8 hyperlinks for URLs
-- [ ] `markdown.rs`: Links as OSC 8 clickable hyperlinks
+- [ ] Plan execution progress: persistent mini-widget — deferred
+- [ ] OSC 8 hyperlinks for URLs — deferred
+- [ ] `markdown.rs`: Links as OSC 8 clickable hyperlinks — deferred
 
-### Phase 3: Polish + Production Hardening (3-4 days)
+### Phase 3: Polish + Production Hardening ✅ Substantially Complete
 
 **Milestone:** Daily-driver quality. Handles every edge case gracefully.
 
-- [ ] Reconnection resilience: network drops, gateway restarts, laptop sleep/wake
-- [ ] State recovery on reconnect: reload history for stale agents, restore streaming state
-- [ ] `@agent` mention completion in input (Tab to cycle)
+- [x] Reconnection resilience: SSE reconnect triggers full agent state reload + history refresh
+- [x] State recovery on reconnect: reload agents, preserve notifications, refresh focused session
+- [x] `@agent` mention completion in input (Tab to cycle through matching agents)
 - [x] Mouse support: scroll wheel in chat
-- [ ] Mouse support: click agent in sidebar to switch
-- [ ] Error display: inline toast with auto-dismiss after 5s, persistent errors in status bar
-- [ ] Responsive layout: graceful degradation for small terminals (hide sidebar < 60 cols)
+- [x] Mouse support: click agent in sidebar to switch (via static SIDEBAR_RECT tracking)
+- [x] Error display: inline toast bar at bottom with 5-second auto-dismiss
+- [x] Responsive layout: sidebar auto-hides below 60 columns
 - [x] Tracing to file via tracing-appender
-- [ ] Log rotation configuration
-- [ ] `aletheia logout` subcommand
+- [ ] Log rotation configuration — tracing-appender handles daily rotation already
+- [x] `aletheia logout` subcommand (via `--logout` CLI flag)
 - [ ] Comprehensive tests: state transitions, markdown rendering snapshots, API type round-trips
-- [ ] README with screenshots and install instructions
+- [x] README with keybindings, install instructions, architecture, terminal support matrix
 
 ---
 

@@ -1,4 +1,6 @@
 // SQLite DDL — embedded as string constants for migrations
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "../dianoia/schema.js";
+
 export const SCHEMA_VERSION = 1;
 
 export const DDL = `
@@ -419,6 +421,38 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
   },
   {
     version: 20,
+    sql: PLANNING_V20_DDL,
+  },
+  {
+    version: 21,
+    sql: PLANNING_V21_MIGRATION,
+  },
+  {
+    version: 22,
+    sql: PLANNING_V22_MIGRATION,
+  },
+  {
+    version: 23,
+    sql: PLANNING_V23_MIGRATION,
+  },
+  {
+    version: 24,
+    sql: PLANNING_V24_MIGRATION,
+  },
+  {
+    version: 25,
+    sql: PLANNING_V25_MIGRATION,
+  },
+  {
+    version: 26,
+    sql: PLANNING_V26_MIGRATION,
+  },
+  {
+    version: 27,
+    sql: PLANNING_V27_MIGRATION,
+  },
+  {
+    version: 28,
     sql: `
       CREATE TABLE IF NOT EXISTS distillation_locks (
         session_id TEXT PRIMARY KEY,

@@ -1,7 +1,7 @@
 // Metrics, tool stats, cron, and reflection routes
 import { Hono } from "hono";
 import { createLogger } from "../../koina/logger.js";
-import { computeSelfAssessment } from "../../distillation/reflect.js";
+import { computeSelfAssessment } from "../../melete/reflect.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon");
@@ -100,10 +100,10 @@ export function metricRoutes(deps: RouteDeps, refs: RouteRefs): Hono {
     });
 
     const cacheHitRate =
-      metrics.usage.totalInputTokens > 0
+      (metrics.usage.totalInputTokens + metrics.usage.totalCacheReadTokens) > 0
         ? Math.round(
             (metrics.usage.totalCacheReadTokens /
-              metrics.usage.totalInputTokens) *
+              (metrics.usage.totalInputTokens + metrics.usage.totalCacheReadTokens)) *
               100,
           )
         : 0;

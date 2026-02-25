@@ -16,40 +16,19 @@ import type {
   UserContentBlock,
 } from "../../../hermeneus/anthropic.js";
 import type {
-  Plan,
   RuntimeServices,
   TurnOutcome,
   TurnState,
   TurnStreamEvent,
 } from "../types.js";
 import { truncateToolResult } from "./truncate.js";
-import { PLAN_PROPOSED_MARKER } from "../../../organon/built-in/plan-propose.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 
-interface PlanProposalData {
-  id: string;
-  goal: string;
-  steps: Plan["steps"];
-  totalEstimatedCostCents: number;
-  createdAt: string;
-}
+/** Hard ceiling on tool loops per turn. Prevents infinite loops from exhausting tokens/time. */
+const MAX_TOOL_LOOPS = 200;
 
-/** Format a plan proposal into a human-readable summary. */
-function formatPlanSummary(plan: PlanProposalData): string {
-  return `**Plan proposed** (${plan.steps.length} steps, ~$${(plan.totalEstimatedCostCents / 100).toFixed(2)}):\n` +
-    plan.steps.map((s, i) => `${i + 1}. ${s.label} *(${s.role})*`).join("\n") +
-    "\n\nAwaiting approval.";
-}
-
-/** Check if a tool result is a plan proposal. Returns the plan data or null. */
-function detectPlanProposal(toolName: string, toolResult: string, isError: boolean): PlanProposalData | null {
-  if (isError || toolName !== "plan_propose" || !toolResult.includes(PLAN_PROPOSED_MARKER)) return null;
-  try {
-    const parsed = JSON.parse(toolResult) as { __marker: string; plan: PlanProposalData };
-    if (parsed.__marker === PLAN_PROPOSED_MARKER && parsed.plan) return parsed.plan;
-  } catch { /* not valid */ }
-  return null;
-}
+/** Hard ceiling on wall-clock time per turn (ms). 15 minutes. */
+const MAX_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;
 
 /** Dynamic thinking budget based on message complexity. */
 function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
@@ -115,8 +94,18 @@ export async function* executeStreaming(
 
   // Track which credential was used (updated each loop from streamResult)
   let lastCredentialLabel: string | undefined;
+  const turnStartTime = Date.now();
 
   for (let loop = 0; ; loop++) {
+    // Hard safety caps — prevent infinite loops and runaway turns
+    if (loop >= MAX_TOOL_LOOPS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
+    }
+    const elapsed = Date.now() - turnStartTime;
+    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    }
+
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
 
@@ -416,29 +405,6 @@ export async function* executeStreaming(
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
 
-        // Plan proposal — pause turn for human approval
-        const planData = detectPlanProposal(toolUse.name, toolResult, isError);
-        if (planData) {
-          services.store.createPlan({
-            id: planData.id, sessionId, nousId,
-            steps: planData.steps, totalEstimatedCostCents: planData.totalEstimatedCostCents,
-          });
-          const planSummary = formatPlanSummary(planData);
-          yield { type: "plan_proposed", plan: { ...planData, sessionId, nousId, status: "awaiting_approval" as const } };
-          yield { type: "text_delta", text: planSummary };
-          services.store.appendMessage(sessionId, "assistant", planSummary, { tokenEstimate: estimateTokens(planSummary) });
-          state.totalToolCalls = totalToolCalls;
-          state.currentMessages = currentMessages;
-          state.outcome = {
-            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
-            inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
-            cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
-            ...(lastCredentialLabel ? { credentialLabel: lastCredentialLabel } : {}),
-          };
-          yield { type: "turn_complete", outcome: state.outcome };
-          return state;
-        }
-
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";
           services.competence.recordCorrection(nousId, domain);
@@ -498,7 +464,7 @@ export async function executeBuffered(
 ): Promise<TurnState> {
   const {
     nousId, sessionId, sessionKey, model, toolDefs, toolContext,
-    systemPrompt, trace,
+    systemPrompt, trace, abortSignal,
   } = state;
 
   let { currentMessages } = state;
@@ -513,8 +479,18 @@ export async function executeBuffered(
   // Context management for buffered path
   const contextTokens = services.config.agents.defaults.contextTokens;
   const bufferedContextMgmt = buildContextManagement(contextTokens, false);
+  const turnStartTime = Date.now();
 
   for (let loop = 0; ; loop++) {
+    // Hard safety caps — prevent infinite loops and runaway turns
+    if (loop >= MAX_TOOL_LOOPS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
+    }
+    const elapsed = Date.now() - turnStartTime;
+    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    }
+
     const result = await services.router.complete({
       model,
       system: systemPrompt,
@@ -523,7 +499,15 @@ export async function executeBuffered(
       maxTokens: services.config.agents.defaults.maxOutputTokens,
       ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
       ...(bufferedContextMgmt ? { contextManagement: bufferedContextMgmt } : {}),
+      ...(abortSignal ? { signal: abortSignal } : {}),
     });
+
+    // Check abort after each LLM call
+    if (abortSignal?.aborted) {
+      log.info(`Buffered turn aborted for ${nousId}:${sessionId}`);
+      state.totalToolCalls = totalToolCalls;
+      return state;
+    }
 
     totalInputTokens += result.usage.inputTokens;
     totalOutputTokens += result.usage.outputTokens;
@@ -602,6 +586,14 @@ export async function executeBuffered(
     const batches = groupForParallelExecution(toolUses);
 
     for (const batch of batches) {
+      // Abort check before each tool batch
+      if (abortSignal?.aborted) {
+        for (const rem of batch) {
+          toolResults.push({ type: "tool_result", tool_use_id: rem.id, content: "[CANCELLED] Turn aborted.", is_error: true });
+        }
+        break;
+      }
+
       const execResults: Array<{ toolUse: ToolUseBlock; result: string; isError: boolean; durationMs: number }> = [];
 
       if (batch.length === 1) {
@@ -723,26 +715,6 @@ export async function executeBuffered(
         services.store.appendMessage(sessionId, "tool_result", storedResult, {
           toolCallId: toolUse.id, toolName: toolUse.name, tokenEstimate: estimateTokens(storedResult),
         });
-
-        // Plan proposal — store plan and return early (buffered path, no SSE)
-        const planData = detectPlanProposal(toolUse.name, toolResult, isError);
-        if (planData) {
-          services.store.createPlan({
-            id: planData.id, sessionId, nousId,
-            steps: planData.steps, totalEstimatedCostCents: planData.totalEstimatedCostCents,
-          });
-          const planSummary = formatPlanSummary(planData);
-          services.store.appendMessage(sessionId, "assistant", planSummary, { tokenEstimate: estimateTokens(planSummary) });
-          state.totalToolCalls = totalToolCalls;
-          state.currentMessages = currentMessages;
-          state.outcome = {
-            text: planSummary, nousId, sessionId, model, toolCalls: totalToolCalls,
-            inputTokens: state.totalInputTokens, outputTokens: state.totalOutputTokens,
-            cacheReadTokens: state.totalCacheReadTokens, cacheWriteTokens: state.totalCacheWriteTokens,
-            ...(result.credentialLabel ? { credentialLabel: result.credentialLabel } : {}),
-          };
-          return state;
-        }
 
         if (isError && !toolResult.startsWith("[TIMEOUT]") && services.competence) {
           const domain = sessionKey === "main" ? "general" : sessionKey.split(":")[0] ?? "general";

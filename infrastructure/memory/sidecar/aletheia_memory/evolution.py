@@ -4,17 +4,19 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
 logger = logging.getLogger("aletheia_memory.evolution")
 evolution_router = APIRouter(prefix="/evolution")
+
+_background_tasks: set[asyncio.Task] = set()  # prevent GC of fire-and-forget tasks
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EVOLUTION_THRESHOLD = 0.80  # similarity above which we evolve rather than add
@@ -60,8 +62,8 @@ async def check_evolution(req: EvolveRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.text, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Search failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Search failed") from None
 
     if not isinstance(results, list):
         return {"ok": True, "action": "add_new", "reason": "no existing memories"}
@@ -101,13 +103,15 @@ async def check_evolution(req: EvolveRequest, request: Request):
             add_kwargs["agent_id"] = req.agent_id
         add_kwargs["metadata"] = {
             "evolved_from": old_id,
-            "evolution_timestamp": datetime.now(timezone.utc).isoformat(),
+            "evolution_timestamp": datetime.now(UTC).isoformat(),
         }
         result = await asyncio.to_thread(mem.add, evolved_text, **add_kwargs)
 
         # Record evolution in Neo4j for lineage tracking
         if neo4j_available():
-            asyncio.create_task(_record_evolution_graph(old_text, evolved_text, old_id))
+            task = asyncio.create_task(_record_evolution_graph(old_text, evolved_text, old_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         return {
             "ok": True,
@@ -118,8 +122,8 @@ async def check_evolution(req: EvolveRequest, request: Request):
             "similarity": best.get("score", 0),
             "result": result,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Evolution failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Evolution failed") from None
 
 
 @evolution_router.post("/reinforce")
@@ -132,7 +136,7 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
     if not neo4j_available():
         return {"ok": True, "reinforced": False, "reason": "graph_unavailable"}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     try:
         driver = neo4j_driver()
@@ -174,8 +178,8 @@ async def decay_memories(req: DecayRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to fetch memories")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch memories") from None
 
     if not isinstance(entries, list):
         return {"ok": True, "decayed": 0, "checked": 0}
@@ -237,7 +241,7 @@ async def decay_memories(req: DecayRequest, request: Request):
                         ON MATCH SET m.decay_count = coalesce(m.decay_count, 0) + 1,
                                      m.last_decayed = $now
                         """,
-                        id=memory_id, now=datetime.now(timezone.utc).isoformat(),
+                        id=memory_id, now=datetime.now(UTC).isoformat(),
                     )
                 driver.close()
                 mark_neo4j_ok()

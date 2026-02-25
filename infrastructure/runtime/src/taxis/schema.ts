@@ -492,6 +492,18 @@ const BackupConfig = z
   })
   .default({});
 
+const PlanningConfig = z
+  .object({
+    depth: z.enum(["quick", "standard", "comprehensive"]).default("standard"),
+    parallelization: z.boolean().default(true),
+    research: z.boolean().default(true),
+    plan_check: z.boolean().default(true),
+    verifier: z.boolean().default(true),
+    mode: z.enum(["yolo", "interactive"]).default("interactive"),
+    pause_between_phases: z.boolean().default(false),
+  })
+  .default({});
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -512,6 +524,7 @@ export const AletheiaConfigSchema = z.object({
   sandbox: SandboxConfig,
   updates: UpdatesConfig,
   backup: BackupConfig,
+  planning: PlanningConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;
@@ -524,3 +537,4 @@ export type SandboxSettings = z.infer<typeof SandboxConfig>;
 export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
 export type EncryptionSettings = z.infer<typeof EncryptionConfig>;
 export type BackupSettings = z.infer<typeof BackupConfig>;
+export type PlanningConfigSchema = z.infer<typeof PlanningConfig>;

@@ -1,3 +1,8 @@
+---
+tools: [web_search, web_fetch]
+domains: [research, writing]
+---
+
 # Research and Document Technical Specifications
 
 Systematically research multiple related technologies, versions, and best practices from web sources, then synthesize findings into a structured specification document.

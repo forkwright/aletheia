@@ -1,3 +1,8 @@
+---
+tools: [web_search, web_fetch]
+domains: [research]
+---
+
 # Website Information Architecture Mapping
 Systematically extract comprehensive information about a website's structure, content, and offerings by fetching key pages.
 

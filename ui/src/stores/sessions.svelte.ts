@@ -22,28 +22,43 @@ export function isSessionsLoading(): boolean {
   return loading;
 }
 
+/**
+ * Full session load — clears active selection and re-selects.
+ * Used on agent switch and initial load.
+ */
 export async function loadSessions(nousId: string): Promise<void> {
   const gen = ++loadGeneration;
   activeSessionId = null; // Clear immediately to prevent stale session reads during fetch
   loading = true;
   try {
-    const all = await fetchSessions(nousId);
+    const fetched = await fetchSessions(nousId);
     if (gen !== loadGeneration) return; // Stale — a newer loadSessions call superseded us
-    // Filter out background/system sessions
-    sessions = all.filter((s) =>
-      !s.sessionKey.startsWith("cron:") &&
-      !s.sessionKey.startsWith("agent:") &&
-      !s.sessionKey.startsWith("prosoche"),
-    );
-    // Auto-select: prefer the Signal session for continuity (shared with phone), then most recent
-    if (sessions.length > 0) {
-      const current = sessions.find((s) => s.id === activeSessionId);
-      if (!current) {
-        const signal = sessions.find((s) => s.sessionKey.startsWith("signal:") && s.nousId === nousId);
-        activeSessionId = signal?.id ?? sessions[0]!.id;
-      }
+    sessions = filterUserSessions(fetched);
+    autoSelect(nousId);
+  } finally {
+    if (gen === loadGeneration) loading = false;
+  }
+}
+
+/**
+ * Refresh session list without disrupting the active selection.
+ * Used after turn completion to pick up new sessions without switching.
+ * Preserves activeSessionId if it still exists in the refreshed list.
+ */
+export async function refreshSessions(nousId: string): Promise<void> {
+  const gen = ++loadGeneration;
+  const previousActiveId = activeSessionId; // Capture before async gap
+  loading = true;
+  try {
+    const fetched = await fetchSessions(nousId);
+    if (gen !== loadGeneration) return; // Stale — a newer call superseded us
+    sessions = filterUserSessions(fetched);
+    // Keep current selection if it's still in the list
+    if (previousActiveId && sessions.some((s) => s.id === previousActiveId)) {
+      activeSessionId = previousActiveId;
     } else {
-      activeSessionId = null;
+      // Current session gone (archived/deleted) — re-select
+      autoSelect(nousId);
     }
   } finally {
     if (gen === loadGeneration) loading = false;
@@ -68,6 +83,21 @@ export function createNewSession(_nousId: string): string {
   return key;
 }
 
-export function refreshSessions(nousId: string): void {
-  loadSessions(nousId);
+// --- Internal helpers ---
+
+function filterUserSessions(all: Session[]): Session[] {
+  return all.filter((s) =>
+    !s.sessionKey.startsWith("cron:") &&
+    !s.sessionKey.startsWith("agent:") &&
+    !s.sessionKey.startsWith("prosoche"),
+  );
+}
+
+function autoSelect(nousId: string): void {
+  if (sessions.length > 0) {
+    const signal = sessions.find((s) => s.sessionKey.startsWith("signal:") && s.nousId === nousId);
+    activeSessionId = signal?.id ?? sessions[0]!.id;
+  } else {
+    activeSessionId = null;
+  }
 }

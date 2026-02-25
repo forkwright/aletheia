@@ -195,13 +195,56 @@ use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 **No silent catch.** Every catch block must either log, rethrow, return a meaningful value, or include an inline `/* reason */` comment explaining why the error is intentionally discarded.
 
 **Naming:** Files `kebab-case`, classes `PascalCase`, functions `camelCase`
-verb-first, constants `UPPER_SNAKE`, events `noun:verb`.
+verb-first, constants `UPPER_SNAKE`, events `noun:verb`. Persistent names for
+modules, subsystems, and agents follow the [Gnomon naming system](docs/gnomon.md) -
+Greek names that identify modes of attention, not implementations. Run the layer
+test (L1-L4) before naming anything that will persist.
 
 **TypeScript:** Strict mode, `.js` import extensions, bracket notation for index
 access.
 
 **Testing:** Behavior not implementation, one assertion per test, descriptive
 names, same-directory `*.test.ts` files.
+
+## Dianoia Module
+
+Dianoia is the persistent multi-phase planning module at `infrastructure/runtime/src/dianoia/`. It adds planning project state to SQLite, drives a state machine (`DianoiaOrchestrator`), and coordinates wave-based parallel execution of planning subagents. See `docs/specs/31_dianoia.md` for the full design.
+
+### Key Patterns
+
+- **Injected-db**: all orchestrators take `Database.Database` in their constructor
+- **Constructor-injected dispatchTool**: not imported as a global; passed in at construction time
+- **OrThrow pattern**: required lookups throw a typed `AletheiaError` on miss (e.g., `getProjectOrThrow`)
+
+### Gotchas
+
+**Gotcha 1 — Migration propagation:**
+Every `makeDb()` helper in `src/dianoia/*.test.ts` must include ALL migrations through the current version. When a new migration is added, update ALL test helpers: `store.test.ts`, `orchestrator.test.ts`, `researcher.test.ts`, `requirements.test.ts`, `roadmap.test.ts`, `roadmap-tool.test.ts`, `execution.test.ts`, `verifier.test.ts`, `checkpoint.test.ts`, and `dianoia.integration.test.ts`.
+
+**Gotcha 2 — exactOptionalPropertyTypes:**
+`tsconfig.json` enables `exactOptionalPropertyTypes`. When merging objects with optional fields, use conditional spread:
+```typescript
+// Wrong:
+const merged = { ...base, optionalField: value ?? undefined };
+// Right:
+const merged = { ...base, ...(value !== undefined ? { optionalField: value } : {}) };
+```
+
+**Gotcha 3 — oxlint require-await:**
+`ToolHandler.execute()` implementations that are synchronous in some branches must use `return Promise.resolve(result)` instead of `async` keyword. The `async` keyword on a function with no `await` triggers `eslint(require-await)`.
+
+**Gotcha 4 — Orchestrator registration:**
+New orchestrators follow the `NousManager` setter/getter pattern. They are set in `createRuntime()`, retrieved in `server.ts` via `manager.get*()`, and spread into `RouteDeps` using conditional spread (required by `exactOptionalPropertyTypes`):
+```typescript
+// server.ts pattern:
+const orchValue = manager.getMyOrchestrator();
+const deps: RouteDeps = {
+  ...base,
+  ...(orchValue !== undefined ? { myOrchestrator: orchValue } : {}),
+};
+```
+
+For full design detail, see `docs/specs/31_dianoia.md`.
 
 ## Reporting Issues
 

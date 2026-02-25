@@ -34,6 +34,12 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           ["distill:before", forward("distill:before")],
           ["distill:stage", forward("distill:stage")],
           ["distill:after", forward("distill:after")],
+          ["planning:project-created", forward("planning:project-created")],
+          ["planning:project-resumed", forward("planning:project-resumed")],
+          ["planning:phase-started", forward("planning:phase-started")],
+          ["planning:phase-complete", forward("planning:phase-complete")],
+          ["planning:checkpoint", forward("planning:checkpoint")],
+          ["planning:complete", forward("planning:complete")],
         ];
 
         for (const [event, handler] of handlers) {

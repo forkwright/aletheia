@@ -8,9 +8,12 @@ import urllib.error
 from datetime import datetime, timezone
 
 GATEWAY_URL = os.environ.get("ALETHEIA_GATEWAY_URL", "http://127.0.0.1:18789")
-GATEWAY_TOKEN = os.environ.get("ALETHEIA_GATEWAY_TOKEN", "1ce0f5d7ebf2121598c5916ddd8e335f599946ab28d0ded9")
+GATEWAY_TOKEN = os.environ.get("ALETHEIA_GATEWAY_TOKEN", "")
+if not GATEWAY_TOKEN:
+    print("Error: ALETHEIA_GATEWAY_TOKEN env var required", file=sys.stderr)
+    sys.exit(1)
 
-ID_NAMES = {"main": "syn"}
+ID_NAMES = {}
 
 output_fmt = "table"
 target = ""

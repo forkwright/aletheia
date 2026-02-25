@@ -5,9 +5,9 @@ import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
-import { type AuthConfig, createAuthMiddleware, createAuthRoutes } from "../auth/middleware.js";
-import type { AuthSessionStore } from "../auth/sessions.js";
-import type { AuditLog } from "../auth/audit.js";
+import { type AuthConfig, createAuthMiddleware, createAuthRoutes } from "../symbolon/middleware.js";
+import type { AuthSessionStore } from "../symbolon/sessions.js";
+import type { AuditLog } from "../symbolon/audit.js";
 import type { CronScheduler } from "../daemon/cron.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { SkillRegistry } from "../organon/skills.js";
@@ -35,6 +35,7 @@ import { exportRoutes } from "./routes/export.js";
 import { blackboardRoutes } from "./routes/blackboard.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { setupRoutes } from "./routes/setup.js";
+import { planningRoutes } from "../dianoia/routes.js";
 
 const log = createLogger("pylon");
 
@@ -161,6 +162,7 @@ export function createGateway(
   });
 
   // Build shared dependencies and refs for route modules
+  const planningOrchestrator = manager.getPlanningOrchestrator();
   const deps: RouteDeps = {
     config,
     manager,
@@ -169,6 +171,7 @@ export function createGateway(
     authSessionStore,
     auditLog,
     authRoutes: authRouteFns,
+    ...(planningOrchestrator ? { planningOrchestrator } : {}),
   };
 
   const refs: RouteRefs = {
@@ -201,6 +204,7 @@ export function createGateway(
     exportRoutes,
     blackboardRoutes,
     workspaceRoutes,
+    planningRoutes,
   ];
 
   for (const factory of modules) {

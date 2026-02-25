@@ -128,6 +128,17 @@ None - no external service configuration required.
 - normalize_type() now returns None for unknowns — Plan 02 callers need to handle None (skip relationship)
 - External vocab file at ~/.aletheia/graph_vocab.json will be populated by Plan 02 or left to fall back to hardcoded defaults
 
+## Self-Check: PASSED
+
+- FOUND: infrastructure/memory/sidecar/pyproject.toml
+- FOUND: infrastructure/memory/sidecar/aletheia_memory/vocab.py
+- FOUND: infrastructure/memory/sidecar/aletheia_memory/config.py
+- FOUND: infrastructure/memory/sidecar/tests/test_vocab.py
+- FOUND: infrastructure/memory/sidecar/tests/test_driver_upgrade.py
+- FOUND: .planning/phases/03-graph-extraction-overhaul/03-01-SUMMARY.md
+- FOUND: 4bb2452 (Task 1 commit)
+- FOUND: bf965ef (Task 2 commit)
+
 ---
 *Phase: 03-graph-extraction-overhaul*
 *Completed: 2026-02-25*

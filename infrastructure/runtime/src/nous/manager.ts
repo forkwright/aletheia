@@ -10,14 +10,17 @@ import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
-import { distillSession } from "../distillation/pipeline.js";
-import type { MemoryFlushTarget } from "../distillation/hooks.js";
+import { distillSession } from "../melete/pipeline.js";
+import type { MemoryFlushTarget } from "../melete/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
 import { AsyncChannel } from "./async-channel.js";
 import { resolveNousId } from "./pipeline/stages/resolve.js";
 import { runBufferedPipeline, runStreamingPipeline } from "./pipeline/runner.js";
 import type { InboundMessage, RuntimeServices, TurnOutcome, TurnStreamEvent } from "./pipeline/types.js";
+import type { SkillRegistry } from "../organon/skills.js";
+import type { DianoiaOrchestrator } from "../dianoia/orchestrator.js";
+import type { ExecutionOrchestrator } from "../dianoia/execution.js";
 
 export type { InboundMessage, TurnOutcome, TurnStreamEvent, MediaAttachment } from "./pipeline/types.js";
 
@@ -36,6 +39,7 @@ function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   );
   const settled = current.catch(() => {});
   sessionLocks.set(key, settled);
+  // eslint-disable-next-line promise/catch-or-return -- fire-and-forget cleanup; lock chain already catches above
   settled.then(() => {
     if (sessionLocks.get(key) === settled) sessionLocks.delete(key);
   });
@@ -49,6 +53,9 @@ export class NousManager {
   private watchdog?: Watchdog;
   private memoryTarget?: MemoryFlushTarget;
   private skillsSection?: string | undefined;
+  private skills?: SkillRegistry;
+  private planningOrchestrator?: DianoiaOrchestrator;
+  private executionOrchestrator?: ExecutionOrchestrator;
   competence?: CompetenceModel;
   uncertainty?: UncertaintyTracker;
   activeTurns = 0;
@@ -56,6 +63,8 @@ export class NousManager {
   private turnAbortControllers = new Map<string, AbortController>();
   private turnMeta = new Map<string, { nousId: string; sessionId: string; startedAt: number }>();
   private activeSessionsByLock = new Map<string, string>(); // lockKey → sessionId
+  /** Parent turn → set of child turn IDs (for cascading abort) */
+  private childTurns = new Map<string, Set<string>>();
   readonly approvalGate = new ApprovalGate();
   isDraining: () => boolean = () => false;
 
@@ -74,8 +83,13 @@ export class NousManager {
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
+  setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
   setUncertainty(tracker: UncertaintyTracker): void { this.uncertainty = tracker; }
+  setPlanningOrchestrator(orchestrator: DianoiaOrchestrator): void { this.planningOrchestrator = orchestrator; }
+  getPlanningOrchestrator(): DianoiaOrchestrator | undefined { return this.planningOrchestrator; }
+  setExecutionOrchestrator(orchestrator: ExecutionOrchestrator): void { this.executionOrchestrator = orchestrator; }
+  getExecutionOrchestrator(): ExecutionOrchestrator | undefined { return this.executionOrchestrator; }
 
   reloadConfig(newConfig: AletheiaConfig): { added: string[]; removed: string[] } {
     const oldIds = new Set(this.config.agents.list.map((n) => n.id));
@@ -113,7 +127,38 @@ export class NousManager {
     const controller = this.turnAbortControllers.get(turnId);
     if (!controller) return false;
     controller.abort();
+
+    // Cascade abort to all child turns (spawned sub-agents, dispatch tasks)
+    const children = this.childTurns.get(turnId);
+    if (children) {
+      for (const childId of children) {
+        const childController = this.turnAbortControllers.get(childId);
+        if (childController) {
+          log.info(`Cascading abort: ${turnId} → child ${childId}`);
+          childController.abort();
+        }
+      }
+      this.childTurns.delete(turnId);
+    }
+
     return true;
+  }
+
+  /** Register a child turn under a parent (for cascading abort) */
+  registerChildTurn(parentTurnId: string, childTurnId: string): void {
+    if (!this.childTurns.has(parentTurnId)) {
+      this.childTurns.set(parentTurnId, new Set());
+    }
+    this.childTurns.get(parentTurnId)!.add(childTurnId);
+  }
+
+  /** Unregister a child turn when it completes */
+  unregisterChildTurn(parentTurnId: string, childTurnId: string): void {
+    const children = this.childTurns.get(parentTurnId);
+    if (children) {
+      children.delete(childTurnId);
+      if (children.size === 0) this.childTurns.delete(parentTurnId);
+    }
   }
 
   private buildServices(): RuntimeServices {
@@ -130,9 +175,12 @@ export class NousManager {
       ...(this.competence ? { competence: this.competence } : {}),
       ...(this.uncertainty ? { uncertainty: this.uncertainty } : {}),
       ...(this.skillsSection !== undefined ? { skillsSection: this.skillsSection } : {}),
+      ...(this.skills ? { skills: this.skills } : {}),
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.planningOrchestrator ? { planningOrchestrator: this.planningOrchestrator } : {}),
+      ...(this.executionOrchestrator ? { executionOrchestrator: this.executionOrchestrator } : {}),
     };
   }
 
@@ -228,14 +276,34 @@ export class NousManager {
     const services = this.buildServices();
     const nousId = resolveNousId(msg, services);
     const lockKey = msg.lockKey ?? `${nousId}:${msg.sessionKey ?? "main"}`;
+    const turnId = `${nousId}:${++turnCounter}:${Date.now()}`;
+    const abortController = new AbortController();
+
+    this.turnAbortControllers.set(turnId, abortController);
+    this.turnMeta.set(turnId, { nousId, sessionId: "", startedAt: Date.now() });
+
+    // If this is a child turn (spawned from parentSessionId), register for cascading abort
+    if (msg.parentSessionId) {
+      // Find parent turn by session ID
+      for (const [parentTurnId, meta] of this.turnMeta) {
+        if (meta.sessionId === msg.parentSessionId) {
+          this.registerChildTurn(parentTurnId, turnId);
+          break;
+        }
+      }
+    }
 
     this.trackTurnStart(nousId);
     try {
-      const outcome = await withSessionLock(lockKey, () => runBufferedPipeline(msg, services));
+      const outcome = await withSessionLock(lockKey, () =>
+        runBufferedPipeline(msg, services, { abortSignal: abortController.signal }),
+      );
       this.maybeScheduleDistillation(outcome.sessionId, outcome.nousId, lockKey);
       return outcome;
     } finally {
       this.trackTurnEnd(nousId);
+      this.turnAbortControllers.delete(turnId);
+      this.turnMeta.delete(turnId);
     }
   }
 

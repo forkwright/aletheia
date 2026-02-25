@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,22 +19,23 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
-from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
-from .graph_extraction import extract_graph, extract_graph_batch
-from .temporal import _extract_entities_for_episode
+from .config import LLM_BACKEND, QDRANT_HOST, QDRANT_PORT
 from .entity_resolver import (
-    resolve_entity,
-    is_valid_entity,
+    cleanup_orphan_entities,
     get_canonical_entities,
     merge_duplicate_entities,
-    cleanup_orphan_entities,
+    resolve_entity,
 )
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
+from .graph_extraction import extract_graph, extract_graph_batch
+from .temporal import _extract_entities_for_episode
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
+
+_background_tasks: set[asyncio.Task] = set()  # prevent GC of fire-and-forget tasks
 
 
 def _get_memory(request: Request):
@@ -126,9 +127,10 @@ async def add_memory(req: AddRequest, request: Request):
             logger.info("Tier 3: storing text as embedding only (no fact extraction)")
             # Use Mem0's vector store directly for embedding-only storage
             try:
+                import uuid as _uuid
+
                 from qdrant_client import QdrantClient
                 from qdrant_client.models import PointStruct
-                import uuid as _uuid
                 embedder = mem.embedding_model
                 vector = await asyncio.to_thread(embedder.embed, req.text)
                 point_id = str(_uuid.uuid4())
@@ -137,7 +139,7 @@ async def add_memory(req: AddRequest, request: Request):
                     "data": req.text,
                     "user_id": req.user_id,
                     "agent_id": req.agent_id,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                     **(req.metadata or {}),
                 }
                 qclient = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
@@ -148,21 +150,27 @@ async def add_memory(req: AddRequest, request: Request):
                 return {"ok": True, "result": {"tier3_embed_only": True, "id": point_id}}
             except Exception as e:
                 logger.exception("Tier 3 embedding failed")
-                raise HTTPException(status_code=500, detail=str(e))
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
         graph_degraded = False
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
-            asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+            task = asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # Episode tracking — record this interaction as a temporal episode
         if neo4j_available() and req.agent_id:
-            asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
+            task = asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         # Graph extraction via SimpleKGPipeline — fire and forget
-        asyncio.create_task(extract_graph(req.text, backend=backend))
+        task = asyncio.create_task(extract_graph(req.text, backend=backend))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
         return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
@@ -174,13 +182,13 @@ async def add_memory(req: AddRequest, request: Request):
             logger.warning("Neo4j failed during add, vector portion likely saved: %s", e)
             return {"ok": True, "result": {"graph_degraded": True}, "warning": "Neo4j unavailable, stored vector only"}
         logger.exception("add_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
     """Boost scores for recently created memories (linear decay over window)."""
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
+    from datetime import datetime
+    now = datetime.now(UTC)
     for r in results:
         created = r.get("created_at") or (r.get("metadata") or {}).get("created_at")
         if not created:
@@ -315,7 +323,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
 
     try:
         client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Content hash dedup — batch check existing hashes
         hashes = {_content_hash(t): t for t in texts}
@@ -357,7 +365,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
         points = []
         skipped_semantic = 0
         all_contradictions = []
-        for text, vector, content_hash in zip(new_texts, vectors, new_hashes):
+        for text, vector, content_hash in zip(new_texts, vectors, new_hashes, strict=False):
             if await _semantic_dedup_check(client, vector, req.user_id):
                 skipped_semantic += 1
                 continue
@@ -421,7 +429,9 @@ async def add_batch(req: AddBatchRequest, request: Request):
         # Graph extraction via SimpleKGPipeline — fire and forget
         if added > 0 and new_texts:
             backend = getattr(request.app.state, "backend", LLM_BACKEND)
-            asyncio.create_task(extract_graph_batch(new_texts, backend=backend))
+            task = asyncio.create_task(extract_graph_batch(new_texts, backend=backend))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         result: dict[str, Any] = {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
         if all_contradictions:
@@ -430,7 +440,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
 
     except Exception as e:
         logger.exception("add_batch failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/search")
@@ -464,13 +474,13 @@ async def search_memory(req: SearchRequest, request: Request):
             results = _apply_recency_boost(results)
             results = _apply_confidence_weight(results)
         return {"ok": True, "results": results}
-    except Exception as e:
+    except Exception:
         logger.exception("search_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.post("/graph_search")
-async def graph_search(req: SearchRequest, request: Request):
+async def graph_search_post(req: SearchRequest, request: Request):
     mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
@@ -480,9 +490,9 @@ async def graph_search(req: SearchRequest, request: Request):
         results = await asyncio.to_thread(mem.search, req.query, **kwargs)
         graph_results = [r for r in results.get("results", []) if r.get("source") == "graph"]
         return {"ok": True, "results": graph_results}
-    except Exception as e:
+    except Exception:
         logger.exception("graph_search failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.post("/import")
@@ -537,9 +547,9 @@ async def list_memories(
         results = await asyncio.to_thread(mem.get_all, **kwargs)
         entries = results.get("results", results) if isinstance(results, dict) else results
         return {"ok": True, "memories": entries}
-    except Exception as e:
+    except Exception:
         logger.exception("list_memories failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.delete("/memories/{memory_id}")
@@ -548,9 +558,9 @@ async def delete_memory(memory_id: str, request: Request):
     try:
         await asyncio.to_thread(mem.delete, memory_id)
         return {"ok": True}
-    except Exception as e:
+    except Exception:
         logger.exception("delete_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.get("/health")
@@ -993,8 +1003,8 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to fetch memories")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch memories") from None
 
     if not isinstance(entries, list):
         return {"ok": True, "candidates": [], "message": "No memories found"}
@@ -1057,8 +1067,8 @@ async def merge_memories(req: MergeRequest, request: Request):
     try:
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.get("/fact_stats")
@@ -1069,8 +1079,8 @@ async def fact_stats(request: Request, user_id: str = "default"):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
     if not isinstance(entries, list):
         return {"ok": True, "total": 0}
@@ -1124,8 +1134,8 @@ async def retract_memory(req: RetractRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, user_id=req.user_id, limit=20)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Search failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Search failed") from None
 
     if not isinstance(results, list) or not results:
         return {"ok": True, "retracted": 0, "message": "No matching memories found"}
@@ -1198,7 +1208,7 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     """Append retraction to audit log."""
     RETRACTION_LOG.parent.mkdir(parents=True, exist_ok=True)
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "query": req.query,
         "reason": req.reason,
         "user_id": req.user_id,
@@ -1222,7 +1232,7 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
         return
     try:
         episode_id = f"ep_{uuid.uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         session_id = (metadata or {}).get("sessionId", "")
         entities = _extract_entities_for_episode(text)
 
@@ -1318,7 +1328,7 @@ async def active_foresight():
 
     try:
         driver = neo4j_driver()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with driver.session() as session:
             result = session.run(
                 """
@@ -1357,7 +1367,7 @@ async def decay_foresight():
 
     try:
         driver = neo4j_driver()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with driver.session() as session:
             decay_result = session.run(
                 """
@@ -1524,34 +1534,34 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         driver = neo4j_driver()
 
-        G = nx.DiGraph()
+        graph = nx.DiGraph()
         with driver.session() as session:
             nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
             for record in nodes:
-                G.add_node(record["name"], labels=record["labels"])
+                graph.add_node(record["name"], labels=record["labels"])
 
             rels = session.run(
                 "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
                 "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
             )
             for record in rels:
-                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+                graph.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
 
-        if G.number_of_nodes() == 0:
+        if graph.number_of_nodes() == 0:
             driver.close()
             return {"ok": True, "nodes": 0, "message": "Empty graph"}
 
         # PageRank
-        pagerank = nx.pagerank(G, alpha=0.85, max_iter=100)
+        pagerank = nx.pagerank(graph, alpha=0.85, max_iter=100)
         top_pagerank = sorted(pagerank.items(), key=lambda x: -x[1])[:req.top_k]
 
         # Community detection (Louvain on undirected projection)
-        G_undirected = G.to_undirected()
+        graph_undirected = graph.to_undirected()
         try:
-            communities = nx.community.louvain_communities(G_undirected, seed=42)
+            communities = nx.community.louvain_communities(graph_undirected, seed=42)
             community_map: dict[str, int] = {}
-            for idx, community in enumerate(communities):
-                for node in community:
+            for idx, comm in enumerate(communities):
+                for node in comm:
                     community_map[node] = idx
             num_communities = len(communities)
             largest_communities = sorted(communities, key=len, reverse=True)[:5]
@@ -1566,15 +1576,15 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         # Node similarity — find dedup candidates (nodes with >0.8 Jaccard on neighbors)
         dedup_candidates: list[dict[str, Any]] = []
-        nodes_list = list(G_undirected.nodes())
+        nodes_list = list(graph_undirected.nodes())
         for i in range(min(len(nodes_list), 200)):
             n1 = nodes_list[i]
-            neighbors1 = set(G_undirected.neighbors(n1))
+            neighbors1 = set(graph_undirected.neighbors(n1))
             if not neighbors1:
                 continue
             for j in range(i + 1, min(len(nodes_list), 200)):
                 n2 = nodes_list[j]
-                neighbors2 = set(G_undirected.neighbors(n2))
+                neighbors2 = set(graph_undirected.neighbors(n2))
                 if not neighbors2:
                     continue
                 jaccard = len(neighbors1 & neighbors2) / len(neighbors1 | neighbors2)
@@ -1609,16 +1619,16 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         return {
             "ok": True,
-            "nodes": G.number_of_nodes(),
-            "edges": G.number_of_edges(),
+            "nodes": graph.number_of_nodes(),
+            "edges": graph.number_of_edges(),
             "pagerank_top": [{"name": n, "score": round(s, 6)} for n, s in top_pagerank],
             "communities": num_communities,
             "community_summaries": community_summaries,
             "dedup_candidates": dedup_candidates[:10],
             "scores_stored": scores_stored,
         }
-    except ImportError:
-        raise HTTPException(status_code=500, detail="networkx not installed")
+    except ImportError as err:
+        raise HTTPException(status_code=500, detail="networkx not installed") from err
     except Exception as e:
         mark_neo4j_down()
         logger.warning("graph/analyze failed (Neo4j may be down): %s", e)
@@ -1770,8 +1780,8 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
             "aliases_resolved": {},
             "total_candidates": len(results) if isinstance(results, list) else 0,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 
@@ -2221,7 +2231,7 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
                     resolved_entities.append(resolved)
 
         # Store
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         point_id = str(uuid.uuid4())
         payload = {
             "memory": text[:500],
@@ -2248,7 +2258,9 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
 
         # Graph extraction via SimpleKGPipeline — fire and forget
         backend = getattr(request.app.state, "backend", LLM_BACKEND)
-        asyncio.create_task(extract_graph(text, backend=backend))
+        task = asyncio.create_task(extract_graph(text, backend=backend))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
         result: dict[str, Any] = {"ok": True, "result": "added", "id": point_id}
         if contradictions:
@@ -2261,7 +2273,7 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
 
     except Exception as e:
         logger.exception("add_direct failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/memory/correct")
@@ -2302,13 +2314,13 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request):
         old_payload = dict(old_point.payload or {})
         old_payload["confidence"] = 0.1
         old_payload["superseded_by"] = None  # Will be filled after new point is created
-        old_payload["superseded_at"] = datetime.now(timezone.utc).isoformat()
+        old_payload["superseded_at"] = datetime.now(UTC).isoformat()
         old_payload["superseded_reason"] = f"[{req.agent_id or 'user'}] {req.reason}"
 
         # Store the corrected version
         new_vector = (await _embed_texts(mem, [corrected_text]))[0]
         new_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         new_payload = {
             "memory": corrected_text[:500],
             "data": corrected_text,
@@ -2347,7 +2359,7 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request):
 
     except Exception as e:
         logger.exception("memory/correct failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/memory/forget")
@@ -2388,7 +2400,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
             return {"ok": True, "dry_run": True, "would_forget": len(matches), "matches": previews}
 
         # Soft-delete: set confidence=0, add forgotten flag
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         points_to_update = []
         forgotten_texts = []
         for point in matches:
@@ -2414,7 +2426,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
 
     except Exception as e:
         logger.exception("memory/forget failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 
@@ -2438,7 +2450,7 @@ async def memory_health(request: Request, user_id: str = "default"):
         if not isinstance(entries, list):
             entries = []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stale_count = 0
         flagged_count = 0
         forgotten_count = 0
@@ -2506,7 +2518,7 @@ async def memory_health(request: Request, user_id: str = "default"):
         }
     except Exception as e:
         logger.exception("memory/health failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/graph/timeline")
@@ -2526,13 +2538,13 @@ async def graph_timeline(
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid 'since' date: {since}")
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=f"Invalid 'since' date: {since}") from err
     if until:
         try:
             until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid 'until' date: {until}")
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=f"Invalid 'until' date: {until}") from err
 
     # Get all entities from Neo4j
     try:
@@ -2657,7 +2669,7 @@ async def graph_agent_overlay(request: Request, user_id: str = "default"):
         }
     except Exception as e:
         logger.exception("graph/agent-overlay failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/graph/drift")
@@ -2714,7 +2726,7 @@ async def graph_drift(request: Request, user_id: str = "default", stale_days: in
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
         if isinstance(entries, list):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             entity_dates: dict[str, datetime] = {}
             for entry in entries:
                 meta = entry.get("metadata", {}) or {}
@@ -2750,7 +2762,7 @@ async def graph_drift(request: Request, user_id: str = "default", stale_days: in
         suggestions.append({
             "type": "delete",
             "entity": o["name"],
-            "reason": f"Orphaned node (no relationships)",
+            "reason": "Orphaned node (no relationships)",
         })
     for s in stale_entities[:5]:
         suggestions.append({

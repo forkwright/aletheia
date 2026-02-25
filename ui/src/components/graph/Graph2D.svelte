@@ -51,6 +51,7 @@
     return "rgba(139, 148, 158, 0.35)";
   }
 
+  // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
   let container: HTMLDivElement;
   let graph = $state<any>(null);
   let resizeObserver: ResizeObserver | null = null;
@@ -67,7 +68,7 @@
     if (!graph) return;
     const gd = graph.graphData();
     const node = gd.nodes.find((n: any) => n.id === nodeId);
-    if (node && node.x != null && node.y != null) {
+    if (node && node.x !== null && node.y !== null) {
       graph.centerAt(node.x, node.y, 500);
       graph.zoom(4, 500);
     }

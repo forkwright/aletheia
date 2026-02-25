@@ -1,0 +1,23 @@
+[Unit]
+Description=Aletheia Memory Sidecar (Qdrant + Neo4j + Mem0)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/summus/ergon/infrastructure/memory/sidecar
+Environment=NEO4J_PASSWORD=chiron-memory
+Environment=NEO4J_AUTH=neo4j/chiron-memory
+EnvironmentFile=-%h/.aletheia/env
+ExecStartPre=/usr/bin/podman compose \
+  --project-directory %h/summus/ergon/infrastructure/memory \
+  -p memory up -d
+ExecStart=%h/summus/ergon/infrastructure/memory/sidecar/.venv/bin/uvicorn \
+  aletheia_memory.app:app --host 0.0.0.0 --port 8230
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -1,15 +1,16 @@
 # Temporal memory layer — Graphiti-inspired episode tracking and bi-temporal queries
 # NOTE: Do NOT add future annotations — see routes.py comment.
 
+import contextlib
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
 logger = logging.getLogger("aletheia_memory.temporal")
 temporal_router = APIRouter(prefix="/temporal")
@@ -49,10 +50,8 @@ async def ensure_temporal_schema():
             for stmt in TEMPORAL_SCHEMA.strip().split(";"):
                 stmt = stmt.strip()
                 if stmt:
-                    try:
+                    with contextlib.suppress(Exception):
                         session.run(stmt)
-                    except Exception:
-                        pass  # constraint may already exist
         driver.close()
         mark_neo4j_ok()
         logger.info("Temporal schema constraints ensured")
@@ -105,7 +104,7 @@ async def create_episode(req: EpisodeCreate):
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
     episode_id = f"ep_{uuid.uuid4().hex[:12]}"
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     occurred = req.occurred_at or now
 
     try:
@@ -188,8 +187,8 @@ async def list_episodes(
 
     if entity:
         query = (
-            f"MATCH (e:Episode)-[:MENTIONS]->(ent:Entity) "
-            f"WHERE toLower(ent.name) CONTAINS toLower($entity) "
+            "MATCH (e:Episode)-[:MENTIONS]->(ent:Entity) "
+            "WHERE toLower(ent.name) CONTAINS toLower($entity) "
             + (f"AND {' AND '.join(conditions)} " if conditions else "")
             + "RETURN e ORDER BY e.occurred_at DESC LIMIT $limit"
         )
@@ -229,7 +228,7 @@ async def create_temporal_fact(req: TemporalFactCreate):
     if not neo4j_available():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     occurred = req.occurred_at or now
 
     try:
@@ -305,7 +304,7 @@ async def invalidate_fact(req: InvalidateRequest):
     if not neo4j_available():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     try:
         driver = neo4j_driver()

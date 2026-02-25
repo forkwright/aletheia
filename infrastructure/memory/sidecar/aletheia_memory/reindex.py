@@ -14,9 +14,9 @@ import os
 import sys
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .config import VOYAGE_MODEL, VOYAGE_DIMS
+from .config import VOYAGE_DIMS, VOYAGE_MODEL
 
 log = logging.getLogger("aletheia.memory.reindex")
 
@@ -40,7 +40,7 @@ def get_embedder():
             from fastembed import TextEmbedding
             model = TextEmbedding("BAAI/bge-small-en-v1.5")
             def embed(text):
-                return list(model.embed([text]))[0].tolist()
+                return next(iter(model.embed([text]))).tolist()
             return embed, 384
         except ImportError:
             log.error("No embedder available. Install fastembed: pip install fastembed")

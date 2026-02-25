@@ -67,7 +67,7 @@ _backend = detect_backend()
 LLM_BACKEND = _backend
 
 
-def build_mem0_config(backend: dict = None) -> dict:
+def build_mem0_config(backend: dict | None = None) -> dict:
     """Build Mem0 config using detected backend."""
     if backend is None:
         backend = _backend

@@ -5,12 +5,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from aletheia_memory import vocab as vocab_module
-from aletheia_memory.vocab import CONTROLLED_VOCAB, normalize_type, load_vocab
 from aletheia_memory.config import GRAPH_EXTRACTION_PROMPT
-
+from aletheia_memory.vocab import CONTROLLED_VOCAB, load_vocab, normalize_type
 
 # ---------------------------------------------------------------------------
 # normalize_type — known types

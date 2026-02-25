@@ -9,9 +9,7 @@ import json
 import logging
 import os
 import sys
-import time
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("backfill_relates_to")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -108,7 +106,7 @@ def save_checkpoint(processed_ids: set[int]) -> None:
     CHECKPOINT_FILE.write_text(json.dumps({"processed_ids": sorted(processed_ids)}))
 
 
-def build_anthropic_client(backend: dict) -> Optional[object]:
+def build_anthropic_client(backend: dict) -> object | None:
     """Build a raw anthropic.Anthropic client from the detected backend."""
     provider = backend.get("provider", "none")
 

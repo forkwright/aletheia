@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // CLI entry point for agent export/import
 //
 // Usage:

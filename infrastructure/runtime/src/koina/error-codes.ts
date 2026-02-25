@@ -7,6 +7,7 @@ export const ERROR_CODES = {
   PROVIDER_TIMEOUT: "API call timed out",
   PROVIDER_RATE_LIMITED: "Rate limited by provider",
   PROVIDER_AUTH_FAILED: "Authentication failed",
+  PROVIDER_TOKEN_EXPIRED: "OAuth token expired — falling through to backup credential",
   PROVIDER_INVALID_RESPONSE: "Provider returned unexpected response format",
   PROVIDER_NOT_FOUND: "No provider registered for requested model",
   PROVIDER_OVERLOADED: "Provider returned 529 overloaded",
@@ -26,6 +27,8 @@ export const ERROR_CODES = {
   PIPELINE_STAGE_FAILED: "A pipeline stage failed during execution",
   PIPELINE_NO_OUTCOME: "Pipeline completed without producing an outcome",
   PIPELINE_TOOL_LOOP: "Tool call loop detected",
+  PIPELINE_MAX_LOOPS: "Turn exceeded maximum tool loop count",
+  PIPELINE_WALL_CLOCK: "Turn exceeded wall-clock time limit",
   PIPELINE_STREAM_INCOMPLETE: "Streaming pipeline ended without message_complete",
   TOOL_EXECUTION_FAILED: "Tool call returned an error",
   TOOL_NOT_FOUND: "Agent requested a tool that is not registered",
@@ -84,6 +87,18 @@ export const ERROR_CODES = {
 
   // koina (PII)
   PII_SCAN_FAILED: "PII scan threw unexpectedly",
+
+  // dianoia (planning)
+  PLANNING_PROJECT_NOT_FOUND: "Planning project ID does not exist",
+  PLANNING_PHASE_NOT_FOUND: "Planning phase ID does not exist",
+  PLANNING_REQUIREMENT_NOT_FOUND: "Planning requirement ID does not exist",
+  PLANNING_STATE_CORRUPT: "Planning project state failed integrity check",
+  PLANNING_CONSTRAINT_VIOLATION: "Planning operation violates a database constraint",
+  PLANNING_INVALID_TRANSITION: "FSM transition is not valid from the current state",
+  PLANNING_SPAWN_NOT_FOUND: "Spawn record ID does not exist",
+  PLANNING_DISCUSSION_NOT_FOUND: "Discussion question ID does not exist",
+  PLANNING_DUPLICATE_REQUIREMENT_ID: "Requirement ID already exists for this project",
+  PLANNING_TABLE_STAKES_OUT_OF_SCOPE: "Table-stakes feature cannot be out-of-scope without rationale",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

@@ -14,6 +14,9 @@ export const DEFAULT_TOOL_TIMEOUTS: ToolTimeoutConfig = {
     sessions_ask: 0,   // sessions_ask has its own timeout
     sessions_spawn: 0, // long-running by design
     sessions_dispatch: 0, // long-running, handles own timeouts per task
+    plan_execute: 0,      // execution phases are long-running; internal dispatch handles timeouts
+    plan_research: 0,     // research spawns sub-agents with own timeouts
+    plan_roadmap: 0,      // plan_phases action dispatches sub-agents for plan generation + checking
     browser: 180_000,
     web_fetch: 60_000,
     web_search: 60_000,
@@ -35,7 +38,7 @@ export function resolveTimeout(
   toolName: string,
   config?: Partial<ToolTimeoutConfig>,
 ): number {
-  const overrides = { ...DEFAULT_TOOL_TIMEOUTS.overrides, ...(config?.overrides ?? {}) };
+  const overrides = { ...DEFAULT_TOOL_TIMEOUTS.overrides, ...config?.overrides };
   if (toolName in overrides) return overrides[toolName]!;
   return config?.defaultMs ?? DEFAULT_TOOL_TIMEOUTS.defaultMs;
 }

@@ -75,6 +75,14 @@ aletheia/
 
 ---
 
+## Why Greek?
+
+Every name in this system - Aletheia, Dianoia, Prosoche, the agent names - follows a deliberate naming philosophy. Names identify *modes of attention*, not things. Greek provides the precision: where English has "knowledge," Greek distinguishes between episteme, gnosis, techne, phronesis, and nous - each a fundamentally different stance toward knowing.
+
+See **[docs/gnomon.md](docs/gnomon.md)** for the full naming system, including the layer test, dimensional resonance, and the process for naming new components.
+
+---
+
 ## Agents
 
 Each agent has a workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and memory (`MEMORY.md`). See `nous/_example/` for a template and [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
@@ -95,13 +103,17 @@ Svelte 5 at `/ui`. Streaming responses, file upload, syntax highlighting, thinki
 
 | Command | Purpose |
 |---------|---------|
-| `aletheia gateway` | Start the runtime |
-| `aletheia status` | System status |
+| `aletheia start` | Start memory services + gateway, open browser |
+| `aletheia stop [--all]` | Stop gateway (--all includes memory containers) |
+| `aletheia restart` | Stop then start |
+| `aletheia logs [-f]` | View gateway logs |
+| `aletheia tui` | Launch terminal UI |
+| `aletheia status` | System health and agent list |
+| `aletheia doctor [--fix]` | Validate config and connectivity |
 | `aletheia send -a <agent> -m "..."` | Send message to agent |
 | `aletheia sessions [-a <agent>]` | List sessions |
 | `aletheia cron list\|trigger <id>` | Manage cron jobs |
 | `aletheia update [version]` | Self-update with rollback |
-| `aletheia doctor` | Connectivity checks |
 
 ### API
 
@@ -136,12 +148,8 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for full endpoint list.
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
-cd infrastructure/runtime && npm install && npx tsdown && cd ../..
-cd ui && npm install && npm run build && cd ..
-cp .env.example shared/config/aletheia.env  # Edit: API keys, paths
-cp config/aletheia.example.json ~/.aletheia/aletheia.json  # Edit: agents, bindings
-cp -r nous/_example nous/your-agent  # Edit: SOUL.md, IDENTITY.md
-node infrastructure/runtime/aletheia.mjs gateway
+./setup.sh        # builds, installs CLI, opens browser
+aletheia start    # from next time on
 ```
 
 See [QUICKSTART.md](docs/QUICKSTART.md) for full setup, [DEPLOYMENT.md](docs/DEPLOYMENT.md) for production, [RESCUE.md](RESCUE.md) for recovery.

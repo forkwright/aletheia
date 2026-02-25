@@ -100,7 +100,7 @@ Extra fields are preserved (passthrough).
 {
   "id": "research",
   "name": "Scholar",
-  "workspace": "/mnt/ssd/aletheia/nous/scholar",
+  "workspace": "/path/to/aletheia/nous/scholar",
   "model": "claude-sonnet-4-5-20250929",
   "identity": { "name": "Scholar", "emoji": "📚" }
 }
@@ -390,8 +390,8 @@ Supports two formats:
 **Flat (preferred):**
 ```json
 "env": {
-  "PATH": "/mnt/ssd/aletheia/shared/bin",
-  "ALETHEIA_ROOT": "/mnt/ssd/aletheia"
+  "PATH": "/path/to/aletheia/shared/bin",
+  "ALETHEIA_ROOT": "/path/to/aletheia"
 }
 ```
 

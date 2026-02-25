@@ -1,19 +1,27 @@
 <script lang="ts">
-  import { fetchMetrics, fetchCostSummary } from "../../lib/api";
-  import { formatTokens, formatUptime, formatCost, formatTimeSince } from "../../lib/format";
+  import { fetchMetrics, fetchCredentialInfo } from "../../lib/api";
+  import type { CredentialInfo } from "../../lib/api";
+  import { formatTokens, formatUptime, formatTimeSince } from "../../lib/format";
   import Badge from "../shared/Badge.svelte";
   import UsageChart from "./UsageChart.svelte";
-  import type { MetricsData, CostSummary } from "../../lib/types";
+  import type { MetricsData } from "../../lib/types";
 
   let metrics = $state<MetricsData | null>(null);
-  let costs = $state<CostSummary | null>(null);
+  let creds = $state<CredentialInfo | null>(null);
   let error = $state<string | null>(null);
+
+  function credStatus(c: CredentialInfo): { label: string; variant: "success" | "warning" | "error" } {
+    if (c.primary.isExpired) return { label: "expired", variant: "error" };
+    if (c.primary.expiresInMs !== undefined && c.primary.expiresInMs < 86_400_000) return { label: "expiring", variant: "warning" };
+    if (c.backups.length === 0) return { label: "no backup", variant: "warning" };
+    return { label: "ok", variant: "success" };
+  }
 
   async function load() {
     try {
-      const [m, c] = await Promise.all([fetchMetrics(), fetchCostSummary()]);
+      const [m, cr] = await Promise.all([fetchMetrics(), fetchCredentialInfo()]);
       metrics = m;
-      costs = c;
+      creds = cr;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
@@ -45,18 +53,12 @@
       <div class="card">
         <div class="card-label">Cache Hit Rate</div>
         <div class="card-value">{metrics.usage.cacheHitRate}%</div>
-        <div class="card-sub">{formatTokens(metrics.usage.totalCacheReadTokens)} cached</div>
+        <div class="card-sub">{formatTokens(metrics.usage.totalCacheReadTokens)} from cache</div>
       </div>
       <div class="card">
         <div class="card-label">Turns</div>
         <div class="card-value">{metrics.usage.turnCount}</div>
       </div>
-      {#if costs}
-        <div class="card">
-          <div class="card-label">Total Cost</div>
-          <div class="card-value">{formatCost(costs.totalCost)}</div>
-        </div>
-      {/if}
       <div class="card">
         <div class="card-label">Services</div>
         <div class="card-value">
@@ -72,6 +74,24 @@
           {/each}
         </div>
       </div>
+      {#if creds}
+        {@const status = credStatus(creds)}
+        <div class="card">
+          <div class="card-label">Credentials</div>
+          <div class="card-value card-value-sm">
+            <span class="mono">{creds.primary.label}</span>
+          </div>
+          <div class="card-sub">
+            <Badge text={creds.primary.type} variant="default" />
+            <Badge text={status.label} variant={status.variant} />
+          </div>
+          {#if creds.backups.length > 0}
+            <div class="card-sub" style="margin-top: 4px">
+              {creds.backups.length} backup{creds.backups.length > 1 ? "s" : ""}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <div class="section">
@@ -89,14 +109,10 @@
             <th>Last Activity</th>
             <th>Tokens In</th>
             <th>Turns</th>
-            {#if costs}
-              <th>Cost</th>
-            {/if}
           </tr>
         </thead>
         <tbody>
           {#each metrics.nous as agent}
-            {@const agentCost = costs?.agents.find(a => a.agentId === agent.id)}
             <tr>
               <td class="agent-name">{agent.name}</td>
               <td>{agent.activeSessions}</td>
@@ -104,9 +120,6 @@
               <td class="muted">{formatTimeSince(agent.lastActivity)}</td>
               <td>{agent.tokens ? formatTokens(agent.tokens.input) : "-"}</td>
               <td>{agent.tokens?.turns ?? "-"}</td>
-              {#if costs}
-                <td>{agentCost ? formatCost(agentCost.totalCost || agentCost.cost) : "-"}</td>
-              {/if}
             </tr>
           {/each}
         </tbody>
@@ -165,6 +178,9 @@
   .card-value {
     font-size: var(--text-3xl);
     font-weight: 700;
+  }
+  .card-value-sm {
+    font-size: var(--text-lg);
   }
   .card-sub {
     font-size: var(--text-sm);

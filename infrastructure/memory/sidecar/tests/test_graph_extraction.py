@@ -3,8 +3,6 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from aletheia_memory import graph_extraction as ge_module
 from aletheia_memory.graph_extraction import (
     _SCHEMA,
@@ -14,7 +12,6 @@ from aletheia_memory.graph_extraction import (
     init_pipeline,
 )
 from aletheia_memory.vocab import CONTROLLED_VOCAB
-
 
 # ---------------------------------------------------------------------------
 # Schema correctness
@@ -64,11 +61,13 @@ def test_create_graphrag_llm_apikey():
     }
 
     mock_llm = MagicMock()
-    with patch("aletheia_memory.graph_extraction.AnthropicLLM", mock_llm, create=True):
-        with patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: (
+    with (
+        patch("aletheia_memory.graph_extraction.AnthropicLLM", mock_llm, create=True),
+        patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: (
             _fake_import_anthropic_llm(name, mock_llm)
-        )):
-            pass
+        )),
+    ):
+        pass
 
     # Direct patch on the neo4j_graphrag.llm module
     mock_llm_class = MagicMock(return_value=MagicMock())
@@ -239,9 +238,11 @@ def test_extract_graph_initializes_pipeline_from_backend():
             "oauth_token": None,
         }
 
-        with patch.object(ge_module, "_pipeline", None):
-            with patch("aletheia_memory.graph_extraction.init_pipeline", return_value=mock_pipeline) as mock_init:
-                result = await extract_graph("Test text.", backend=backend)
+        with (
+            patch.object(ge_module, "_pipeline", None),
+            patch("aletheia_memory.graph_extraction.init_pipeline", return_value=mock_pipeline) as mock_init,
+        ):
+            result = await extract_graph("Test text.", backend=backend)
 
         mock_init.assert_called_once_with(backend)
         assert result == {"ok": True}

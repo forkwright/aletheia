@@ -3,37 +3,33 @@
   import { setActiveAgent } from "../../stores/agents.svelte";
   import { loadSessions } from "../../stores/sessions.svelte";
 
-  function handleClick(agentId?: string, toastId?: string) {
-    if (agentId) {
-      setActiveAgent(agentId);
-      loadSessions(agentId);
-    }
-    if (toastId) dismissToast(toastId);
+  function handleNavigate(agentId: string, toastId: string) {
+    setActiveAgent(agentId);
+    loadSessions(agentId);
+    dismissToast(toastId);
   }
 </script>
 
 {#if getToasts().length > 0}
   <div class="toast-container">
     {#each getToasts() as toast (toast.id)}
-      <div
-        class="toast"
-        role="button"
-        tabindex="0"
-        onclick={() => handleClick(toast.agentId, toast.id)}
-        onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") handleClick(toast.agentId, toast.id); }}
-      >
+      <div class="toast" role="status" aria-live="polite">
         <span class="toast-header">
           {#if toast.emoji}<span class="toast-emoji">{toast.emoji}</span>{/if}
           <span class="toast-agent">{toast.agentName}</span>
-          <span
+          <button
             class="toast-dismiss"
-            role="button"
-            tabindex="0"
             onclick={(e: MouseEvent) => { e.stopPropagation(); dismissToast(toast.id); }}
-            onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { e.stopPropagation(); dismissToast(toast.id); } }}
-          >×</span>
+            aria-label="Dismiss notification"
+          >×</button>
         </span>
         <span class="toast-preview">{toast.preview}</span>
+        {#if toast.agentId}
+          <button
+            class="toast-action"
+            onclick={() => handleNavigate(toast.agentId!, toast.id)}
+          >View</button>
+        {/if}
       </div>
     {/each}
   </div>
@@ -42,13 +38,14 @@
 <style>
   .toast-container {
     position: fixed;
-    bottom: 16px;
+    bottom: 80px;
     right: 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 1000;
     max-width: 340px;
+    pointer-events: none;
   }
   .toast {
     display: flex;
@@ -63,11 +60,8 @@
     text-align: left;
     box-shadow: var(--shadow-md);
     animation: slide-in 0.2s ease-out;
-    cursor: pointer;
     width: 100%;
-  }
-  .toast:hover {
-    border-color: var(--accent);
+    pointer-events: auto;
   }
   .toast-header {
     display: flex;
@@ -84,9 +78,11 @@
   .toast-dismiss {
     color: var(--text-muted);
     font-size: var(--text-lg);
-    padding: 0 2px;
+    padding: 0 4px;
     line-height: 1;
     cursor: pointer;
+    background: none;
+    border: none;
   }
   .toast-dismiss:hover {
     color: var(--text);
@@ -98,8 +94,34 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .toast-action {
+    align-self: flex-end;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 3px 10px;
+    cursor: pointer;
+    margin-top: 2px;
+    transition: background var(--transition-quick), border-color var(--transition-quick);
+  }
+  .toast-action:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+  }
   @keyframes slide-in {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+  }
+
+  @media (max-width: 768px) {
+    .toast-container {
+      bottom: 100px;
+      right: 8px;
+      left: 8px;
+      max-width: none;
+    }
   }
 </style>

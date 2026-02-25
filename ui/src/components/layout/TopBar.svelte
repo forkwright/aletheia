@@ -11,7 +11,7 @@
   import { getActiveCredentialLabel, getCredentialConfig, loadCredentialConfig } from "../../stores/credentials.svelte";
   import AgentPill from "../agents/AgentPill.svelte";
 
-  type ViewId = "chat" | "metrics" | "graph" | "files" | "settings";
+  type ViewId = "chat" | "metrics" | "graph" | "planning" | "files" | "settings";
 
   let { onSetView, activeView }: {
     onSetView: (view: ViewId) => void;
@@ -107,6 +107,9 @@
     <button class="topbar-btn" class:active={activeView === "graph"} onclick={() => onSetView(activeView === "graph" ? "chat" : "graph")}>
       Graph
     </button>
+    <button class="topbar-btn" class:active={activeView === "planning"} onclick={() => onSetView(activeView === "planning" ? "chat" : "planning")}>
+      Planning
+    </button>
     <button class="topbar-btn" class:active={activeView === "settings"} onclick={() => onSetView(activeView === "settings" ? "chat" : "settings")}>
       Settings
     </button>
@@ -151,6 +154,9 @@
     </button>
     <button class="mobile-menu-item" class:active={activeView === "graph"} onclick={() => handleMobileNav(activeView === "graph" ? "chat" : "graph")}>
       <span class="mm-icon">🕸️</span> Graph
+    </button>
+    <button class="mobile-menu-item" class:active={activeView === "planning"} onclick={() => handleMobileNav(activeView === "planning" ? "chat" : "planning")}>
+      <span class="mm-icon">📋</span> Planning
     </button>
     <button class="mobile-menu-item" class:active={activeView === "settings"} onclick={() => handleMobileNav(activeView === "settings" ? "chat" : "settings")}>
       <span class="mm-icon">⚙️</span> Settings

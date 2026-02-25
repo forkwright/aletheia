@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Install and start Aletheia systemd user services. Idempotent — safe to re-run after updates.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ALETHEIA_SRC="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+ERGON_ROOT="${ERGON_ROOT:-$HOME/summus/ergon}"
+SERVICES_SRC="$ALETHEIA_SRC/config/services"
+
+log() { printf ':: %s\n' "$*"; }
+ok()  { printf '   [ok] %s\n' "$*"; }
+err() { printf 'ERROR: %s\n' "$*" >&2; }
+die() { err "$@"; exit 1; }
+
+# --- Pre-flight ---
+
+[[ -d "$ALETHEIA_SRC/.git" ]] || die "Run from within the aletheia repo."
+[[ -f "$ERGON_ROOT/dist/entry.mjs" ]] || die "Ergon build not found at $ERGON_ROOT/dist/entry.mjs — run aletheia-update first."
+[[ -f "$HOME/.aletheia/start.sh" ]] || die "~/.aletheia/start.sh not found — copy shared/bin/start.sh and make it executable."
+command -v node >/dev/null || die "node not found in PATH."
+command -v podman >/dev/null || die "podman not found in PATH."
+
+log "Installing Aletheia systemd user services..."
+
+# --- Install service files ---
+
+mkdir -p "$SYSTEMD_USER_DIR"
+
+install -m 644 "$SERVICES_SRC/aletheia-memory.service" "$SYSTEMD_USER_DIR/aletheia-memory.service"
+ok "aletheia-memory.service"
+
+install -m 644 "$SERVICES_SRC/aletheia.service" "$SYSTEMD_USER_DIR/aletheia.service"
+ok "aletheia.service"
+
+systemctl --user daemon-reload
+ok "daemon reloaded"
+
+# --- Boot persistence ---
+
+if ! loginctl show-user "$USER" 2>/dev/null | grep -q "^Linger=yes"; then
+  loginctl enable-linger "$USER"
+  ok "linger enabled (services survive without login session)"
+else
+  ok "linger already enabled"
+fi
+
+# --- Enable + start ---
+
+systemctl --user enable aletheia-memory.service aletheia.service
+ok "services enabled on boot"
+
+systemctl --user stop aletheia.service 2>/dev/null || true
+systemctl --user stop aletheia-memory.service 2>/dev/null || true
+
+systemctl --user start aletheia-memory.service
+ok "aletheia-memory started"
+
+systemctl --user start aletheia.service
+ok "aletheia started"
+
+# --- Health checks ---
+
+log "Waiting for services..."
+
+wait_for() {
+  local url="$1" label="$2" timeout="${3:-30}" elapsed=0
+  while [[ $elapsed -lt $timeout ]]; do
+    curl -sf "$url" >/dev/null 2>&1 && { ok "$label"; return 0; }
+    sleep 2; elapsed=$((elapsed + 2))
+  done
+  err "$label did not respond at $url within ${timeout}s"
+  return 1
+}
+
+all_ok=true
+wait_for "http://localhost:8230/health" "memory sidecar (:8230)" 60 || all_ok=false
+wait_for "http://localhost:18789/health" "gateway (:18789)"        30 || all_ok=false
+
+printf '\n:: Status:\n'
+printf '   aletheia:        %s\n' "$(systemctl --user is-active aletheia.service)"
+printf '   aletheia-memory: %s\n' "$(systemctl --user is-active aletheia-memory.service)"
+printf '\n'
+
+if [[ "$all_ok" = false ]]; then
+  echo "One or more health checks failed. Check logs:"
+  echo "  journalctl --user -u aletheia-memory -n 30 --no-pager"
+  echo "  journalctl --user -u aletheia -n 30 --no-pager"
+  exit 1
+fi
+
+echo "Done. Re-run after 'aletheia-update' to apply any service file changes."

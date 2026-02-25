@@ -3,6 +3,7 @@ import type { ToolContext, ToolHandler } from "../registry.js";
 import type { AgentDispatcher } from "./sessions-spawn.js";
 import { resolveRole, ROLE_NAMES } from "../config/sub-agent-roles.js";
 import { parseStructuredResult } from "../../nous/roles/index.js";
+import { parseSubAgentResponse } from "../../dianoia/structured-extraction.js";
 import { createLogger } from "../../koina/logger.js";
 
 const log = createLogger("organon.dispatch");
@@ -113,7 +114,19 @@ export function createSessionsDispatchTool(
         return JSON.stringify({ error: "Agent dispatch not available" });
       }
 
-      const tasks = input["tasks"] as DispatchTask[];
+      // Defensive: parse tasks if delivered as JSON string (model/framework serialization)
+      let tasks: DispatchTask[];
+      const raw = input["tasks"];
+      if (typeof raw === "string") {
+        try {
+          tasks = JSON.parse(raw);
+        } catch {
+          return JSON.stringify({ error: "tasks: invalid JSON string" });
+        }
+      } else {
+        tasks = raw as DispatchTask[];
+      }
+
       if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
         return JSON.stringify({ error: "tasks array is required and must not be empty" });
       }
@@ -175,7 +188,17 @@ export function createSessionsDispatchTool(
           clearTimeout(timer!);
 
           const durationMs = Date.now() - taskStart;
-          const structured = parseStructuredResult(outcome.text);
+          
+          // Try new structured extraction with retry capability
+          const structuredNew = await parseSubAgentResponse(outcome.text, async (errorMessage) => {
+            log.debug(`Sub-agent result parsing failed for task ${index}: ${errorMessage}. Using fallback.`);
+            // For sub-agent responses, we don't retry the actual call, just fall back to old parsing
+            return outcome.text; // Return original text, parseSubAgentResponse will return null
+          });
+          
+          // Use new structured result if available, fall back to old method
+          const structured = structuredNew ?? parseStructuredResult(outcome.text);
+          
           const totalTokens = (outcome.inputTokens ?? 0) + (outcome.outputTokens ?? 0);
 
           if (auditId && dispatcher.store) {
@@ -204,13 +227,12 @@ export function createSessionsDispatchTool(
             });
           }
 
-          return {
+          const dispatchResult: DispatchResult = {
             index,
             role: roleName,
             task: taskDef.task,
             status: "success",
             result: outcome.text,
-            ...(structured ? { structuredResult: structured } : {}),
             tokens: {
               input: outcome.inputTokens ?? 0,
               output: outcome.outputTokens ?? 0,
@@ -218,6 +240,8 @@ export function createSessionsDispatchTool(
             },
             durationMs,
           };
+          if (structured) dispatchResult.structuredResult = structured;
+          return dispatchResult;
         } catch (err) {
           clearTimeout(timer!);
           const durationMs = Date.now() - taskStart;

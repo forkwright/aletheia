@@ -6,7 +6,7 @@ Uses Browser Use library for LLM-driven browser interaction.
 
 Usage:
     browse "Go to example.com and extract the pricing table"
-    browse --url "https://example.com" "Extract the main table data"
+    browse "Navigate to https://example.com and extract the main table data"
 """
 
 import subprocess

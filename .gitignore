@@ -5,7 +5,10 @@ projects/
 
 # === Secrets ===
 *.env
-**/credentials*
+**/credentials.json
+**/credentials.yaml
+**/credentials.yml
+!**/credentials.py
 **/secrets*
 **/*.key
 **/*.pem
@@ -85,6 +88,9 @@ clawd
 **/site-packages/
 **/pyvenv.cfg
 **/.venv*
+
+# === GSD planning (local only) ===
+.planning/
 
 # === Generated/ephemeral ===
 shared/logs/

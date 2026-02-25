@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .graph import neo4j_available, neo4j_driver
 from .vocab import CONTROLLED_VOCAB
@@ -20,7 +19,7 @@ _SCHEMA = {
 _pipeline = None
 
 
-def create_graphrag_llm(backend: dict) -> Optional[object]:
+def create_graphrag_llm(backend: dict) -> object | None:
     """Build a neo4j-graphrag AnthropicLLM from the active backend.
 
     - API-key backend: instantiate AnthropicLLM with the key directly.
@@ -67,7 +66,7 @@ def create_graphrag_llm(backend: dict) -> Optional[object]:
     return None
 
 
-def init_pipeline(backend: dict) -> Optional[object]:
+def init_pipeline(backend: dict) -> object | None:
     """Build and return a SimpleKGPipeline instance, or None if unavailable.
 
     None is returned when:

@@ -107,7 +107,7 @@ describe("parseStructuredResult", () => {
   "task": "find distillation triggers",
   "status": "success",
   "summary": "Found 3 trigger points in the pipeline.",
-  "details": {"relevantFiles": [{"path": "src/distillation/pipeline.ts"}]},
+  "details": {"relevantFiles": [{"path": "src/melete/pipeline.ts"}]},
   "confidence": 0.9
 }
 \`\`\``;

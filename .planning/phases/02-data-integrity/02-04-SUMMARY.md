@@ -109,6 +109,14 @@ Phase 2 (data integrity) is now complete:
 
 Ready to proceed to Phase 3 (graph knowledge) after the required research phase (`/gsd:research-phase`).
 
+## Self-Check: PASSED
+
+- SUMMARY.md: found at `.planning/phases/02-data-integrity/02-04-SUMMARY.md`
+- Task 2 commit `8880b66`: found in git log
+- pipeline.ts: found, `shouldDistill` is now synchronous
+- pipeline.test.ts: found, unused imports removed
+- Final metadata commit `d63670a`: found in git log
+
 ---
 *Phase: 02-data-integrity*
 *Completed: 2026-02-25*

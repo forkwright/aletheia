@@ -14,7 +14,7 @@ def test_pyproject_has_neo4j_6x():
     content = PYPROJECT_PATH.read_text()
     assert "neo4j>=6.1.0" in content, (
         f"Expected 'neo4j>=6.1.0' in pyproject.toml, got: "
-        f"{[l for l in content.splitlines() if 'neo4j' in l]}"
+        f"{[line for line in content.splitlines() if 'neo4j' in line]}"
     )
 
 
@@ -31,7 +31,7 @@ def test_pyproject_has_neo4j_graphrag():
     content = PYPROJECT_PATH.read_text()
     assert "neo4j-graphrag[anthropic]>=1.13.0" in content, (
         f"Expected 'neo4j-graphrag[anthropic]>=1.13.0' in pyproject.toml, got: "
-        f"{[l for l in content.splitlines() if 'graphrag' in l]}"
+        f"{[line for line in content.splitlines() if 'graphrag' in line]}"
     )
 
 
