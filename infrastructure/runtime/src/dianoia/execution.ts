@@ -9,7 +9,7 @@ import { buildContextPacket } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
 
 const log = createLogger("dianoia:execution");
-const ZOMBIE_THRESHOLD_SECONDS = 600; // 2x default 300s plan timeout
+const ZOMBIE_THRESHOLD_SECONDS = 600; // Conservative threshold; execution timeouts are per-task, zombies are per-record
 
 export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   // Unit of parallelism is the PlanningPhase (plan).
@@ -134,10 +134,12 @@ export class ExecutionOrchestrator {
       }
 
       const wave = waves[waveIndex]!;
+      // Re-read records each wave (reapZombies may have mutated earlier records)
+      const currentRecords = this.store.listSpawnRecords(projectId);
       const activePlans = wave.filter(
         (p) =>
           !skippedIds.has(p.id) &&
-          !existingRecords.some((r) => r.phaseId === p.id && r.status === "done"),
+          !currentRecords.some((r) => r.phaseId === p.id && (r.status === "done" || r.status === "running")),
       );
 
       if (activePlans.length === 0) continue;
@@ -185,7 +187,7 @@ export class ExecutionOrchestrator {
         return {
           role: selectedRole,
           task: contextPacket,
-          timeoutSeconds: 300,
+          timeoutSeconds: 900, // 15 min — phases need multiple turns with tool calls
         };
       });
 
