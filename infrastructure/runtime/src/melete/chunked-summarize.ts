@@ -6,7 +6,7 @@ import type { ProviderRouter } from "../hermeneus/router.js";
 import type { ExtractionResult } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 
-const log = createLogger("distillation.chunked");
+const log = createLogger("melete.chunked");
 
 type SimpleMessage = { role: string; content: string };
 

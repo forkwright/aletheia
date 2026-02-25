@@ -103,7 +103,7 @@ vi.mock("./trace.js", async () => {
   };
 });
 
-vi.mock("../distillation/pipeline.js", () => ({
+vi.mock("../melete/pipeline.js", () => ({
   distillSession: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -229,7 +229,7 @@ describe("NousManager", () => {
 
   it("triggerDistillation calls distillSession", async () => {
     await manager.triggerDistillation("ses_1");
-    const { distillSession } = await import("../distillation/pipeline.js");
+    const { distillSession } = await import("../melete/pipeline.js");
     expect(distillSession).toHaveBeenCalled();
   });
 

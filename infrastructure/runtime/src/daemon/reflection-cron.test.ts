@@ -5,13 +5,13 @@ vi.mock("../koina/logger.js", () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
 }));
 
-vi.mock("../distillation/reflect.js", () => ({
+vi.mock("../melete/reflect.js", () => ({
   reflectOnAgent: vi.fn(),
   weeklyReflection: vi.fn(),
 }));
 
 import { runNightlyReflection, runWeeklyReflection } from "./reflection-cron.js";
-import { reflectOnAgent, weeklyReflection } from "../distillation/reflect.js";
+import { reflectOnAgent, weeklyReflection } from "../melete/reflect.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 
 function makeConfig(agentIds: string[]): AletheiaConfig {

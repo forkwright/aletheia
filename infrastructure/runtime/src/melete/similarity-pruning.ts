@@ -1,7 +1,7 @@
 // Similarity-based pruning — remove low-information segments before summarization
 import { createLogger } from "../koina/logger.js";
 
-const log = createLogger("distillation.pruning");
+const log = createLogger("melete.pruning");
 
 type SimpleMessage = { role: string; content: string };
 

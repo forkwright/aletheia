@@ -36,7 +36,7 @@ vi.mock("../../working-state.js", () => ({
   formatWorkingState: vi.fn().mockReturnValue("## Working State\nTask: testing"),
 }));
 
-vi.mock("../../../distillation/pipeline.js", () => ({
+vi.mock("../../../melete/pipeline.js", () => ({
   distillSession: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -46,7 +46,7 @@ vi.mock("../../../koina/event-bus.js", () => ({
 
 import { buildContext } from "./context.js";
 import { recallMemories } from "../../recall.js";
-import { distillSession } from "../../../distillation/pipeline.js";
+import { distillSession } from "../../../melete/pipeline.js";
 
 function makeTrace() {
   return {

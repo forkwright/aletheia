@@ -10,7 +10,7 @@ import type { MemoryFlushTarget } from "./hooks.js";
 import { extractJson } from "./extract.js";
 import { sanitizeToolResults } from "./chunked-summarize.js";
 
-const log = createLogger("distillation.reflect");
+const log = createLogger("melete.reflect");
 
 const REFLECTION_PROMPT = `You are performing a nightly reflection on conversations from the Aletheia agent system.
 This is NOT real-time extraction. You have time and space to think deeply about patterns.
