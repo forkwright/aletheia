@@ -4,6 +4,14 @@ import { join } from "node:path";
 import { readJson, writeJson } from "../koina/fs.js";
 import type { AletheiaConfig } from "./schema.js";
 
+export interface UserProfile {
+  name: string;
+  role: string;
+  style: "direct" | "balanced" | "detailed";
+  notes?: string;
+  timezone?: string;
+}
+
 export interface ScaffoldOpts {
   id: string;
   name: string;
@@ -11,6 +19,7 @@ export interface ScaffoldOpts {
   nousDir: string;
   configPath: string;
   templateDir: string;
+  userProfile?: UserProfile;
 }
 
 export interface ScaffoldResult {
@@ -36,6 +45,33 @@ export function validateAgentId(id: string): { valid: boolean; reason?: string }
   if (!ID_PATTERN.test(id)) return { valid: false, reason: "ID must be lowercase alphanumeric with hyphens, starting with a letter" };
   if (id.endsWith("-")) return { valid: false, reason: "ID cannot end with a hyphen" };
   return { valid: true };
+}
+
+const STYLE_BLOCKS: Record<string, string> = {
+  direct: "Direct, concise, answer first. Skip preamble and unsolicited explanations.",
+  balanced: "Answer first, add brief context when helpful. Balanced depth.",
+  detailed: "Full explanations with context and implications. Teach as you go.",
+};
+
+function buildUserMd(profile: UserProfile): string {
+  const tz = profile.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const styleBlock = STYLE_BLOCKS[profile.style] ?? STYLE_BLOCKS["balanced"];
+  const lines = [
+    "# Operator",
+    "",
+    "## Who You're Helping",
+    `- Name: ${profile.name}`,
+    `- Role: ${profile.role}`,
+    `- Timezone: ${tz}`,
+    "",
+    "## Communication Preferences",
+    styleBlock,
+  ];
+  if (profile.notes?.trim()) {
+    lines.push("", "## Notes", profile.notes.trim());
+  }
+  lines.push("");
+  return lines.join("\n");
 }
 
 function onboardingSoul(name: string): string {
@@ -111,7 +147,10 @@ export function scaffoldAgent(opts: ScaffoldOpts): ScaffoldResult {
   writeFileSync(join(workspace, "SOUL.md"), onboardingSoul(opts.name), "utf-8");
   filesCreated.push("SOUL.md");
 
-  writeFileSync(join(workspace, "USER.md"), "# Operator\n\n*To be written during onboarding.*\n", "utf-8");
+  const userMd = opts.userProfile
+    ? buildUserMd(opts.userProfile)
+    : "# Operator\n\n*To be written during onboarding.*\n";
+  writeFileSync(join(workspace, "USER.md"), userMd, "utf-8");
   filesCreated.push("USER.md");
 
   agents.push({
