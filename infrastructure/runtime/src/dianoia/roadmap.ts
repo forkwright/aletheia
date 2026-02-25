@@ -18,6 +18,8 @@ export interface PhaseDefinition {
   requirements: string[];
   successCriteria: string[];
   phaseOrder: number;
+  /** Phase names this phase depends on. Resolved to IDs during commitRoadmap(). */
+  dependsOn?: string[];
 }
 
 export interface PlanStep {
@@ -70,21 +72,49 @@ export class RoadmapOrchestrator {
       .listRequirements(projectId)
       .filter((r) => r.tier === "v1");
 
+    // Build context packet from file-backed state for planner awareness
+    let contextSection = "";
+    if (this.workspaceRoot) {
+      try {
+        contextSection = buildContextPacketSync({
+          workspaceRoot: this.workspaceRoot,
+          projectId,
+          phaseId: null,
+          role: "planner",
+          projectGoal,
+          requirements: v1Reqs,
+          maxTokens: 8000,
+        });
+      } catch (err) {
+        log.warn(`Failed to build context packet for roadmap generation: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const taskParts = [
+      `Generate a phased roadmap for this project: "${projectGoal}"`,
+      "",
+      "Rules:",
+      "- Group requirements by category code (e.g., AUTH, API, STOR) — same category = same phase",
+      "- Foundation-first ordering: core auth/data before API, API before UI",
+      "- Orphaned requirements that don't fit naturally go into a catch-all phase",
+      "- No target phase count — let requirements drive it",
+    ];
+
+    if (contextSection) {
+      taskParts.push("", "## Project Context", "", contextSection);
+    } else {
+      // Fallback: inline requirements as JSON when no file-backed state
+      taskParts.push("", `v1 requirements (must all be covered):\n${JSON.stringify(v1Reqs, null, 2)}`);
+    }
+
+    taskParts.push(
+      "",
+      "Return a ```json block with a PhaseDefinition[] array. Each item: { name, goal, requirements (REQ-ID strings), successCriteria (2-5 observable strings), phaseOrder (1-based integer), dependsOn (array of phase NAMES this phase depends on, empty [] if none) }",
+    );
+
     const task = {
       role: "planner",
-      task: [
-        `Generate a phased roadmap for this project: "${projectGoal}"`,
-        "",
-        "Rules:",
-        "- Group requirements by category code (e.g., AUTH, API, STOR) — same category = same phase",
-        "- Foundation-first ordering: core auth/data before API, API before UI",
-        "- Orphaned requirements that don't fit naturally go into a catch-all phase",
-        "- No target phase count — let requirements drive it",
-        "",
-        `v1 requirements (must all be covered):\n${JSON.stringify(v1Reqs, null, 2)}`,
-        "",
-        "Return a ```json block with a PhaseDefinition[] array. Each item: { name, goal, requirements (REQ-ID strings), successCriteria (2-5 observable strings), phaseOrder (1-based integer) }",
-      ].join("\n"),
+      task: taskParts.join("\n"),
       context:
         "You are a software project planner. Create a phased roadmap that groups requirements logically and orders phases by dependency.",
       timeoutSeconds: 120,
@@ -119,8 +149,13 @@ export class RoadmapOrchestrator {
   commitRoadmap(projectId: string, phases: PhaseDefinition[]): void {
     const commit = this.db.transaction(() => {
       this.db.prepare("DELETE FROM planning_phases WHERE project_id = ?").run(projectId);
+
+      // First pass: create phases without dependencies (need IDs first)
+      const nameToId = new Map<string, string>();
+      const createdPhases: Array<{ phase: PhaseDefinition; id: string }> = [];
+
       for (const phase of phases) {
-        this.store.createPhase({
+        const created = this.store.createPhase({
           projectId,
           name: phase.name,
           goal: phase.goal,
@@ -128,6 +163,20 @@ export class RoadmapOrchestrator {
           successCriteria: phase.successCriteria ?? [],
           phaseOrder: phase.phaseOrder,
         });
+        nameToId.set(phase.name, created.id);
+        createdPhases.push({ phase, id: created.id });
+      }
+
+      // Second pass: resolve name-based dependencies to phase IDs
+      for (const { phase, id } of createdPhases) {
+        if (phase.dependsOn && phase.dependsOn.length > 0) {
+          const resolvedDeps = phase.dependsOn
+            .map((depName) => nameToId.get(depName))
+            .filter((depId): depId is string => depId !== undefined);
+          if (resolvedDeps.length > 0) {
+            this.store.updatePhaseDependencies(id, resolvedDeps);
+          }
+        }
       }
     });
     commit();
@@ -226,10 +275,10 @@ export class RoadmapOrchestrator {
 
     if (config.plan_check === true) {
       for (let attempt = 1; attempt <= MAX_ITERATIONS; attempt++) {
-        const check = await this.checkPlan(phase, plan, toolContext, attempt);
+        const check = await this.checkPlan(phase, plan, toolContext, attempt, projectId, project.goal);
         if (check.pass) break;
         if (attempt < MAX_ITERATIONS) {
-          plan = await this.revisePlan(phase, plan, check.issues, depthInstruction, toolContext);
+          plan = await this.revisePlan(phase, plan, check.issues, depthInstruction, toolContext, projectId, project.goal);
         } else {
           log.warn(`Plan checker failed ${MAX_ITERATIONS} times for phase ${phaseId} — using best-effort plan`, {
             issues: check.issues,
@@ -348,20 +397,55 @@ export class RoadmapOrchestrator {
     plan: PhasePlan,
     toolContext: ToolContext,
     attempt: number,
+    projectId?: string,
+    projectGoal?: string,
   ): Promise<{ pass: boolean; issues: string[] }> {
-    const task = {
-      role: "reviewer",
-      task: [
-        `Review this implementation plan for phase "${phase.name}".`,
+    // Build context packet for reviewer — gives plan checker awareness of project context
+    let contextSection = "";
+    if (this.workspaceRoot && projectId) {
+      try {
+        contextSection = buildContextPacketSync({
+          workspaceRoot: this.workspaceRoot,
+          projectId,
+          phaseId: phase.id,
+          role: "reviewer",
+          phase,
+          projectGoal: projectGoal ?? "",
+          requirements: this.store
+            .listRequirements(projectId)
+            .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
+          maxTokens: 6000,
+        });
+      } catch (err) {
+        log.warn(`Failed to build context packet for plan check: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const taskParts = [
+      `Review this implementation plan for phase "${phase.name}".`,
+    ];
+
+    if (contextSection) {
+      taskParts.push("", contextSection);
+    } else {
+      taskParts.push(
         `Phase goal: ${phase.goal}`,
         `Phase requirements: ${phase.requirements.join(", ") || "(none)"}`,
-        "",
-        `Plan:\n${JSON.stringify(plan, null, 2)}`,
-        "",
-        "Check: (1) Do the steps plausibly achieve the phase goal? (2) Are all phase REQ-IDs addressed?",
-        "Return JSON: { pass: boolean, issues: string[] }",
-        `This is check attempt ${attempt} of ${MAX_ITERATIONS}.`,
-      ].join("\n"),
+      );
+    }
+
+    taskParts.push(
+      "",
+      `Plan:\n${JSON.stringify(plan, null, 2)}`,
+      "",
+      "Check: (1) Do the steps plausibly achieve the phase goal? (2) Are all phase REQ-IDs addressed?",
+      "Return JSON: { pass: boolean, issues: string[] }",
+      `This is check attempt ${attempt} of ${MAX_ITERATIONS}.`,
+    );
+
+    const task = {
+      role: "reviewer",
+      task: taskParts.join("\n"),
       context: "You are a plan quality reviewer. Be specific about any issues found.",
       timeoutSeconds: 60,
     };
@@ -391,22 +475,59 @@ export class RoadmapOrchestrator {
     issues: string[],
     depthInstruction: string,
     toolContext: ToolContext,
+    projectId?: string,
+    projectGoal?: string,
   ): Promise<PhasePlan> {
-    const task = {
-      role: "planner",
-      task: [
-        `Revise this implementation plan for phase "${phase.name}".`,
+    // Build context packet for revision — planner needs full project awareness to fix issues
+    let contextSection = "";
+    if (this.workspaceRoot && projectId) {
+      try {
+        const allPhases = this.store.listPhases(projectId);
+        contextSection = buildContextPacketSync({
+          workspaceRoot: this.workspaceRoot,
+          projectId,
+          phaseId: phase.id,
+          role: "planner",
+          phase,
+          allPhases,
+          projectGoal: projectGoal ?? "",
+          requirements: this.store
+            .listRequirements(projectId)
+            .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
+          maxTokens: 8000,
+        });
+      } catch (err) {
+        log.warn(`Failed to build context packet for plan revision: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    const taskParts = [
+      `Revise this implementation plan for phase "${phase.name}".`,
+    ];
+
+    if (contextSection) {
+      taskParts.push("", contextSection);
+    } else {
+      taskParts.push(
         `Phase goal: ${phase.goal}`,
         `Phase requirements: ${phase.requirements.join(", ") || "(none)"}`,
-        "",
-        `Current plan:\n${JSON.stringify(currentPlan, null, 2)}`,
-        "",
-        `Issues to address:\n${issues.map((i) => `- ${i}`).join("\n")}`,
-        "",
-        depthInstruction,
-        "",
-        "Return a ```json block with the revised PhasePlan: { steps: Array<{ id, description, subtasks: string[], dependsOn: string[] }>, dependencies: string[], acceptanceCriteria: string[] }",
-      ].join("\n"),
+      );
+    }
+
+    taskParts.push(
+      "",
+      `Current plan:\n${JSON.stringify(currentPlan, null, 2)}`,
+      "",
+      `Issues to address:\n${issues.map((i) => `- ${i}`).join("\n")}`,
+      "",
+      depthInstruction,
+      "",
+      "Return a ```json block with the revised PhasePlan: { steps: Array<{ id, description, subtasks: string[], dependsOn: string[] }>, dependencies: string[], acceptanceCriteria: string[] }",
+    );
+
+    const task = {
+      role: "planner",
+      task: taskParts.join("\n"),
       context: "You are a software implementation planner. Revise the plan to address the reviewer's issues.",
       timeoutSeconds: 120,
     };

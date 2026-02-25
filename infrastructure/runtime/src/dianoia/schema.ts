@@ -99,6 +99,13 @@ CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_project ON planning_spawn_
 CREATE INDEX IF NOT EXISTS idx_planning_spawn_records_phase ON planning_spawn_records(phase_id);
 `;
 
+// Spec 32 — Phase/requirement dependency tracking
+export const PLANNING_V27_MIGRATION = `
+ALTER TABLE planning_phases ADD COLUMN dependencies TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE planning_requirements ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE planning_requirements ADD COLUMN blocked_by TEXT NOT NULL DEFAULT '[]';
+`;
+
 // Spec 32 — Dianoia v2 Phase 1: file-backed state + discussion loop
 // SQLite CHECK constraints can't be ALTERed, so we recreate the projects table
 // to add 'discussing' state and project_dir column.

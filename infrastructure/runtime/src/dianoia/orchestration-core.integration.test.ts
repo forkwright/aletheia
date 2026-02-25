@@ -1,7 +1,7 @@
 // Integration test demonstrating ORCH-04: Verification failure auto-skip and rollback plan
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { GoalBackwardVerifier } from "./verifier.js";
 import { createPlanVerifyTool } from "./verifier-tool.js";
@@ -24,6 +24,10 @@ function makeDb(): Database.Database {
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
   db.exec(PLANNING_V23_MIGRATION);
+  db.exec(PLANNING_V24_MIGRATION);
+  db.exec(PLANNING_V25_MIGRATION);
+  db.exec(PLANNING_V26_MIGRATION);
+  db.exec(PLANNING_V27_MIGRATION);
   return db;
 }
 

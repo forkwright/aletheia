@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { ResearchOrchestrator } from "./researcher.js";
@@ -112,6 +112,10 @@ beforeEach(() => {
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
   db.exec(PLANNING_V23_MIGRATION);
+  db.exec(PLANNING_V24_MIGRATION);
+  db.exec(PLANNING_V25_MIGRATION);
+  db.exec(PLANNING_V26_MIGRATION);
+  db.exec(PLANNING_V27_MIGRATION);
 });
 
 afterEach(() => {
