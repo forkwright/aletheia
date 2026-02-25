@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { createLogger } from "../koina/logger.js";
 import type { ExtractionResult } from "./extract.js";
 
-const log = createLogger("distillation:workspace");
+const log = createLogger("melete:workspace");
 
 export interface WorkspaceFlushOpts {
   workspace: string;

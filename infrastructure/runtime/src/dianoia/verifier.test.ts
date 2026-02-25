@@ -270,8 +270,8 @@ describe("GoalBackwardVerifier.generateGapPlans", () => {
       {
         criterion: "Users can login",
         found: "No login endpoint",
-        expected: "POST /auth/login implemented",
-        proposedFix: "Implement POST /auth/login",
+        expected: "POST /symbolon/login implemented",
+        proposedFix: "Implement POST /symbolon/login",
       },
       {
         criterion: "Data persists across restarts",
@@ -288,7 +288,7 @@ describe("GoalBackwardVerifier.generateGapPlans", () => {
 
     // Each plan has one step, step description derived from criterion
     expect(plans[0]!.steps).toHaveLength(1);
-    expect(plans[0]!.acceptanceCriteria).toContain("Implement POST /auth/login");
+    expect(plans[0]!.acceptanceCriteria).toContain("Implement POST /symbolon/login");
 
     expect(plans[1]!.steps).toHaveLength(1);
     expect(plans[1]!.acceptanceCriteria).toContain("Add SQLite database layer");

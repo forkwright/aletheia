@@ -835,7 +835,7 @@ auditCmd
   .action(async () => {
     const Database = (await import("better-sqlite3")).default;
     const { paths } = await import("./taxis/paths.js");
-    const { verifyAuditChain } = await import("./auth/audit-verify.js");
+    const { verifyAuditChain } = await import("./symbolon/audit-verify.js");
 
     const dbPath = paths.sessionsDb();
     let db: InstanceType<typeof Database>;
@@ -883,7 +883,7 @@ program
   .action(async (opts: { username?: string; password?: string; config?: string }) => {
     const { readFileSync, writeFileSync } = await import("node:fs");
     const { paths } = await import("./taxis/paths.js");
-    const { hashPassword } = await import("./auth/passwords.js");
+    const { hashPassword } = await import("./symbolon/passwords.js");
     const { createInterface } = await import("node:readline");
 
     const configPath = opts.config ?? paths.configFile();

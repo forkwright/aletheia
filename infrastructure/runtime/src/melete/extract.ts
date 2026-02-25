@@ -3,7 +3,7 @@ import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 
-const log = createLogger("distillation.extract");
+const log = createLogger("melete.extract");
 
 export interface ExtractionResult {
   facts: string[];

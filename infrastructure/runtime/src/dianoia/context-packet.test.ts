@@ -265,7 +265,7 @@ describe("buildContextPacketSync", () => {
       phaseId: TEST_PHASE_ID,
       role: "executor",
       phase,
-      supplementary: "// src/auth/oauth.ts\nexport function authenticate() { ... }",
+      supplementary: "// src/symbolon/oauth.ts\nexport function authenticate() { ... }",
     });
 
     expect(packet).toContain("Reference Material");

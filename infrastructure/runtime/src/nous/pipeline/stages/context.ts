@@ -5,7 +5,7 @@ import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
 import { formatWorkingState } from "../../working-state.js";
-import { distillSession } from "../../../distillation/pipeline.js";
+import { distillSession } from "../../../melete/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
 import { indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";

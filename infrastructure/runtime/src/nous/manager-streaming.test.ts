@@ -145,7 +145,7 @@ vi.mock("./trace.js", async () => {
   };
 });
 
-vi.mock("../distillation/pipeline.js", () => ({
+vi.mock("../melete/pipeline.js", () => ({
   distillSession: vi.fn().mockResolvedValue(undefined),
 }));
 

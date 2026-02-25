@@ -15,7 +15,7 @@ import type {
 import type { ToolCallRecord } from "../../organon/skill-learner.js";
 import type { LoopDetector } from "../loop-detector.js";
 import type { ApprovalGate, ApprovalMode } from "../../organon/approval.js";
-import type { MemoryFlushTarget } from "../../distillation/hooks.js";
+import type { MemoryFlushTarget } from "../../melete/hooks.js";
 import type { SkillRegistry } from "../../organon/skills.js";
 import type { DianoiaOrchestrator } from "../../dianoia/orchestrator.js";
 

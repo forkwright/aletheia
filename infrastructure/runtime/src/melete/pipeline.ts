@@ -13,7 +13,7 @@ import type { PluginRegistry } from "../prostheke/registry.js";
 import { eventBus } from "../koina/event-bus.js";
 import { flushToWorkspace } from "./workspace-flush.js";
 
-const log = createLogger("distillation");
+const log = createLogger("melete");
 
 // Prevent concurrent distillation of the same session
 const activeDistillations = new Set<string>();
@@ -73,7 +73,7 @@ export async function distillSession(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
     throw new AletheiaError({
-      code: "SESSION_LOCKED", module: "distillation",
+      code: "SESSION_LOCKED", module: "melete",
       message: `Distillation already in progress for session ${sessionId}`,
       context: { sessionId }, recoverable: true, retryAfterMs: 30_000,
     });
@@ -126,7 +126,7 @@ async function runDistillation(
           if (unanswered.length > 0) {
             log.warn(`Distillation blocked: ${unanswered.length} unanswered tool_use blocks at seq ${lastAssistant.seq}`);
             throw new AletheiaError({
-              code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+              code: "DISTILL_INSUFFICIENT_MESSAGES", module: "melete",
               message: `Cannot distill: incomplete message sequence (${unanswered.length} orphaned tool_use blocks)`,
               context: { sessionId, orphanedCount: unanswered.length },
             });
@@ -143,7 +143,7 @@ async function runDistillation(
 
   if (undistilled.length < opts.minMessages) {
     throw new AletheiaError({
-      code: "DISTILL_INSUFFICIENT_MESSAGES", module: "distillation",
+      code: "DISTILL_INSUFFICIENT_MESSAGES", module: "melete",
       message: `Not enough messages to distill: ${undistilled.length} < ${opts.minMessages}`,
       context: { sessionId, undistilledCount: undistilled.length, minMessages: opts.minMessages },
     });

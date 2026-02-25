@@ -4,7 +4,7 @@ import { type PiiScanConfig, scanText } from "../koina/pii.js";
 import { trySafe } from "../koina/safe.js";
 import type { ExtractionResult } from "./extract.js";
 
-const log = createLogger("distillation:hooks");
+const log = createLogger("melete:hooks");
 
 export interface MemoryFlushTarget {
   addMemories(
