@@ -9,7 +9,7 @@
   import PlanCard from "./PlanCard.svelte";
   import DistillationProgress from "./DistillationProgress.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
-  import type { ToolCallState } from "../../lib/types";
+  import type { ToolCallState, MediaItem, CommandInfo } from "../../lib/types";
   import {
     getMessages,
     getIsStreaming,
@@ -34,7 +34,6 @@
     getTurnStartedAt,
     injectUserMessage,
   } from "../../stores/chat.svelte";
-  import type { MediaItem } from "../../lib/types";
   import {
     getActiveAgent,
     getActiveAgentId,
@@ -53,7 +52,6 @@
     isSessionsLoading,
   } from "../../stores/sessions.svelte";
   import { distillSession, fetchCommands, executeCommand, queueMessage } from "../../lib/api";
-  import type { CommandInfo } from "../../lib/types";
   import { onGlobalEvent, getActiveTurns } from "../../lib/events.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { addNotification } from "../../stores/notifications.svelte";

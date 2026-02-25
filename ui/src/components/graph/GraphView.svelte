@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  // oxlint-disable-next-line typescript/consistent-type-imports -- Graph2D is used as a value in the template; oxlint only sees the script block
   import Graph2D from "./Graph2D.svelte";
   import NodeCard from "./NodeCard.svelte";
   import HealthBar from "./HealthBar.svelte";
