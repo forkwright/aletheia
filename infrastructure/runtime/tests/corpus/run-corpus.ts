@@ -69,13 +69,15 @@ function aggregateMetrics(items: PerTypeMetrics[]): PerTypeMetrics {
 // --- Router setup ---
 
 function buildRouter(): ProviderRouter {
+  const authToken = process.env["ANTHROPIC_AUTH_TOKEN"];
   const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) {
-    console.error("ERROR: ANTHROPIC_API_KEY is not set. Export it before running the corpus benchmark.");
+  if (!authToken && !apiKey) {
+    console.error("ERROR: Set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN before running the corpus benchmark.");
     process.exit(1);
   }
   const router = new ProviderRouter();
-  router.registerProvider("anthropic", new AnthropicProvider({ apiKey }), []);
+  const opts = authToken ? { authToken } : { apiKey: apiKey! };
+  router.registerProvider("anthropic", new AnthropicProvider(opts), []);
   return router;
 }
 
