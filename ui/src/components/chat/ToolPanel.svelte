@@ -277,6 +277,7 @@
               <pre class="tool-input-json">{JSON.stringify(tool.input, null, 2)}</pre>
             {/if}
             {#if tool.result}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify-sanitized via highlightResult() which calls DOMPurify.sanitize() -->
               <pre class="tool-result" class:collapsed={isCollapsed(tool)}>{@html highlightResult(tool)}</pre>
             {/if}
             {#if isCollapsible(tool)}
