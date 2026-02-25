@@ -177,10 +177,22 @@ export async function extractStructured<T>(
   retryCallback?: (errorMessage: string) => Promise<string>
 ): Promise<T | null> {
   try {
-    // Try to extract JSON block from response
+    // First: try direct JSON parse (dispatch tool returns raw JSON, not fenced)
+    const trimmed = responseText.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const directParsed = JSON.parse(trimmed);
+        const directResult = schema.parse(directParsed);
+        return directResult;
+      } catch {
+        // Fall through to extraction strategies
+      }
+    }
+
+    // Second: try to extract JSON block from markdown/prose response
     const jsonBlock = extractJsonBlock(responseText);
     if (!jsonBlock) {
-      const errorMsg = "No JSON block found in response. Expected ```json ... ``` format.";
+      const errorMsg = "No JSON found in response (tried direct parse and extraction from prose).";
       if (retryCallback) {
         log.debug("JSON extraction failed, retrying with error feedback");
         const retryText = await retryCallback(errorMsg);
@@ -220,15 +232,54 @@ export async function extractStructured<T>(
 }
 
 /**
- * Extract the last JSON block from response text.
- * Sub-agents are expected to end with a ```json ... ``` block.
+ * Extract JSON from response text using multiple strategies (most specific → most forgiving).
+ * 
+ * Strategies in order:
+ * 1. Fenced ```json ... ``` blocks (preferred)
+ * 2. Fenced ``` ... ``` blocks that parse as JSON
+ * 3. Raw JSON object at end of response (after last prose paragraph)
+ * 4. First { ... } block that parses as valid JSON
  */
 function extractJsonBlock(responseText: string): string | null {
+  // Strategy 1: Fenced json blocks
   const jsonBlocks = [...responseText.matchAll(/```json\s*\n([\s\S]*?)\n```/g)];
-  if (jsonBlocks.length === 0) return null;
-  
-  const lastBlock = jsonBlocks[jsonBlocks.length - 1];
-  return lastBlock?.[1]?.trim() ?? null;
+  if (jsonBlocks.length > 0) {
+    const lastBlock = jsonBlocks[jsonBlocks.length - 1];
+    if (lastBlock?.[1]?.trim()) return lastBlock[1].trim();
+  }
+
+  // Strategy 2: Any fenced block that parses as JSON
+  const anyFenced = [...responseText.matchAll(/```\w*\s*\n([\s\S]*?)\n```/g)];
+  for (let i = anyFenced.length - 1; i >= 0; i--) {
+    const candidate = anyFenced[i]?.[1]?.trim();
+    if (candidate && candidate.startsWith("{")) {
+      try { JSON.parse(candidate); return candidate; } catch { /* not json */ }
+    }
+  }
+
+  // Strategy 3: Look for JSON object at the end of the response
+  const trimmed = responseText.trim();
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (lastBrace > 0) {
+    // Walk backwards from last } to find matching {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = lastBrace; i >= 0; i--) {
+      const ch = trimmed[i]!;
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "}") depth++;
+      if (ch === "{") { depth--; if (depth === 0) {
+        const candidate = trimmed.slice(i, lastBrace + 1);
+        try { JSON.parse(candidate); return candidate; } catch { /* not valid */ }
+      }}
+    }
+  }
+
+  return null;
 }
 
 /**

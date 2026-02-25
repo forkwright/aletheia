@@ -5,7 +5,7 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
-import { buildContextPacket } from "./context-packet.js";
+import { buildContextPacketSync } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
 
 const log = createLogger("dianoia:execution");
@@ -167,7 +167,7 @@ export class ExecutionOrchestrator {
       const tasks = activePlans.map((plan) => {
         // Build scoped context packet from file-backed state
         const contextPacket = this.workspaceRoot
-          ? buildContextPacket({
+          ? buildContextPacketSync({
               workspaceRoot: this.workspaceRoot,
               projectId,
               phaseId: plan.id,
@@ -187,7 +187,7 @@ export class ExecutionOrchestrator {
         return {
           role: selectedRole,
           task: contextPacket,
-          timeoutSeconds: 900, // 15 min — phases need multiple turns with tool calls
+          timeoutSeconds: 900, // 15 min — matches MAX_TURN_WALL_CLOCK_MS in execute.ts
         };
       });
 
@@ -394,5 +394,19 @@ function buildExecutionPrompt(phase: PlanningPhase, projectGoal: string): string
     phase.plan
       ? JSON.stringify(phase.plan, null, 2)
       : "(no plan — use phase goal and success criteria)",
+    ``,
+    `---`,
+    ``,
+    `## Output Format (REQUIRED)`,
+    `When done, end your response with:`,
+    "```json",
+    `{`,
+    `  "status": "success" | "partial" | "failed",`,
+    `  "summary": "Brief description of what was accomplished",`,
+    `  "filesChanged": ["list", "of", "files"],`,
+    `  "issues": [],`,
+    `  "confidence": 0.0-1.0`,
+    `}`,
+    "```",
   ].join("\n");
 }

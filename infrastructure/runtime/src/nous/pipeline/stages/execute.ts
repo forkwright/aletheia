@@ -24,6 +24,12 @@ import type {
 import { truncateToolResult } from "./truncate.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 
+/** Hard ceiling on tool loops per turn. Prevents infinite loops from exhausting tokens/time. */
+const MAX_TOOL_LOOPS = 50;
+
+/** Hard ceiling on wall-clock time per turn (ms). 15 minutes. */
+const MAX_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;
+
 /** Dynamic thinking budget based on message complexity. */
 function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
   const lastUser = [...messages].reverse().find(m => m.role === "user");
@@ -88,8 +94,18 @@ export async function* executeStreaming(
 
   // Track which credential was used (updated each loop from streamResult)
   let lastCredentialLabel: string | undefined;
+  const turnStartTime = Date.now();
 
   for (let loop = 0; ; loop++) {
+    // Hard safety caps — prevent infinite loops and runaway turns
+    if (loop >= MAX_TOOL_LOOPS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
+    }
+    const elapsed = Date.now() - turnStartTime;
+    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    }
+
     let accumulatedText = "";
     let streamResult: import("../../../hermeneus/anthropic.js").TurnResult | null = null;
 
@@ -463,8 +479,18 @@ export async function executeBuffered(
   // Context management for buffered path
   const contextTokens = services.config.agents.defaults.contextTokens;
   const bufferedContextMgmt = buildContextManagement(contextTokens, false);
+  const turnStartTime = Date.now();
 
   for (let loop = 0; ; loop++) {
+    // Hard safety caps — prevent infinite loops and runaway turns
+    if (loop >= MAX_TOOL_LOOPS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
+    }
+    const elapsed = Date.now() - turnStartTime;
+    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
+      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    }
+
     const result = await services.router.complete({
       model,
       system: systemPrompt,

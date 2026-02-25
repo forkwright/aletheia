@@ -18,6 +18,7 @@ import {
 } from "./project-files.js";
 import type { PlanningPhase, PlanningRequirement } from "./types.js";
 import { getEncoding } from "js-tiktoken";
+import { buildContextPacketWithPriompt } from "./priompt-context.js";
 
 const log = createLogger("dianoia:context-packet");
 
@@ -141,8 +142,34 @@ const ROLE_SECTIONS: Record<SubAgentRole, {
  *
  * Reads from file-backed state (Phase 1), filters by role, trims to token budget.
  * The resulting string is self-contained — the sub-agent needs nothing else.
+ * 
+ * Now uses Priompt for accurate tokenization and priority-based rendering.
  */
-export function buildContextPacket(opts: ContextPacketOptions): string {
+export async function buildContextPacket(opts: ContextPacketOptions): Promise<string> {
+  try {
+    // Use Priompt-based implementation for accurate tokenization
+    return await buildContextPacketWithPriompt(opts);
+  } catch (err) {
+    log.warn(`Priompt context assembly failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`);
+    // Fallback to legacy implementation if Priompt fails
+    return buildContextPacketLegacy(opts);
+  }
+}
+
+/**
+ * Synchronous wrapper for backward compatibility.
+ * 
+ * @deprecated Use buildContextPacket() directly (now async)
+ */
+export function buildContextPacketSync(opts: ContextPacketOptions): string {
+  return buildContextPacketLegacy(opts);
+}
+
+/**
+ * Legacy context packet builder (fallback implementation).
+ * Preserved for compatibility if Priompt fails.
+ */
+function buildContextPacketLegacy(opts: ContextPacketOptions): string {
   const maxTokens = opts.maxTokens ?? 8000;
   const config = ROLE_SECTIONS[opts.role];
   const sections: ContextSection[] = [];
@@ -158,6 +185,26 @@ export function buildContextPacket(opts: ContextPacketOptions): string {
       for (const c of opts.phase.successCriteria) {
         lines.push(`- ${c}`);
       }
+    }
+    // Add output format requirement for executors
+    if (opts.role === "executor") {
+      lines.push("", "---", "",
+        "**IMPORTANT — Output Format Requirement:**",
+        "When you have completed your work (or cannot proceed), you MUST end your final response with a JSON result block:",
+        "",
+        "```json",
+        "{",
+        '  "status": "success" | "partial" | "failed",',
+        '  "summary": "Brief description of what was accomplished",',
+        '  "filesChanged": ["list", "of", "files"],',
+        '  "issues": [],',
+        '  "confidence": 0.0-1.0',
+        "}",
+        "```",
+        "",
+        "This structured output is required for the orchestrator to process your results.",
+        "Do NOT omit this block. Do NOT return only prose.",
+      );
     }
     sections.push({ header: "Phase Objective", content: lines.join("\n"), priority: 0 });
   }
