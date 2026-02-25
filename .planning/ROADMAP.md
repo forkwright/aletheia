@@ -49,7 +49,7 @@ Plans:
   3. Workspace flush failures emit `memory:health_degraded` after N consecutive failures and are visible in logs with agent ID, timestamp, and fact count
   4. All 607+ orphaned Qdrant entries are removed and no new orphan-producing write paths remain — every write enforces session_id, source, and agent_id
   5. Dead code audit is complete — no unused imports, unreachable branches, or bypassed paths remain in memory modules
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — Crash-safe distillation locking (SQLite lock table) and atomic transaction rollback
@@ -114,7 +114,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 3/4 | Gap closure | - |
-| 2. Data Integrity | 1/4 | In Progress|  |
+| 2. Data Integrity | 2/4 | In Progress|  |
 | 3. Graph Extraction Overhaul | 0/TBD | Not started | - |
 | 4. Extraction Pipeline Completion | 0/TBD | Not started | - |
 | 5. Recall Quality | 0/TBD | Not started | - |

@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 2 of 6 (Data Integrity)
-Plan: 2 of 4 in current phase
+Plan: 2 of 4 in current phase (02-01 and 02-02 complete)
 Status: Phase 2 in progress
-Last activity: 2026-02-25 — Plan 02-02 complete; orphan purge script + metadata enforcement on /add_direct and /add_batch
+Last activity: 2026-02-25 — Plans 02-01 and 02-02 complete; SQLite distillation locking + orphan purge + metadata enforcement
 
 Progress: [████░░░░░░] 25%
 
@@ -28,7 +28,7 @@ Progress: [████░░░░░░] 25%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-test-infrastructure | 3 | 48 min | 16 min |
-| 02-data-integrity | 2 | ~30 min | ~15 min |
+| 02-data-integrity | 2 | ~44 min | ~22 min |
 
 **Recent Trend:**
 - Last 5 plans: 22 min, 22 min, ~15 min, 3 min
@@ -55,6 +55,9 @@ Recent decisions affecting current work:
 - [Phase 02-data-integrity / 02-02]: Enforce validation via explicit 400 in route handlers rather than Pydantic required fields (preserves 422 for schema errors, 400 for business-logic missing fields)
 - [Phase 02-data-integrity / 02-02]: aletheia.ts addMemories caller does not pass session_id to /add_batch — documented in route comment; caller needs update before memory flush path works with enforcement
 - [Phase 02-data-integrity / 02-02]: /add (Mem0) enforcement deferred — traffic trace needed before enforcing session_id/agent_id on that path
+- [Phase 02-data-integrity / 02-01]: SQLite PRIMARY KEY conflict used for lock acquisition — simpler than SELECT+INSERT
+- [Phase 02-data-integrity / 02-01]: Retry wraps full runDistillationMutations call, not individual writes — transaction semantics make partial retry safe
+- [Phase 02-data-integrity / 02-01]: Single-retry on failure does not rethrow on double failure — next scheduled distillation retries naturally
 
 ### Pending Todos
 
@@ -69,5 +72,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 02-data-integrity 02-02-PLAN.md — orphan purge script + metadata enforcement on /add_direct and /add_batch
+Stopped at: Completed 02-data-integrity 02-01-PLAN.md — crash-safe SQLite distillation locking and atomic transaction rollback
 Resume file: None

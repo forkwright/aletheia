@@ -17,8 +17,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Data Integrity
 
-- [ ] **INTG-01**: Distillation locking uses SQLite-backed lock table with crash recovery (startup scan clears locks older than 10 minutes)
-- [ ] **INTG-02**: Distillation mutations wrapped in explicit SQLite transaction with rollback on any failure
+- [x] **INTG-01**: Distillation locking uses SQLite-backed lock table with crash recovery (startup scan clears locks older than 10 minutes)
+- [x] **INTG-02**: Distillation mutations wrapped in explicit SQLite transaction with rollback on any failure
 - [ ] **INTG-03**: Workspace flush has retry queue with configurable attempts and escalation via `memory:health_degraded` event after N consecutive failures
 - [ ] **INTG-04**: Workspace flush produces receipts (success/failure logged with agent ID, timestamp, fact count)
 - [x] **INTG-05**: Orphaned Qdrant entries (source:after_turn from dead code paths) cleaned up in bulk
@@ -97,8 +97,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | TEST-03 | Phase 1 | Complete |
 | TEST-04 | Phase 1 | Complete |
 | TEST-05 | Phase 1 | Complete |
-| INTG-01 | Phase 2 | Pending |
-| INTG-02 | Phase 2 | Pending |
+| INTG-01 | Phase 2 | Complete |
+| INTG-02 | Phase 2 | Complete |
 | INTG-03 | Phase 2 | Pending |
 | INTG-04 | Phase 2 | Pending |
 | INTG-05 | Phase 2 | Complete |
