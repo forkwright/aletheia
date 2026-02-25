@@ -32,5 +32,5 @@
     "import/no-duplicates": "error"
   },
   "settings": {},
-  "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/"]
+  "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/", "src/dianoia/standalone/"]
 }
