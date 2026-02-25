@@ -363,10 +363,46 @@ export async function fetchToolStats(agentId?: string, window = "7d"): Promise<u
 // --- Credential Info ---
 
 export interface CredentialInfo {
-  primary: { label: string; type: string };
+  primary: {
+    label: string;
+    type: string;
+    expiresAt?: string;
+    isExpired?: boolean;
+    expiresInMs?: number;
+  };
   backups: Array<{ label: string; type: string }>;
 }
 
 export async function fetchCredentialInfo(): Promise<CredentialInfo> {
   return fetchJson("/api/system/credentials");
+}
+
+export async function updatePrimaryCredential(
+  type: "oauth" | "api",
+  value: string,
+  label?: string,
+): Promise<void> {
+  await fetchJson("/api/system/credentials/primary", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, value, label }),
+  });
+}
+
+export async function addBackupCredential(
+  type: "oauth" | "api",
+  value: string,
+  label: string,
+): Promise<void> {
+  await fetchJson("/api/system/credentials/backups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, value, label }),
+  });
+}
+
+export async function deleteBackupCredential(label: string): Promise<void> {
+  await fetchJson(`/api/system/credentials/backups/${encodeURIComponent(label)}`, {
+    method: "DELETE",
+  });
 }

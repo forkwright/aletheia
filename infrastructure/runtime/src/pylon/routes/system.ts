@@ -1,6 +1,6 @@
 // System routes — health, status, update, config reload
 import { Hono } from "hono";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
@@ -98,6 +98,91 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       });
     } catch {
       return c.json({ primary: { label: "default", type: "unknown" }, backups: [] });
+    }
+  });
+
+  // Update primary credential
+  app.put("/api/system/credentials/primary", async (c) => {
+    const credPath = join(
+      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
+      "credentials", "anthropic.json",
+    );
+    const body = await c.req.json<{ type: "oauth" | "api"; value: string; label?: string }>();
+    if (!body.value || typeof body.value !== "string") {
+      return c.json({ error: "value is required" }, 400);
+    }
+    const credType = body.type === "oauth" ? "oauth" : "api";
+    try {
+      let existing: Record<string, unknown> = {};
+      try { existing = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>; } catch { /* new file */ }
+      const updated: Record<string, unknown> = {
+        ...existing,
+        label: typeof body.label === "string" && body.label ? body.label : (existing["label"] ?? "primary"),
+      };
+      if (credType === "oauth") {
+        updated["token"] = body.value;
+        delete updated["apiKey"];
+      } else {
+        updated["apiKey"] = body.value;
+        delete updated["token"];
+        delete updated["expiresAt"];
+      }
+      writeFileSync(credPath, JSON.stringify(updated), "utf-8");
+      log.info("Primary credential updated", { type: credType });
+      return c.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn("Failed to update primary credential", { err: msg });
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // Add a backup credential
+  app.post("/api/system/credentials/backups", async (c) => {
+    const credPath = join(
+      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
+      "credentials", "anthropic.json",
+    );
+    const body = await c.req.json<{ type: "oauth" | "api"; value: string; label: string }>();
+    if (!body.value || !body.label) return c.json({ error: "value and label are required" }, 400);
+    const credType = body.type === "oauth" ? "oauth" : "api";
+    try {
+      let existing: Record<string, unknown> = {};
+      try { existing = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>; } catch { /* new file */ }
+      const backups = Array.isArray(existing["backupCredentials"])
+        ? (existing["backupCredentials"] as Array<Record<string, unknown>>).filter(b => b["label"] !== body.label)
+        : [];
+      const entry: Record<string, string> = { label: body.label, type: credType };
+      if (credType === "oauth") entry["token"] = body.value;
+      else entry["apiKey"] = body.value;
+      backups.push(entry);
+      writeFileSync(credPath, JSON.stringify({ ...existing, backupCredentials: backups }), "utf-8");
+      log.info("Backup credential added", { label: body.label, type: credType });
+      return c.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // Remove a backup credential by label
+  app.delete("/api/system/credentials/backups/:label", (c) => {
+    const credPath = join(
+      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
+      "credentials", "anthropic.json",
+    );
+    const label = c.req.param("label");
+    try {
+      const existing = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
+      const backups = Array.isArray(existing["backupCredentials"])
+        ? (existing["backupCredentials"] as Array<Record<string, unknown>>).filter(b => b["label"] !== label)
+        : [];
+      writeFileSync(credPath, JSON.stringify({ ...existing, backupCredentials: backups }), "utf-8");
+      log.info("Backup credential removed", { label });
+      return c.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({ error: msg }, 500);
     }
   });
 
