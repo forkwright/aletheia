@@ -89,6 +89,9 @@ clawd
 **/pyvenv.cfg
 **/.venv*
 
+# === GSD planning (local only) ===
+.planning/
+
 # === Generated/ephemeral ===
 shared/logs/
 infrastructure/runtime/node_modules/

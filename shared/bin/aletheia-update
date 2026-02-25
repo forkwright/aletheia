@@ -164,7 +164,7 @@ do_rollback() {
   (cd "$RUNTIME_DIR" && npm run build) || die "Rollback build failed"
 
   log "Restarting $SERVICE_NAME..."
-  sudo systemctl restart "$SERVICE_NAME"
+  systemctl --user restart "$SERVICE_NAME"
 
   if health_check; then
     log "Rollback successful: now at $prev_commit"
@@ -267,7 +267,7 @@ do_update() {
 
   # Restart service
   log "Restarting $SERVICE_NAME..."
-  sudo systemctl restart "$SERVICE_NAME"
+  systemctl --user restart "$SERVICE_NAME"
 
   # Health check
   log "Waiting for health check..."
@@ -279,7 +279,7 @@ do_update() {
     err "Health check failed. Rolling back..."
     git -C "$ALETHEIA_ROOT" checkout "$cur_commit"
     (cd "$RUNTIME_DIR" && npm run build)
-    sudo systemctl restart "$SERVICE_NAME"
+    systemctl --user restart "$SERVICE_NAME"
     log "Rolled back to $cur_version ($cur_commit)"
     return 1
   fi
