@@ -81,7 +81,21 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           backups.push({ label, type });
         }
       }
-      return c.json({ primary: { label: primary, type: authType }, backups });
+      const expiresAtMs = typeof raw["expiresAt"] === "number" ? raw["expiresAt"] as number : undefined;
+      const expiresAt = expiresAtMs !== undefined ? new Date(expiresAtMs).toISOString() : undefined;
+      const now = Date.now();
+      return c.json({
+        primary: {
+          label: primary,
+          type: authType,
+          ...(expiresAt !== undefined ? {
+            expiresAt,
+            isExpired: expiresAtMs! < now,
+            expiresInMs: expiresAtMs! - now,
+          } : {}),
+        },
+        backups,
+      });
     } catch {
       return c.json({ primary: { label: "default", type: "unknown" }, backups: [] });
     }
