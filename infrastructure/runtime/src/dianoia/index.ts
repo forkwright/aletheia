@@ -62,3 +62,8 @@ export { createPlanDiscussTool } from "./discuss-tool.js";
 // Context engineering (Spec 32 Phase 2)
 export { buildContextPacket, selectModelForRole, modelTierToRole } from "./context-packet.js";
 export type { SubAgentRole, ContextPacketOptions, ModelTier } from "./context-packet.js";
+
+// Orchestration Core (Improving Dianoia - ORCH requirements)
+export { OrchestrationCore } from "./orchestration-core.js";
+export type { RollbackPlan, RollbackAction, StateTransitionResult } from "./orchestration-core.js";
+export { createOrchestrationTool } from "./orchestration-tool.js";

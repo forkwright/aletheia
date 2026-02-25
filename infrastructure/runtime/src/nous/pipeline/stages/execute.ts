@@ -25,7 +25,7 @@ import { truncateToolResult } from "./truncate.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 
 /** Hard ceiling on tool loops per turn. Prevents infinite loops from exhausting tokens/time. */
-const MAX_TOOL_LOOPS = 50;
+const MAX_TOOL_LOOPS = 200;
 
 /** Hard ceiling on wall-clock time per turn (ms). 15 minutes. */
 const MAX_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;

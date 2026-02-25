@@ -11,6 +11,7 @@ const log = createLogger("dianoia:discuss-tool");
 export function createPlanDiscussTool(
   orchestrator: DianoiaOrchestrator,
   db: Database.Database,
+  dispatchTool?: ToolHandler,
 ): ToolHandler {
   const store = new PlanningStore(db);
 
@@ -88,7 +89,7 @@ export function createPlanDiscussTool(
         switch (action) {
           case "generate": {
             if (!phaseId) return JSON.stringify({ error: "phaseId required for generate" });
-            return handleGenerate(orchestrator, store, projectId, phaseId, context);
+            return handleGenerate(orchestrator, store, projectId, phaseId, context, dispatchTool);
           }
 
           case "list": {
@@ -170,74 +171,91 @@ export function createPlanDiscussTool(
   };
 }
 
-/** Generate discussion questions for a phase by analyzing requirements and context */
+/** Generate discussion questions for a phase using LLM analysis of requirements and context */
 async function handleGenerate(
   orchestrator: DianoiaOrchestrator,
   store: PlanningStore,
   projectId: string,
   phaseId: string,
-  _context: ToolContext,
+  context: ToolContext,
+  dispatchTool?: ToolHandler,
 ): Promise<string> {
-  store.getProjectOrThrow(projectId); // Validate project exists
+  const project = store.getProjectOrThrow(projectId);
   const phase = store.getPhaseOrThrow(phaseId);
   const allReqs = store.listRequirements(projectId);
   const phaseReqs = allReqs.filter((r) => phase.requirements.includes(r.reqId));
 
-  // Build questions from phase analysis (deterministic, no LLM needed)
-  const questions: Array<{
-    question: string;
-    options: Array<{ label: string; rationale: string }>;
-    recommendation: string | null;
-  }> = [];
+  // Build LLM prompt for question generation
+  const prompt = [
+    "You are a technical architect reviewing a project phase before implementation begins.",
+    "Your job: identify 3-6 gray-area design decisions that could go multiple ways.",
+    "Focus on decisions that would be EXPENSIVE to change later if chosen wrong.",
+    "",
+    "DO NOT ask about testing strategy, error handling approach, or sequential vs parallel — those are generic.",
+    "DO ask about domain-specific ambiguities, tradeoffs between approaches, integration boundaries, and scope interpretation.",
+    "",
+    `## Project Goal`,
+    project.goal,
+    "",
+    `## Phase: ${phase.name}`,
+    `Goal: ${phase.goal}`,
+    "",
+    `## Success Criteria`,
+    ...phase.successCriteria.map((c, i) => `${i + 1}. ${c}`),
+    "",
+    `## Requirements`,
+    ...phaseReqs.map(r => `- ${r.reqId}: ${r.description} (${r.tier})`),
+    "",
+    "Respond with ONLY a JSON array of questions. Each question must have:",
+    '  { "question": "...", "options": [{ "label": "...", "rationale": "..." }, ...], "recommendation": "label of recommended option" }',
+    "",
+    "Return 3-6 questions. No preamble, no explanation — just the JSON array.",
+  ].join("\n");
 
-  // 1. Implementation approach question (if phase has multiple requirements)
-  if (phaseReqs.length >= 2) {
-    questions.push({
-      question: `For "${phase.name}": should requirements be implemented sequentially or in parallel?`,
-      options: [
-        { label: "Sequential", rationale: "Simpler dependency management, easier to review" },
-        { label: "Parallel", rationale: "Faster overall delivery, but more complex integration" },
-      ],
-      recommendation: phaseReqs.length > 4 ? "Sequential" : "Parallel",
+  // Try LLM-powered generation first
+  try {
+    if (dispatchTool) {
+      const raw = await dispatchTool.execute({
+        tasks: [{
+          role: "reviewer",
+          task: prompt,
+          timeoutSeconds: 120,
+        }],
+      }, context);
+
+      const parsed = tryParseQuestions(raw as string);
+      if (parsed && parsed.length > 0) {
+        const created = [];
+        for (const q of parsed) {
+          const disc = orchestrator.addDiscussionQuestion(
+            projectId, phaseId, q.question, q.options, q.recommendation,
+          );
+          created.push({
+            id: disc.id,
+            question: disc.question,
+            options: disc.options,
+            recommendation: disc.recommendation,
+          });
+        }
+
+        log.info(`LLM generated ${created.length} discussion questions for phase ${phaseId}`);
+        return JSON.stringify({
+          generated: created.length,
+          source: "llm",
+          questions: created,
+          message: `${created.length} questions generated. Answer with action=answer or skip with action=skip, then action=complete to advance.`,
+        });
+      }
+    }
+  } catch (err) {
+    log.warn(`LLM question generation failed, falling back to heuristic`, {
+      err: err instanceof Error ? err.message : String(err),
+      phaseId,
     });
   }
 
-  // 2. Testing strategy question
-  questions.push({
-    question: `Testing strategy for "${phase.name}": what level of test coverage?`,
-    options: [
-      { label: "Unit tests only", rationale: "Fast, focused, catches regressions" },
-      { label: "Unit + integration", rationale: "Covers interactions between components" },
-      { label: "Full: unit + integration + e2e", rationale: "Comprehensive but slower to write" },
-    ],
-    recommendation: "Unit + integration",
-  });
-
-  // 3. Error handling approach
-  questions.push({
-    question: `Error handling for "${phase.name}": fail-fast or graceful degradation?`,
-    options: [
-      { label: "Fail-fast", rationale: "Clear error signals, simpler logic, easier debugging" },
-      { label: "Graceful degradation", rationale: "Better UX, handles partial failures, more complex" },
-    ],
-    recommendation: "Fail-fast",
-  });
-
-  // 4. Phase-specific: if phase has success criteria with ambiguity
-  for (const criterion of phase.successCriteria) {
-    if (criterion.includes("or") || criterion.includes("configurable") || criterion.includes("optional")) {
-      questions.push({
-        question: `Success criterion "${criterion}" has flexibility — which interpretation should guide implementation?`,
-        options: [
-          { label: "Minimal viable", rationale: "Implement the simplest valid interpretation" },
-          { label: "Comprehensive", rationale: "Cover all interpretations of this criterion" },
-        ],
-        recommendation: "Minimal viable",
-      });
-    }
-  }
-
-  // Persist all generated questions
+  // Fallback: deterministic heuristic questions (better than nothing)
+  const questions = generateHeuristicQuestions(phase, phaseReqs);
   const created = [];
   for (const q of questions) {
     const disc = orchestrator.addDiscussionQuestion(
@@ -251,12 +269,103 @@ async function handleGenerate(
     });
   }
 
-  log.info(`Generated ${created.length} discussion questions for phase ${phaseId}`);
+  log.info(`Heuristic generated ${created.length} discussion questions for phase ${phaseId}`);
   return JSON.stringify({
     generated: created.length,
+    source: "heuristic",
     questions: created,
-    message: `${created.length} questions generated. Answer with action=answer or skip with action=skip, then action=complete to advance.`,
+    message: `${created.length} questions generated (heuristic fallback). Answer with action=answer or skip with action=skip, then action=complete to advance.`,
   });
+}
+
+/** Try to parse LLM response as an array of discussion questions */
+function tryParseQuestions(raw: string): Array<{
+  question: string;
+  options: Array<{ label: string; rationale: string }>;
+  recommendation: string | null;
+}> | null {
+  try {
+    // Try to extract JSON from dispatch response
+    let text = raw;
+
+    // If dispatch wraps in results envelope, unwrap
+    try {
+      const envelope = JSON.parse(raw);
+      if (envelope.results?.[0]?.result) {
+        text = envelope.results[0].result;
+      }
+    } catch { /* not an envelope */ }
+
+    // Extract JSON array from text
+    const trimmed = text.trim();
+
+    // Direct array
+    if (trimmed.startsWith("[")) {
+      return JSON.parse(trimmed);
+    }
+
+    // Fenced json block
+    const fenced = trimmed.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
+    if (fenced?.[1]?.trim().startsWith("[")) {
+      return JSON.parse(fenced[1].trim());
+    }
+
+    // Find array in text
+    const arrayStart = trimmed.indexOf("[");
+    const arrayEnd = trimmed.lastIndexOf("]");
+    if (arrayStart >= 0 && arrayEnd > arrayStart) {
+      return JSON.parse(trimmed.slice(arrayStart, arrayEnd + 1));
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Deterministic fallback questions based on phase structure */
+function generateHeuristicQuestions(
+  phase: import("./types.js").PlanningPhase,
+  phaseReqs: import("./types.js").PlanningRequirement[],
+): Array<{
+  question: string;
+  options: Array<{ label: string; rationale: string }>;
+  recommendation: string | null;
+}> {
+  const questions: Array<{
+    question: string;
+    options: Array<{ label: string; rationale: string }>;
+    recommendation: string | null;
+  }> = [];
+
+  // Only generate questions about genuinely ambiguous success criteria
+  for (const criterion of phase.successCriteria) {
+    if (criterion.includes("or") || criterion.includes("configurable") || criterion.includes("optional")) {
+      questions.push({
+        question: `Success criterion "${criterion}" has flexibility — which interpretation should guide implementation?`,
+        options: [
+          { label: "Minimal viable", rationale: "Implement the simplest valid interpretation" },
+          { label: "Comprehensive", rationale: "Cover all interpretations of this criterion" },
+        ],
+        recommendation: "Minimal viable",
+      });
+    }
+  }
+
+  // If phase has v2 requirements mixed in, ask about scope
+  const v2Reqs = phaseReqs.filter(r => r.tier === "v2");
+  if (v2Reqs.length > 0) {
+    questions.push({
+      question: `This phase includes ${v2Reqs.length} v2 requirement(s): ${v2Reqs.map(r => r.reqId).join(", ")}. Should we include them now or defer?`,
+      options: [
+        { label: "Include now", rationale: "Better to build while context is fresh" },
+        { label: "Defer to v2", rationale: "Keep v1 scope tight, reduce risk" },
+      ],
+      recommendation: "Defer to v2",
+    });
+  }
+
+  return questions;
 }
 
 /** List all discussion questions for a phase with status */

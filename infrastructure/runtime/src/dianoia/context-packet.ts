@@ -18,7 +18,7 @@ import {
 } from "./project-files.js";
 import type { PlanningPhase, PlanningRequirement } from "./types.js";
 import { getEncoding } from "js-tiktoken";
-import { buildContextPacketWithPriompt } from "./priompt-context.js";
+import { buildContextPacketWithPriompt, buildContextPacketWithPriomptSync } from "./priompt-context.js";
 
 const log = createLogger("dianoia:context-packet");
 
@@ -157,12 +157,16 @@ export async function buildContextPacket(opts: ContextPacketOptions): Promise<st
 }
 
 /**
- * Synchronous wrapper for backward compatibility.
- * 
- * @deprecated Use buildContextPacket() directly (now async)
+ * Synchronous context packet builder using accurate tiktoken tokenization.
+ * This is the primary call path — used by execution, verification, and roadmap.
  */
 export function buildContextPacketSync(opts: ContextPacketOptions): string {
-  return buildContextPacketLegacy(opts);
+  try {
+    return buildContextPacketWithPriomptSync(opts);
+  } catch (err) {
+    log.warn(`Priompt sync context assembly failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`);
+    return buildContextPacketLegacy(opts);
+  }
 }
 
 /**

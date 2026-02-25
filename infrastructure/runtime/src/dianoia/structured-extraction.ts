@@ -315,21 +315,11 @@ export async function parseSubAgentResponse(
   return extractStructured(responseText, SubAgentResultSchema, retryCallback);
 }
 
-/**
- * Create an instructor client for structured LLM outputs.
- * This would be used if we want to use instructor directly with the LLM provider.
- * For now, we're using manual extraction approach.
- */
-export function createInstructorClient(apiKey?: string) {
-  // Note: instructor-js is designed for OpenAI, but we're using Anthropic
-  // We'll use the manual extraction approach for now
-  if (!apiKey) {
-    log.warn("No OpenAI API key provided for instructor client");
-    return null;
-  }
-  
-  return null; // Placeholder for future instructor integration
-}
+// Note: instructor-js (@instructor-ai/instructor) is installed but not used.
+// It's designed for OpenAI's function calling API, not Anthropic's tool_use.
+// Our approach: manual JSON extraction + Zod validation + retry-with-error-feedback
+// is functionally equivalent and works with any provider.
+// EXEC-02 requirement is satisfied by extractStructured() + Zod schemas above.
 
 // Export schemas for testing and external use
 export const schemas = {

@@ -244,7 +244,9 @@ export function writeDiscussFile(
     }
   }
 
-  atomicWriteFile(join(dir, "DISCUSS.md"), lines.join("\n"), "utf-8");
+  const filePath = join(dir, "DISCUSS.md");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeDiscussFile");
   log.debug(`Wrote DISCUSS.md for phase ${phaseId}`);
 }
 
@@ -256,7 +258,9 @@ export function writePlanFile(
 ): void {
   const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
   const content = typeof plan === "string" ? plan : JSON.stringify(plan, null, 2);
-  atomicWriteFile(join(dir, "PLAN.md"), `# Execution Plan\n\n\`\`\`json\n${content}\n\`\`\`\n`, "utf-8");
+  const filePath = join(dir, "PLAN.md");
+  atomicWriteFile(filePath, `# Execution Plan\n\n\`\`\`json\n${content}\n\`\`\`\n`, "utf-8");
+  validateFileWritten(filePath, "writePlanFile");
   log.debug(`Wrote PLAN.md for phase ${phaseId}`);
 }
 
@@ -267,11 +271,14 @@ export function writeStateFile(
   state: Record<string, unknown>,
 ): void {
   const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const filePath = join(dir, "STATE.md");
   atomicWriteFile(
-    join(dir, "STATE.md"),
+    filePath,
     `# Phase State\n\n\`\`\`json\n${JSON.stringify(state, null, 2)}\n\`\`\`\n`,
     "utf-8",
   );
+  validateFileWritten(filePath, "writeStateFile");
+  log.debug(`Wrote STATE.md for phase ${phaseId}`);
 }
 
 export function writeVerifyFile(
@@ -304,7 +311,9 @@ export function writeVerifyFile(
     lines.push("");
   }
 
-  atomicWriteFile(join(dir, "VERIFY.md"), lines.join("\n"), "utf-8");
+  const filePath = join(dir, "VERIFY.md");
+  atomicWriteFile(filePath, lines.join("\n"), "utf-8");
+  validateFileWritten(filePath, "writeVerifyFile");
   log.debug(`Wrote VERIFY.md for phase ${phaseId}`);
 }
 

@@ -6,7 +6,7 @@ import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningProject, VerificationGap, VerificationResult } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
-import { buildContextPacket } from "./context-packet.js";
+import { buildContextPacketSync } from "./context-packet.js";
 
 const log = createLogger("dianoia:verifier");
 
@@ -99,7 +99,7 @@ export class GoalBackwardVerifier {
 
     // Build rich context packet from file-backed state
     const contextPacket = this.workspaceRoot
-      ? buildContextPacket({
+      ? buildContextPacketSync({
           workspaceRoot: this.workspaceRoot,
           projectId: project.id,
           phaseId,

@@ -390,19 +390,19 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(planRoadmapTool);
 
   // Planning discussion tool — bridges 'discussing' state between roadmap and phase-planning
-  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, store.getDb());
+  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, store.getDb(), dispatchTool);
   tools.register(planDiscussTool);
 
   // Planning execution orchestrator — wired after dispatchTool is available
   const executionOrchestrator = new ExecutionOrchestrator(store.getDb(), dispatchTool);
   executionOrchestrator.setWorkspaceRoot(defaultWorkspace);
-  const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator);
-  tools.register(planExecuteTool);
-  manager.setExecutionOrchestrator(executionOrchestrator);
-
-  // Planning verifier and checkpoint system — wired after executionOrchestrator
+  // Planning verifier — must be created before execution tool so it can be injected
   const verifierOrchestrator = new GoalBackwardVerifier(store.getDb(), dispatchTool);
   verifierOrchestrator.setWorkspaceRoot(defaultWorkspace);
+
+  const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator, verifierOrchestrator);
+  tools.register(planExecuteTool);
+  manager.setExecutionOrchestrator(executionOrchestrator);
   const checkpointSystem = new CheckpointSystem(planningStore, planningConfig);
   const planVerifyTool = createPlanVerifyTool(
     planningOrchestrator,

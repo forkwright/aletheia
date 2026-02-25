@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  buildContextPacket,
+  buildContextPacketSync,
   selectModelForRole,
   modelTierToRole,
   type SubAgentRole,
@@ -75,10 +75,10 @@ afterEach(() => {
   }
 });
 
-describe("buildContextPacket", () => {
+describe("buildContextPacketSync", () => {
   it("includes phase objective for executor role", () => {
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -95,7 +95,7 @@ describe("buildContextPacket", () => {
 
   it("includes project goal for verifier role", () => {
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -126,7 +126,7 @@ describe("buildContextPacket", () => {
     });
 
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -161,7 +161,7 @@ describe("buildContextPacket", () => {
     ]);
 
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -180,7 +180,7 @@ describe("buildContextPacket", () => {
       makeRequirement({ reqId: "AUTH-02", description: "GitHub OAuth login", id: "req_2" }),
     ];
 
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -202,7 +202,7 @@ describe("buildContextPacket", () => {
       makePhase({ id: "p3", name: "UI", phaseOrder: 2, goal: "Build frontend" }),
     ];
 
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: "p1",
@@ -224,7 +224,7 @@ describe("buildContextPacket", () => {
       makePhase({ id: "p2", name: "API", phaseOrder: 1 }),
     ];
 
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: "p1",
@@ -240,7 +240,7 @@ describe("buildContextPacket", () => {
     const longSupplementary = "x".repeat(5000);
     const phase = makePhase();
 
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -257,7 +257,7 @@ describe("buildContextPacket", () => {
 
   it("includes supplementary context for executor role", () => {
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -271,7 +271,7 @@ describe("buildContextPacket", () => {
   });
 
   it("returns empty string when no sections match", () => {
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: null,
@@ -289,7 +289,7 @@ describe("buildContextPacket", () => {
     });
 
     const phase = makePhase({ plan: null }); // No in-memory plan
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -311,7 +311,7 @@ describe("buildContextPacket", () => {
     );
 
     const phase = makePhase();
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -364,7 +364,7 @@ describe("Token budget accuracy (CTX-01)", () => {
     writeRequirementsFile(workspaceRoot, TEST_PROJECT_ID, requirements);
     
     const maxTokens = 500;
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,
@@ -389,7 +389,7 @@ describe("Token budget accuracy (CTX-01)", () => {
     const phase = makePhase();
     const requirements = [makeRequirement()];
     
-    const packet = buildContextPacket({
+    const packet = buildContextPacketSync({
       workspaceRoot,
       projectId: TEST_PROJECT_ID,
       phaseId: TEST_PHASE_ID,

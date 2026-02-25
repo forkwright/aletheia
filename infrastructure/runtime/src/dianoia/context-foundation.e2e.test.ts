@@ -9,7 +9,7 @@ import { PlanningStore } from "./store.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { ResearchOrchestrator } from "./researcher.js";
 import { RequirementsOrchestrator } from "./requirements.js";
-import { buildContextPacket } from "./context-packet.js";
+import { buildContextPacketSync } from "./context-packet.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { CategoryProposal, ScopingDecision } from "./requirements.js";
 
@@ -241,7 +241,7 @@ describe("Context & State Foundation E2E", () => {
     expect(requirementsContent).toContain("DATA-01");
 
     // Step 4: Context packet assembly with token budgets (CTX-01)
-    const contextPacket = buildContextPacket({
+    const contextPacket = buildContextPacketSync({
       workspaceRoot,
       projectId: project.id,
       phaseId: null,
