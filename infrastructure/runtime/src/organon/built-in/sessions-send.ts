@@ -80,6 +80,7 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
       });
 
       pendingSends++;
+      // eslint-disable-next-line promise/catch-or-return -- fire-and-forget; .catch() below handles errors
       dispatcher
         .handleMessage({
           text: message,

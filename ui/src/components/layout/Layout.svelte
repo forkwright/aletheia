@@ -50,8 +50,14 @@
       if (mode.sessionAuth) {
         // Try refreshing an existing session (httpOnly cookie may be valid)
         const ok = await refresh();
-        authState = ok ? "authenticated" : "login";
+        if (ok) {
+          await loadAgents();
+          authState = "authenticated";
+        } else {
+          authState = "login";
+        }
       } else if (mode.mode === "none") {
+        await loadAgents();
         authState = "authenticated";
       } else {
         // token/password mode — send to login
@@ -86,9 +92,9 @@
     authState = "login";
   });
 
-  function handleLoginSuccess() {
+  async function handleLoginSuccess() {
+    await loadAgents();
     authState = "authenticated";
-    location.reload();
   }
   let filePanelOpen = $state(false);
   let filePanelWidth = $state(Number(readLocalStorage(FILE_PANEL_WIDTH_KEY)) || 520);
