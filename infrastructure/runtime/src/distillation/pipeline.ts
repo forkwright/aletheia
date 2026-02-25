@@ -48,11 +48,11 @@ export interface DistillationResult {
   distillationNumber: number;
 }
 
-export async function shouldDistill(
+export function shouldDistill(
   store: SessionStore,
   sessionId: string,
   opts: { threshold: number; minMessages: number },
-): Promise<boolean> {
+): boolean {
   const session = store.findSessionById(sessionId);
   if (!session) return false;
 
