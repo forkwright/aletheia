@@ -23,6 +23,7 @@ from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 
 from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
 from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph_extraction import extract_graph, extract_graph_batch
 from .temporal import _extract_entities_for_episode
 from .entity_resolver import (
     resolve_entity,
@@ -31,7 +32,6 @@ from .entity_resolver import (
     merge_duplicate_entities,
     cleanup_orphan_entities,
 )
-from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
@@ -161,9 +161,8 @@ async def add_memory(req: AddRequest, request: Request):
         if neo4j_available() and req.agent_id:
             asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
 
-        # Normalize any non-vocab relationship types created by graph extraction
-        if neo4j_available():
-            asyncio.create_task(_normalize_neo4j_relationships())
+        # Graph extraction via SimpleKGPipeline — fire and forget
+        asyncio.create_task(extract_graph(req.text, backend=backend))
 
         return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
@@ -418,6 +417,12 @@ async def add_batch(req: AddBatchRequest, request: Request):
             f"({len(existing_hashes)} hash, {skipped_semantic} semantic), "
             f"{errors} errors (source={req.source}, agent={req.agent_id})"
         )
+
+        # Graph extraction via SimpleKGPipeline — fire and forget
+        if added > 0 and new_texts:
+            backend = getattr(request.app.state, "backend", LLM_BACKEND)
+            asyncio.create_task(extract_graph_batch(new_texts, backend=backend))
+
         result: dict[str, Any] = {"ok": True, "added": added, "skipped": total_skipped, "errors": errors}
         if all_contradictions:
             result["contradictions"] = all_contradictions[:10]  # Cap at 10 for response size
@@ -1769,88 +1774,6 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# --- Relationship Type Normalization ---
-
-
-async def _normalize_neo4j_relationships() -> None:
-    """Normalize non-vocab relationship types to controlled vocabulary (fire-and-forget)."""
-    if not neo4j_available():
-        return
-    try:
-        driver = neo4j_driver()
-        vocab_list = list(CONTROLLED_VOCAB)
-        with driver.session() as session:
-            non_vocab = session.run(
-                "MATCH ()-[r]->() "
-                "WITH type(r) AS t, count(*) AS c "
-                "WHERE NOT t IN $vocab "
-                "RETURN t, c",
-                vocab=vocab_list,
-            ).data()
-
-            for row in non_vocab:
-                src_type = row["t"]
-                target = normalize_type(src_type)
-                if src_type != target:
-                    session.run(
-                        f"MATCH (a)-[r:`{src_type}`]->(b) "
-                        f"WITH a, b, r, properties(r) AS props "
-                        f"CREATE (a)-[r2:`{target}`]->(b) "
-                        f"SET r2 = props DELETE r"
-                    )
-            if non_vocab:
-                logger.info(f"Normalized {len(non_vocab)} non-vocab relationship types")
-        driver.close()
-        mark_neo4j_ok()
-    except Exception:
-        mark_neo4j_down()
-        logger.warning("Relationship normalization failed (non-fatal)", exc_info=True)
-
-
-@router.post("/normalize_relationships")
-async def normalize_relationships():
-    """Normalize all non-vocab relationship types and return stats."""
-    if not neo4j_available():
-        return {"ok": False, "available": False, "reason": "graph_unavailable"}
-
-    try:
-        driver = neo4j_driver()
-        vocab_list = list(CONTROLLED_VOCAB)
-        mappings: list[dict[str, Any]] = []
-        total = 0
-
-        with driver.session() as session:
-            non_vocab = session.run(
-                "MATCH ()-[r]->() "
-                "WITH type(r) AS t, count(*) AS c "
-                "WHERE NOT t IN $vocab "
-                "RETURN t, c ORDER BY c DESC",
-                vocab=vocab_list,
-            ).data()
-
-            for row in non_vocab:
-                src_type = row["t"]
-                count = row["c"]
-                target = normalize_type(src_type)
-                if src_type != target:
-                    session.run(
-                        f"MATCH (a)-[r:`{src_type}`]->(b) "
-                        f"WITH a, b, r, properties(r) AS props "
-                        f"CREATE (a)-[r2:`{target}`]->(b) "
-                        f"SET r2 = props DELETE r"
-                    )
-                    mappings.append({"from": src_type, "to": target, "count": count})
-                    total += count
-
-        driver.close()
-        mark_neo4j_ok()
-        return {"ok": True, "normalized_count": total, "type_mappings": mappings}
-    except Exception as e:
-        mark_neo4j_down()
-        logger.warning("normalize_relationships failed (Neo4j may be down): %s", e)
-        return {"ok": False, "available": False, "reason": "graph_unavailable"}
-
-
 
 
 
@@ -2322,6 +2245,10 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
             collection_name=COLLECTION_NAME,
             points=[PointStruct(id=point_id, vector=vector, payload=payload)],
         )
+
+        # Graph extraction via SimpleKGPipeline — fire and forget
+        backend = getattr(request.app.state, "backend", LLM_BACKEND)
+        asyncio.create_task(extract_graph(text, backend=backend))
 
         result: dict[str, Any] = {"ok": True, "result": "added", "id": point_id}
         if contradictions:

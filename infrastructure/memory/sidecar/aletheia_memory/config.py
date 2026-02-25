@@ -103,16 +103,6 @@ def build_mem0_config(backend: dict = None) -> dict:
                 "embedding_model_dims": embedding_dims,
             },
         },
-        "graph_store": {
-            "provider": "neo4j",
-            "config": {
-                "url": NEO4J_URL,
-                "username": NEO4J_USER,
-                "password": NEO4J_PASSWORD,
-                "base_label": True,
-            },
-        },
-        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
         "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
     }
 

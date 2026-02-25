@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from mem0 import Memory
 
 from .config import MEM0_CONFIG, LLM_BACKEND, build_mem0_config
+from .graph_extraction import init_pipeline
 from .llm_backend import refresh_oauth_token
 from .routes import router, foresight_router
 from .discovery import discovery_router
@@ -104,13 +105,26 @@ def _inject_oauth_llm(mem: Memory, backend: dict):
     if backend["provider"] == "anthropic-oauth" and backend["llm_instance"]:
         if hasattr(mem, 'llm'):
             mem.llm = backend["llm_instance"]
-        if hasattr(mem, 'graph') and mem.graph and hasattr(mem.graph, 'llm'):
-            mem.graph.llm = backend["llm_instance"]
         log.info("Injected OAuth LLM into Mem0 Memory instance")
 
 
 memory: Memory | None = None
 _active_backend: dict = LLM_BACKEND
+
+
+def refresh_pipeline_on_token_rotate(app: "FastAPI") -> None:
+    """Reinitialize the SimpleKGPipeline after an OAuth token rotation.
+
+    Call this whenever refresh_oauth_token() detects a new token so that
+    the graph extraction LLM adapter uses the updated credentials.
+    """
+    global _active_backend
+    updated = refresh_oauth_token(_active_backend)
+    if updated is not _active_backend:
+        _active_backend = updated
+    new_pipeline = init_pipeline(_active_backend)
+    app.state.graph_pipeline = new_pipeline
+    log.info("Graph pipeline reinitialized after OAuth token rotation")
 
 
 @asynccontextmanager
@@ -151,6 +165,7 @@ async def lifespan(app: FastAPI):
 
     app.state.memory = memory
     app.state.backend = _active_backend
+    app.state.graph_pipeline = init_pipeline(_active_backend)
     await ensure_temporal_schema()
 
     log.info("Memory sidecar ready")
