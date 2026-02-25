@@ -7,6 +7,7 @@ export const ERROR_CODES = {
   PROVIDER_TIMEOUT: "API call timed out",
   PROVIDER_RATE_LIMITED: "Rate limited by provider",
   PROVIDER_AUTH_FAILED: "Authentication failed",
+  PROVIDER_TOKEN_EXPIRED: "OAuth token expired — falling through to backup credential",
   PROVIDER_INVALID_RESPONSE: "Provider returned unexpected response format",
   PROVIDER_NOT_FOUND: "No provider registered for requested model",
   PROVIDER_OVERLOADED: "Provider returned 529 overloaded",
