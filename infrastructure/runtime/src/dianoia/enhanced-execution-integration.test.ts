@@ -8,60 +8,48 @@ import {
 import { 
   mapTaskToRole,
   StructuredExtractor,
-  SubAgentResultSchema
 } from "./structured-extraction.js";
+import { schemas } from "./structured-extraction.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
+import { PlanningStore } from "./store.js";
 import type { ToolHandler, ToolContext } from "../organon/registry.js";
+
+const SubAgentResultSchema = schemas.SubAgentResult;
+
+function makeDb(): Database.Database {
+  const d = new Database(":memory:");
+  d.pragma("journal_mode = WAL");
+  d.pragma("foreign_keys = ON");
+  d.exec(PLANNING_V20_DDL);
+  d.exec(PLANNING_V21_MIGRATION);
+  d.exec(PLANNING_V22_MIGRATION);
+  d.exec(PLANNING_V23_MIGRATION);
+  d.exec(PLANNING_V24_MIGRATION);
+  d.exec(PLANNING_V25_MIGRATION);
+  d.exec(PLANNING_V26_MIGRATION);
+  d.exec(PLANNING_V27_MIGRATION);
+  return d;
+}
+
+const defaultConfig = {
+  depth: "standard" as const,
+  parallelization: false,
+  research: true,
+  plan_check: true,
+  verifier: true,
+  mode: "interactive" as const,
+  pause_between_phases: false,
+};
 
 describe("Enhanced Execution Engine Integration", () => {
   let db: Database.Database;
+  let store: PlanningStore;
   let mockDispatchTool: ToolHandler;
   let mockToolContext: ToolContext;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    
-    // Simplified schema for integration testing
-    db.exec(`
-      CREATE TABLE projects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        goal TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'executing',
-        config TEXT NOT NULL DEFAULT '{}'
-      );
-      
-      CREATE TABLE phases (
-        id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        goal TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        phase_order INTEGER NOT NULL,
-        requirements TEXT NOT NULL DEFAULT '[]',
-        success_criteria TEXT NOT NULL DEFAULT '[]',
-        plan TEXT
-      );
-      
-      CREATE TABLE spawn_records (
-        id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        phase_id TEXT NOT NULL,
-        wave_number INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        started_at TEXT,
-        completed_at TEXT,
-        error_message TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      
-      CREATE TABLE requirements (
-        id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        req_id TEXT NOT NULL,
-        description TEXT NOT NULL,
-        tier TEXT NOT NULL DEFAULT 'v1'
-      );
-    `);
+    db = makeDb();
+    store = new PlanningStore(db);
 
     mockDispatchTool = {
       definition: {
@@ -231,33 +219,29 @@ Task completed successfully.
 
   describe("End-to-End Integration", () => {
     beforeEach(() => {
-      // Setup test project with multiple phases
-      db.prepare(`
-        INSERT INTO projects (id, name, goal, state) 
-        VALUES ('test-project', 'Enhanced Test', 'Test enhanced execution features', 'executing')
-      `).run();
+      const project = store.createProject({
+        nousId: "test-nous",
+        sessionId: "test-session",
+        goal: "Test enhanced execution features",
+        config: defaultConfig,
+      });
+      store.updateProjectState(project.id, "executing");
 
       const phases = [
-        { id: "auth-phase", name: "Authentication", goal: "implement user authentication", taskType: "code" },
-        { id: "review-phase", name: "Code Review", goal: "review the authentication implementation", taskType: "review" },
-        { id: "test-phase", name: "Testing", goal: "run comprehensive test suite", taskType: "test" }
+        { name: "Authentication", goal: "implement user authentication" },
+        { name: "Code Review", goal: "review the authentication implementation" },
+        { name: "Testing", goal: "run comprehensive test suite" },
       ];
 
       for (let i = 0; i < phases.length; i++) {
-        const phase = phases[i]!;
-        db.prepare(`
-          INSERT INTO phases (id, project_id, name, goal, status, phase_order, requirements, success_criteria)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          phase.id,
-          "test-project",
-          phase.name,
-          phase.goal,
-          "pending",
-          i,
-          JSON.stringify([`REQ-${i + 1}`]),
-          JSON.stringify([`Complete ${phase.name} successfully`])
-        );
+        store.createPhase({
+          projectId: project.id,
+          name: phases[i]!.name,
+          goal: phases[i]!.goal,
+          requirements: [`REQ-${i + 1}`],
+          successCriteria: [`Complete ${phases[i]!.name} successfully`],
+          phaseOrder: i + 1,
+        });
       }
     });
 

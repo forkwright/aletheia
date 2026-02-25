@@ -22,8 +22,13 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   // by the roadmap orchestrator from LLM output; plan deps are often wrong
   // (LLM fills them with package names instead of phase IDs).
   let hasExplicitDeps = false;
+  let hasDependencyColumn = false;
   for (const phase of phases) {
     // Column-level dependencies (V27 migration) — preferred source
+    // Distinguish between `dependencies: []` (explicit "no deps") and `undefined` (not specified)
+    if (phase.dependencies !== undefined && phase.dependencies !== null) {
+      hasDependencyColumn = true;
+    }
     const columnDeps = (phase.dependencies ?? []).filter((d) => idSet.has(d));
     
     // Fallback to plan-blob dependencies for backward compatibility
@@ -36,10 +41,10 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
     if (planDeps.length > 0) hasExplicitDeps = true;
   }
 
-  // Fallback: if NO phase has valid inter-phase dependencies, infer sequential
-  // ordering from phaseOrder. This handles the common case where the LLM fills
-  // PhasePlan.dependencies with package names instead of phase IDs.
-  if (!hasExplicitDeps && phases.length > 1) {
+  // Fallback: if NO phase has valid inter-phase dependencies AND no phase has
+  // the dependencies column set (even to []), infer sequential ordering from
+  // phaseOrder. `dependencies: []` means "explicitly no deps" — don't override.
+  if (!hasExplicitDeps && !hasDependencyColumn && phases.length > 1) {
     const sorted = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
     for (let i = 1; i < sorted.length; i++) {
       const prev = sorted[i - 1]!;
