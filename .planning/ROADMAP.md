@@ -82,7 +82,7 @@ Plans:
   3. The deprecated `neo4j-driver` package is replaced with `neo4j` 6.1.0 — no deprecation warnings in sidecar startup
   4. Unknown relationship types are rejected or normalized before Neo4j write — no new unconstrained relationships enter the graph
   5. Relationship vocabulary reflects only actively-used types from empirical analysis of current graph data
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — Foundation: neo4j driver upgrade (6.1.0), vocabulary system redesign with external config, strict normalization
@@ -136,7 +136,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 1. Test Infrastructure | 3/4 | Gap closure | - |
 | 2. Data Integrity | 4/4 | Complete    | 2026-02-25 |
 | 2.1 Fix addMemories Session Wiring | 0/1 | Complete    | 2026-02-25 |
-| 3. Graph Extraction Overhaul | 0/3 | Planned | - |
+| 3. Graph Extraction Overhaul | 1/3 | In Progress|  |
 | 4. Extraction Pipeline Completion | 0/TBD | Not started | - |
 | 5. Recall Quality | 0/TBD | Not started | - |
 | 6. Observability | 0/TBD | Not started | - |

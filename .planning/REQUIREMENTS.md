@@ -30,9 +30,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **GRPH-01**: Neo4j RELATES_TO rate below 30% (verified with Cypher count query), down from 81%
 - [ ] **GRPH-02**: `neo4j-graphrag` SimpleKGPipeline integrated with `allowed_types` vocabulary constraint in extraction prompt
 - [ ] **GRPH-03**: Extraction prompt enumerates controlled vocabulary with worked examples — LLM selects from vocabulary, not free-form generation
-- [ ] **GRPH-04**: `neo4j-driver` deprecated package replaced with `neo4j` 6.1.0
-- [ ] **GRPH-05**: Entity extraction validates against controlled vocabulary before Neo4j write — rejects or normalizes unknown types
-- [ ] **GRPH-06**: Relationship vocabulary pruned to actively-used types based on empirical analysis of current graph data
+- [x] **GRPH-04**: `neo4j-driver` deprecated package replaced with `neo4j` 6.1.0
+- [x] **GRPH-05**: Entity extraction validates against controlled vocabulary before Neo4j write — rejects or normalizes unknown types
+- [x] **GRPH-06**: Relationship vocabulary pruned to actively-used types based on empirical analysis of current graph data
 
 ### Extraction Pipeline
 
@@ -107,9 +107,9 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | GRPH-01 | Phase 3 | Pending |
 | GRPH-02 | Phase 3 | Pending |
 | GRPH-03 | Phase 3 | Pending |
-| GRPH-04 | Phase 3 | Pending |
-| GRPH-05 | Phase 3 | Pending |
-| GRPH-06 | Phase 3 | Pending |
+| GRPH-04 | Phase 3 | Complete |
+| GRPH-05 | Phase 3 | Complete |
+| GRPH-06 | Phase 3 | Complete |
 | EXTR-01 | Phase 4 | Pending |
 | EXTR-02 | Phase 4 | Pending |
 | EXTR-03 | Phase 4 | Pending |

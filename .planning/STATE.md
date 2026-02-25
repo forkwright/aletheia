@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 2.1 — Fix addMemories Session Wiring
+**Current focus:** Phase 3 — Graph Extraction Overhaul
 
 ## Current Position
 
-Phase: 2.1 of 6 (Fix addMemories Session Wiring)
-Plan: 1 of 1 in current phase (02.1-01 complete — Phase 2.1 done)
-Status: Phase 2.1 complete
-Last activity: 2026-02-25 — Plan 02.1-01 complete; threaded sessionId through MemoryFlushTarget, distillation → Qdrant flow restored
+Phase: 3 of 6 (Graph Extraction Overhaul)
+Plan: 1 of 3 in current phase (03-01 complete — driver upgrade + vocab redesign)
+Status: Phase 3 in progress
+Last activity: 2026-02-25 — Plan 03-01 complete; neo4j upgraded to 6.x, neo4j-graphrag added, RELATES_TO eliminated from vocab
 
-Progress: [██████░░░░] 40%
+Progress: [███████░░░] 45%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 12 min
-- Total execution time: ~1.4 hours
+- Total plans completed: 8
+- Average duration: 11 min
+- Total execution time: ~1.5 hours
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: [██████░░░░] 40%
 |-------|-------|-------|----------|
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
+| 03-graph-extraction-overhaul | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 22 min, 22 min, ~15 min, 3 min, 4 min
+- Last 5 plans: 22 min, ~15 min, 3 min, 4 min, 3 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -66,6 +67,9 @@ Recent decisions affecting current work:
 - [Phase 02-data-integrity]: mneme modules (store.ts, schema.ts) had zero dead code — no changes needed after Plan 02-01 through 02-03
 - [Phase 02.1-fix-addmemories-session-wiring]: sessionId is required (no default) on flushToMemory — empty string is falsy in Python, would trigger 400 from /add_batch enforcement
 - [Phase 02.1-fix-addmemories-session-wiring]: reflect.ts uses "reflection" as synthetic session identifier — satisfies non-empty string check; source field disambiguates path type
+- [Phase 03-graph-extraction-overhaul / 03-01]: normalize_type() returns None for unknown types instead of RELATES_TO — callers skip relationship rather than persist vague edges
+- [Phase 03-graph-extraction-overhaul / 03-01]: Vocab file at ~/.aletheia/graph_vocab.json uses version+relationship_types structure — fails safe to hardcoded defaults on missing/corrupt file
+- [Phase 03-graph-extraction-overhaul / 03-01]: GRAPH_EXTRACTION_PROMPT instructs LLM to skip unmatched relationships — no catch-all fallback type
 
 ### Pending Todos
 
@@ -73,12 +77,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- Phase 3 requires `/gsd:research-phase` before planning — neo4j-graphrag SimpleKGPipeline configuration and `allowed_types` schema design are non-trivial
 - Phase 4 can begin in parallel with Phase 3 once Phase 2 is complete (no graph dependency)
-- Mem0 evaluation deferred to Phase 2 — need traffic trace to confirm `/add` route is truly unused in production
+- Mem0 evaluation deferred — need traffic trace to confirm `/add` route is truly unused in production
 
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 02.1-fix-addmemories-session-wiring 02.1-01-PLAN.md — sessionId wiring, Phase 2.1 complete
+Stopped at: Completed 03-graph-extraction-overhaul 03-01-PLAN.md — driver upgrade + vocab redesign
 Resume file: None
