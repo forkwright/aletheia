@@ -656,3 +656,45 @@ PR: "fix: typed errors across runtime"
 | Logger Creation Pattern | Convention + agent context | — | Universally followed |
 | No Barrel Files | Convention + agent context | — | Compliant |
 | One Module Per PR | PR review convention | — | Process rule |
+
+---
+
+## Pre-commit Hook
+
+The `.githooks/pre-commit` hook runs lint and type checks for each sub-project when relevant files are staged. The full test suite runs in CI only.
+
+### What runs
+
+| Sub-project | Trigger | Commands |
+|-------------|---------|----------|
+| TypeScript runtime | Any `infrastructure/runtime/` file staged | `npm run typecheck && npm run lint:check` |
+| Svelte UI | Any `ui/` file staged | `npm run lint:check` (oxlint + eslint-plugin-svelte) |
+| Python sidecar | Any `infrastructure/memory/sidecar/` file staged | `uv run ruff check . && uv run pyright` |
+
+### Known gap
+
+UI `svelte-check --fail-on-warnings` is NOT gated in the hook. The pre-existing 112 errors from before Phase 11 must be cleared in Phase 13 before `npm run typecheck` can be added to the UI hook section. After Phase 13, add `&& npm run typecheck` to the UI section in `.githooks/pre-commit`.
+
+### Timing
+
+Measured 2026-02-25 on development machine:
+
+| Sub-project | Command | Wall time |
+|-------------|---------|-----------|
+| TypeScript runtime | `npm run typecheck` (tsc --noEmit) | ~3.5s |
+| TypeScript runtime | `npm run lint:check` (oxlint) | ~0.1s |
+| TypeScript runtime | **Total** | **~3.6s** |
+| Svelte UI | `npm run lint:check` (oxlint + eslint-plugin-svelte) | ~0.1s |
+| Python sidecar | `uv run ruff check .` | ~0.5s |
+| Python sidecar | `uv run pyright` | ~3.4s |
+| Python sidecar | **Total** | **~4.0s** |
+
+All sub-projects are well under the 10-second threshold (HOOK-03).
+
+### Install
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Run this once after cloning. See also `CONTRIBUTING.md`.
