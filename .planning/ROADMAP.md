@@ -67,7 +67,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `addMemories()` accepts and forwards `session_id` to `/add_batch` — no 400 response on valid distillation calls
   2. The distillation → Qdrant flow completes end-to-end — extracted facts are stored, not silently dropped
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [x] 02.1-01-PLAN.md — Wire session_id through MemoryFlushTarget interface and all callers
@@ -82,7 +82,12 @@ Plans:
   3. The deprecated `neo4j-driver` package is replaced with `neo4j` 6.1.0 — no deprecation warnings in sidecar startup
   4. Unknown relationship types are rejected or normalized before Neo4j write — no new unconstrained relationships enter the graph
   5. Relationship vocabulary reflects only actively-used types from empirical analysis of current graph data
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Foundation: neo4j driver upgrade (6.1.0), vocabulary system redesign with external config, strict normalization
+- [ ] 03-02-PLAN.md — SimpleKGPipeline integration: replace Mem0 graph store, LLM adapter, schema enforcement
+- [ ] 03-03-PLAN.md — RELATES_TO backfill migration: LLM reclassification of existing edges, rate verification
 
 ### Phase 4: Extraction Pipeline Completion
 **Goal**: All extraction pipeline components are wired end-to-end — contradiction detection invalidates facts, cross-chunk dedup runs, long distillations are cancellable
@@ -130,8 +135,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 3/4 | Gap closure | - |
 | 2. Data Integrity | 4/4 | Complete    | 2026-02-25 |
-| 2.1 Fix addMemories Session Wiring | 0/1 | Planned | - |
-| 3. Graph Extraction Overhaul | 0/TBD | Not started | - |
+| 2.1 Fix addMemories Session Wiring | 0/1 | Complete    | 2026-02-25 |
+| 3. Graph Extraction Overhaul | 0/3 | Planned | - |
 | 4. Extraction Pipeline Completion | 0/TBD | Not started | - |
 | 5. Recall Quality | 0/TBD | Not started | - |
 | 6. Observability | 0/TBD | Not started | - |
