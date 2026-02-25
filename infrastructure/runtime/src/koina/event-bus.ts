@@ -22,7 +22,8 @@ export type EventName =
   | "config:reloaded"
   | "exec:denied"
   | "pipeline:error"
-  | "history:orphan_repair";
+  | "history:orphan_repair"
+  | "memory:health_degraded";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;
