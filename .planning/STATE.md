@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 3 of 6 (Graph Extraction Overhaul)
-Plan: 1 of 3 in current phase (03-01 complete — driver upgrade + vocab redesign)
+Plan: 2 of 3 in current phase (03-02 complete — SimpleKGPipeline integration, Mem0 graph store disabled)
 Status: Phase 3 in progress
-Last activity: 2026-02-25 — Plan 03-01 complete; neo4j upgraded to 6.x, neo4j-graphrag added, RELATES_TO eliminated from vocab
+Last activity: 2026-02-25 — Plan 03-02 complete; SimpleKGPipeline wired, Mem0 graph store removed, routes fire extract_graph
 
-Progress: [███████░░░] 45%
+Progress: [████████░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 11 min
-- Total execution time: ~1.5 hours
+- Total execution time: ~1.6 hours
 
 **By Phase:**
 
@@ -29,7 +29,7 @@ Progress: [███████░░░] 45%
 |-------|-------|-------|----------|
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
-| 03-graph-extraction-overhaul | 1 | 3 min | 3 min |
+| 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
 
 **Recent Trend:**
 - Last 5 plans: 22 min, ~15 min, 3 min, 4 min, 3 min
@@ -70,6 +70,9 @@ Recent decisions affecting current work:
 - [Phase 03-graph-extraction-overhaul / 03-01]: normalize_type() returns None for unknown types instead of RELATES_TO — callers skip relationship rather than persist vague edges
 - [Phase 03-graph-extraction-overhaul / 03-01]: Vocab file at ~/.aletheia/graph_vocab.json uses version+relationship_types structure — fails safe to hardcoded defaults on missing/corrupt file
 - [Phase 03-graph-extraction-overhaul / 03-01]: GRAPH_EXTRACTION_PROMPT instructs LLM to skip unmatched relationships — no catch-all fallback type
+- [Phase 03-graph-extraction-overhaul / 03-02]: SimpleKGPipeline cached at module level — reinit on OAuth rotation via refresh_pipeline_on_token_rotate
+- [Phase 03-graph-extraction-overhaul / 03-02]: extract_graph / extract_graph_batch are fire-and-forget — failures log warning but never block memory writes
+- [Phase 03-graph-extraction-overhaul / 03-02]: additional_relationship_types: False enforces vocab at pipeline write time, not post-write
 
 ### Pending Todos
 
@@ -83,5 +86,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 03-graph-extraction-overhaul 03-01-PLAN.md — driver upgrade + vocab redesign
+Stopped at: Completed 03-graph-extraction-overhaul 03-02-PLAN.md — SimpleKGPipeline integration
 Resume file: None
