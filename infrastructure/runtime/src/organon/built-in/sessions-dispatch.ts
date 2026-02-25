@@ -114,7 +114,19 @@ export function createSessionsDispatchTool(
         return JSON.stringify({ error: "Agent dispatch not available" });
       }
 
-      const tasks = input["tasks"] as DispatchTask[];
+      // Defensive: parse tasks if delivered as JSON string (model/framework serialization)
+      let tasks: DispatchTask[];
+      const raw = input["tasks"];
+      if (typeof raw === "string") {
+        try {
+          tasks = JSON.parse(raw);
+        } catch {
+          return JSON.stringify({ error: "tasks: invalid JSON string" });
+        }
+      } else {
+        tasks = raw as DispatchTask[];
+      }
+
       if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
         return JSON.stringify({ error: "tasks array is required and must not be empty" });
       }
