@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
+  import { authFetch } from "./api";
 
   interface Checkpoint {
     id: string;
@@ -22,7 +23,7 @@
     try {
       loading = true;
       error = null;
-      const res = await fetch(`/api/planning/projects/${projectId}/checkpoints`);
+      const res = await authFetch(`/api/planning/projects/${projectId}/checkpoints`);
       if (!res.ok) {
         error = `Failed to load checkpoints (${res.status})`;
         return;
@@ -52,7 +53,7 @@
     if (submitting[checkpointId]) return;
     submitting[checkpointId] = true;
     try {
-      const res = await fetch(`/api/planning/projects/${projectId}/checkpoints/${checkpointId}`, {
+      const res = await authFetch(`/api/planning/projects/${projectId}/checkpoints/${checkpointId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, note: note?.trim() || undefined }),

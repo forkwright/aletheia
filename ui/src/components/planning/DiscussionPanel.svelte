@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
+  import { authFetch } from "./api";
 
   interface DiscussionOption {
     label: string;
@@ -37,7 +38,7 @@
       const url = phaseId 
         ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
         : `/api/planning/projects/${projectId}/discuss`;
-      const res = await fetch(url);
+      const res = await authFetch(url);
       
       if (!res.ok) {
         const errData = await res.json().catch(() => ({})) as { error?: string };
@@ -83,7 +84,7 @@
       const postUrl = phaseId
         ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
         : `/api/planning/projects/${projectId}/discuss`;
-      const res = await fetch(postUrl, {
+      const res = await authFetch(postUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
