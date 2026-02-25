@@ -20,6 +20,24 @@ const defaultConfig = {
   pause_between_phases: false,
 };
 
+/** Build a valid DispatchResult JSON string that passes Zod schema validation */
+function mockDispatchResult(taskCount = 1): string {
+  return JSON.stringify({
+    taskCount,
+    succeeded: taskCount,
+    failed: 0,
+    results: Array.from({ length: taskCount }, (_, i) => ({
+      index: i,
+      task: `task-${i}`,
+      status: "success",
+      result: "done",
+      durationMs: 100,
+    })),
+    timing: { wallClockMs: 100, sequentialMs: 100, savedMs: 0 },
+    totalTokens: 0,
+  });
+}
+
 function makeDb(): Database.Database {
   const d = new Database(":memory:");
   d.pragma("journal_mode = WAL");
@@ -236,9 +254,7 @@ describe("isPaused — pause_between_phases config", () => {
     const mockDispatch = {
       execute: async () => {
         dispatchCallCount++;
-        return JSON.stringify({
-          results: [{ status: "success", result: "done", durationMs: 100 }],
-        });
+        return mockDispatchResult();
       },
     } as unknown as import("../organon/registry.js").ToolHandler;
 
@@ -284,9 +300,7 @@ describe("isPaused — pause_between_phases config", () => {
     const mockDispatch = {
       execute: async () => {
         dispatchCallCount++;
-        return JSON.stringify({
-          results: [{ status: "success", result: "done", durationMs: 100 }],
-        });
+        return mockDispatchResult();
       },
     } as unknown as import("../organon/registry.js").ToolHandler;
 
@@ -342,8 +356,7 @@ describe("reapZombies — cascade-skip dependents", () => {
     });
 
     const mockDispatch = {
-      execute: async () =>
-        JSON.stringify({ results: [{ status: "success", result: "done", durationMs: 100 }] }),
+      execute: async () => mockDispatchResult(),
     } as unknown as import("../organon/registry.js").ToolHandler;
 
     const orch = new ExecutionOrchestrator(db, mockDispatch);
@@ -400,8 +413,7 @@ describe("reapZombies — cascade-skip dependents", () => {
     });
 
     const mockDispatch = {
-      execute: async () =>
-        JSON.stringify({ results: [{ status: "success", result: "done", durationMs: 100 }] }),
+      execute: async () => mockDispatchResult(),
     } as unknown as import("../organon/registry.js").ToolHandler;
 
     const orch = new ExecutionOrchestrator(db, mockDispatch);
