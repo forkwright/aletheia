@@ -195,7 +195,10 @@ use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 **No silent catch.** Every catch block must either log, rethrow, return a meaningful value, or include an inline `/* reason */` comment explaining why the error is intentionally discarded.
 
 **Naming:** Files `kebab-case`, classes `PascalCase`, functions `camelCase`
-verb-first, constants `UPPER_SNAKE`, events `noun:verb`.
+verb-first, constants `UPPER_SNAKE`, events `noun:verb`. Persistent names for
+modules, subsystems, and agents follow the [Gnomon naming system](docs/gnomon.md) -
+Greek names that identify modes of attention, not implementations. Run the layer
+test (L1-L4) before naming anything that will persist.
 
 **TypeScript:** Strict mode, `.js` import extensions, bracket notation for index
 access.

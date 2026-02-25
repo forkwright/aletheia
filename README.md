@@ -75,6 +75,14 @@ aletheia/
 
 ---
 
+## Why Greek?
+
+Every name in this system - Aletheia, Dianoia, Prosoche, the agent names - follows a deliberate naming philosophy. Names identify *modes of attention*, not things. Greek provides the precision: where English has "knowledge," Greek distinguishes between episteme, gnosis, techne, phronesis, and nous - each a fundamentally different stance toward knowing.
+
+See **[docs/gnomon.md](docs/gnomon.md)** for the full naming system, including the layer test, dimensional resonance, and the process for naming new components.
+
+---
+
 ## Agents
 
 Each agent has a workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and memory (`MEMORY.md`). See `nous/_example/` for a template and [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.

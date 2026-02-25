@@ -37,6 +37,7 @@
     return "rgba(139, 148, 158, 0.25)";
   }
 
+  // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
   let container: HTMLDivElement;
   let graph = $state<any>(null);
   let resizeObserver: ResizeObserver | null = null;
@@ -83,8 +84,8 @@
 
     const byCommunity = new Map<number, any[]>();
     for (const node of runtimeNodes) {
-      if (node.community == null || node.community < 0) continue;
-      if (node.x == null) continue;
+      if (node.community === null || node.community === undefined || node.community < 0) continue;
+      if (node.x === null || node.x === undefined) continue;
       const list = byCommunity.get(node.community) || [];
       list.push(node);
       byCommunity.set(node.community, list);

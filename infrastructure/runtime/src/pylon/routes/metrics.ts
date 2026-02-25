@@ -100,10 +100,10 @@ export function metricRoutes(deps: RouteDeps, refs: RouteRefs): Hono {
     });
 
     const cacheHitRate =
-      metrics.usage.totalInputTokens > 0
+      (metrics.usage.totalInputTokens + metrics.usage.totalCacheReadTokens) > 0
         ? Math.round(
             (metrics.usage.totalCacheReadTokens /
-              metrics.usage.totalInputTokens) *
+              (metrics.usage.totalInputTokens + metrics.usage.totalCacheReadTokens)) *
               100,
           )
         : 0;

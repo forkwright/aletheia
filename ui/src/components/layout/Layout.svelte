@@ -6,8 +6,7 @@
   import PlanningView from "../planning/PlanningView.svelte";
   import FileEditor from "../files/FileEditor.svelte";
   import Login from "../auth/Login.svelte";
-  import { getToken, setToken } from "../../lib/api";
-  import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler, logout } from "../../lib/auth";
+  import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
   import { getActiveAgentId, isFirstRun, loadAgents } from "../../stores/agents.svelte";
   import Welcome from "../onboarding/Welcome.svelte";
@@ -15,7 +14,7 @@
   import Toast from "../shared/Toast.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "planning" | "settings";
-  type AuthState = "loading" | "needs-setup" | "login" | "token-setup" | "authenticated";
+  type AuthState = "loading" | "needs-setup" | "login" | "authenticated";
 
   const FILE_PANEL_WIDTH_KEY = "aletheia_file_panel_width";
 
@@ -33,8 +32,6 @@
   loadBranding();
 
   let authState = $state<AuthState>("loading");
-  let tokenValue = $state("");
-  let hasToken = $state(!!getToken());
 
   // Determine auth mode on mount
   (async () => {
@@ -53,16 +50,21 @@
       if (mode.sessionAuth) {
         // Try refreshing an existing session (httpOnly cookie may be valid)
         const ok = await refresh();
-        authState = ok ? "authenticated" : "login";
+        if (ok) {
+          await loadAgents();
+          authState = "authenticated";
+        } else {
+          authState = "login";
+        }
       } else if (mode.mode === "none") {
+        await loadAgents();
         authState = "authenticated";
       } else {
-        // token mode
-        authState = getToken() ? "authenticated" : "token-setup";
+        // token/password mode — send to login
+        authState = "login";
       }
     } catch {
-      // Can't reach server — fall back to token check
-      authState = getToken() ? "authenticated" : "token-setup";
+      authState = "login";
     }
   })();
 
@@ -78,10 +80,10 @@
       } else if (mode.mode === "none") {
         authState = "authenticated";
       } else {
-        authState = getToken() ? "authenticated" : "token-setup";
+        authState = "login";
       }
     } catch {
-      authState = getToken() ? "authenticated" : "token-setup";
+      authState = "login";
     }
   }
 
@@ -90,22 +92,13 @@
     authState = "login";
   });
 
-  function handleLoginSuccess() {
+  async function handleLoginSuccess() {
+    await loadAgents();
     authState = "authenticated";
-    location.reload();
   }
   let filePanelOpen = $state(false);
   let filePanelWidth = $state(Number(readLocalStorage(FILE_PANEL_WIDTH_KEY)) || 520);
   let resizing = $state(false);
-
-  function handleTokenSubmit(e: Event) {
-    e.preventDefault();
-    if (tokenValue.trim()) {
-      setToken(tokenValue.trim());
-      hasToken = true;
-      location.reload();
-    }
-  }
 
   function toggleFilePanel() {
     filePanelOpen = !filePanelOpen;
@@ -153,22 +146,6 @@
   <SetupWizard onComplete={handleSetupComplete} />
 {:else if authState === "login"}
   <Login onSuccess={handleLoginSuccess} />
-{:else if authState === "token-setup"}
-  <div class="token-setup">
-    <div class="token-card">
-      <h1>{getBrandName()}</h1>
-      <p>Enter your gateway authentication token to get started.</p>
-      <form onsubmit={handleTokenSubmit}>
-        <input
-          type="password"
-          class="token-input"
-          placeholder="Gateway token"
-          bind:value={tokenValue}
-        />
-        <button type="submit" class="token-submit">Connect</button>
-      </form>
-    </div>
-  </div>
 {:else}
   {#if isFirstRun()}
     <Welcome onComplete={() => { loadAgents(); }} />
@@ -263,67 +240,7 @@
   .resize-handle:hover, .resizing .resize-handle {
     background: var(--accent);
   }
-  .token-setup {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    background: var(--bg);
-  }
-  .token-card {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 32px;
-    max-width: 400px;
-    width: 100%;
-    text-align: center;
-  }
-  .token-card h1 {
-    font-size: var(--text-2xl);
-    margin-bottom: 8px;
-  }
-  .token-card p {
-    color: var(--text-secondary);
-    font-size: var(--text-base);
-    margin-bottom: 20px;
-  }
-  .token-card form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .token-input {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    padding: 10px 14px;
-    font-size: var(--text-base);
-    font-family: var(--font-mono);
-    width: 100%;
-  }
-  .token-input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .token-submit {
-    background: var(--accent);
-    border: none;
-    color: var(--bg);
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-    font-size: var(--text-base);
-    font-weight: 500;
-  }
-  .token-submit:hover {
-    background: var(--accent-hover);
-  }
-
   @media (max-width: 768px) {
-    .token-card {
-      margin: 0 16px;
-    }
     .file-pane {
       display: none;
     }
