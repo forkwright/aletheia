@@ -494,6 +494,27 @@ except Exception:  # swallowed
 
 ---
 
+## Naming
+
+### Rule: Gnomon Naming Convention
+
+**What:** Persistent names for modules, subsystems, agents, and major components must follow the naming system documented in [gnomon.md](gnomon.md). Names identify modes of attention, pass the layer test (L1-L4), and compose with the existing name topology.
+
+**Why:** The naming system is not decoration. Names that identify the right mode of attention survive refactors, communicate architectural intent, and resist the drift toward generic labels. A well-chosen name teaches you something about the thing it names. See gnomon.md for the full philosophy, method, and anti-patterns.
+
+**Applies to:** Module directories, agent identities, subsystem names, major features that will persist. Does *not* apply to: utility functions, variable names, temporary branches, test fixtures.
+
+**Process:**
+1. Identify the mode of attention (not the implementation)
+2. Construct from Greek roots using prefix-root-suffix system
+3. Run the layer test (L1 practical through L4 reflexive)
+4. Check topology against existing names
+5. If no Greek word fits naturally, the mode of attention isn't clear yet - wait
+
+**Enforced by:** Convention + agent context. Agents should have gnomon.md in context when proposing names for new persistent components.
+
+---
+
 ## Architecture
 
 ### Rule: Module Import Direction (layered graph)
@@ -653,6 +674,7 @@ PR: "fix: typed errors across runtime"
 | Ruff Rule Set | ruff | Phase 11 addition to pyproject.toml | Not yet active |
 | Pyright Strict Mode | pyright | Phase 11 addition | Not yet active |
 | No Bare Exception Catch | ruff `BLE001`, `E722` | Phase 11 addition | Not yet active |
+| Gnomon Naming Convention | Convention + agent context | [gnomon.md](gnomon.md) | Active |
 | Module Import Direction | `import/no-cycle` (oxlint) | Phase 11 addition | Not yet active |
 | Event Name Format | Convention + agent context | — | High compliance, unverified |
 | Logger Creation Pattern | Convention + agent context | — | Universally followed |

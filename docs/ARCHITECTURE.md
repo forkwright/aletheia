@@ -6,6 +6,14 @@
 
 ---
 
+## Naming
+
+Module and subsystem names follow the naming philosophy documented in **[gnomon.md](gnomon.md)**. Names identify modes of attention - what stance toward knowing the component embodies - not implementation details. Each name should pass the layer test (L1 practical through L4 reflexive) and compose with existing names in the system topology.
+
+When adding a new module, check gnomon.md's process section and anti-patterns before choosing a name.
+
+---
+
 ## Modules
 
 All 14 modules in `infrastructure/runtime/src/`:
