@@ -8,7 +8,7 @@
 
 ## Naming
 
-Module and subsystem names follow the naming philosophy documented in **[gnomon.md](gnomon.md)**. Names identify modes of attention - what stance toward knowing the component embodies - not implementation details. Each name should pass the layer test (L1 practical through L4 reflexive) and compose with existing names in the system topology.
+Module and subsystem names follow the naming philosophy documented in **[gnomon.md](gnomon.md)**. Names unconceal essential natures — the fundamental character of a thing that persists across implementation changes. Each name should pass the layer test (L1 practical through L4 reflexive) and compose with existing names in the system topology.
 
 When adding a new module, check gnomon.md's process section and anti-patterns before choosing a name.
 
@@ -24,14 +24,14 @@ All 14 modules in `infrastructure/runtime/src/`:
 | `taxis` | Config loading, Zod validation, paths | 7 | `loadConfig`, `AletheiaConfigSchema`, `paths`, `resolveNous`, `scaffoldAgent` |
 | `mneme` | Session store, SQLite, migrations | 4 | `SessionStore`, `makeDb`, session/thread/message CRUD |
 | `hermeneus` | Anthropic SDK, provider routing, token counting | 11 | `AnthropicProvider`, `createDefaultRouter`, `ProviderRouter`, token counter, pricing |
-| `organon` | 33 built-in tools, skills registry, MCP client | 30 | `ToolRegistry`, `ToolHandler`, `SkillRegistry`, `McpClientManager` |
+| `organon` | 48 built-in tools, skills registry, MCP client | 30 | `ToolRegistry`, `ToolHandler`, `SkillRegistry`, `McpClientManager` |
 | `nous` | Agent bootstrap, turn pipeline, competence model | 36 | `NousManager`, turn orchestration, `CompetenceModel`, `UncertaintyTracker`, pipeline config |
 | `melete` | Disciplined practice — distillation, reflection, memory flush | 16 | `distillSession`, `reflectOnAgent`, `weeklyReflection`, `MemoryFlushTarget` |
 | `semeion` | Signal client, TTS, commands, listener | 20 | `SignalClient`, `createDefaultRegistry` (commands), `startListener`, `DaemonHandle` |
 | `pylon` | Hono HTTP gateway, MCP server, Web UI routes | 9 | `createGateway`, `startGateway`, MCP handlers, UI routes |
 | `prostheke` | Plugin system, lifecycle hooks | 5 | `PluginRegistry`, plugin loader, hook dispatch |
 | `daemon` | Cron scheduler, watchdog, update checker, reflection cron | 14 | `CronScheduler`, `Watchdog`, `startUpdateChecker`, reflection/evolution jobs |
-| `dianoia` | Multi-phase planning orchestrator | 56 | `DianoiaOrchestrator`, `PlanningStore`, `ResearchOrchestrator`, `RequirementsOrchestrator`, `RoadmapOrchestrator`, `ExecutionOrchestrator`, `GoalBackwardVerifier`, `CheckpointSystem` |
+| `dianoia` | Multi-phase planning orchestrator | 34 | `DianoiaOrchestrator`, `PlanningStore`, `ResearchOrchestrator`, `RequirementsOrchestrator`, `RoadmapOrchestrator`, `ExecutionOrchestrator`, `GoalBackwardVerifier`, `CheckpointSystem` |
 | `symbolon` | Split-token authentication — JWT, sessions, RBAC, passwords | 13 | `AuthSessionStore`, `AuditLog`, `createAuthMiddleware`, `createAuthRoutes`, `signToken`, `verifyToken`, `hashPassword`, `rbac` |
 | `portability` | Agent import/export (AgentFile format) | 5 | `exportAgent`, `importAgent`, `AgentFile`, portability CLI |
 
@@ -149,8 +149,8 @@ Plugins live outside the runtime at `~/.aletheia/plugins/<id>/`. They integrate 
 
 **koina is a true leaf node.** It has no `index.ts` by design — all imports must reference the specific file (e.g., `../koina/logger.js`, not `../koina/index.js`). This prevents circular dependencies and ensures only the needed symbols are loaded.
 
-**auth is a zero-dependency utilities module.** `auth/tokens.ts`, `auth/passwords.ts`, `auth/rbac.ts` import only from `node:crypto` and `hono`. `auth/sessions.ts` and `auth/audit.ts` take `Database.Database` as a constructor argument. This design allows auth to be tested and used independently of the runtime.
+**symbolon is a zero-dependency utilities module.** `symbolon/tokens.ts`, `symbolon/passwords.ts`, `symbolon/rbac.ts` import only from `node:crypto` and `hono`. `symbolon/sessions.ts` and `symbolon/audit.ts` take `Database.Database` as a constructor argument. This design allows symbolon to be tested and used independently of the runtime.
 
 **dianoia routes are a seam.** `dianoia/routes.ts` imports a type from `pylon/routes/deps.ts` to satisfy the Hono route handler signature. The route file is owned by dianoia but mounted by pylon. If this coupling becomes a problem, the route file can move to `pylon/routes/plans.ts` with no behavioral change.
 
-**daemon imports nous and distillation.** The cron and reflection jobs need `NousManager` (to dispatch messages to agents) and distillation functions (to run reflection cycles). This makes daemon a high-layer module despite its name suggesting infrastructure. Daemon must not be imported by other modules — it is a leaf in the upward direction.
+**daemon imports nous and melete.** The cron and reflection jobs need `NousManager` (to dispatch messages to agents) and melete functions (to run reflection cycles). This makes daemon a high-layer module despite its name suggesting infrastructure. Daemon must not be imported by other modules — it is a leaf in the upward direction.

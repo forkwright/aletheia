@@ -13,7 +13,7 @@ If the browser doesn't open, visit: **http://localhost:18789**
 
 ## What setup.sh does
 
-1. Checks Node.js 20+ is present
+1. Checks Node.js 22+ is present
 2. Builds the runtime and UI
 3. Creates a minimal config at `~/.aletheia/aletheia.json` if one doesn't exist
 4. Starts the gateway on port 18789

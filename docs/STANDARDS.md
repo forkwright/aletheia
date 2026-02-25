@@ -594,32 +594,39 @@ createLogger("temp");                           // unnamed, not assigned
 
 ---
 
-### Rule: No Barrel Files
+### Rule: Module Boundary Discipline
 
-**What:** Do not create `index.ts` files that only re-export from other files within the same module for the purpose of creating a unified public API. Modules that have a natural public API (like `dianoia/index.ts`) are acceptable — the rule targets gratuitous barrel files that exist only to flatten import paths.
+**What:** Cross-module imports use tsconfig path aliases (`@module`) and barrel exports (`index.ts`). Each module declares its public surface via `index.ts` — consumers import from the barrel, not internal files. `koina/` is the sole exception: it is a leaf node with direct-import discipline (no `index.ts`) to avoid loading the entire commons when only one utility is needed.
 
-**Why:** Barrel files cause entire modules to be loaded when only one export is needed. In Node.js ESM, this defeats tree-shaking and increases startup time. It also creates circular dependency risks when modules import from each other through barrel files.
+**Why:** Module identity should be defined once and referenced everywhere. Direct imports into module internals (e.g., `../symbolon/middleware.js`) couple consumers to internal file structure. Barrel exports + path aliases make the module contract explicit and renames trivial (change tsconfig + directory name, done).
 
 **Compliant:**
 ```typescript
-// Direct import from the file that owns the symbol:
-import { SessionStore } from "../mneme/store.js";
+// Cross-module: use path alias and barrel
+import { authMiddleware } from "@symbolon";
+import { distillSession } from "@melete";
+
+// koina exception: direct imports (leaf node, no barrel)
 import { createLogger } from "../koina/logger.js";
 
-// Module-level index that exports the module's public API (acceptable):
-// dianoia/index.ts — exports the planning module's public surface
+// Within a module: relative imports to internal files
+import { hashPassword } from "./passwords.js";
 ```
 
 **Non-compliant:**
 ```typescript
-// koina/index.ts that re-exports logger, errors, safe, event-bus
-// causing everything to load when only logger is needed:
+// Reaching into module internals from outside:
+import { authMiddleware } from "../symbolon/middleware.js";
+
+// koina barrel (would load everything):
 import { createLogger } from "../koina/index.js";
 ```
 
-**Enforced by:** Convention + agent context. Note: `koina/` does not have an `index.ts` by design — it is a leaf node with direct-import discipline.
+**Enforced by:** Convention + agent context. Spec 33 Phase 1 will add tsconfig path aliases and barrel exports for all gnomon modules. `eslint-plugin-import` `no-internal-modules` rule planned as mechanical enforcement.
 
-**Scan count:** 0 violations — `koina/` has no `index.ts`. `dianoia/index.ts` is intentional (module public API). Other modules import directly.
+**Scan count:** Not yet enforced mechanically. Current codebase uses direct cross-module imports — migration to barrel + alias pattern is tracked in Spec 33.
+
+**Note:** This rule supersedes the previous "No Barrel Files" rule. The original concern (loading entire modules when only one export is needed) is valid for `koina/` but not for domain modules with a clear public surface. The tsconfig path alias + selective barrel pattern avoids the loading problem while providing the boundary discipline the codebase needs.
 
 ---
 
@@ -678,7 +685,7 @@ PR: "fix: typed errors across runtime"
 | Module Import Direction | `import/no-cycle` (oxlint) | Phase 11 addition | Not yet active |
 | Event Name Format | Convention + agent context | — | High compliance, unverified |
 | Logger Creation Pattern | Convention + agent context | — | Universally followed |
-| No Barrel Files | Convention + agent context | — | Compliant |
+| Module Boundary Discipline | Convention → Spec 33 | `tsconfig.json` (planned) | Migration pending |
 | One Module Per PR | PR review convention | — | Process rule |
 
 ---

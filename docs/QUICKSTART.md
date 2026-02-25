@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js >= 20
+- Node.js >= 22.12
 - An Anthropic API key (or Claude Code installed — key is auto-detected)
 
 ## Install

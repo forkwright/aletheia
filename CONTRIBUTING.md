@@ -196,9 +196,9 @@ use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 
 **Naming:** Files `kebab-case`, classes `PascalCase`, functions `camelCase`
 verb-first, constants `UPPER_SNAKE`, events `noun:verb`. Persistent names for
-modules, subsystems, and agents follow the [Gnomon naming system](docs/gnomon.md) -
-Greek names that identify modes of attention, not implementations. Run the layer
-test (L1-L4) before naming anything that will persist.
+modules, subsystems, and agents follow the [Gnomon naming system](docs/gnomon.md) —
+Greek names that unconceal essential natures, not describe implementations. Run the
+layer test (L1-L4) before naming anything that will persist.
 
 **TypeScript:** Strict mode, `.js` import extensions, bracket notation for index
 access.
