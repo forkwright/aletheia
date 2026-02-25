@@ -77,6 +77,7 @@ export async function buildContext(
             preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
             ...(workspace ? { workspace } : {}),
             ...(services.plugins ? { plugins: services.plugins } : {}),
+            ...(services.memoryTarget ? { memoryTarget: services.memoryTarget } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary, keyFacts) => {
                 services.store.updateThreadSummary(thread.id, summary, keyFacts);
