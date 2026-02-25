@@ -37,6 +37,7 @@
   let showPreview = $state(false);
   let previewHtml = $state("");
 
+  // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
   let editorContainer: HTMLDivElement;
   let editorView: EditorView | null = null;
   let originalContent = "";

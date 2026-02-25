@@ -8,7 +8,7 @@ export async function authFetch(input: RequestInfo | URL, init?: RequestInit): P
   const token = getEffectiveToken();
   const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(init?.headers as Record<string, string> ?? {}),
+    ...(init?.headers as Record<string, string>),
   };
   // Ensure Content-Type for JSON bodies
   if (init?.body && typeof init.body === "string" && !headers["Content-Type"]) {
