@@ -1,4 +1,31 @@
 #!/usr/bin/env bash
 # Pre-commit: typecheck + lint — full test suite runs in CI
-cd "$(git rev-parse --show-toplevel)/infrastructure/runtime" || exit 0
-npm run typecheck && npm run lint:check
+# Conditional: checks run only when relevant sub-project files are staged
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Detect staged sub-projects
+STAGED=$(git diff --cached --name-only)
+
+runtime_changed() { echo "$STAGED" | grep -q "^infrastructure/runtime/"; }
+ui_changed() { echo "$STAGED" | grep -q "^ui/"; }
+sidecar_changed() { echo "$STAGED" | grep -q "^infrastructure/memory/sidecar/"; }
+
+# Runtime: typecheck + lint (unchanged from original hook, now conditional)
+if runtime_changed; then
+  cd "$ROOT/infrastructure/runtime"
+  npm run typecheck && npm run lint:check
+fi
+
+# UI: oxlint + eslint-plugin-svelte only
+# svelte-check gate deferred until Phase 13 clears existing 112 errors
+if ui_changed; then
+  cd "$ROOT/ui"
+  npm run lint:check
+fi
+
+# Python sidecar: ruff + pyright
+if sidecar_changed; then
+  cd "$ROOT/infrastructure/memory/sidecar"
+  uv run ruff check . && uv run pyright
+fi
