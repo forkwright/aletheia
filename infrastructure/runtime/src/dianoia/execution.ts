@@ -17,11 +17,21 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   const idSet = new Set(phases.map((p) => p.id));
   const deps = new Map<string, Set<string>>();
 
-  // First pass: collect explicit phase-ID dependencies from plans
+  // First pass: prefer column-level dependencies (PlanningPhase.dependencies)
+  // over plan-blob dependencies (PhasePlan.dependencies). Column deps are set
+  // by the roadmap orchestrator from LLM output; plan deps are often wrong
+  // (LLM fills them with package names instead of phase IDs).
   let hasExplicitDeps = false;
   for (const phase of phases) {
+    // Column-level dependencies (V27 migration) — preferred source
+    const columnDeps = (phase.dependencies ?? []).filter((d) => idSet.has(d));
+    
+    // Fallback to plan-blob dependencies for backward compatibility
     const plan = phase.plan as PhasePlan | null;
-    const planDeps = (plan?.dependencies ?? []).filter((d) => idSet.has(d));
+    const planDeps = columnDeps.length > 0
+      ? columnDeps
+      : (plan?.dependencies ?? []).filter((d) => idSet.has(d));
+    
     deps.set(phase.id, new Set(planDeps));
     if (planDeps.length > 0) hasExplicitDeps = true;
   }
@@ -64,6 +74,12 @@ export function directDependents(failedPhaseId: string, allPhases: PlanningPhase
   // Direct-dependents-only per CONTEXT.md decision:
   // Plan A fails -> skip B (depends on A). Plan C (depends on B) still runs if no other blocker.
   return allPhases.filter((p) => {
+    // Prefer column-level dependencies over plan-blob
+    const columnDeps = p.dependencies ?? [];
+    if (columnDeps.length > 0) {
+      return columnDeps.includes(failedPhaseId);
+    }
+    // Fallback to plan-blob
     const plan = p.plan as PhasePlan | null;
     const phaseDeps = plan?.dependencies ?? [];
     return phaseDeps.includes(failedPhaseId);

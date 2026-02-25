@@ -46,6 +46,8 @@ export interface PlanningPhase {
   goal: string;
   requirements: string[];
   successCriteria: string[];
+  /** Explicit phase-ID dependencies. Phase won't execute until all deps are complete. */
+  dependencies: string[];
   plan: unknown | null;
   status: "pending" | "executing" | "complete" | "failed" | "skipped";
   phaseOrder: number;
@@ -65,6 +67,10 @@ export interface PlanningRequirement {
   status: "pending" | "validated" | "skipped";
   // Only meaningful when tier is "out-of-scope" — explains why the requirement was deferred
   rationale: string | null;
+  /** Requirement IDs this depends on (must be satisfied first) */
+  dependsOn: string[];
+  /** Requirement IDs that block this (inverse of dependsOn for querying) */
+  blockedBy: string[];
   createdAt: string;
   updatedAt: string;
 }

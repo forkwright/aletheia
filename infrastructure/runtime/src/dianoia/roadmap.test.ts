@@ -5,6 +5,10 @@ import {
   PLANNING_V21_MIGRATION,
   PLANNING_V22_MIGRATION,
   PLANNING_V23_MIGRATION,
+  PLANNING_V24_MIGRATION,
+  PLANNING_V25_MIGRATION,
+  PLANNING_V26_MIGRATION,
+  PLANNING_V27_MIGRATION,
 } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { RoadmapOrchestrator } from "./roadmap.js";
@@ -18,6 +22,10 @@ function makeDb(): Database.Database {
   db.exec(PLANNING_V21_MIGRATION);
   db.exec(PLANNING_V22_MIGRATION);
   db.exec(PLANNING_V23_MIGRATION);
+  db.exec(PLANNING_V24_MIGRATION);
+  db.exec(PLANNING_V25_MIGRATION);
+  db.exec(PLANNING_V26_MIGRATION);
+  db.exec(PLANNING_V27_MIGRATION);
   return db;
 }
 

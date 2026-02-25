@@ -176,14 +176,15 @@ export class PlanningStore {
     requirements: string[];
     successCriteria: string[];
     phaseOrder: number;
+    dependencies?: string[];
   }): PlanningPhase {
     const id = generateId("phase");
 
     const insert = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, dependencies)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -193,6 +194,7 @@ export class PlanningStore {
           JSON.stringify(opts.requirements),
           JSON.stringify(opts.successCriteria),
           opts.phaseOrder,
+          JSON.stringify(opts.dependencies ?? []),
         );
     });
 
@@ -235,6 +237,17 @@ export class PlanningStore {
           `UPDATE planning_phases SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
         )
         .run(status, id);
+    });
+    update();
+  }
+
+  updatePhaseDependencies(id: string, dependencies: string[]): void {
+    const update = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE planning_phases SET dependencies = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+        )
+        .run(JSON.stringify(dependencies), id);
     });
     update();
   }
@@ -628,11 +641,15 @@ export class PlanningStore {
   private mapPhase(row: Record<string, unknown>): PlanningPhase {
     let requirements: string[];
     let successCriteria: string[];
+    let dependencies: string[];
     let plan: unknown | null;
     try {
       requirements = JSON.parse(row["requirements"] as string) as string[];
       successCriteria = JSON.parse(row["success_criteria"] as string) as string[];
       plan = row["plan"] ? (JSON.parse(row["plan"] as string) as unknown) : null;
+      dependencies = row["dependencies"]
+        ? (JSON.parse(row["dependencies"] as string) as string[])
+        : [];
     } catch (cause) {
       throw new PlanningError("Corrupt JSON in planning_phases", {
         code: "PLANNING_STATE_CORRUPT",
@@ -647,6 +664,7 @@ export class PlanningStore {
       goal: row["goal"] as string,
       requirements,
       successCriteria,
+      dependencies,
       plan,
       status: row["status"] as PlanningPhase["status"],
       phaseOrder: row["phase_order"] as number,
@@ -659,6 +677,14 @@ export class PlanningStore {
   }
 
   private mapRequirement(row: Record<string, unknown>): PlanningRequirement {
+    let dependsOn: string[] = [];
+    let blockedBy: string[] = [];
+    try {
+      if (row["depends_on"]) dependsOn = JSON.parse(row["depends_on"] as string) as string[];
+      if (row["blocked_by"]) blockedBy = JSON.parse(row["blocked_by"] as string) as string[];
+    } catch {
+      // Gracefully handle corrupt JSON — empty deps is safe default
+    }
     return {
       id: row["id"] as string,
       projectId: row["project_id"] as string,
@@ -669,6 +695,8 @@ export class PlanningStore {
       tier: row["tier"] as PlanningRequirement["tier"],
       status: row["status"] as PlanningRequirement["status"],
       rationale: (row["rationale"] as string | null) ?? null,
+      dependsOn,
+      blockedBy,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
     };

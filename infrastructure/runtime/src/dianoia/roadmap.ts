@@ -18,6 +18,8 @@ export interface PhaseDefinition {
   requirements: string[];
   successCriteria: string[];
   phaseOrder: number;
+  /** Phase names this phase depends on. Resolved to IDs during commitRoadmap(). */
+  dependsOn?: string[];
 }
 
 export interface PlanStep {
@@ -107,7 +109,7 @@ export class RoadmapOrchestrator {
 
     taskParts.push(
       "",
-      "Return a ```json block with a PhaseDefinition[] array. Each item: { name, goal, requirements (REQ-ID strings), successCriteria (2-5 observable strings), phaseOrder (1-based integer) }",
+      "Return a ```json block with a PhaseDefinition[] array. Each item: { name, goal, requirements (REQ-ID strings), successCriteria (2-5 observable strings), phaseOrder (1-based integer), dependsOn (array of phase NAMES this phase depends on, empty [] if none) }",
     );
 
     const task = {
@@ -147,8 +149,13 @@ export class RoadmapOrchestrator {
   commitRoadmap(projectId: string, phases: PhaseDefinition[]): void {
     const commit = this.db.transaction(() => {
       this.db.prepare("DELETE FROM planning_phases WHERE project_id = ?").run(projectId);
+
+      // First pass: create phases without dependencies (need IDs first)
+      const nameToId = new Map<string, string>();
+      const createdPhases: Array<{ phase: PhaseDefinition; id: string }> = [];
+
       for (const phase of phases) {
-        this.store.createPhase({
+        const created = this.store.createPhase({
           projectId,
           name: phase.name,
           goal: phase.goal,
@@ -156,6 +163,20 @@ export class RoadmapOrchestrator {
           successCriteria: phase.successCriteria ?? [],
           phaseOrder: phase.phaseOrder,
         });
+        nameToId.set(phase.name, created.id);
+        createdPhases.push({ phase, id: created.id });
+      }
+
+      // Second pass: resolve name-based dependencies to phase IDs
+      for (const { phase, id } of createdPhases) {
+        if (phase.dependsOn && phase.dependsOn.length > 0) {
+          const resolvedDeps = phase.dependsOn
+            .map((depName) => nameToId.get(depName))
+            .filter((depId): depId is string => depId !== undefined);
+          if (resolvedDeps.length > 0) {
+            this.store.updatePhaseDependencies(id, resolvedDeps);
+          }
+        }
       }
     });
     commit();

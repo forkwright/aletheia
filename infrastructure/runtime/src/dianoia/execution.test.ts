@@ -1,7 +1,7 @@
 // ExecutionOrchestrator unit tests — in-memory SQLite, wave computation, cascade-skip, resume detection
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { computeWaves, directDependents, findResumeWave, ExecutionOrchestrator } from "./execution.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
@@ -30,6 +30,8 @@ function makeDb(): Database.Database {
   d.exec(PLANNING_V23_MIGRATION);
   d.exec(PLANNING_V24_MIGRATION);
   d.exec(PLANNING_V25_MIGRATION);
+  d.exec(PLANNING_V26_MIGRATION);
+  d.exec(PLANNING_V27_MIGRATION);
   return d;
 }
 
@@ -46,6 +48,7 @@ function makePhase(id: string, name: string, deps: string[] = []): PlanningPhase
     goal: `Goal for ${name}`,
     requirements: [],
     successCriteria: [],
+    dependencies: deps,
     plan,
     status: "pending",
     phaseOrder: 0,
