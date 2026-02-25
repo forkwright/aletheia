@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { fetchMetrics, fetchCostSummary } from "../../lib/api";
+  import { fetchMetrics, fetchCostSummary, fetchCredentialInfo } from "../../lib/api";
+  import type { CredentialInfo } from "../../lib/api";
   import { formatTokens, formatUptime, formatCost, formatTimeSince } from "../../lib/format";
   import Badge from "../shared/Badge.svelte";
   import UsageChart from "./UsageChart.svelte";
@@ -7,13 +8,22 @@
 
   let metrics = $state<MetricsData | null>(null);
   let costs = $state<CostSummary | null>(null);
+  let creds = $state<CredentialInfo | null>(null);
   let error = $state<string | null>(null);
+
+  function credStatus(c: CredentialInfo): { label: string; variant: "success" | "warning" | "error" } {
+    if (c.primary.isExpired) return { label: "expired", variant: "error" };
+    if (c.primary.expiresInMs !== undefined && c.primary.expiresInMs < 86_400_000) return { label: "expiring", variant: "warning" };
+    if (c.backups.length === 0) return { label: "no backup", variant: "warning" };
+    return { label: "ok", variant: "success" };
+  }
 
   async function load() {
     try {
-      const [m, c] = await Promise.all([fetchMetrics(), fetchCostSummary()]);
+      const [m, c, cr] = await Promise.all([fetchMetrics(), fetchCostSummary(), fetchCredentialInfo()]);
       metrics = m;
       costs = c;
+      creds = cr;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
@@ -72,6 +82,24 @@
           {/each}
         </div>
       </div>
+      {#if creds}
+        {@const status = credStatus(creds)}
+        <div class="card">
+          <div class="card-label">Credentials</div>
+          <div class="card-value card-value-sm">
+            <span class="mono">{creds.primary.label}</span>
+          </div>
+          <div class="card-sub">
+            <Badge text={creds.primary.type} variant="default" />
+            <Badge text={status.label} variant={status.variant} />
+          </div>
+          {#if creds.backups.length > 0}
+            <div class="card-sub" style="margin-top: 4px">
+              {creds.backups.length} backup{creds.backups.length > 1 ? "s" : ""}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <div class="section">
@@ -165,6 +193,9 @@
   .card-value {
     font-size: var(--text-3xl);
     font-weight: 700;
+  }
+  .card-value-sm {
+    font-size: var(--text-lg);
   }
   .card-sub {
     font-size: var(--text-sm);
