@@ -318,6 +318,12 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
       truncated: result.truncated
     });
 
+    // If nothing assembled (bad parameters, empty budget, missing data), return error
+    if (!result.content || result.content.trim().length === 0) {
+      log.warn("Context packet assembled but empty — bad parameters or insufficient budget");
+      return "# Context Error\n\nContext packet is empty. Check budget and parameters.";
+    }
+
     return result.content;
   } catch (err) {
     log.error(`Failed to render context packet: ${err instanceof Error ? err.message : String(err)}`);

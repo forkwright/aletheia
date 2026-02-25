@@ -75,13 +75,15 @@ describe("ORCH-04 Integration Test: Verification Failure Auto-Skip", () => {
     const verifier = new GoalBackwardVerifier(db, mockDispatchTool);
     const verifyTool = createPlanVerifyTool(orchestrator, verifier, {} as any, store);
 
-    // Create a project with dependent phases
+    // Create a project with dependent phases and advance to verifying state
     const project = store.createProject({
       nousId: "test-nous",
       sessionId: "test-session", 
       goal: "Build microservice API",
       config: DEFAULT_CONFIG
     });
+    // Advance through FSM to verifying state so blockOnVerificationFailure works
+    store.updateProjectState(project.id, "verifying");
 
     // Phase A: Core API (foundation)
     const phaseA = store.createPhase({

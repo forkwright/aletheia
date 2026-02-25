@@ -14,7 +14,7 @@
     currentState: string;
   } = $props();
 
-  let sortedPhases = $derived(() => {
+  let sortedPhases = $derived.by(() => {
     return [...phases].sort((a, b) => a.order - b.order);
   });
 

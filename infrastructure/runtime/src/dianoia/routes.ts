@@ -319,6 +319,127 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     });
   });
 
+  // Checkpoints endpoint — list and manage human-in-loop gates
+  app.get("/api/planning/projects/:id/checkpoints", (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    
+    const projectId = c.req.param("id");
+    const project = orch.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+    
+    const checkpoints = store.listCheckpoints(projectId);
+    
+    return c.json({
+      projectId,
+      checkpoints: checkpoints.map(cp => ({
+        id: cp.id,
+        type: cp.type,
+        question: cp.question,
+        decision: cp.decision,
+        context: cp.context,
+        createdAt: cp.createdAt,
+      }))
+    });
+  });
+
+  // Approve or skip a checkpoint
+  app.post("/api/planning/projects/:id/checkpoints/:checkpointId", async (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    
+    const projectId = c.req.param("id");
+    const checkpointId = c.req.param("checkpointId");
+    const project = orch.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+    
+    const body = await c.req.json();
+    const { action, note } = body as { action: string; note?: string };
+    
+    if (action !== "approve" && action !== "skip") {
+      return c.json({ error: "action must be 'approve' or 'skip'" }, 400);
+    }
+    
+    try {
+      store.resolveCheckpoint(checkpointId, action === "approve" ? "approved" : "skipped", 
+        note ? { userNote: note } : undefined);
+      return c.json({ success: true, decision: action });
+    } catch (error) {
+      log.error("Failed to resolve checkpoint", { checkpointId, error });
+      return c.json({ error: "Failed to resolve checkpoint" }, 500);
+    }
+  });
+
+  // Verification results for a specific phase
+  app.get("/api/planning/projects/:id/phases/:phaseId/verification", (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    
+    const projectId = c.req.param("id");
+    const phaseId = c.req.param("phaseId");
+    const project = orch.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    
+    const phases = orch.listPhases(projectId);
+    const phase = phases.find(p => p.id === phaseId);
+    if (!phase) return c.json({ error: "Phase not found" }, 404);
+    
+    const verification = phase.verificationResult;
+    if (!verification) {
+      return c.json({ projectId, phaseId, verification: null });
+    }
+    
+    return c.json({
+      projectId,
+      phaseId,
+      verification: {
+        status: verification.status ?? verification.overallStatus ?? "unknown",
+        summary: verification.summary,
+        gaps: verification.gaps ?? [],
+        verifiedAt: verification.verifiedAt,
+        overridden: verification.overridden ?? false,
+        overrideNote: verification.overrideNote,
+      }
+    });
+  });
+
+  // Retrospective for a completed/abandoned project
+  app.get("/api/planning/projects/:id/retrospective", (c) => {
+    if (!orch) return c.json({ error: "Planning not enabled" }, 503);
+    
+    const projectId = c.req.param("id");
+    const project = orch.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    
+    if (project.state !== "complete" && project.state !== "abandoned") {
+      return c.json({ 
+        projectId,
+        retrospective: null,
+        reason: "Project is in '" + project.state + "' state — retrospective available after completion or abandonment"
+      });
+    }
+    
+    try {
+      const retro = orch.generateRetrospective(projectId);
+      return c.json({
+        projectId,
+        retrospective: {
+          goal: retro.goal,
+          outcome: retro.outcome,
+          phases: retro.phases,
+          patterns: retro.patterns,
+          generatedAt: retro.generatedAt,
+        }
+      });
+    } catch (error) {
+      log.error("Failed to generate retrospective", { projectId, error });
+      return c.json({ error: "Failed to generate retrospective" }, 500);
+    }
+  });
+
   log.debug("planning routes mounted");
   return app;
 }

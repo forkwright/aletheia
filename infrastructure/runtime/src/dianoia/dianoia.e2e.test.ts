@@ -581,10 +581,10 @@ describe("S5 End-to-End Integration Test", () => {
       { name: "Test requirement", tier: "v1" },
     ]);
 
-    // Single category should fail default minimum (2)
-    expect(requirementsOrch.validateCoverage(project.id, ["TEST"])).toBe(false);
+    // Single category should pass with default minimum (1)
+    expect(requirementsOrch.validateCoverage(project.id, ["TEST"])).toBe(true);
 
-    // Should pass with minimum set to 1
-    expect(requirementsOrch.validateCoverage(project.id, ["TEST"], 1)).toBe(true);
+    // Should fail with minimum set to 2
+    expect(requirementsOrch.validateCoverage(project.id, ["TEST"], 2)).toBe(false);
   });
 });

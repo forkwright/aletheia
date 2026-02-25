@@ -42,7 +42,7 @@ export function classifyTask(task: string): TaskClassification {
   }
   
   // Code review indicators
-  if (taskLower.match(/\b(review|check|analyze|audit|inspect|validate)\b.*\b(code|pr|pull request|diff|changes|file)\b/)) {
+  if (taskLower.match(/\b(review|check|analyze|audit|inspect|validate)\b.*\b(code|pr|pull request|diff|changes|file|implementation|module|component)\b/)) {
     return { type: "code-review", complexity: "low", requiresTooling: false, readOnly: true };
   }
   
@@ -111,10 +111,10 @@ export function selectRoleForTask(task: string): "coder" | "reviewer" | "researc
 
 // Sub-agent result schema matching the existing interface
 const SubAgentResultSchema = z.object({
-  role: z.string(),
-  task: z.string(),
+  role: z.string().min(1, "Role must not be empty"),
+  task: z.string().min(1, "Task must not be empty"),
   status: z.enum(["success", "partial", "failed"]),
-  summary: z.string(),
+  summary: z.string().min(1, "Summary must not be empty"),
   details: z.record(z.unknown()),
   filesChanged: z.array(z.string()).optional(),
   issues: z.array(z.object({
@@ -315,11 +315,138 @@ export async function parseSubAgentResponse(
   return extractStructured(responseText, SubAgentResultSchema, retryCallback);
 }
 
-// Note: instructor-js (@instructor-ai/instructor) is installed but not used.
-// It's designed for OpenAI's function calling API, not Anthropic's tool_use.
-// Our approach: manual JSON extraction + Zod validation + retry-with-error-feedback
-// is functionally equivalent and works with any provider.
-// EXEC-02 requirement is satisfied by extractStructured() + Zod schemas above.
+// --- Rich role mapping with confidence and reasoning ---
+
+export interface RoleMapping {
+  role: "coder" | "reviewer" | "researcher" | "explorer" | "runner";
+  confidence: number;
+  reasoning: string;
+}
+
+/**
+ * Map a task description to an appropriate role with confidence score and reasoning.
+ * Richer API than selectRoleForTask — includes why the mapping was chosen and
+ * how confident we are. Supports optional role constraints for fallback scenarios.
+ */
+export function mapTaskToRole(task: string, availableRoles?: string[]): RoleMapping {
+  const classification = classifyTask(task);
+  const preferredRole = taskTypeToRole(classification);
+
+  // If no constraints or preferred role is available, use it directly
+  if (!availableRoles || availableRoles.includes(preferredRole)) {
+    return {
+      role: preferredRole,
+      confidence: classification.complexity === "low" ? 0.95 : classification.complexity === "medium" ? 0.85 : 0.75,
+      reasoning: `Task classified as ${classification.type} (${classification.complexity} complexity) → ${preferredRole}`,
+    };
+  }
+
+  // Fallback: pick best available role
+  const fallbackOrder: Array<"coder" | "reviewer" | "researcher" | "explorer" | "runner"> = [
+    "coder", "reviewer", "researcher", "explorer", "runner",
+  ];
+  const fallbackRole = fallbackOrder.find((r) => availableRoles.includes(r)) ?? "coder";
+
+  return {
+    role: fallbackRole as RoleMapping["role"],
+    confidence: 0.5,
+    reasoning: `Preferred ${preferredRole} unavailable; fallback to ${fallbackRole} from available roles [${availableRoles.join(", ")}]`,
+  };
+}
+
+// --- StructuredExtractor class API ---
+
+export interface ExtractionResult<T = unknown> {
+  success: boolean;
+  data: T;
+  validationErrors?: string[];
+  rawJson?: string;
+}
+
+/**
+ * Class-based structured extraction for integration with execution engine.
+ * Wraps extractStructured() and extractJsonBlock() with validation feedback generation.
+ */
+export class StructuredExtractor {
+  /**
+   * Extract and validate structured data from a response string.
+   * Returns success/failure with typed data and validation errors.
+   */
+  async extractStructuredResult<T>(
+    responseText: string,
+    schema: z.ZodSchema<T>,
+    retryCallback?: (errorMessage: string) => Promise<string>,
+  ): Promise<ExtractionResult<T>> {
+    // Try extraction
+    const jsonText = extractJsonBlock(responseText);
+    if (!jsonText) {
+      return {
+        success: false,
+        data: undefined as unknown as T,
+        validationErrors: ["No JSON found in response text"],
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(jsonText);
+      const validated = schema.parse(parsed);
+      return { success: true, data: validated, rawJson: jsonText };
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        const errors = err.issues.map((issue) => {
+          const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+          return `${path}${issue.message}`;
+        });
+
+        // Attempt retry if callback provided
+        if (retryCallback) {
+          const feedback = this.createValidationFeedback(errors, "retry");
+          try {
+            const retryText = await retryCallback(feedback);
+            const retryJson = extractJsonBlock(retryText);
+            if (retryJson) {
+              const retryParsed = JSON.parse(retryJson);
+              const retryValidated = schema.parse(retryParsed);
+              return { success: true, data: retryValidated, rawJson: retryJson };
+            }
+          } catch {
+            // Retry also failed
+          }
+        }
+
+        return {
+          success: false,
+          data: undefined as unknown as T,
+          validationErrors: errors,
+          rawJson: jsonText,
+        };
+      }
+
+      return {
+        success: false,
+        data: undefined as unknown as T,
+        validationErrors: [err instanceof Error ? err.message : String(err)],
+        rawJson: jsonText,
+      };
+    }
+  }
+
+  /**
+   * Create actionable validation feedback for retry prompts.
+   */
+  createValidationFeedback(errors: string[], originalTask: string): string {
+    const lines = [
+      "❌ **Validation Failed**",
+      "",
+      "Your response had the following validation errors:",
+      "",
+      ...errors.map((e) => `- ${e}`),
+      "",
+      `Please fix these issues and respond with valid JSON for: ${originalTask}`,
+    ];
+    return lines.join("\n");
+  }
+}
 
 // Export schemas for testing and external use
 export const schemas = {

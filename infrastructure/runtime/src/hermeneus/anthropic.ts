@@ -231,12 +231,16 @@ export class AnthropicProvider {
         const status = error.status;
         log.error(`Anthropic API ${status}: ${error.message}`);
 
+        const isExpiredToken = status === 401
+          && error.message.includes("OAuth token has expired");
+
         const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
           : status === 529 ? "PROVIDER_OVERLOADED" as const
+          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
           : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
           : "PROVIDER_INVALID_RESPONSE" as const;
 
-        const recoverable = status === 429 || status === 529 || status >= 500;
+        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
         throw new ProviderError(
           `Anthropic API error: ${status} ${error.message}`,
           {
@@ -286,11 +290,15 @@ export class AnthropicProvider {
       if (error instanceof Anthropic.APIError) {
         const status = error.status;
         log.error(`Anthropic API ${status}: ${error.message}`);
+        const isExpiredToken = status === 401
+          && error.message.includes("OAuth token has expired");
+
         const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
           : status === 529 ? "PROVIDER_OVERLOADED" as const
+          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
           : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
           : "PROVIDER_INVALID_RESPONSE" as const;
-        const recoverable = status === 429 || status === 529 || status >= 500;
+        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
         throw new ProviderError(`Anthropic API error: ${status} ${error.message}`, {
           cause: error, code, recoverable,
           ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),

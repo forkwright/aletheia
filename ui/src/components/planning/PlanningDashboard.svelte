@@ -4,9 +4,15 @@
   import RoadmapView from "./RoadmapView.svelte";
   import ExecutionStatus from "./ExecutionStatus.svelte";
   import DiscussionPanel from "./DiscussionPanel.svelte";
+  import VerificationPanel from "./VerificationPanel.svelte";
+  import CheckpointApproval from "./CheckpointApproval.svelte";
+  import RetrospectiveView from "./RetrospectiveView.svelte";
+  import TimelineView from "./TimelineView.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
+  import { onGlobalEvent } from "../../lib/events.svelte";
+  import { authFetch } from "./api";
 
   // Props from parent component (ChatView)
   let { projectId: explicitProjectId, onClose }: {
@@ -47,7 +53,9 @@
     dependencies: string[];
     requirements: string[];
     state: "pending" | "active" | "complete" | "blocked";
+    status?: string;
     order: number;
+    verificationResult?: unknown;
   }
 
   interface ExecutionPlan {
@@ -83,7 +91,7 @@
       
       if (!targetProjectId) {
         // First, get the active project for this agent
-        const projectsRes = await fetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId!)}`);
+        const projectsRes = await authFetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId!)}`);
         if (!projectsRes.ok) {
           throw new Error("Failed to load projects");
         }
@@ -104,7 +112,7 @@
 
       // Load full project data
       const projectId = targetProjectId;
-      const projectRes = await fetch(`/api/planning/projects/${projectId}`);
+      const projectRes = await authFetch(`/api/planning/projects/${projectId}`);
       if (!projectRes.ok) {
         throw new Error("Failed to load project details");
       }
@@ -116,7 +124,7 @@
 
       // Load roadmap (phases)
       try {
-        const roadmapRes = await fetch(`/api/planning/projects/${projectId}/roadmap`);
+        const roadmapRes = await authFetch(`/api/planning/projects/${projectId}/roadmap`);
         if (roadmapRes.ok) {
           const roadmapData = await roadmapRes.json();
           phases = roadmapData.phases || [];
@@ -128,7 +136,7 @@
 
       // Load execution status
       try {
-        const executionRes = await fetch(`/api/planning/projects/${projectId}/execution`);
+        const executionRes = await authFetch(`/api/planning/projects/${projectId}/execution`);
         if (executionRes.ok) {
           const executionData = await executionRes.json();
           executionPlans = executionData.plans || [];
@@ -147,7 +155,7 @@
 
   async function loadRequirements(projectId: string): Promise<Requirement[]> {
     try {
-      const res = await fetch(`/api/planning/projects/${projectId}/requirements`);
+      const res = await authFetch(`/api/planning/projects/${projectId}/requirements`);
       if (!res.ok) return [];
       const data = await res.json() as { requirements?: Array<{
         reqId: string; description: string; tier: string; rationale?: string; category: string;
@@ -172,15 +180,22 @@
     }
   });
 
-  // Adaptive polling: 5s during execution/verifying, 30s otherwise
+  // SSE-driven refresh: listen for planning events and reload
   $effect(() => {
     if (!project) return;
     
-    const isActive = project.state === "executing" || project.state === "verifying";
-    const pollInterval = isActive ? 5000 : 30000;
+    const unsub = onGlobalEvent((event, _data) => {
+      if (event.startsWith("planning:")) {
+        loadProject();
+      }
+    });
     
+    // Fallback polling: 10s during execution/verifying, 60s otherwise
+    const isActive = project.state === "executing" || project.state === "verifying";
+    const pollInterval = isActive ? 10000 : 60000;
     const interval = setInterval(loadProject, pollInterval);
-    return () => clearInterval(interval);
+    
+    return () => { unsub(); clearInterval(interval); };
   });
 
   function stateLabel(state: string): string {
@@ -252,10 +267,34 @@
           </div>
         {/if}
 
+        <!-- Timeline (full width, always visible when phases exist) -->
+        {#if phases.length > 0}
+          <div class="dashboard-section full-width">
+            <TimelineView projectId={project.id} />
+          </div>
+        {/if}
+
         <!-- Execution Status -->
         {#if executionPlans.length > 0}
           <div class="dashboard-section">
             <ExecutionStatus plans={executionPlans} projectState={project.state} />
+          </div>
+        {/if}
+
+        <!-- Verification (visible during verifying state or when any phase has results) -->
+        {#if project.state === "verifying" || phases.some(p => p.verificationResult)}
+          {@const verifyPhase = phases.find(p => p.verificationResult) ?? phases.find(p => p.status === "complete") ?? phases[0]}
+          {#if verifyPhase}
+            <div class="dashboard-section">
+              <VerificationPanel projectId={project.id} phaseId={verifyPhase.id} phaseName={verifyPhase.name} />
+            </div>
+          {/if}
+        {/if}
+
+        <!-- Checkpoints (visible when project has any checkpoints or is blocked) -->
+        {#if project.state === "blocked" || project.state === "executing" || project.state === "verifying"}
+          <div class="dashboard-section full-width">
+            <CheckpointApproval projectId={project.id} />
           </div>
         {/if}
 
@@ -267,6 +306,13 @@
               <DiscussionPanel projectId={project.id} phaseId={activePhase.id} />
             </div>
           {/if}
+        {/if}
+
+        <!-- Retrospective (visible when project is complete or abandoned) -->
+        {#if project.state === "complete" || project.state === "abandoned"}
+          <div class="dashboard-section full-width">
+            <RetrospectiveView projectId={project.id} />
+          </div>
         {/if}
       </div>
     </div>

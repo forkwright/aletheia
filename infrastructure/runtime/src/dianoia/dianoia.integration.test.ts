@@ -140,10 +140,13 @@ describe("Dianoia integration — full pipeline", () => {
     const afterRequirements = store.getProjectOrThrow(project.id);
     expect(afterRequirements.state).toBe("roadmap");
 
-    // Step 5: completeRoadmap transitions roadmap → phase-planning
+    // Step 5: completeRoadmap transitions roadmap → discussing
     orchestrator.completeRoadmap(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
     const afterRoadmap = store.getProjectOrThrow(project.id);
-    expect(afterRoadmap.state).toBe("phase-planning");
+    expect(afterRoadmap.state).toBe("discussing");
+
+    // Step 5b: discussing → phase-planning (DISCUSSION_COMPLETE)
+    store.updateProjectState(project.id, "phase-planning");
 
     // Step 6: create a test phase so executePhase has something to run
     const phase = store.createPhase({
@@ -203,6 +206,8 @@ describe("Dianoia integration — full pipeline", () => {
     orchestrator.skipResearch(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
     orchestrator.completeRequirements(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
     orchestrator.completeRoadmap(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
+    // discussing → phase-planning (skip discussion for test)
+    store.updateProjectState(project.id, "phase-planning");
 
     store.createPhase({
       projectId: project.id,
@@ -230,7 +235,7 @@ describe("Dianoia integration — full pipeline", () => {
 
     // Drive to verifying and then block
     orchestrator.advanceToVerification(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
-    orchestrator.blockOnVerificationFailure(project.id);
+    orchestrator.blockOnVerificationFailure(project.id, MOCK_NOUS_ID, MOCK_SESSION_ID);
 
     const blocked = store.getProjectOrThrow(project.id);
     expect(blocked.state).toBe("blocked");

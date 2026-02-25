@@ -108,4 +108,46 @@ describe("AnthropicProvider", () => {
       messages: [{ role: "user", content: "hi" }],
     })).rejects.toThrow("Network failure");
   });
+
+  it("maps expired OAuth 401 to PROVIDER_TOKEN_EXPIRED (recoverable: true)", async () => {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const provider = new AnthropicProvider({ authToken: "sk-ant-oat01-test" });
+
+    const expiredErr = new (Anthropic as unknown as { APIError: new (s: number, m: string) => Error }).APIError(
+      401,
+      "OAuth token has expired. Please obtain a new token or refresh your existing token.",
+    );
+    (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
+      .client.messages.create = vi.fn().mockRejectedValue(expiredErr);
+
+    const err = await provider.complete({
+      model: "claude-sonnet-4-6",
+      system: "test",
+      messages: [{ role: "user", content: "hi" }],
+    }).catch((e) => e);
+
+    expect(err.code).toBe("PROVIDER_TOKEN_EXPIRED");
+    expect(err.recoverable).toBe(true);
+  });
+
+  it("maps invalid-key 401 to PROVIDER_AUTH_FAILED (recoverable: false)", async () => {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const provider = new AnthropicProvider({ apiKey: "sk-bad-key" });
+
+    const authErr = new (Anthropic as unknown as { APIError: new (s: number, m: string) => Error }).APIError(
+      401,
+      "Invalid API key",
+    );
+    (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
+      .client.messages.create = vi.fn().mockRejectedValue(authErr);
+
+    const err = await provider.complete({
+      model: "claude-sonnet-4-6",
+      system: "test",
+      messages: [{ role: "user", content: "hi" }],
+    }).catch((e) => e);
+
+    expect(err.code).toBe("PROVIDER_AUTH_FAILED");
+    expect(err.recoverable).toBe(false);
+  });
 });
