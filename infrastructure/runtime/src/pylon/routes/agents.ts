@@ -6,7 +6,7 @@ import { createLogger } from "../../koina/logger.js";
 import { tryReloadConfig } from "../../taxis/loader.js";
 import { eventBus } from "../../koina/event-bus.js";
 import { paths } from "../../taxis/paths.js";
-import { scaffoldAgent } from "../../taxis/scaffold.js";
+import { scaffoldAgent, type UserProfile } from "../../taxis/scaffold.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon");
@@ -78,7 +78,7 @@ export function agentRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   app.post("/api/agents", async (c) => {
     try {
-      const body = await c.req.json<{ id: string; name: string; emoji?: string }>();
+      const body = await c.req.json<{ id: string; name: string; emoji?: string; userProfile?: UserProfile }>();
       if (!body.id || !body.name) {
         return c.json({ error: "id and name are required" }, 400);
       }
@@ -89,6 +89,7 @@ export function agentRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         configPath: paths.configFile(),
         templateDir: join(paths.nous, "_example"),
         ...(body.emoji ? { emoji: body.emoji } : {}),
+        ...(body.userProfile ? { userProfile: body.userProfile } : {}),
       };
       const result = scaffoldAgent(scaffoldOpts);
 

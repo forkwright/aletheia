@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Bootstrap token audit — measures per-section token usage for a nous
 import { loadConfig, resolveNous, resolveWorkspace } from "../taxis/loader.js";
 import { assembleBootstrap } from "./bootstrap.js";

@@ -39,6 +39,7 @@ function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   );
   const settled = current.catch(() => {});
   sessionLocks.set(key, settled);
+  // eslint-disable-next-line promise/catch-or-return -- fire-and-forget cleanup; lock chain already catches above
   settled.then(() => {
     if (sessionLocks.get(key) === settled) sessionLocks.delete(key);
   });

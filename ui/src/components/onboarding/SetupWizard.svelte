@@ -1,17 +1,29 @@
 <script lang="ts">
-  import { createAgent } from "../../lib/api";
+  import { createAgent, setupAccount, type UserProfile } from "../../lib/api";
   import { getBrandName } from "../../stores/branding.svelte";
 
   let { onComplete }: { onComplete: () => void } = $props();
 
-  type Step = "credentials" | "agent" | "ready";
+  type Step = "credentials" | "account" | "profile" | "agent" | "ready";
+
+  const STEPS: Step[] = ["credentials", "account", "profile", "agent", "ready"];
 
   let step = $state<Step>("credentials");
   let credError = $state("");
   let credChecking = $state(false);
-  let credFound = $state(false);
   let manualKey = $state("");
   let showManual = $state(false);
+
+  let accountUsername = $state("");
+  let accountPassword = $state("");
+  let accountConfirm = $state("");
+  let accountError = $state("");
+  let accountSaving = $state(false);
+
+  let profileName = $state("");
+  let profileRole = $state("");
+  let profileStyle = $state<"direct" | "balanced" | "detailed">("balanced");
+  let profileNotes = $state("");
 
   let agentName = $state("");
   let agentEmoji = $state("");
@@ -25,6 +37,10 @@
     return id || "agent";
   }
 
+  function stepIndex(s: Step): number {
+    return STEPS.indexOf(s);
+  }
+
   async function autoDetectCredentials() {
     credChecking = true;
     credError = "";
@@ -32,8 +48,7 @@
       const res = await fetch("/api/setup/credentials", { method: "POST" });
       const data = await res.json() as { success: boolean; error?: string };
       if (data.success) {
-        credFound = true;
-        step = "agent";
+        step = "account";
       } else {
         credError = data.error ?? "Auto-detect failed";
         showManual = true;
@@ -58,8 +73,7 @@
       });
       const data = await res.json() as { success: boolean; error?: string };
       if (data.success) {
-        credFound = true;
-        step = "agent";
+        step = "account";
       } else {
         credError = data.error ?? "Invalid key";
       }
@@ -70,14 +84,43 @@
     }
   }
 
+  async function submitAccount() {
+    if (!accountUsername.trim() || !accountPassword) return;
+    if (accountPassword !== accountConfirm) {
+      accountError = "Passwords don't match";
+      return;
+    }
+    if (accountPassword.length < 8) {
+      accountError = "Password must be at least 8 characters";
+      return;
+    }
+    accountSaving = true;
+    accountError = "";
+    try {
+      await setupAccount(accountUsername.trim(), accountPassword);
+      step = "profile";
+    } catch (err) {
+      accountError = err instanceof Error ? err.message : String(err);
+    } finally {
+      accountSaving = false;
+    }
+  }
+
   async function createMyAgent() {
     if (!agentName.trim()) return;
     agentCreating = true;
     agentError = "";
     const id = deriveId(agentName);
     const emoji = agentEmoji.trim() || "🤖";
+    const userProfile: UserProfile | undefined = profileName.trim() ? {
+      name: profileName.trim(),
+      role: profileRole.trim() || "Operator",
+      style: profileStyle,
+      ...(profileNotes.trim() ? { notes: profileNotes.trim() } : {}),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    } : undefined;
     try {
-      await createAgent(id, agentName.trim(), emoji);
+      await createAgent(id, agentName.trim(), emoji, userProfile);
       const completeRes = await fetch("/api/setup/complete", { method: "POST" });
       if (!completeRes.ok) {
         const data = await completeRes.json().catch(() => ({})) as { error?: string };
@@ -96,23 +139,28 @@
     }
   }
 
-  function handleAgentKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" && agentName.trim() && !agentCreating) createMyAgent();
-  }
-
   function handleManualKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && manualKey.trim() && !credChecking) submitManualKey();
+  }
+
+  function handleAccountKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" && accountUsername.trim() && accountPassword && accountConfirm && !accountSaving) submitAccount();
+  }
+
+  function handleAgentKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" && agentName.trim() && !agentCreating) createMyAgent();
   }
 </script>
 
 <div class="wizard">
   <div class="wizard-card">
     <div class="progress">
-      {#each (["credentials", "agent", "ready"] as Step[]) as s, i}
-        <div class="dot" class:active={step === s} class:done={
-          (step === "agent" && i === 0) ||
-          (step === "ready" && i < 2)
-        }></div>
+      {#each STEPS as s, i}
+        <div
+          class="dot"
+          class:active={step === s}
+          class:done={stepIndex(step) > i}
+        ></div>
       {/each}
     </div>
 
@@ -130,7 +178,7 @@
 
       {#if showManual}
         <div class="manual-section">
-          <p class="manual-label">Enter your API key manually:</p>
+          <p class="manual-label">Enter your API key or OAuth token manually:</p>
           <div class="key-row" onkeydown={handleManualKeydown} role="group">
             <input
               type="password"
@@ -160,11 +208,117 @@
         rel="noopener noreferrer"
       >Get an API key →</a>
 
+    {:else if step === "account"}
+      <h1 class="title">Create your account</h1>
+      <p class="subtitle">Set a username and password to secure your instance.</p>
+
+      <div class="form" onkeydown={handleAccountKeydown} role="group">
+        <label class="field">
+          <span class="field-label">Username</span>
+          <input
+            type="text"
+            class="field-input"
+            placeholder="e.g. cody"
+            bind:value={accountUsername}
+            disabled={accountSaving}
+            autofocus
+            autocomplete="username"
+          />
+        </label>
+        <label class="field">
+          <span class="field-label">Password</span>
+          <input
+            type="password"
+            class="field-input"
+            placeholder="At least 8 characters"
+            bind:value={accountPassword}
+            disabled={accountSaving}
+            autocomplete="new-password"
+          />
+        </label>
+        <label class="field">
+          <span class="field-label">Confirm password</span>
+          <input
+            type="password"
+            class="field-input"
+            placeholder="Repeat password"
+            bind:value={accountConfirm}
+            disabled={accountSaving}
+            autocomplete="new-password"
+          />
+        </label>
+        {#if accountError}
+          <p class="error">{accountError}</p>
+        {/if}
+        <button
+          class="btn-primary"
+          onclick={submitAccount}
+          disabled={accountSaving || !accountUsername.trim() || !accountPassword || !accountConfirm}
+        >
+          {accountSaving ? "Saving..." : "Continue"}
+        </button>
+      </div>
+
+    {:else if step === "profile"}
+      <h1 class="title">About you</h1>
+      <p class="subtitle">Help your agent calibrate from the start. You can skip anything.</p>
+
+      <div class="form">
+        <label class="field">
+          <span class="field-label">Preferred name</span>
+          <input
+            type="text"
+            class="field-input"
+            placeholder="How should your agent address you?"
+            bind:value={profileName}
+            autofocus
+          />
+        </label>
+        <label class="field">
+          <span class="field-label">Role / title</span>
+          <input
+            type="text"
+            class="field-input"
+            placeholder="e.g. Healthcare analytics engineer"
+            bind:value={profileRole}
+          />
+        </label>
+        <fieldset class="field style-field">
+          <legend class="field-label">Response style</legend>
+          <div class="style-options">
+            {#each ([
+              { value: "direct", label: "Direct", desc: "Answer first, terse, skip preamble" },
+              { value: "balanced", label: "Balanced", desc: "Answer first with brief context" },
+              { value: "detailed", label: "Detailed", desc: "Full explanations, explore implications" },
+            ] as { value: "direct" | "balanced" | "detailed"; label: string; desc: string }[]) as opt}
+              <label class="style-option" class:selected={profileStyle === opt.value}>
+                <input type="radio" name="style" value={opt.value} bind:group={profileStyle} />
+                <span class="style-name">{opt.label}</span>
+                <span class="style-desc">{opt.desc}</span>
+              </label>
+            {/each}
+          </div>
+        </fieldset>
+        <label class="field">
+          <span class="field-label">Anything else? <span class="optional">(optional)</span></span>
+          <textarea
+            class="field-input field-textarea"
+            placeholder="Constraints, preferences, or context for your agent..."
+            bind:value={profileNotes}
+            rows={3}
+          ></textarea>
+        </label>
+        <button class="btn-primary" onclick={() => { step = "agent"; }}>
+          Continue
+        </button>
+        <button class="btn-link" onclick={() => { step = "agent"; }}>Skip for now</button>
+      </div>
+
     {:else if step === "agent"}
       <h1 class="title">Name your agent</h1>
-      <p class="subtitle">Claude will calibrate to your domain and style in your first conversation.</p>
+      <p class="subtitle">Give your agent a name and personality.</p>
 
-      <div class="agent-form" onkeydown={handleAgentKeydown} role="group">
+      <div class="form" onkeydown={handleAgentKeydown} role="group">
         <label class="field">
           <span class="field-label">Name</span>
           <input
@@ -177,7 +331,7 @@
           />
         </label>
         <label class="field">
-          <span class="field-label">Emoji (optional)</span>
+          <span class="field-label">Emoji <span class="optional">(optional)</span></span>
           <input
             type="text"
             class="field-input emoji-input"
@@ -201,7 +355,11 @@
     {:else}
       <div class="ready-emoji">{createdEmoji}</div>
       <h1 class="title">{createdName} is ready</h1>
-      <p class="subtitle">Your first conversation will calibrate {createdName} to how you work.</p>
+      <p class="subtitle">
+        {profileName.trim()
+          ? `${createdName} knows who you are. Your first conversation will refine the rest.`
+          : `Your first conversation will calibrate ${createdName} to how you work.`}
+      </p>
       <button class="btn-primary" onclick={onComplete}>Start your first conversation</button>
     {/if}
   </div>
@@ -342,7 +500,7 @@
   .key-link:hover {
     color: var(--accent);
   }
-  .agent-form {
+  .form {
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -361,6 +519,11 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
+  .optional {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
   .field-input {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -369,14 +532,58 @@
     padding: 10px 12px;
     font-size: var(--text-base);
     width: 100%;
+    box-sizing: border-box;
   }
   .field-input:focus {
     outline: none;
     border-color: var(--accent);
   }
+  .field-textarea {
+    resize: vertical;
+    font-family: inherit;
+  }
   .emoji-input {
     font-size: var(--text-xl);
     max-width: 80px;
+  }
+  .style-field {
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+  .style-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .style-option {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: border-color var(--transition-quick);
+  }
+  .style-option input[type="radio"] {
+    flex-shrink: 0;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .style-option.selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  .style-name {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+  .style-desc {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
   }
   .ready-emoji {
     font-size: 48px;

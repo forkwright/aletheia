@@ -70,10 +70,25 @@ export async function fetchAgents(): Promise<Agent[]> {
   return data.agents;
 }
 
-export async function createAgent(id: string, name: string, emoji?: string): Promise<{ ok: boolean; id: string }> {
+export interface UserProfile {
+  name: string;
+  role: string;
+  style: "direct" | "balanced" | "detailed";
+  notes?: string;
+  timezone?: string;
+}
+
+export async function createAgent(id: string, name: string, emoji?: string, userProfile?: UserProfile): Promise<{ ok: boolean; id: string }> {
   return fetchJson("/api/agents", {
     method: "POST",
-    body: JSON.stringify({ id, name, ...(emoji ? { emoji } : {}) }),
+    body: JSON.stringify({ id, name, ...(emoji ? { emoji } : {}), ...(userProfile ? { userProfile } : {}) }),
+  });
+}
+
+export async function setupAccount(username: string, password: string): Promise<void> {
+  await fetchJson("/api/setup/account", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
   });
 }
 

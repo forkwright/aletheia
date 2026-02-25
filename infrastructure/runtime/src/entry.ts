@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable no-console */
 // CLI entry point
 import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";

@@ -399,6 +399,7 @@ function handleEnvelope(
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
   // while different nous/sessions process concurrently
   activeTurns.set(accountId, accountTurns + 1);
+  // eslint-disable-next-line promise/catch-or-return -- intentional fire-and-forget; withTurnAsync handles internal errors
   withTurnAsync(
     { channel: "signal", sessionKey, sender: envelope.sourceName ?? sender },
     () => preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb),
