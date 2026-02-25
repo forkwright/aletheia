@@ -249,7 +249,7 @@ export class RetrospectiveGenerator {
 
     // Pattern: Phases with no discussion (fast-tracked)
     const noDiscussion = phaseRetros.filter((p) => p.discussionCount === 0);
-    if (noDiscussion.length > 0 && noDiscussion.some((p) => p.status === "failed")) {
+    if (noDiscussion.some((p) => p.status === "failed")) {
       patterns.push({
         type: "antipattern",
         summary: "Phases without discussion had higher failure rate",

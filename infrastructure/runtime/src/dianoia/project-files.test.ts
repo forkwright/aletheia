@@ -78,7 +78,7 @@ describe("Atomic writes", () => {
     expect(existsSync(filePath)).toBe(true);
     
     // Verify content is not empty
-    const fs = require("fs");
+    const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
     expect(content.trim().length).toBeGreaterThan(0);
     expect(content).toContain("Test Project");
@@ -93,7 +93,7 @@ describe("Atomic writes", () => {
     const filePath = join(workspaceRoot, ".dianoia", "projects", projectId, "REQUIREMENTS.md");
     expect(existsSync(filePath)).toBe(true);
     
-    const fs = require("fs");
+    const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
     expect(content.trim().length).toBeGreaterThan(0);
     expect(content).toContain("AUTH-01");
@@ -108,7 +108,7 @@ describe("Atomic writes", () => {
     const filePath = join(workspaceRoot, ".dianoia", "projects", projectId, "RESEARCH.md");
     expect(existsSync(filePath)).toBe(true);
     
-    const fs = require("fs");
+    const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
     expect(content.trim().length).toBeGreaterThan(0);
     expect(content).toContain("stack");
@@ -124,7 +124,7 @@ describe("Atomic writes", () => {
     const projectDir = join(readOnlyDir, ".dianoia", "projects", project.id);
     mkdirSync(projectDir, { recursive: true });
     // Make the directory read-only to prevent writes
-    const { chmodSync } = require("fs");
+    const { chmodSync } = require("node:fs");
     chmodSync(projectDir, 0o444);
     
     try {
