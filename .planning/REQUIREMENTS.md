@@ -19,11 +19,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **INTG-01**: Distillation locking uses SQLite-backed lock table with crash recovery (startup scan clears locks older than 10 minutes)
 - [x] **INTG-02**: Distillation mutations wrapped in explicit SQLite transaction with rollback on any failure
-- [ ] **INTG-03**: Workspace flush has retry queue with configurable attempts and escalation via `memory:health_degraded` event after N consecutive failures
-- [ ] **INTG-04**: Workspace flush produces receipts (success/failure logged with agent ID, timestamp, fact count)
+- [x] **INTG-03**: Workspace flush has retry queue with configurable attempts and escalation via `memory:health_degraded` event after N consecutive failures
+- [x] **INTG-04**: Workspace flush produces receipts (success/failure logged with agent ID, timestamp, fact count)
 - [x] **INTG-05**: Orphaned Qdrant entries (source:after_turn from dead code paths) cleaned up in bulk
 - [x] **INTG-06**: All Qdrant write paths enforce required metadata (session_id, source, agent_id) — no orphan-producing paths remain
-- [ ] **INTG-07**: Dead code audit removes all unused memory-related code paths, imports, and unreachable branches
+- [x] **INTG-07**: Dead code audit removes all unused memory-related code paths, imports, and unreachable branches
 
 ### Graph Layer
 
@@ -99,11 +99,11 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | TEST-05 | Phase 1 | Complete |
 | INTG-01 | Phase 2 | Complete |
 | INTG-02 | Phase 2 | Complete |
-| INTG-03 | Phase 2 | Pending |
-| INTG-04 | Phase 2 | Pending |
+| INTG-03 | Phase 2 | Complete |
+| INTG-04 | Phase 2 | Complete |
 | INTG-05 | Phase 2 | Complete |
 | INTG-06 | Phase 2 | Complete |
-| INTG-07 | Phase 2 | Pending |
+| INTG-07 | Phase 2 | Complete |
 | GRPH-01 | Phase 3 | Pending |
 | GRPH-02 | Phase 3 | Pending |
 | GRPH-03 | Phase 3 | Pending |

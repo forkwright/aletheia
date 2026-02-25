@@ -13,7 +13,7 @@ Six phases that move from broken to production-grade: establish measurable groun
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Test Infrastructure** - Ground-truth corpus and end-to-end test coverage for all memory paths (gap closure in progress)
-- [ ] **Phase 2: Data Integrity** - Crash-safe locking, transactional rollback, workspace flush reliability, orphan cleanup
+- [x] **Phase 2: Data Integrity** - Crash-safe locking, transactional rollback, workspace flush reliability, orphan cleanup (completed 2026-02-25)
 - [ ] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
 - [ ] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False
 - [ ] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements
@@ -49,7 +49,7 @@ Plans:
   3. Workspace flush failures emit `memory:health_degraded` after N consecutive failures and are visible in logs with agent ID, timestamp, and fact count
   4. All 607+ orphaned Qdrant entries are removed and no new orphan-producing write paths remain — every write enforces session_id, source, and agent_id
   5. Dead code audit is complete — no unused imports, unreachable branches, or bypassed paths remain in memory modules
-**Plans:** 2/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — Crash-safe distillation locking (SQLite lock table) and atomic transaction rollback
@@ -114,7 +114,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 3/4 | Gap closure | - |
-| 2. Data Integrity | 2/4 | In Progress|  |
+| 2. Data Integrity | 4/4 | Complete   | 2026-02-25 |
 | 3. Graph Extraction Overhaul | 0/TBD | Not started | - |
 | 4. Extraction Pipeline Completion | 0/TBD | Not started | - |
 | 5. Recall Quality | 0/TBD | Not started | - |
