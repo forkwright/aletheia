@@ -92,6 +92,12 @@ COLLECTION_NAME = "aletheia_memories"
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request):
+    # NOTE: metadata enforcement (session_id, agent_id) is deferred for this route.
+    # Reason: /add is the Mem0 path. Traffic analysis is needed to confirm whether
+    # this route is still used in production before enforcing required fields.
+    # If /add is still active, it may produce orphans missing required metadata.
+    # See STATE.md blocker: "need traffic trace to confirm /add route usage".
+    # Enforcement is tracked in Phase 2 data integrity work.
     mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id}
     if req.agent_id:
@@ -288,7 +294,21 @@ async def add_batch(req: AddBatchRequest, request: Request):
 
     Same as /add_direct but batched for efficiency. Used by distillation
     and reflection pipelines to flush extracted facts.
+
+    Requires agent_id and session_id — requests missing either are rejected
+    with 400 to prevent creation of orphaned Qdrant entries.
+
+    NOTE: The aletheia.ts memory flush path (addMemories) does not currently
+    pass session_id. That caller must be updated to include session_id before
+    this endpoint is safe to call from that path.
     """
+    missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Required field(s) missing: {', '.join(missing)}",
+        )
+
     mem = _get_memory(request)
     texts = [t.strip() for t in req.texts if t.strip()]
     if not texts:
@@ -2220,7 +2240,17 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
     Bypasses Mem0's LLM extraction entirely. The caller is responsible
     for fact quality — this endpoint embeds and stores as-is.
     Includes contradiction detection (Phase 5).
+
+    Requires agent_id and session_id — requests missing either are rejected
+    with 400 to prevent creation of orphaned Qdrant entries.
     """
+    missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Required field(s) missing: {', '.join(missing)}",
+        )
+
     mem = _get_memory(request)
     text = req.text.strip()
     if not text:
