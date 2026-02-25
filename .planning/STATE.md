@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 2 — Data Integrity
+**Current focus:** Phase 2.1 — Fix addMemories Session Wiring
 
 ## Current Position
 
-Phase: 2 of 6 (Data Integrity)
-Plan: 4 of 4 in current phase (02-01, 02-02, 02-03, and 02-04 complete — Phase 2 done)
-Status: Phase 2 complete
-Last activity: 2026-02-25 — Plan 02-04 complete; dead code audit, removed spurious async from shouldDistill and stale imports
+Phase: 2.1 of 6 (Fix addMemories Session Wiring)
+Plan: 1 of 1 in current phase (02.1-01 complete — Phase 2.1 done)
+Status: Phase 2.1 complete
+Last activity: 2026-02-25 — Plan 02.1-01 complete; threaded sessionId through MemoryFlushTarget, distillation → Qdrant flow restored
 
-Progress: [██████░░░░] 38%
+Progress: [██████░░░░] 40%
 
 ## Performance Metrics
 
@@ -64,6 +64,8 @@ Recent decisions affecting current work:
 - [Phase 02-data-integrity / 02-03]: /proc/ paths hang on Linux procfs — use file-as-workspace (ENOTDIR) for reliable fast test failures
 - [Phase 02-data-integrity]: shouldDistill async keyword removed — function has no await, return type is boolean not Promise<boolean>
 - [Phase 02-data-integrity]: mneme modules (store.ts, schema.ts) had zero dead code — no changes needed after Plan 02-01 through 02-03
+- [Phase 02.1-fix-addmemories-session-wiring]: sessionId is required (no default) on flushToMemory — empty string is falsy in Python, would trigger 400 from /add_batch enforcement
+- [Phase 02.1-fix-addmemories-session-wiring]: reflect.ts uses "reflection" as synthetic session identifier — satisfies non-empty string check; source field disambiguates path type
 
 ### Pending Todos
 
@@ -78,5 +80,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 02-data-integrity 02-04-PLAN.md — dead code audit, Phase 2 complete
+Stopped at: Completed 02.1-fix-addmemories-session-wiring 02.1-01-PLAN.md — sessionId wiring, Phase 2.1 complete
 Resume file: None

@@ -14,6 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Test Infrastructure** - Ground-truth corpus and end-to-end test coverage for all memory paths (gap closure in progress)
 - [x] **Phase 2: Data Integrity** - Crash-safe locking, transactional rollback, workspace flush reliability, orphan cleanup (completed 2026-02-25)
+- [x] **Phase 2.1: Fix addMemories Session Wiring** - INSERTED: Gap closure — wire session_id through distillation → Qdrant path (completed 2026-02-25)
 - [ ] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
 - [ ] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False
 - [ ] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements
@@ -56,6 +57,20 @@ Plans:
 - [ ] 02-02-PLAN.md — Qdrant orphan purge script and metadata enforcement on write paths
 - [ ] 02-03-PLAN.md — Workspace flush resilience with health events and structured receipts
 - [ ] 02-04-PLAN.md — Dead code audit of memory modules (mneme, distillation)
+
+### Phase 2.1: Fix addMemories Session Wiring
+**INSERTED** — Gap closure from v1.0 milestone audit
+**Goal**: Distillation-extracted facts reach Qdrant — the addMemories → /add_batch path passes session_id so enforcement doesn't reject the call
+**Depends on**: Phase 2
+**Requirements**: (closes INTG-CROSS-01 integration gap; affected: INTG-06, INTG-02)
+**Gap Closure:** Closes integration gap and broken flow from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. `addMemories()` accepts and forwards `session_id` to `/add_batch` — no 400 response on valid distillation calls
+  2. The distillation → Qdrant flow completes end-to-end — extracted facts are stored, not silently dropped
+**Plans:** 1 plan
+
+Plans:
+- [x] 02.1-01-PLAN.md — Wire session_id through MemoryFlushTarget interface and all callers
 
 ### Phase 3: Graph Extraction Overhaul
 **Goal**: Neo4j produces typed, meaningful relationships — graph traversal delivers value instead of 81% generic RELATES_TO noise
@@ -114,7 +129,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 3/4 | Gap closure | - |
-| 2. Data Integrity | 4/4 | Complete   | 2026-02-25 |
+| 2. Data Integrity | 4/4 | Complete    | 2026-02-25 |
+| 2.1 Fix addMemories Session Wiring | 0/1 | Planned | - |
 | 3. Graph Extraction Overhaul | 0/TBD | Not started | - |
 | 4. Extraction Pipeline Completion | 0/TBD | Not started | - |
 | 5. Recall Quality | 0/TBD | Not started | - |
