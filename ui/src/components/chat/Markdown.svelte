@@ -43,6 +43,7 @@
 </script>
 
 <div class="markdown-body" bind:this={container}>
+  <!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify-sanitized via renderMarkdown/renderMarkdownFast in src/lib/markdown.ts -->
   {@html html}
 </div>
 

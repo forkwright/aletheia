@@ -124,6 +124,7 @@
         <span class="preview-path">{getSelectedPath()}</span>
         <button class="close-btn" onclick={clearFileSelection} aria-label="Close file preview">×</button>
       </div>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- DOMPurify-sanitized via highlightFileContent() which calls DOMPurify.sanitize() -->
       <pre class="preview-content">{@html highlightFileContent(getSelectedContent(), getSelectedPath()!)}</pre>
     {:else}
       <div class="preview-empty">Select a file to preview</div>

@@ -38,7 +38,7 @@ export function resolveTimeout(
   toolName: string,
   config?: Partial<ToolTimeoutConfig>,
 ): number {
-  const overrides = { ...DEFAULT_TOOL_TIMEOUTS.overrides, ...(config?.overrides ?? {}) };
+  const overrides = { ...DEFAULT_TOOL_TIMEOUTS.overrides, ...config?.overrides };
   if (toolName in overrides) return overrides[toolName]!;
   return config?.defaultMs ?? DEFAULT_TOOL_TIMEOUTS.defaultMs;
 }
