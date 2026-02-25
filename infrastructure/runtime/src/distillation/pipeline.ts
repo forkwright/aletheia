@@ -15,9 +15,6 @@ import { flushToWorkspace } from "./workspace-flush.js";
 
 const log = createLogger("distillation");
 
-// Prevent concurrent distillation of the same session
-const activeDistillations = new Set<string>();
-
 export interface DistillationOpts {
   triggerThreshold: number;
   minMessages: number;
@@ -68,7 +65,7 @@ export async function distillSession(
   nousId: string,
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
-  if (activeDistillations.has(sessionId)) {
+  if (!store.acquireDistillationLock(sessionId, nousId)) {
     log.info(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
@@ -79,11 +76,10 @@ export async function distillSession(
     });
   }
 
-  activeDistillations.add(sessionId);
   try {
     return await runDistillation(store, router, sessionId, nousId, opts);
   } finally {
-    activeDistillations.delete(sessionId);
+    store.releaseDistillationLock(sessionId);
   }
 }
 
@@ -306,29 +302,7 @@ async function runDistillation(
       : summary;
   const markedTokens = estimateTokens(markedSummary);
 
-  // The summary replaces old messages and must remain visible in future history.
-  // isDistilled=false (default) keeps it in getHistoryWithBudget; markMessagesDistilled
-  // only marks the OLD messages, not this one.
-  store.appendMessage(sessionId, "assistant", markedSummary, {
-    tokenEstimate: markedTokens,
-  });
-
-  store.markMessagesDistilled(
-    sessionId,
-    toDistill.map((m) => m.seq),
-  );
-
   const preservedTokens = toPreserve.reduce((sum, m) => sum + (m.tokenEstimate ?? 0), 0);
-  store.recordDistillation({
-    sessionId,
-    messagesBefore: undistilled.length,
-    messagesAfter: 1 + toPreserve.length,
-    tokensBefore,
-    tokensAfter: markedTokens + preservedTokens,
-    factsExtracted: extraction.facts.length + extraction.decisions.length,
-    model: opts.extractionModel,
-  });
-  store.updateLastDistilledAt(sessionId);
 
   eventBus.emit("distill:stage", { sessionId, nousId, stage: "flush", progress: 4, total: 6 });
 
@@ -350,20 +324,47 @@ async function runDistillation(
     }
   }
 
-  store.recordDistillationLog({
+  // Bundle all five SQLite writes into a single atomic transaction with single retry.
+  // The transaction auto-rolls-back if any write throws, leaving no partial state.
+  const mutationOpts = {
     sessionId,
     nousId,
-    messagesBefore: undistilled.length,
-    messagesAfter: 1 + toPreserve.length,
-    tokensBefore,
-    tokensAfter: markedTokens + preservedTokens,
-    factsExtracted: extraction.facts.length,
-    decisionsExtracted: extraction.decisions.length,
-    openItemsExtracted: extraction.openItems.length,
-    flushSucceeded,
-    ...(flushErrors ? { errors: flushErrors } : {}),
-    distillationNumber,
-  });
+    summaryContent: markedSummary,
+    summaryTokens: markedTokens,
+    distilledSeqs: toDistill.map((m) => m.seq),
+    record: {
+      messagesBefore: undistilled.length,
+      messagesAfter: 1 + toPreserve.length,
+      tokensBefore,
+      tokensAfter: markedTokens + preservedTokens,
+      factsExtracted: extraction.facts.length + extraction.decisions.length,
+      model: opts.extractionModel,
+    },
+    logRecord: {
+      messagesBefore: undistilled.length,
+      messagesAfter: 1 + toPreserve.length,
+      tokensBefore,
+      tokensAfter: markedTokens + preservedTokens,
+      factsExtracted: extraction.facts.length,
+      decisionsExtracted: extraction.decisions.length,
+      openItemsExtracted: extraction.openItems.length,
+      flushSucceeded,
+      ...(flushErrors ? { errors: flushErrors } : {}),
+      distillationNumber,
+    },
+  };
+
+  try {
+    store.runDistillationMutations(mutationOpts);
+  } catch (firstErr) {
+    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error: firstErr });
+    try {
+      store.runDistillationMutations(mutationOpts);
+    } catch (secondErr) {
+      log.error("Distillation mutations failed after retry", { sessionId, error: secondErr });
+      // Do not rethrow — next scheduled distillation handles it
+    }
+  }
 
   const result: DistillationResult = {
     sessionId,
