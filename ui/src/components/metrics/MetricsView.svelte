@@ -1,19 +1,16 @@
 <script lang="ts">
-  import { fetchMetrics, fetchCostSummary } from "../../lib/api";
-  import { formatTokens, formatUptime, formatCost, formatTimeSince } from "../../lib/format";
+  import { fetchMetrics } from "../../lib/api";
+  import { formatTokens, formatUptime, formatTimeSince } from "../../lib/format";
   import Badge from "../shared/Badge.svelte";
   import UsageChart from "./UsageChart.svelte";
-  import type { MetricsData, CostSummary } from "../../lib/types";
+  import type { MetricsData } from "../../lib/types";
 
   let metrics = $state<MetricsData | null>(null);
-  let costs = $state<CostSummary | null>(null);
   let error = $state<string | null>(null);
 
   async function load() {
     try {
-      const [m, c] = await Promise.all([fetchMetrics(), fetchCostSummary()]);
-      metrics = m;
-      costs = c;
+      metrics = await fetchMetrics();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
@@ -45,18 +42,12 @@
       <div class="card">
         <div class="card-label">Cache Hit Rate</div>
         <div class="card-value">{metrics.usage.cacheHitRate}%</div>
-        <div class="card-sub">{formatTokens(metrics.usage.totalCacheReadTokens)} cached</div>
+        <div class="card-sub">{formatTokens(metrics.usage.totalCacheReadTokens)} from cache</div>
       </div>
       <div class="card">
         <div class="card-label">Turns</div>
         <div class="card-value">{metrics.usage.turnCount}</div>
       </div>
-      {#if costs}
-        <div class="card">
-          <div class="card-label">Total Cost</div>
-          <div class="card-value">{formatCost(costs.totalCost)}</div>
-        </div>
-      {/if}
       <div class="card">
         <div class="card-label">Services</div>
         <div class="card-value">
@@ -89,14 +80,10 @@
             <th>Last Activity</th>
             <th>Tokens In</th>
             <th>Turns</th>
-            {#if costs}
-              <th>Cost</th>
-            {/if}
           </tr>
         </thead>
         <tbody>
           {#each metrics.nous as agent}
-            {@const agentCost = costs?.agents.find(a => a.agentId === agent.id)}
             <tr>
               <td class="agent-name">{agent.name}</td>
               <td>{agent.activeSessions}</td>
@@ -104,9 +91,6 @@
               <td class="muted">{formatTimeSince(agent.lastActivity)}</td>
               <td>{agent.tokens ? formatTokens(agent.tokens.input) : "-"}</td>
               <td>{agent.tokens?.turns ?? "-"}</td>
-              {#if costs}
-                <td>{agentCost ? formatCost(agentCost.totalCost || agentCost.cost) : "-"}</td>
-              {/if}
             </tr>
           {/each}
         </tbody>
