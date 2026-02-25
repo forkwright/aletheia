@@ -38,10 +38,30 @@ function clearRefreshCookie(c: import("hono").Context, secureCookies: boolean): 
   c.header("Set-Cookie", parts.join("; "));
 }
 
+/**
+ * Determine whether the Secure flag should be set on cookies.
+ * When behind a TLS-terminating reverse proxy (Caddy, nginx), the backend
+ * sees plain HTTP but the browser sees HTTPS.  In that case the configured
+ * `secureCookies` should be false — but if the user forgets, we auto-detect
+ * by checking for X-Forwarded-Proto / X-Real-IP headers that proxies inject.
+ */
+function resolveSecureCookies(
+  c: import("hono").Context,
+  configured: boolean,
+): boolean {
+  if (!configured) return false;
+  // If the proxy tells us the original request was HTTPS, Secure is safe
+  const proto = c.req.header("X-Forwarded-Proto");
+  if (proto === "https") return true;
+  // If we see proxy headers but no proto, assume TLS termination → don't set Secure
+  if (c.req.header("X-Forwarded-For") || c.req.header("X-Real-IP")) return false;
+  return configured;
+}
+
 export function authRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   const app = new Hono();
   const { authConfig, authSessionStore, authRoutes: auth } = deps;
-  const secureCookies = authConfig.session?.secureCookies ?? true;
+  const configuredSecureCookies = authConfig.session?.secureCookies ?? true;
 
   app.get("/api/auth/mode", (c) => {
     return c.json(auth.mode());
@@ -77,7 +97,8 @@ export function authRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     const maxAge = rememberMe
       ? authConfig.session?.refreshTokenTtl
       : undefined;
-    setRefreshCookie(c, result.refreshToken, secureCookies, maxAge);
+    const secure = resolveSecureCookies(c, configuredSecureCookies);
+    setRefreshCookie(c, result.refreshToken, secure, maxAge);
 
     return c.json({
       accessToken: result.accessToken,
@@ -94,12 +115,13 @@ export function authRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
 
     const result = await auth.refresh(refreshToken);
+    const secure = resolveSecureCookies(c, configuredSecureCookies);
     if (!result) {
-      clearRefreshCookie(c, secureCookies);
+      clearRefreshCookie(c, secure);
       return c.json({ error: "Invalid or expired refresh token" }, 401);
     }
 
-    setRefreshCookie(c, result.refreshToken, secureCookies, authConfig.session?.refreshTokenTtl);
+    setRefreshCookie(c, result.refreshToken, secure, authConfig.session?.refreshTokenTtl);
 
     return c.json({
       accessToken: result.accessToken,
@@ -112,7 +134,8 @@ export function authRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     if (user?.sessionId) {
       auth.logout(user.sessionId);
     }
-    clearRefreshCookie(c, secureCookies);
+    const secure = resolveSecureCookies(c, configuredSecureCookies);
+    clearRefreshCookie(c, secure);
     return c.json({ ok: true });
   });
 
