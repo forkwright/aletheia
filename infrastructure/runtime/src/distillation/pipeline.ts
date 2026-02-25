@@ -11,9 +11,12 @@ import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import { eventBus } from "../koina/event-bus.js";
-import { flushToWorkspace } from "./workspace-flush.js";
+import { flushToWorkspaceWithRetry } from "./workspace-flush.js";
 
 const log = createLogger("distillation");
+
+const workspaceFlushFailures = new Map<string, number>();
+const WORKSPACE_FLUSH_FAILURE_THRESHOLD = 3;
 
 export interface DistillationOpts {
   triggerThreshold: number;
@@ -309,7 +312,7 @@ async function runDistillation(
   let flushSucceeded = true;
   let flushErrors: string | undefined;
   if (opts.workspace) {
-    const flushResult = flushToWorkspace({
+    const flushResult = flushToWorkspaceWithRetry({
       workspace: opts.workspace,
       nousId,
       sessionId,
@@ -317,10 +320,33 @@ async function runDistillation(
       summary: markedSummary,
       extraction,
     });
+
+    const receipt = {
+      nousId,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      factCount: extraction.facts.length + extraction.decisions.length,
+      written: flushResult.written,
+      path: flushResult.path,
+      error: flushResult.error,
+    };
+    log.info("Workspace flush receipt", receipt);
+
     if (!flushResult.written) {
       flushSucceeded = false;
       flushErrors = flushResult.error;
-      log.warn(`Workspace memory flush failed: ${flushResult.error}`);
+      const failures = (workspaceFlushFailures.get(nousId) ?? 0) + 1;
+      workspaceFlushFailures.set(nousId, failures);
+      if (failures >= WORKSPACE_FLUSH_FAILURE_THRESHOLD) {
+        eventBus.emit("memory:health_degraded", {
+          nousId,
+          reason: "workspace_flush_failures",
+          consecutiveFailures: failures,
+          lastError: flushResult.error,
+        });
+      }
+    } else {
+      workspaceFlushFailures.delete(nousId);
     }
   }
 
