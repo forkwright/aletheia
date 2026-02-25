@@ -67,7 +67,7 @@ Plans:
 6. Python sidecar: `ruff` and `pyright` installed as dev dependencies; `[tool.ruff]` and `[tool.pyright]` sections in `pyproject.toml`
 7. Pre-commit hook covers all three sub-projects with conditional checks — total hook time under 10 seconds per sub-project change
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 - [ ] 11-01-PLAN.md — Fix enhanced-execution.ts tsc errors + add no-console disable comments to exception files (runtime pre-conditions)
@@ -141,7 +141,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 10. Standards Definition + Agent Context | 2/2 | Complete    | 2026-02-25 |
-| 11. Tooling Configuration + Pre-commit | 3/5 | In Progress|  |
+| 11. Tooling Configuration + Pre-commit | 4/5 | In Progress|  |
 | 12. Audit | 0/TBD | Not started | — |
 | 13. Remediation | 0/TBD | Not started | — |
 | 14. Polish | 0/TBD | Not started | — |

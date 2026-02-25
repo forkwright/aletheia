@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 ## Current Position
 
 Phase: Phase 11 — tooling-configuration-pre-commit-coverage
-Plan: 04 of 05 complete
-Status: Plan 11-04 complete — ruff 0.15.2 + pyright 1.1.408 installed as uv dev dependencies; pyproject.toml configured; baselines: 152 ruff errors, 960 pyright errors
-Last activity: 2026-02-25 — Plan 11-04 executed (Python sidecar static analysis tooling)
+Plan: 04 of 05 complete (11-02 retroactively completed; all 1-4 done)
+Status: Plan 11-02 complete — runtime oxlint hardened (promise/node/unicorn plugins, 7 new error rules); tsconfig updated (noImplicitReturns + noImplicitOverride); both exit 0
+Last activity: 2026-02-25 — Plan 11-02 executed (runtime oxlint/tsconfig hardening — retroactive completion)
 
 Progress: [███████░░░░░░░░░░░░░] 20% — v1.1 in progress (11-04/~20 total plans)
 
@@ -45,6 +45,9 @@ Progress: [███████░░░░░░░░░░░░░] 20% —
 - [11-04]: pyright reportMissingTypeStubs=false — mem0ai/qdrant-client/neo4j lack full type stubs
 - [11-04]: ruff B008 ignored — FastAPI Depends() is intentional function call in default argument
 - [11-04]: Baseline: 152 ruff errors (95 auto-fixable), 960 pyright errors — documented for Phase 12 audit
+- [11-02]: unicorn/catch-error-name demoted to warn — 221 pre-existing violations; research did not audit unicorn/* before recommending as error; Phase 13 target
+- [11-02]: promise/prefer-await-to-then demoted to warn — 61 violations including intentional lock-chain patterns (manager.ts withSessionLock); Phase 13 target
+- [11-02]: fire-and-forget promise chains (3 sites) suppressed with eslint-disable-next-line — patterns are architecturally correct for SSE/agent dispatch
 - [11-03]: @typescript-eslint/parser required for Svelte 5 TS parsing in eslint-plugin-svelte — not in plan, discovered during implementation
 - [11-03]: svelte/require-each-key and svelte/prefer-svelte-reactivity downgraded to warn — 70+ violations in existing codebase; Phase 13 remediation target
 - [11-03]: eslint v10 flat config dropped --ext flag — file patterns in eslint.config.js replace --ext .svelte
@@ -62,5 +65,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 11-03-PLAN.md (UI oxlint/eslint/tsconfig tooling) — Plan 11-03 complete (out of order; 11-04 was already done)
+Stopped at: Completed 11-02-PLAN.md (runtime oxlint/tsconfig hardening — retroactive completion) — Plan 11-02 complete
 Resume file: None
