@@ -461,7 +461,7 @@ export class RoadmapOrchestrator {
         return { pass: true, issues: [] };
       }
 
-      const parsed = JSON.parse(result.result) as { pass: boolean; issues: string[] };
+      const parsed = this.extractCheckResult(result.result);
       return { pass: parsed.pass, issues: parsed.issues ?? [] };
     } catch (cause) {
       log.warn("Plan checker parse error — treating as pass (best-effort)", { cause, phaseId: phase.id, attempt });
@@ -556,5 +556,36 @@ export class RoadmapOrchestrator {
     }
 
     return JSON.parse(jsonMatch[1]) as PhasePlan;
+  }
+
+  /** Extract JSON check result from sub-agent response that may include prose wrapping */
+  private extractCheckResult(raw: string): { pass: boolean; issues: string[] } {
+    // Try direct parse first
+    try {
+      return JSON.parse(raw) as { pass: boolean; issues: string[] };
+    } catch {
+      // Try extracting JSON from code block
+      const codeBlockMatch = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
+      if (codeBlockMatch?.[1]) {
+        try {
+          return JSON.parse(codeBlockMatch[1]) as { pass: boolean; issues: string[] };
+        } catch { /* fall through */ }
+      }
+
+      // Try extracting JSON object from prose
+      const jsonMatch = /\{[\s\S]*?"pass"\s*:[\s\S]*?\}/.exec(raw);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]) as { pass: boolean; issues: string[] };
+        } catch { /* fall through */ }
+      }
+
+      // If raw contains "pass" keyword heuristically
+      if (/\bpass\b/i.test(raw) && !/\bfail\b/i.test(raw) && !/\bissue/i.test(raw)) {
+        return { pass: true, issues: [] };
+      }
+
+      throw new Error(`Cannot extract check result from: ${raw.slice(0, 200)}`);
+    }
   }
 }

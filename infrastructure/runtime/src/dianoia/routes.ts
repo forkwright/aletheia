@@ -231,7 +231,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         id: phase.id,
         name: phase.name,
         goal: phase.goal,
-        dependencies: [],
+        dependencies: phase.dependencies ?? [],
         requirements: phase.requirements,
         state: phase.status,
         order: phase.phaseOrder,

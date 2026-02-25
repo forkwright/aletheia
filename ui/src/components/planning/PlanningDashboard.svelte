@@ -261,9 +261,12 @@
 
         <!-- Discussion Panel (visible during discussing + phase-planning states) -->
         {#if (project.state === "discussing" || project.state === "phase-planning") && project.id}
-          <div class="dashboard-section full-width">
-            <DiscussionPanel projectId={project.id} />
-          </div>
+          {@const activePhase = phases.find(p => p.state === "active" || p.status === "pending") ?? phases[0]}
+          {#if activePhase}
+            <div class="dashboard-section full-width">
+              <DiscussionPanel projectId={project.id} phaseId={activePhase.id} />
+            </div>
+          {/if}
         {/if}
       </div>
     </div>

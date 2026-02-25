@@ -215,7 +215,7 @@ describe("RequirementsOrchestrator.validateCoverage()", () => {
   });
 
   // CTX-03 enhancements
-  it("returns false when fewer than minimum categories presented (default 2)", () => {
+  it("returns false when fewer than minimum categories presented (explicit minimum=2)", () => {
     const db = makeDb();
     const projectId = makeProject(db);
     const orch = new RequirementsOrchestrator(db);
@@ -225,11 +225,11 @@ describe("RequirementsOrchestrator.validateCoverage()", () => {
     ];
     orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
 
-    // Only 1 category, should fail minimum gate
-    expect(orch.validateCoverage(projectId, ["AUTH"])).toBe(false);
+    // Only 1 category, should fail when minimum is explicitly 2
+    expect(orch.validateCoverage(projectId, ["AUTH"], 2)).toBe(false);
   });
 
-  it("passes with custom minimum category count", () => {
+  it("passes with single category (default minimum=1)", () => {
     const db = makeDb();
     const projectId = makeProject(db);
     const orch = new RequirementsOrchestrator(db);
@@ -239,54 +239,38 @@ describe("RequirementsOrchestrator.validateCoverage()", () => {
     ];
     orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
 
-    // Allow single category with minimumCategories=1
-    expect(orch.validateCoverage(projectId, ["AUTH"], 1)).toBe(true);
+    // Default minimum is 1, single category should pass
+    expect(orch.validateCoverage(projectId, ["AUTH"])).toBe(true);
   });
 });
 
 describe("RequirementsOrchestrator.persistCategory() - CTX-03 enhancements", () => {
-  it("throws on duplicate reqId", () => {
+  it("throws on duplicate reqId from cross-category collision", () => {
     const db = makeDb();
     const projectId = makeProject(db);
     const orch = new RequirementsOrchestrator(db);
 
-    // First persist
-    const decisions1: ScopingDecision[] = [
-      { name: "Login with email/password", tier: "v1" },
-    ];
-    orch.persistCategory(projectId, AUTH_CATEGORY, decisions1);
-
-    // Create another category that would generate the same reqId
-    const conflictCategory: CategoryProposal = {
-      category: "AUTH",
-      categoryName: "Authentication Conflict",
-      tableStakes: [{
-        name: "Different feature",
-        description: "different description",
-        isTableStakes: true,
-        proposedTier: "v1",
-      }],
-      differentiators: [],
-    };
-
-    // This should generate AUTH-01 again, which should conflict
+    // Manually insert a requirement with reqId AUTH-01 under a different category
+    // This simulates a cross-category collision where another category happened
+    // to produce the same reqId prefix
     const store = new PlanningStore(db);
-    // Manually create a req with AUTH-01 to simulate conflict
     store.createRequirement({
       projectId,
       reqId: "AUTH-01",
-      description: "Existing AUTH-01",
+      description: "Existing AUTH-01 from another source",
       category: "OTHER",
       tier: "v1",
       rationale: null,
     });
 
-    const decisions2: ScopingDecision[] = [
-      { name: "Different feature", tier: "v1" },
+    // Now persist AUTH category — nextNum will be 1 (no existing AUTH reqs),
+    // generating AUTH-01 which conflicts with the cross-category entry
+    const decisions: ScopingDecision[] = [
+      { name: "Login with email/password", tier: "v1" },
     ];
 
     expect(() => {
-      orch.persistCategory(projectId, conflictCategory, decisions2);
+      orch.persistCategory(projectId, AUTH_CATEGORY, decisions);
     }).toThrow("Duplicate requirement ID: AUTH-01");
   });
 

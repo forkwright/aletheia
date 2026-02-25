@@ -18,7 +18,7 @@
     answeredAt?: string;
   }
 
-  let { projectId }: { projectId: string } = $props();
+  let { projectId, phaseId }: { projectId: string; phaseId?: string } = $props();
 
   let questions = $state<DiscussionQuestion[]>([]);
   let loading = $state(true);
@@ -34,45 +34,39 @@
 
       // In a real implementation, this would call the API endpoint defined in Spec 32
       // For now, we'll mock some sample questions
-      const res = await fetch(`/api/planning/projects/${projectId}/discuss`);
+      const url = phaseId 
+        ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
+        : `/api/planning/projects/${projectId}/discuss`;
+      const res = await fetch(url);
       
       if (!res.ok) {
-        // Mock data for demonstration
-        questions = [
-          {
-            id: "q1",
-            question: "How should user authentication be handled?",
-            description: "The MVP could use simple token-based auth, but enterprise customers may need SSO integration.",
-            options: [
-              { label: "JWT tokens only", rationale: "Simple, fast to implement, covers basic use cases" },
-              { label: "JWT + OAuth providers", rationale: "Moderate complexity, handles Google/GitHub login" },
-              { label: "Full SSO suite", rationale: "Enterprise-ready but significant development time" }
-            ],
-            recommendation: "JWT + OAuth providers",
-            answered: false
-          },
-          {
-            id: "q2",
-            question: "What level of real-time collaboration is needed?",
-            description: "Project sharing could be read-only, comment-based, or full collaborative editing.",
-            options: [
-              { label: "Read-only sharing", rationale: "Minimal complexity, covers basic sharing needs" },
-              { label: "Comment system", rationale: "Enables feedback without edit conflicts" },
-              { label: "Live collaborative editing", rationale: "Full Google Docs experience but complex to implement" }
-            ],
-            recommendation: "Comment system",
-            answered: true,
-            decision: "Comment system",
-            userNote: "Focus on feedback workflow first",
-            answeredAt: new Date().toISOString()
-          }
-        ];
-        loading = false;
+        const errData = await res.json().catch(() => ({})) as { error?: string };
+        error = errData.error || `Failed to load questions (${res.status})`;
         return;
       }
 
-      const data = await res.json();
-      questions = data.questions || [];
+      const data = await res.json() as { questions?: Array<{
+        id: string;
+        question: string;
+        description?: string;
+        options: DiscussionOption[];
+        recommendation?: string;
+        status: string;
+        decision?: string | null;
+        userNote?: string | null;
+        updatedAt?: string;
+      }> };
+      questions = (data.questions ?? []).map(q => ({
+        id: q.id,
+        question: q.question,
+        description: q.description,
+        options: q.options,
+        recommendation: q.recommendation,
+        answered: q.status === "answered" || q.status === "skipped",
+        decision: q.decision ?? undefined,
+        userNote: q.userNote ?? undefined,
+        answeredAt: q.status !== "pending" ? q.updatedAt : undefined,
+      }));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -86,7 +80,10 @@
     try {
       submitting[questionId] = true;
       
-      const res = await fetch(`/api/planning/projects/${projectId}/discuss`, {
+      const postUrl = phaseId
+        ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
+        : `/api/planning/projects/${projectId}/discuss`;
+      const res = await fetch(postUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
