@@ -417,4 +417,14 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
       UPDATE plans SET nous_id = 'syn' WHERE nous_id = 'main';
     `,
   },
+  {
+    version: 20,
+    sql: `
+      CREATE TABLE IF NOT EXISTS distillation_locks (
+        session_id TEXT PRIMARY KEY,
+        nous_id TEXT NOT NULL,
+        locked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+    `,
+  },
 ];
