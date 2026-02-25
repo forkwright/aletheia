@@ -157,6 +157,9 @@ function connect() {
     "tool:called", "tool:failed", "status:update",
     "session:created", "session:archived",
     "distill:before", "distill:stage", "distill:after",
+    "planning:project-created", "planning:project-resumed",
+    "planning:phase-started", "planning:phase-complete",
+    "planning:checkpoint", "planning:complete",
   ];
   for (const type of eventTypes) {
     source.addEventListener(type, (e) => {
