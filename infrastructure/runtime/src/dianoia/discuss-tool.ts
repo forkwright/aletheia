@@ -365,6 +365,30 @@ function generateHeuristicQuestions(
     });
   }
 
+  // Baseline: always generate an implementation approach question for non-trivial phases
+  if (questions.length === 0 && (phaseReqs.length > 0 || phase.successCriteria.length > 0)) {
+    questions.push({
+      question: `What implementation approach for "${phase.name}"? The phase goal is: ${phase.goal}`,
+      options: [
+        { label: "Incremental", rationale: "Build feature by feature, validate as we go" },
+        { label: "Foundation first", rationale: "Build core infrastructure, then layer features on top" },
+      ],
+      recommendation: "Incremental",
+    });
+
+    // If multiple requirements, ask about prioritization
+    if (phaseReqs.length > 1) {
+      questions.push({
+        question: `This phase has ${phaseReqs.length} requirements. Which should be implemented first?`,
+        options: phaseReqs.slice(0, 4).map(r => ({
+          label: r.reqId,
+          rationale: r.description,
+        })),
+        recommendation: phaseReqs[0]?.reqId ?? null,
+      });
+    }
+  }
+
   return questions;
 }
 
