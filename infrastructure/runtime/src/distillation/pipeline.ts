@@ -260,6 +260,7 @@ async function runDistillation(
         nousId,
         extraction,
         opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
+        sessionId,
       );
       if (flushResult.errors > 0) {
         log.warn(

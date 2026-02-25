@@ -10,6 +10,7 @@ export interface MemoryFlushTarget {
   addMemories(
     agentId: string,
     memories: string[],
+    sessionId: string,
   ): Promise<{ added: number; errors: number }>;
 }
 
@@ -23,6 +24,7 @@ export async function flushToMemory(
   agentId: string,
   extraction: ExtractionResult,
   optsOrRetries: number | FlushOptions = 3,
+  sessionId: string,
 ): Promise<{ flushed: number; errors: number }> {
   const opts: FlushOptions = typeof optsOrRetries === "number"
     ? { maxRetries: optsOrRetries }
@@ -51,7 +53,7 @@ export async function flushToMemory(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const result = await target.addMemories(agentId, memories);
+      const result = await target.addMemories(agentId, memories, sessionId);
       log.info(
         `Memory flush for ${agentId}: ${result.added} added, ${result.errors} errors` +
           (attempt > 1 ? ` (attempt ${attempt})` : ""),

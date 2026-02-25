@@ -262,7 +262,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Memory flush target — connects distillation/reflection extraction to memory sidecar
   const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
-    async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
+    async addMemories(agentId: string, memories: string[], sessionId: string): Promise<{ added: number; errors: number }> {
       try {
         const res = await fetch(`${getSidecarUrl()}/add_batch`, {
           method: "POST",
@@ -272,6 +272,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
             user_id: getUserId(),
             agent_id: agentId,
             source: "distillation",
+            session_id: sessionId,
             confidence: 0.8,
           }),
           signal: AbortSignal.timeout(30_000),

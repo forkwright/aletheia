@@ -361,7 +361,7 @@ async function flushReflectionToMemory(
   }
 
   try {
-    const result = await target.addMemories(agentId, memories);
+    const result = await target.addMemories(agentId, memories, "reflection");
     log.info(`Reflection memory flush for ${agentId}: ${result.added} stored, ${result.errors} errors`);
     return result.added;
   } catch (err) {
