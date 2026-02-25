@@ -16,6 +16,7 @@ export const DEFAULT_TOOL_TIMEOUTS: ToolTimeoutConfig = {
     sessions_dispatch: 0, // long-running, handles own timeouts per task
     plan_execute: 0,      // execution phases are long-running; internal dispatch handles timeouts
     plan_research: 0,     // research spawns sub-agents with own timeouts
+    plan_roadmap: 0,      // plan_phases action dispatches sub-agents for plan generation + checking
     browser: 180_000,
     web_fetch: 60_000,
     web_search: 60_000,

@@ -126,7 +126,7 @@ export class RequirementsOrchestrator {
         description,
         category: category.category,
         tier: decision.tier,
-        rationale: decision.tier === "out-of-scope" ? (decision.rationale ?? null) : null,
+        rationale: decision.rationale ?? null,
       });
 
       nextNum++;
@@ -157,7 +157,7 @@ export class RequirementsOrchestrator {
     this.store.updateRequirement(row.id, updates);
   }
 
-  validateCoverage(projectId: string, presentedCategories: string[], minimumCategories = 2): boolean {
+  validateCoverage(projectId: string, presentedCategories: string[], minimumCategories = 1): boolean {
     const reqs = this.store.listRequirements(projectId);
 
     // Minimum category count gate
