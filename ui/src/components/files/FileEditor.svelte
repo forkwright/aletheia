@@ -265,6 +265,7 @@
       {#if fileLoading}
         <div class="editor-loading"><Spinner size={16} /> Loading...</div>
       {:else if showPreview && currentPath && isMarkdown(currentPath)}
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- HTML-escaped via updatePreview() which applies &amp;/&lt;/&gt; escaping before markup injection -->
         <div class="preview-pane">{@html previewHtml}</div>
       {:else if currentPath}
         <div class="cm-wrapper" bind:this={editorContainer}></div>
