@@ -20,7 +20,7 @@ import { DianoiaOrchestrator } from "./orchestrator.js";
 import { ResearchOrchestrator } from "./researcher.js";
 import { RequirementsOrchestrator } from "./requirements.js";
 import { RoadmapOrchestrator } from "./roadmap.js";
-import { buildContextPacket, type SubAgentRole } from "./context-packet.js";
+import { buildContextPacketSync, type SubAgentRole } from "./context-packet.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { CategoryProposal, ScopingDecision } from "./requirements.js";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
@@ -471,7 +471,7 @@ describe("S5 End-to-End Integration Test", () => {
     ];
 
     for (const testCase of testCases) {
-      const contextPacket = buildContextPacket({
+      const contextPacket = buildContextPacketSync({
         workspaceRoot,
         projectId: project!.id,
         phaseId: phases[0]!.id,
@@ -532,7 +532,7 @@ describe("S5 End-to-End Integration Test", () => {
     };
 
     // Very small token budget to force truncation
-    const contextPacket = buildContextPacket({
+    const contextPacket = buildContextPacketSync({
       workspaceRoot,
       projectId: "proj_test",
       phaseId: "phase_test", 

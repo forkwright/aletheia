@@ -196,12 +196,22 @@ export class ExecutionOrchestrator {
       try {
         const raw = await this.dispatchTool.execute({ tasks }, toolContext);
         
-        // Try structured extraction with retry capability
+        // Try structured extraction with one retry using Zod error feedback
         dispatchResult = await parseDispatchResponse(raw as string, async (errorMessage) => {
-          log.warn(`Dispatch response parsing failed: ${errorMessage}. Retrying...`);
-          // For retry, we could re-dispatch with error feedback, but for now we just fail
-          // In a more sophisticated implementation, we might retry the dispatch with better prompts
-          throw new Error(`Response parsing failed: ${errorMessage}`);
+          log.warn(`Dispatch response parsing failed: ${errorMessage}. Re-dispatching with error feedback...`);
+
+          // Build feedback-enriched tasks: same tasks but with error context appended
+          const feedbackTasks = tasks.map(t => ({
+            ...t,
+            task: t.task + `\n\n---\n\n**IMPORTANT: Your previous response failed validation.**\nError: ${errorMessage}\n\nPlease ensure your response ends with a valid JSON block matching the required output format.`,
+          }));
+
+          try {
+            const retryRaw = await this.dispatchTool.execute({ tasks: feedbackTasks }, toolContext);
+            return retryRaw as string;
+          } catch (retryErr) {
+            throw new Error(`Retry dispatch also failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`);
+          }
         });
         
         if (!dispatchResult) {

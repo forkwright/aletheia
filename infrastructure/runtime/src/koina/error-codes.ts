@@ -26,6 +26,8 @@ export const ERROR_CODES = {
   PIPELINE_STAGE_FAILED: "A pipeline stage failed during execution",
   PIPELINE_NO_OUTCOME: "Pipeline completed without producing an outcome",
   PIPELINE_TOOL_LOOP: "Tool call loop detected",
+  PIPELINE_MAX_LOOPS: "Turn exceeded maximum tool loop count",
+  PIPELINE_WALL_CLOCK: "Turn exceeded wall-clock time limit",
   PIPELINE_STREAM_INCOMPLETE: "Streaming pipeline ended without message_complete",
   TOOL_EXECUTION_FAILED: "Tool call returned an error",
   TOOL_NOT_FOUND: "Agent requested a tool that is not registered",

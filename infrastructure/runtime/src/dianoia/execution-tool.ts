@@ -3,12 +3,14 @@ import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { DianoiaOrchestrator } from "./orchestrator.js";
 import type { ExecutionOrchestrator } from "./execution.js";
+import type { GoalBackwardVerifier } from "./verifier.js";
 
 const log = createLogger("dianoia:execution-tool");
 
 export function createPlanExecuteTool(
   planningOrchestrator: DianoiaOrchestrator,
   executionOrchestrator: ExecutionOrchestrator,
+  verifierOrchestrator?: GoalBackwardVerifier,
 ): ToolHandler {
   return {
     definition: {
@@ -48,7 +50,7 @@ export function createPlanExecuteTool(
       },
     },
     execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
-      return handleAction(input, planningOrchestrator, executionOrchestrator, context);
+      return handleAction(input, planningOrchestrator, executionOrchestrator, context, verifierOrchestrator);
     },
   };
 }
@@ -58,6 +60,7 @@ async function handleAction(
   planningOrchestrator: DianoiaOrchestrator,
   executionOrchestrator: ExecutionOrchestrator,
   context: ToolContext,
+  verifierOrchestrator?: GoalBackwardVerifier,
 ): Promise<string> {
   const action = input["action"] as string;
   const projectId = input["projectId"] as string;
@@ -69,13 +72,75 @@ async function handleAction(
     switch (action) {
       case "start": {
         const result = await executionOrchestrator.executePhase(projectId, context);
-        if (result.failed === 0) {
-          return planningOrchestrator.advanceToVerification(projectId, nousId, sessionId);
+        if (result.failed > 0) {
+          return JSON.stringify({
+            ...result,
+            message: "Execution complete with failures. Use action=retry or action=skip to recover.",
+          });
         }
-        return JSON.stringify({
-          ...result,
-          message: "Execution complete with failures. Use action=retry or action=skip to recover.",
-        });
+
+        // All phases succeeded — advance to verification and auto-run it
+        planningOrchestrator.advanceToVerification(projectId, nousId, sessionId);
+
+        if (verifierOrchestrator) {
+          // Run verification for each completed phase
+          const phases = planningOrchestrator.listPhases(projectId);
+          const completedPhases = phases.filter(p => p.status === "complete");
+          const verificationResults: Array<{ phaseId: string; name: string; status: string; summary: string }> = [];
+
+          for (const phase of completedPhases) {
+            try {
+              const vResult = await verifierOrchestrator.verify(projectId, phase.id, context);
+              const vStatus = vResult.status ?? vResult.overallStatus ?? "partially-met";
+              verificationResults.push({
+                phaseId: phase.id,
+                name: phase.name,
+                status: vStatus,
+                summary: vResult.summary,
+              });
+
+              // Write verification file
+              planningOrchestrator.syncVerifyFile(projectId, phase.id, vResult as unknown as Record<string, unknown>);
+
+              if (vStatus !== "met" && vResult.gaps.length > 0) {
+                // ORCH-04: Auto-skip downstream + generate rollback plan
+                const { skippedPhases, rollbackPlan } = planningOrchestrator.skipDownstreamPhasesOnVerificationFailure(
+                  projectId, phase.id, vResult.gaps,
+                );
+                log.info(`Verification gap cascade for phase ${phase.id}: skipped ${skippedPhases.length} downstream`);
+
+                return JSON.stringify({
+                  execution: result,
+                  verification: verificationResults,
+                  failedPhase: phase.id,
+                  gaps: vResult.gaps,
+                  skippedPhases,
+                  rollbackPlan,
+                  message: `Execution succeeded but verification found gaps in "${phase.name}". See rollback plan.`,
+                }, null, 2);
+              }
+            } catch (err) {
+              log.warn(`Verification failed for phase ${phase.id}, continuing`, { err });
+              verificationResults.push({
+                phaseId: phase.id,
+                name: phase.name,
+                status: "error",
+                summary: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
+          // All phases verified — complete the project
+          planningOrchestrator.completeAllPhases(projectId, nousId, sessionId);
+
+          return JSON.stringify({
+            execution: result,
+            verification: verificationResults,
+            message: "All phases executed and verified successfully. Project complete.",
+          }, null, 2);
+        }
+
+        return "Execution complete. Advancing to verification phase.";
       }
 
       case "pause": {

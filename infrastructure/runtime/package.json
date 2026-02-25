@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@anysphere/priompt": "^0.2.1",
     "@hono/node-server": "^1.14.0",
     "@instructor-ai/instructor": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.26.0",

@@ -111,8 +111,8 @@
       
       project = await projectRes.json() as Project;
 
-      // Load requirements (from project context if available)
-      requirements = extractRequirements(project);
+      // Load requirements from API
+      requirements = await loadRequirements(targetProjectId!);
 
       // Load roadmap (phases)
       try {
@@ -145,20 +145,24 @@
     }
   }
 
-  function extractRequirements(proj: Project): Requirement[] {
-    // Extract requirements from project context if available
-    // This would be properly implemented based on the actual data structure
-    if (proj.projectContext?.requirements) {
-      return proj.projectContext.requirements.map((req: any, index: number) => ({
-        id: req.id || `req-${index}`,
-        name: req.name || `Requirement ${index + 1}`,
+  async function loadRequirements(projectId: string): Promise<Requirement[]> {
+    try {
+      const res = await fetch(`/api/planning/projects/${projectId}/requirements`);
+      if (!res.ok) return [];
+      const data = await res.json() as { requirements?: Array<{
+        reqId: string; description: string; tier: string; rationale?: string; category: string;
+      }> };
+      return (data.requirements ?? []).map((req, index) => ({
+        id: req.reqId || `req-${index}`,
+        name: req.reqId || `Requirement ${index + 1}`,
         description: req.description || "",
-        tier: req.tier || "v1",
+        tier: (req.tier as "v1" | "v2" | "out-of-scope") || "v1",
         rationale: req.rationale,
-        category: req.category || "General"
+        category: req.category || "General",
       }));
+    } catch {
+      return [];
     }
-    return [];
   }
 
   // Load project when agent or explicit project ID changes
@@ -168,11 +172,14 @@
     }
   });
 
-  // Auto-refresh every 30 seconds
+  // Adaptive polling: 5s during execution/verifying, 30s otherwise
   $effect(() => {
     if (!project) return;
     
-    const interval = setInterval(loadProject, 30000);
+    const isActive = project.state === "executing" || project.state === "verifying";
+    const pollInterval = isActive ? 5000 : 30000;
+    
+    const interval = setInterval(loadProject, pollInterval);
     return () => clearInterval(interval);
   });
 
@@ -252,8 +259,8 @@
           </div>
         {/if}
 
-        <!-- Discussion Panel (if in discussing state) -->
-        {#if project.state === "discussing" && project.id}
+        <!-- Discussion Panel (visible during discussing + phase-planning states) -->
+        {#if (project.state === "discussing" || project.state === "phase-planning") && project.id}
           <div class="dashboard-section full-width">
             <DiscussionPanel projectId={project.id} />
           </div>

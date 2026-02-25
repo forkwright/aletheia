@@ -46,6 +46,11 @@ export function createPlanResearchTool(
           context,
         );
 
+        // Fail-fast on total research failure
+        if (stored === 0 && partial === 0 && failed > 0) {
+          throw new Error(`RESEARCH_ALL_FAILED: All ${failed} research dimensions failed. Cannot proceed without any domain research.`);
+        }
+
         researchOrchestrator.transitionToRequirements(projectId);
 
         let message: string;

@@ -6,7 +6,7 @@ import { PlanningError } from "../koina/errors.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import type { PlanningPhase } from "./types.js";
-import { buildContextPacket } from "./context-packet.js";
+import { buildContextPacketSync } from "./context-packet.js";
 
 const log = createLogger("dianoia:roadmap");
 
@@ -305,7 +305,7 @@ export class RoadmapOrchestrator {
     let contextSection = "";
     if (this.workspaceRoot && projectId) {
       const allPhases = this.store.listPhases(projectId);
-      contextSection = buildContextPacket({
+      contextSection = buildContextPacketSync({
         workspaceRoot: this.workspaceRoot,
         projectId,
         phaseId: phase.id,
