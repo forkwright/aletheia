@@ -1,0 +1,55 @@
+{
+  "id": "syn-session-04",
+  "agent": "syn",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "The config keeps reverting. Every time the service restarts, all the agent workspace paths go back to wrong values. I patched it three times."
+    },
+    {
+      "role": "assistant",
+      "content": "Found it. The config.patch API doesn't persist — it patches the in-memory config and then on restart the service writes the stale in-memory state back to disk, overwriting our patches. The file on disk has been from Feb 5 this entire time. Every patch appeared to work until the next restart.\n\nThe fix: write directly to disk, then send SIGUSR1 to the gateway PID with config-reload. Never use config.patch for anything you need to survive a restart.\n\nI've created two scripts. First: enforce-config at /mnt/ssd/aletheia/shared/bin/enforce-config — canonical script that ensures all 7 nous are registered with correct workspaces and maxConcurrent=8. Cron'd every 15 minutes. Second: config-reload at /mnt/ssd/aletheia/shared/bin/config-reload — sends SIGUSR1 safely without triggering the config.patch overwrite cycle.\n\nThe second issue compounding this: old agent:main:signal:group:* sessions kept re-appearing and shadowing the correct agent:syl:* and agent:akron:* sessions. I cleaned sessions.json three times and it kept coming back. The root cause was Syn itself — during heartbeats, using sessions_send to check on other agents created new sessions under main each time. Metis found this and created HEARTBEAT.md with the fix: never use sessions_send during heartbeat sequences.\n\nAlso corrected Arbor's model ID — was claude-sonnet-4-5-20250514, now claude-sonnet-4-5-20250929."
+    },
+    {
+      "role": "user",
+      "content": "So the Aletheia rename — agent to nous throughout — how big is that job?"
+    },
+    {
+      "role": "assistant",
+      "content": "249 files in dist/, approximately 103 references in the config schema alone. It's a non-trivial rename. Config schema, session keys, CLI commands, schema labels, error messages — everything.\n\nI initially suggested a shim layer to translate between agent and nous so we could accept upstream OpenClaw updates without re-applying the rename. But you pushed back: 'Why can't we change it all? We literally have our own version of the code.' You were right. The shim adds complexity without ownership.\n\nDecision made: full fork rename. Aletheia is canon. We accept the merge tax on upstream updates in exchange for owning the runtime completely. This is a Claude Code task, not a live session job — 249 files should be one coordinated commit. Queued for Metis."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "The config.patch API patches in-memory config but does not persist across restarts",
+      "The disk config file had been from Feb 5 the entire time while patches appeared to work",
+      "enforce-config at /mnt/ssd/aletheia/shared/bin/enforce-config is cron'd every 15 minutes to maintain all 7 nous registrations",
+      "config-reload sends SIGUSR1 to the gateway PID without triggering the config.patch overwrite cycle",
+      "Old agent:main:signal:group:* sessions were re-appearing and shadowing correct agent:syl:* sessions",
+      "Syn was creating shadow sessions by using sessions_send during heartbeats to check on other agents",
+      "Metis created HEARTBEAT.md instructing Syn to never use sessions_send during heartbeat sequences",
+      "Arbor model ID was corrected from claude-sonnet-4-5-20250514 to claude-sonnet-4-5-20250929",
+      "The full agent to nous rename affects 249 files in dist/ and approximately 103 references in the config schema"
+    ],
+    "decisions": [
+      "Never use config.patch for persistent configuration changes — write directly to disk and send SIGUSR1 via config-reload",
+      "Full fork rename agent to nous throughout all 249 files — accept the merge tax on upstream OpenClaw updates in exchange for full ownership"
+    ],
+    "contradictions": [
+      "config.patch appeared to work after each application but actually reverted on every service restart because it only modified in-memory state"
+    ],
+    "entities": [
+      "enforce-config",
+      "config-reload",
+      "HEARTBEAT.md",
+      "OpenClaw",
+      "Aletheia"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-08",
+    "domain": "infrastructure",
+    "notes": "Sourced from syn/memory/2026-02-08.md — config persistence bug, shadow sessions, and Aletheia fork rename decision"
+  }
+}

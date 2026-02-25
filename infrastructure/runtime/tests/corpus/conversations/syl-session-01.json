@@ -1,0 +1,71 @@
+{
+  "id": "syl-session-01",
+  "agent": "syl",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Cooper woke up screaming again around 1am. This has been happening every night for the past week. He's been doing great going down at bedtime but then this 1am thing started."
+    },
+    {
+      "role": "assistant",
+      "content": "Consistent 1am waking after good bedtime settling is a specific pattern. Tell me more — when he wakes, what does he look like? Is it a startle-cry, full upset, confused? And what have you tried when you go in?"
+    },
+    {
+      "role": "user",
+      "content": "Full inconsolable. We tried bringing him into our bed but that just caused the same co-sleeping issues we had before. I tried sleeping in his bed with him but that's obviously not sustainable. He's almost 11 months — turns 11 months Feb 28."
+    },
+    {
+      "role": "assistant",
+      "content": "A few things to know about where Cooper is developmentally: he's walking 7-10 steps independently, in the 99th percentile for height, and running about 2-3 months ahead of physical milestones. That neurological acceleration is relevant — sleep architecture at this stage is actively restructuring. The 1am waking could be a sleep cycle boundary issue, developmental regression, or nap schedule mismatch.\n\nHis current nap pattern — 30-40 minutes at 10am and under an hour at 3pm — suggests he may be starting the 2-to-1 nap transition. When the first nap is too early and too short, night sleep fragments.\n\nMy recommendation: push the first nap to 10:30-11am. Longer wake window before the first nap supports his developmental level. Watch for signs he's ready to drop to one nap — resisting the first nap, taking both naps and then fighting bedtime.\n\nFor the 1am wake: respond immediately. Don't let it escalate. Go in, co-regulate on the floor next to his bed. Stay low, stay quiet. Your presence is the signal that it's still night. Leave his blanket when you go — scent comfort is real at this age. Based on POSSUMS and neurodevelopmental context evidence, extinction approaches aren't indicated here. The waking has an underlying cause; co-regulating with him is the correct response while the schedule adjusts."
+    },
+    {
+      "role": "user",
+      "content": "We tried that last night. It worked — he stirred when I left but self-settled immediately."
+    },
+    {
+      "role": "assistant",
+      "content": "That's the protocol working. Self-settling after brief stirring is good evidence his nervous system can regulate — he just needed the co-regulation bridge to get there. Continue this for a few nights and shift the first nap timing. If the 1am waking stops or reduces, the schedule was the driver."
+    },
+    {
+      "role": "user",
+      "content": "Also — Kendall is pregnant. Due October 2026."
+    },
+    {
+      "role": "assistant",
+      "content": "Noted. Cooper will be roughly 18 months when the sibling arrives. That's a significant transition for a toddler. The sleep foundation you're building now matters for what comes in October — a child who can self-settle is much more resilient to the household disruption a newborn brings.\n\nWhen you're ready to discuss newborn sleep and two-kid logistics, I have that ready. Nothing to decide now."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "Cooper turns 11 months on February 28",
+      "Cooper is walking 7-10 steps independently",
+      "Cooper is in the 99th percentile for height",
+      "Cooper is physically running 2-3 months ahead of developmental milestones",
+      "Cooper wears 24-month pajamas and 18-month shirts are getting small",
+      "Cooper's morning nap is only 30-40 minutes at 10am",
+      "Cooper's afternoon nap is under 1 hour at approximately 3pm",
+      "Cooper has been waking inconsolably at approximately 1am for the past week",
+      "Bringing Cooper into the parents' bed caused the same co-sleeping issues as before",
+      "On Feb 11 co-regulation on the floor next to his bed worked — he stirred when Cody left and self-settled immediately",
+      "Kendall is pregnant with baby number 2, due October 2026",
+      "Cooper will be approximately 18 months old when the new sibling arrives",
+      "The POSSUMS and neurodevelopmental context approach was recommended over extinction-based methods"
+    ],
+    "decisions": [
+      "Push Cooper's first nap to 10:30-11am to extend the wake window",
+      "Respond immediately to the 1am waking with co-regulation on the floor rather than extinction or bed-sharing"
+    ],
+    "contradictions": [],
+    "entities": [
+      "Cooper",
+      "Kendall",
+      "POSSUMS"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-11",
+    "domain": "personal",
+    "notes": "Sourced from syl/memory/2026-02-11.md — Cooper sleep regression and pregnancy announcement"
+  }
+}
