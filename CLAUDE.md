@@ -6,6 +6,11 @@ Project conventions for AI coding agents working on this codebase.
 
 Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, typed errors (`AletheiaError`), never empty catch, test behavior not implementation.
 
+@.claude/rules/typescript.md
+@.claude/rules/svelte.md
+@.claude/rules/python.md
+@.claude/rules/architecture.md
+
 ## Structure
 
 - **Runtime:** `infrastructure/runtime/src/` — TypeScript, tsdown, vitest
