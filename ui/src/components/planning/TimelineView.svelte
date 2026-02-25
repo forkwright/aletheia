@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
+  import { authFetch } from "./api";
 
   interface Milestone {
     id: string;
@@ -32,7 +33,7 @@
     try {
       loading = true;
       error = null;
-      const res = await fetch(`/api/planning/projects/${projectId}/timeline`);
+      const res = await authFetch(`/api/planning/projects/${projectId}/timeline`);
       if (!res.ok) {
         error = `Failed to load timeline (${res.status})`;
         return;

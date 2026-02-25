@@ -12,6 +12,7 @@
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
   import { onGlobalEvent } from "../../lib/events.svelte";
+  import { authFetch } from "./api";
 
   // Props from parent component (ChatView)
   let { projectId: explicitProjectId, onClose }: {
@@ -90,7 +91,7 @@
       
       if (!targetProjectId) {
         // First, get the active project for this agent
-        const projectsRes = await fetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId!)}`);
+        const projectsRes = await authFetch(`/api/planning/projects?nousId=${encodeURIComponent(agentId!)}`);
         if (!projectsRes.ok) {
           throw new Error("Failed to load projects");
         }
@@ -111,7 +112,7 @@
 
       // Load full project data
       const projectId = targetProjectId;
-      const projectRes = await fetch(`/api/planning/projects/${projectId}`);
+      const projectRes = await authFetch(`/api/planning/projects/${projectId}`);
       if (!projectRes.ok) {
         throw new Error("Failed to load project details");
       }
@@ -123,7 +124,7 @@
 
       // Load roadmap (phases)
       try {
-        const roadmapRes = await fetch(`/api/planning/projects/${projectId}/roadmap`);
+        const roadmapRes = await authFetch(`/api/planning/projects/${projectId}/roadmap`);
         if (roadmapRes.ok) {
           const roadmapData = await roadmapRes.json();
           phases = roadmapData.phases || [];
@@ -135,7 +136,7 @@
 
       // Load execution status
       try {
-        const executionRes = await fetch(`/api/planning/projects/${projectId}/execution`);
+        const executionRes = await authFetch(`/api/planning/projects/${projectId}/execution`);
         if (executionRes.ok) {
           const executionData = await executionRes.json();
           executionPlans = executionData.plans || [];
@@ -154,7 +155,7 @@
 
   async function loadRequirements(projectId: string): Promise<Requirement[]> {
     try {
-      const res = await fetch(`/api/planning/projects/${projectId}/requirements`);
+      const res = await authFetch(`/api/planning/projects/${projectId}/requirements`);
       if (!res.ok) return [];
       const data = await res.json() as { requirements?: Array<{
         reqId: string; description: string; tier: string; rationale?: string; category: string;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
+  import { authFetch } from "./api";
 
   interface VerificationGap {
     criterion?: string;
@@ -32,7 +33,7 @@
     try {
       loading = true;
       error = null;
-      const res = await fetch(`/api/planning/projects/${projectId}/phases/${phaseId}/verification`);
+      const res = await authFetch(`/api/planning/projects/${projectId}/phases/${phaseId}/verification`);
       if (!res.ok) {
         error = `Failed to load verification (${res.status})`;
         return;

@@ -19,7 +19,7 @@
   let selectedWave = $state<number | null>(null);
   let expandedPlan = $state<string | null>(null);
 
-  let waves = $derived(() => {
+  let waves = $derived.by(() => {
     const waveMap = new Map<number, ExecutionPlan[]>();
     
     plans.forEach(plan => {
@@ -40,7 +40,7 @@
       }));
   });
 
-  let currentWave = $derived(() => {
+  let currentWave = $derived.by(() => {
     return waves.find(w => w.status === "running") || waves[waves.length - 1] || null;
   });
 
@@ -106,7 +106,7 @@
     expandedPlan = expandedPlan === planId ? null : planId;
   }
 
-  let overallProgress = $derived(() => {
+  let overallProgress = $derived.by(() => {
     if (plans.length === 0) return { completed: 0, total: 0, percentage: 0 };
     
     const completed = plans.filter(p => p.status === "done" || p.status === "skipped").length;
