@@ -9,7 +9,7 @@ import { setupRoutes } from "./setup.js";
 
 function makeDeps(agentCount = 0) {
   return {
-    config: { agents: { list: new Array(agentCount) } },
+    config: { agents: { list: Array.from({ length: agentCount }) } },
   } as never;
 }
 
