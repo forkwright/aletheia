@@ -1,13 +1,13 @@
 <script lang="ts">
   import { fetchDailyCosts } from "../../lib/api";
-  import { formatCost } from "../../lib/format";
+  import { formatTokens } from "../../lib/format";
   import type { DailyCost } from "../../lib/types";
   import { onMount } from "svelte";
 
   let data = $state<DailyCost[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let maxCost = $derived(Math.max(...data.map((d) => d.cost), 0.001));
+  let maxTokens = $derived(Math.max(...data.map((d) => d.tokens), 1));
 
   onMount(async () => {
     try {
@@ -21,7 +21,7 @@
 </script>
 
 <div class="usage-chart">
-  <h3>Daily Cost (30d)</h3>
+  <h3>Daily Usage (30d)</h3>
   {#if loading}
     <div class="chart-empty">Loading...</div>
   {:else if error}
@@ -32,8 +32,8 @@
     <div class="chart-container">
       <div class="chart-bars">
         {#each data as day}
-          {@const pct = (day.cost / maxCost) * 100}
-          <div class="bar-col" title="{day.date}: {formatCost(day.cost)} · {day.turns} turns">
+          {@const pct = (day.tokens / maxTokens) * 100}
+          <div class="bar-col" title="{day.date}: {formatTokens(day.tokens)} · {day.turns} turns">
             <div class="bar" style="height: {Math.max(pct, 2)}%"></div>
           </div>
         {/each}
@@ -43,7 +43,7 @@
         <span>{data[data.length - 1]?.date.slice(5)}</span>
       </div>
       <div class="chart-summary">
-        Total: {formatCost(data.reduce((s, d) => s + d.cost, 0))} · {data.reduce((s, d) => s + d.turns, 0)} turns
+        Total: {formatTokens(data.reduce((s, d) => s + d.tokens, 0))} · {data.reduce((s, d) => s + d.turns, 0)} turns
       </div>
     </div>
   {/if}
