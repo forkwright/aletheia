@@ -16,7 +16,7 @@
   let selectedCategory = $state<string | null>(null);
   let expandedReq = $state<string | null>(null);
 
-  let filteredRequirements = $derived(() => {
+  let filteredRequirements = $derived.by(() => {
     return requirements.filter(req => {
       // Tier filter
       if (req.tier === "v1" && !showV1) return false;
@@ -30,12 +30,12 @@
     });
   });
 
-  let categories = $derived(() => {
+  let categories = $derived.by(() => {
     const cats = [...new Set(requirements.map(r => r.category))].sort();
     return cats;
   });
 
-  let tierCounts = $derived(() => {
+  let tierCounts = $derived.by(() => {
     return {
       v1: requirements.filter(r => r.tier === "v1").length,
       v2: requirements.filter(r => r.tier === "v2").length,

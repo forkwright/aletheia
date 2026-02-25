@@ -123,8 +123,8 @@
     loadQuestions();
   });
 
-  let pendingQuestions = $derived(() => questions.filter(q => !q.answered));
-  let answeredQuestions = $derived(() => questions.filter(q => q.answered));
+  let pendingQuestions = $derived.by(() => questions.filter(q => !q.answered));
+  let answeredQuestions = $derived.by(() => questions.filter(q => q.answered));
   let showAnswered = $state(false);
 
   function handleOptionSelect(questionId: string, option: DiscussionOption, customNote?: string) {
