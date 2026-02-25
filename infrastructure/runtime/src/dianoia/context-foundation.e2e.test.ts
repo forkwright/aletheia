@@ -144,8 +144,8 @@ describe("Context & State Foundation E2E", () => {
       config: DEFAULT_CONFIG,
     });
 
-    store.updateProjectState(project.id, { from: "idle", to: "questioning", event: "START_QUESTIONING" });
-    store.updateProjectState(project.id, { from: "questioning", to: "researching", event: "START_RESEARCH" });
+    store.updateProjectState(project.id, "questioning");
+    store.updateProjectState(project.id, "researching");
 
     // Step 2: Run research phase (CTX-04)
     const researchResult = await researchOrch.runResearch(
@@ -286,10 +286,19 @@ describe("Context & State Foundation E2E", () => {
       ),
     };
 
+    const store = new PlanningStore(db);
+    const project = store.createProject({
+      nousId: "test-nous",
+      sessionId: "test-session",
+      goal: "Test project",
+      config: DEFAULT_CONFIG,
+    });
+    store.updateProjectState(project.id, "researching");
     const researchOrch = new ResearchOrchestrator(db, failDispatch, workspaceRoot);
+    researchOrch.retryDelayMs = 0; // Skip backoff in tests
 
     await expect(
-      researchOrch.runResearch("proj_123", "Test project", TOOL_CONTEXT),
+      researchOrch.runResearch(project.id, "Test project", TOOL_CONTEXT),
     ).rejects.toThrow("Research failed: No dimensions completed successfully");
   });
 
@@ -323,10 +332,10 @@ describe("Context & State Foundation E2E", () => {
       { name: "Single feature", tier: "v1" },
     ]);
 
-    // Should fail coverage gate due to minimum category count
-    expect(requirementsOrch.validateCoverage(project.id, ["ONLY"])).toBe(false);
+    // Should pass coverage gate with default minimum (1)
+    expect(requirementsOrch.validateCoverage(project.id, ["ONLY"])).toBe(true);
 
-    // Should pass with minimum set to 1
-    expect(requirementsOrch.validateCoverage(project.id, ["ONLY"], 1)).toBe(true);
+    // Should fail with minimum set to 2
+    expect(requirementsOrch.validateCoverage(project.id, ["ONLY"], 2)).toBe(false);
   });
 });
