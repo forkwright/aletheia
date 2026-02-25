@@ -5,7 +5,11 @@ import {
   EnhancedExecutionOrchestrator,
   DEFAULT_EXECUTION_OPTIONS
 } from "./enhanced-execution.js";
-import { mapTaskToRole, StructuredExtractor, schemas } from "./structured-extraction.js";
+import { 
+  mapTaskToRole,
+  StructuredExtractor,
+} from "./structured-extraction.js";
+import { schemas } from "./structured-extraction.js";
 import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import type { ToolHandler, ToolContext } from "../organon/registry.js";

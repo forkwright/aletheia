@@ -10,12 +10,15 @@ import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
-import type { PlanningPhase } from "./types.js";
+import type { PlanningPhase, SpawnRecord } from "./types.js";
+import type { PhasePlan } from "./roadmap.js";
 import { buildContextPacketSync } from "./context-packet.js";
 import {
   mapTaskToRole,
   selectRoleForTask,
   parseDispatchResponse,
+  StructuredExtractor,
+  type DispatchResult,
 } from "./structured-extraction.js";
 
 // Re-export wave computation utilities (shared with base ExecutionOrchestrator)
@@ -55,15 +58,17 @@ export interface EnhancedExecutionResult {
 export class EnhancedExecutionOrchestrator {
   private store: PlanningStore;
   private options: ExecutionOptions;
+  private extractor: StructuredExtractor;
   private workspaceRoot: string | null = null;
 
   constructor(
-    db: Database.Database,
+    private db: Database.Database,
     private dispatchTool: ToolHandler,
     options?: Partial<ExecutionOptions>,
   ) {
     this.store = new PlanningStore(db);
     this.options = { ...DEFAULT_EXECUTION_OPTIONS, ...options };
+    this.extractor = new StructuredExtractor();
   }
 
   setWorkspaceRoot(root: string): void {
@@ -376,7 +381,7 @@ export class EnhancedExecutionOrchestrator {
     ].join("\n");
   }
 
-  private reapZombies(projectId: string, _allPhases: PlanningPhase[]): void {
+  private reapZombies(projectId: string, allPhases: PlanningPhase[]): void {
     const records = this.store.listSpawnRecords(projectId);
     const now = Date.now();
 
