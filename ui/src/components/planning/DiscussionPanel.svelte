@@ -1,6 +1,7 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
   import { authFetch } from "./api";
+  import { answerDiscussion, skipDiscussion } from "../../stores/planning.svelte";
 
   interface DiscussionOption {
     label: string;
@@ -81,24 +82,13 @@
     try {
       submitting[questionId] = true;
       
-      const postUrl = phaseId
-        ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
-        : `/api/planning/projects/${projectId}/discuss`;
-      const res = await authFetch(postUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId,
-          decision,
-          userNote: userNote?.trim() || undefined
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to submit decision');
+      // Use the reactive store for optimistic updates + API sync
+      const ok = await answerDiscussion(questionId, decision, userNote?.trim());
+      if (!ok) {
+        throw new Error("Failed to submit decision");
       }
 
-      // Update the question locally
+      // Update local questions state too
       questions = questions.map(q =>
         q.id === questionId
           ? {
@@ -111,6 +101,22 @@
           : q
       );
       
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      submitting[questionId] = false;
+    }
+  }
+
+  async function handleSkip(questionId: string) {
+    if (submitting[questionId]) return;
+    try {
+      submitting[questionId] = true;
+      const ok = await skipDiscussion(questionId);
+      if (!ok) throw new Error("Failed to skip question");
+      questions = questions.map(q =>
+        q.id === questionId ? { ...q, answered: true, decision: "(skipped)", answeredAt: new Date().toISOString() } : q
+      );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -259,6 +265,17 @@
             </button>
           </div>
         {/each}
+
+        <!-- Skip button -->
+        <div class="skip-row">
+          <button
+            class="skip-btn"
+            onclick={() => handleSkip(question.id)}
+            disabled={isSubmitting}
+          >
+            Skip — use agent recommendation
+          </button>
+        </div>
 
         <!-- Custom decision option -->
         <details class="custom-option">
@@ -562,6 +579,34 @@
 
   .select-option-btn:disabled {
     opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .skip-row {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .skip-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    transition: all var(--transition-quick);
+  }
+
+  .skip-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+    border-color: var(--border-hover);
+  }
+
+  .skip-btn:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
   }
 
