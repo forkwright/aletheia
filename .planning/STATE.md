@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 3 — Graph Extraction Overhaul
+**Current focus:** Phase 4 — Extraction Pipeline Completion
 
 ## Current Position
 
-Phase: 3 of 6 (Graph Extraction Overhaul)
-Plan: 2 of 3 in current phase (03-02 complete — SimpleKGPipeline integration, Mem0 graph store disabled)
-Status: Phase 3 in progress
-Last activity: 2026-02-25 — Plan 03-02 complete; SimpleKGPipeline wired, Mem0 graph store removed, routes fire extract_graph
+Phase: 4 of 6 (Extraction Pipeline Completion)
+Plan: 1 of 3 in current phase (04-01 complete — contradiction invalidation wiring, invalidate_text endpoint)
+Status: Phase 4 in progress
+Last activity: 2026-02-26 — Plan 04-01 complete; POST /temporal/facts/invalidate_text added, contradiction invalidation wired into distillation pipeline
 
-Progress: [████████░░] 50%
+Progress: [█████████░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 11 min
-- Total execution time: ~1.6 hours
+- Total execution time: ~1.7 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [████████░░] 50%
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
+| 04-extraction-pipeline-completion | 1 | 7 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 22 min, ~15 min, 3 min, 4 min, 3 min
+- Last 5 plans: ~15 min, 3 min, 4 min, 3 min, 7 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -73,6 +74,10 @@ Recent decisions affecting current work:
 - [Phase 03-graph-extraction-overhaul / 03-02]: SimpleKGPipeline cached at module level — reinit on OAuth rotation via refresh_pipeline_on_token_rotate
 - [Phase 03-graph-extraction-overhaul / 03-02]: extract_graph / extract_graph_batch are fire-and-forget — failures log warning but never block memory writes
 - [Phase 03-graph-extraction-overhaul / 03-02]: additional_relationship_types: False enforces vocab at pipeline write time, not post-write
+- [Phase 04-extraction-pipeline-completion / 04-01]: EXTR-06 bypass documented via docstring comment — no dead infer=False parameter added
+- [Phase 04-extraction-pipeline-completion / 04-01]: invalidate_text uses embedding-based Qdrant search (not triple parsing) for free-form contradiction matching; 0.80 similarity threshold
+- [Phase 04-extraction-pipeline-completion / 04-01]: Neo4j invalidation is best-effort — both qdrant_id match and text fragment match attempted; failures are non-fatal
+- [Phase 04-extraction-pipeline-completion / 04-01]: sidecarUrl added as optional DistillationOpts field — no mandatory change at existing call sites; NousManager.setSidecarUrl() wires via getSidecarUrl()
 
 ### Pending Todos
 
@@ -85,6 +90,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 03-graph-extraction-overhaul 03-02-PLAN.md — SimpleKGPipeline integration
+Last session: 2026-02-26
+Stopped at: Completed 04-extraction-pipeline-completion 04-01-PLAN.md — contradiction invalidation wiring
 Resume file: None
