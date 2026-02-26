@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 4 — Extraction Pipeline Completion
+**Current focus:** Phase 5 — Recall Quality
 
 ## Current Position
 
-Phase: 4 of 6 (Extraction Pipeline Completion)
-Plan: 4 of 4 in current phase (04-04 complete — AbortSignal threading, cancelDistillation export, POST distill/cancel endpoint)
-Status: Phase 4 complete
-Last activity: 2026-02-26 — Plan 04-04 complete; AbortSignal threading through full pipeline, cancel API endpoint
+Phase: 5 of 6 (Recall Quality)
+Plan: 2 of 4 in current phase (05-02 complete — noise filtering belt-and-suspenders: extraction-time NOISE_PATTERNS expansion, recall-time _filter_noisy_results in /search)
+Status: In progress
+Last activity: 2026-02-26 — Plan 05-02 complete; recall-time noise filter + exponential decay confidence weight
 
-Progress: [██████████] 72%
+Progress: [████████████] 78%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 11 min
-- Total execution time: ~1.8 hours
+- Total plans completed: 13
+- Average duration: 10 min
+- Total execution time: ~2.1 hours
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: [██████████] 72%
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
 | 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
+| 05-recall-quality (partial) | 2 | ~5 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: ~15 min, 3 min, 4 min, 3 min, 7 min
+- Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -89,6 +90,9 @@ Recent decisions affecting current work:
 - [Phase 04-extraction-pipeline-completion / 04-04]: AbortController created per-distillSession call; external opts.signal linked via addEventListener to internal controller
 - [Phase 04-extraction-pipeline-completion / 04-04]: Signal propagated through opts object in summarizeInStages (not positional param) — avoids breaking existing test callers
 - [Phase 04-extraction-pipeline-completion / 04-04]: Cancel returns {ok: true, cancelled: boolean} immediately — does not await distillation; pipeline finally handles cleanup
+- [Phase 05-recall-quality]: Jaccard threshold 0.25 for reinforcement — permissive, false negatives hurt learning more than false positives
+- [Phase 05-recall-quality]: Exponential decay uses days-since-last-access from Neo4j last_accessed timestamp (not tick count)
+- [Phase 05-recall-quality]: New memories without MemoryAccess Neo4j node receive no decay — full salience until first access
 
 ### Pending Todos
 
@@ -102,5 +106,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 04-extraction-pipeline-completion 04-04-PLAN.md — AbortSignal threading and cancel API endpoint
+Stopped at: Completed 05-recall-quality 05-01-PLAN.md — reinforcement loop and exponential decay
 Resume file: None
