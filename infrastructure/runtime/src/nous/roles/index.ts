@@ -4,6 +4,7 @@ import { REVIEWER_PROMPT } from "./prompts/reviewer.js";
 import { RESEARCHER_PROMPT } from "./prompts/researcher.js";
 import { EXPLORER_PROMPT } from "./prompts/explorer.js";
 import { RUNNER_PROMPT } from "./prompts/runner.js";
+import { PLANNER_PROMPT } from "./prompts/planner.js";
 
 export interface RoleConfig {
   model: string;
@@ -32,7 +33,7 @@ export interface SubAgentIssue {
   suggestion?: string | undefined;
 }
 
-export type RoleName = "coder" | "reviewer" | "researcher" | "explorer" | "runner";
+export type RoleName = "coder" | "reviewer" | "researcher" | "explorer" | "runner" | "planner";
 
 export const ROLES: Record<RoleName, RoleConfig> = {
   coder: {
@@ -74,6 +75,14 @@ export const ROLES: Record<RoleName, RoleConfig> = {
     maxTurns: 5,
     maxTokenBudget: 15_000,
     description: "Execute commands, run tests, check health, report results.",
+  },
+  planner: {
+    model: "anthropic/claude-sonnet-4-20250514",
+    systemPrompt: PLANNER_PROMPT,
+    tools: ["read", "grep", "find", "ls"],
+    maxTurns: 3,
+    maxTokenBudget: 30_000,
+    description: "Generate and revise implementation plans. Returns structured JSON.",
   },
 };
 
