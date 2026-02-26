@@ -262,14 +262,14 @@
         <!-- Requirements Section -->
         {#if requirements.length > 0}
           <div class="dashboard-section">
-            <RequirementsTable {requirements} />
+            <RequirementsTable {requirements} projectId={project.id} />
           </div>
         {/if}
 
         <!-- Roadmap Section -->
         {#if phases.length > 0}
           <div class="dashboard-section">
-            <RoadmapView {phases} currentState={project.state} />
+            <RoadmapView {phases} currentState={project.state} projectId={project.id} />
           </div>
         {/if}
 
