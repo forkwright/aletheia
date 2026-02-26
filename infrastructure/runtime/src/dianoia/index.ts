@@ -75,3 +75,5 @@ export { writeHandoffFile, readHandoffFile, clearHandoffFile, discoverHandoffs, 
 export type { HandoffState } from "./handoff.js";
 export { calculateBudgetAllocation, buildOrchestratorContext, checkBudget, DEFAULT_ORCHESTRATOR_CEILING } from "./context-budget.js";
 export type { BudgetAllocation } from "./context-budget.js";
+export { writeStructuredDiscussFile, readStructuredDiscussFile, extractDecisionsFromQuestions, createEmptyArtifact, acquireDiscussionLock, releaseDiscussionLock, isDiscussionLocked } from "./discussion-artifacts.js";
+export type { DiscussionArtifact, BoundaryItem, ImplementationDecision, DiscretionItem, DeferredIdea } from "./discussion-artifacts.js";
