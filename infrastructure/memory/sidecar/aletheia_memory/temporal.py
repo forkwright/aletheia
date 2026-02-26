@@ -1,13 +1,15 @@
-# Temporal memory layer — Graphiti-inspired episode tracking and bi-temporal queries
-# NOTE: Do NOT add future annotations — see routes.py comment.
+# Temporal memory layer -- Graphiti-inspired episode tracking and bi-temporal queries
+# NOTE: Do NOT add future annotations -- see routes.py comment.
 
 import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, LiteralString, cast
 
 from fastapi import APIRouter, HTTPException
+from neo4j import Driver as Neo4jDriver
+from neo4j import Session as Neo4jSession
 from pydantic import BaseModel, Field
 
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
@@ -15,22 +17,20 @@ from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 logger = logging.getLogger("aletheia_memory.temporal")
 temporal_router = APIRouter(prefix="/temporal")
 
-# Re-export for routes.py backward compat
 _neo4j_driver = neo4j_driver
 
 
-def _extract_entities_for_episode(text: str) -> list[str]:
-    """Extract entity names from text for episode linking."""
-    import re
-    entities: list[str] = []
-    for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text):
-        entities.append(match.group())
-    for match in re.finditer(r"\b[a-z]+[-_][a-z]+(?:[-_][a-z]+)*\b", text):
-        entities.append(match.group())
-    return list(set(entities))[:15]
+def _open_session(driver: Neo4jDriver) -> Neo4jSession:
+    """Open a neo4j session with explicit typing.
 
+    The neo4j Driver.session() method has untyped **kwargs in its stub,
+    which causes reportUnknownMemberType under strict pyright. This helper
+    isolates the workaround so every call site stays clean.
+    """
+    _driver: Any = driver
+    session: Neo4jSession = _driver.session()
+    return session
 
-# --- Schema bootstrap (idempotent) ---
 
 TEMPORAL_SCHEMA = """
 CREATE CONSTRAINT episode_id IF NOT EXISTS FOR (e:Episode) REQUIRE e.id IS UNIQUE;
@@ -40,13 +40,13 @@ CREATE INDEX temporal_edge_valid IF NOT EXISTS FOR ()-[r:TEMPORAL_FACT]-() ON (r
 """
 
 
-async def ensure_temporal_schema():
+async def ensure_temporal_schema() -> None:
     if not neo4j_available():
-        logger.info("Neo4j unavailable — skipping temporal schema setup")
+        logger.info("Neo4j unavailable -- skipping temporal schema setup")
         return
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with _open_session(driver) as session:
             for stmt in TEMPORAL_SCHEMA.strip().split(";"):
                 stmt = stmt.strip()
                 if stmt:
@@ -66,7 +66,7 @@ class EpisodeCreate(BaseModel):
     content: str
     agent_id: str
     session_id: str | None = None
-    occurred_at: str | None = None  # ISO datetime — when event happened
+    occurred_at: str | None = None
     source: str = "conversation"
     entities: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -82,8 +82,8 @@ class TemporalFactCreate(BaseModel):
 
 
 class TemporalQuery(BaseModel):
-    since: str | None = None  # ISO datetime
-    until: str | None = None  # ISO datetime
+    since: str | None = None
+    until: str | None = None
     entity: str | None = None
     agent_id: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -99,7 +99,7 @@ class InvalidateRequest(BaseModel):
 # --- Episode endpoints ---
 
 @temporal_router.post("/episodes")
-async def create_episode(req: EpisodeCreate):
+async def create_episode(req: EpisodeCreate) -> dict[str, Any]:
     if not neo4j_available():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
@@ -109,7 +109,7 @@ async def create_episode(req: EpisodeCreate):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with _open_session(driver) as session:
             session.run(
                 """
                 CREATE (e:Episode {
@@ -166,11 +166,11 @@ async def list_episodes(
     agent_id: str | None = None,
     entity: str | None = None,
     limit: int = 20,
-):
+) -> dict[str, Any]:
     if not neo4j_available():
         return {"ok": False, "available": False, "episodes": [], "count": 0}
 
-    conditions = []
+    conditions: list[str] = []
     params: dict[str, Any] = {"limit": min(limit, 100)}
 
     if since:
@@ -198,11 +198,11 @@ async def list_episodes(
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            result = session.run(query, **params)
-            episodes = []
+        with _open_session(driver) as session:
+            result = session.run(cast("LiteralString", query), **params)
+            episodes: list[dict[str, Any]] = []
             for record in result:
-                node = record["e"]
+                node: Any = record["e"]
                 episodes.append({
                     "id": node["id"],
                     "content_preview": node.get("content_preview", ""),
@@ -224,7 +224,7 @@ async def list_episodes(
 # --- Temporal fact endpoints ---
 
 @temporal_router.post("/facts")
-async def create_temporal_fact(req: TemporalFactCreate):
+async def create_temporal_fact(req: TemporalFactCreate) -> dict[str, Any]:
     if not neo4j_available():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
@@ -233,8 +233,8 @@ async def create_temporal_fact(req: TemporalFactCreate):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            invalidated = session.run(
+        with _open_session(driver) as session:
+            single_result = session.run(
                 """
                 MATCH (s:Entity {name: $subject})-[r:TEMPORAL_FACT]->(o)
                 WHERE r.predicate = $predicate AND r.valid_to IS NULL
@@ -245,7 +245,8 @@ async def create_temporal_fact(req: TemporalFactCreate):
                 predicate=req.predicate,
                 now=now,
                 new_object=req.object,
-            ).single()["invalidated"]
+            ).single()
+            invalidated: Any = single_result["invalidated"] if single_result is not None else 0
 
             session.run(
                 """
@@ -300,7 +301,7 @@ async def create_temporal_fact(req: TemporalFactCreate):
 
 
 @temporal_router.post("/facts/invalidate")
-async def invalidate_fact(req: InvalidateRequest):
+async def invalidate_fact(req: InvalidateRequest) -> dict[str, Any]:
     if not neo4j_available():
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
@@ -308,7 +309,7 @@ async def invalidate_fact(req: InvalidateRequest):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with _open_session(driver) as session:
             conditions = "r.predicate = $predicate AND r.valid_to IS NULL"
             params: dict[str, Any] = {
                 "subject": req.subject,
@@ -320,7 +321,7 @@ async def invalidate_fact(req: InvalidateRequest):
                 conditions += " AND o.name = $object"
                 params["object"] = req.object
 
-            result = session.run(
+            single_result = session.run(
                 f"""
                 MATCH (s:Entity {{name: $subject}})-[r:TEMPORAL_FACT]->(o)
                 WHERE {conditions}
@@ -330,8 +331,8 @@ async def invalidate_fact(req: InvalidateRequest):
                 """,
                 **params,
             ).single()
-            invalidated = result["invalidated"]
-            objects = result["objects"]
+            invalidated: Any = single_result["invalidated"] if single_result is not None else 0
+            objects: Any = single_result["objects"] if single_result is not None else []
         driver.close()
         mark_neo4j_ok()
 
@@ -351,7 +352,7 @@ async def invalidate_fact(req: InvalidateRequest):
 # --- Temporal query endpoints ---
 
 @temporal_router.post("/since")
-async def query_since(req: TemporalQuery):
+async def query_since(req: TemporalQuery) -> dict[str, Any]:
     """What's changed since a given time? Returns new facts and invalidated facts."""
     if not req.since:
         raise HTTPException(status_code=400, detail="'since' timestamp required")
@@ -367,8 +368,8 @@ async def query_since(req: TemporalQuery):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            new_facts = session.run(
+        with _open_session(driver) as session:
+            new_facts: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (s)-[r:TEMPORAL_FACT]->(o)
                 WHERE r.recorded_at >= $since {entity_filter}
@@ -381,7 +382,7 @@ async def query_since(req: TemporalQuery):
                 **params,
             ).data()
 
-            invalidated = session.run(
+            invalidated: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (s)-[r:TEMPORAL_FACT]->(o)
                 WHERE r.valid_to IS NOT NULL AND r.valid_to >= $since {entity_filter}
@@ -399,7 +400,7 @@ async def query_since(req: TemporalQuery):
             if req.agent_id:
                 ep_filter = "AND e.agent_id = $agent_id"
                 ep_params["agent_id"] = req.agent_id
-            episodes = session.run(
+            episodes: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (e:Episode)
                 WHERE e.recorded_at >= $since {ep_filter}
@@ -427,7 +428,7 @@ async def query_since(req: TemporalQuery):
 
 
 @temporal_router.post("/what_changed")
-async def what_changed(req: TemporalQuery):
+async def what_changed(req: TemporalQuery) -> dict[str, Any]:
     """What changed for a specific entity over time?"""
     if not req.entity:
         raise HTTPException(status_code=400, detail="'entity' required")
@@ -446,8 +447,8 @@ async def what_changed(req: TemporalQuery):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            facts = session.run(
+        with _open_session(driver) as session:
+            facts: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (s)-[r:TEMPORAL_FACT]->(o)
                 WHERE (toLower(s.name) CONTAINS toLower($entity)
@@ -468,7 +469,7 @@ async def what_changed(req: TemporalQuery):
             if req.since:
                 ep_time_filter += " AND e.occurred_at >= $since"
                 ep_params["since"] = req.since
-            episodes = session.run(
+            episodes: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (e:Episode)-[:MENTIONS]->(ent:Entity)
                 WHERE toLower(ent.name) CONTAINS toLower($entity) {ep_time_filter}
@@ -482,8 +483,8 @@ async def what_changed(req: TemporalQuery):
         driver.close()
         mark_neo4j_ok()
 
-        active = [f for f in facts if f.get("valid_to") is None]
-        historical = [f for f in facts if f.get("valid_to") is not None]
+        active: list[dict[str, Any]] = [f for f in facts if f.get("valid_to") is None]
+        historical: list[dict[str, Any]] = [f for f in facts if f.get("valid_to") is not None]
 
         return {
             "ok": True,
@@ -499,7 +500,7 @@ async def what_changed(req: TemporalQuery):
 
 
 @temporal_router.post("/at_time")
-async def knowledge_at_time(req: TemporalQuery):
+async def knowledge_at_time(req: TemporalQuery) -> dict[str, Any]:
     """What was the state of knowledge at a specific point in time?"""
     timestamp = req.until or req.since
     if not timestamp:
@@ -516,8 +517,8 @@ async def knowledge_at_time(req: TemporalQuery):
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            facts = session.run(
+        with _open_session(driver) as session:
+            facts: list[dict[str, Any]] = session.run(
                 f"""
                 MATCH (s)-[r:TEMPORAL_FACT]->(o)
                 WHERE r.valid_from <= $timestamp
@@ -546,31 +547,35 @@ async def knowledge_at_time(req: TemporalQuery):
 
 
 @temporal_router.get("/stats")
-async def temporal_stats():
+async def temporal_stats() -> dict[str, Any]:
     """Statistics on the temporal knowledge graph."""
     if not neo4j_available():
         return {"ok": False, "available": False}
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            episodes = session.run("MATCH (e:Episode) RETURN count(e) AS c").single()["c"]
-            active_facts = session.run(
+        with _open_session(driver) as session:
+            ep_record = session.run("MATCH (e:Episode) RETURN count(e) AS c").single()
+            episodes: Any = ep_record["c"] if ep_record is not None else 0
+            af_record = session.run(
                 "MATCH ()-[r:TEMPORAL_FACT]->() WHERE r.valid_to IS NULL RETURN count(r) AS c"
-            ).single()["c"]
-            historical_facts = session.run(
+            ).single()
+            active_facts: Any = af_record["c"] if af_record is not None else 0
+            hf_record = session.run(
                 "MATCH ()-[r:TEMPORAL_FACT]->() WHERE r.valid_to IS NOT NULL RETURN count(r) AS c"
-            ).single()["c"]
-            mentions = session.run(
+            ).single()
+            historical_facts: Any = hf_record["c"] if hf_record is not None else 0
+            mn_record = session.run(
                 "MATCH ()-[r:MENTIONS]->() RETURN count(r) AS c"
-            ).single()["c"]
+            ).single()
+            mentions: Any = mn_record["c"] if mn_record is not None else 0
 
-            recent = session.run(
+            recent: list[dict[str, Any]] = session.run(
                 "MATCH (e:Episode) RETURN e.agent_id AS agent, e.source AS source, "
                 "e.occurred_at AS occurred_at ORDER BY e.occurred_at DESC LIMIT 5"
             ).data()
 
-            top_mentioned = session.run(
+            top_mentioned: list[dict[str, Any]] = session.run(
                 "MATCH (e:Episode)-[:MENTIONS]->(ent:Entity) "
                 "RETURN ent.name AS entity, count(e) AS mentions "
                 "ORDER BY mentions DESC LIMIT 10"

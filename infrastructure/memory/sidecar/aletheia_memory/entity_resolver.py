@@ -7,6 +7,7 @@ registry and resolving new entities against it before creation.
 import logging
 import re
 from difflib import SequenceMatcher
+from typing import Any
 
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
@@ -218,7 +219,7 @@ def get_canonical_entities() -> list[str]:
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with driver.session() as session:  # pyright: ignore[reportUnknownMemberType] — neo4j stubs
             result = session.run(
                 "MATCH (e) WHERE e:Entity OR e:__Entity__ "
                 "RETURN DISTINCT toLower(e.name) AS name"
@@ -233,7 +234,7 @@ def get_canonical_entities() -> list[str]:
         return []
 
 
-def merge_duplicate_entities() -> dict:
+def merge_duplicate_entities() -> dict[str, Any]:
     """Find and merge duplicate entity nodes in Neo4j.
 
     Uses the alias table and fuzzy matching to identify duplicates,
@@ -247,7 +248,7 @@ def merge_duplicate_entities() -> dict:
         merged_count = 0
         deleted_count = 0
 
-        with driver.session() as session:
+        with driver.session() as session:  # pyright: ignore[reportUnknownMemberType] — neo4j stubs
             # Get all entities
             result = session.run(
                 "MATCH (e) WHERE e:Entity OR e:__Entity__ "
@@ -261,7 +262,7 @@ def merge_duplicate_entities() -> dict:
             resolved = resolve_entity(name)
             if resolved is None:
                 # Invalid entity — mark for deletion
-                with driver.session() as session:
+                with driver.session() as session:  # pyright: ignore[reportUnknownMemberType] — neo4j stubs
                     session.run(
                         "MATCH (e) WHERE id(e) = $node_id DETACH DELETE e",
                         node_id=node_id,
@@ -281,7 +282,7 @@ def merge_duplicate_entities() -> dict:
             # Keep the first node as canonical, merge others into it
             _keeper_name, keeper_id = nodes[0]
 
-            with driver.session() as session:
+            with driver.session() as session:  # pyright: ignore[reportUnknownMemberType] — neo4j stubs
                 for _dup_name, dup_id in nodes[1:]:
                     # Transfer all relationships from duplicate to keeper
                     session.run(
@@ -347,21 +348,22 @@ def merge_duplicate_entities() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def cleanup_orphan_entities() -> dict:
+def cleanup_orphan_entities() -> dict[str, Any]:
     """Remove entity nodes with no relationships."""
     if not neo4j_available():
         return {"ok": False, "reason": "neo4j_unavailable"}
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with driver.session() as session:  # pyright: ignore[reportUnknownMemberType] — neo4j stubs
             result = session.run(
                 "MATCH (e) WHERE (e:Entity OR e:__Entity__) AND NOT (e)--() "
                 "WITH e LIMIT 500 "
                 "DELETE e "
                 "RETURN count(e) AS deleted"
             )
-            deleted = result.single()["deleted"]
+            record = result.single()
+            deleted: int = record["deleted"] if record is not None else 0
         driver.close()
         mark_neo4j_ok()
         return {"ok": True, "orphans_deleted": deleted}

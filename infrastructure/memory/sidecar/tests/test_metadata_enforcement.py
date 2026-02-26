@@ -4,6 +4,7 @@
 # and that requests with all required fields proceed past validation.
 # Qdrant and Mem0 calls are mocked so no live services are required.
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,16 +22,17 @@ def _make_app() -> FastAPI:
     mock_mem = MagicMock()
     mock_mem.embedding_model = MagicMock()
 
-    @app.on_event("startup")
-    async def setup_state():
+    async def setup_state() -> None:
         app.state.memory = mock_mem
         app.state.backend = {"tier": 1, "provider": "test"}
+
+    app.on_event("startup")(setup_state)  # pyright: ignore[reportDeprecated]
 
     return app
 
 
 @pytest.fixture()
-def client():
+def client() -> Iterator[TestClient]:
     app = _make_app()
     with TestClient(app) as c:
         yield c
@@ -41,7 +43,7 @@ def client():
 # ---------------------------------------------------------------------------
 
 
-def test_add_direct_valid_metadata_reaches_processing(client):
+def test_add_direct_valid_metadata_reaches_processing(client: TestClient) -> None:
     """Valid request with all required fields should NOT return 400."""
     # Mock Qdrant scroll (content hash dedup check) and embed to prevent real calls
     with (
@@ -74,7 +76,7 @@ def test_add_direct_valid_metadata_reaches_processing(client):
     assert resp.status_code not in (400, 422), f"Unexpected status {resp.status_code}: {resp.text}"
 
 
-def test_add_direct_missing_agent_id_returns_400(client):
+def test_add_direct_missing_agent_id_returns_400(client: TestClient) -> None:
     """/add_direct without agent_id should return 400."""
     resp = client.post(
         "/add_direct",
@@ -88,7 +90,7 @@ def test_add_direct_missing_agent_id_returns_400(client):
     assert "agent_id" in resp.json()["detail"]
 
 
-def test_add_direct_missing_session_id_returns_400(client):
+def test_add_direct_missing_session_id_returns_400(client: TestClient) -> None:
     """/add_direct without session_id should return 400."""
     resp = client.post(
         "/add_direct",
@@ -102,14 +104,14 @@ def test_add_direct_missing_session_id_returns_400(client):
     assert "session_id" in resp.json()["detail"]
 
 
-def test_add_direct_missing_both_returns_400(client):
+def test_add_direct_missing_both_returns_400(client: TestClient) -> None:
     """/add_direct without agent_id and session_id should return 400 listing both."""
     resp = client.post(
         "/add_direct",
         json={"text": "Some fact", "source": "direct"},
     )
     assert resp.status_code == 400
-    detail = resp.json()["detail"]
+    detail: str = resp.json()["detail"]
     assert "agent_id" in detail
     assert "session_id" in detail
 
@@ -119,7 +121,7 @@ def test_add_direct_missing_both_returns_400(client):
 # ---------------------------------------------------------------------------
 
 
-def test_add_batch_valid_metadata_reaches_processing(client):
+def test_add_batch_valid_metadata_reaches_processing(client: TestClient) -> None:
     """Valid batch request with all required fields should NOT return 400."""
     with (
         patch("aletheia_memory.routes.QdrantClient") as mock_qdrant_cls,
@@ -150,7 +152,7 @@ def test_add_batch_valid_metadata_reaches_processing(client):
     assert resp.status_code not in (400, 422), f"Unexpected status {resp.status_code}: {resp.text}"
 
 
-def test_add_batch_missing_agent_id_returns_400(client):
+def test_add_batch_missing_agent_id_returns_400(client: TestClient) -> None:
     """/add_batch without agent_id should return 400."""
     resp = client.post(
         "/add_batch",
@@ -164,7 +166,7 @@ def test_add_batch_missing_agent_id_returns_400(client):
     assert "agent_id" in resp.json()["detail"]
 
 
-def test_add_batch_missing_session_id_returns_400(client):
+def test_add_batch_missing_session_id_returns_400(client: TestClient) -> None:
     """/add_batch without session_id should return 400."""
     resp = client.post(
         "/add_batch",
@@ -178,7 +180,7 @@ def test_add_batch_missing_session_id_returns_400(client):
     assert "session_id" in resp.json()["detail"]
 
 
-def test_add_batch_empty_agent_id_returns_400(client):
+def test_add_batch_empty_agent_id_returns_400(client: TestClient) -> None:
     """/add_batch with empty string agent_id should return 400 (empty string is falsy)."""
     resp = client.post(
         "/add_batch",

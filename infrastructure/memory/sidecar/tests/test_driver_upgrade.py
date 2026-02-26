@@ -1,15 +1,21 @@
 # Tests for neo4j driver version requirements and import compatibility
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    import types
 
 PYPROJECT_PATH = Path(__file__).parent.parent / "pyproject.toml"
 GRAPH_PY_PATH = Path(__file__).parent.parent / "aletheia_memory" / "graph.py"
 
 
-def test_pyproject_has_neo4j_6x():
+def test_pyproject_has_neo4j_6x() -> None:
     """pyproject.toml must declare neo4j>=6.1.0."""
     content = PYPROJECT_PATH.read_text()
     assert "neo4j>=6.1.0" in content, (
@@ -18,7 +24,7 @@ def test_pyproject_has_neo4j_6x():
     )
 
 
-def test_pyproject_no_neo4j_driver():
+def test_pyproject_no_neo4j_driver() -> None:
     """pyproject.toml must NOT reference the deprecated neo4j-driver package."""
     content = PYPROJECT_PATH.read_text()
     assert "neo4j-driver" not in content, (
@@ -26,7 +32,7 @@ def test_pyproject_no_neo4j_driver():
     )
 
 
-def test_pyproject_has_neo4j_graphrag():
+def test_pyproject_has_neo4j_graphrag() -> None:
     """pyproject.toml must declare neo4j-graphrag[anthropic]>=1.13.0."""
     content = PYPROJECT_PATH.read_text()
     assert "neo4j-graphrag[anthropic]>=1.13.0" in content, (
@@ -35,17 +41,17 @@ def test_pyproject_has_neo4j_graphrag():
     )
 
 
-def test_neo4j_graphdatabase_import():
+def test_neo4j_graphdatabase_import() -> None:
     """neo4j package must be importable as GraphDatabase (not neo4j-driver).
 
     Skipped when neo4j is not installed in the local environment — the package
     lives on the server. pyproject.toml version check covers the spec constraint.
     """
-    neo4j = pytest.importorskip("neo4j", reason="neo4j not installed locally — server-side dep")
+    neo4j: types.ModuleType = pytest.importorskip("neo4j", reason="neo4j not installed locally — server-side dep")
     assert hasattr(neo4j, "GraphDatabase")
 
 
-def test_graph_py_uses_neo4j_not_driver():
+def test_graph_py_uses_neo4j_not_driver() -> None:
     """graph.py must import from 'neo4j', not 'neo4j-driver' or 'neo4j_driver' packages."""
     content = GRAPH_PY_PATH.read_text()
     assert "from neo4j import" in content, (

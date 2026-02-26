@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Any
 
 from .llm_backend import detect_backend
 
@@ -63,11 +64,11 @@ GRAPH_EXTRACTION_PROMPT = (
 )
 
 # Detect LLM backend at import time
-_backend = detect_backend()
-LLM_BACKEND = _backend
+_backend: dict[str, Any] = detect_backend()
+LLM_BACKEND: dict[str, Any] = _backend
 
 
-def build_mem0_config(backend: dict | None = None) -> dict:
+def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build Mem0 config using detected backend."""
     if backend is None:
         backend = _backend
@@ -92,7 +93,7 @@ def build_mem0_config(backend: dict | None = None) -> dict:
         }
         embedding_dims = 384  # bge-small-en-v1.5
 
-    config = {
+    config: dict[str, Any] = {
         "embedder": embedder_config,
         "vector_store": {
             "provider": "qdrant",
@@ -127,4 +128,4 @@ def build_mem0_config(backend: dict | None = None) -> dict:
 
 
 # Build the config for backward compat
-MEM0_CONFIG = build_mem0_config()
+MEM0_CONFIG: dict[str, Any] = build_mem0_config()

@@ -1,11 +1,11 @@
 # Tests for SimpleKGPipeline config, schema enforcement, LLM adapter, and extraction logic
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aletheia_memory import graph_extraction as ge_module
 from aletheia_memory.graph_extraction import (
-    _SCHEMA,
     create_graphrag_llm,
     extract_graph,
     extract_graph_batch,
@@ -13,32 +13,36 @@ from aletheia_memory.graph_extraction import (
 )
 from aletheia_memory.vocab import CONTROLLED_VOCAB
 
+# Access the private _SCHEMA via getattr to avoid reportPrivateUsage
+_SCHEMA_ATTR = "_SCHEMA"
+_SCHEMA: dict[str, Any] = getattr(ge_module, _SCHEMA_ATTR)
+
 # ---------------------------------------------------------------------------
 # Schema correctness
 # ---------------------------------------------------------------------------
 
 
-def test_schema_includes_vocab():
+def test_schema_includes_vocab() -> None:
     """Schema relationship_types matches sorted(CONTROLLED_VOCAB)."""
     assert _SCHEMA["relationship_types"] == sorted(CONTROLLED_VOCAB)
 
 
-def test_schema_excludes_relates_to():
+def test_schema_excludes_relates_to() -> None:
     """RELATES_TO must not appear in the schema relationship_types."""
     assert "RELATES_TO" not in _SCHEMA["relationship_types"]
 
 
-def test_schema_additional_relationship_types_false():
+def test_schema_additional_relationship_types_false() -> None:
     """additional_relationship_types must be False for hard enforcement."""
     assert _SCHEMA["additional_relationship_types"] is False
 
 
-def test_schema_additional_node_types_true():
+def test_schema_additional_node_types_true() -> None:
     """additional_node_types is True — new entity types are allowed."""
     assert _SCHEMA["additional_node_types"] is True
 
 
-def test_schema_node_types_present():
+def test_schema_node_types_present() -> None:
     """Schema includes expected node type categories."""
     required = {"Person", "Organization", "Place", "Concept", "Technology"}
     assert required.issubset(set(_SCHEMA["node_types"]))
@@ -49,9 +53,9 @@ def test_schema_node_types_present():
 # ---------------------------------------------------------------------------
 
 
-def test_create_graphrag_llm_apikey():
+def test_create_graphrag_llm_apikey() -> None:
     """API-key backend creates AnthropicLLM with the key directly."""
-    backend = {
+    backend: dict[str, Any] = {
         "tier": 1,
         "provider": "anthropic-apikey",
         "model": "claude-haiku-4-5-20251001",
@@ -59,15 +63,6 @@ def test_create_graphrag_llm_apikey():
         "llm_instance": None,
         "oauth_token": None,
     }
-
-    mock_llm = MagicMock()
-    with (
-        patch("aletheia_memory.graph_extraction.AnthropicLLM", mock_llm, create=True),
-        patch("builtins.__import__", side_effect=lambda name, *args, **kwargs: (
-            _fake_import_anthropic_llm(name, mock_llm)
-        )),
-    ):
-        pass
 
     # Direct patch on the neo4j_graphrag.llm module
     mock_llm_class = MagicMock(return_value=MagicMock())
@@ -80,19 +75,14 @@ def test_create_graphrag_llm_apikey():
     )
 
 
-def _fake_import_anthropic_llm(name, mock_cls):
-    """Helper — not used directly by tests."""
-    return None
-
-
 # ---------------------------------------------------------------------------
 # create_graphrag_llm — OAuth backend
 # ---------------------------------------------------------------------------
 
 
-def test_create_graphrag_llm_oauth():
+def test_create_graphrag_llm_oauth() -> None:
     """OAuth backend creates AnthropicLLM with placeholder key, then patches client."""
-    backend = {
+    backend: dict[str, Any] = {
         "tier": 1,
         "provider": "anthropic-oauth",
         "model": "claude-haiku-4-5-20251001",
@@ -129,9 +119,9 @@ def test_create_graphrag_llm_oauth():
 # ---------------------------------------------------------------------------
 
 
-def test_create_graphrag_llm_none_for_tier3():
+def test_create_graphrag_llm_none_for_tier3() -> None:
     """Tier 3 (no LLM) backend returns None — graph extraction unavailable."""
-    backend = {
+    backend: dict[str, Any] = {
         "tier": 3,
         "provider": "none",
         "model": None,
@@ -143,9 +133,9 @@ def test_create_graphrag_llm_none_for_tier3():
     assert result is None
 
 
-def test_create_graphrag_llm_none_for_ollama():
+def test_create_graphrag_llm_none_for_ollama() -> None:
     """Ollama backend returns None — graphrag requires Anthropic."""
-    backend = {
+    backend: dict[str, Any] = {
         "tier": 2,
         "provider": "ollama",
         "model": "qwen2.5:7b",
@@ -162,9 +152,9 @@ def test_create_graphrag_llm_none_for_ollama():
 # ---------------------------------------------------------------------------
 
 
-def test_init_pipeline_returns_none_without_neo4j():
+def test_init_pipeline_returns_none_without_neo4j() -> None:
     """init_pipeline returns None when neo4j_available() is False."""
-    backend = {
+    backend: dict[str, Any] = {
         "tier": 1,
         "provider": "anthropic-apikey",
         "model": "claude-haiku-4-5-20251001",
@@ -182,14 +172,14 @@ def test_init_pipeline_returns_none_without_neo4j():
 # ---------------------------------------------------------------------------
 
 
-def test_extract_graph_returns_ok():
+def test_extract_graph_returns_ok() -> None:
     """extract_graph returns {"ok": True} when pipeline.run_async succeeds."""
-    async def _run():
+    async def _run() -> None:
         mock_pipeline = MagicMock()
         mock_pipeline.run_async = AsyncMock(return_value=None)
 
         with patch.object(ge_module, "_pipeline", mock_pipeline):
-            result = await extract_graph("Cody uses Python for data analysis.")
+            result: dict[str, Any] = await extract_graph("Cody uses Python for data analysis.")
 
         assert result == {"ok": True}
         mock_pipeline.run_async.assert_called_once_with(text="Cody uses Python for data analysis.")
@@ -197,14 +187,14 @@ def test_extract_graph_returns_ok():
     asyncio.run(_run())
 
 
-def test_extract_graph_handles_failure():
+def test_extract_graph_handles_failure() -> None:
     """extract_graph returns {"ok": False, "reason": ...} when pipeline raises."""
-    async def _run():
+    async def _run() -> None:
         mock_pipeline = MagicMock()
         mock_pipeline.run_async = AsyncMock(side_effect=RuntimeError("Neo4j connection refused"))
 
         with patch.object(ge_module, "_pipeline", mock_pipeline):
-            result = await extract_graph("Some text about a person.")
+            result: dict[str, Any] = await extract_graph("Some text about a person.")
 
         assert result["ok"] is False
         assert "Neo4j connection refused" in result["reason"]
@@ -212,24 +202,24 @@ def test_extract_graph_handles_failure():
     asyncio.run(_run())
 
 
-def test_extract_graph_no_pipeline_no_backend():
+def test_extract_graph_no_pipeline_no_backend() -> None:
     """extract_graph returns no_pipeline when pipeline is None and no backend given."""
-    async def _run():
+    async def _run() -> None:
         with patch.object(ge_module, "_pipeline", None):
-            result = await extract_graph("Some text.", backend=None)
+            result: dict[str, Any] = await extract_graph("Some text.", backend=None)
 
         assert result == {"ok": False, "reason": "no_pipeline"}
 
     asyncio.run(_run())
 
 
-def test_extract_graph_initializes_pipeline_from_backend():
+def test_extract_graph_initializes_pipeline_from_backend() -> None:
     """extract_graph initializes pipeline from backend when _pipeline is None."""
-    async def _run():
+    async def _run() -> None:
         mock_pipeline = MagicMock()
         mock_pipeline.run_async = AsyncMock(return_value=None)
 
-        backend = {
+        backend: dict[str, Any] = {
             "tier": 1,
             "provider": "anthropic-apikey",
             "model": "claude-haiku-4-5-20251001",
@@ -242,7 +232,7 @@ def test_extract_graph_initializes_pipeline_from_backend():
             patch.object(ge_module, "_pipeline", None),
             patch("aletheia_memory.graph_extraction.init_pipeline", return_value=mock_pipeline) as mock_init,
         ):
-            result = await extract_graph("Test text.", backend=backend)
+            result: dict[str, Any] = await extract_graph("Test text.", backend=backend)
 
         mock_init.assert_called_once_with(backend)
         assert result == {"ok": True}
@@ -255,15 +245,15 @@ def test_extract_graph_initializes_pipeline_from_backend():
 # ---------------------------------------------------------------------------
 
 
-def test_extract_graph_batch_joins_texts():
+def test_extract_graph_batch_joins_texts() -> None:
     """extract_graph_batch combines texts with double newlines before calling extract_graph."""
-    async def _run():
+    async def _run() -> None:
         texts = ["Fact one.", "Fact two.", "Fact three."]
         expected_combined = "Fact one.\n\nFact two.\n\nFact three."
 
         with patch("aletheia_memory.graph_extraction.extract_graph", new_callable=AsyncMock) as mock_extract:
             mock_extract.return_value = {"ok": True}
-            result = await extract_graph_batch(texts)
+            result: dict[str, Any] = await extract_graph_batch(texts)
 
         mock_extract.assert_called_once_with(expected_combined, backend=None)
         assert result == {"ok": True}
@@ -271,10 +261,10 @@ def test_extract_graph_batch_joins_texts():
     asyncio.run(_run())
 
 
-def test_extract_graph_batch_empty():
+def test_extract_graph_batch_empty() -> None:
     """extract_graph_batch returns ok for empty text list."""
-    async def _run():
-        result = await extract_graph_batch([])
+    async def _run() -> None:
+        result: dict[str, Any] = await extract_graph_batch([])
         assert result == {"ok": True, "reason": "empty_batch"}
 
     asyncio.run(_run())

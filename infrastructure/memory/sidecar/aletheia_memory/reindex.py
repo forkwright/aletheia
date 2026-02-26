@@ -12,9 +12,11 @@ Or import and call:
 import logging
 import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PointStruct, Record, VectorParams
 
 from .config import VOYAGE_DIMS, VOYAGE_MODEL
 
@@ -24,45 +26,47 @@ QDRANT_HOST = os.environ.get("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 COLLECTION = "aletheia_memories"
 
+EmbedFn = Callable[[str], list[float]]
 
-def get_embedder():
+
+def get_embedder() -> tuple[EmbedFn | None, int]:
     """Get the configured embedder."""
     voyage_key = os.environ.get("VOYAGE_API_KEY", "")
     if voyage_key:
         from openai import OpenAI
         client = OpenAI(api_key=voyage_key, base_url="https://api.voyageai.com/v1")
-        def embed(text):
+        def embed(text: str) -> list[float]:
             r = client.embeddings.create(input=[text.replace("\n", " ")], model=VOYAGE_MODEL)
             return r.data[0].embedding
         return embed, VOYAGE_DIMS
     else:
         try:
-            from fastembed import TextEmbedding
-            model = TextEmbedding("BAAI/bge-small-en-v1.5")
-            def embed(text):
-                return next(iter(model.embed([text]))).tolist()
+            fastembed: Any = __import__("fastembed")
+            model: Any = fastembed.TextEmbedding("BAAI/bge-small-en-v1.5")
+            def embed(text: str) -> list[float]:
+                result: list[float] = list(next(iter(model.embed([text]))))
+                return result
             return embed, 384
         except ImportError:
             log.error("No embedder available. Install fastembed: pip install fastembed")
             return None, 0
 
 
-def reindex_zero_vectors(dry_run=False):
+def reindex_zero_vectors(dry_run: bool = False) -> int:
     """Find points with zero/missing vectors and recompute embeddings."""
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-    # Check collection exists
-    collections = [c.name for c in client.get_collections().collections]
+    collections: list[str] = [c.name for c in client.get_collections().collections]
     if COLLECTION not in collections:
         log.info(f"Collection {COLLECTION} doesn't exist. Nothing to reindex.")
         return 0
 
     info = client.get_collection(COLLECTION)
-    total_points = info.points_count
-    total_vectors = info.indexed_vectors_count or 0
+    total_points: int | None = info.points_count
+    total_vectors: int = info.indexed_vectors_count or 0
     log.info(f"Collection: {total_points} points, {total_vectors} vectors")
 
-    if total_vectors >= total_points and total_vectors > 0:
+    if total_points is not None and total_vectors >= total_points and total_vectors > 0:
         log.info("All points have vectors. Nothing to reindex.")
         return 0
 
@@ -70,15 +74,11 @@ def reindex_zero_vectors(dry_run=False):
     if not embed_fn:
         return 0
 
-    # Ensure collection has correct vector config
-    # If vectors_count is 0, the collection may need vector params set
-    if total_vectors == 0 and total_points > 0:
+    if total_vectors == 0 and total_points is not None and total_points > 0:
         log.info(f"Recreating collection with {dims}-dim vectors (preserving points)")
-        # We need to scroll all points, recreate collection, and re-insert
-        # Qdrant doesn't allow adding vector config after creation
 
-        all_points = []
-        offset = None
+        all_points: list[Record] = []
+        offset: Any = None
         while True:
             result = client.scroll(
                 collection_name=COLLECTION,
@@ -99,24 +99,22 @@ def reindex_zero_vectors(dry_run=False):
             log.info(f"[DRY RUN] Would re-embed {len(all_points)} points")
             return len(all_points)
 
-        # Recreate collection
         client.recreate_collection(
             collection_name=COLLECTION,
             vectors_config=VectorParams(size=dims, distance=Distance.COSINE),
         )
 
-        # Re-insert with embeddings
-        batch = []
+        batch: list[PointStruct] = []
         reindexed = 0
         for point in all_points:
-            payload = point.payload or {}
-            text = payload.get("memory", payload.get("data", payload.get("text", "")))
+            payload: dict[str, Any] = point.payload or {}
+            text: str = str(payload.get("memory", payload.get("data", payload.get("text", ""))))
             if not text:
                 log.debug(f"Point {point.id}: no text field, skipping")
                 continue
 
             try:
-                vector = embed_fn(text)
+                vector: list[float] = embed_fn(text)
                 batch.append(PointStruct(
                     id=point.id,
                     vector=vector,

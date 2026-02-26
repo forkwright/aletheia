@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from .graph import neo4j_available, neo4j_driver
 from .vocab import CONTROLLED_VOCAB
 
 log = logging.getLogger("aletheia_memory.graph_extraction")
 
-_SCHEMA = {
+_SCHEMA: dict[str, Any] = {
     "node_types": ["Person", "Organization", "Place", "Concept", "Technology", "Vehicle", "Entity"],
     "relationship_types": sorted(CONTROLLED_VOCAB),
     "additional_node_types": True,
     "additional_relationship_types": False,  # Hard enforcement: only vocab types written to Neo4j
 }
 
-_pipeline = None
+_pipeline: Any = None
 
 
-def create_graphrag_llm(backend: dict) -> object | None:
+def create_graphrag_llm(backend: dict[str, Any]) -> object | None:
     """Build a neo4j-graphrag AnthropicLLM from the active backend.
 
     - API-key backend: instantiate AnthropicLLM with the key directly.
@@ -27,34 +28,36 @@ def create_graphrag_llm(backend: dict) -> object | None:
       client with an OAuth-authenticated anthropic.Anthropic instance.
     - Ollama / none backend: return None (graph extraction unavailable).
     """
-    provider = backend.get("provider", "none")
+    provider: str = backend.get("provider", "none")
 
     if provider == "anthropic-apikey":
-        api_key = backend.get("config", {}).get("config", {}).get("api_key") or ""
+        config_outer: dict[str, Any] = backend.get("config", {})
+        config_inner: dict[str, Any] = config_outer.get("config", {})
+        api_key: str = config_inner.get("api_key", "") or ""
         if not api_key:
             log.warning("create_graphrag_llm: api_key backend but no key found")
             return None
         try:
             from neo4j_graphrag.llm import AnthropicLLM
-            model = backend.get("model", "claude-haiku-4-5-20251001")
+            model: str = backend.get("model", "claude-haiku-4-5-20251001")
             return AnthropicLLM(model_name=model, api_key=api_key)
         except Exception as exc:
             log.warning("create_graphrag_llm: AnthropicLLM init failed: %s", exc)
             return None
 
     if provider == "anthropic-oauth":
-        token = backend.get("oauth_token")
+        token: Any = backend.get("oauth_token")
         if not token:
             log.warning("create_graphrag_llm: OAuth backend but no token found")
             return None
         try:
             import anthropic as anthropic_sdk
             from neo4j_graphrag.llm import AnthropicLLM
-            model = backend.get("model", "claude-haiku-4-5-20251001")
-            llm = AnthropicLLM(model_name=model, api_key="oauth-placeholder")
+            oauth_model: str = backend.get("model", "claude-haiku-4-5-20251001")
+            llm: Any = AnthropicLLM(model_name=oauth_model, api_key="oauth-placeholder")
             # Monkey-patch the internal client with an OAuth-authenticated one
             llm.anthropic_client = anthropic_sdk.Anthropic(
-                auth_token=token,
+                auth_token=str(token),
                 default_headers={"anthropic-beta": "oauth-2025-04-20"},
             )
             return llm
@@ -66,7 +69,7 @@ def create_graphrag_llm(backend: dict) -> object | None:
     return None
 
 
-def init_pipeline(backend: dict) -> object | None:
+def init_pipeline(backend: dict[str, Any]) -> object | None:
     """Build and return a SimpleKGPipeline instance, or None if unavailable.
 
     None is returned when:
@@ -87,7 +90,8 @@ def init_pipeline(backend: dict) -> object | None:
     try:
         from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
         driver = neo4j_driver()
-        pipeline = SimpleKGPipeline(
+        builder: Any = SimpleKGPipeline
+        pipeline: Any = builder(
             llm=llm,
             driver=driver,
             schema=_SCHEMA,
@@ -102,7 +106,7 @@ def init_pipeline(backend: dict) -> object | None:
         return None
 
 
-async def extract_graph(text: str, backend: dict | None = None) -> dict:
+async def extract_graph(text: str, backend: dict[str, Any] | None = None) -> dict[str, Any]:
     """Extract graph relationships from text using SimpleKGPipeline.
 
     Fire-and-forget safe: failures return {"ok": False} and do not propagate.
@@ -127,7 +131,7 @@ async def extract_graph(text: str, backend: dict | None = None) -> dict:
         return {"ok": False, "reason": str(exc)}
 
 
-async def extract_graph_batch(texts: list[str], backend: dict | None = None) -> dict:
+async def extract_graph_batch(texts: list[str], backend: dict[str, Any] | None = None) -> dict[str, Any]:
     """Extract graph relationships for a batch of texts.
 
     Joins texts into a single string so the pipeline's text splitter handles

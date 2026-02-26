@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 log = logging.getLogger("aletheia_memory.vocab")
 
@@ -31,10 +32,11 @@ def load_vocab() -> frozenset[str]:
     try:
         raw = _VOCAB_PATH.read_text(encoding="utf-8")
         data = json.loads(raw)
-        types = data.get("relationship_types", [])
+        types: Any = data.get("relationship_types", [])
         if not isinstance(types, list) or not types:
             raise ValueError("relationship_types must be a non-empty list")
-        vocab = frozenset(str(t).upper() for t in types)
+        type_list = cast("list[str]", types)
+        vocab = frozenset(t.upper() for t in type_list)
         log.debug("loaded %d relationship types from %s", len(vocab), _VOCAB_PATH)
         return vocab
     except FileNotFoundError:

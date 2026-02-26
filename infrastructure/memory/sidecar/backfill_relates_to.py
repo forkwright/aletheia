@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("backfill_relates_to")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -46,35 +47,36 @@ Target: {target}
 Respond with ONLY the relationship type (e.g. KNOWS) or DELETE. No explanation."""
 
 
-def _neo4j_driver():
+def _neo4j_driver() -> Any:
     from neo4j import GraphDatabase
-    return GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    gdb: Any = GraphDatabase
+    return gdb.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
 
-def get_stats(session) -> dict:
+def get_stats(session: Any) -> dict[str, Any]:
     """Return current RELATES_TO count, total edge count, and rate."""
-    result = session.run(
+    result: Any = session.run(
         "MATCH ()-[r]->() WITH count(r) AS total "
         "OPTIONAL MATCH ()-[r2:RELATES_TO]->() "
         "RETURN count(r2) AS relates_to, total"
     )
-    row = result.single()
-    relates_to = row["relates_to"] or 0
-    total = row["total"] or 0
-    rate = relates_to / total if total > 0 else 0.0
+    row: Any = result.single()
+    relates_to: int = row["relates_to"] or 0
+    total: int = row["total"] or 0
+    rate: float = relates_to / total if total > 0 else 0.0
     return {"relates_to": relates_to, "total": total, "rate": rate}
 
 
-def print_stats(label: str, stats: dict) -> None:
+def print_stats(label: str, stats: dict[str, Any]) -> None:
     print(
         f"{label}: {stats['relates_to']} RELATES_TO / {stats['total']} total "
         f"({stats['rate']:.1%} rate)"
     )
 
 
-def fetch_relates_to_edges(session) -> list[dict]:
+def fetch_relates_to_edges(session: Any) -> list[dict[str, Any]]:
     """Fetch all RELATES_TO edges as dicts with rid, source, target, props."""
-    result = session.run(
+    result: Any = session.run(
         "MATCH (a)-[r:RELATES_TO]->(b) "
         "RETURN id(r) AS rid, a.name AS source, b.name AS target, properties(r) AS props"
     )
@@ -94,8 +96,9 @@ def load_checkpoint() -> set[int]:
     if not CHECKPOINT_FILE.exists():
         return set()
     try:
-        data = json.loads(CHECKPOINT_FILE.read_text())
-        return set(data.get("processed_ids", []))
+        data: dict[str, Any] = json.loads(CHECKPOINT_FILE.read_text())
+        raw_ids: list[int] = data.get("processed_ids", [])
+        return set(raw_ids)
     except Exception as exc:
         log.warning("Failed to load checkpoint: %s", exc)
         return set()
@@ -106,12 +109,14 @@ def save_checkpoint(processed_ids: set[int]) -> None:
     CHECKPOINT_FILE.write_text(json.dumps({"processed_ids": sorted(processed_ids)}))
 
 
-def build_anthropic_client(backend: dict) -> object | None:
+def build_anthropic_client(backend: dict[str, Any]) -> Any:
     """Build a raw anthropic.Anthropic client from the detected backend."""
-    provider = backend.get("provider", "none")
+    provider: str = backend.get("provider", "none")
 
     if provider == "anthropic-apikey":
-        api_key = (backend.get("config") or {}).get("config", {}).get("api_key") or ""
+        config_outer: dict[str, Any] = backend.get("config") or {}
+        config_inner: dict[str, Any] = config_outer.get("config", {})
+        api_key: str = config_inner.get("api_key", "") or ""
         if not api_key:
             return None
         try:
@@ -122,13 +127,13 @@ def build_anthropic_client(backend: dict) -> object | None:
             return None
 
     if provider == "anthropic-oauth":
-        token = backend.get("oauth_token")
+        token: Any = backend.get("oauth_token")
         if not token:
             return None
         try:
             import anthropic as sdk
             return sdk.Anthropic(
-                auth_token=token,
+                auth_token=str(token),
                 default_headers={"anthropic-beta": "oauth-2025-04-20"},
             )
         except Exception as exc:
@@ -138,7 +143,7 @@ def build_anthropic_client(backend: dict) -> object | None:
     return None
 
 
-async def classify_edge(client, source: str, target: str, model: str) -> str:
+async def classify_edge(client: Any, source: str, target: str, model: str) -> str:
     """Call LLM to classify a RELATES_TO edge. Returns a vocab type or 'DELETE'."""
     prompt = RECLASSIFY_PROMPT.format(
         vocab=", ".join(VOCAB_LIST),
@@ -146,13 +151,13 @@ async def classify_edge(client, source: str, target: str, model: str) -> str:
         target=target or "(unnamed)",
     )
     try:
-        response = await asyncio.to_thread(
+        response: Any = await asyncio.to_thread(
             client.messages.create,
             model=model,
             max_tokens=20,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = response.content[0].text.strip().upper().replace(".", "").replace(":", "")
+        raw: str = response.content[0].text.strip().upper().replace(".", "").replace(":", "")
         if raw in VOCAB_LIST:
             return raw
         if "DELETE" in raw:
@@ -164,9 +169,9 @@ async def classify_edge(client, source: str, target: str, model: str) -> str:
         return "DELETE"
 
 
-def apply_reclassification(session, edge: dict, new_type: str) -> None:
+def apply_reclassification(session: Any, edge: dict[str, Any], new_type: str) -> None:
     """Replace a RELATES_TO edge with a typed edge, preserving properties."""
-    props = edge["props"]
+    props: dict[str, Any] = edge["props"]
     session.run(
         "MATCH ()-[r:RELATES_TO]->() WHERE id(r) = $rid "
         "MATCH (a)-[r2:RELATES_TO]->(b) WHERE id(r2) = $rid "
@@ -177,7 +182,7 @@ def apply_reclassification(session, edge: dict, new_type: str) -> None:
     )
 
 
-def delete_edge(session, rid: int) -> None:
+def delete_edge(session: Any, rid: int) -> None:
     """Delete a RELATES_TO edge by internal ID."""
     session.run(
         "MATCH ()-[r:RELATES_TO]->() WHERE id(r) = $rid DELETE r",
@@ -186,22 +191,21 @@ def delete_edge(session, rid: int) -> None:
 
 
 async def process_batch(
-    client,
+    client: Any,
     model: str,
-    batch: list[dict],
+    batch: list[dict[str, Any]],
     dry_run: bool,
-    session,
+    session: Any,
     processed_ids: set[int],
     rate_delay: float = 0.5,
 ) -> None:
     """Process one batch of RELATES_TO edges."""
     for edge in batch:
         new_type = await classify_edge(client, edge["source"], edge["target"], model)
-        source = edge["source"] or "(unnamed)"
-        target = edge["target"] or "(unnamed)"
+        source: str = edge["source"] or "(unnamed)"
+        target: str = edge["target"] or "(unnamed)"
 
         if new_type == "DELETE":
-            action = "DELETE"
             log.info("  %s -> %s: DELETED", source, target)
         else:
             action = f"RELATES_TO -> {new_type}"
@@ -231,7 +235,7 @@ async def run_backfill(
         log.error("Cannot import aletheia_memory — run from sidecar directory with the venv active")
         sys.exit(1)
 
-    backend = detect_backend()
+    backend: dict[str, Any] = detect_backend()
     if backend["provider"] == "none":
         log.error("No LLM backend available (Tier 3). Cannot reclassify edges.")
         sys.exit(1)
@@ -240,18 +244,18 @@ async def run_backfill(
         log.error("Ollama backend not supported for reclassification — requires Anthropic.")
         sys.exit(1)
 
-    client = build_anthropic_client(backend)
+    client: Any = build_anthropic_client(backend)
     if client is None:
         log.error("Failed to build Anthropic client from backend: %s", backend["provider"])
         sys.exit(1)
 
-    model = backend.get("model", "claude-haiku-4-5-20251001")
+    model: str = backend.get("model", "claude-haiku-4-5-20251001")
     log.info("Using model: %s (provider: %s)", model, backend["provider"])
 
-    driver = _neo4j_driver()
+    driver: Any = _neo4j_driver()
     try:
         with driver.session() as session:
-            before_stats = get_stats(session)
+            before_stats: dict[str, Any] = get_stats(session)
             print_stats("BEFORE", before_stats)
             print(f"  Detected {before_stats['relates_to']} RELATES_TO edges to process")
 
@@ -259,7 +263,7 @@ async def run_backfill(
                 print("No RELATES_TO edges found. Nothing to do.")
                 return
 
-            edges = fetch_relates_to_edges(session)
+            edges: list[dict[str, Any]] = fetch_relates_to_edges(session)
             log.info("Fetched %d RELATES_TO edges", len(edges))
 
         processed_ids: set[int] = set()
@@ -268,7 +272,7 @@ async def run_backfill(
             if processed_ids:
                 log.info("Resuming from checkpoint: %d edges already processed", len(processed_ids))
 
-        pending = [e for e in edges if e["rid"] not in processed_ids]
+        pending: list[dict[str, Any]] = [e for e in edges if e["rid"] not in processed_ids]
         log.info("%d edges pending processing", len(pending))
 
         if dry_run:
@@ -278,7 +282,7 @@ async def run_backfill(
 
         with driver.session() as session:
             for batch_idx in range(0, len(pending), batch_size):
-                batch = pending[batch_idx : batch_idx + batch_size]
+                batch: list[dict[str, Any]] = pending[batch_idx : batch_idx + batch_size]
                 batch_num = batch_idx // batch_size + 1
                 print(f"\nBatch {batch_num}/{total_batches} ({len(batch)} edges)")
 
@@ -293,7 +297,7 @@ async def run_backfill(
 
         if not dry_run:
             with driver.session() as session:
-                after_stats = get_stats(session)
+                after_stats: dict[str, Any] = get_stats(session)
             print_stats("AFTER ", after_stats)
             print(f"\nRELATES_TO rate change: {before_stats['rate']:.1%} -> {after_stats['rate']:.1%}")
             if after_stats["rate"] < 0.30:

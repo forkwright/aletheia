@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("aletheia.memory.llm")
 
@@ -119,7 +120,7 @@ def _check_ollama() -> str | None:
         return None
 
 
-def detect_backend() -> dict:
+def detect_backend() -> dict[str, Any]:
     """Detect the best available LLM backend.
 
     Returns a dict with:
@@ -201,7 +202,7 @@ def detect_backend() -> dict:
     }
 
 
-def refresh_oauth_token(current_backend: dict) -> dict:
+def refresh_oauth_token(current_backend: dict[str, Any]) -> dict[str, Any]:
     """Re-read OAuth token if it changed. Returns updated backend or same."""
     if current_backend["provider"] != "anthropic-oauth":
         return current_backend

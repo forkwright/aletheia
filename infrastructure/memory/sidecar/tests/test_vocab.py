@@ -188,7 +188,7 @@ def test_load_vocab_fallback_on_corrupt_file():
 
 def test_load_vocab_fallback_on_empty_types():
     """load_vocab falls back to defaults when relationship_types is empty."""
-    vocab_data = {"version": 1, "relationship_types": []}
+    vocab_data: dict[str, int | list[str]] = {"version": 1, "relationship_types": []}
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(vocab_data, f)

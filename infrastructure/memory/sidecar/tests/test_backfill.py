@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -9,36 +11,8 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 
-def _make_edge(rid: int, source: str = "Alice", target: str = "Python") -> dict:
+def _make_edge(rid: int, source: str = "Alice", target: str = "Python") -> dict[str, Any]:
     return {"rid": rid, "source": source, "target": target, "props": {}}
-
-
-def _mock_session(edges: list[dict] | None = None, stats: dict | None = None):
-    """Build a mock Neo4j session."""
-    session = MagicMock()
-
-    # Default stats
-    default_stats = {"relates_to": len(edges or []), "total": len(edges or []) + 5, "rate": 0.0}
-    s = stats or default_stats
-
-    stats_record = MagicMock()
-    stats_record.__getitem__ = lambda self, key: s.get(key, 0)
-
-    stats_result = MagicMock()
-    stats_result.single.return_value = stats_record
-
-    # Query routing: first call may be stats, subsequent calls return edges
-    edge_records = []
-    for e in (edges or []):
-        rec = MagicMock()
-        rec.__getitem__ = lambda self, key, _e=e: _e.get(key)
-        edge_records.append(rec)
-
-    edges_result = MagicMock()
-    edges_result.__iter__ = lambda self: iter(edge_records)
-
-    session.run.side_effect = [stats_result, edges_result]
-    return session
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +20,7 @@ def _mock_session(edges: list[dict] | None = None, stats: dict | None = None):
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_does_not_modify(tmp_path):
+def test_dry_run_does_not_modify(tmp_path: Path) -> None:
     """dry_run=True: no CREATE or DELETE queries issued to Neo4j."""
     from backfill_relates_to import process_batch
 
@@ -55,11 +29,11 @@ def test_dry_run_does_not_modify(tmp_path):
 
     edge = _make_edge(1, "Alice", "Python")
 
-    async def _run():
+    async def _run() -> set[int]:
         mock_client.messages.create = MagicMock(
             return_value=MagicMock(content=[MagicMock(text="USES")])
         )
-        processed = set()
+        processed: set[int] = set()
         await process_batch(
             client=mock_client,
             model="claude-test",
@@ -83,7 +57,7 @@ def test_dry_run_does_not_modify(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_reclassification_creates_typed_edge(tmp_path):
+def test_reclassification_creates_typed_edge(tmp_path: Path) -> None:
     """LLM returns KNOWS -> CREATE KNOWS edge and DELETE old RELATES_TO."""
     import backfill_relates_to as bfm
 
@@ -95,8 +69,8 @@ def test_reclassification_creates_typed_edge(tmp_path):
 
     edge = _make_edge(42, "Alice", "Bob")
 
-    async def _run():
-        processed = set()
+    async def _run() -> set[int]:
+        processed: set[int] = set()
         with patch.object(bfm, "save_checkpoint"):
             await bfm.process_batch(
                 client=mock_client,
@@ -113,7 +87,7 @@ def test_reclassification_creates_typed_edge(tmp_path):
     # Should issue apply_reclassification query (CREATE + DELETE in one query)
     assert mock_session.run.called
     call_args = mock_session.run.call_args
-    cypher = call_args[0][0]
+    cypher: str = call_args[0][0]
     assert "KNOWS" in cypher
     assert "DELETE" in cypher
 
@@ -126,7 +100,7 @@ def test_reclassification_creates_typed_edge(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_unclassifiable_edge_deleted(tmp_path):
+def test_unclassifiable_edge_deleted(tmp_path: Path) -> None:
     """LLM returns DELETE -> only DELETE query issued, no CREATE."""
     import backfill_relates_to as bfm
 
@@ -138,8 +112,8 @@ def test_unclassifiable_edge_deleted(tmp_path):
 
     edge = _make_edge(99, "Cody", "Unknown")
 
-    async def _run():
-        processed = set()
+    async def _run() -> set[int]:
+        processed: set[int] = set()
         with patch.object(bfm, "save_checkpoint"):
             await bfm.process_batch(
                 client=mock_client,
@@ -155,7 +129,7 @@ def test_unclassifiable_edge_deleted(tmp_path):
 
     assert mock_session.run.called
     call_args = mock_session.run.call_args
-    cypher = call_args[0][0]
+    cypher: str = call_args[0][0]
     # DELETE-only query — should not contain CREATE
     assert "DELETE" in cypher
     assert "CREATE" not in cypher
@@ -168,7 +142,7 @@ def test_unclassifiable_edge_deleted(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_checkpoint_saves_progress(tmp_path):
+def test_checkpoint_saves_progress(tmp_path: Path) -> None:
     """Checkpoint file is written with processed edge IDs after each edge."""
     import backfill_relates_to as bfm
 
@@ -182,8 +156,8 @@ def test_checkpoint_saves_progress(tmp_path):
 
     edges = [_make_edge(i) for i in range(3)]
 
-    async def _run():
-        processed = set()
+    async def _run() -> set[int]:
+        processed: set[int] = set()
         with patch.object(bfm, "CHECKPOINT_FILE", checkpoint_path):
             await bfm.process_batch(
                 client=mock_client,
@@ -198,7 +172,7 @@ def test_checkpoint_saves_progress(tmp_path):
     processed = asyncio.run(_run())
 
     assert checkpoint_path.exists()
-    data = json.loads(checkpoint_path.read_text())
+    data: dict[str, list[int]] = json.loads(checkpoint_path.read_text())
     assert set(data["processed_ids"]) == {0, 1, 2}
     assert processed == {0, 1, 2}
 
@@ -208,7 +182,7 @@ def test_checkpoint_saves_progress(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_checkpoint_resumes(tmp_path):
+def test_checkpoint_resumes(tmp_path: Path) -> None:
     """Already-processed edge IDs in checkpoint are skipped on resume."""
     import backfill_relates_to as bfm
 
@@ -216,7 +190,7 @@ def test_checkpoint_resumes(tmp_path):
     checkpoint_path.write_text(json.dumps({"processed_ids": [0, 1]}))
 
     with patch.object(bfm, "CHECKPOINT_FILE", checkpoint_path):
-        loaded = bfm.load_checkpoint()
+        loaded: set[int] = bfm.load_checkpoint()
 
     assert loaded == {0, 1}
 
@@ -232,7 +206,7 @@ def test_checkpoint_resumes(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_batch_sizing():
+def test_batch_sizing() -> None:
     """120 edges with batch_size=50 should produce batches of 50, 50, 20."""
     edges = [_make_edge(i) for i in range(120)]
     batch_size = 50

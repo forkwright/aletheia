@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
-"""Backfill entity resolution on existing Qdrant corpus.
+# Backfill entity resolution on existing Qdrant corpus
 
-Scans all points in aletheia_memories, extracts entities from the text,
-resolves them via the entity resolver (alias table + fuzzy matching),
-and updates each point's payload with resolved entities.
-
-Also runs graph dedup (merge_duplicates + cleanup_orphans) at the end.
-
-Usage:
-    python backfill_entities.py              # Full run
-    python backfill_entities.py --dry-run    # Show stats without writing
-    python backfill_entities.py --batch 200  # Custom batch size
-"""
+from __future__ import annotations
 
 import argparse
 import logging
 import re
 import sys
 from collections import Counter
+from typing import TYPE_CHECKING, Any
 
 # Must run from sidecar venv
 try:
@@ -25,6 +16,9 @@ try:
 except ImportError:
     print("Run from sidecar venv: .venv/bin/python backfill_entities.py")
     sys.exit(1)
+
+if TYPE_CHECKING:
+    from qdrant_client.models import Record
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
 from aletheia_memory.entity_resolver import (
@@ -45,7 +39,7 @@ SCROLL_BATCH = 100
 
 def extract_entities(text: str) -> list[str]:
     """Same heuristic as routes.py _extract_entities."""
-    entities = []
+    entities: list[str] = []
     for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text):
         entities.append(match.group())
     for match in re.finditer(r"\b[a-z]+[-_][a-z]+(?:[-_][a-z]+)*\b", text):
@@ -55,7 +49,7 @@ def extract_entities(text: str) -> list[str]:
     return list(set(entities))[:10]
 
 
-def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
+def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH) -> None:
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
     # Get collection info
@@ -64,37 +58,44 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
     log.info(f"Collection has {total} points")
 
     # Fetch canonical entities for resolution
-    canonical_list = get_canonical_entities()
+    canonical_list: list[str] = get_canonical_entities()
     log.info(f"Canonical entities in registry: {len(canonical_list)}")
 
-    offset = None
+    offset: Any = None
     processed = 0
     updated = 0
     already_has = 0
     no_entities = 0
-    entity_counts = Counter()
-    all_resolved = Counter()
+    entity_counts: Counter[int] = Counter()
+    all_resolved: Counter[str] = Counter()
 
     while True:
-        kwargs = {
-            "collection_name": COLLECTION,
-            "limit": batch_size,
-            "with_payload": True,
-            "with_vectors": False,
-        }
-        if offset:
-            kwargs["offset"] = offset
-
-        points, next_offset = client.scroll(**kwargs)
+        points: list[Record]
+        next_offset: Any
+        if offset is not None:
+            points, next_offset = client.scroll(
+                collection_name=COLLECTION,
+                limit=batch_size,
+                with_payload=True,
+                with_vectors=False,
+                offset=offset,
+            )
+        else:
+            points, next_offset = client.scroll(
+                collection_name=COLLECTION,
+                limit=batch_size,
+                with_payload=True,
+                with_vectors=False,
+            )
 
         if not points:
             break
 
-        batch_updates = []  # (point_id, entities_payload)
+        batch_updates: list[tuple[str | int, list[str]]] = []
 
         for point in points:
             processed += 1
-            payload = point.payload or {}
+            payload: dict[str, Any] = dict(point.payload) if point.payload else {}
 
             # Skip if already has entities
             if payload.get("entities"):
@@ -102,7 +103,7 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
                 continue
 
             # Get text content
-            text = payload.get("data") or payload.get("memory") or ""
+            text: str = str(payload.get("data") or payload.get("memory") or "")
             if not text or len(text) < 20:
                 no_entities += 1
                 continue
@@ -114,7 +115,7 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
                 continue
 
             # Resolve through entity resolver
-            resolved = []
+            resolved: list[str] = []
             for name in raw_entities:
                 canonical = resolve_entity(name, canonical_list)
                 if canonical:
@@ -127,7 +128,8 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
                 continue
 
             entity_counts[len(resolved)] += 1
-            batch_updates.append((point.id, resolved))
+            point_id: str | int = point.id if isinstance(point.id, (str, int)) else str(point.id)
+            batch_updates.append((point_id, resolved))
 
         # Apply updates
         if batch_updates and not dry_run:
@@ -165,13 +167,13 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
     if not dry_run:
         log.info("\nRunning graph deduplication...")
         try:
-            merge_result = merge_duplicate_entities(dry_run=False)
+            merge_result: dict[str, Any] = merge_duplicate_entities()
             log.info(f"  Merged {merge_result.get('duplicates_merged', 0)} duplicate groups")
         except Exception as e:
             log.warning(f"  Merge failed (non-fatal): {e}")
 
         try:
-            orphan_result = cleanup_orphan_entities(dry_run=False)
+            orphan_result: dict[str, Any] = cleanup_orphan_entities()
             log.info(f"  Cleaned {orphan_result.get('orphans_deleted', 0)} orphan entities")
         except Exception as e:
             log.warning(f"  Orphan cleanup failed (non-fatal): {e}")

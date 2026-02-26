@@ -4,6 +4,8 @@ import threading
 import time
 from typing import Any
 
+import neo4j
+
 from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER
 
 logger = logging.getLogger("aletheia_memory.graph")
@@ -14,10 +16,11 @@ _check_lock = threading.Lock()
 _CHECK_INTERVAL = 30.0  # seconds
 
 
-def neo4j_driver():
+def neo4j_driver() -> neo4j.Driver:
     """Create a fresh Neo4j driver instance."""
     from neo4j import GraphDatabase
-    return GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    driver: neo4j.Driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))  # pyright: ignore[reportUnknownMemberType] — neo4j stubs use **config: Unknown
+    return driver
 
 
 def neo4j_available() -> bool:
@@ -38,7 +41,7 @@ def neo4j_available() -> bool:
 
         try:
             driver = neo4j_driver()
-            driver.verify_connectivity()
+            driver.verify_connectivity()  # pyright: ignore[reportUnknownMemberType] — neo4j stubs use **config: Unknown
             driver.close()
             _neo4j_ok = True
         except Exception:
