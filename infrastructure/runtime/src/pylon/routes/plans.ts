@@ -57,7 +57,9 @@ export function planRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           nousId: plan.nousId,
           sessionKey,
         });
-        (async () => { for await (const _ of gen) { /* drain */ } })().catch((error) => { log.warn(`Plan execution drain failed: ${error instanceof Error ? error.message : error}`); });
+        void (async () => {
+          try { for await (const _ of gen) { /* drain */ } } catch (error) { log.warn(`Plan execution drain failed: ${error instanceof Error ? error.message : error}`); }
+        })();
       });
     }
 

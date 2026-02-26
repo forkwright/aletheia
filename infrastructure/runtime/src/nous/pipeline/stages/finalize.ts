@@ -80,9 +80,14 @@ export async function finalize(
   if (turnToolCalls.length >= 3) {
     const skillModel = services.config.agents.defaults.compaction.distillationModel;
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
-    extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
-      .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
-      .catch((error) => { log.debug(`Skill extraction failed (non-fatal): ${error instanceof Error ? error.message : error}`); });
+    void (async () => {
+      try {
+        const candidate = await extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId);
+        if (candidate) saveLearnedSkill(candidate, skillsDir);
+      } catch (error) {
+        log.debug(`Skill extraction failed (non-fatal): ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   // Working state extraction — async, non-blocking, on cheap model
@@ -93,11 +98,14 @@ export async function finalize(
       .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 100)}) → ${t.output.slice(0, 100)}`)
       .join("\n");
     const previousState = services.store.getWorkingState(sessionId);
-    extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel)
-      .then((newState) => {
+    void (async () => {
+      try {
+        const newState = await extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel);
         if (newState) services.store.updateWorkingState(sessionId, newState);
-      })
-      .catch((error) => { log.debug(`Working state extraction failed: ${error instanceof Error ? error.message : error}`); });
+      } catch (error) {
+        log.debug(`Working state extraction failed: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   // After-turn memory extraction — lightweight, non-blocking, on cheap model
@@ -108,8 +116,9 @@ export async function finalize(
       .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 80)}) → ${t.output.slice(0, 80)}`)
       .join("\n");
 
-    extractTurnFacts(services.router, outcome.text, toolSummary, factModel)
-      .then(async (result) => {
+    void (async () => {
+      try {
+        const result = await extractTurnFacts(services.router, outcome.text, toolSummary, factModel);
         if (result.facts.length > 0) {
           try {
             const res = await fetch(`${getSidecarUrl()}/add_batch`, {
@@ -135,8 +144,10 @@ export async function finalize(
             log.debug(`Turn fact storage failed: ${error instanceof Error ? error.message : error}`);
           }
         }
-      })
-      .catch((error) => { log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`); });
+      } catch (error) {
+        log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

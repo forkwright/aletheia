@@ -439,8 +439,9 @@ function createHookHandler(hook: HookDefinition): (payload: EventPayload) => voi
     }
 
     // Fire-and-forget — don't block the event bus
-    executeShellHook(hook, payload)
-      .then((result) => {
+    void (async () => {
+      try {
+        const result = await executeShellHook(hook, payload);
         if (result.timedOut) {
           if (hook.handler.failAction !== "silent") {
             log.warn(`Hook ${hook.name} timed out after ${result.durationMs}ms`);
@@ -473,11 +474,11 @@ function createHookHandler(hook: HookDefinition): (payload: EventPayload) => voi
             );
             break;
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (hook.handler.failAction !== "silent") {
           log.warn(`Hook ${hook.name} execution error: ${error instanceof Error ? error.message : error}`);
         }
-      });
+      }
+    })();
   };
 }

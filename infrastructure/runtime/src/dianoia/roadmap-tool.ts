@@ -58,7 +58,7 @@ export function createPlanRoadmapTool(
         required: ["action", "projectId"],
       },
     },
-    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       try {
         const action = input["action"] as string;
         const projectId = input["projectId"] as string;
@@ -66,43 +66,40 @@ export function createPlanRoadmapTool(
         if (action === "generate") {
           const project = orchestrator.getProject(projectId);
           if (!project) {
-            return Promise.resolve(JSON.stringify({ error: `Project not found: ${projectId}` }));
+            return JSON.stringify({ error: `Project not found: ${projectId}` });
           }
 
-          return roadmapOrchestrator
-            .generateRoadmap(projectId, project.goal ?? "", context)
-            .then((phases) => {
-              const coverageResult = roadmapOrchestrator.validateCoverage(projectId, phases);
-              if (!coverageResult.covered) {
-                return JSON.stringify({
-                  error: "Coverage validation failed",
-                  missing: coverageResult.missing,
-                });
-              }
-
-              const config = project.config as PlanningConfig;
-              roadmapOrchestrator.commitRoadmap(projectId, phases);
-
-              if (config.mode === "yolo") {
-                orchestrator.completeRoadmap(projectId, context.nousId, context.sessionId);
-                log.info(`Roadmap auto-committed (autonomous mode) for project ${projectId}`);
-                return JSON.stringify({
-                  committed: true,
-                  phaseCount: phases.length,
-                  message: "Roadmap auto-committed (autonomous mode).",
-                });
-              }
-
-              const display = roadmapOrchestrator.formatRoadmapDisplay(
-                roadmapOrchestrator.listPhases(projectId),
-              );
-              log.info(`Roadmap draft committed for project ${projectId}; ${phases.length} phases`);
-              return JSON.stringify({
-                draft: true,
-                display,
-                message: "Review the roadmap above. Adjust with adjust_phase action or say 'done' to commit.",
-              });
+          const phases = await roadmapOrchestrator.generateRoadmap(projectId, project.goal ?? "", context);
+          const coverageResult = roadmapOrchestrator.validateCoverage(projectId, phases);
+          if (!coverageResult.covered) {
+            return JSON.stringify({
+              error: "Coverage validation failed",
+              missing: coverageResult.missing,
             });
+          }
+
+          const config = project.config as PlanningConfig;
+          roadmapOrchestrator.commitRoadmap(projectId, phases);
+
+          if (config.mode === "yolo") {
+            orchestrator.completeRoadmap(projectId, context.nousId, context.sessionId);
+            log.info(`Roadmap auto-committed (autonomous mode) for project ${projectId}`);
+            return JSON.stringify({
+              committed: true,
+              phaseCount: phases.length,
+              message: "Roadmap auto-committed (autonomous mode).",
+            });
+          }
+
+          const display = roadmapOrchestrator.formatRoadmapDisplay(
+            roadmapOrchestrator.listPhases(projectId),
+          );
+          log.info(`Roadmap draft committed for project ${projectId}; ${phases.length} phases`);
+          return JSON.stringify({
+            draft: true,
+            display,
+            message: "Review the roadmap above. Adjust with adjust_phase action or say 'done' to commit.",
+          });
         }
 
         if (action === "adjust_phase") {
@@ -126,37 +123,31 @@ export function createPlanRoadmapTool(
 
           log.info(`Phase adjusted for project ${projectId}; coverage=${coverageResult.covered}`);
 
-          return Promise.resolve(
-            JSON.stringify({
-              adjusted: true,
-              display,
-              coverageGate: coverageResult.covered,
-            }),
-          );
+          return JSON.stringify({
+            adjusted: true,
+            display,
+            coverageGate: coverageResult.covered,
+          });
         }
 
         if (action === "commit") {
           const coverageResult = roadmapOrchestrator.validateCoverageFromDb(projectId);
           if (!coverageResult.covered) {
-            return Promise.resolve(
-              JSON.stringify({
-                error: "Coverage gate not met",
-                missing: coverageResult.missing,
-              }),
-            );
+            return JSON.stringify({
+              error: "Coverage gate not met",
+              missing: coverageResult.missing,
+            });
           }
 
           orchestrator.completeRoadmap(projectId, context.nousId, context.sessionId);
           const phaseCount = orchestrator.listPhases(projectId).length;
 
           log.info(`Roadmap committed for project ${projectId}`);
-          return Promise.resolve(
-            JSON.stringify({
-              committed: true,
-              phaseCount,
-              message: "Roadmap committed. Ready to generate phase plans.",
-            }),
-          );
+          return JSON.stringify({
+            committed: true,
+            phaseCount,
+            message: "Roadmap committed. Ready to generate phase plans.",
+          });
         }
 
         if (action === "plan_phases") {
@@ -170,50 +161,49 @@ export function createPlanRoadmapTool(
           const config = (project?.config ?? {}) as { plan_check?: boolean; depth?: string };
 
           // Plan all phases in parallel to avoid sequential timeout
-          return Promise.allSettled(
+          const results = await Promise.allSettled(
             phaseIds.map((phaseId) =>
               roadmapOrchestrator.planPhase(projectId, phaseId, config, context),
             ),
-          ).then((results) => {
-            const succeeded = results.filter((r) => r.status === "fulfilled").length;
-            const failed = results
-              .map((r, i) => (r.status === "rejected" ? { phaseId: phaseIds[i], error: String((r as PromiseRejectedResult).reason) } : null))
-              .filter(Boolean);
+          );
+          const succeeded = results.filter((r) => r.status === "fulfilled").length;
+          const failed = results
+            .map((r, i) => (r.status === "rejected" ? { phaseId: phaseIds[i], error: String((r as PromiseRejectedResult).reason) } : null))
+            .filter(Boolean);
 
-            if (succeeded === phaseIds.length) {
-              orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
-              log.info(`All ${phaseIds.length} phase plans generated for project ${projectId}`);
-              return JSON.stringify({
-                planned: phaseIds.length,
-                message: "All phase plans generated. Ready for execution.",
-              });
-            }
-
-            // Partial success — advance if at least one phase planned
-            if (succeeded > 0) {
-              orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
-              log.warn(`${succeeded}/${phaseIds.length} phase plans generated; ${failed.length} failed`, { failed });
-              return JSON.stringify({
-                planned: succeeded,
-                failed: failed.length,
-                failures: failed,
-                message: `${succeeded} of ${phaseIds.length} phase plans generated. Failed phases can be retried.`,
-              });
-            }
-
-            log.error(`All ${phaseIds.length} phase plans failed`, { failed });
+          if (succeeded === phaseIds.length) {
+            orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
+            log.info(`All ${phaseIds.length} phase plans generated for project ${projectId}`);
             return JSON.stringify({
-              error: "All phase plans failed",
-              failures: failed,
+              planned: phaseIds.length,
+              message: "All phase plans generated. Ready for execution.",
             });
+          }
+
+          // Partial success — advance if at least one phase planned
+          if (succeeded > 0) {
+            orchestrator.advanceToExecution(projectId, context.nousId, context.sessionId);
+            log.warn(`${succeeded}/${phaseIds.length} phase plans generated; ${failed.length} failed`, { failed });
+            return JSON.stringify({
+              planned: succeeded,
+              failed: failed.length,
+              failures: failed,
+              message: `${succeeded} of ${phaseIds.length} phase plans generated. Failed phases can be retried.`,
+            });
+          }
+
+          log.error(`All ${phaseIds.length} phase plans failed`, { failed });
+          return JSON.stringify({
+            error: "All phase plans failed",
+            failures: failed,
           });
         }
 
-        return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));
+        return JSON.stringify({ error: `Unknown action: ${action}` });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_roadmap failed: ${message}`);
-        return Promise.resolve(JSON.stringify({ error: message }));
+        return JSON.stringify({ error: message });
       }
     },
   };

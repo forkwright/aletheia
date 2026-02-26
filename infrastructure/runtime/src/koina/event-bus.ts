@@ -60,11 +60,15 @@ class EventBus {
     for (const handler of set) {
       try {
         const result = handler(payload);
-        // Catch async errors without blocking
-        if (result && typeof (result as Promise<void>).catch === "function") {
-          (result as Promise<void>).catch((error) => {
-            log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
-          });
+        // Catch async errors without blocking — emit() is synchronous, await not possible here
+        if (result && typeof (result as Promise<void>).then === "function") {
+          // eslint-disable-next-line promise/prefer-await-to-then -- sync emit() cannot await
+          void (result as Promise<void>).then(
+            undefined,
+            (error: unknown) => {
+              log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
+            },
+          );
         }
       } catch (error) {
         log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);

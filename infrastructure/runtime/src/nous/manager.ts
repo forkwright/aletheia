@@ -29,7 +29,9 @@ const log = createLogger("nous");
 const sessionLocks = new Map<string, Promise<unknown>>();
 
 function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  // eslint-disable-next-line promise/prefer-await-to-then -- intentional Promise queue; cannot be rewritten as async/await
   const previous = sessionLocks.get(key) ?? Promise.resolve();
+  // eslint-disable-next-line promise/prefer-await-to-then -- lock queue requires Promise chaining
   const current = previous.then(
     () => fn(),
     (error) => {
@@ -37,10 +39,11 @@ function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
       return fn();
     },
   );
+  // eslint-disable-next-line promise/prefer-await-to-then, no-empty-function -- Promise queue: swallow rejection without propagating
   const settled = current.catch(() => {});
   sessionLocks.set(key, settled);
-  // eslint-disable-next-line promise/catch-or-return -- fire-and-forget cleanup; lock chain already catches above
-  settled.then(() => {
+  // eslint-disable-next-line promise/prefer-await-to-then, promise/always-return -- fire-and-forget cleanup after lock chain settles
+  void settled.then(() => {
     if (sessionLocks.get(key) === settled) sessionLocks.delete(key);
   });
   return current;
@@ -343,20 +346,24 @@ export class NousManager {
     if (session.sessionType === "background") {
       if (session.messageCount < 50 && session.tokenCountEstimate < 10000) return;
       log.info(`Scheduling lightweight distillation for background session ${sessionId} (${session.messageCount} msgs, ${session.tokenCountEstimate} tokens)`);
-      withSessionLock(lockKey, async () => {
-        await distillSession(this.store, this.router, sessionId, nousId, {
-          triggerThreshold: 10000,
-          minMessages: 20,
-          extractionModel: distillModel,
-          summaryModel: distillModel,
-          preserveRecentMessages: 20,
-          lightweight: true,
-          ...(workspace ? { workspace } : {}),
-          ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
-        });
-      }).catch((error) => {
-        log.warn(`Background distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
-      });
+      void (async () => {
+        try {
+          await withSessionLock(lockKey, async () => {
+            await distillSession(this.store, this.router, sessionId, nousId, {
+              triggerThreshold: 10000,
+              minMessages: 20,
+              extractionModel: distillModel,
+              summaryModel: distillModel,
+              preserveRecentMessages: 20,
+              lightweight: true,
+              ...(workspace ? { workspace } : {}),
+              ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+            });
+          });
+        } catch (error) {
+          log.warn(`Background distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
+        }
+      })();
       return;
     }
 
@@ -388,26 +395,30 @@ export class NousManager {
 
     const thread = this.store.getThreadForSession(sessionId);
 
-    withSessionLock(lockKey, async () => {
-      await distillSession(this.store, this.router, sessionId, nousId, {
-        triggerThreshold: distillThreshold,
-        minMessages: 10,
-        extractionModel: distillModel,
-        summaryModel: distillModel,
-        preserveRecentMessages: compaction.preserveRecentMessages,
-        preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-        ...(workspace ? { workspace } : {}),
-        ...(this.plugins ? { plugins: this.plugins } : {}),
-        ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
-        ...(thread ? {
-          onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
-            this.store.updateThreadSummary(thread.id, summary, keyFacts);
-          },
-        } : {}),
-      });
-    }).catch((error) => {
-      log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
-    });
+    void (async () => {
+      try {
+        await withSessionLock(lockKey, async () => {
+          await distillSession(this.store, this.router, sessionId, nousId, {
+            triggerThreshold: distillThreshold,
+            minMessages: 10,
+            extractionModel: distillModel,
+            summaryModel: distillModel,
+            preserveRecentMessages: compaction.preserveRecentMessages,
+            preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+            ...(workspace ? { workspace } : {}),
+            ...(this.plugins ? { plugins: this.plugins } : {}),
+            ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+            ...(thread ? {
+              onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
+                this.store.updateThreadSummary(thread.id, summary, keyFacts);
+              },
+            } : {}),
+          });
+        });
+      } catch (error) {
+        log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {

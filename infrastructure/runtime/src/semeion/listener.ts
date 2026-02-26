@@ -323,10 +323,14 @@ function handleEnvelope(
         watchdog: watchdog ?? null,
         skills: skills ?? null,
       };
-      match.handler
-        .execute(match.args, cmdCtx)
-        .then((result) => sendMessage(client, target, result, { markdown: false }))
-        .catch((error) => log.warn(`Command !${match.handler.name} failed: ${error instanceof Error ? error.message : error}`));
+      void (async () => {
+        try {
+          const result = await match.handler.execute(match.args, cmdCtx);
+          await sendMessage(client, target, result, { markdown: false });
+        } catch (error) {
+          log.warn(`Command !${match.handler.name} failed: ${error instanceof Error ? error.message : error}`);
+        }
+      })();
       return;
     }
   }
@@ -334,19 +338,25 @@ function handleEnvelope(
   // Legacy status command fallback (if no command registry)
   if (!commands && onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
     log.info("Status command received, handling directly");
-    onStatusRequest(target).catch((error) =>
-      log.warn(`Status command failed: ${error instanceof Error ? error.message : error}`),
-    );
+    void (async () => {
+      try {
+        await onStatusRequest(target);
+      } catch (error: unknown) {
+        log.warn(`Status command failed: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
     return;
   }
 
   if (account.sendReadReceipts && !isGroup && envelope.timestamp) {
-    sendReadReceipt(client, target, envelope.timestamp).catch((error) =>
+    // eslint-disable-next-line promise/prefer-await-to-then -- sync handleEnvelope() cannot await
+    void sendReadReceipt(client, target, envelope.timestamp).then(undefined, (error: unknown) =>
       log.warn(`Read receipt failed: ${error}`),
     );
   }
 
-  sendTyping(client, target).catch((error) =>
+  // eslint-disable-next-line promise/prefer-await-to-then -- sync handleEnvelope() cannot await
+  void sendTyping(client, target).then(undefined, (error: unknown) =>
     log.warn(`Typing indicator failed: ${error}`),
   );
 
@@ -391,26 +401,34 @@ function handleEnvelope(
   const accountTurns = activeTurns.get(accountId) ?? 0;
   if (accountTurns >= MAX_CONCURRENT_TURNS) {
     log.warn(`Concurrency limit reached for ${accountId} (${accountTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
-    sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false })
-      .catch((error) => log.warn(`Failed to send busy message: ${error}`));
+    void (async () => {
+      try {
+        await sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false });
+      } catch (error: unknown) {
+        log.warn(`Failed to send busy message: ${error}`);
+      }
+    })();
     return;
   }
 
   // Fire-and-forget — the session mutex in manager.ts serializes same-session turns,
   // while different nous/sessions process concurrently
   activeTurns.set(accountId, accountTurns + 1);
-  // eslint-disable-next-line promise/catch-or-return -- intentional fire-and-forget; withTurnAsync handles internal errors
-  withTurnAsync(
-    { channel: "signal", sessionKey, sender: envelope.sourceName ?? sender },
-    () => preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb),
-  ).finally(() => {
-    const current = activeTurns.get(accountId) ?? 1;
-    if (current <= 1) {
-      activeTurns.delete(accountId);
-    } else {
-      activeTurns.set(accountId, current - 1);
+  void (async () => {
+    try {
+      await withTurnAsync(
+        { channel: "signal", sessionKey, sender: envelope.sourceName ?? sender },
+        () => preprocessAndProcess(manager, msg, client, target, dataMessage.attachments, accountPhone, account.mediaMaxMb),
+      );
+    } finally {
+      const current = activeTurns.get(accountId) ?? 1;
+      if (current <= 1) {
+        activeTurns.delete(accountId);
+      } else {
+        activeTurns.set(accountId, current - 1);
+      }
     }
-  });
+  })();
 }
 
 async function preprocessAndProcess(
@@ -508,7 +526,7 @@ async function processTurn(
       return;
     }
 
-    sendTyping(client, target, true).catch(() => { /* typing indicator, non-critical */ });
+    void (async () => { try { await sendTyping(client, target, true); } catch { /* typing indicator, non-critical */ } })();
 
     if (outcome.text) {
       await sendMessage(client, target, outcome.text);
@@ -518,7 +536,7 @@ async function processTurn(
       `Turn complete: ${outcome.nousId} session=${outcome.sessionId} tools=${outcome.toolCalls} in=${outcome.inputTokens} out=${outcome.outputTokens}`,
     );
   } catch (error) {
-    sendTyping(client, target, true).catch(() => { /* typing indicator, non-critical */ });
+    void (async () => { try { await sendTyping(client, target, true); } catch { /* typing indicator, non-critical */ } })();
     log.error(`Turn failed: ${error instanceof Error ? error.message : error}`);
     if (error instanceof Error && error.stack) log.error(error.stack);
 
@@ -578,8 +596,15 @@ function checkAccess(
         pairingCtx.accountId,
       );
       log.info(`Pairing request #${id} from ${pairingCtx.senderName ?? sender} (code: ${challengeCode})`);
-      sendMessage(pairingCtx.client, pairingCtx.target, `I don't know you yet. Ask an admin to approve code: ${challengeCode}`, { markdown: false })
-        .catch((error) => log.warn(`Failed to send pairing message: ${error}`));
+      const pairingClient = pairingCtx.client;
+      const pairingTarget = pairingCtx.target;
+      void (async () => {
+        try {
+          await sendMessage(pairingClient, pairingTarget, `I don't know you yet. Ask an admin to approve code: ${challengeCode}`, { markdown: false });
+        } catch (error: unknown) {
+          log.warn(`Failed to send pairing message: ${error}`);
+        }
+      })();
     }
     return false;
   }
