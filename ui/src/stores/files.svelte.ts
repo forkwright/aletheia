@@ -1,5 +1,5 @@
 import { fetchWorkspaceTree, fetchWorkspaceFile, fetchGitStatus } from "../lib/api";
-import type { FileTreeEntry, GitFileStatus } from "../lib/types";
+import type { FileTreeEntry } from "../lib/types";
 
 let treeEntries = $state<FileTreeEntry[]>([]);
 let selectedPath = $state<string | null>(null);

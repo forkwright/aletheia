@@ -32,7 +32,13 @@
 </script>
 
 <div class="drift-panel" class:collapsed={!expanded}>
-  <div class="panel-header" onclick={() => expanded = !expanded}>
+  <div
+    class="panel-header"
+    role="button"
+    tabindex="0"
+    onclick={() => { expanded = !expanded; }}
+    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); expanded = !expanded; } }}
+  >
     <span class="panel-title">
       🔍 Drift Detection
       {#if drift?.suggestion_count}

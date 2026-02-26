@@ -165,7 +165,7 @@
         name: req.reqId || `Requirement ${index + 1}`,
         description: req.description || "",
         tier: (req.tier as "v1" | "v2" | "out-of-scope") || "v1",
-        rationale: req.rationale,
+        ...(req.rationale !== undefined && { rationale: req.rationale }),
         category: req.category || "General",
       }));
     } catch {
@@ -233,7 +233,7 @@
       <span>Loading project...</span>
     </div>
   {:else if error}
-    <ErrorBanner message={error} onClose={() => error = null} />
+    <ErrorBanner message={error} onDismiss={() => { error = null; }} />
   {:else if !project}
     <div class="empty-state">
       <div class="empty-icon">📋</div>
@@ -243,12 +243,12 @@
   {:else}
     <div class="dashboard-content">
       <!-- Project Header -->
-      <ProjectHeader 
+      <ProjectHeader
         {project}
         stateLabel={stateLabel(project.state)}
         stateColor={stateColor(project.state)}
         onRefresh={loadProject}
-        onClose={onClose}
+        {...(onClose !== undefined && { onClose })}
       />
 
       <!-- Main Dashboard Grid -->

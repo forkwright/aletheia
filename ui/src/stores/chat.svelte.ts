@@ -266,7 +266,7 @@ export async function sendMessage(
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
         case "turn_start":
-          resolvedSessionId = event.sessionId ?? null;
+resolvedSessionId = event.sessionId ?? null;
           state.activeTurnId = event.turnId ?? null;
           break;
 
@@ -294,7 +294,7 @@ export async function sendMessage(
                   ...tc,
                   status: event.isError ? "error" as const : "complete" as const,
                   result: event.result,
-                  ...(event.durationMs !== undefined && { durationMs: event.durationMs }),
+...(event.durationMs !== undefined && { durationMs: event.durationMs }),
                   ...(event.tokenEstimate !== undefined && { tokenEstimate: event.tokenEstimate }),
                 }
               : tc,
@@ -335,7 +335,7 @@ export async function sendMessage(
             role: "assistant",
             content: state.streamingText || event.outcome.text,
             timestamp: new Date().toISOString(),
-            ...(state.activeToolCalls.length > 0 ? { toolCalls: [...state.activeToolCalls] } : {}),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
             turnOutcome: event.outcome,
           };
@@ -356,7 +356,7 @@ export async function sendMessage(
               role: "assistant",
               content: state.streamingText,
               timestamp: new Date().toISOString(),
-              ...(state.activeToolCalls.length > 0 ? { toolCalls: [...state.activeToolCalls] } : {}),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             };
             state.messages = [...state.messages, partial];
             state.streamingText = "";
@@ -384,7 +384,7 @@ export async function sendMessage(
         role: "assistant",
         content: state.streamingText,
         timestamp: new Date().toISOString(),
-        ...(state.activeToolCalls.length > 0 ? { toolCalls: [...state.activeToolCalls] } : {}),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
         ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
       };
       state.messages = [...state.messages, partial];
@@ -486,7 +486,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
-                ...(pendingToolCalls.length > 0 ? { toolCalls: [...pendingToolCalls] } : {}),
+...(pendingToolCalls.length > 0 && { toolCalls: [...pendingToolCalls] }),
                 ...(thinkingText ? { thinking: thinkingText } : {}),
               });
               pendingToolCalls = [];
@@ -506,7 +506,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         role: "assistant",
         content: msg.content,
         timestamp: msg.createdAt,
-        ...(pendingToolCalls.length > 0 ? { toolCalls: [...pendingToolCalls] } : {}),
+...(pendingToolCalls.length > 0 && { toolCalls: [...pendingToolCalls] }),
       });
       pendingToolCalls = [];
     } else if (msg.role === "tool_result") {

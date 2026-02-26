@@ -37,10 +37,8 @@
   let showPreview = $state(false);
   let previewHtml = $state("");
 
-  // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
-  let editorContainer: HTMLDivElement;
+  let editorContainer = $state<HTMLDivElement | undefined>(undefined);
   let editorView: EditorView | null = null;
-  let originalContent = "";
 
   onMount(() => {
     const agentId = getActiveAgentId();
@@ -106,7 +104,8 @@
     ];
 
     const state = EditorState.create({ doc: content, extensions });
-    editorView = new EditorView({ state, parent: editorContainer });
+    // editorContainer is guaranteed non-null — initEditor is only called after guard in loadFile
+    editorView = new EditorView({ state, parent: editorContainer! });
   }
 
   function isMarkdown(path: string): boolean {
@@ -141,7 +140,6 @@
     try {
       const agentId = getActiveAgentId();
       const data = await fetchWorkspaceFile(path, agentId ?? undefined);
-      originalContent = data.content;
       // Setting fileLoading=false re-mounts the cm-wrapper div.
       // tick() waits for Svelte to flush DOM updates so editorContainer is bound.
       fileLoading = false;
@@ -163,7 +161,6 @@
       const content = editorView.state.doc.toString();
       const agentId = getActiveAgentId();
       await saveWorkspaceFile(currentPath, content, agentId ?? undefined);
-      originalContent = content;
       isDirty = false;
     } catch (err) {
       saveError = err instanceof Error ? err.message : String(err);

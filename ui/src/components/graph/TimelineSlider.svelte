@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
   let {
     dateRange,
     onRangeChange,
@@ -20,7 +22,7 @@
     return new Date().toISOString().slice(0, 10);
   }
 
-  let sinceVal = $state(dateRange?.oldest?.slice(0, 10) || defaultSince());
+  let sinceVal = $state(untrack(() => dateRange?.oldest?.slice(0, 10) ?? defaultSince()));
   let untilVal = $state(defaultUntil());
   let active = $state(false);
 

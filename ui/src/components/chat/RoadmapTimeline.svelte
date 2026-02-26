@@ -10,11 +10,10 @@
     requirementCount?: number;
   }
 
-  let { 
-    milestones, 
-    currentState, 
+  let {
+    milestones,
     detailed = false,
-    onMilestoneClick = () => {} 
+    onMilestoneClick = () => {}
   }: {
     milestones: Milestone[];
     currentState: string;

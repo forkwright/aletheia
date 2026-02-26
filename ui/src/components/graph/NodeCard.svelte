@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { GraphNode, EntityDetail, EntityRelationship, EntityMemory } from "../../lib/types";
+  import type { GraphNode, EntityDetail, EntityRelationship } from "../../lib/types";
 
   let {
     node,
@@ -509,6 +509,7 @@
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
   }
 
@@ -642,12 +643,6 @@
     flex-direction: column;
     gap: 8px;
     flex-shrink: 0;
-  }
-
-  .confirm-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
 
   .confirm-label {

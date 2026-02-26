@@ -93,6 +93,7 @@
     } else {
       runStart = 0;
       elapsed = 0;
+      return;
     }
   });
 

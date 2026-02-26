@@ -278,6 +278,8 @@
 <div
   class="input-bar"
   class:drag-over={isDragOver}
+  role="region"
+  aria-label="Message input"
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}

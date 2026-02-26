@@ -87,7 +87,14 @@
             {/if}
             
             <!-- Phase Node -->
-            <div class="phase-node" style="--status-color: {statusColor}" onclick={() => toggleExpanded(phase.id)}>
+            <div
+              class="phase-node"
+              style="--status-color: {statusColor}"
+              role="button"
+              tabindex="0"
+              onclick={() => toggleExpanded(phase.id)}
+              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(phase.id); } }}
+            >
               <div class="phase-icon">{getStatusIcon(status)}</div>
               <div class="phase-info">
                 <div class="phase-header">

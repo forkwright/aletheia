@@ -312,7 +312,7 @@ export async function loadTimeline(since?: string, until?: string): Promise<void
         community_meta: [],
         total_nodes: data.total_nodes,
       };
-      timelineRange = { since, until };
+      timelineRange = { ...(since !== undefined && { since }), ...(until !== undefined && { until }) };
     }
   } catch (e) {
     console.error("Failed to load timeline:", e);

@@ -182,7 +182,13 @@
             <div class="wave-plans">
               {#each wave.plans as plan (plan.phaseId + "-" + plan.name)}
                 <div class="plan-item" class:expanded={expandedPlan === plan.phaseId + "-" + plan.name}>
-                  <div class="plan-main" onclick={() => toggleExpanded(plan.phaseId + "-" + plan.name)}>
+                  <div
+                    class="plan-main"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => toggleExpanded(plan.phaseId + "-" + plan.name)}
+                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(plan.phaseId + "-" + plan.name); } }}
+                  >
                     <div class="plan-status-indicator" style="background: {getPlanStatusColor(plan.status)}">
                       {getPlanStatusIcon(plan.status)}
                     </div>

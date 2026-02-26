@@ -132,7 +132,13 @@
       <div class="requirements-table">
         {#each filteredRequirements as req (req.id)}
           <div class="requirement-row" class:expanded={expandedReq === req.id}>
-            <div class="requirement-main" onclick={() => toggleExpanded(req.id)}>
+            <div
+              class="requirement-main"
+              role="button"
+              tabindex="0"
+              onclick={() => toggleExpanded(req.id)}
+              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(req.id); } }}
+            >
               <div class="requirement-content">
                 <div class="requirement-header">
                   <span class="requirement-name">{req.name}</span>

@@ -60,13 +60,13 @@
       questions = (data.questions ?? []).map(q => ({
         id: q.id,
         question: q.question,
-        description: q.description,
+        ...(q.description !== undefined && { description: q.description }),
         options: q.options,
-        recommendation: q.recommendation,
+        ...(q.recommendation !== undefined && { recommendation: q.recommendation }),
         answered: q.status === "answered" || q.status === "skipped",
-        decision: q.decision ?? undefined,
-        userNote: q.userNote ?? undefined,
-        answeredAt: q.status !== "pending" ? q.updatedAt : undefined,
+        ...(q.decision != null && { decision: q.decision }),
+        ...(q.userNote != null && { userNote: q.userNote }),
+        ...(q.status !== "pending" && q.updatedAt !== undefined && { answeredAt: q.updatedAt }),
       }));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -99,13 +99,13 @@
       }
 
       // Update the question locally
-      questions = questions.map(q => 
-        q.id === questionId 
-          ? { 
-              ...q, 
-              answered: true, 
-              decision, 
-              userNote: userNote?.trim() || undefined,
+      questions = questions.map(q =>
+        q.id === questionId
+          ? {
+              ...q,
+              answered: true,
+              decision,
+              ...(userNote?.trim() ? { userNote: userNote.trim() } : {}),
               answeredAt: new Date().toISOString()
             }
           : q
@@ -269,10 +269,9 @@
               placeholder="Enter custom decision..."
               class="custom-input"
               onkeydown={(e) => {
-                const input = e.currentTarget;
-                if (e.key === 'Enter' && input.value.trim()) {
-                  onCustomDecision?.(input.value.trim());
-                  input.value = '';
+                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                  onCustomDecision?.(e.currentTarget.value.trim());
+                  e.currentTarget.value = '';
                 }
               }}
             />

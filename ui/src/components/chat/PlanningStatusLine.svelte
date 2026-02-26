@@ -1,7 +1,7 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
 
-  let { projectId, state, activeWave, onclick }: {
+  let { state, activeWave, onclick }: {
     projectId: string;
     state: string;
     activeWave: number | null;

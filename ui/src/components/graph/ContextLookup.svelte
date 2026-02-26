@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { EntityDetail } from "../../lib/types";
 
   let {
@@ -21,8 +22,13 @@
     onClose: () => void;
   } = $props();
 
-  let query = $state(searchQuery);
+  let query = $state(untrack(() => searchQuery));
   let showDetail = $state(false);
+  let inputEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    inputEl?.focus();
+  });
 
   function handleSearch() {
     if (query.trim()) {
@@ -54,8 +60,8 @@
       class="lookup-input"
       placeholder="What does the system know about…"
       bind:value={query}
+      bind:this={inputEl}
       onkeydown={handleKeydown}
-      autofocus
     />
     <button class="search-btn" onclick={handleSearch} disabled={searchLoading}>
       {searchLoading ? "…" : "→"}
@@ -303,6 +309,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 

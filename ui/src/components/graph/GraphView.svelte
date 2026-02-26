@@ -7,19 +7,19 @@
   import DriftPanel from "./DriftPanel.svelte";
   import TimelineSlider from "./TimelineSlider.svelte";
   import ContextLookup from "./ContextLookup.svelte";
-  import { communityColor, agentColor, AGENT_COLORS } from "../../lib/graph-colors";
+  import { communityColor, AGENT_COLORS } from "../../lib/graph-colors";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getCommunityIds,
     getHighlightedCommunity, getSearchQuery, getLoadedMode, getLoadedLimit,
     getTotalNodes, getEntityDetail, getEntityLoading, getCommunityMeta,
-    getHiddenEdgeTypes, getEdgeTypes, toggleEdgeType, getFilteredEdges,
-    searchGraph, getSearchResults, getSearchLoading, clearSearchResults,
+    getHiddenEdgeTypes, getEdgeTypes, toggleEdgeType,
+    searchGraph, getSearchResults, getSearchLoading,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
     loadGraph, loadEntityDetail, removeEntity, mergeEntityNodes,
     // Graph Intelligence (Phases 8-13)
     getMemoryHealth, getHealthLoading, loadMemoryHealth,
-    getAgentOverlay, getAgentOverlayLoading, loadAgentOverlay,
+    getAgentOverlay, loadAgentOverlay,
     getDriftData, getDriftLoading, loadDriftData,
     getActiveOverlay, setActiveOverlay,
     getSelectedAgentFilter, setSelectedAgentFilter,
@@ -31,16 +31,13 @@
   let viewMode = $state<ViewMode>("2d");
   let graph2d = $state<Graph2D | null>(null);
   let graph3d = $state<any>(null);
-  let progressivePhase = $state<"initial" | "full">("initial");
   let showContextLookup = $state(false);
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
 
   // --- Progressive loading ---
   async function initialLoad() {
-    progressivePhase = "initial";
     await loadGraph({ mode: "top", limit: 20 });
-    progressivePhase = "full";
     await loadGraph({ mode: "top", limit: 200 });
     // Load health data in background
     loadMemoryHealth();

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { GraphData as AppGraphData, GraphNode } from "../../lib/types";
+  import type { GraphData as AppGraphData } from "../../lib/types";
   import { getFilteredEdges } from "../../stores/graph.svelte";
   import { communityColor } from "../../lib/graph-colors";
 
