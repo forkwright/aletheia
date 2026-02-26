@@ -8,6 +8,7 @@
   import CheckpointApproval from "./CheckpointApproval.svelte";
   import RetrospectiveView from "./RetrospectiveView.svelte";
   import TimelineView from "./TimelineView.svelte";
+  import TaskList from "./TaskList.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
@@ -279,6 +280,11 @@
             <TimelineView projectId={project.id} />
           </div>
         {/if}
+
+        <!-- Task List -->
+        <div class="dashboard-section full-width">
+          <TaskList projectId={project.id} />
+        </div>
 
         <!-- Execution Status -->
         {#if executionPlans.length > 0}
