@@ -10,13 +10,13 @@
   interface DiscussionQuestion {
     id: string;
     question: string;
-    description?: string;
+    description?: string | undefined;
     options: DiscussionOption[];
-    recommendation?: string;
+    recommendation?: string | undefined;
     answered: boolean;
-    decision?: string;
-    userNote?: string;
-    answeredAt?: string;
+    decision?: string | undefined;
+    userNote?: string | undefined;
+    answeredAt?: string | undefined;
   }
 
   let { projectId, phaseId }: { projectId: string; phaseId?: string } = $props();
@@ -180,12 +180,7 @@
           <div class="question-group">
             <h3 class="group-title">Questions Requiring Decision</h3>
             {#each pendingQuestions as question (question.id)}
-              <QuestionCard 
-                {question}
-                isSubmitting={submitting[question.id] || false}
-                onSelectOption={(option, note) => handleOptionSelect(question.id, option, note)}
-                onCustomDecision={(decision, note) => handleCustomDecision(question.id, decision, note)}
-              />
+              {@render QuestionCard(question, submitting[question.id] || false, false, (option, note) => handleOptionSelect(question.id, option, note), (decision, note) => handleCustomDecision(question.id, decision, note))}
             {/each}
           </div>
         {/if}
@@ -195,11 +190,7 @@
           <div class="question-group">
             <h3 class="group-title">Answered Questions</h3>
             {#each answeredQuestions as question (question.id)}
-              <QuestionCard 
-                {question}
-                isSubmitting={false}
-                readonly={true}
-              />
+              {@render QuestionCard(question, false, true)}
             {/each}
           </div>
         {/if}
@@ -273,32 +264,33 @@
         <details class="custom-option">
           <summary>Custom Decision</summary>
           <div class="custom-form">
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Enter custom decision..."
               class="custom-input"
               onkeydown={(e) => {
-                if (e.key === 'Enter' && e.target.value.trim()) {
-                  onCustomDecision?.(e.target.value.trim());
-                  e.target.value = '';
+                const input = e.currentTarget;
+                if (e.key === 'Enter' && input.value.trim()) {
+                  onCustomDecision?.(input.value.trim());
+                  input.value = '';
                 }
               }}
             />
-            <textarea 
+            <textarea
               placeholder="Optional note explaining the decision..."
               class="custom-note"
               rows="2"
             ></textarea>
-            <button 
+            <button
               class="submit-custom-btn"
               onclick={(e) => {
-                const form = e.target.closest('.custom-form');
-                const input = form.querySelector('.custom-input');
-                const note = form.querySelector('.custom-note');
-                if (input.value.trim()) {
-                  onCustomDecision?.(input.value.trim(), note.value.trim() || undefined);
+                const form = e.currentTarget.closest('.custom-form');
+                const input = form?.querySelector<HTMLInputElement>('.custom-input');
+                const note = form?.querySelector<HTMLTextAreaElement>('.custom-note');
+                if (input?.value.trim()) {
+                  onCustomDecision?.(input.value.trim(), note?.value.trim() || undefined);
                   input.value = '';
-                  note.value = '';
+                  if (note) note.value = '';
                 }
               }}
               disabled={isSubmitting}

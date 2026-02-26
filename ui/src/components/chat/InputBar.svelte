@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { MediaItem } from "../../lib/types";
   import {
-    IMAGE_TYPES, DOC_TYPES, TEXT_TYPES, ACCEPTED_TYPES,
-    isImageType, isTextLikeType,
+    ACCEPTED_TYPES,
+    isImageType,
   } from "../../lib/media";
   import SlashMenu from "./SlashMenu.svelte";
   import AttachmentBar from "./AttachmentBar.svelte";

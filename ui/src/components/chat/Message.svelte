@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ChatMessage, ToolCallState, TurnOutcome } from "../../lib/types";
-  import { formatTimestamp, formatDuration, formatCost, calculateMessageCost } from "../../lib/format";
+  import type { ChatMessage, ToolCallState } from "../../lib/types";
+  import { formatTimestamp, formatCost, calculateMessageCost } from "../../lib/format";
   import Markdown from "./Markdown.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
   import ThinkingStatusLine from "./ThinkingStatusLine.svelte";
