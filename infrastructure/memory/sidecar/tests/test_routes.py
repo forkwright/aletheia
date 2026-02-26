@@ -117,3 +117,95 @@ def test_add_direct_never_calls_mem_add(client: TestClient) -> None:
     # Verify mem.add was never called
     mem_mock: MagicMock = client.app.state.memory  # type: ignore[attr-defined]
     mem_mock.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# /dedup/batch tests
+# ---------------------------------------------------------------------------
+
+
+def test_dedup_batch_empty_input(client: TestClient) -> None:
+    """Empty text list returns empty deduplicated list and 0 removed."""
+    resp = client.post("/dedup/batch", json={"texts": []})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["deduplicated"] == []
+    assert data["removed"] == 0
+
+
+def test_dedup_batch_no_duplicates(client: TestClient) -> None:
+    """Distinct texts (orthogonal vectors) are all kept."""
+    # Two orthogonal vectors: similarity = 0.0
+    vec_a = [1.0] + [0.0] * 127
+    vec_b = [0.0, 1.0] + [0.0] * 126
+
+    with patch("aletheia_memory.routes._embed_texts", new_callable=AsyncMock) as mock_embed:
+        mock_embed.return_value = [vec_a, vec_b]
+        resp = client.post(
+            "/dedup/batch",
+            json={"texts": ["User prefers Python over JavaScript", "Baby #2 due October 2026"]},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["removed"] == 0
+    assert len(data["deduplicated"]) == 2
+
+
+def test_dedup_batch_removes_near_duplicates(client: TestClient) -> None:
+    """When two texts have cosine similarity >= threshold, the second is dropped."""
+    # Identical vectors → similarity = 1.0, which exceeds default threshold 0.90
+    vec = [1.0] + [0.0] * 127
+
+    with patch("aletheia_memory.routes._embed_texts", new_callable=AsyncMock) as mock_embed:
+        mock_embed.return_value = [vec, vec]
+        resp = client.post(
+            "/dedup/batch",
+            json={
+                "texts": [
+                    "User prefers chrome-tanned leather for belts",
+                    "User strongly prefers chrome-tanned leather for belts",
+                ]
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["removed"] == 1
+    assert len(data["deduplicated"]) == 1
+    # The first text (original order) is retained
+    assert data["deduplicated"][0] == "User prefers chrome-tanned leather for belts"
+
+
+def test_dedup_batch_respects_threshold(client: TestClient) -> None:
+    """Threshold controls dedup aggressiveness: higher threshold → less dedup."""
+    import math
+
+    # vec_a and vec_b have similarity ~0.949
+    vec_a = [1.0, 1.0] + [0.0] * 126
+    vec_b = [1.0, 0.5] + [0.0] * 126
+    mag_a = math.sqrt(1.0 + 1.0)
+    mag_b = math.sqrt(1.0 + 0.25)
+    sim = (1.0 * 1.0 + 1.0 * 0.5) / (mag_a * mag_b)
+
+    with patch("aletheia_memory.routes._embed_texts", new_callable=AsyncMock) as mock_embed:
+        # Default threshold 0.90 — similarity ~0.949 → duplicate removed
+        mock_embed.return_value = [vec_a, vec_b]
+        resp_default = client.post(
+            "/dedup/batch",
+            json={"texts": ["fact about leather belts", "fact about chrome leather belts"]},
+        )
+        assert resp_default.status_code == 200
+        assert resp_default.json()["removed"] == 1, f"Expected 1 removed at default threshold (sim={sim:.3f})"
+
+        # Threshold 0.99 — similarity ~0.949 < 0.99 → both kept
+        mock_embed.return_value = [vec_a, vec_b]
+        resp_strict = client.post(
+            "/dedup/batch",
+            json={
+                "texts": ["fact about leather belts", "fact about chrome leather belts"],
+                "threshold": 0.99,
+            },
+        )
+        assert resp_strict.status_code == 200
+        assert resp_strict.json()["removed"] == 0, f"Expected 0 removed at threshold=0.99 (sim={sim:.3f})"
