@@ -7,6 +7,25 @@
 
 ---
 
+## Phase 13 Remediation Status
+
+**Completed:** 2026-02-26
+**Result:** ALL CLEAN — all three sub-projects pass all lint and typecheck tools with 0 errors and 0 warnings.
+
+| Sub-project | Tool | Before | After |
+|-------------|------|--------|-------|
+| runtime | oxlint | 590 warnings | 0 warnings |
+| runtime | tsc | 0 errors | 0 errors |
+| UI | svelte-check | 87 errors, 25 warnings | 0 errors, 0 warnings |
+| UI | oxlint | 30 warnings | 0 warnings |
+| UI | eslint | 74 warnings | 0 warnings |
+| sidecar | ruff | 152 errors | 0 errors |
+| sidecar | pyright | 960 errors | 0 errors |
+
+Pre-commit hook updated: `npm run typecheck` added to UI section (STANDARDS.md Known Gap closed).
+
+---
+
 ## Summary
 
 | Sub-project | Tool | Errors | Warnings | Auto-fixable | Manual |
