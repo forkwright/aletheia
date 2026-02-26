@@ -10,6 +10,10 @@ export const RecallConfigSchema = z.object({
   limit: z.number().int().min(1).max(30).default(8),
   maxTokens: z.number().int().min(100).max(5000).default(1500),
   minScore: z.number().min(0).max(1).default(0.75),
+  // Sufficiency gate: hierarchical config — global default + per-agent pipeline.json override.
+  // loadPipelineConfig() applies Zod schema defaults for any unset field, so an agent's
+  // pipeline.json can override only sufficiencyThreshold while inheriting sufficiencyMinHits.
+  // Run `npm run test:tune-sufficiency` to determine optimal values from corpus data.
   sufficiencyThreshold: z.number().min(0).max(1).default(0.85),
   sufficiencyMinHits: z.number().int().min(1).max(20).default(3),
 }).default({});

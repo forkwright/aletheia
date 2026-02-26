@@ -20,7 +20,8 @@
     "test:affected": "vitest run --changed HEAD~1",
     "test:file": "vitest run",
     "test:corpus": "tsx tests/corpus/run-corpus.ts",
-    "test:corpus:save-baseline": "tsx tests/corpus/run-corpus.ts --save-baseline"
+    "test:corpus:save-baseline": "tsx tests/corpus/run-corpus.ts --save-baseline",
+    "test:tune-sufficiency": "tsx tests/corpus/tune-sufficiency.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
