@@ -287,7 +287,7 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   });
 
-  app.post("/api/sessions/:id/distill/cancel", async (c) => {
+  app.post("/api/sessions/:id/distill/cancel", (c) => {
     const id = c.req.param("id");
     const session = store.findSessionById(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
