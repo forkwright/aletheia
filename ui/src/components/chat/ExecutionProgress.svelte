@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteMap } from "svelte/reactivity";
   import Spinner from "../shared/Spinner.svelte";
 
   interface PlanEntry {
@@ -88,7 +89,7 @@
 
   let waveGroups = $derived.by(() => {
     // Group plans by wave number
-    const groups = new Map<number, PlanEntry[]>();
+    const groups = new SvelteMap<number, PlanEntry[]>();
 
     execution.plans.forEach(plan => {
       const wave = plan.waveNumber ?? 0;

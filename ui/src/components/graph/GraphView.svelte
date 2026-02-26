@@ -256,7 +256,7 @@
           class:active={selectedAgentFilter === null}
           onclick={() => setSelectedAgentFilter(null)}
         >All agents</button>
-        {#each agentOverlay.all_agents as agent}
+        {#each agentOverlay.all_agents as agent (agent)}
           <button
             class="pill agent-pill"
             class:active={selectedAgentFilter === agent}
@@ -275,7 +275,7 @@
           class:active={getHighlightedCommunity() === null}
           onclick={() => { setHighlightedCommunity(null); reloadGraph(); }}
         >All</button>
-        {#each communityIds.slice(0, 12) as cid}
+        {#each communityIds.slice(0, 12) as cid (cid)}
           <button
             class="pill"
             class:active={getHighlightedCommunity() === cid}
@@ -391,7 +391,7 @@
   {#if edgeTypes.length > 0 && showEdgeFilter}
     <div class="edge-filter-panel">
       <h4 class="panel-heading">Edge Types</h4>
-      {#each edgeTypes as type}
+      {#each edgeTypes as type (type)}
         {@const hidden = hiddenEdges.has(type)}
         <label class="edge-toggle">
           <input type="checkbox" checked={!hidden} onchange={() => toggleEdgeType(type)} />

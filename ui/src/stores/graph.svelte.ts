@@ -1,4 +1,5 @@
 // Graph visualization store
+import { SvelteSet } from "svelte/reactivity";
 import {
   fetchGraphExport, fetchEntityDetail, deleteEntity, mergeEntities,
   fetchMemoryHealth, fetchAgentOverlay, fetchDriftData, fetchGraphTimeline,
@@ -18,7 +19,7 @@ let loadedMode = $state<"top" | "community" | "all">("top");
 let loadedLimit = $state(200);
 let entityDetail = $state<EntityDetail | null>(null);
 let entityLoading = $state(false);
-let hiddenEdgeTypes = $state<Set<string>>(new Set());
+let hiddenEdgeTypes = new SvelteSet<string>();
 let searchResults = $state<Array<{ id: string; labels: string[]; pagerank: number; community: number }>>([]);
 let searchLoading = $state(false);
 
@@ -79,7 +80,7 @@ export function getNodeEdges(nodeId: string): GraphEdge[] {
 }
 
 export function getConnectedNodes(nodeId: string): GraphNode[] {
-  const edgeNodeIds = new Set<string>();
+  const edgeNodeIds = new SvelteSet<string>();
   for (const e of graphData.edges) {
     if (e.source === nodeId) edgeNodeIds.add(e.target);
     if (e.target === nodeId) edgeNodeIds.add(e.source);
@@ -88,7 +89,7 @@ export function getConnectedNodes(nodeId: string): GraphNode[] {
 }
 
 export function getCommunityIds(): number[] {
-  const ids = new Set<number>();
+  const ids = new SvelteSet<number>();
   for (const n of graphData.nodes) {
     if (n.community >= 0) ids.add(n.community);
   }
@@ -188,7 +189,7 @@ export function getHiddenEdgeTypes(): Set<string> {
 export function getEdgeTypes(): string[] {
   const data = graphData;
   if (!data) return [];
-  const types = new Set<string>();
+  const types = new SvelteSet<string>();
   for (const e of data.edges) {
     if (e.rel_type) types.add(e.rel_type);
   }
@@ -196,7 +197,7 @@ export function getEdgeTypes(): string[] {
 }
 
 export function toggleEdgeType(type: string): void {
-  const next = new Set(hiddenEdgeTypes);
+  const next = new SvelteSet(hiddenEdgeTypes);
   if (next.has(type)) {
     next.delete(type);
   } else {

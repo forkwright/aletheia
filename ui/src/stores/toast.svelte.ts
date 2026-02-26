@@ -1,3 +1,4 @@
+import { SvelteMap } from "svelte/reactivity";
 // Toast notification queue — auto-dismiss after 5s
 interface ToastItem {
   id: string;
@@ -8,7 +9,7 @@ interface ToastItem {
 }
 
 let toasts = $state<ToastItem[]>([]);
-const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const timeouts = new SvelteMap<string, ReturnType<typeof setTimeout>>();
 
 export function showToast(
   agentName: string,

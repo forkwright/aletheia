@@ -1,3 +1,4 @@
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import { fetchWorkspaceTree, fetchWorkspaceFile, fetchGitStatus } from "../lib/api";
 import type { FileTreeEntry } from "../lib/types";
 
@@ -6,8 +7,8 @@ let selectedPath = $state<string | null>(null);
 let selectedContent = $state<string>("");
 let loading = $state(false);
 let fileLoading = $state(false);
-let gitStatuses = $state<Map<string, string>>(new Map());
-let expandedDirs = $state<Set<string>>(new Set());
+let gitStatuses = new SvelteMap<string, string>();
+let expandedDirs = new SvelteSet<string>();
 
 export function getTreeEntries(): FileTreeEntry[] {
   return treeEntries;
@@ -33,7 +34,7 @@ export function getGitStatus(path: string): string | undefined {
   return gitStatuses.get(path);
 }
 
-export function getGitStatuses(): Map<string, string> {
+export function getGitStatuses(): SvelteMap<string, string> {
   return gitStatuses;
 }
 
@@ -42,7 +43,7 @@ export function isExpanded(path: string): boolean {
 }
 
 export function toggleDir(path: string): void {
-  const next = new Set(expandedDirs);
+  const next = new SvelteSet(expandedDirs);
   if (next.has(path)) next.delete(path);
   else next.add(path);
   expandedDirs = next;
@@ -54,7 +55,7 @@ export async function loadTree(agentId?: string): Promise<void> {
     const data = await fetchWorkspaceTree(agentId, undefined, 3);
     treeEntries = data.entries;
     // Auto-expand root dirs
-    expandedDirs = new Set(data.entries.filter(e => e.type === "directory").map(e => e.name));
+    expandedDirs = new SvelteSet(data.entries.filter(e => e.type === "directory").map(e => e.name));
   } catch {
     treeEntries = [];
   } finally {
@@ -79,13 +80,13 @@ export async function selectFile(path: string, agentId?: string): Promise<void> 
 export async function loadGitStatus(agentId?: string): Promise<void> {
   try {
     const data = await fetchGitStatus(agentId);
-    const map = new Map<string, string>();
+    const map = new SvelteMap<string, string>();
     for (const f of data.files) {
       map.set(f.path, f.status);
     }
     gitStatuses = map;
   } catch {
-    gitStatuses = new Map();
+    gitStatuses = new SvelteMap();
   }
 }
 

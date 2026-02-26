@@ -134,7 +134,7 @@
       <div class="phases-summary">
         <h3 class="sub-title">Phase Outcomes ({retro.phases.length})</h3>
         <div class="phases-grid">
-          {#each retro.phases as phase}
+          {#each retro.phases as phase (phase.name)}
             <div class="phase-card">
               <div class="phase-header">
                 <span class="phase-icon">{phaseIcon(phase.status)}</span>
@@ -165,7 +165,7 @@
         <div class="patterns-section">
           <h3 class="sub-title">Patterns & Lessons ({retro.patterns.length})</h3>
           <div class="patterns-list">
-            {#each retro.patterns as pattern}
+            {#each retro.patterns as pattern, i (i)}
               <div class="pattern-card" style="--pattern-color: {patternColor(pattern.type)}">
                 <div class="pattern-header">
                   <span class="pattern-icon">{patternIcon(pattern.type)}</span>

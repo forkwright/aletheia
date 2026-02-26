@@ -93,7 +93,7 @@
     {/if}
     {#if hasMedia}
       <div class="msg-media" class:single={message.media!.length === 1} class:grid={message.media!.length > 1}>
-        {#each message.media! as item}
+        {#each message.media! as item, i (i)}
           {#if item.contentType.startsWith("image/")}
             <button class="media-thumb" onclick={() => openLightbox(`data:${item.contentType};base64,${item.data}`)}>
               <img

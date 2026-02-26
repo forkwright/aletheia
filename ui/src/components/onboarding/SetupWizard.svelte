@@ -165,7 +165,7 @@
 <div class="wizard">
   <div class="wizard-card">
     <div class="progress">
-      {#each STEPS as s, i}
+      {#each STEPS as s, i (s)}
         <div
           class="dot"
           class:active={step === s}
@@ -301,7 +301,7 @@
               { value: "direct", label: "Direct", desc: "Answer first, terse, skip preamble" },
               { value: "balanced", label: "Balanced", desc: "Answer first with brief context" },
               { value: "detailed", label: "Detailed", desc: "Full explanations, explore implications" },
-            ] as { value: "direct" | "balanced" | "detailed"; label: string; desc: string }[]) as opt}
+            ] as { value: "direct" | "balanced" | "detailed"; label: string; desc: string }[]) as opt (opt.value)}
               <label class="style-option" class:selected={profileStyle === opt.value}>
                 <input type="radio" name="style" value={opt.value} bind:group={profileStyle} />
                 <span class="style-name">{opt.label}</span>

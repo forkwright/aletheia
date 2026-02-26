@@ -113,7 +113,7 @@
       <div class="category-filter">
         <select bind:value={selectedCategory}>
           <option value={null}>All Categories</option>
-          {#each categories as category}
+          {#each categories as category (category)}
             <option value={category}>{category}</option>
           {/each}
         </select>

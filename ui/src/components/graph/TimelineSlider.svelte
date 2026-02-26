@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { SvelteDate } from "svelte/reactivity";
 
   let {
     dateRange,
@@ -13,13 +14,13 @@
 
   // Default to last 90 days
   function defaultSince(): string {
-    const d = new Date();
+    const d = new SvelteDate();
     d.setDate(d.getDate() - 90);
     return d.toISOString().slice(0, 10);
   }
 
   function defaultUntil(): string {
-    return new Date().toISOString().slice(0, 10);
+    return new SvelteDate().toISOString().slice(0, 10);
   }
 
   let sinceVal = $state(untrack(() => dateRange?.oldest?.slice(0, 10) ?? defaultSince()));
@@ -38,7 +39,7 @@
 
   // Quick presets
   function preset(days: number) {
-    const d = new Date();
+    const d = new SvelteDate();
     untilVal = d.toISOString().slice(0, 10);
     d.setDate(d.getDate() - days);
     sinceVal = d.toISOString().slice(0, 10);

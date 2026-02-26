@@ -10,7 +10,7 @@
 
 {#if attachments.length > 0}
   <div class="attachment-preview">
-    {#each attachments as att, i}
+    {#each attachments as att, i (i)}
       <div class="attachment-thumb">
         {#if isImageType(att.contentType)}
           <img src="data:{att.contentType};base64,{att.data}" alt={att.filename ?? "attachment"} />

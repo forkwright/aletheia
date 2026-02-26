@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import * as THREE from "three";
   import type { GraphData as AppGraphData } from "../../lib/types";
   import { communityColor } from "../../lib/graph-colors";
@@ -44,8 +45,8 @@
 
   // --- Community Cloud System ---
   const CLOUD_GEOMETRY = new THREE.SphereGeometry(1, 24, 16);
-  const cloudMeshes = new Map<number, THREE.Mesh>();
-  const cloudLabels = new Map<number, THREE.Sprite>();
+  const cloudMeshes = new SvelteMap<number, THREE.Mesh>();
+  const cloudLabels = new SvelteMap<number, THREE.Sprite>();
   let cloudScene: THREE.Scene | null = null;
 
   function createCloudMaterial(color: string, opacity: number): THREE.MeshBasicMaterial {
@@ -82,7 +83,7 @@
   function updateClouds(runtimeNodes: any[]) {
     if (!cloudScene) return;
 
-    const byCommunity = new Map<number, any[]>();
+    const byCommunity = new SvelteMap<number, object[]>();
     for (const node of runtimeNodes) {
       if (node.community === null || node.community === undefined || node.community < 0) continue;
       if (node.x === null || node.x === undefined) continue;

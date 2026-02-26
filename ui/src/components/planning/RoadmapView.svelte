@@ -138,7 +138,7 @@
                   <div class="detail-section">
                     <h4>Requirements</h4>
                     <ul class="requirement-list">
-                      {#each phase.requirements as reqId}
+                      {#each phase.requirements as reqId (reqId)}
                         <li>{reqId}</li>
                       {/each}
                     </ul>
@@ -149,7 +149,7 @@
                   <div class="detail-section">
                     <h4>Dependencies</h4>
                     <ul class="dependency-list">
-                      {#each phase.dependencies as depId}
+                      {#each phase.dependencies as depId (depId)}
                         <li>{depId}</li>
                       {/each}
                     </ul>

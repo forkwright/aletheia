@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import type { ToolCallState } from "../../lib/types";
   import { formatDuration } from "../../lib/format";
   import { getToolCategory } from "../../lib/tools";
@@ -12,29 +13,29 @@
     onClose: () => void;
   } = $props();
 
-  let expandedIds = $state<Set<string>>(new Set());
+  let expandedIds = new SvelteSet<string>();
 
   // Auto-expand errors — untrack expandedIds to avoid reactive cycle
   $effect(() => {
     const errorIds = tools.filter(t => t.status === "error").map(t => t.id);
     if (errorIds.length > 0) {
-      expandedIds = new Set([...untrack(() => expandedIds), ...errorIds]);
+      expandedIds = new SvelteSet([...untrack(() => expandedIds), ...errorIds]);
     }
   });
 
   function toggleExpand(id: string) {
-    const next = new Set(expandedIds);
+    const next = new SvelteSet(expandedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     expandedIds = next;
   }
 
   function expandAll() {
-    expandedIds = new Set(tools.map(t => t.id));
+    expandedIds = new SvelteSet(tools.map(t => t.id));
   }
 
   function collapseAll() {
-    expandedIds = new Set();
+    expandedIds = new SvelteSet();
   }
 
   let completed = $derived(tools.filter(t => t.status === "complete").length);
@@ -45,7 +46,7 @@
   );
 
   let categoryStats = $derived.by(() => {
-    const counts = new Map<string, { icon: string; count: number }>();
+    const counts = new SvelteMap<string, { icon: string; count: number }>();
     for (const t of tools) {
       const cat = getToolCategory(t.name);
       const existing = counts.get(cat.label);
@@ -131,10 +132,10 @@
   }
 
   const COLLAPSE_THRESHOLD = 20;
-  let collapsedIds = $state<Set<string>>(new Set());
+  let collapsedIds = new SvelteSet<string>();
 
   function toggleCollapse(id: string) {
-    const next = new Set(collapsedIds);
+    const next = new SvelteSet(collapsedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     collapsedIds = next;
@@ -182,7 +183,7 @@
   }
 
   // Cache highlighted output per tool — avoids re-running hljs/DOMPurify on every tools update
-  const resultCache = new Map<string, { raw: string; html: string }>();
+  const resultCache = new SvelteMap<string, { raw: string; html: string }>();
 
   function highlightResult(tool: ToolCallState): string {
     if (!tool.result) return "";
@@ -232,7 +233,7 @@
     </div>
     {#if categoryStats.length > 1}
       <div class="header-categories">
-        {#each categoryStats as cat}
+        {#each categoryStats as cat (cat.icon)}
           <span class="cat-badge">{cat.icon}{cat.count}</span>
         {/each}
       </div>

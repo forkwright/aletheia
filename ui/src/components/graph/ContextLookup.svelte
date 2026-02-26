@@ -71,12 +71,12 @@
   {#if searchResults.length > 0}
     <div class="results-list">
       <div class="results-header">{searchResults.length} entities found</div>
-      {#each searchResults.slice(0, 15) as result}
+      {#each searchResults.slice(0, 15) as result (result.id)}
         <button class="result-item" onclick={() => selectEntity(result.id)}>
           <span class="result-name">{result.id}</span>
           <div class="result-meta">
             {#if result.labels.length > 0}
-              {#each result.labels.slice(0, 2) as label}
+              {#each result.labels.slice(0, 2) as label (label)}
                 <span class="result-label">{label}</span>
               {/each}
             {/if}
@@ -102,7 +102,7 @@
       </div>
       {#if entityDetail.memories.length > 0}
         <div class="memory-preview">
-          {#each entityDetail.memories.slice(0, 3) as mem}
+          {#each entityDetail.memories.slice(0, 3) as mem, i (i)}
             <div class="preview-memory">
               <span class="preview-score">{(mem.score * 100).toFixed(0)}%</span>
               <span class="preview-text">{mem.text}</span>
@@ -115,7 +115,7 @@
       {/if}
       {#if entityDetail.relationships.length > 0}
         <div class="rel-preview">
-          {#each entityDetail.relationships.slice(0, 5) as rel}
+          {#each entityDetail.relationships.slice(0, 5) as rel, i (i)}
             <span class="rel-chip">
               {rel.direction === "out" ? "→" : "←"} {rel.type} {rel.target}
             </span>

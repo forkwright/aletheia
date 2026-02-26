@@ -1,3 +1,4 @@
+import { SvelteDate } from "svelte/reactivity";
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
 import { setActiveCredentialLabel } from "./credentials.svelte";
@@ -152,7 +153,7 @@ export function injectUserMessage(agentId: string, content: string): void {
     id: `user-${Date.now()}`,
     role: "user",
     content,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
   };
   state.messages = [...state.messages, msg];
 }
@@ -193,7 +194,7 @@ export function injectLocalMessage(agentId: string, content: string): void {
     id: `system-${Date.now()}`,
     role: "assistant",
     content,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
   };
   state.messages = [...state.messages, msg];
 }
@@ -247,7 +248,7 @@ export async function sendMessage(
     id: `user-${Date.now()}`,
     role: "user",
     content: text,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
     ...(media?.length ? { media } : {}),
   };
   state.messages = [...state.messages, userMsg];
@@ -334,7 +335,7 @@ resolvedSessionId = event.sessionId ?? null;
             id: `assistant-${Date.now()}`,
             role: "assistant",
             content: state.streamingText || event.outcome.text,
-            timestamp: new Date().toISOString(),
+            timestamp: new SvelteDate().toISOString(),
 ...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
             turnOutcome: event.outcome,
@@ -355,7 +356,7 @@ resolvedSessionId = event.sessionId ?? null;
               id: `assistant-${Date.now()}`,
               role: "assistant",
               content: state.streamingText,
-              timestamp: new Date().toISOString(),
+              timestamp: new SvelteDate().toISOString(),
 ...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             };
             state.messages = [...state.messages, partial];
@@ -383,7 +384,7 @@ resolvedSessionId = event.sessionId ?? null;
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: state.streamingText,
-        timestamp: new Date().toISOString(),
+        timestamp: new SvelteDate().toISOString(),
 ...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
         ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
       };

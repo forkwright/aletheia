@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteMap } from "svelte/reactivity";
   import { timeAgo } from "../../lib/utils";
 
   interface ExecutionPlan {
@@ -20,7 +21,7 @@
   let expandedPlan = $state<string | null>(null);
 
   let waves = $derived.by(() => {
-    const waveMap = new Map<number, ExecutionPlan[]>();
+    const waveMap = new SvelteMap<number, ExecutionPlan[]>();
     
     plans.forEach(plan => {
       if (plan.waveNumber !== null) {
@@ -265,7 +266,7 @@
             <div class="auto-wave-display">
               <h3>Current Wave: {currentWave.number}</h3>
               <div class="wave-plans">
-                {#each currentWave.plans.slice(0, 5) as plan}
+                {#each currentWave.plans.slice(0, 5) as plan (plan.phaseId)}
                   <div class="plan-summary">
                     <span class="plan-status-dot" style="background: {getPlanStatusColor(plan.status)}"></span>
                     <span class="plan-name">{plan.name}</span>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import type { ToolCallState } from "../../lib/types";
   import { getToolCategory } from "../../lib/tools";
   import Spinner from "../shared/Spinner.svelte";
@@ -16,7 +17,7 @@
 
   let categoryBreakdown = $derived.by(() => {
     if (running.length > 0 || total < 2) return "";
-    const counts = new Map<string, { icon: string; count: number }>();
+    const counts = new SvelteMap<string, { icon: string; count: number }>();
     for (const t of tools) {
       const cat = getToolCategory(t.name);
       const existing = counts.get(cat.label);

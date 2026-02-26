@@ -116,7 +116,7 @@
           <div class="details-section">
             <h6>Requirements</h6>
             <ul class="requirements-list">
-              {#each selectedMilestone.requirements as req}
+              {#each selectedMilestone.requirements as req (req)}
                 <li>{req}</li>
               {/each}
             </ul>
