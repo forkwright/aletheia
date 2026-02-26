@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 log = logging.getLogger("aletheia.memory.llm")
 
@@ -43,9 +43,9 @@ class OAuthAnthropicLLM:
 
         Returns a patched instance that Mem0 can use directly.
         """
-        from mem0.llms.anthropic import AnthropicLLM
-        from mem0.configs.llms.anthropic import AnthropicConfig
         import anthropic as anthropic_sdk
+        from mem0.configs.llms.anthropic import AnthropicConfig
+        from mem0.llms.anthropic import AnthropicLLM
 
         config = AnthropicConfig(
             model=model,
@@ -67,7 +67,7 @@ class OAuthAnthropicLLM:
         return instance
 
 
-def read_oauth_token() -> Optional[str]:
+def read_oauth_token() -> str | None:
     """Read OAuth token from gateway credentials file."""
     if not OAUTH_CREDS_PATH.exists():
         return None
@@ -81,13 +81,13 @@ def read_oauth_token() -> Optional[str]:
     return None
 
 
-def _check_anthropic_api_key() -> Optional[str]:
+def _check_anthropic_api_key() -> str | None:
     """Check for ANTHROPIC_API_KEY env var."""
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     return key if key else None
 
 
-def _check_ollama() -> Optional[str]:
+def _check_ollama() -> str | None:
     """Check if Ollama is running and find the best available model.
 
     Returns model name or None.
@@ -120,7 +120,7 @@ def _check_ollama() -> Optional[str]:
         return None
 
 
-def detect_backend() -> dict:
+def detect_backend() -> dict[str, Any]:
     """Detect the best available LLM backend.
 
     Returns a dict with:
@@ -202,7 +202,7 @@ def detect_backend() -> dict:
     }
 
 
-def refresh_oauth_token(current_backend: dict) -> dict:
+def refresh_oauth_token(current_backend: dict[str, Any]) -> dict[str, Any]:
     """Re-read OAuth token if it changed. Returns updated backend or same."""
     if current_backend["provider"] != "anthropic-oauth":
         return current_backend

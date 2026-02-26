@@ -62,16 +62,16 @@ describe("summarizeInStages", () => {
   it("handles multi-stage for large conversations", async () => {
     let callCount = 0;
     const router = {
-      complete: vi.fn().mockImplementation(async () => {
+      complete: vi.fn().mockImplementation(() => {
         callCount++;
         // First N calls are chunk summarizations (via summarizeMessages),
         // last call is the merge
-        return {
+        return Promise.resolve({
           content: [{ type: "text", text: callCount <= 3 ? `Chunk ${callCount} summary.` : "Merged final summary." }],
           stopReason: "end_turn",
           usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
           model: "test",
-        };
+        });
       }),
     } as never;
 

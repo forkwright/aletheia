@@ -9,7 +9,7 @@ export interface SubAgentRole {
   tools: string[];
 }
 
-export const ROLE_NAMES: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner"];
+export const ROLE_NAMES: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner", "planner"];
 
 function toSubAgentRole(config: RoleConfig): SubAgentRole {
   return {

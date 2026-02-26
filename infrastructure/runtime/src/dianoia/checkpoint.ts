@@ -25,13 +25,13 @@ export class CheckpointSystem {
     private config: PlanningConfig,
   ) {}
 
-  async evaluate(opts: EvaluateOpts): Promise<"approved" | "blocked"> {
+  evaluate(opts: EvaluateOpts): Promise<"approved" | "blocked"> {
     const { projectId, type, question, context, riskLevel, trueBlockerCategory } = opts;
 
     // Branch 1: true blocker — bypasses YOLO mode, always blocks
     if (trueBlockerCategory !== undefined) {
       this.store.createCheckpoint({ projectId, type, question, context });
-      return "blocked";
+      return Promise.resolve("blocked");
     }
 
     // Branch 2: low risk — auto-approve silently
@@ -39,7 +39,7 @@ export class CheckpointSystem {
       const checkpoint = this.store.createCheckpoint({ projectId, type, question, context });
       this.store.resolveCheckpoint(checkpoint.id, "approved", { autoApproved: true });
       eventBus.emit("planning:checkpoint", { ...opts, decision: "approved", autoApproved: true });
-      return "approved";
+      return Promise.resolve("approved");
     }
 
     // Branch 3: medium risk — notify (non-blocking)
@@ -47,7 +47,7 @@ export class CheckpointSystem {
       const checkpoint = this.store.createCheckpoint({ projectId, type, question, context });
       this.store.resolveCheckpoint(checkpoint.id, "notified", { autoApproved: false });
       eventBus.emit("planning:checkpoint", { ...opts, decision: "notified", autoApproved: false });
-      return "approved";
+      return Promise.resolve("approved");
     }
 
     // Branch 4: high risk in YOLO mode — auto-approve
@@ -55,11 +55,11 @@ export class CheckpointSystem {
       const checkpoint = this.store.createCheckpoint({ projectId, type, question, context });
       this.store.resolveCheckpoint(checkpoint.id, "approved", { autoApproved: true });
       eventBus.emit("planning:checkpoint", { ...opts, decision: "approved", autoApproved: true });
-      return "approved";
+      return Promise.resolve("approved");
     }
 
     // Branch 5: high risk in interactive mode — block, caller must approve via plan_verify
     this.store.createCheckpoint({ projectId, type, question, context });
-    return "blocked";
+    return Promise.resolve("blocked");
   }
 }

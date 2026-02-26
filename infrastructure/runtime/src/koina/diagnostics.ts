@@ -33,11 +33,11 @@ function checkConfigValid(_config: AletheiaConfig | null): DiagnosticResult {
   try {
     loadConfig();
     return { name: "config_valid", status: "ok", message: "Config parses and validates" };
-  } catch (err) {
+  } catch (error) {
     return {
       name: "config_valid",
       status: "error",
-      message: `Config invalid: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Config invalid: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
@@ -295,8 +295,8 @@ export function applyFixes(results: DiagnosticResult[]): { applied: number; fail
     try {
       r.fix.action();
       applied++;
-    } catch (err) {
-      failed.push(`${r.name}: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (error) {
+      failed.push(`${r.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

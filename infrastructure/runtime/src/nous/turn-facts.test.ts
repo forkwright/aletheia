@@ -8,6 +8,7 @@ function mockRouter(response: string) {
       usage: { inputTokens: 100, outputTokens: 50 },
     }),
     stream: vi.fn(),
+    // oxlint-disable-next-line typescript/no-explicit-any -- partial mock router, type narrowing not practical
   } as any;
 }
 
@@ -83,6 +84,7 @@ describe("extractTurnFacts", () => {
   });
 
   it("handles router failure gracefully", async () => {
+    // oxlint-disable-next-line typescript/no-explicit-any -- partial mock router
     const router = { complete: vi.fn().mockRejectedValue(new Error("timeout")) } as any;
     const result = await extractTurnFacts(router, "x".repeat(200), "", "test-model");
     expect(result.facts).toEqual([]);

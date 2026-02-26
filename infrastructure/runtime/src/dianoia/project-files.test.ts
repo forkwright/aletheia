@@ -1,10 +1,10 @@
 // Tests for project-files.ts atomic writes and validation (CTX-02)
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { writeProjectFile, writeRequirementsFile, writeRoadmapFile, writeResearchFile } from "./project-files.js";
-import type { PlanningProject, PlanningRequirement, PlanningPhase, PlanningResearch } from "./types.js";
+import { writeProjectFile, writeRequirementsFile, writeResearchFile, writeRoadmapFile } from "./project-files.js";
+import type { PlanningPhase, PlanningProject, PlanningRequirement, PlanningResearch } from "./types.js";
 
 let workspaceRoot: string;
 

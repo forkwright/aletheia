@@ -151,8 +151,8 @@ export class CronScheduler {
               });
               log.info(`Cron command ${entry.id} completed: ${stdout.slice(0, 200)}`);
               resolve({ type: "command", stdout: stdout.slice(0, 2000) });
-            } catch (err) {
-              reject(err instanceof Error ? err : new Error(String(err)));
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error(String(error)));
             }
           });
         }

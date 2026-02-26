@@ -28,23 +28,23 @@ export function createRecentCorrectionsTool(store?: SessionStore): ToolHandler {
         },
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
       if (!store) {
-        return JSON.stringify({ error: "Store not available" });
+        return Promise.resolve(JSON.stringify({ error: "Store not available" }));
       }
 
       const limit = (input["limit"] as number) || 30;
       const signals = store.getSignalHistory(context.nousId, limit);
 
       if (signals.length === 0) {
-        return JSON.stringify({
+        return Promise.resolve(JSON.stringify({
           nousId: context.nousId,
           note: "No interaction signals recorded yet",
           signals: [],
-        });
+        }));
       }
 
       // Group by signal type
@@ -77,7 +77,7 @@ export function createRecentCorrectionsTool(store?: SessionStore): ToolHandler {
         });
       }
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         nousId: context.nousId,
         summary: grouped,
         correctionClusters: clusters.length > 0 ? clusters : undefined,
@@ -87,7 +87,7 @@ export function createRecentCorrectionsTool(store?: SessionStore): ToolHandler {
           turn: s.turnSeq,
           at: s.createdAt,
         })),
-      });
+      }));
     },
   };
 }

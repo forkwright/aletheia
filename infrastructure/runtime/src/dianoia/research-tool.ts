@@ -1,5 +1,6 @@
 // plan_research tool — spawn 4 parallel domain researchers via sessions_dispatch
 import { createLogger } from "../koina/logger.js";
+import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { DianoiaOrchestrator } from "./orchestrator.js";
 import type { ResearchOrchestrator } from "./researcher.js";
@@ -48,7 +49,7 @@ export function createPlanResearchTool(
 
         // Fail-fast on total research failure
         if (stored === 0 && partial === 0 && failed > 0) {
-          throw new Error(`RESEARCH_ALL_FAILED: All ${failed} research dimensions failed. Cannot proceed without any domain research.`);
+          throw new PlanningError(`RESEARCH_ALL_FAILED: All ${failed} research dimensions failed. Cannot proceed without any domain research.`, { code: "PLANNING_RESEARCH_ALL_FAILED", context: { failed } });
         }
 
         researchOrchestrator.transitionToRequirements(projectId);
@@ -63,8 +64,8 @@ export function createPlanResearchTool(
         }
 
         return JSON.stringify({ status: "complete", stored, partial, failed, message });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_research failed: ${message}`);
         return JSON.stringify({ error: message });
       }

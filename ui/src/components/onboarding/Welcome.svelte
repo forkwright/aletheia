@@ -44,7 +44,7 @@
     <h1 class="welcome-title">{getBrandName()}</h1>
     <p class="welcome-subtitle">Create your first agent to get started.</p>
 
-    <div class="create-form" onkeydown={handleKeydown}>
+    <form class="create-form" onsubmit={(e) => { e.preventDefault(); handleKeydown({ key: "Enter" } as KeyboardEvent); }}>
       <label class="field">
         <span class="field-label">Name</span>
         <input
@@ -81,12 +81,13 @@
       {/if}
       <button
         class="btn-create"
+        type="submit"
         onclick={handleCreate}
         disabled={creating || !formName.trim()}
       >
         {creating ? "Creating..." : "Create Agent"}
       </button>
-    </div>
+    </form>
 
     <p class="welcome-hint">Your agent will guide you through onboarding via conversation.</p>
   </div>

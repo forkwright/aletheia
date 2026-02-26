@@ -1,0 +1,63 @@
+{
+  "id": "akron-session-05",
+  "agent": "akron",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Harness day. Full day on electrical — I want to know everything that's in the cab before I cover it up with the LRB dash."
+    },
+    {
+      "role": "assistant",
+      "content": "Documenting everything as we find it.\n\nRough Country lighting system is now fully removed: switch pod with 2 RC switches plus dimmer from the cab, all cab-to-firewall wiring, two 40A inline fuses from the air box, two Bosch relays from the bracket near the driver battery, battery feed ring terminal disconnected, all five light fixtures unplugged.\n\nCRITICAL FIND on fuse 18: the black/orange ground wires to both cigarette lighters have severely melted insulation with exposed copper. Located between the passenger side ground junction and the cigarette lighter cables. Exposed copper ground wire creates a direct short-to-ground path for any adjacent park lamp wire. Theory: repeated fuse 18 blows heated the ground wires, insulation failed, permanent short path formed. REPAIRED: cut out damaged section, spliced 16 AWG gray marine wire, blue butt connectors. Second wire had contact heat damage but copper intact — reinforced with heat shrink.\n\nOBD-II taps removed: pink (pin 16, constant 12V) and black (pin 4/5 ground) had blue splice connectors from a previous alarm or remote start installation. Device long gone. Connectors removed, wires properly rejoined.\n\nBlack/green stripe splice near fuse box was a bare twist. Fixed with butt connector.\n\nStock components documented as DO NOT TOUCH: battery temperature sensor in driver tray bottom (thermistor for charge compensation), grid heater relays ×2 with part number 56019405 (90A each, critical for cold starting), PTO provision wire (orange, driver firewall, unused factory stub), all factory battery wiring confirmed on both batteries.\n\nAftermarket kept: Retro Antenna HPA 7 on inner fender feeding the XAV-9000ES, Predator DC2 brake controller, hidden 7-pin trailer connector behind the roll pan.\n\nFull harness cleaned with denatured alcohol, inspected end-to-end, rewrapped with X-Fasten fleece tape."
+    },
+    {
+      "role": "user",
+      "content": "Did fuse 18 stop blowing?"
+    },
+    {
+      "role": "assistant",
+      "content": "No. Fuse 18 STILL BLOWS with a fresh 15A. The melted cigarette lighter ground was not the sole cause. The short is confirmed downstream in the body or exterior wiring — the entire dash harness has been inspected and is clear.\n\nSuspect number one: the hidden 7-pin trailer connector behind the roll pan. That's an easy park lamp tap point that wasn't installed by us.\n\nSecond finding from today's power test: the brake light switch rubber bumper is missing. Brake lights have been on 24/7 since purchase — that's 63W constant draw, roughly 5A, draining both batteries continuously for 6+ months. Every NOCO charge session was fighting that drain. Taped the plunger depressed as a temporary fix and the third brake light went out, confirming the circuit. Need Dorman 76942 replacement bumper, about $2.\n\nAlso found: one harness ground wire still not connected in the engine bay — locate and connect tomorrow. And the single click when trying to start is actually the mechanical detent in the ignition switch key cylinder, not a relay clicking."
+    },
+    {
+      "role": "user",
+      "content": "What's the plan for tomorrow?"
+    },
+    {
+      "role": "assistant",
+      "content": "NOCO both batteries overnight, check full charge in the morning. Connect the missing harness ground. Buy the Dorman 76942 brake switch bumper. Clean battery terminals with wire brush and dielectric grease. Then attempt engine start.\n\nIf start is good: begin steering system installation in order — RedHead 2869-3T box, pitman arm, drag link, Borgeson 000950 shaft, PS hoses, ATF+4 bleed. Then install the Forever Sharp steering wheel with the A17 adapter.\n\nIf start fails: the screwdriver-jump workaround from the solenoid terminals is confirmed. Use that to run the engine for the PS bleed while the NSS diagnosis proceeds in parallel."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "Rough Country lighting system was fully removed including switch pod, all wiring, two 40A inline fuses, two Bosch relays, and all five light fixtures",
+      "Black/orange ground wires to both cigarette lighters had severely melted insulation with exposed copper",
+      "The cigarette lighter ground wire repair used 16 AWG gray marine wire with blue butt connectors",
+      "Fuse 18 still blows with a fresh 15A after the cigarette lighter ground repair — the short is downstream in body or exterior wiring",
+      "The hidden 7-pin trailer connector behind the roll pan is suspect number one for the fuse 18 short",
+      "OBD-II taps from a previous alarm or remote start installation were removed",
+      "Grid heater relays have part number 56019405 and are 90A each (critical for cold start)",
+      "Retro Antenna HPA 7 is on the inner fender feeding the XAV-9000ES and was kept",
+      "The full harness was cleaned with denatured alcohol and rewrapped with X-Fasten fleece tape",
+      "The single click when trying to start is the mechanical detent in the key cylinder, not a relay"
+    ],
+    "decisions": [
+      "Remove the Rough Country lighting system and plan reinstallation via Garmin PowerSwitch on dedicated circuits"
+    ],
+    "contradictions": [
+      "The melted cigarette lighter ground was identified as the likely cause of fuse 18 blowing; after repair fuse 18 still blows — short is confirmed further downstream in body wiring"
+    ],
+    "entities": [
+      "XAV-9000ES",
+      "Retro Antenna HPA 7",
+      "Dorman 76942",
+      "Predator DC2",
+      "Garmin PowerSwitch"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-07",
+    "domain": "vehicle",
+    "notes": "Sourced from akron/memory/2026-02-07.md — full harness inspection, RC lighting removal, fuse 18 diagnosis"
+  }
+}

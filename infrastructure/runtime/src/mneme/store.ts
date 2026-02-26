@@ -208,13 +208,16 @@ export class SessionStore {
       }
     } else {
       // Incremental migrations for existing databases
-      const pending = MIGRATIONS.filter((m) => m.version > version).sort(
+      const pending = MIGRATIONS.filter((m) => m.version > version).toSorted(
         (a, b) => a.version - b.version,
       );
       for (const m of pending) {
         this.applyMigration(m.version, m.sql);
       }
     }
+
+    // Clear any locks left behind by a crashed process
+    this.clearStaleLocks();
   }
 
   private applyMigration(version: number, sql: string): void {
@@ -619,6 +622,165 @@ export class SessionStore {
         record.factsExtracted, record.decisionsExtracted, record.openItemsExtracted,
         record.flushSucceeded ? 1 : 0, record.errors ?? null, record.distillationNumber,
       );
+  }
+
+  // --- Distillation Locks ---
+
+  acquireDistillationLock(sessionId: string, nousId: string): boolean {
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO distillation_locks (session_id, nous_id) VALUES (?, ?)",
+        )
+        .run(sessionId, nousId);
+      return true;
+    } catch {
+      // PRIMARY KEY conflict — session already locked
+      return false;
+    }
+  }
+
+  releaseDistillationLock(sessionId: string): void {
+    this.db
+      .prepare("DELETE FROM distillation_locks WHERE session_id = ?")
+      .run(sessionId);
+  }
+
+  clearStaleLocks(maxAgeMinutes = 10): number {
+    const result = this.db
+      .prepare(
+        `DELETE FROM distillation_locks
+         WHERE locked_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ? || ' minutes')`,
+      )
+      .run(`-${maxAgeMinutes}`);
+    if (result.changes > 0) {
+      log.info(`Cleared ${result.changes} stale distillation lock(s) older than ${maxAgeMinutes} minutes`);
+    }
+    return result.changes;
+  }
+
+  runDistillationMutations(opts: {
+    sessionId: string;
+    nousId: string;
+    summaryContent: string;
+    summaryTokens: number;
+    distilledSeqs: number[];
+    record: {
+      messagesBefore: number;
+      messagesAfter: number;
+      tokensBefore: number;
+      tokensAfter: number;
+      factsExtracted: number;
+      model: string;
+    };
+    logRecord: {
+      messagesBefore: number;
+      messagesAfter: number;
+      tokensBefore: number;
+      tokensAfter: number;
+      factsExtracted: number;
+      decisionsExtracted: number;
+      openItemsExtracted: number;
+      flushSucceeded: boolean;
+      errors?: string;
+      distillationNumber: number;
+    };
+  }): void {
+    const tx = this.db.transaction(() => {
+      // 1. Append summary message
+      const storedContent = encryptIfEnabled(opts.summaryContent);
+      const nextSeq = this.db
+        .prepare(
+          "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM messages WHERE session_id = ?",
+        )
+        .get(opts.sessionId) as { next: number };
+      this.db
+        .prepare(
+          `INSERT INTO messages (session_id, seq, role, content, token_estimate, is_distilled)
+           VALUES (?, ?, 'assistant', ?, ?, 0)`,
+        )
+        .run(opts.sessionId, nextSeq.next, storedContent, opts.summaryTokens);
+      this.db
+        .prepare(
+          `UPDATE sessions
+           SET message_count = message_count + 1,
+               token_count_estimate = token_count_estimate + ?,
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE id = ?`,
+        )
+        .run(opts.summaryTokens, opts.sessionId);
+
+      // 2. Mark old messages as distilled
+      if (opts.distilledSeqs.length > 0) {
+        const placeholders = opts.distilledSeqs.map(() => "?").join(",");
+        this.db
+          .prepare(
+            `UPDATE messages SET is_distilled = 1
+             WHERE session_id = ? AND seq IN (${placeholders})`,
+          )
+          .run(opts.sessionId, ...opts.distilledSeqs);
+
+        const row = this.db
+          .prepare(
+            `SELECT COALESCE(SUM(token_estimate), 0) AS total, COUNT(*) AS msg_count
+             FROM messages WHERE session_id = ? AND is_distilled = 0`,
+          )
+          .get(opts.sessionId) as { total: number; msg_count: number };
+        this.db
+          .prepare(
+            `UPDATE sessions
+             SET token_count_estimate = ?, message_count = ?,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?`,
+          )
+          .run(row.total, row.msg_count, opts.sessionId);
+      }
+
+      // 3. Record distillation audit entry
+      this.db
+        .prepare(
+          `INSERT INTO distillations
+           (session_id, messages_before, messages_after, tokens_before, tokens_after, facts_extracted, model)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          opts.sessionId,
+          opts.record.messagesBefore,
+          opts.record.messagesAfter,
+          opts.record.tokensBefore,
+          opts.record.tokensAfter,
+          opts.record.factsExtracted,
+          opts.record.model,
+        );
+
+      // 4. Update last_distilled_at
+      this.db
+        .prepare(
+          "UPDATE sessions SET last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        )
+        .run(opts.sessionId);
+
+      // 5. Record distillation log
+      this.db
+        .prepare(
+          `INSERT INTO distillation_log
+           (session_id, nous_id, messages_before, messages_after, tokens_before, tokens_after,
+            facts_extracted, decisions_extracted, open_items_extracted, flush_succeeded, errors, distillation_number)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          opts.sessionId, opts.nousId,
+          opts.logRecord.messagesBefore, opts.logRecord.messagesAfter,
+          opts.logRecord.tokensBefore, opts.logRecord.tokensAfter,
+          opts.logRecord.factsExtracted, opts.logRecord.decisionsExtracted,
+          opts.logRecord.openItemsExtracted,
+          opts.logRecord.flushSucceeded ? 1 : 0,
+          opts.logRecord.errors ?? null,
+          opts.logRecord.distillationNumber,
+        );
+    });
+
+    tx();
   }
 
   getDistillationLog(sessionId: string): Array<{
@@ -1369,8 +1531,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as WorkingState;
-    } catch (err) {
-      log.debug(`Corrupt working state JSON: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Corrupt working state JSON: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }
@@ -1379,8 +1541,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as T;
-    } catch (err) {
-      log.debug(`Corrupt JSON field: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Corrupt JSON field: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }
@@ -1415,8 +1577,8 @@ export class SessionStore {
           "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
         )
         .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
-    } catch (err) {
-      log.warn(`recordSignal failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`recordSignal failed (non-fatal): ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -1440,8 +1602,8 @@ export class SessionStore {
         confidence: r["confidence"] as number,
         createdAt: r["created_at"] as string,
       }));
-    } catch (err) {
-      log.warn(`getSignalHistory failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`getSignalHistory failed (non-fatal): ${error instanceof Error ? error.message : error}`);
       return [];
     }
   }
@@ -1827,8 +1989,8 @@ export class SessionStore {
         this.resolveBinding(thread.id, transport, channelKey);
         this.linkSessionToThread(sessionId, thread.id, transport);
         migrated++;
-      } catch (err) {
-        log.warn(`Failed to migrate session ${sessionId} to thread: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to migrate session ${sessionId} to thread: ${error instanceof Error ? error.message : error}`);
       }
     }
 
@@ -1842,7 +2004,7 @@ export class SessionStore {
       .get(threadId) as Record<string, unknown> | undefined;
     if (!row) return null;
     let keyFacts: string[] = [];
-    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (err) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${err instanceof Error ? err.message : err}`); }
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (error) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${error instanceof Error ? error.message : error}`); }
     return {
       threadId: row["thread_id"] as string,
       summary: row["summary"] as string,
@@ -1938,7 +2100,7 @@ export class SessionStore {
       )
       .all(...params, limit) as Record<string, unknown>[];
     // Return in chronological order
-    return rows.reverse().map((r) => this.mapMessage(r));
+    return rows.toReversed().map((r) => this.mapMessage(r));
   }
 
   // --- Working State ---
@@ -2105,7 +2267,7 @@ export class SessionStore {
       )
       .all(...params, limit) as Record<string, unknown>[];
 
-    return rows.reverse().map((r) => ({
+    return rows.toReversed().map((r) => ({
       id: r["id"] as number,
       sessionId: r["session_id"] as string,
       nousId: r["nous_id"] as string,
@@ -2130,7 +2292,7 @@ export class SessionStore {
       )
       .all(nousId, limit) as Record<string, unknown>[];
 
-    return rows.reverse().map((r) => ({
+    return rows.toReversed().map((r) => ({
       id: r["id"] as number,
       sessionId: r["session_id"] as string,
       nousId: r["nous_id"] as string,

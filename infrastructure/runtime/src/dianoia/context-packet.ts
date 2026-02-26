@@ -9,12 +9,12 @@
 
 import { createLogger } from "../koina/logger.js";
 import {
-  readProjectFile,
-  readRequirementsFile,
-  readRoadmapFile,
-  readResearchFile,
   readDiscussFile,
   readPlanFile,
+  readProjectFile,
+  readRequirementsFile,
+  readResearchFile,
+  readRoadmapFile,
 } from "./project-files.js";
 import type { PlanningPhase, PlanningRequirement } from "./types.js";
 import { getEncoding } from "js-tiktoken";
@@ -28,8 +28,8 @@ const encoder = getEncoding("cl100k_base");
 function countTokens(text: string): number {
   try {
     return encoder.encode(text).length;
-  } catch (err) {
-    log.warn(`Failed to encode text for token counting: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    log.warn(`Failed to encode text for token counting: ${error instanceof Error ? error.message : String(error)}`);
     // Fallback to character estimation
     return Math.ceil(text.length / 4);
   }
@@ -149,8 +149,8 @@ export async function buildContextPacket(opts: ContextPacketOptions): Promise<st
   try {
     // Use Priompt-based implementation for accurate tokenization
     return await buildContextPacketWithPriompt(opts);
-  } catch (err) {
-    log.warn(`Priompt context assembly failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    log.warn(`Priompt context assembly failed, falling back to legacy: ${error instanceof Error ? error.message : String(error)}`);
     // Fallback to legacy implementation if Priompt fails
     return buildContextPacketLegacy(opts);
   }
@@ -163,8 +163,8 @@ export async function buildContextPacket(opts: ContextPacketOptions): Promise<st
 export function buildContextPacketSync(opts: ContextPacketOptions): string {
   try {
     return buildContextPacketWithPriomptSync(opts);
-  } catch (err) {
-    log.warn(`Priompt sync context assembly failed, falling back to legacy: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    log.warn(`Priompt sync context assembly failed, falling back to legacy: ${error instanceof Error ? error.message : String(error)}`);
     return buildContextPacketLegacy(opts);
   }
 }
@@ -301,7 +301,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
  */
 function assembleSections(sections: ContextSection[], maxTokens: number): string {
   // Sort by priority (lower = first)
-  const sorted = [...sections].sort((a, b) => a.priority - b.priority);
+  const sorted = [...sections].toSorted((a, b) => a.priority - b.priority);
 
   const parts: string[] = [];
   let currentTokens = 0;

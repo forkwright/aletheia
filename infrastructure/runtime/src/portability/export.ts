@@ -265,8 +265,8 @@ async function exportMemoryVectors(
       text: String(m["memory"] ?? m["text"] ?? ""),
       metadata: (m["metadata"] as Record<string, unknown>) ?? {},
     }));
-  } catch (err) {
-    log.warn(`Memory sidecar unreachable: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Memory sidecar unreachable: ${error instanceof Error ? error.message : error}`);
     return [];
   }
 }
@@ -303,8 +303,8 @@ async function exportGraph(
     }));
 
     return { nodes, edges };
-  } catch (err) {
-    log.warn(`Graph export failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Graph export failed: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }

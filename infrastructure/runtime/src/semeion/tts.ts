@@ -1,9 +1,10 @@
 // Text-to-speech synthesis — OpenAI TTS primary, Piper local fallback
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { TransportError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("semeion:tts");
@@ -35,8 +36,8 @@ export async function synthesize(text: string, opts?: TtsOptions): Promise<TtsRe
   if (engine === "openai" || (engine === "auto" && OPENAI_API_KEY)) {
     try {
       return await synthesizeOpenAI(text, id, opts);
-    } catch (err) {
-      log.warn(`OpenAI TTS failed, trying Piper: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`OpenAI TTS failed, trying Piper: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -44,7 +45,7 @@ export async function synthesize(text: string, opts?: TtsOptions): Promise<TtsRe
     return synthesizePiper(text, id, opts);
   }
 
-  throw new Error("No TTS engine available — set OPENAI_API_KEY or install Piper");
+  throw new TransportError("No TTS engine available — set OPENAI_API_KEY or install Piper", { code: "TRANSPORT_TTS_NO_ENGINE" });
 }
 
 async function synthesizeOpenAI(text: string, id: string, opts?: TtsOptions): Promise<TtsResult> {
@@ -70,7 +71,7 @@ async function synthesizeOpenAI(text: string, id: string, opts?: TtsOptions): Pr
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`OpenAI TTS HTTP ${res.status}: ${body.slice(0, 200)}`);
+    throw new TransportError(`OpenAI TTS HTTP ${res.status}: ${body.slice(0, 200)}`, { code: "TRANSPORT_TTS_HTTP_ERROR", context: { status: res.status } });
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -87,10 +88,10 @@ async function synthesizeOpenAI(text: string, id: string, opts?: TtsOptions): Pr
 
 function synthesizePiper(text: string, id: string, opts?: TtsOptions): TtsResult {
   if (!existsSync(PIPER_BIN)) {
-    throw new Error(`Piper binary not found at ${PIPER_BIN}`);
+    throw new TransportError(`Piper binary not found at ${PIPER_BIN}`, { code: "TRANSPORT_TTS_BINARY_NOT_FOUND", context: { path: PIPER_BIN } });
   }
   if (!existsSync(PIPER_MODEL)) {
-    throw new Error(`Piper model not found at ${PIPER_MODEL}`);
+    throw new TransportError(`Piper model not found at ${PIPER_MODEL}`, { code: "TRANSPORT_TTS_MODEL_NOT_FOUND", context: { path: PIPER_MODEL } });
   }
 
   const outPath = join(TTS_DIR, `${id}.wav`);

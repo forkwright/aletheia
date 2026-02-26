@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { flushToWorkspace } from "./workspace-flush.js";
+import { flushToWorkspace, flushToWorkspaceWithRetry } from "./workspace-flush.js";
 import type { ExtractionResult } from "./extract.js";
 
 const EMPTY_EXTRACTION: ExtractionResult = {
@@ -164,9 +164,13 @@ describe("flushToWorkspace", () => {
   });
 
   it("returns error result when write fails (bad path)", () => {
-    // Use a path where memory dir cannot be created
+    // Use a file as workspace so memory subdir creation fails fast
+    // Avoid /proc/ paths — mkdirSync on procfs hangs on Linux
+    const workspace = tmpDir();
+    const blockingFile = join(workspace, "not-a-dir");
+    writeFileSync(blockingFile, "blocker");
     const result = flushToWorkspace({
-      workspace: "/proc/nonexistent-for-test",
+      workspace: blockingFile,
       nousId: "syn",
       sessionId: "ses_abc123",
       distillationNumber: 1,
@@ -236,5 +240,83 @@ describe("flushToWorkspace", () => {
     expect(content).toContain("Appended to existing.");
     const headerCount = (content.match(/^# Memory/gm) ?? []).length;
     expect(headerCount).toBe(1);
+  });
+});
+
+describe("flushToWorkspaceWithRetry", () => {
+  it("succeeds on first attempt without retrying", () => {
+    const workspace = tmpDir();
+    const result = flushToWorkspaceWithRetry({
+      workspace,
+      nousId: "syn",
+      sessionId: "ses_retry_ok",
+      distillationNumber: 1,
+      summary: "No retry needed.",
+      extraction: EMPTY_EXTRACTION,
+    });
+
+    expect(result.written).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns failure when all retries exhausted", () => {
+    // Use a file path as workspace (not a dir) to trigger a reliable, fast failure
+    // Avoid /proc/ paths — mkdirSync on procfs hangs on Linux
+    const workspace = tmpDir();
+    const blockingFile = join(workspace, "blocker");
+    writeFileSync(blockingFile, "not a directory");
+    const result = flushToWorkspaceWithRetry(
+      {
+        workspace: blockingFile, // memory subdir cannot be created under a file
+        nousId: "syn",
+        sessionId: "ses_retry_exhaust",
+        distillationNumber: 1,
+        summary: "Will fail.",
+        extraction: EMPTY_EXTRACTION,
+      },
+      2,
+    );
+
+    expect(result.written).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it("retry count is configurable — zero retries means single attempt only", () => {
+    // Use a file path as workspace to trigger reliable, fast failure
+    const workspace = tmpDir();
+    const blockingFile = join(workspace, "blocker2");
+    writeFileSync(blockingFile, "not a directory");
+    const result = flushToWorkspaceWithRetry(
+      {
+        workspace: blockingFile,
+        nousId: "syn",
+        sessionId: "ses_zero_retry",
+        distillationNumber: 1,
+        summary: "Fails immediately.",
+        extraction: EMPTY_EXTRACTION,
+      },
+      0,
+    );
+
+    expect(result.written).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  it("succeeds on valid workspace with non-zero retry count", () => {
+    const workspace = tmpDir();
+    const result = flushToWorkspaceWithRetry(
+      {
+        workspace,
+        nousId: "syn",
+        sessionId: "ses_valid_with_retry",
+        distillationNumber: 1,
+        summary: "Succeeds first try.",
+        extraction: EMPTY_EXTRACTION,
+      },
+      3,
+    );
+
+    expect(result.written).toBe(true);
+    expect(existsSync(result.path)).toBe(true);
   });
 });

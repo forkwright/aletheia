@@ -54,8 +54,8 @@ function buildTree(dirPath: string, depth: number, maxDepth: number): TreeEntry[
             modified: stat.mtime.toISOString(),
           });
         }
-      } catch (err) {
-        log.debug(`Skipping unreadable entry ${entry.name}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.debug(`Skipping unreadable entry ${entry.name}: ${error instanceof Error ? error.message : error}`);
       }
     }
     result.sort((a, b) => {
@@ -63,8 +63,8 @@ function buildTree(dirPath: string, depth: number, maxDepth: number): TreeEntry[
       return a.name.localeCompare(b.name);
     });
     return result;
-  } catch (err) {
-    log.debug(`buildTree failed for directory: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`buildTree failed for directory: ${error instanceof Error ? error.message : error}`);
     return [];
   }
 }
@@ -107,8 +107,8 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
       const content = readFileSync(resolved, "utf-8");
       return c.json({ path: filePath, size: stat.size, content });
-    } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : "Read failed" }, 500);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Read failed" }, 500);
     }
   });
 
@@ -137,8 +137,8 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     try {
       writeFileSync(resolved, content, "utf-8");
       return c.json({ ok: true, path: filePath, size: Buffer.byteLength(content) });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Workspace file write failed: ${msg}`);
       return c.json({ error: msg }, 500);
     }
@@ -163,8 +163,8 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         files.push({ status, path });
       }
       return c.json({ files });
-    } catch (err) {
-      log.debug(`git-status failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`git-status failed: ${error instanceof Error ? error.message : error}`);
       return c.json({ files: [] });
     }
   });

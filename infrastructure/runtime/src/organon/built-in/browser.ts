@@ -1,10 +1,11 @@
 // Browser tool — navigate, screenshot, extract via headless Chromium + LLM-driven browsing
-import type { ToolHandler } from "../registry.js";
-import { validateUrl } from "./ssrf-guard.js";
-import { createLogger } from "../../koina/logger.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { ToolError } from "../../koina/errors.js";
+import { createLogger } from "../../koina/logger.js";
+import type { ToolHandler } from "../registry.js";
+import { validateUrl } from "./ssrf-guard.js";
 
 const log = createLogger("browser");
 
@@ -17,7 +18,7 @@ const PAGE_TIMEOUT = 30000;
 type Browser = import("playwright-core").Browser;
 type Page = import("playwright-core").Page;
 
-async function getBrowser(): Promise<Browser> {
+function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = (async () => {
       const { chromium } = await import("playwright-core");
@@ -40,7 +41,7 @@ async function getBrowser(): Promise<Browser> {
 
 async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   if (pageCount >= MAX_PAGES) {
-    throw new Error(`Max concurrent pages (${MAX_PAGES}) reached`);
+    throw new ToolError(`Max concurrent pages (${MAX_PAGES}) reached`, { code: "BROWSER_MAX_PAGES", context: { maxPages: MAX_PAGES } });
   }
 
   const browser = await getBrowser();
@@ -52,7 +53,8 @@ async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
     if (!cleaned) {
       cleaned = true;
       pageCount--;
-      page.close().catch(() => { /* page cleanup */ });
+      // eslint-disable-next-line promise/prefer-await-to-then -- sync cleanup callback cannot await
+      void page.close().then(undefined, () => { /* page cleanup — best-effort */ });
     }
   };
 
@@ -139,7 +141,7 @@ export const browserTool: ToolHandler = {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout });
 
         if (waitFor) {
-          await page.waitForSelector(waitFor, { timeout }).catch((err) => { log.debug(`waitForSelector "${waitFor}" timed out: ${err instanceof Error ? err.message : err}`); });
+          await page.waitForSelector(waitFor, { timeout }).catch((error) => { log.debug(`waitForSelector "${waitFor}" timed out: ${error instanceof Error ? error.message : error}`); });
         }
 
         switch (action) {
@@ -192,9 +194,9 @@ const BROWSER_USE_SCRIPT = join(
   "infrastructure/browser-use/run_task.py",
 );
 
-async function runBrowserUseTask(task: string): Promise<string> {
+function runBrowserUseTask(task: string): Promise<string> {
   if (!existsSync(BROWSER_USE_SCRIPT)) {
-    return "Error: browser-use not installed (run_task.py not found)";
+    return Promise.resolve("Error: browser-use not installed (run_task.py not found)");
   }
 
   return new Promise((resolve) => {

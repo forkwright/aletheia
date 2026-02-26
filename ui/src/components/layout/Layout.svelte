@@ -6,7 +6,7 @@
   import PlanningView from "../planning/PlanningView.svelte";
   import FileEditor from "../files/FileEditor.svelte";
   import Login from "../auth/Login.svelte";
-  import { fetchAuthMode, getAccessToken, refresh, setAuthFailureHandler } from "../../lib/auth";
+  import { fetchAuthMode, refresh, setAuthFailureHandler } from "../../lib/auth";
   import { getBrandName, loadBranding } from "../../stores/branding.svelte";
   import { getActiveAgentId, isFirstRun, loadAgents } from "../../stores/agents.svelte";
   import Welcome from "../onboarding/Welcome.svelte";
@@ -175,13 +175,15 @@
           {/key}
         </div>
         {#if filePanelOpen}
-          <div
+          <button
             class="resize-handle"
+            aria-label="Resize file panel"
             onmousedown={startResize}
-            role="separator"
-            aria-orientation="vertical"
-            tabindex="-1"
-          ></div>
+            onkeydown={(e) => {
+              if (e.key === "ArrowLeft") filePanelWidth = Math.min(filePanelWidth + 20, window.innerWidth - 400);
+              else if (e.key === "ArrowRight") filePanelWidth = Math.max(filePanelWidth - 20, 300);
+            }}
+          ></button>
           <div class="file-pane" style="width: {filePanelWidth}px">
             <FileEditor onClose={toggleFilePanel} />
           </div>
@@ -234,6 +236,9 @@
     width: 4px;
     cursor: col-resize;
     background: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 0;
     flex-shrink: 0;
     transition: background var(--transition-quick);
   }

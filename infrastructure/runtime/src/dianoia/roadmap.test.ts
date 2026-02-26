@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, type MockedFunction } from "vitest";
+import { describe, expect, it, type MockedFunction, vi } from "vitest";
 import Database from "better-sqlite3";
 import {
   PLANNING_V20_DDL,
@@ -13,7 +13,7 @@ import {
 import { PlanningStore } from "./store.js";
 import { RoadmapOrchestrator } from "./roadmap.js";
 import type { PhaseDefinition, PhasePlan } from "./roadmap.js";
-import type { ToolHandler, ToolContext } from "../organon/registry.js";
+import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { transition } from "./machine.js";
 
 function makeDb(): Database.Database {

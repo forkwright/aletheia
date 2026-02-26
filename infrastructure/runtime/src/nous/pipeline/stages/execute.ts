@@ -32,7 +32,7 @@ const MAX_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;
 
 /** Dynamic thinking budget based on message complexity. */
 function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
-  const lastUser = [...messages].reverse().find(m => m.role === "user");
+  const lastUser = [...messages].toReversed().find(m => m.role === "user");
   const userLen = lastUser ? (typeof lastUser.content === "string" ? lastUser.content.length : JSON.stringify(lastUser.content).length) : 0;
 
   if (userLen < 100 && toolCount === 0) return Math.min(baseBudget, 2000);
@@ -294,8 +294,8 @@ export async function* executeStreaming(
                 });
                 continue;
               }
-            } catch (err) {
-              log.debug(`Approval gate cancelled for ${toolUse.name}: ${err instanceof Error ? err.message : err}`);
+            } catch (error) {
+              log.debug(`Approval gate cancelled for ${toolUse.name}: ${error instanceof Error ? error.message : error}`);
               toolResults.push({
                 type: "tool_result", tool_use_id: toolUse.id,
                 content: `[DENIED] Tool "${toolUse.name}" approval was cancelled.`, is_error: true,
@@ -314,13 +314,13 @@ export async function* executeStreaming(
             () => services.tools.execute(toolUse.name, toolUse.input, toolContext),
             timeoutMs, toolUse.name,
           );
-        } catch (err) {
+        } catch (error) {
           isError = true;
-          if (err instanceof ToolTimeoutError) {
-            result = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
-            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
+          if (error instanceof ToolTimeoutError) {
+            result = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(error.timeoutMs / 1000)}s. The operation may still be running in the background.`;
+            log.warn(`Tool timeout: ${toolUse.name} after ${error.timeoutMs}ms [${nousId}]`);
           } else {
-            result = err instanceof Error ? err.message : String(err);
+            result = error instanceof Error ? error.message : String(error);
           }
         }
         execResults.push({ toolUse, result, isError, durationMs: Date.now() - start });
@@ -343,12 +343,12 @@ export async function* executeStreaming(
                 timeoutMs, toolUse.name,
               );
               return { result, isError: false, durationMs: Date.now() - start };
-            } catch (err) {
-              const isTimeout = err instanceof ToolTimeoutError;
+            } catch (error) {
+              const isTimeout = error instanceof ToolTimeoutError;
               const result = isTimeout
-                ? `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round((err as ToolTimeoutError).timeoutMs / 1000)}s. The operation may still be running in the background.`
-                : (err instanceof Error ? err.message : String(err));
-              if (isTimeout) log.warn(`Tool timeout: ${toolUse.name} after ${(err as ToolTimeoutError).timeoutMs}ms [${nousId}]`);
+                ? `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round((error as ToolTimeoutError).timeoutMs / 1000)}s. The operation may still be running in the background.`
+                : (error instanceof Error ? error.message : String(error));
+              if (isTimeout) log.warn(`Tool timeout: ${toolUse.name} after ${(error as ToolTimeoutError).timeoutMs}ms [${nousId}]`);
               return { result, isError: true, durationMs: Date.now() - start };
             }
           }),
@@ -491,7 +491,7 @@ export async function executeBuffered(
       throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
     }
 
-    const result = await services.router.complete({
+    const llmResult = await services.router.complete({
       model,
       system: systemPrompt,
       messages: currentMessages,
@@ -509,27 +509,27 @@ export async function executeBuffered(
       return state;
     }
 
-    totalInputTokens += result.usage.inputTokens;
-    totalOutputTokens += result.usage.outputTokens;
-    totalCacheReadTokens += result.usage.cacheReadTokens;
-    totalCacheWriteTokens += result.usage.cacheWriteTokens;
+    totalInputTokens += llmResult.usage.inputTokens;
+    totalOutputTokens += llmResult.usage.outputTokens;
+    totalCacheReadTokens += llmResult.usage.cacheReadTokens;
+    totalCacheWriteTokens += llmResult.usage.cacheWriteTokens;
 
     services.store.recordUsage({
       sessionId,
       turnSeq: seq + loop,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      cacheReadTokens: result.usage.cacheReadTokens,
-      cacheWriteTokens: result.usage.cacheWriteTokens,
-      model: result.model,
+      inputTokens: llmResult.usage.inputTokens,
+      outputTokens: llmResult.usage.outputTokens,
+      cacheReadTokens: llmResult.usage.cacheReadTokens,
+      cacheWriteTokens: llmResult.usage.cacheWriteTokens,
+      model: llmResult.model,
     });
 
-    const toolUses = result.content.filter(
+    const toolUses = llmResult.content.filter(
       (b): b is ToolUseBlock => b.type === "tool_use",
     );
 
     if (toolUses.length === 0) {
-      const text = result.content
+      const text = llmResult.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
         .join("\n");
@@ -567,19 +567,19 @@ export async function executeBuffered(
         text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
-        ...(result.credentialLabel ? { credentialLabel: result.credentialLabel } : {}),
+        ...(llmResult.credentialLabel ? { credentialLabel: llmResult.credentialLabel } : {}),
       };
 
       return state;
     }
 
-    services.store.appendMessage(sessionId, "assistant", JSON.stringify(result.content), {
-      tokenEstimate: estimateTokens(JSON.stringify(result.content)),
+    services.store.appendMessage(sessionId, "assistant", JSON.stringify(llmResult.content), {
+      tokenEstimate: estimateTokens(JSON.stringify(llmResult.content)),
     });
 
     currentMessages = [
       ...currentMessages,
-      { role: "assistant" as const, content: result.content as ContentBlock[] },
+      { role: "assistant" as const, content: llmResult.content as ContentBlock[] },
     ];
 
     const toolResults: UserContentBlock[] = [];
@@ -630,13 +630,13 @@ export async function executeBuffered(
             () => services.tools.execute(toolUse.name, toolUse.input, toolContext),
             timeoutMs, toolUse.name,
           );
-        } catch (err) {
+        } catch (error) {
           isError = true;
-          if (err instanceof ToolTimeoutError) {
-            result = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(err.timeoutMs / 1000)}s. The operation may still be running in the background.`;
-            log.warn(`Tool timeout: ${toolUse.name} after ${err.timeoutMs}ms [${nousId}]`);
+          if (error instanceof ToolTimeoutError) {
+            result = `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round(error.timeoutMs / 1000)}s. The operation may still be running in the background.`;
+            log.warn(`Tool timeout: ${toolUse.name} after ${error.timeoutMs}ms [${nousId}]`);
           } else {
-            result = err instanceof Error ? err.message : String(err);
+            result = error instanceof Error ? error.message : String(error);
             log.warn(`Tool ${toolUse.name} failed: ${result}`);
           }
         }
@@ -659,12 +659,12 @@ export async function executeBuffered(
                 timeoutMs, toolUse.name,
               );
               return { result, isError: false, durationMs: Date.now() - start };
-            } catch (err) {
-              const isTimeout = err instanceof ToolTimeoutError;
+            } catch (error) {
+              const isTimeout = error instanceof ToolTimeoutError;
               const result = isTimeout
-                ? `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round((err as ToolTimeoutError).timeoutMs / 1000)}s. The operation may still be running in the background.`
-                : (err instanceof Error ? err.message : String(err));
-              if (isTimeout) log.warn(`Tool timeout: ${toolUse.name} after ${(err as ToolTimeoutError).timeoutMs}ms [${nousId}]`);
+                ? `[TIMEOUT] Tool "${toolUse.name}" did not respond within ${Math.round((error as ToolTimeoutError).timeoutMs / 1000)}s. The operation may still be running in the background.`
+                : (error instanceof Error ? error.message : String(error));
+              if (isTimeout) log.warn(`Tool timeout: ${toolUse.name} after ${(error as ToolTimeoutError).timeoutMs}ms [${nousId}]`);
               else log.warn(`Tool ${toolUse.name} failed: ${result}`);
               return { result, isError: true, durationMs: Date.now() - start };
             }

@@ -34,7 +34,7 @@ export const traceLookupTool: ToolHandler = {
       },
     },
   },
-  async execute(
+  execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
@@ -46,7 +46,7 @@ export const traceLookupTool: ToolHandler = {
     const tracesFile = join(workspace, "..", "..", "shared", "traces", `${context.nousId}.jsonl`);
 
     if (!existsSync(tracesFile)) {
-      return JSON.stringify({ error: "No traces found", file: tracesFile });
+      return Promise.resolve(JSON.stringify({ error: "No traces found", file: tracesFile }));
     }
 
     const content = readFileSync(tracesFile, "utf-8");
@@ -62,7 +62,7 @@ export const traceLookupTool: ToolHandler = {
     }).filter(Boolean);
 
     if (traces.length === 0) {
-      return JSON.stringify({ error: "No valid traces found" });
+      return Promise.resolve(JSON.stringify({ error: "No valid traces found" }));
     }
 
     // Apply filter
@@ -102,10 +102,10 @@ export const traceLookupTool: ToolHandler = {
       return base;
     });
 
-    return JSON.stringify({
+    return Promise.resolve(JSON.stringify({
       nousId: context.nousId,
       tracesFound: filtered.length,
       traces: filtered,
-    });
+    }));
   },
 };

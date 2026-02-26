@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type MockedFunction } from "vitest";
+import { describe, expect, it, type MockedFunction, vi } from "vitest";
 import Database from "better-sqlite3";
 import {
   PLANNING_V20_DDL,
@@ -299,7 +299,7 @@ describe("plan_roadmap plan_phases action", () => {
     ]);
 
     const phases = roadmapOrch.listPhases(projectId) as PlanningPhase[];
-    const phaseIds = phases.sort((a, b) => a.phaseOrder - b.phaseOrder).map((p) => p.id);
+    const phaseIds = phases.toSorted((a, b) => a.phaseOrder - b.phaseOrder).map((p) => p.id);
 
     const mockOrch = makeMockOrchestrator(db);
     const tool = createPlanRoadmapTool(mockOrch, roadmapOrch);

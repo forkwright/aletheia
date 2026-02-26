@@ -170,8 +170,10 @@ describe("runStreamingPipeline", () => {
       events.push(event);
     }
 
+    // oxlint-disable-next-line typescript/no-explicit-any -- pipeline event union needs narrowing
     const errorEvent = events.find((e: any) => e.type === "error");
     expect(errorEvent).toBeDefined();
+    // oxlint-disable-next-line typescript/no-explicit-any -- pipeline event union needs narrowing
     expect((errorEvent as any).message).toContain("context boom");
   });
 });

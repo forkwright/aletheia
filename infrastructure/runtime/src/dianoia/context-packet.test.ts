@@ -1,23 +1,22 @@
 // Tests for ContextPacketBuilder (Spec 32 Phase 2)
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildContextPacketSync,
-  selectModelForRole,
   modelTierToRole,
+  selectModelForRole,
   type SubAgentRole,
 } from "./context-packet.js";
 import { getEncoding } from "js-tiktoken";
 import {
-  ensureProjectDir,
   ensurePhaseDir,
-  writeProjectFile,
-  writeRequirementsFile,
-  writeRoadmapFile,
+  ensureProjectDir,
   writeDiscussFile,
   writePlanFile,
+  writeProjectFile,
+  writeRequirementsFile,
 } from "./project-files.js";
 import type { PlanningPhase, PlanningRequirement } from "./types.js";
 
@@ -117,6 +116,7 @@ describe("buildContextPacketSync", () => {
       sessionId: "test",
       goal: "Big project",
       state: "executing",
+      // oxlint-disable-next-line typescript/no-explicit-any -- partial mock config in test
       config: {} as any,
       contextHash: "",
       projectDir: null,

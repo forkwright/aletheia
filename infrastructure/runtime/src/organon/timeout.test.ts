@@ -62,17 +62,17 @@ describe("executeWithTimeout", () => {
   });
 
   it("throws ToolTimeoutError when function exceeds timeout", async () => {
-    const fn = () => new Promise<string>((r) => setTimeout(() => r("late"), 500));
-    await expect(executeWithTimeout(fn, 10, "slow_tool")).rejects.toThrow(ToolTimeoutError);
+    await expect(
+      executeWithTimeout(() => new Promise<string>((r) => setTimeout(() => r("late"), 500)), 10, "slow_tool")
+    ).rejects.toThrow(ToolTimeoutError);
   });
 
   it("ToolTimeoutError has correct properties", async () => {
-    const fn = () => new Promise<string>((r) => setTimeout(() => r("late"), 500));
     let caught: unknown;
     try {
-      await executeWithTimeout(fn, 10, "my_tool");
-    } catch (err) {
-      caught = err;
+      await executeWithTimeout(() => new Promise<string>((r) => setTimeout(() => r("late"), 500)), 10, "my_tool");
+    } catch (error) {
+      caught = error;
     }
     expect(caught).toBeInstanceOf(ToolTimeoutError);
     const te = caught as ToolTimeoutError;
@@ -83,8 +83,9 @@ describe("executeWithTimeout", () => {
   });
 
   it("propagates non-timeout errors", async () => {
-    const fn = () => Promise.reject(new Error("tool error"));
-    await expect(executeWithTimeout(fn, 1000, "test_tool")).rejects.toThrow("tool error");
+    await expect(
+      executeWithTimeout(async () => { throw new Error("tool error"); }, 1000, "test_tool")
+    ).rejects.toThrow("tool error");
   });
 
   it("does not throw ToolTimeoutError when function completes just before timeout", async () => {

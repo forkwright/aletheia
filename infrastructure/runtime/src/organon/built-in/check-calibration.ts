@@ -32,7 +32,7 @@ export function createCheckCalibrationTool(
         },
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -69,7 +69,7 @@ export function createCheckCalibrationTool(
         result["calibration"] = { note: "Uncertainty tracker not available" };
       }
 
-      return JSON.stringify(result);
+      return Promise.resolve(JSON.stringify(result));
     },
   };
 }

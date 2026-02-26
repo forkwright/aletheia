@@ -1,10 +1,11 @@
+import { SvelteMap } from "svelte/reactivity";
 import { fetchAgents, fetchAgentIdentity } from "../lib/api";
 import type { Agent } from "../lib/types";
 
 let agents = $state<Agent[]>([]);
 let activeAgentId = $state<string | null>(null);
 let loading = $state(false);
-const identityCache = new Map<string, { name: string; emoji: string | null }>();
+const identityCache = new SvelteMap<string, { name: string; emoji: string | null }>();
 
 export function getAgents(): Agent[] {
   return agents;

@@ -32,7 +32,13 @@
 </script>
 
 <div class="drift-panel" class:collapsed={!expanded}>
-  <div class="panel-header" onclick={() => expanded = !expanded}>
+  <div
+    class="panel-header"
+    role="button"
+    tabindex="0"
+    onclick={() => { expanded = !expanded; }}
+    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); expanded = !expanded; } }}
+  >
     <span class="panel-title">
       🔍 Drift Detection
       {#if drift?.suggestion_count}
@@ -82,7 +88,7 @@
           {#if drift.suggestions.length === 0}
             <div class="empty">No suggested actions — graph looks healthy ✓</div>
           {:else}
-            {#each drift.suggestions as suggestion}
+            {#each drift.suggestions as suggestion (suggestion.entity)}
               <div class="suggestion-item">
                 <span class="suggestion-type" class:delete={suggestion.type === "delete"} class:review={suggestion.type === "review"} class:merge={suggestion.type === "merge_or_delete"}>
                   {suggestion.type === "delete" ? "🗑" : suggestion.type === "review" ? "👁" : "🔗"}
@@ -110,7 +116,7 @@
           {#if drift.orphaned_nodes.length === 0}
             <div class="empty">No orphaned nodes</div>
           {:else}
-            {#each drift.orphaned_nodes as node}
+            {#each drift.orphaned_nodes as node (node.name)}
               <div class="drift-row">
                 <button class="entity-link" onclick={() => onNodeClick?.(node.name)}>{node.name}</button>
                 <span class="drift-meta">PR {(node.pagerank || 0).toFixed(4)}</span>
@@ -122,7 +128,7 @@
           {#if drift.stale_entities.length === 0}
             <div class="empty">No stale entities (all within 30 days)</div>
           {:else}
-            {#each drift.stale_entities.slice(0, 20) as entity}
+            {#each drift.stale_entities.slice(0, 20) as entity (entity.name)}
               <div class="drift-row">
                 <button class="entity-link" onclick={() => onNodeClick?.(entity.name)}>{entity.name}</button>
                 <span class="drift-meta stale-age">{entity.age_days}d ago</span>
@@ -134,11 +140,11 @@
           {#if drift.small_clusters.length === 0}
             <div class="empty">No isolated clusters</div>
           {:else}
-            {#each drift.small_clusters as cluster}
+            {#each drift.small_clusters as cluster (cluster.comm)}
               <div class="cluster-row">
                 <span class="cluster-id">C{cluster.comm}</span>
                 <div class="cluster-members">
-                  {#each cluster.members as member}
+                  {#each cluster.members as member (member)}
                     <button class="entity-link" onclick={() => onNodeClick?.(member)}>{member}</button>
                   {/each}
                 </div>

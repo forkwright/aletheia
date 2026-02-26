@@ -13,6 +13,7 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import { writeResearchFile } from "./project-files.js";
 import { buildContextPacketSync } from "./context-packet.js";
+import { PlanningError } from "../koina/errors.js";
 import { z } from "zod";
 
 const log = createLogger("dianoia:researcher");
@@ -92,9 +93,9 @@ export class ResearchOrchestrator {
         );
         return { content: rawResult, status: "partial" };
       }
-    } catch (err) {
+    } catch (error) {
       log.warn(
-        `Failed to parse ${dimension} research response: ${err instanceof Error ? err.message : String(err)}, storing raw text as partial`,
+        `Failed to parse ${dimension} research response: ${error instanceof Error ? error.message : String(error)}, storing raw text as partial`,
       );
       return { content: rawResult, status: "partial" };
     }
@@ -122,8 +123,8 @@ export class ResearchOrchestrator {
           projectGoal,
           maxTokens: 4000, // Keep small — researchers need room for their own findings
         });
-      } catch (err) {
-        log.warn(`Failed to build context packet for ${dimension}: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        log.warn(`Failed to build context packet for ${dimension}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -171,9 +172,9 @@ export class ResearchOrchestrator {
       const raw = await this.dispatchTool.execute({ tasks: [task] }, toolContext);
       const output = JSON.parse(raw) as DispatchOutput;
       return output.results[0] ?? null;
-    } catch (err) {
+    } catch (error) {
       log.warn(
-        `${dimension} research individual retry failed: ${err instanceof Error ? err.message : String(err)}`,
+        `${dimension} research individual retry failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return null;
     }
@@ -220,9 +221,9 @@ export class ResearchOrchestrator {
     try {
       const raw = await this.dispatchTool.execute({ tasks }, toolContext);
       dispatchOutput = JSON.parse(raw) as DispatchOutput;
-    } catch (err) {
+    } catch (error) {
       // Complete dispatch failure — retry each dimension individually
-      log.warn(`Batch dispatch failed, falling back to individual dispatch: ${err instanceof Error ? err.message : String(err)}`);
+      log.warn(`Batch dispatch failed, falling back to individual dispatch: ${error instanceof Error ? error.message : String(error)}`);
       dispatchOutput = { results: [] };
     }
 
@@ -306,8 +307,9 @@ export class ResearchOrchestrator {
     // Fail-fast only if NO dimensions have usable content
     const usableCount = stored + partial;
     if (usableCount === 0) {
-      throw new Error(
+      throw new PlanningError(
         `Research failed: No dimensions completed successfully (${failed} failed, ${partial} partial)`,
+        { code: "PLANNING_RESEARCH_ALL_FAILED", context: { failed, partial } },
       );
     }
 
@@ -349,8 +351,8 @@ export class ResearchOrchestrator {
           projectGoal,
           maxTokens: 3000,
         });
-      } catch (err) {
-        log.warn(`Failed to build context packet for synthesis: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        log.warn(`Failed to build context packet for synthesis: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 

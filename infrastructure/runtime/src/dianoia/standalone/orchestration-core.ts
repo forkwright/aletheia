@@ -4,6 +4,7 @@
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
+import { PlanningError } from "../koina/errors.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import { directDependents } from "./execution.js";
@@ -292,7 +293,7 @@ export class OrchestrationCore {
     const failedPhase = allPhases.find(p => p.id === failedPhaseId);
     
     if (!failedPhase) {
-      throw new Error(`Phase ${failedPhaseId} not found`);
+      throw new PlanningError(`Phase ${failedPhaseId} not found`, { code: "PLANNING_PHASE_NOT_FOUND", context: { phaseId: failedPhaseId } });
     }
 
     // Find all downstream dependent phases

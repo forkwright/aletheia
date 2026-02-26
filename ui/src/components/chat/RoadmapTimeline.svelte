@@ -10,11 +10,10 @@
     requirementCount?: number;
   }
 
-  let { 
-    milestones, 
-    currentState, 
+  let {
+    milestones,
     detailed = false,
-    onMilestoneClick = () => {} 
+    onMilestoneClick = () => {}
   }: {
     milestones: Milestone[];
     currentState: string;
@@ -117,7 +116,7 @@
           <div class="details-section">
             <h6>Requirements</h6>
             <ul class="requirements-list">
-              {#each selectedMilestone.requirements as req}
+              {#each selectedMilestone.requirements as req (req)}
                 <li>{req}</li>
               {/each}
             </ul>

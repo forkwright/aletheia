@@ -122,8 +122,8 @@ export class Watchdog {
       const message = `Watchdog Alert\n${alerts.join("\n")}`;
       try {
         await this.opts.alertFn(message);
-      } catch (err) {
-        log.error(`Failed to send watchdog alert: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.error(`Failed to send watchdog alert: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

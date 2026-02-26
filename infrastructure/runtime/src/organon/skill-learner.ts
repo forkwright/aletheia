@@ -118,8 +118,8 @@ export async function extractSkillCandidate(
       sourceSession: sessionId,
       sourceTurn: turnSeq,
     };
-  } catch (err) {
-    log.debug(`Skill extraction failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Skill extraction failed: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }

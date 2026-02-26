@@ -469,7 +469,7 @@
       activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
       isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
       {turnStartedAt}
-      agentName={agent?.name}
+      agentName={agent?.name ?? null}
       agentEmoji={emoji}
       onToolClick={handleToolClick}
       onThinkingClick={(thinking) => handleThinkingClick(thinking)}

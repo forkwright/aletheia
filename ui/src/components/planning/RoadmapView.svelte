@@ -87,7 +87,14 @@
             {/if}
             
             <!-- Phase Node -->
-            <div class="phase-node" style="--status-color: {statusColor}" onclick={() => toggleExpanded(phase.id)}>
+            <div
+              class="phase-node"
+              style="--status-color: {statusColor}"
+              role="button"
+              tabindex="0"
+              onclick={() => toggleExpanded(phase.id)}
+              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(phase.id); } }}
+            >
               <div class="phase-icon">{getStatusIcon(status)}</div>
               <div class="phase-info">
                 <div class="phase-header">
@@ -131,7 +138,7 @@
                   <div class="detail-section">
                     <h4>Requirements</h4>
                     <ul class="requirement-list">
-                      {#each phase.requirements as reqId}
+                      {#each phase.requirements as reqId (reqId)}
                         <li>{reqId}</li>
                       {/each}
                     </ul>
@@ -142,7 +149,7 @@
                   <div class="detail-section">
                     <h4>Dependencies</h4>
                     <ul class="dependency-list">
-                      {#each phase.dependencies as depId}
+                      {#each phase.dependencies as depId (depId)}
                         <li>{depId}</li>
                       {/each}
                     </ul>

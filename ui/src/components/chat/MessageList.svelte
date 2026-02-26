@@ -100,7 +100,7 @@
     </div>
   {:else}
     {#each messages as message (message.id)}
-      <Message {message} {agentName} {agentEmoji} {onToolClick} onThinkingClick={(thinking) => onThinkingClick?.(thinking)} />
+      <Message {message} agentName={agentName ?? null} agentEmoji={agentEmoji ?? null} {...(onToolClick !== undefined && { onToolClick })} onThinkingClick={(thinking) => onThinkingClick?.(thinking)} />
     {/each}
 
     {#if isStreaming}

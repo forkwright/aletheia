@@ -13,7 +13,7 @@ describe("flushToMemory", () => {
     const target = makeTarget();
     const result = await flushToMemory(target, "syn", {
       facts: [], decisions: [], openItems: [], keyEntities: [], contradictions: [],
-    });
+    }, 3, "test-session");
     expect(result).toEqual({ flushed: 0, errors: 0 });
     expect(target.addMemories).not.toHaveBeenCalled();
   });
@@ -24,10 +24,10 @@ describe("flushToMemory", () => {
       facts: ["fact1", "fact2"],
       decisions: ["decision1"],
       openItems: [], keyEntities: [], contradictions: [],
-    });
+    }, 3, "test-session");
     expect(target.addMemories).toHaveBeenCalledWith("syn", [
       "fact1", "fact2", "Decision: decision1",
-    ]);
+    ], "test-session");
     expect(result.flushed).toBe(3);
   });
 
@@ -40,7 +40,7 @@ describe("flushToMemory", () => {
     const result = await flushToMemory(target, "syn", {
       facts: ["a", "b"], decisions: [],
       openItems: [], keyEntities: [], contradictions: [],
-    }, 3);
+    }, 3, "test-session");
     expect(result.flushed).toBe(2);
     expect(target.addMemories).toHaveBeenCalledTimes(2);
   });
@@ -53,7 +53,7 @@ describe("flushToMemory", () => {
     const result = await flushToMemory(target, "syn", {
       facts: ["a", "b"], decisions: ["c"],
       openItems: [], keyEntities: [], contradictions: [],
-    }, 1);
+    }, 1, "test-session");
     expect(result.errors).toBe(3);
     expect(result.flushed).toBe(0);
   });

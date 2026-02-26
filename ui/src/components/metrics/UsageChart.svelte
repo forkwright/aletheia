@@ -31,7 +31,7 @@
   {:else}
     <div class="chart-container">
       <div class="chart-bars">
-        {#each data as day}
+        {#each data as day (day.date)}
           {@const pct = (day.tokens / maxTokens) * 100}
           <div class="bar-col" title="{day.date}: {formatTokens(day.tokens)} · {day.turns} turns">
             <div class="bar" style="height: {Math.max(pct, 2)}%"></div>

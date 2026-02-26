@@ -11,12 +11,12 @@ import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
 import { eventBus } from "../koina/event-bus.js";
-import { flushToWorkspace } from "./workspace-flush.js";
+import { flushToWorkspaceWithRetry } from "./workspace-flush.js";
 
 const log = createLogger("melete");
 
-// Prevent concurrent distillation of the same session
-const activeDistillations = new Set<string>();
+const workspaceFlushFailures = new Map<string, number>();
+const WORKSPACE_FLUSH_FAILURE_THRESHOLD = 3;
 
 export interface DistillationOpts {
   triggerThreshold: number;
@@ -48,11 +48,11 @@ export interface DistillationResult {
   distillationNumber: number;
 }
 
-export async function shouldDistill(
+export function shouldDistill(
   store: SessionStore,
   sessionId: string,
   opts: { threshold: number; minMessages: number },
-): Promise<boolean> {
+): boolean {
   const session = store.findSessionById(sessionId);
   if (!session) return false;
 
@@ -68,7 +68,7 @@ export async function distillSession(
   nousId: string,
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
-  if (activeDistillations.has(sessionId)) {
+  if (!store.acquireDistillationLock(sessionId, nousId)) {
     log.info(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
@@ -79,11 +79,10 @@ export async function distillSession(
     });
   }
 
-  activeDistillations.add(sessionId);
   try {
     return await runDistillation(store, router, sessionId, nousId, opts);
   } finally {
-    activeDistillations.delete(sessionId);
+    store.releaseDistillationLock(sessionId);
   }
 }
 
@@ -109,7 +108,7 @@ async function runDistillation(
   const allMessages = store.getHistory(sessionId, {});
 
   // Guard: reject distillation if history has orphaned tool_use blocks
-  const lastAssistant = [...allMessages].reverse().find(m => !m.isDistilled && m.role === "assistant");
+  const lastAssistant = [...allMessages].toReversed().find(m => !m.isDistilled && m.role === "assistant");
   if (lastAssistant) {
     try {
       const parsed = JSON.parse(lastAssistant.content);
@@ -133,9 +132,9 @@ async function runDistillation(
           }
         }
       }
-    } catch (e) {
-      if (e instanceof AletheiaError) throw e;
-      log.warn(`Unexpected error during distillation pre-check: ${e instanceof Error ? e.message : e}`);
+    } catch (error) {
+      if (error instanceof AletheiaError) throw error;
+      log.warn(`Unexpected error during distillation pre-check: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -261,6 +260,7 @@ async function runDistillation(
         nousId,
         extraction,
         opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
+        sessionId,
       );
       if (flushResult.errors > 0) {
         log.warn(
@@ -306,36 +306,14 @@ async function runDistillation(
       : summary;
   const markedTokens = estimateTokens(markedSummary);
 
-  // The summary replaces old messages and must remain visible in future history.
-  // isDistilled=false (default) keeps it in getHistoryWithBudget; markMessagesDistilled
-  // only marks the OLD messages, not this one.
-  store.appendMessage(sessionId, "assistant", markedSummary, {
-    tokenEstimate: markedTokens,
-  });
-
-  store.markMessagesDistilled(
-    sessionId,
-    toDistill.map((m) => m.seq),
-  );
-
   const preservedTokens = toPreserve.reduce((sum, m) => sum + (m.tokenEstimate ?? 0), 0);
-  store.recordDistillation({
-    sessionId,
-    messagesBefore: undistilled.length,
-    messagesAfter: 1 + toPreserve.length,
-    tokensBefore,
-    tokensAfter: markedTokens + preservedTokens,
-    factsExtracted: extraction.facts.length + extraction.decisions.length,
-    model: opts.extractionModel,
-  });
-  store.updateLastDistilledAt(sessionId);
 
   eventBus.emit("distill:stage", { sessionId, nousId, stage: "flush", progress: 4, total: 6 });
 
   let flushSucceeded = true;
   let flushErrors: string | undefined;
   if (opts.workspace) {
-    const flushResult = flushToWorkspace({
+    const flushResult = flushToWorkspaceWithRetry({
       workspace: opts.workspace,
       nousId,
       sessionId,
@@ -343,27 +321,77 @@ async function runDistillation(
       summary: markedSummary,
       extraction,
     });
+
+    const receipt = {
+      nousId,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      factCount: extraction.facts.length + extraction.decisions.length,
+      written: flushResult.written,
+      path: flushResult.path,
+      error: flushResult.error,
+    };
+    log.info("Workspace flush receipt", receipt);
+
     if (!flushResult.written) {
       flushSucceeded = false;
       flushErrors = flushResult.error;
-      log.warn(`Workspace memory flush failed: ${flushResult.error}`);
+      const failures = (workspaceFlushFailures.get(nousId) ?? 0) + 1;
+      workspaceFlushFailures.set(nousId, failures);
+      if (failures >= WORKSPACE_FLUSH_FAILURE_THRESHOLD) {
+        eventBus.emit("memory:health_degraded", {
+          nousId,
+          reason: "workspace_flush_failures",
+          consecutiveFailures: failures,
+          lastError: flushResult.error,
+        });
+      }
+    } else {
+      workspaceFlushFailures.delete(nousId);
     }
   }
 
-  store.recordDistillationLog({
+  // Bundle all five SQLite writes into a single atomic transaction with single retry.
+  // The transaction auto-rolls-back if any write throws, leaving no partial state.
+  const mutationOpts = {
     sessionId,
     nousId,
-    messagesBefore: undistilled.length,
-    messagesAfter: 1 + toPreserve.length,
-    tokensBefore,
-    tokensAfter: markedTokens + preservedTokens,
-    factsExtracted: extraction.facts.length,
-    decisionsExtracted: extraction.decisions.length,
-    openItemsExtracted: extraction.openItems.length,
-    flushSucceeded,
-    ...(flushErrors ? { errors: flushErrors } : {}),
-    distillationNumber,
-  });
+    summaryContent: markedSummary,
+    summaryTokens: markedTokens,
+    distilledSeqs: toDistill.map((m) => m.seq),
+    record: {
+      messagesBefore: undistilled.length,
+      messagesAfter: 1 + toPreserve.length,
+      tokensBefore,
+      tokensAfter: markedTokens + preservedTokens,
+      factsExtracted: extraction.facts.length + extraction.decisions.length,
+      model: opts.extractionModel,
+    },
+    logRecord: {
+      messagesBefore: undistilled.length,
+      messagesAfter: 1 + toPreserve.length,
+      tokensBefore,
+      tokensAfter: markedTokens + preservedTokens,
+      factsExtracted: extraction.facts.length,
+      decisionsExtracted: extraction.decisions.length,
+      openItemsExtracted: extraction.openItems.length,
+      flushSucceeded,
+      ...(flushErrors ? { errors: flushErrors } : {}),
+      distillationNumber,
+    },
+  };
+
+  try {
+    store.runDistillationMutations(mutationOpts);
+  } catch (error) {
+    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error });
+    try {
+      store.runDistillationMutations(mutationOpts);
+    } catch (retryError) {
+      log.error("Distillation mutations failed after retry", { sessionId, error: retryError });
+      // Do not rethrow — next scheduled distillation handles it
+    }
+  }
 
   const result: DistillationResult = {
     sessionId,

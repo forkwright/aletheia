@@ -20,28 +20,28 @@ export function createSessionStatusTool(store?: SessionStore): ToolHandler {
         properties: {},
       },
     },
-    async execute(
+    execute(
       _input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
       if (!store) {
-        return JSON.stringify({
+        return Promise.resolve(JSON.stringify({
           nousId: context.nousId,
           sessionId: context.sessionId,
           note: "Store not available",
-        });
+        }));
       }
 
       const session = store.findSessionById(context.sessionId);
       if (!session) {
-        return JSON.stringify({
+        return Promise.resolve(JSON.stringify({
           nousId: context.nousId,
           sessionId: context.sessionId,
           error: "Session not found",
-        });
+        }));
       }
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         nousId: context.nousId,
         sessionId: session.id,
         model: session.model,
@@ -50,7 +50,7 @@ export function createSessionStatusTool(store?: SessionStore): ToolHandler {
         status: session.status,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
-      });
+      }));
     },
   };
 }

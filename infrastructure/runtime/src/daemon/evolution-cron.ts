@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
-import { PipelineConfigSchema, type PipelineConfig, savePipelineConfig } from "../nous/pipeline-config.js";
+import { type PipelineConfig, PipelineConfigSchema, savePipelineConfig } from "../nous/pipeline-config.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { TextBlock } from "../hermeneus/anthropic.js";
 import type { SessionStore } from "../mneme/store.js";
@@ -82,7 +82,7 @@ function saveArchive(workspace: string, nousId: string, archive: EvolutionArchiv
 }
 
 function selectTopVariants(archive: EvolutionArchive, n: number): ConfigVariant[] {
-  return [...archive.variants].sort((a, b) => b.score - a.score).slice(0, n);
+  return [...archive.variants].toSorted((a, b) => b.score - a.score).slice(0, n);
 }
 
 function harvestBenchmarkTasks(
@@ -154,8 +154,8 @@ async function evaluateVariant(
         totalScore += score;
         evaluated++;
       }
-    } catch (err) {
-      log.debug(`Benchmark eval failed for task ${task.sessionId}:${task.turnSeq}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Benchmark eval failed for task ${task.sessionId}:${task.turnSeq}: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -199,8 +199,8 @@ async function mutateVariant(
       return null;
     }
     return validated.data;
-  } catch (err) {
-    log.debug(`Mutation generation failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Mutation generation failed: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }
@@ -303,8 +303,8 @@ export async function runEvolutionCycle(
       archive.lastRunAt = new Date().toISOString();
       saveArchive(agent.workspace, agent.id, archive);
       result.agentsProcessed++;
-    } catch (err) {
-      const msg = `${agent.id}: ${err instanceof Error ? err.message : err}`;
+    } catch (error) {
+      const msg = `${agent.id}: ${error instanceof Error ? error.message : error}`;
       result.errors.push(msg);
       log.warn(`Evolution failed for ${agent.id}: ${msg}`);
     }

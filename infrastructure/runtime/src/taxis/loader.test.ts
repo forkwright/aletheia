@@ -49,10 +49,10 @@ describe("loadConfig", () => {
     expect(() => loadConfig("/nope.json")).toThrow(ConfigError);
     try {
       loadConfig("/nope.json");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ConfigError);
-      expect((err as ConfigError).code).toBe("CONFIG_NOT_FOUND");
-      expect((err as ConfigError).context).toHaveProperty("path");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      expect((error as ConfigError).code).toBe("CONFIG_NOT_FOUND");
+      expect((error as ConfigError).context).toHaveProperty("path");
     }
   });
 
@@ -62,8 +62,8 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow(ConfigError);
     try {
       loadConfig();
-    } catch (err) {
-      expect((err as ConfigError).code).toBe("CONFIG_VALIDATION_FAILED");
+    } catch (error) {
+      expect((error as ConfigError).code).toBe("CONFIG_VALIDATION_FAILED");
     }
   });
 

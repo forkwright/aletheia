@@ -32,7 +32,7 @@ export function withTurn<T>(ctx: Partial<TurnContext>, fn: () => T): T {
 }
 
 /** Run an async function with a new turn context. */
-export async function withTurnAsync<T>(ctx: Partial<TurnContext>, fn: () => Promise<T>): Promise<T> {
+export function withTurnAsync<T>(ctx: Partial<TurnContext>, fn: () => Promise<T>): Promise<T> {
   const turnId = ctx.turnId ?? generateTurnId();
   return turnStore.run({ ...ctx, turnId }, fn);
 }

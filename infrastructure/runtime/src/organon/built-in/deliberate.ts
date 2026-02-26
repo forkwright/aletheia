@@ -306,11 +306,11 @@ export function createDeliberateTool(
           synthesis: synthesisText,
           tokens,
         });
-      } catch (err) {
-        log.error(`Deliberation ${deliberationId} failed: ${err}`);
+      } catch (error) {
+        log.error(`Deliberation ${deliberationId} failed: ${error}`);
         return JSON.stringify({
           deliberationId,
-          error: err instanceof Error ? err.message : String(err),
+          error: error instanceof Error ? error.message : String(error),
           phases_completed: transcript.map((t) => t.phase),
           partial_transcript: transcript,
         });
@@ -361,11 +361,11 @@ async function askAgent(
       text: outcome.text,
       tokens: { input: outcome.inputTokens, output: outcome.outputTokens },
     };
-  } catch (err) {
+  } catch (error) {
     clearTimeout(timer!);
     return {
       text: "",
-      error: err instanceof Error ? err.message : String(err),
+      error: error instanceof Error ? error.message : String(error),
       tokens: { input: 0, output: 0 },
     };
   }

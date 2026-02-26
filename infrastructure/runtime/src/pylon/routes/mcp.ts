@@ -21,8 +21,8 @@ export function mcpRoutes(deps: RouteDeps, refs: RouteRefs): Hono {
     try {
       await mcpRef.connect(name, serverConfig as McpServerConfig);
       return c.json({ ok: true, name });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       return c.json({ error: `Reconnect failed: ${msg}` }, 500);
     }
   });

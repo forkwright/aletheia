@@ -23,7 +23,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: {} }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: {} }),
       } as never);
 
       await client.send({ message: "hello", groupId: "group123", account: "+1" });
@@ -35,7 +35,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: {} }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: {} }),
       } as never);
 
       await client.send({ message: "hi", username: "user.01", account: "+1" });
@@ -47,7 +47,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: {} }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: {} }),
       } as never);
 
       await client.send({ message: "photo", recipient: "+1", attachments: ["/tmp/img.jpg"] });
@@ -59,7 +59,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: {} }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: {} }),
       } as never);
 
       await client.send({ message: "**bold**", recipient: "+1", textStyle: ["0:6:BOLD"] });
@@ -71,7 +71,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({
+        json: async () => ({
           jsonrpc: "2.0", id: "1",
           error: { code: -32601, message: "Unknown group" },
         }),
@@ -93,7 +93,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: {} }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: {} }),
       } as never);
 
       await client.send({ recipient: "+1" });
@@ -108,7 +108,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendTyping({ recipient: "+1234", account: "+5678" });
@@ -121,7 +121,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendTyping({ recipient: "+1234", stop: true });
@@ -133,7 +133,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendTyping({ groupId: "group123" });
@@ -147,7 +147,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendReceipt({ recipient: "+1234", targetTimestamp: 12345678 });
@@ -161,7 +161,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendReceipt({ recipient: "+1234", targetTimestamp: 12345678, type: "viewed", account: "+5678" });
@@ -176,7 +176,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendReaction({
@@ -195,7 +195,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendReaction({
@@ -212,7 +212,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: null }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: null }),
       } as never);
 
       await client.sendReaction({
@@ -232,7 +232,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: { path: "/tmp/att.jpg" } }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: { path: "/tmp/att.jpg" } }),
       } as never);
 
       const result = await client.getAttachment({ id: "att_123" });
@@ -243,7 +243,7 @@ describe("SignalClient extended", () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: { path: "/tmp/att.jpg" } }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: { path: "/tmp/att.jpg" } }),
       } as never);
 
       await client.getAttachment({ id: "att_123", account: "+5678" });

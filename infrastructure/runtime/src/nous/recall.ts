@@ -1,7 +1,8 @@
 // Pre-turn memory recall — surfaces relevant memories before LLM reasoning
+import { PipelineError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
-import { estimateTokens } from "../hermeneus/token-counter.js";
 import { getSidecarUrl, getUserId } from "../koina/memory-client.js";
+import { estimateTokens } from "../hermeneus/token-counter.js";
 
 const log = createLogger("recall");
 
@@ -106,10 +107,10 @@ export async function recallMemories(
         }
       }
     }
-  } catch (err) {
+  } catch (error) {
     const ms = Date.now() - start;
     const reason =
-      (err as Error).name === "AbortError" ? "timeout" : String(err);
+      (error as Error).name === "AbortError" ? "timeout" : String(error);
     log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
     clearTimeout(timer);
     return { block: null, count: 0, durationMs: ms, tokens: 0 };
@@ -126,7 +127,7 @@ export async function recallMemories(
       ...h,
       score: (h.score ?? 0) + computeRecencyBoost(h.created_at, now),
     }))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    .toSorted((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   // Exact-text dedup first, then MMR diversity selection
   const seen = new Set<string>();
@@ -275,7 +276,7 @@ async function fetchGraphEnhanced(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`graph_enhanced_search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`graph_enhanced_search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "graph_enhanced_search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }
@@ -299,7 +300,7 @@ async function fetchBasicSearch(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }

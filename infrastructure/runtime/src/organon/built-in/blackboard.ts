@@ -43,7 +43,7 @@ export function createBlackboardTool(store: SessionStore): ToolHandler {
         required: ["action"],
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -55,31 +55,31 @@ export function createBlackboardTool(store: SessionStore): ToolHandler {
       switch (action) {
         case "write": {
           if (!key || !value) {
-            return JSON.stringify({ error: "key and value required for write" });
+            return Promise.resolve(JSON.stringify({ error: "key and value required for write" }));
           }
           const id = store.blackboardWrite(key, value, context.nousId, ttl);
-          return JSON.stringify({ written: true, id, key, ttl_seconds: ttl });
+          return Promise.resolve(JSON.stringify({ written: true, id, key, ttl_seconds: ttl }));
         }
         case "read": {
           if (!key) {
-            return JSON.stringify({ error: "key required for read" });
+            return Promise.resolve(JSON.stringify({ error: "key required for read" }));
           }
           const entries = store.blackboardRead(key);
-          return JSON.stringify({ key, entries });
+          return Promise.resolve(JSON.stringify({ key, entries }));
         }
         case "list": {
           const keys = store.blackboardList();
-          return JSON.stringify({ keys });
+          return Promise.resolve(JSON.stringify({ keys }));
         }
         case "delete": {
           if (!key) {
-            return JSON.stringify({ error: "key required for delete" });
+            return Promise.resolve(JSON.stringify({ error: "key required for delete" }));
           }
           const deleted = store.blackboardDelete(key, context.nousId);
-          return JSON.stringify({ deleted, key });
+          return Promise.resolve(JSON.stringify({ deleted, key }));
         }
         default:
-          return JSON.stringify({ error: `Unknown action: ${action}. Use write/read/list/delete.` });
+          return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}. Use write/read/list/delete.` }));
       }
     },
   };

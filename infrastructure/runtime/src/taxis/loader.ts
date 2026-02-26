@@ -153,8 +153,8 @@ export function watchConfig(
 
     log.info(`Watching config file for changes: ${file}`);
     return watcher;
-  } catch (err) {
-    log.warn(`Cannot watch config file: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Cannot watch config file: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }

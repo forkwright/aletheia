@@ -134,7 +134,7 @@ describe("reflectOnAgent", () => {
       "[reflection:pattern] Pattern A",
       "[reflection:contradiction] Contradiction C",
       "[reflection:preference] Pref E",
-    ]);
+    ], "reflection");
   });
 
   it("records reflection in the log", async () => {

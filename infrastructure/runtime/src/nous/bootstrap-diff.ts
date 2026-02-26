@@ -59,9 +59,9 @@ export function detectBootstrapDiff(
     }
     existing[nousId] = currentHashes;
     writeFileSync(hashFile, JSON.stringify(existing, null, 2));
-  } catch (err) {
+  } catch (error) {
     log.warn(
-      `Failed to persist bootstrap hashes: ${err instanceof Error ? err.message : err}`,
+      `Failed to persist bootstrap hashes: ${error instanceof Error ? error.message : error}`,
     );
   }
 
@@ -137,9 +137,9 @@ export function logBootstrapDiff(
         `Bootstrap files added for ${diff.nousId}: ${diff.added.join(", ")}`,
       );
     }
-  } catch (err) {
+  } catch (error) {
     log.warn(
-      `Failed to log bootstrap diff: ${err instanceof Error ? err.message : err}`,
+      `Failed to log bootstrap diff: ${error instanceof Error ? error.message : error}`,
     );
   }
 }

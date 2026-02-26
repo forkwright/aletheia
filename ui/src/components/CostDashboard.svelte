@@ -68,7 +68,7 @@
     {#if costs.agents.length > 0}
       <h4 class="section-title">Per Agent</h4>
       <div class="agent-costs">
-        {#each costs.agents as agent}
+        {#each costs.agents as agent (agent.agentId)}
           {@const nousMetrics = metrics.nous.find(n => n.id === agent.agentId)}
           <div class="agent-row">
             <span class="agent-name">{nousMetrics?.name ?? agent.agentId}</span>

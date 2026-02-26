@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { GraphNode, EntityDetail, EntityRelationship, EntityMemory } from "../../lib/types";
+  import { SvelteMap } from "svelte/reactivity";
+  import type { GraphNode, EntityDetail, EntityRelationship } from "../../lib/types";
 
   let {
     node,
@@ -43,8 +44,8 @@
   });
 
   // Group relationships by type
-  function groupedRelationships(rels: EntityRelationship[]): Map<string, EntityRelationship[]> {
-    const map = new Map<string, EntityRelationship[]>();
+  function groupedRelationships(rels: EntityRelationship[]): SvelteMap<string, EntityRelationship[]> {
+    const map = new SvelteMap<string, EntityRelationship[]>();
     for (const r of rels) {
       const list = map.get(r.type) || [];
       list.push(r);
@@ -124,7 +125,7 @@
     </div>
     {#if node.labels.length > 0}
       <div class="header-labels">
-        {#each node.labels as label}
+        {#each node.labels as label (label)}
           <span class="label-tag">{label}</span>
         {/each}
       </div>
@@ -161,7 +162,7 @@
     <div class="tab-content">
       {#if displayMemories.length > 0}
         <div class="memory-list">
-          {#each displayMemories as mem}
+          {#each displayMemories as mem, i (i)}
             <div class="memory-item" class:stated={mem.source === "stated"}>
               <div class="memory-header">
                 <span class="memory-source" title="{sourceLabel(mem.source)}">
@@ -195,14 +196,14 @@
     <div class="tab-content">
       {#if detail && relGroups.size > 0}
         <div class="relationship-groups">
-          {#each [...relGroups.entries()] as [type, rels]}
+          {#each [...relGroups.entries()] as [type, rels] (type)}
             <div class="rel-group">
               <div class="rel-group-header">
                 <span class="rel-type-badge">{type}</span>
                 <span class="rel-count">{rels.length}</span>
               </div>
               <div class="rel-targets">
-                {#each rels.slice(0, showAllConnections ? rels.length : 5) as rel}
+                {#each rels.slice(0, showAllConnections ? rels.length : 5) as rel (rel.target)}
                   <button
                     class="rel-target"
                     class:incoming={rel.direction === "in"}
@@ -222,7 +223,7 @@
       {:else}
         <!-- Fallback to edge-based view if detail not loaded -->
         <div class="connection-list">
-          {#each displayEdges as edge}
+          {#each displayEdges as edge, i (i)}
             <div class="connection-row">
               <span class="edge-type">{edge.rel_type}</span>
               <button
@@ -509,6 +510,7 @@
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
   }
 
@@ -642,12 +644,6 @@
     flex-direction: column;
     gap: 8px;
     flex-shrink: 0;
-  }
-
-  .confirm-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
 
   .confirm-label {

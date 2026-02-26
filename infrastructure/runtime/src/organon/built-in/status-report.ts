@@ -26,7 +26,7 @@ export function createStatusReportTool(
         properties: {},
       },
     },
-    async execute(
+    execute(
       _input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -82,7 +82,7 @@ export function createStatusReportTool(
         report["sessions"] = { error: "unavailable" };
       }
 
-      return JSON.stringify(report);
+      return Promise.resolve(JSON.stringify(report));
     },
   };
 }

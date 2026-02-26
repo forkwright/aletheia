@@ -18,7 +18,7 @@ vi.mock("@anthropic-ai/sdk", () => {
         model: "claude-sonnet-4-6",
       }),
     };
-    constructor(_opts: Record<string, unknown>) {}
+    
   }
 
   class APIError extends Error {
@@ -124,7 +124,7 @@ describe("AnthropicProvider", () => {
       model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
-    }).catch((e) => e);
+    }).catch((error) => error);
 
     expect(err.code).toBe("PROVIDER_TOKEN_EXPIRED");
     expect(err.recoverable).toBe(true);
@@ -145,7 +145,7 @@ describe("AnthropicProvider", () => {
       model: "claude-sonnet-4-6",
       system: "test",
       messages: [{ role: "user", content: "hi" }],
-    }).catch((e) => e);
+    }).catch((error) => error);
 
     expect(err.code).toBe("PROVIDER_AUTH_FAILED");
     expect(err.recoverable).toBe(false);

@@ -121,8 +121,8 @@ export function loadCustomCommands(dir: string): CustomCommandDef[] {
     entries = readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isFile() && extname(d.name) === ".md")
       .map((d) => d.name);
-  } catch (err) {
-    log.warn(`Failed to read commands directory ${dir}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Failed to read commands directory ${dir}: ${error instanceof Error ? error.message : error}`);
     return [];
   }
 
@@ -150,8 +150,8 @@ export function loadCustomCommands(dir: string): CustomCommandDef[] {
         ...(frontmatter.allowed_tools ? { allowedTools: frontmatter.allowed_tools } : {}),
         prompt: body,
       });
-    } catch (err) {
-      log.warn(`Failed to load command ${filename}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Failed to load command ${filename}: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -209,8 +209,9 @@ export function registerCustomCommands(
             ...(def.allowedTools ? { toolFilter: def.allowedTools } : {}),
           });
           return outcome.text;
-        } catch (err) {
-          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
+        // oxlint-disable-next-line unicorn/catch-error-name -- `cmdError` distinguishes from outer destructured `error` variable
+        } catch (cmdError) {
+          return `Command failed: ${cmdError instanceof Error ? cmdError.message : String(cmdError)}`;
         }
       },
     };

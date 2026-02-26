@@ -131,7 +131,11 @@ Options:
   }
 }
 
-main().catch((err) => {
-  console.error("Export failed:", err);
-  process.exit(1);
-});
+void (async () => {
+  try {
+    await main();
+  } catch (error) {
+    console.error("Export failed:", error);
+    process.exit(1);
+  }
+})();

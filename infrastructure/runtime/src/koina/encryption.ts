@@ -1,5 +1,6 @@
 // AES-256-GCM encryption for data at rest
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
+import { AletheiaError } from "./errors.js";
 import { createLogger } from "./logger.js";
 
 const log = createLogger("encryption");
@@ -36,7 +37,7 @@ export function isEncryptionReady(): boolean {
 }
 
 export function encrypt(plaintext: string): string {
-  if (!derivedKey) throw new Error("Encryption not initialized — call initEncryption first");
+  if (!derivedKey) throw new AletheiaError({ code: "ENCRYPTION_NOT_INITIALIZED", module: "koina", message: "Encryption not initialized — call initEncryption first" });
 
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, derivedKey, iv, { authTagLength: TAG_LENGTH });
@@ -58,10 +59,10 @@ export function encrypt(plaintext: string): string {
 }
 
 export function decrypt(encoded: string): string {
-  if (!derivedKey) throw new Error("Encryption not initialized — call initEncryption first");
+  if (!derivedKey) throw new AletheiaError({ code: "ENCRYPTION_NOT_INITIALIZED", module: "koina", message: "Encryption not initialized — call initEncryption first" });
 
   const payload = JSON.parse(encoded) as EncryptedPayload;
-  if (payload.v !== 1) throw new Error(`Unsupported encryption version: ${payload.v}`);
+  if (payload.v !== 1) throw new AletheiaError({ code: "ENCRYPTION_VERSION_UNSUPPORTED", module: "koina", message: `Unsupported encryption version: ${payload.v}`, context: { version: payload.v } });
 
   const iv = Buffer.from(payload.iv, "base64");
   const tag = Buffer.from(payload.tag, "base64");

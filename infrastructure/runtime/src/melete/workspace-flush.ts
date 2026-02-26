@@ -21,6 +21,20 @@ export interface WorkspaceFlushResult {
   error?: string;
 }
 
+export function flushToWorkspaceWithRetry(
+  opts: WorkspaceFlushOpts,
+  maxRetries = 2,
+): WorkspaceFlushResult {
+  let result = flushToWorkspace(opts);
+  for (let attempt = 1; attempt <= maxRetries && !result.written; attempt++) {
+    log.warn(
+      `Workspace flush retry ${attempt}/${maxRetries} for ${opts.nousId}`,
+    );
+    result = flushToWorkspace(opts);
+  }
+  return result;
+}
+
 export function flushToWorkspace(opts: WorkspaceFlushOpts): WorkspaceFlushResult {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
@@ -114,8 +128,8 @@ export function flushToWorkspace(opts: WorkspaceFlushOpts): WorkspaceFlushResult
       `Workspace memory written: ${filePath} (distillation #${opts.distillationNumber})`,
     );
     return { written: true, path: filePath };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     log.error(`Workspace memory flush failed for ${opts.nousId}: ${msg}`);
     return { written: false, path: filePath, error: msg };
   }

@@ -84,8 +84,8 @@ export class AuditLog {
           checksum,
           previousChecksum,
         );
-    } catch (err) {
-      log.error(`Failed to write audit entry: ${err}`);
+    } catch (error) {
+      log.error(`Failed to write audit entry: ${error}`);
     }
   }
 
