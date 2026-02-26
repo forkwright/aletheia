@@ -34,6 +34,11 @@ vi.mock("./workspace-flush.js", () => ({
   flushToWorkspaceWithRetry: vi.fn().mockReturnValue({ written: true, path: "/tmp/mock-memory.md" }),
 }));
 
+// Mock contradiction detection — tested in contradiction-detect.test.ts
+vi.mock("./contradiction-detect.js", () => ({
+  detectCrossChunkContradictions: vi.fn().mockResolvedValue([]),
+}));
+
 function makeStore(overrides: Record<string, unknown> = {}) {
   return {
     findSessionById: vi.fn().mockReturnValue({
@@ -715,6 +720,146 @@ describe("distillSession", () => {
 
       expect(result.sessionId).toBe("ses_contra_fail");
       expect(result.distillationNumber).toBe(1);
+    });
+  });
+
+  describe("cross-chunk contradiction detection", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("appends cross-chunk contradictions to extraction.contradictions", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["user prefers coffee", "user dislikes hot beverages"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: ["existing contradiction"],
+      });
+      vi.mocked(detectCrossChunkContradictions).mockResolvedValueOnce([
+        "cross-chunk contradiction found",
+      ]);
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("{}", { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_cross_contra", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      // Verify detectCrossChunkContradictions was called with the facts
+      expect(detectCrossChunkContradictions).toHaveBeenCalledWith(
+        expect.anything(),
+        ["user prefers coffee", "user dislikes hot beverages"],
+        "claude-haiku",
+      );
+
+      // Verify cross-chunk contradictions fed into invalidation path
+      const invalidateCalls = fetchSpy.mock.calls.filter(([url]) =>
+        typeof url === "string" && url.includes("invalidate_text"),
+      );
+      expect(invalidateCalls).toHaveLength(2); // existing + cross-chunk
+      fetchSpy.mockRestore();
+    });
+
+    it("skips cross-chunk detection when fewer than 2 facts extracted", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["single fact"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+      vi.mocked(detectCrossChunkContradictions).mockClear();
+
+      await distillSession(makeStore(), makeRouter(), "ses_single_fact", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+      });
+
+      expect(detectCrossChunkContradictions).not.toHaveBeenCalled();
+    });
+
+    it("skips cross-chunk detection for lightweight distillation", async () => {
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+      vi.mocked(detectCrossChunkContradictions).mockClear();
+
+      const router = makeRouter();
+      vi.mocked(router.complete).mockResolvedValue({
+        content: [{ type: "text", text: "Light summary." }],
+        stopReason: "end_turn",
+        usage: { inputTokens: 50, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        model: "claude-haiku",
+      } as never);
+
+      await distillSession(makeStore(), router, "ses_lightweight_cc", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        lightweight: true,
+      });
+
+      expect(detectCrossChunkContradictions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("evolution pre-check in flush", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("filters evolved facts from memory flush when sidecarUrl provided", async () => {
+      const { flushToMemory } = await import("./hooks.js");
+      const { extractFromMessages } = await import("./extract.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["evolved-fact", "new-fact"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ action: "add_new" }), { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_evolution", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        memoryTarget: { addMemories: vi.fn().mockResolvedValue({ added: 2, errors: 0 }) } as never,
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      expect(flushToMemory).toHaveBeenCalledWith(
+        expect.anything(),
+        "syn",
+        expect.anything(),
+        expect.objectContaining({ sidecarUrl: "http://localhost:8230" }),
+        "ses_evolution",
+      );
     });
   });
 

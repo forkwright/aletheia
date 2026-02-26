@@ -7,6 +7,7 @@ import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 import { type FlushOptions, flushToMemory, type MemoryFlushTarget } from "./hooks.js";
+import { detectCrossChunkContradictions } from "./contradiction-detect.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
@@ -279,13 +280,28 @@ async function runDistillation(
         `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
     );
 
+    // Cross-chunk contradiction detection — only for extractions with 2+ facts
+    if (extraction.facts.length >= 2) {
+      const crossChunkContradictions = await detectCrossChunkContradictions(
+        router, extraction.facts, opts.extractionModel,
+      );
+      if (crossChunkContradictions.length > 0) {
+        log.info(`Cross-chunk contradictions found: ${crossChunkContradictions.length}`);
+        extraction.contradictions.push(...crossChunkContradictions);
+      }
+    }
+
     // Memory flush with retry — non-blocking, don't fail distillation on flush failure
     if (opts.memoryTarget) {
+      const flushOpts: FlushOptions = {
+        ...(opts.piiConfig ? { piiConfig: opts.piiConfig } : { maxRetries: 3 }),
+        ...(opts.sidecarUrl ? { sidecarUrl: opts.sidecarUrl } : {}),
+      };
       const flushResult = await flushToMemory(
         opts.memoryTarget,
         nousId,
         extraction,
-        opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
+        flushOpts,
         sessionId,
       );
       if (flushResult.errors > 0) {
