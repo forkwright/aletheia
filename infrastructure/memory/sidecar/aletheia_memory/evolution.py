@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+import math
 import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -24,6 +25,20 @@ _background_tasks: set[asyncio.Task[None]] = set()
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EVOLUTION_THRESHOLD = 0.80
 REINFORCEMENT_BOOST = 0.02
+
+
+def exponential_decay_penalty(days_inactive: float, lambda_: float = 0.05) -> float:
+    """Exponential decay multiplier for memory salience.
+
+    Returns a score multiplier in [0, 1] based on days since last access.
+    lambda=0.05 gives ~14-day half-life:
+      - 0 days  -> 1.00
+      - 7 days  -> 0.70
+      - 14 days -> 0.50
+      - 30 days -> 0.22
+      - 90 days -> 0.01
+    """
+    return math.exp(-lambda_ * days_inactive)
 
 
 class EvolveRequest(BaseModel):

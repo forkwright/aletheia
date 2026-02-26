@@ -30,6 +30,7 @@ from .entity_resolver import (
     merge_duplicate_entities,
     resolve_entity,
 )
+from .evolution import exponential_decay_penalty
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 from .graph_extraction import extract_graph, extract_graph_batch
 
@@ -128,6 +129,17 @@ class DeduplicateRequest(BaseModel):
 DEDUP_THRESHOLD = 0.85
 DIRECT_DEDUP_THRESHOLD = 0.90  # Higher threshold for pre-extracted facts (more specific)
 COLLECTION_NAME = "aletheia_memories"
+
+# Recall-time noise patterns — compiled once at module level for performance.
+# Mirrors the TypeScript NOISE_PATTERNS in melete/extract.ts.
+# Applied as a soft downrank (0.3x score penalty) — noisy results remain in output.
+_RECALL_NOISE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?i)(session|conversation|chat)\s+(id|started|ended|created)"),
+    re.compile(r"(?i)(the user|the agent|the assistant)\s+(asked|told|said|mentioned)"),
+    re.compile(r"(?i)(called|invoked|ran|executed)\s+(tool|function|command|script)\b"),
+    re.compile(r"(?i)^(sure|ok|okay|got it|understood|will do|no problem|sounds good)\b"),
+]
+_RECALL_NOISE_MIN_LENGTH = 15  # Memories shorter than this are considered noise fragments
 
 
 @router.post("/add")
@@ -248,8 +260,13 @@ def _apply_recency_boost(results: list[dict[str, Any]], max_boost: float = 0.15,
     return results
 
 
-def _apply_confidence_weight(results: list[dict[str, Any]], max_penalty: float = 0.10) -> list[dict[str, Any]]:
-    """Penalize search scores for memories with high decay counts (frequently unreferenced)."""
+def _apply_confidence_weight(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply exponential decay and access boost to search scores.
+
+    Decay is time-based (days since last_accessed) using exponential formula with
+    ~14-day half-life (lambda=0.05). Memories never accessed have full salience.
+    Access boost applies a small bonus for frequently reinforced memories.
+    """
     if not neo4j_available() or not results:
         return results
     memory_ids: list[Any] = [r.get("id") for r in results if r.get("id")]
@@ -261,30 +278,62 @@ def _apply_confidence_weight(results: list[dict[str, Any]], max_penalty: float =
             records: list[dict[str, Any]] = session.run(
                 "UNWIND $ids AS mid "
                 "OPTIONAL MATCH (m:MemoryAccess {memory_id: mid}) "
-                "RETURN mid, m.access_count AS accesses, m.decay_count AS decays",
+                "RETURN mid, m.access_count AS accesses, m.last_accessed AS last_accessed",
                 ids=memory_ids,
             ).data()
         driver.close()
         mark_neo4j_ok()
-        access_map: dict[str, tuple[int, int]] = {}
+        now = datetime.now(UTC)
+        access_map: dict[str, tuple[int, str | None]] = {}
         for rec in records:
-            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("decays") or 0)
+            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("last_accessed"))
         for r in results:
             mid: str | None = r.get("id")
             if mid and mid in access_map:
-                accesses, decays = access_map[mid]
-                # Decay penalty: up to max_penalty for heavily decayed memories
-                if decays > 0 and accesses == 0:
-                    penalty = min(max_penalty, decays * 0.02)
-                    r["score"] = max(0, (r.get("score") or 0.0) - penalty)
-                # Access boost: small boost for frequently accessed memories
-                elif accesses > 2:
+                accesses, last_accessed = access_map[mid]
+                # Exponential decay: penalize based on days since last access
+                # New memories (no last_accessed) receive no penalty — full salience
+                if last_accessed is not None:
+                    try:
+                        last_dt = datetime.fromisoformat(last_accessed)
+                        if last_dt.tzinfo is None:
+                            last_dt = last_dt.replace(tzinfo=UTC)
+                        days_inactive = (now - last_dt).total_seconds() / 86400.0
+                        multiplier = exponential_decay_penalty(days_inactive)
+                        r["score"] = (r.get("score") or 0.0) * multiplier
+                    except (ValueError, TypeError):
+                        pass  # Unparseable timestamp — skip decay for this entry
+                # Access boost: small bonus for frequently reinforced memories
+                if accesses > 2:
                     boost = min(0.05, accesses * 0.01)
                     r["score"] = (r.get("score") or 0.0) + boost
         results.sort(key=lambda r: r.get("score", 0), reverse=True)
     except Exception as e:
         mark_neo4j_down()
         logger.warning("confidence weighting failed: %s", e)
+    return results
+
+
+def _filter_noisy_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply soft noise penalty to low-quality recall results.
+
+    Noisy results receive a 0.3x score multiplier (pushed down in ranking) but
+    are NOT removed — soft boundaries per design. Results are re-sorted after
+    penalty application.
+    """
+    penalized = 0
+    for r in results:
+        memory_text: str = str(r.get("memory") or r.get("data") or "").strip()
+        is_noisy = (
+            len(memory_text) < _RECALL_NOISE_MIN_LENGTH
+            or any(p.search(memory_text) for p in _RECALL_NOISE_PATTERNS)
+        )
+        if is_noisy:
+            r["score"] = (r.get("score") or 0.0) * 0.3
+            penalized += 1
+    if penalized:
+        logger.debug("recall noise filter: penalized %d result(s)", penalized)
+        results.sort(key=lambda r: r.get("score", 0), reverse=True)
     return results
 
 
@@ -562,6 +611,7 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
             ]
         results_list = _apply_recency_boost(results_list)
         results_list = _apply_confidence_weight(results_list)
+        results_list = _filter_noisy_results(results_list)
         return {"ok": True, "results": results_list}
     except Exception:
         logger.exception("search_memory failed")
@@ -999,70 +1049,174 @@ def _extract_entities(text: str) -> list[str]:
     return list(set(entities))[:10]
 
 
+def _neo4j_expand_sync(query: str, user_id: str, graph_depth: int = 1) -> list[str]:
+    """Synchronous Neo4j neighborhood expansion — called via asyncio.to_thread."""
+    if not neo4j_available():
+        return []
+    entities = _extract_entities(query)
+    if not entities:
+        return []
+    neighbors: list[str] = []
+    try:
+        driver = neo4j_driver()
+        with _neo4j_session(driver) as session:
+            for entity in entities[:5]:
+                cypher = (
+                    "MATCH (n)-[r*1.." + str(graph_depth) + "]-(neighbor) "
+                    "WHERE toLower(n.name) CONTAINS toLower($name) "
+                    "RETURN DISTINCT neighbor.name AS name, labels(neighbor) AS labels "
+                    "LIMIT 10"
+                )
+                result = session.run(
+                    _neo4j.Query(_cypher(cypher)),
+                    name=entity,
+                )
+                for record in result:
+                    name = record["name"]
+                    if name:
+                        neighbors.append(name)
+        driver.close()
+        mark_neo4j_ok()
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("_neo4j_expand_sync failed: %s", e)
+    return neighbors
+
+
+async def _neo4j_expand_with_timeout(
+    query: str,
+    user_id: str,
+    timeout_ms: int = 800,
+    graph_depth: int = 1,
+) -> list[str]:
+    """Neo4j neighborhood expansion wrapped in asyncio.wait_for with timeout.
+
+    Returns empty list on timeout or any error — Neo4j failure is non-fatal.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_neo4j_expand_sync, query, user_id, graph_depth),
+            timeout=timeout_ms / 1000,
+        )
+    except TimeoutError:
+        logger.warning("Neo4j expansion timed out after %dms", timeout_ms)
+        return []
+    except Exception as e:
+        logger.warning("Neo4j expansion failed: %s", e)
+        return []
+
+
+def _qdrant_search_direct(
+    query: str,
+    user_id: str,
+    limit: int,
+    min_score: float,
+    mem: Any,
+) -> list[dict[str, Any]]:
+    """Direct Qdrant vector search — bypasses Mem0's sequential Qdrant+Neo4j search.
+
+    Embeds query using the Mem0 embedder and queries the Qdrant collection directly.
+    Returns results as dicts with memory, score, and metadata fields.
+    """
+    try:
+        embedder: Any = mem.embedding_model
+        vector: list[float] = embedder.embed(query)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=limit,
+            with_payload=True,
+        )
+        output: list[dict[str, Any]] = []
+        for point in results.points:
+            if point.score < min_score:
+                continue
+            payload: dict[str, Any] = dict(point.payload or {})
+            row: dict[str, Any] = {
+                "id": str(point.id),
+                "memory": payload.get("memory") or payload.get("data", ""),
+                "score": point.score,
+                "metadata": payload,
+            }
+            if "created_at" in payload:
+                row["created_at"] = payload["created_at"]
+            output.append(row)
+        return output
+    except Exception as e:
+        logger.warning("_qdrant_search_direct failed: %s", e)
+        return []
+
+
 @router.post("/graph_enhanced_search")
 async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Request) -> dict[str, Any]:
-    """Vector search enhanced with graph neighborhood expansion."""
+    """Vector search enhanced with graph neighborhood expansion.
+
+    Qdrant and Neo4j run in parallel via asyncio.gather. Neo4j is wrapped in
+    an 800ms timeout — if it times out or fails, Qdrant-only results are returned.
+    """
     mem = _get_memory(request)
+    min_score = 0.0  # Return all scored results; post-processing filters by weight
 
-    # Step 1: Standard vector search
-    kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit * 2}
-    if req.agent_id:
-        kwargs["agent_id"] = req.agent_id
+    # Step 1: Launch Qdrant and Neo4j queries in parallel
+    qdrant_task = asyncio.create_task(
+        asyncio.to_thread(_qdrant_search_direct, req.query, req.user_id, req.limit * 2, min_score, mem)
+    )
+    neo4j_task = asyncio.create_task(
+        _neo4j_expand_with_timeout(req.query, req.user_id, timeout_ms=800, graph_depth=req.graph_depth)
+    )
 
-    vector_results: list[dict[str, Any]]
-    try:
-        raw: Any = await asyncio.to_thread(mem.search, req.query, **kwargs)
-        vector_results = _as_result_list(raw)
-    except Exception:
-        logger.exception("graph_enhanced_search: vector search failed")
-        vector_results = []
+    gather_results = await asyncio.gather(qdrant_task, neo4j_task, return_exceptions=True)
 
-    # Step 2: Extract entities and expand via graph
+    # Handle results — both failures are non-fatal
+    vector_results_raw = gather_results[0]
+    graph_neighbors_raw = gather_results[1]
+
+    if isinstance(vector_results_raw, BaseException):
+        logger.error("graph_enhanced_search: Qdrant query failed: %s", vector_results_raw)
+        vector_results: list[dict[str, Any]] = []
+    else:
+        vector_results = vector_results_raw  # type: ignore[assignment]
+
+    if isinstance(graph_neighbors_raw, BaseException):
+        logger.warning("graph_enhanced_search: Neo4j expansion failed: %s", graph_neighbors_raw)
+        graph_neighbors: list[str] = []
+    else:
+        graph_neighbors = graph_neighbors_raw  # type: ignore[assignment]
+
     entities = _extract_entities(req.query)
-    graph_neighbors: list[str] = []
 
-    if entities and neo4j_available():
-        try:
-            driver = neo4j_driver()
-            with _neo4j_session(driver) as session:
-                for entity in entities[:5]:
-                    cypher = (
-                        "MATCH (n)-[r*1.." + str(req.graph_depth) + "]-(neighbor) "
-                        "WHERE toLower(n.name) CONTAINS toLower($name) "
-                        "RETURN DISTINCT neighbor.name AS name, labels(neighbor) AS labels "
-                        "LIMIT 10"
-                    )
-                    result = session.run(
-                        _neo4j.Query(_cypher(cypher)),
-                        name=entity,
-                    )
-                    for record in result:
-                        name = record["name"]
-                        if name:
-                            graph_neighbors.append(name)
-            driver.close()
-            mark_neo4j_ok()
-        except Exception:
-            mark_neo4j_down()
-            logger.warning("graph_enhanced_search: Neo4j unavailable, falling back to vector-only")
-
-    # Step 3: If graph found neighbors, do a supplementary vector search with expanded terms
+    # Step 2: If Neo4j returned neighbors, run second Qdrant query with expanded terms
+    # This depends on Neo4j results, so it cannot be parallelized with Step 1
     graph_results: list[dict[str, Any]] = []
     if graph_neighbors:
         expanded_query = req.query + " " + " ".join(list(set(graph_neighbors))[:5])
         try:
-            raw2: Any = await asyncio.to_thread(mem.search, expanded_query, **kwargs)
-            graph_results = _as_result_list(raw2)
-        except Exception:
-            logger.warning("graph_enhanced_search: expanded search failed")
+            graph_results = await asyncio.to_thread(
+                _qdrant_search_direct, expanded_query, req.user_id, req.limit * 2, min_score, mem
+            )
+        except Exception as e:
+            logger.warning("graph_enhanced_search: expanded search failed: %s", e)
 
-    # Step 4: Merge and deduplicate results
+    # Step 3: Merge and deduplicate by memory ID, keeping highest score
     seen_ids: set[str] = set()
     merged: list[dict[str, Any]] = []
 
     def add_result(r: dict[str, Any], source: str, weight: float) -> None:
         rid = r.get("id", r.get("hash", str(r.get("memory", ""))))
         if rid in seen_ids:
+            # Already added from another source — keep only if score is higher
+            for existing in merged:
+                existing_rid = existing.get("id", existing.get("hash", str(existing.get("memory", ""))))
+                if existing_rid == rid:
+                    new_combined = r.get("score", 0.5) * weight
+                    if new_combined > existing.get("combined_score", 0):
+                        existing["combined_score"] = new_combined
+                        existing["retrieval_source"] = source
+                    break
             return
         seen_ids.add(rid)
         score = r.get("score", 0.5)
@@ -1076,6 +1230,11 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
     for r in graph_results:
         add_result(r, "graph_expanded", req.graph_weight)
 
+    # Step 4: Apply existing post-processing hooks
+    merged = _apply_confidence_weight(merged)
+    merged = _apply_recency_boost(merged)
+
+    # Sort by combined_score (post-processing adjusts the underlying score field)
     merged.sort(key=lambda r: r.get("combined_score", 0), reverse=True)
 
     return {
