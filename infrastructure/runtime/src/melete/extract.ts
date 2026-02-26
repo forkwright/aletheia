@@ -54,6 +54,13 @@ Detect the conversation type and extract accordingly:
 - Prefix uncertain facts with [UNCERTAIN]
 - For CORRECTIONS: include both the wrong and right versions
 
+## Do NOT Extract
+- Facts about the conversation itself: "The user asked about X", "The agent mentioned Y" — these describe the conversation, not the world
+- Session metadata: session IDs, timestamps, tool calls, command invocations
+- Acknowledgments and filler: "Sure", "OK", "Got it", "Understood", "Sounds good"
+- Vague capability claims: "Uses Python", "Familiar with Git", "Works with APIs" — no actionable knowledge
+- File or path operations: "Checked the config file", "Opened the logs" — ephemeral, not knowledge
+
 ## Real Examples from Corpus Audit
 
 BAD (actual noise that was extracted — don't produce these):
@@ -96,11 +103,30 @@ const MAX_CHUNK_TOKENS = 80000; // Leave room for system prompt + output within 
  * Based on actual noise patterns observed in Qdrant corpus audit (2026-02-21).
  */
 const NOISE_PATTERNS = [
+  // Generic capability/familiarity statements — never actionable
   /^(Uses|Familiar with|Works with|Has experience|Has access|Knows about)\b/i,
+  // Subject-predicate meta-commentary about the user
   /^(The user|User|They|He|She) (is|was|has|had|does|did|can|could|will|would|asked|mentioned|said|wants|wanted|needs|needed)\b/i,
+  // Ephemeral tool/action invocations
   /^(Runs?|Ran|Executed|Checked|Opened|Closed|Searched|Grepped|Found|Looked at)\b/i,
+  // Meta-commentary about the conversation itself
   /^(Asked about|Discussed|Mentioned|Talked about|Referred to|Agreed to|Noted that)\b/i,
+  // Vague participation statements
   /^(Manages|Works on|Involved in|Participates in|Contributes to) (a |an |the |some )/i,
+  // Session/system artifacts
+  /(session|conversation|chat)\s+(id|started|ended|created)/i,
+  // Meta-commentary: facts about the conversation, not the world
+  /(the user|the agent|the assistant|I was)\s+(asked|told|said|mentioned|noted|indicated)/i,
+  // Tool/function invocations recorded as facts
+  /(called|invoked|ran|executed)\s+(tool|function|command|script)\b/i,
+  // Acknowledgment phrases with no content
+  /^(sure|ok|okay|got it|understood|will do|no problem|sounds good)\b/i,
+  // File path operation artifacts
+  /^(reading|writing|checking|opening|saving)\s+(file|path|directory)\b/i,
+  // Pure hedging with no content (assertion then nothing)
+  /^(I think|I believe|I'm not sure|maybe|perhaps|it seems|it appears)\s+(that\s+)?$/i,
+  // Timestamp-only facts (no content, just temporal reference)
+  /^(on|at|around|approximately)\s+\d{1,2}[:/\d-]\d{1,2}/i,
 ];
 
 const MIN_ITEM_LENGTH = 15;
