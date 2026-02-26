@@ -277,7 +277,7 @@ Implementation completed.
     "security": "PKCE + refresh token rotation",
     "testing": "95% coverage"
   },
-  "filesChanged": ["src/auth/oauth.ts", "src/auth/jwt.ts", "tests/auth.test.ts"],
+  "filesChanged": ["src/symbolon/oauth.ts", "src/symbolon/jwt.ts", "tests/auth.test.ts"],
   "confidence": 0.95
 }
 \`\`\`

@@ -1,7 +1,7 @@
 // Metrics, tool stats, cron, and reflection routes
 import { Hono } from "hono";
 import { createLogger } from "../../koina/logger.js";
-import { computeSelfAssessment } from "../../distillation/reflect.js";
+import { computeSelfAssessment } from "../../melete/reflect.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon");

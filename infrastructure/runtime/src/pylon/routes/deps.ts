@@ -3,13 +3,13 @@ import type { Context } from "hono";
 import type { NousManager } from "../../nous/manager.js";
 import type { SessionStore } from "../../mneme/store.js";
 import type { AletheiaConfig } from "../../taxis/schema.js";
-import type { AuthSessionStore } from "../../auth/sessions.js";
-import type { AuditLog } from "../../auth/audit.js";
+import type { AuthSessionStore } from "../../symbolon/sessions.js";
+import type { AuditLog } from "../../symbolon/audit.js";
 import type { CronScheduler } from "../../daemon/cron.js";
 import type { Watchdog } from "../../daemon/watchdog.js";
 import type { SkillRegistry } from "../../organon/skills.js";
 import type { McpClientManager } from "../../organon/mcp-client.js";
-import type { AuthConfig, AuthUser } from "../../auth/middleware.js";
+import type { AuthConfig, AuthUser } from "../../symbolon/middleware.js";
 import type { CommandRegistry } from "../../semeion/commands.js";
 import type { DianoiaOrchestrator } from "../../dianoia/index.js";
 

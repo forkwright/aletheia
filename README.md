@@ -35,7 +35,7 @@ Privacy-first. Runs on commodity hardware as a systemd service. No cloud depende
 
 **Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~450KB bundle), Hono gateway on port 18789.
 
-**Interfaces**: Svelte 5 web UI with streaming, file upload, syntax highlighting, thinking visualization, and force-directed memory graph. Signal messenger via signal-cli. 14 built-in `!` commands. CLI admin tools.
+**Interfaces**: Svelte 5 web UI with streaming, file upload, syntax highlighting, thinking visualization, and force-directed memory graph. Signal messenger via signal-cli. 15 built-in `!` commands. CLI admin tools.
 
 **Models**: Anthropic (OAuth or API key). Complexity-based routing. Extended thinking for reasoning models.
 
@@ -63,7 +63,9 @@ aletheia/
 │   │       ├── pylon/          Hono HTTP gateway, MCP, Web UI
 │   │       ├── prostheke/      Plugin system
 │   │       ├── nous/           Agent bootstrap + turn pipeline
-│   │       ├── distillation/   Context summarization
+│   │       ├── melete/         Disciplined practice — distillation, reflection
+│   │       ├── symbolon/       Split-token authentication — JWT, sessions, RBAC
+│   │       ├── dianoia/        Multi-phase planning orchestrator
 │   │       ├── daemon/         Cron, watchdog, update checker
 │   │       └── koina/          Shared utilities
 │   ├── memory/             Mem0 sidecar + docker-compose (Qdrant, Neo4j)
@@ -77,7 +79,7 @@ aletheia/
 
 ## Why Greek?
 
-Every name in this system - Aletheia, Dianoia, Prosoche, the agent names - follows a deliberate naming philosophy. Names identify *modes of attention*, not things. Greek provides the precision: where English has "knowledge," Greek distinguishes between episteme, gnosis, techne, phronesis, and nous - each a fundamentally different stance toward knowing.
+Every name in this system — Aletheia, Dianoia, Prosoche, Symbolon — follows a deliberate naming philosophy. Names unconceal essential natures, not describe implementations. Greek provides the precision: where English has "knowledge," Greek distinguishes between episteme, gnosis, techne, phronesis, and nous — each a fundamentally different stance toward knowing. Where English has "form," Greek has morphe, schema, eidos — each a different structural relationship.
 
 See **[docs/gnomon.md](docs/gnomon.md)** for the full naming system, including the layer test, dimensional resonance, and the process for naming new components.
 
@@ -85,7 +87,7 @@ See **[docs/gnomon.md](docs/gnomon.md)** for the full naming system, including t
 
 ## Agents
 
-Each agent has a workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and memory (`MEMORY.md`). See `nous/_example/` for a template and [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
+Each agent has a workspace under `nous/` with character (`SOUL.md`), operations (`AGENTS.md`), and memory (`MEMORY.md`). See `nous/_example/` for a template and [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full file reference.
 
 ---
 

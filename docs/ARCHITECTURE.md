@@ -8,7 +8,7 @@
 
 ## Naming
 
-Module and subsystem names follow the naming philosophy documented in **[gnomon.md](gnomon.md)**. Names identify modes of attention - what stance toward knowing the component embodies - not implementation details. Each name should pass the layer test (L1 practical through L4 reflexive) and compose with existing names in the system topology.
+Module and subsystem names follow the naming philosophy documented in **[gnomon.md](gnomon.md)**. Names unconceal essential natures — the fundamental character of a thing that persists across implementation changes. Each name should pass the layer test (L1 practical through L4 reflexive) and compose with existing names in the system topology.
 
 When adding a new module, check gnomon.md's process section and anti-patterns before choosing a name.
 
@@ -24,15 +24,15 @@ All 14 modules in `infrastructure/runtime/src/`:
 | `taxis` | Config loading, Zod validation, paths | 7 | `loadConfig`, `AletheiaConfigSchema`, `paths`, `resolveNous`, `scaffoldAgent` |
 | `mneme` | Session store, SQLite, migrations | 4 | `SessionStore`, `makeDb`, session/thread/message CRUD |
 | `hermeneus` | Anthropic SDK, provider routing, token counting | 11 | `AnthropicProvider`, `createDefaultRouter`, `ProviderRouter`, token counter, pricing |
-| `organon` | 33 built-in tools, skills registry, MCP client | 30 | `ToolRegistry`, `ToolHandler`, `SkillRegistry`, `McpClientManager` |
+| `organon` | 48 built-in tools, skills registry, MCP client | 30 | `ToolRegistry`, `ToolHandler`, `SkillRegistry`, `McpClientManager` |
 | `nous` | Agent bootstrap, turn pipeline, competence model | 36 | `NousManager`, turn orchestration, `CompetenceModel`, `UncertaintyTracker`, pipeline config |
-| `distillation` | Context summarization, reflection, memory flush | 16 | `DistillationPipeline`, `reflectOnAgent`, `weeklyReflection`, `MemoryFlushTarget` |
+| `melete` | Disciplined practice — distillation, reflection, memory flush | 16 | `distillSession`, `reflectOnAgent`, `weeklyReflection`, `MemoryFlushTarget` |
 | `semeion` | Signal client, TTS, commands, listener | 20 | `SignalClient`, `createDefaultRegistry` (commands), `startListener`, `DaemonHandle` |
 | `pylon` | Hono HTTP gateway, MCP server, Web UI routes | 9 | `createGateway`, `startGateway`, MCP handlers, UI routes |
 | `prostheke` | Plugin system, lifecycle hooks | 5 | `PluginRegistry`, plugin loader, hook dispatch |
 | `daemon` | Cron scheduler, watchdog, update checker, reflection cron | 14 | `CronScheduler`, `Watchdog`, `startUpdateChecker`, reflection/evolution jobs |
-| `dianoia` | Multi-phase planning orchestrator | 56 | `DianoiaOrchestrator`, `PlanningStore`, `ResearchOrchestrator`, `RequirementsOrchestrator`, `RoadmapOrchestrator`, `ExecutionOrchestrator`, `GoalBackwardVerifier`, `CheckpointSystem` |
-| `auth` | Authentication layer — JWT, sessions, RBAC, passwords | 13 | `AuthSessionStore`, `AuditLog`, `createAuthMiddleware`, `createAuthRoutes`, `signToken`, `verifyToken`, `hashPassword`, `rbac` |
+| `dianoia` | Multi-phase planning orchestrator | 34 | `DianoiaOrchestrator`, `PlanningStore`, `ResearchOrchestrator`, `RequirementsOrchestrator`, `RoadmapOrchestrator`, `ExecutionOrchestrator`, `GoalBackwardVerifier`, `CheckpointSystem` |
+| `symbolon` | Split-token authentication — JWT, sessions, RBAC, passwords | 13 | `AuthSessionStore`, `AuditLog`, `createAuthMiddleware`, `createAuthRoutes`, `signToken`, `verifyToken`, `hashPassword`, `rbac` |
 | `portability` | Agent import/export (AgentFile format) | 5 | `exportAgent`, `importAgent`, `AgentFile`, portability CLI |
 
 ---
@@ -67,7 +67,7 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 13. `pylon` — create HTTP gateway, mount routes; wires auth, semeion, daemon refs
 14. `daemon` — start cron scheduler, watchdog, update checker
 
-**Auth initialization** — `auth` module is stateless utilities. `AuthSessionStore` and `AuditLog` are instantiated in `startGateway` via `pylon/server.ts` using the existing mneme SQLite `Database` handle.
+**Auth initialization** — `symbolon` module is stateless utilities. `AuthSessionStore` and `AuditLog` are instantiated in `startGateway` via `pylon/server.ts` using the existing mneme SQLite `Database` handle.
 
 ---
 
@@ -80,26 +80,26 @@ All rows verified by reading each module's entry files.
 | Module | May Import | Must Not Import |
 |--------|-----------|-----------------|
 | `koina` | (nothing — leaf node) | Any other module |
-| `taxis` | `koina` | `mneme`, `hermeneus`, `organon`, `nous`, `distillation`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `auth`, `portability` |
-| `mneme` | `koina`, `taxis` | `hermeneus`, `organon`, `nous`, `distillation`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `auth`, `portability` |
-| `hermeneus` | `koina`, `taxis` | `mneme`, `organon`, `nous`, `distillation`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `auth`, `portability` |
-| `organon` | `koina`, `taxis`, `hermeneus` | `nous`, `distillation`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `auth`, `portability` |
-| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `distillation` | `semeion`, `pylon`, `daemon`, `auth`, `portability` |
-| `distillation` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous` (reflection only) | `semeion`, `pylon`, `prostheke`, `daemon`, `auth`, `portability` |
-| `semeion` | `koina`, `taxis`, `mneme`, `nous`, `organon`, `daemon` (watchdog type) | `pylon`, `prostheke`, `auth`, `portability` |
-| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `organon`, `semeion`, `auth`, `daemon`, `dianoia`, `distillation` | `prostheke`, `portability` |
-| `prostheke` | `koina`, `taxis`, `organon` | `mneme`, `hermeneus`, `nous`, `distillation`, `semeion`, `pylon`, `daemon`, `dianoia`, `auth`, `portability` |
-| `daemon` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `distillation` | `semeion`, `pylon`, `prostheke`, `auth`, `portability` |
-| `dianoia` | `koina`, `taxis`, `mneme`, `organon`, `pylon` (routes type import only) | `hermeneus`, `nous`, `distillation`, `semeion`, `prostheke`, `daemon`, `auth`, `portability` |
-| `auth` | `koina` (node:crypto only — no aletheia module imports) | All aletheia modules |
-| `portability` | `koina`, `taxis`, `mneme` | `hermeneus`, `organon`, `nous`, `distillation`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `auth` |
+| `taxis` | `koina` | `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon`, `portability` |
+| `mneme` | `koina`, `taxis` | `hermeneus`, `organon`, `nous`, `melete`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon`, `portability` |
+| `hermeneus` | `koina`, `taxis` | `mneme`, `organon`, `nous`, `melete`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon`, `portability` |
+| `organon` | `koina`, `taxis`, `hermeneus` | `nous`, `melete`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon`, `portability` |
+| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `melete` | `semeion`, `pylon`, `daemon`, `symbolon`, `portability` |
+| `melete` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous` (reflection only) | `semeion`, `pylon`, `prostheke`, `daemon`, `symbolon`, `portability` |
+| `semeion` | `koina`, `taxis`, `mneme`, `nous`, `organon`, `daemon` (watchdog type) | `pylon`, `prostheke`, `symbolon`, `portability` |
+| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `organon`, `semeion`, `symbolon`, `daemon`, `dianoia`, `melete` | `prostheke`, `portability` |
+| `prostheke` | `koina`, `taxis`, `organon` | `mneme`, `hermeneus`, `nous`, `melete`, `semeion`, `pylon`, `daemon`, `dianoia`, `symbolon`, `portability` |
+| `daemon` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` | `semeion`, `pylon`, `prostheke`, `symbolon`, `portability` |
+| `dianoia` | `koina`, `taxis`, `mneme`, `organon`, `pylon` (routes type import only) | `hermeneus`, `nous`, `melete`, `semeion`, `prostheke`, `daemon`, `symbolon`, `portability` |
+| `symbolon` | `koina` (node:crypto only — no aletheia module imports) | All aletheia modules |
+| `portability` | `koina`, `taxis`, `mneme` | `hermeneus`, `organon`, `nous`, `melete`, `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon` |
 
 **Notes:**
 
-- `distillation` has a narrow upward reference to `nous/competence.ts` for reflection jobs — this is a known coupling point. The dependency flows through `daemon/reflection-cron.ts` which imports both.
+- `melete` has a narrow upward reference to `nous/competence.ts` for reflection jobs — this is a known coupling point. The dependency flows through `daemon/reflection-cron.ts` which imports both.
 - `semeion` imports `daemon/watchdog.ts` as a type import for the watchdog alert function injected via commands.
 - `dianoia` has one type import from `pylon/routes/deps.ts` in `dianoia/routes.ts` — the planning routes are mounted by pylon, and the route file is technically in dianoia but wired into pylon at startup. This is an accepted architectural exception.
-- `auth` is a stateless utilities module — it imports only from `node:crypto` and `hono`. It has no aletheia module dependencies by design.
+- `symbolon` is a stateless utilities module — it imports only from `node:crypto` and `hono`. It has no aletheia module dependencies by design.
 
 ---
 
@@ -130,7 +130,7 @@ All rows verified by reading each module's entry files.
 
 ### Adding an Event
 
-1. Follow `noun:verb` format (e.g., `distillation:complete`, `plugin:loaded`)
+1. Follow `noun:verb` format (e.g., `distill:before`, `plugin:loaded`)
 2. Define the event constant in the relevant module's event file or at point of emission
 3. Keep the event name greppable — use the module name as the noun for module lifecycle events
 4. Document in `docs/STANDARDS.md#rule-event-name-format`
@@ -149,8 +149,8 @@ Plugins live outside the runtime at `~/.aletheia/plugins/<id>/`. They integrate 
 
 **koina is a true leaf node.** It has no `index.ts` by design — all imports must reference the specific file (e.g., `../koina/logger.js`, not `../koina/index.js`). This prevents circular dependencies and ensures only the needed symbols are loaded.
 
-**auth is a zero-dependency utilities module.** `auth/tokens.ts`, `auth/passwords.ts`, `auth/rbac.ts` import only from `node:crypto` and `hono`. `auth/sessions.ts` and `auth/audit.ts` take `Database.Database` as a constructor argument. This design allows auth to be tested and used independently of the runtime.
+**symbolon is a zero-dependency utilities module.** `symbolon/tokens.ts`, `symbolon/passwords.ts`, `symbolon/rbac.ts` import only from `node:crypto` and `hono`. `symbolon/sessions.ts` and `symbolon/audit.ts` take `Database.Database` as a constructor argument. This design allows symbolon to be tested and used independently of the runtime.
 
 **dianoia routes are a seam.** `dianoia/routes.ts` imports a type from `pylon/routes/deps.ts` to satisfy the Hono route handler signature. The route file is owned by dianoia but mounted by pylon. If this coupling becomes a problem, the route file can move to `pylon/routes/plans.ts` with no behavioral change.
 
-**daemon imports nous and distillation.** The cron and reflection jobs need `NousManager` (to dispatch messages to agents) and distillation functions (to run reflection cycles). This makes daemon a high-layer module despite its name suggesting infrastructure. Daemon must not be imported by other modules — it is a leaf in the upward direction.
+**daemon imports nous and melete.** The cron and reflection jobs need `NousManager` (to dispatch messages to agents) and melete functions (to run reflection cycles). This makes daemon a high-layer module despite its name suggesting infrastructure. Daemon must not be imported by other modules — it is a leaf in the upward direction.

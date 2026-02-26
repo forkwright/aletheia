@@ -55,9 +55,9 @@ import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
 import { CheckpointSystem, createPlanCreateTool, createPlanDiscussTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
-import { AuthSessionStore } from "./auth/sessions.js";
-import { AuditLog } from "./auth/audit.js";
-import { generateSecret } from "./auth/tokens.js";
+import { AuthSessionStore } from "./symbolon/sessions.js";
+import { AuditLog } from "./symbolon/audit.js";
+import { generateSecret } from "./symbolon/tokens.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
 import { SignalClient } from "./semeion/client.js";
@@ -111,7 +111,7 @@ export interface AletheiaRuntime {
   tools: ToolRegistry;
   manager: NousManager;
   plugins: PluginRegistry;
-  memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget;
+  memoryTarget: import("./melete/hooks.js").MemoryFlushTarget;
   shutdown: () => void;
 }
 
@@ -278,8 +278,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const plugins = new PluginRegistry(config);
 
   // Memory flush target — connects distillation/reflection extraction to memory sidecar
-  const memoryTarget: import("./distillation/hooks.js").MemoryFlushTarget = {
-    async addMemories(agentId: string, memories: string[]): Promise<{ added: number; errors: number }> {
+  const memoryTarget: import("./melete/hooks.js").MemoryFlushTarget = {
+    async addMemories(agentId: string, memories: string[], sessionId: string): Promise<{ added: number; errors: number }> {
       try {
         const res = await fetch(`${getSidecarUrl()}/add_batch`, {
           method: "POST",
@@ -289,6 +289,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
             user_id: getUserId(),
             agent_id: agentId,
             source: "distillation",
+            session_id: sessionId,
             confidence: 0.8,
           }),
           signal: AbortSignal.timeout(30_000),

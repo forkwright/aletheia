@@ -23,6 +23,7 @@ export type EventName =
   | "exec:denied"
   | "pipeline:error"
   | "history:orphan_repair"
+  | "memory:health_degraded"
   | "planning:project-created"
   | "planning:project-resumed"
   | "planning:phase-started"

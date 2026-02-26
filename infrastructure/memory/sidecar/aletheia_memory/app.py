@@ -3,17 +3,20 @@
 
 import logging
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mem0 import Memory
+from starlette.responses import Response
 
 from .config import LLM_BACKEND, build_mem0_config
 from .discovery import discovery_router
 from .evolution import evolution_router
+from .graph_extraction import init_pipeline
+from .llm_backend import refresh_oauth_token
 from .routes import foresight_router, router
 from .temporal import ensure_temporal_schema, temporal_router
 
@@ -21,7 +24,7 @@ log = logging.getLogger("aletheia.memory")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 
-def _patch_anthropic_params():
+def _patch_anthropic_params() -> None:
     """Patch Mem0's Anthropic LLM for API compatibility.
 
     Fixes:
@@ -31,16 +34,23 @@ def _patch_anthropic_params():
     """
     from mem0.llms import anthropic as anthropic_llm
 
-    def _patched_generate(self: Any, messages: Any, response_format: Any = None, tools: Any = None, tool_choice: Any = "auto", **kwargs: Any) -> Any:
+    def _patched_generate(
+        self: Any,
+        messages: list[dict[str, Any]],
+        response_format: Any = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] = "auto",
+        **kwargs: Any,
+    ) -> dict[str, list[dict[str, Any]]] | Any:
         kwargs.pop("top_p", None)
-        params = self._get_supported_params(messages=messages, **kwargs)
+        params: dict[str, Any] = self._get_supported_params(messages=messages, **kwargs)
         params.pop("top_p", None)
 
-        filtered_messages = []
-        system_message = ""
+        filtered_messages: list[dict[str, Any]] = []
+        system_message: str = ""
         for msg in messages:
             if msg["role"] == "system":
-                system_message = msg["content"]
+                system_message = str(msg["content"])
             else:
                 filtered_messages.append(msg)
 
@@ -51,10 +61,10 @@ def _patch_anthropic_params():
         })
 
         if tools:
-            anthropic_tools = []
+            anthropic_tools: list[dict[str, Any]] = []
             for tool in tools:
                 if tool.get("type") == "function" and "function" in tool:
-                    fn = tool["function"]
+                    fn: dict[str, Any] = tool["function"]
                     anthropic_tools.append({
                         "name": fn["name"],
                         "description": fn.get("description", ""),
@@ -68,10 +78,10 @@ def _patch_anthropic_params():
             else:
                 params["tool_choice"] = tool_choice
 
-        response = self.client.messages.create(**params)
+        response: Any = self.client.messages.create(**params)
 
         if tools:
-            tool_calls = []
+            tool_calls: list[dict[str, Any]] = []
             for block in response.content:
                 if block.type == "tool_use":
                     tool_calls.append({
@@ -85,11 +95,11 @@ def _patch_anthropic_params():
     anthropic_llm.AnthropicLLM.generate_response = _patched_generate
 
 
-def _patch_openai_embedder_for_voyage():
+def _patch_openai_embedder_for_voyage() -> None:
     """Voyage API doesn't support the `dimensions` parameter."""
     from mem0.embeddings import openai as openai_emb
 
-    def _patched_embed(self: Any, text: Any, memory_action: Any = None) -> Any:
+    def _patched_embed(self: Any, text: str, memory_action: Any = None) -> Any:
         text = text.replace("\n", " ")
         return (
             self.client.embeddings.create(input=[text], model=self.config.model)
@@ -105,8 +115,6 @@ def _inject_oauth_llm(mem: Memory, backend: dict[str, Any]) -> None:
     if backend["provider"] == "anthropic-oauth" and backend["llm_instance"]:
         if hasattr(mem, 'llm'):
             mem.llm = backend["llm_instance"]
-        if hasattr(mem, 'graph') and mem.graph and hasattr(mem.graph, 'llm'):
-            mem.graph.llm = backend["llm_instance"]
         log.info("Injected OAuth LLM into Mem0 Memory instance")
 
 
@@ -114,22 +122,36 @@ memory: Memory | None = None
 _active_backend: dict[str, Any] = LLM_BACKEND
 
 
+def refresh_pipeline_on_token_rotate(app: FastAPI) -> None:
+    """Reinitialize the SimpleKGPipeline after an OAuth token rotation.
+
+    Call this whenever refresh_oauth_token() detects a new token so that
+    the graph extraction LLM adapter uses the updated credentials.
+    """
+    global _active_backend
+    updated: dict[str, Any] = refresh_oauth_token(_active_backend)
+    if updated is not _active_backend:
+        _active_backend = updated
+    new_pipeline: object | None = init_pipeline(_active_backend)
+    app.state.graph_pipeline = new_pipeline
+    log.info("Graph pipeline reinitialized after OAuth token rotation")
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global memory, _active_backend
 
     _active_backend = LLM_BACKEND
-    tier = _active_backend["tier"]
-    provider = _active_backend["provider"]
-    model = _active_backend["model"]
+    tier: Any = _active_backend["tier"]
+    provider: Any = _active_backend["provider"]
+    model: Any = _active_backend["model"]
 
     log.info(f"Starting with Tier {tier}: {provider}" + (f" ({model})" if model else ""))
 
-    # Apply patches based on backend
     if provider in ("anthropic-oauth", "anthropic-apikey"):
         _patch_anthropic_params()
 
-    config = build_mem0_config(_active_backend)
+    config: dict[str, Any] = build_mem0_config(_active_backend)
     if config["embedder"]["provider"] == "openai":
         _patch_openai_embedder_for_voyage()
 
@@ -152,6 +174,7 @@ async def lifespan(app: FastAPI):
 
     app.state.memory = memory
     app.state.backend = _active_backend
+    app.state.graph_pipeline = init_pipeline(_active_backend)
     await ensure_temporal_schema()
 
     log.info("Memory sidecar ready")
@@ -166,7 +189,10 @@ AUTH_TOKEN = os.environ.get("ALETHEIA_MEMORY_TOKEN", "")
 
 
 @app.middleware("http")
-async def auth_middleware(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
+async def auth_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     if AUTH_TOKEN and request.url.path != "/health":
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != AUTH_TOKEN:

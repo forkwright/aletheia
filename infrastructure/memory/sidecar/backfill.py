@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""Direct Qdrant backfill for curated knowledge.
-
-Bypasses Mem0's /add endpoint (slow, buggy for bulk) and writes directly
-to Qdrant with proper metadata so sidecar search still works.
-
-Usage:
-    python backfill.py                    # Backfill all agent workspaces
-    python backfill.py --agent syn        # Backfill only syn's workspace
-    python backfill.py --dry-run          # Show what would be embedded
-    python backfill.py --source docs      # Backfill docs/specs only
-
-Requires VOYAGE_API_KEY in environment (or pass --voyage-key).
-"""
+# Direct Qdrant backfill for curated knowledge
 
 import argparse
 import hashlib
@@ -20,11 +8,11 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 try:
-    import voyageai
+    import voyageai as _voyageai
     from qdrant_client import QdrantClient
     from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 except ImportError as e:
@@ -48,10 +36,10 @@ NOUS_DIR = ALETHEIA_ROOT / "nous"
 DOCS_DIR = ALETHEIA_ROOT / "docs"
 
 
-def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict[str, Any]]:
+def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict[str, str]]:
     """Split text into overlapping chunks with metadata."""
     lines = text.strip().split("\n")
-    chunks = []
+    chunks: list[dict[str, str]] = []
     current_words: list[str] = []
     current_section = ""
 
@@ -64,9 +52,9 @@ def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap
         current_words.extend(words)
 
         if len(current_words) >= max_words:
-            chunk_text = " ".join(current_words)
+            chunk_content = " ".join(current_words)
             chunks.append({
-                "text": chunk_text,
+                "text": chunk_content,
                 "section": current_section,
                 "source": source_path,
             })
@@ -75,10 +63,10 @@ def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap
 
     # Remaining words
     if current_words:
-        chunk_text = " ".join(current_words)
-        if len(chunk_text.strip()) > 20:  # Skip tiny remnants
+        chunk_content = " ".join(current_words)
+        if len(chunk_content.strip()) > 20:  # Skip tiny remnants
             chunks.append({
-                "text": chunk_text,
+                "text": chunk_content,
                 "section": current_section,
                 "source": source_path,
             })
@@ -91,7 +79,7 @@ def collect_agent_files(agent: str | None = None) -> list[tuple[str, str, str]]:
 
     Returns: list of (file_path, agent_id, source_type)
     """
-    files = []
+    files: list[tuple[str, str, str]] = []
 
     if agent:
         agents = [agent]
@@ -125,7 +113,7 @@ def collect_agent_files(agent: str | None = None) -> list[tuple[str, str, str]]:
 
 def collect_doc_files() -> list[tuple[str, str, str]]:
     """Collect spec and doc files."""
-    files = []
+    files: list[tuple[str, str, str]] = []
     if not DOCS_DIR.exists():
         return files
 
@@ -142,8 +130,8 @@ def compute_content_hash(text: str) -> str:
 
 def get_existing_hashes(client: QdrantClient) -> set[str]:
     """Get all backfill content hashes already in Qdrant."""
-    hashes = set()
-    offset = None
+    hashes: set[str] = set()
+    offset: Any = None
     while True:
         results, offset = client.scroll(
             collection_name=COLLECTION,
@@ -156,9 +144,10 @@ def get_existing_hashes(client: QdrantClient) -> set[str]:
             with_vectors=False,
         )
         for point in results:
-            h = (point.payload or {}).get("hash")
-            if h:
-                hashes.add(str(h))
+            if point.payload is not None:
+                h: Any = point.payload.get("hash")
+                if h:
+                    hashes.add(str(h))
         if offset is None:
             break
     return hashes
@@ -177,7 +166,7 @@ def backfill(
         sys.exit(1)
 
     # Collect all chunks
-    all_chunks: list[dict[str, Any]] = []
+    all_chunks: list[dict[str, str]] = []
     for file_path, agent_id, source_type in files:
         try:
             text = Path(file_path).read_text()
@@ -206,7 +195,7 @@ def backfill(
 
     # Connect
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    vo = voyageai.Client(api_key=key)  # type: ignore[attr-defined]  # voyageai lacks PEP 561 stubs
+    vo: Any = cast("Any", _voyageai).Client(api_key=key)
 
     # Dedup against existing backfill content
     existing_hashes = get_existing_hashes(client)
@@ -224,16 +213,16 @@ def backfill(
 
     # Batch embed
     texts = [c["text"] for c in new_chunks]
-    all_vectors = []
+    all_vectors: list[Any] = []
     for i in range(0, len(texts), BATCH_SIZE):
         batch = texts[i : i + BATCH_SIZE]
-        result = vo.embed(batch, model=EMBED_MODEL)
-        all_vectors.extend(result.embeddings)
+        embed_result: Any = vo.embed(batch, model=EMBED_MODEL)
+        all_vectors.extend(embed_result.embeddings)
         print(f"  Embedded batch {i // BATCH_SIZE + 1}/{(len(texts) + BATCH_SIZE - 1) // BATCH_SIZE}")
 
     # Build points
     now = datetime.now(UTC).isoformat()
-    points = []
+    points: list[PointStruct] = []
     for chunk, vector in zip(new_chunks, all_vectors, strict=False):
         memory_text = chunk["text"][:500]  # Mem0 convention: truncated for display
 
@@ -257,8 +246,8 @@ def backfill(
     # Upsert in batches
     upsert_batch = 100
     for i in range(0, len(points), upsert_batch):
-        batch = points[i : i + upsert_batch]
-        client.upsert(collection_name=COLLECTION, points=batch)
+        batch_points = points[i : i + upsert_batch]
+        client.upsert(collection_name=COLLECTION, points=batch_points)
         print(f"  Upserted {min(i + upsert_batch, len(points))}/{len(points)}")
 
     # Verify
@@ -274,7 +263,7 @@ def backfill(
     }
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill curated knowledge into Qdrant")
     parser.add_argument("--agent", help="Backfill only this agent's workspace")
     parser.add_argument("--source", choices=["agents", "docs", "all"], default="all",
@@ -287,7 +276,7 @@ def main():
     print(f"Root: {ALETHEIA_ROOT}")
     print(f"Collection: {COLLECTION} @ {QDRANT_HOST}:{QDRANT_PORT}")
 
-    files = []
+    files: list[tuple[str, str, str]] = []
     if args.source in ("agents", "all"):
         files.extend(collect_agent_files(args.agent))
     if args.source in ("docs", "all") and not args.agent:

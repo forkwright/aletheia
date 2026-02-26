@@ -27,21 +27,24 @@ For dev without building: `npm run dev` (tsx).
 
 ## Module Architecture
 
-Initialization order: `taxis → mneme → hermeneus → organon → semeion → pylon → prostheke → daemon`
+Initialization order: `taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon` (semeion + pylon wired at runtime start)
 
 | Module | Domain | Key Files |
 |--------|--------|-----------|
+| `koina` | Logger, errors, event bus, safe wrappers, crypto | `logger.ts`, `errors.ts`, `event-bus.ts`, `safe.ts` |
 | `taxis` | Config loading + Zod validation | `schema.ts`, `loader.ts`, `paths.ts` |
-| `mneme` | Session store (better-sqlite3, 10 migrations) | `store.ts`, `schema.ts` |
+| `mneme` | Session store (better-sqlite3, migrations) | `store.ts`, `schema.ts` |
 | `hermeneus` | Anthropic SDK, provider router, token counting | `anthropic.ts`, `router.ts`, `complexity.ts`, `pricing.ts` |
-| `organon` | 33 built-in tools, skills, self-authoring | `registry.ts`, `skills.ts`, `built-in/*.ts` |
+| `organon` | 48 built-in tools, skills, self-authoring | `registry.ts`, `skills.ts`, `built-in/*.ts` |
 | `nous` | Agent bootstrap, turn pipeline, working state | `manager.ts`, `bootstrap.ts`, `working-state.ts`, `pipeline/` |
-| `distillation` | Context summarization | `pipeline.ts`, `extract.ts`, `summarize.ts` |
+| `melete` | Disciplined practice — distillation, reflection | `pipeline.ts`, `extract.ts`, `reflect.ts`, `summarize.ts` |
+| `symbolon` | Split-token authentication — JWT, sessions, RBAC | `tokens.ts`, `passwords.ts`, `sessions.ts`, `rbac.ts` |
+| `dianoia` | Multi-phase planning orchestrator | `orchestrator.ts`, `store.ts`, `execution.ts`, `verifier.ts` |
 | `semeion` | Signal client, listener, commands, TTS | `client.ts`, `listener.ts`, `commands.ts` |
 | `pylon` | Hono HTTP gateway, MCP, Web UI | `server.ts`, `mcp.ts`, `ui.ts` |
 | `prostheke` | Plugin system (lifecycle hooks) | `types.ts`, `loader.ts`, `registry.ts` |
 | `daemon` | Cron, watchdog, update checker | `cron.ts`, `watchdog.ts`, `update-check.ts` |
-| `koina` | Logger, errors, event bus, safe wrappers, crypto | `logger.ts`, `errors.ts`, `event-bus.ts`, `safe.ts` |
+| `portability` | Agent import/export (AgentFile format) | `export.ts`, `import.ts` |
 
 ---
 

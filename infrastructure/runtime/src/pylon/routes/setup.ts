@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
-import { hashPassword } from "../../auth/passwords.js";
+import { hashPassword } from "../../symbolon/passwords.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon.setup");

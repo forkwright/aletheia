@@ -1,0 +1,67 @@
+{
+  "id": "akron-session-03",
+  "agent": "akron",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I tried to start the truck. Single click and nothing. I've been charging both batteries with the NOCO."
+    },
+    {
+      "role": "assistant",
+      "content": "The NOCO was charging the battery itself, not connected to the truck's terminals. The clamps were on the battery posts but not the terminal cables — the truck only had one battery in circuit. Reconnect both properly and both should read around 13V.\n\nAfter you connected both properly: still just a light click. Here's the diagnostic sequence I ran with you:\n\nSwapped the starter relay with the fuel system relay — no change. Tap test on the starter — no change. Purchased a new Dorman 30A relay ($16). New relay in the slot — no change.\n\nJump test: bridged the starter solenoid terminals directly with a screwdriver. Starter cranked fine — got arc marks from 300A (the spark intensity is significant, worth warning about next time). That confirms: starter motor good, solenoid good, batteries good, cables good, grounds good. Problem is 100% in the control circuit.\n\nSimpson meter test on the relay socket with relay removed: found constant 12V on the battery feed pin. Found NO 12V on any pin when the key was held at START. The START signal never reaches the PDC relay."
+    },
+    {
+      "role": "user",
+      "content": "So what's actually broken?"
+    },
+    {
+      "role": "assistant",
+      "content": "FSM research on the starting circuit: Circuit A41 is the ignition switch START position sending 12V to the relay coil power side. Circuit T41 is the Park/Neutral Position Switch providing the ground path for the relay coil. The NSS is a ground-side switch — the relay coil needs both A41 power and T41 ground to energize.\n\nThe high-impedance Simpson meter can't read voltage on the coil pin without the T41 ground completing the circuit through the NSS. This explains why we saw no voltage measured — the A41 side may have power but the meter can't register without the ground path.\n\nMost likely cause: dead Neutral Safety Switch on the 46RE transmission. Common failure on second-gen Rams. About a $25 part, 20-minute swap. Located on the driver side near the shift linkage.\n\nVerification step: unplug the NSS connector on the driver side of the 46RE, jumper the harness-side T41 pin to ground on the transmission case, put the relay back in, try the key. If it cranks, the NSS is dead.\n\nWorkaround for today's steering work: turn key to RUN to power the fuel system and gauges, then jump the starter from underneath with a screwdriver. Engine will start and run. All mechanical steering work can proceed without a running engine anyway — bleeding requires it, use this method for that."
+    },
+    {
+      "role": "user",
+      "content": "Also found the root cause of the battery drain — brake lights were on 24/7."
+    },
+    {
+      "role": "assistant",
+      "content": "The brake light switch rubber bumper is missing. The plunger sits depressed constantly — brake lights on 24/7, 63W at roughly 5A, for at least 6 months since purchase and disassembly. Every NOCO charge session was fighting that constant drain. The batteries never actually recovered.\n\nTemporary fix: tape the plunger depressed. That immediately killed the 3rd brake light — confirms the circuit. Permanent fix: Dorman 76942 replacement bumper, approximately $2.\n\nThis also explains why the batteries appeared to be failing — they weren't bad, they were never given a chance to hold charge. Once the NSS is confirmed dead and replaced, and the bumper is in, you'll have a complete picture of where the truck's electrical actually stands."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "The NOCO charger clamps were on the battery posts but not the terminal cables — the truck only had one battery in circuit during charging",
+      "Both batteries read approximately 13V once properly connected",
+      "The jump test by bridging starter solenoid terminals directly confirmed: starter motor, solenoid, batteries, cables, and grounds are all good",
+      "The problem is in the control circuit — the START signal never reaches the PDC relay",
+      "Circuit A41 is the ignition switch START position sending 12V to the relay coil power side",
+      "Circuit T41 is the Park/Neutral Position Switch providing the ground path for the relay coil",
+      "The NSS is a ground-side switch requiring both A41 power and T41 ground to energize the relay",
+      "The most likely cause is a dead Park/Neutral Position Switch on the 46RE transmission",
+      "The NSS is on the driver side near the shift linkage and is a common failure on second-gen Rams",
+      "The NSS replacement part is approximately $25 and takes about 20 minutes to swap",
+      "The brake light switch rubber bumper is missing — brake lights have been on 24/7 at 63W (approximately 5A)",
+      "The batteries drained continuously for at least 6 months because of the constant 63W brake light draw",
+      "The Dorman 76942 replacement bumper costs approximately $2"
+    ],
+    "decisions": [
+      "Use the screwdriver-jump workaround (key to RUN then jump starter from underneath) to complete steering work before the NSS is replaced"
+    ],
+    "contradictions": [
+      "NOCO showed charging status but the truck batteries were not actually receiving charge because the clamps were not connected to the terminal cables"
+    ],
+    "entities": [
+      "NSS",
+      "46RE",
+      "Dorman 76942",
+      "Circuit A41",
+      "Circuit T41",
+      "PDC"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-09",
+    "domain": "vehicle",
+    "notes": "Sourced from akron/memory/2026-02-08.md — starter diagnosis, NSS root cause, brake light drain discovery"
+  }
+}

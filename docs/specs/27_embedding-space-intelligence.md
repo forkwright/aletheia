@@ -256,7 +256,7 @@ The shared embedding space is the strategic advantage: embed documents with 4-la
    ```
    Requires sidecar `/search` to return vectors alongside results. Qdrant supports `with_vectors=true` — one-line sidecar change + type extension in runtime.
 
-2. **MODIFY `src/distillation/similarity-pruning.ts`** — Replace Jaccard window similarity with embedding similarity:
+2. **MODIFY `src/melete/similarity-pruning.ts`** — Replace Jaccard window similarity with embedding similarity:
    ```typescript
    export async function pruneBySimilarityEmbedding(
      messages: SimpleMessage[],

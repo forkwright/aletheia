@@ -1,6 +1,7 @@
-// Provider router — model string to provider, failover
+// Provider router — model string to provider, failover, retry with backoff
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createLogger } from "../koina/logger.js";
 import { ProviderError } from "../koina/errors.js";
 import {
@@ -12,6 +13,47 @@ import {
 
 const log = createLogger("hermeneus.router");
 
+/** Error codes that indicate a transient server-side failure worth retrying. */
+const RETRYABLE_CODES = new Set([
+  "PROVIDER_INVALID_RESPONSE", // 5xx
+  "PROVIDER_OVERLOADED",       // 529
+  "PROVIDER_TIMEOUT",          // network/timeout
+]);
+
+/** Codes that should skip retry and go straight to credential failover. */
+const FAILOVER_ONLY_CODES = new Set([
+  "PROVIDER_RATE_LIMITED",     // 429 — different credential may help
+  "PROVIDER_AUTH_FAILED",      // 401/403 — retry won't fix
+  "PROVIDER_TOKEN_EXPIRED",    // expired OAuth — needs different credential
+]);
+
+interface RetryConfig {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+const DEFAULT_RETRY: RetryConfig = {
+  maxAttempts: 3,
+  baseDelayMs: 1000,
+  maxDelayMs: 8000,
+};
+
+function isRetryable(error: unknown): error is ProviderError {
+  return error instanceof ProviderError
+    && error.recoverable
+    && RETRYABLE_CODES.has(error.code)
+    && !FAILOVER_ONLY_CODES.has(error.code);
+}
+
+function backoffDelay(attempt: number, config: RetryConfig): number {
+  // Exponential: 1s, 2s, 4s... capped at maxDelayMs
+  // Add ±20% jitter to avoid thundering herd
+  const base = Math.min(config.baseDelayMs * 2 ** attempt, config.maxDelayMs);
+  const jitter = base * 0.2 * (Math.random() * 2 - 1);
+  return Math.round(base + jitter);
+}
+
 interface ProviderEntry {
   name: string;
   provider: AnthropicProvider;
@@ -21,6 +63,7 @@ interface ProviderEntry {
 export class ProviderRouter {
   private providers: ProviderEntry[] = [];
   private backupProviders: AnthropicProvider[] = [];
+  private retryConfig: RetryConfig = DEFAULT_RETRY;
 
   registerProvider(
     name: string,
@@ -40,6 +83,11 @@ export class ProviderRouter {
     if (providers.length > 0) {
       log.info(`Registered ${providers.length} backup credential(s) for failover`);
     }
+  }
+
+  /** Override retry config (useful for testing). */
+  setRetryConfig(config: Partial<RetryConfig>): void {
+    this.retryConfig = { ...this.retryConfig, ...config };
   }
 
   private resolve(model: string): ProviderEntry {
@@ -62,20 +110,57 @@ export class ProviderRouter {
     });
   }
 
+  /**
+   * Retry a provider call with exponential backoff for transient 5xx/529 errors.
+   * Non-retryable errors (429, 401, 403) skip retry and propagate immediately
+   * so the caller can attempt credential failover instead.
+   */
+  private async withRetry<T>(
+    label: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.retryConfig.maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (!isRetryable(error)) throw error;
+
+        const remaining = this.retryConfig.maxAttempts - attempt - 1;
+        if (remaining === 0) break;
+
+        const delay = backoffDelay(attempt, this.retryConfig);
+        log.warn(
+          `${label} failed (${(error as ProviderError).code}), retrying in ${delay}ms ` +
+          `(attempt ${attempt + 1}/${this.retryConfig.maxAttempts})`,
+        );
+        await sleep(delay);
+      }
+    }
+    throw lastError;
+  }
+
   async complete(request: CompletionRequest): Promise<TurnResult> {
     const entry = this.resolve(request.model);
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
     log.debug(`Routing ${request.model} to ${entry.name} (model=${model})`);
     try {
-      return await entry.provider.complete({ ...request, model });
+      return await this.withRetry(
+        `complete(${model})`,
+        () => entry.provider.complete({ ...request, model }),
+      );
     } catch (error) {
       if (!(error instanceof ProviderError) || !error.recoverable || this.backupProviders.length === 0) {
         throw error;
       }
       for (let i = 0; i < this.backupProviders.length; i++) {
-        log.warn(`Primary credential failed (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
+        log.warn(`Primary credential exhausted retries (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
         try {
-          return await this.backupProviders[i]!.complete({ ...request, model });
+          return await this.withRetry(
+            `complete(${model}):backup-${i + 1}`,
+            () => this.backupProviders[i]!.complete({ ...request, model }),
+          );
         } catch { /* backup also failed — try next */
           continue;
         }
@@ -88,14 +173,36 @@ export class ProviderRouter {
     const entry = this.resolve(request.model);
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
     log.debug(`Streaming ${request.model} via ${entry.name} (model=${model})`);
-    try {
-      yield* entry.provider.completeStreaming({ ...request, model });
-    } catch (error) {
-      if (!(error instanceof ProviderError) || !error.recoverable || this.backupProviders.length === 0) {
-        throw error;
+
+    // Streaming retry: collect events from the generator. If it throws a
+    // retryable error before yielding message_complete, retry from scratch.
+    // Events already yielded (text deltas, thinking deltas) are harmless
+    // duplicates — the UI handles partial resets on reconnect.
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.retryConfig.maxAttempts; attempt++) {
+      try {
+        yield* entry.provider.completeStreaming({ ...request, model });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!isRetryable(error)) break;
+
+        const remaining = this.retryConfig.maxAttempts - attempt - 1;
+        if (remaining === 0) break;
+
+        const delay = backoffDelay(attempt, this.retryConfig);
+        log.warn(
+          `stream(${model}) failed (${(error as ProviderError).code}), retrying in ${delay}ms ` +
+          `(attempt ${attempt + 1}/${this.retryConfig.maxAttempts})`,
+        );
+        await sleep(delay);
       }
+    }
+
+    // Primary exhausted — try backups
+    if (lastError instanceof ProviderError && lastError.recoverable && this.backupProviders.length > 0) {
       for (let i = 0; i < this.backupProviders.length; i++) {
-        log.warn(`Primary credential failed (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
+        log.warn(`Primary credential exhausted retries (${(lastError as ProviderError).code}), trying backup ${i + 1}/${this.backupProviders.length}`);
         try {
           yield* this.backupProviders[i]!.completeStreaming({ ...request, model });
           return;
@@ -103,8 +210,9 @@ export class ProviderRouter {
           continue;
         }
       }
-      throw error;
     }
+
+    throw lastError;
   }
 
   async completeWithFailover(

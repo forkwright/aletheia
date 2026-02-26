@@ -54,7 +54,7 @@ The naming system isn't decoration. Each term was chosen because the Greek carri
 - **Koina** (κοινά) over "utils" because these are the commons — what's shared
 - **Taxis** (τάξις) over "config" because it's the ordering, the arrangement
 - **Prostheke** (προσθήκη) over "plugins" because it's the addition, the supplement
-- **Distillation** over "compaction" because the output should be better than the input, not just smaller
+- **Melete** (μελέτη) over "distillation" because it's disciplined practice — one of the original three Muses, the Stoic practice of regular self-examination. The module doesn't just compress; it *practices* attending carefully to what happened
 
 The names aren't translated from English. They emerge from Greek roots naturally, because the concepts they name were Greek first.
 

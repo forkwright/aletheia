@@ -5,7 +5,7 @@ import { assembleBootstrap } from "../../bootstrap.js";
 import { detectBootstrapDiff, logBootstrapDiff } from "../../bootstrap-diff.js";
 import { recallMemories } from "../../recall.js";
 import { formatWorkingState } from "../../working-state.js";
-import { distillSession } from "../../../distillation/pipeline.js";
+import { distillSession } from "../../../melete/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
 import { indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
@@ -77,6 +77,7 @@ export async function buildContext(
             preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
             ...(workspace ? { workspace } : {}),
             ...(services.plugins ? { plugins: services.plugins } : {}),
+            ...(services.memoryTarget ? { memoryTarget: services.memoryTarget } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary, keyFacts) => {
                 services.store.updateThreadSummary(thread.id, summary, keyFacts);

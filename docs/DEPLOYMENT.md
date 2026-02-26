@@ -11,9 +11,8 @@ aletheia-setup
 Installs and starts all services, enables boot persistence, and verifies health. Idempotent — safe to re-run after `aletheia-update`.
 
 **Prerequisites:**
-- Ergon built: `ergon/dist/entry.mjs` must exist (run `aletheia-update` first)
-- `~/.aletheia/start.sh` must exist (copy from `shared/bin/start.sh`)
-- `node` and `podman` in PATH
+- Runtime built: `infrastructure/runtime/dist/entry.mjs` must exist (run `./setup.sh` or build manually)
+- `node` in PATH, `podman` or `docker` for memory services
 
 **What gets installed:**
 
@@ -79,7 +78,7 @@ cp config.yaml.example config.yaml && python3 prosoche.py
 
 **Service won't start:** `journalctl --user -u aletheia -n 50 --no-pager`
 
-**Memory/graph not working:** Check containers are running: `podman ps | grep chiron`. If stopped: `podman start chiron-qdrant chiron-neo4j`.
+**Memory/graph not working:** Check containers are running: `docker ps | grep -E "qdrant|neo4j"`. If stopped: `cd infrastructure/memory && docker compose up -d`.
 
 **Signal not receiving:** Check signal-cli (`curl localhost:8080/v1/about`), verify phone number matches config, check DM policy.
 

@@ -2,10 +2,10 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
-import { reflectOnAgent, weeklyReflection } from "../distillation/reflect.js";
+import { reflectOnAgent, weeklyReflection } from "../melete/reflect.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { SessionStore } from "../mneme/store.js";
-import type { MemoryFlushTarget } from "../distillation/hooks.js";
+import type { MemoryFlushTarget } from "../melete/hooks.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { CompetenceModel } from "../nous/competence.js";
 

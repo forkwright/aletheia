@@ -18,7 +18,9 @@
     "precommit": "npm run typecheck && npm run lint:check && npm run test:fast",
     "test:fast": "vitest run -c vitest.fast.config.ts",
     "test:affected": "vitest run --changed HEAD~1",
-    "test:file": "vitest run"
+    "test:file": "vitest run",
+    "test:corpus": "tsx tests/corpus/run-corpus.ts",
+    "test:corpus:save-baseline": "tsx tests/corpus/run-corpus.ts --save-baseline"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

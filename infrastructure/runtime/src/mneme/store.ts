@@ -215,6 +215,9 @@ export class SessionStore {
         this.applyMigration(m.version, m.sql);
       }
     }
+
+    // Clear any locks left behind by a crashed process
+    this.clearStaleLocks();
   }
 
   private applyMigration(version: number, sql: string): void {
@@ -619,6 +622,165 @@ export class SessionStore {
         record.factsExtracted, record.decisionsExtracted, record.openItemsExtracted,
         record.flushSucceeded ? 1 : 0, record.errors ?? null, record.distillationNumber,
       );
+  }
+
+  // --- Distillation Locks ---
+
+  acquireDistillationLock(sessionId: string, nousId: string): boolean {
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO distillation_locks (session_id, nous_id) VALUES (?, ?)",
+        )
+        .run(sessionId, nousId);
+      return true;
+    } catch {
+      // PRIMARY KEY conflict — session already locked
+      return false;
+    }
+  }
+
+  releaseDistillationLock(sessionId: string): void {
+    this.db
+      .prepare("DELETE FROM distillation_locks WHERE session_id = ?")
+      .run(sessionId);
+  }
+
+  clearStaleLocks(maxAgeMinutes = 10): number {
+    const result = this.db
+      .prepare(
+        `DELETE FROM distillation_locks
+         WHERE locked_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ? || ' minutes')`,
+      )
+      .run(`-${maxAgeMinutes}`);
+    if (result.changes > 0) {
+      log.info(`Cleared ${result.changes} stale distillation lock(s) older than ${maxAgeMinutes} minutes`);
+    }
+    return result.changes;
+  }
+
+  runDistillationMutations(opts: {
+    sessionId: string;
+    nousId: string;
+    summaryContent: string;
+    summaryTokens: number;
+    distilledSeqs: number[];
+    record: {
+      messagesBefore: number;
+      messagesAfter: number;
+      tokensBefore: number;
+      tokensAfter: number;
+      factsExtracted: number;
+      model: string;
+    };
+    logRecord: {
+      messagesBefore: number;
+      messagesAfter: number;
+      tokensBefore: number;
+      tokensAfter: number;
+      factsExtracted: number;
+      decisionsExtracted: number;
+      openItemsExtracted: number;
+      flushSucceeded: boolean;
+      errors?: string;
+      distillationNumber: number;
+    };
+  }): void {
+    const tx = this.db.transaction(() => {
+      // 1. Append summary message
+      const storedContent = encryptIfEnabled(opts.summaryContent);
+      const nextSeq = this.db
+        .prepare(
+          "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM messages WHERE session_id = ?",
+        )
+        .get(opts.sessionId) as { next: number };
+      this.db
+        .prepare(
+          `INSERT INTO messages (session_id, seq, role, content, token_estimate, is_distilled)
+           VALUES (?, ?, 'assistant', ?, ?, 0)`,
+        )
+        .run(opts.sessionId, nextSeq.next, storedContent, opts.summaryTokens);
+      this.db
+        .prepare(
+          `UPDATE sessions
+           SET message_count = message_count + 1,
+               token_count_estimate = token_count_estimate + ?,
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE id = ?`,
+        )
+        .run(opts.summaryTokens, opts.sessionId);
+
+      // 2. Mark old messages as distilled
+      if (opts.distilledSeqs.length > 0) {
+        const placeholders = opts.distilledSeqs.map(() => "?").join(",");
+        this.db
+          .prepare(
+            `UPDATE messages SET is_distilled = 1
+             WHERE session_id = ? AND seq IN (${placeholders})`,
+          )
+          .run(opts.sessionId, ...opts.distilledSeqs);
+
+        const row = this.db
+          .prepare(
+            `SELECT COALESCE(SUM(token_estimate), 0) AS total, COUNT(*) AS msg_count
+             FROM messages WHERE session_id = ? AND is_distilled = 0`,
+          )
+          .get(opts.sessionId) as { total: number; msg_count: number };
+        this.db
+          .prepare(
+            `UPDATE sessions
+             SET token_count_estimate = ?, message_count = ?,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?`,
+          )
+          .run(row.total, row.msg_count, opts.sessionId);
+      }
+
+      // 3. Record distillation audit entry
+      this.db
+        .prepare(
+          `INSERT INTO distillations
+           (session_id, messages_before, messages_after, tokens_before, tokens_after, facts_extracted, model)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          opts.sessionId,
+          opts.record.messagesBefore,
+          opts.record.messagesAfter,
+          opts.record.tokensBefore,
+          opts.record.tokensAfter,
+          opts.record.factsExtracted,
+          opts.record.model,
+        );
+
+      // 4. Update last_distilled_at
+      this.db
+        .prepare(
+          "UPDATE sessions SET last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        )
+        .run(opts.sessionId);
+
+      // 5. Record distillation log
+      this.db
+        .prepare(
+          `INSERT INTO distillation_log
+           (session_id, nous_id, messages_before, messages_after, tokens_before, tokens_after,
+            facts_extracted, decisions_extracted, open_items_extracted, flush_succeeded, errors, distillation_number)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          opts.sessionId, opts.nousId,
+          opts.logRecord.messagesBefore, opts.logRecord.messagesAfter,
+          opts.logRecord.tokensBefore, opts.logRecord.tokensAfter,
+          opts.logRecord.factsExtracted, opts.logRecord.decisionsExtracted,
+          opts.logRecord.openItemsExtracted,
+          opts.logRecord.flushSucceeded ? 1 : 0,
+          opts.logRecord.errors ?? null,
+          opts.logRecord.distillationNumber,
+        );
+    });
+
+    tx();
   }
 
   getDistillationLog(sessionId: string): Array<{
