@@ -22,12 +22,6 @@ from collections import Counter
 # Must run from sidecar venv
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import (
-        PointIdsList,
-        PointStruct,
-        SetPayload,
-        SetPayloadOperation,
-    )
 except ImportError:
     print("Run from sidecar venv: .venv/bin/python backfill_entities.py")
     sys.exit(1)

@@ -40,7 +40,7 @@ def get_embedder():
             from fastembed import TextEmbedding
             model = TextEmbedding("BAAI/bge-small-en-v1.5")
             def embed(text):
-                return list(model.embed([text]))[0].tolist()
+                return next(iter(model.embed([text]))).tolist()
             return embed, 384
         except ImportError:
             log.error("No embedder available. Install fastembed: pip install fastembed")

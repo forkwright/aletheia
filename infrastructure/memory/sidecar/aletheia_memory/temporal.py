@@ -1,6 +1,7 @@
 # Temporal memory layer — Graphiti-inspired episode tracking and bi-temporal queries
 # NOTE: Do NOT add future annotations — see routes.py comment.
 
+import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -49,10 +50,8 @@ async def ensure_temporal_schema():
             for stmt in TEMPORAL_SCHEMA.strip().split(";"):
                 stmt = stmt.strip()
                 if stmt:
-                    try:
+                    with contextlib.suppress(Exception):  # constraint may already exist
                         session.run(stmt)
-                    except Exception:
-                        pass  # constraint may already exist
         driver.close()
         mark_neo4j_ok()
         logger.info("Temporal schema constraints ensured")

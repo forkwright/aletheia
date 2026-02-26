@@ -183,14 +183,12 @@ def is_valid_entity(name: str) -> bool:
     if re.match(r'^\d+$', normalized):
         return False
     # Single common words
-    if len(normalized.split()) == 1 and normalized in STOPWORDS:
-        return False
-    return True
+    return not (len(normalized.split()) == 1 and normalized in STOPWORDS)
 
 
 def resolve_entity(name: str, existing_names: list[str] | None = None) -> str | None:
     """Resolve an entity name to its canonical form.
-    
+
     Returns:
         Canonical name if resolved, None if the entity should be skipped.
     """
@@ -238,7 +236,7 @@ def get_canonical_entities() -> list[str]:
 
 def merge_duplicate_entities() -> dict:
     """Find and merge duplicate entity nodes in Neo4j.
-    
+
     Uses the alias table and fuzzy matching to identify duplicates,
     then merges relationships onto the canonical node and deletes duplicates.
     """
@@ -282,10 +280,10 @@ def merge_duplicate_entities() -> dict:
                 continue
 
             # Keep the first node as canonical, merge others into it
-            keeper_name, keeper_id = nodes[0]
+            _keeper_name, keeper_id = nodes[0]
 
             with driver.session() as session:
-                for dup_name, dup_id in nodes[1:]:
+                for _dup_name, dup_id in nodes[1:]:
                     # Transfer all relationships from duplicate to keeper
                     session.run(
                         """

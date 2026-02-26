@@ -35,6 +35,14 @@ from .vocab import CONTROLLED_VOCAB, normalize_type
 logger = logging.getLogger("aletheia_memory")
 router = APIRouter()
 
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _schedule_task(coro: Any) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 def _get_memory(request: Request):
     """Safely retrieve Memory instance from app state."""
@@ -149,15 +157,15 @@ async def add_memory(req: AddRequest, request: Request):
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
-            asyncio.create_task(_generate_links(mem, req.text, req.user_id))
+            _schedule_task(_generate_links(mem, req.text, req.user_id))
 
         # Episode tracking — record this interaction as a temporal episode
         if neo4j_available() and req.agent_id:
-            asyncio.create_task(_record_episode(req.text, req.agent_id, req.metadata))
+            _schedule_task(_record_episode(req.text, req.agent_id, req.metadata))
 
         # Normalize any non-vocab relationship types created by graph extraction
         if neo4j_available():
-            asyncio.create_task(_normalize_neo4j_relationships())
+            _schedule_task(_normalize_neo4j_relationships())
 
         return {"ok": True, "result": result, **({"graph_degraded": True} if graph_degraded else {})}
     except Exception as e:
@@ -338,7 +346,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
         points = []
         skipped_semantic = 0
         all_contradictions = []
-        for text, vector, content_hash in zip(new_texts, vectors, new_hashes):
+        for text, vector, content_hash in zip(new_texts, vectors, new_hashes, strict=False):
             if await _semantic_dedup_check(client, vector, req.user_id):
                 skipped_semantic += 1
                 continue
@@ -445,7 +453,7 @@ async def search_memory(req: SearchRequest, request: Request):
 
 
 @router.post("/graph_search")
-async def graph_search(req: SearchRequest, request: Request):
+async def graph_search_post(req: SearchRequest, request: Request):
     mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit}
     if req.agent_id:
@@ -456,7 +464,7 @@ async def graph_search(req: SearchRequest, request: Request):
         graph_results = [r for r in results.get("results", []) if r.get("source") == "graph"]
         return {"ok": True, "results": graph_results}
     except Exception as e:
-        logger.exception("graph_search failed")
+        logger.exception("graph_search_post failed")
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
@@ -1499,31 +1507,31 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         driver = neo4j_driver()
 
-        G = nx.DiGraph()
+        g = nx.DiGraph()
         with driver.session() as session:
             nodes = session.run("MATCH (n) WHERE n.name IS NOT NULL RETURN n.name AS name, labels(n) AS labels")
             for record in nodes:
-                G.add_node(record["name"], labels=record["labels"])
+                g.add_node(record["name"], labels=record["labels"])
 
             rels = session.run(
                 "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
                 "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
             )
             for record in rels:
-                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+                g.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
 
-        if G.number_of_nodes() == 0:
+        if g.number_of_nodes() == 0:
             driver.close()
             return {"ok": True, "nodes": 0, "message": "Empty graph"}
 
         # PageRank
-        pagerank = nx.pagerank(G, alpha=0.85, max_iter=100)
+        pagerank = nx.pagerank(g, alpha=0.85, max_iter=100)
         top_pagerank = sorted(pagerank.items(), key=lambda x: -x[1])[:req.top_k]
 
         # Community detection (Louvain on undirected projection)
-        G_undirected = G.to_undirected()
+        g_undirected = g.to_undirected()
         try:
-            communities = nx.community.louvain_communities(G_undirected, seed=42)
+            communities = nx.community.louvain_communities(g_undirected, seed=42)
             community_map: dict[str, int] = {}
             for idx, community in enumerate(communities):
                 for node in community:
@@ -1541,15 +1549,15 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         # Node similarity — find dedup candidates (nodes with >0.8 Jaccard on neighbors)
         dedup_candidates: list[dict[str, Any]] = []
-        nodes_list = list(G_undirected.nodes())
+        nodes_list = list(g_undirected.nodes())
         for i in range(min(len(nodes_list), 200)):
             n1 = nodes_list[i]
-            neighbors1 = set(G_undirected.neighbors(n1))
+            neighbors1 = set(g_undirected.neighbors(n1))
             if not neighbors1:
                 continue
             for j in range(i + 1, min(len(nodes_list), 200)):
                 n2 = nodes_list[j]
-                neighbors2 = set(G_undirected.neighbors(n2))
+                neighbors2 = set(g_undirected.neighbors(n2))
                 if not neighbors2:
                     continue
                 jaccard = len(neighbors1 & neighbors2) / len(neighbors1 | neighbors2)
@@ -1584,8 +1592,8 @@ async def analyze_graph(req: GraphAnalyzeRequest):
 
         return {
             "ok": True,
-            "nodes": G.number_of_nodes(),
-            "edges": G.number_of_edges(),
+            "nodes": g.number_of_nodes(),
+            "edges": g.number_of_edges(),
             "pagerank_top": [{"name": n, "score": round(s, 6)} for n, s in top_pagerank],
             "communities": num_communities,
             "community_summaries": community_summaries,

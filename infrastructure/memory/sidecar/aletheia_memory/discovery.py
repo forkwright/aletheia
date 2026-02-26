@@ -39,14 +39,14 @@ class ExplorePathsRequest(BaseModel):
 async def discover(req: DiscoverRequest):
     """Given a topic, return both relevant AND surprising related knowledge.
 
-    Serendipity = relevance × novelty (SerenQA-inspired dual scoring).
+    Serendipity = relevance x novelty (SerenQA-inspired dual scoring).
     Relevance: vector distance from topic to entity's associated memories.
     Novelty: cross-community score (entities in different communities from the query's home).
 
     Pipeline:
     1. Find the query's "home community" via entity extraction + graph lookup
     2. Get all entities with PageRank and community assignments
-    3. For each entity, compute serendipity = relevance × novelty
+    3. For each entity, compute serendipity = relevance x novelty
     4. Relevance: inverse graph distance (shared neighborhood overlap)
     5. Novelty: 1.0 if different community, boosted by low PageRank (obscure = more novel)
     6. Return ranked results with explanations
@@ -62,7 +62,7 @@ async def discover(req: DiscoverRequest):
     driver = neo4j_driver()
 
     try:
-        G = nx.Graph()
+        g = nx.Graph()
         with driver.session() as session:
             nodes = session.run(
                 "MATCH (n) WHERE n.name IS NOT NULL "
@@ -70,7 +70,7 @@ async def discover(req: DiscoverRequest):
                 "n.pagerank AS pagerank, n.community AS community"
             )
             for record in nodes:
-                G.add_node(
+                g.add_node(
                     record["name"],
                     labels=record["labels"],
                     pagerank=record["pagerank"] or 0.0,
@@ -82,15 +82,15 @@ async def discover(req: DiscoverRequest):
                 "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
             )
             for record in rels:
-                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+                g.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
 
-        if G.number_of_nodes() < 5:
+        if g.number_of_nodes() < 5:
             return {"ok": True, "discoveries": [], "reason": "graph too small"}
 
         # Find the topic's home entities — match by substring in node names
         topic_lower = req.topic.lower()
         home_nodes = [
-            n for n in G.nodes()
+            n for n in g.nodes()
             if topic_lower in n.lower() or n.lower() in topic_lower
         ]
 
@@ -98,7 +98,7 @@ async def discover(req: DiscoverRequest):
         if not home_nodes:
             topic_terms = set(topic_lower.split())
             scored = []
-            for n in G.nodes():
+            for n in g.nodes():
                 overlap = len(topic_terms & set(n.lower().split()))
                 if overlap > 0:
                     scored.append((n, overlap))
@@ -108,7 +108,7 @@ async def discover(req: DiscoverRequest):
         # Determine home community
         home_communities: set[int] = set()
         for n in home_nodes:
-            c = G.nodes[n].get("community", -1)
+            c = g.nodes[n].get("community", -1)
             if c >= 0:
                 home_communities.add(c)
 
@@ -116,17 +116,17 @@ async def discover(req: DiscoverRequest):
             home_communities = {-1}
 
         # Score all entities for serendipity
-        max_pagerank = max((G.nodes[n].get("pagerank", 0) for n in G.nodes()), default=1.0)
+        max_pagerank = max((g.nodes[n].get("pagerank", 0) for n in g.nodes()), default=1.0)
         if max_pagerank == 0:
             max_pagerank = 1.0
 
         scored_entities: list[dict[str, Any]] = []
 
-        for node in G.nodes():
+        for node in g.nodes():
             if node in home_nodes:
                 continue
 
-            data = G.nodes[node]
+            data = g.nodes[node]
             community = data.get("community", -1)
             pagerank = data.get("pagerank", 0.0)
 
@@ -134,7 +134,7 @@ async def discover(req: DiscoverRequest):
             min_distance = float("inf")
             for home in home_nodes:
                 try:
-                    d = nx.shortest_path_length(G, home, node)
+                    d = nx.shortest_path_length(g, home, node)
                     min_distance = min(min_distance, d)
                 except nx.NetworkXNoPath:
                     pass
@@ -155,9 +155,9 @@ async def discover(req: DiscoverRequest):
 
             if serendipity > 0.1 and relevance > 0:
                 # Get connection context
-                neighbors = list(G.neighbors(node))
+                neighbors = list(g.neighbors(node))
                 neighbor_labels = [
-                    G.nodes[nb].get("labels", ["Entity"])[0] if G.nodes[nb].get("labels") else "Entity"
+                    g.nodes[nb].get("labels", ["Entity"])[0] if g.nodes[nb].get("labels") else "Entity"
                     for nb in neighbors[:5]
                 ]
 
@@ -171,7 +171,7 @@ async def discover(req: DiscoverRequest):
                     "graph_distance": min_distance if min_distance != float("inf") else None,
                     "neighbors": neighbors[:5],
                     "neighbor_types": neighbor_labels,
-                    "degree": G.degree(node),
+                    "degree": g.degree(node),
                 })
 
         scored_entities.sort(key=lambda x: -x["serendipity"])
@@ -187,7 +187,7 @@ async def discover(req: DiscoverRequest):
             "home_entities": home_nodes[:5],
             "home_communities": list(home_communities),
             "discoveries": top,
-            "graph_size": {"nodes": G.number_of_nodes(), "edges": G.number_of_edges()},
+            "graph_size": {"nodes": g.number_of_nodes(), "edges": g.number_of_edges()},
         }
     except Exception as e:
         mark_neo4j_down()
@@ -215,7 +215,7 @@ async def explore_paths(req: ExplorePathsRequest):
     driver = neo4j_driver()
 
     try:
-        G = nx.Graph()
+        g = nx.Graph()
         edge_labels: dict[tuple[str, str], str] = {}
 
         with driver.session() as session:
@@ -224,7 +224,7 @@ async def explore_paths(req: ExplorePathsRequest):
                 "RETURN n.name AS name, n.community AS community, n.pagerank AS pagerank"
             )
             for record in nodes:
-                G.add_node(
+                g.add_node(
                     record["name"],
                     community=record["community"] if record["community"] is not None else -1,
                     pagerank=record["pagerank"] or 0.0,
@@ -235,14 +235,14 @@ async def explore_paths(req: ExplorePathsRequest):
                 "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
             )
             for record in rels:
-                G.add_edge(record["src"], record["dst"])
+                g.add_edge(record["src"], record["dst"])
                 edge_labels[(record["src"], record["dst"])] = record["rel_type"]
                 edge_labels[(record["dst"], record["src"])] = record["rel_type"]
 
         # Find source node (fuzzy match)
         source_lower = req.source.lower()
         source_node = None
-        for n in G.nodes():
+        for n in g.nodes():
             if n.lower() == source_lower or source_lower in n.lower():
                 source_node = n
                 break
@@ -256,7 +256,7 @@ async def explore_paths(req: ExplorePathsRequest):
             # Find paths to specific target
             target_lower = req.target.lower()
             target_node = None
-            for n in G.nodes():
+            for n in g.nodes():
                 if n.lower() == target_lower or target_lower in n.lower():
                     target_node = n
                     break
@@ -265,19 +265,19 @@ async def explore_paths(req: ExplorePathsRequest):
                 return {"ok": True, "paths": [], "reason": f"target '{req.target}' not found in graph"}
 
             try:
-                for path in nx.all_shortest_paths(G, source_node, target_node):
+                for path in nx.all_shortest_paths(g, source_node, target_node):
                     if len(paths) >= req.max_paths:
                         break
-                    paths.append(_format_path(path, edge_labels, G))
+                    paths.append(_format_path(path, edge_labels, g))
 
                 # Try one longer path for novelty
                 if len(paths) < req.max_paths:
                     try:
-                        all_simple = list(nx.all_simple_paths(G, source_node, target_node, cutoff=req.max_depth))
+                        all_simple = list(nx.all_simple_paths(g, source_node, target_node, cutoff=req.max_depth))
                         longer = [p for p in all_simple if len(p) > (len(paths[0]["nodes"]) if paths else 0)]
                         if longer:
                             chosen = random.choice(longer[:10])
-                            formatted = _format_path(chosen, edge_labels, G)
+                            formatted = _format_path(chosen, edge_labels, g)
                             formatted["path_type"] = "detour"
                             paths.append(formatted)
                     except Exception:
@@ -287,26 +287,26 @@ async def explore_paths(req: ExplorePathsRequest):
                 return {"ok": True, "paths": [], "reason": "no path exists between entities"}
         else:
             # Explore outward — find the most interesting reachable nodes
-            source_community = G.nodes[source_node].get("community", -1)
+            source_community = g.nodes[source_node].get("community", -1)
             reachable: dict[str, int] = {}
-            for node in nx.single_source_shortest_path_length(G, source_node, cutoff=req.max_depth):
+            for node in nx.single_source_shortest_path_length(g, source_node, cutoff=req.max_depth):
                 if node != source_node:
-                    reachable[node] = nx.shortest_path_length(G, source_node, node)
+                    reachable[node] = nx.shortest_path_length(g, source_node, node)
 
             # Score by cross-community + distance
             scored = []
             for node, dist in reachable.items():
-                c = G.nodes[node].get("community", -1)
+                c = g.nodes[node].get("community", -1)
                 cross = 1.0 if c != source_community and c >= 0 else 0.3
                 interest = cross * dist
                 scored.append((node, interest, dist))
 
             scored.sort(key=lambda x: -x[1])
 
-            for node, interest, dist in scored[:req.max_paths]:
+            for node, interest, _dist in scored[:req.max_paths]:
                 try:
-                    path = nx.shortest_path(G, source_node, node)
-                    formatted = _format_path(path, edge_labels, G)
+                    path = nx.shortest_path(g, source_node, node)
+                    formatted = _format_path(path, edge_labels, g)
                     formatted["interest_score"] = round(interest, 3)
                     paths.append(formatted)
                 except nx.NetworkXNoPath:
@@ -344,13 +344,13 @@ async def generate_discovery_candidates():
     driver = neo4j_driver()
 
     try:
-        G = nx.Graph()
+        g = nx.Graph()
         with driver.session() as session:
             for record in session.run(
                 "MATCH (n) WHERE n.name IS NOT NULL "
                 "RETURN n.name AS name, n.community AS community, n.pagerank AS pagerank"
             ):
-                G.add_node(
+                g.add_node(
                     record["name"],
                     community=record["community"] if record["community"] is not None else -1,
                     pagerank=record["pagerank"] or 0.0,
@@ -360,32 +360,32 @@ async def generate_discovery_candidates():
                 "MATCH (a)-[r]->(b) WHERE a.name IS NOT NULL AND b.name IS NOT NULL "
                 "RETURN a.name AS src, b.name AS dst, type(r) AS rel_type"
             ):
-                G.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
+                g.add_edge(record["src"], record["dst"], rel_type=record["rel_type"])
 
-        if G.number_of_nodes() < 10:
+        if g.number_of_nodes() < 10:
             return {"ok": True, "candidates": 0, "reason": "graph too small"}
 
         # Find cross-community bridges — edges that connect different communities
         bridges: list[dict[str, Any]] = []
-        for u, v in G.edges():
-            cu = G.nodes[u].get("community", -1)
-            cv = G.nodes[v].get("community", -1)
+        for u, v in g.edges():
+            cu = g.nodes[u].get("community", -1)
+            cv = g.nodes[v].get("community", -1)
             if cu != cv and cu >= 0 and cv >= 0:
                 # Bridge score: lower degree = more surprising bridge
-                bridge_score = 1.0 / (1.0 + min(G.degree(u), G.degree(v)))
+                bridge_score = 1.0 / (1.0 + min(g.degree(u), g.degree(v)))
                 bridges.append({
                     "entity_a": u,
                     "entity_b": v,
                     "community_a": cu,
                     "community_b": cv,
                     "bridge_score": bridge_score,
-                    "rel_type": G.edges[u, v].get("rel_type", "CONNECTED"),
+                    "rel_type": g.edges[u, v].get("rel_type", "CONNECTED"),
                 })
 
         bridges.sort(key=lambda x: -x["bridge_score"])
 
         # Find weak ties (betweenness centrality identifies bridge nodes)
-        betweenness = nx.betweenness_centrality(G)
+        betweenness = nx.betweenness_centrality(g)
         high_betweenness = sorted(betweenness.items(), key=lambda x: -x[1])[:20]
 
         # Store top candidates in Neo4j
@@ -541,7 +541,7 @@ async def discovery_stats():
 def _format_path(
     path: list[str],
     edge_labels: dict[tuple[str, str], str],
-    G: Any,
+    graph: Any,
 ) -> dict[str, Any]:
     """Format a graph path into a readable structure."""
     edges = []
@@ -551,7 +551,7 @@ def _format_path(
 
     communities_traversed = set()
     for node in path:
-        c = G.nodes[node].get("community", -1)
+        c = graph.nodes[node].get("community", -1)
         if c >= 0:
             communities_traversed.add(c)
 

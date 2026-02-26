@@ -87,7 +87,7 @@ def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap
 
 def collect_agent_files(agent: str | None = None) -> list[tuple[str, str, str]]:
     """Collect markdown files from agent workspaces.
-    
+
     Returns: list of (file_path, agent_id, source_type)
     """
     files = []
@@ -233,9 +233,8 @@ def backfill(
     # Build points
     now = datetime.now(UTC).isoformat()
     points = []
-    for chunk, vector in zip(new_chunks, all_vectors):
+    for chunk, vector in zip(new_chunks, all_vectors, strict=False):
         memory_text = chunk["text"][:500]  # Mem0 convention: truncated for display
-        section = f" [{chunk['section']}]" if chunk.get("section") else ""
 
         points.append(PointStruct(
             id=str(uuid4()),
@@ -255,11 +254,11 @@ def backfill(
         ))
 
     # Upsert in batches
-    UPSERT_BATCH = 100
-    for i in range(0, len(points), UPSERT_BATCH):
-        batch = points[i : i + UPSERT_BATCH]
+    upsert_batch = 100
+    for i in range(0, len(points), upsert_batch):
+        batch = points[i : i + upsert_batch]
         client.upsert(collection_name=COLLECTION, points=batch)
-        print(f"  Upserted {min(i + UPSERT_BATCH, len(points))}/{len(points)}")
+        print(f"  Upserted {min(i + upsert_batch, len(points))}/{len(points)}")
 
     # Verify
     info = client.get_collection(COLLECTION)

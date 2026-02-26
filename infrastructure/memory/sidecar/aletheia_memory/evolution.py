@@ -16,6 +16,14 @@ from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 logger = logging.getLogger("aletheia_memory.evolution")
 evolution_router = APIRouter(prefix="/evolution")
 
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _schedule_task(coro: Any) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EVOLUTION_THRESHOLD = 0.80  # similarity above which we evolve rather than add
 REINFORCEMENT_BOOST = 0.02  # score boost per access
@@ -107,7 +115,7 @@ async def check_evolution(req: EvolveRequest, request: Request):
 
         # Record evolution in Neo4j for lineage tracking
         if neo4j_available():
-            asyncio.create_task(_record_evolution_graph(old_text, evolved_text, old_id))
+            _schedule_task(_record_evolution_graph(old_text, evolved_text, old_id))
 
         return {
             "ok": True,
