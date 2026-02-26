@@ -60,8 +60,8 @@ async def check_evolution(req: EvolveRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.text, **kwargs)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception:
-        raise HTTPException(status_code=500, detail="Search failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Search failed") from e
 
     if not isinstance(results, list):
         return {"ok": True, "action": "add_new", "reason": "no existing memories"}
@@ -118,8 +118,8 @@ async def check_evolution(req: EvolveRequest, request: Request):
             "similarity": best.get("score", 0),
             "result": result,
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="Evolution failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Evolution failed") from e
 
 
 @evolution_router.post("/reinforce")
@@ -174,8 +174,8 @@ async def decay_memories(req: DecayRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to fetch memories")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch memories") from e
 
     if not isinstance(entries, list):
         return {"ok": True, "decayed": 0, "checked": 0}

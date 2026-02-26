@@ -56,8 +56,8 @@ async def discover(req: DiscoverRequest):
 
     try:
         import networkx as nx
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Missing dependency")
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="Missing dependency") from e
 
     driver = neo4j_driver()
 
@@ -209,8 +209,8 @@ async def explore_paths(req: ExplorePathsRequest):
 
     try:
         import networkx as nx
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Missing dependency")
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="Missing dependency") from e
 
     driver = neo4j_driver()
 
@@ -338,8 +338,8 @@ async def generate_discovery_candidates():
 
     try:
         import networkx as nx
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Missing dependency")
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="Missing dependency") from e
 
     driver = neo4j_driver()
 

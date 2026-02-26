@@ -142,7 +142,7 @@ async def add_memory(req: AddRequest, request: Request):
                 return {"ok": True, "result": {"tier3_embed_only": True, "id": point_id}}
             except Exception as e:
                 logger.exception("Tier 3 embedding failed")
-                raise HTTPException(status_code=500, detail=str(e))
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
         result = await asyncio.to_thread(mem.add, req.text, **kwargs)
         graph_degraded = False
@@ -169,7 +169,7 @@ async def add_memory(req: AddRequest, request: Request):
             logger.warning("Neo4j failed during add, vector portion likely saved: %s", e)
             return {"ok": True, "result": {"graph_degraded": True}, "warning": "Neo4j unavailable, stored vector only"}
         logger.exception("add_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
@@ -405,7 +405,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
 
     except Exception as e:
         logger.exception("add_batch failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/search")
@@ -439,9 +439,9 @@ async def search_memory(req: SearchRequest, request: Request):
             results = _apply_recency_boost(results)
             results = _apply_confidence_weight(results)
         return {"ok": True, "results": results}
-    except Exception:
+    except Exception as e:
         logger.exception("search_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.post("/graph_search")
@@ -455,9 +455,9 @@ async def graph_search(req: SearchRequest, request: Request):
         results = await asyncio.to_thread(mem.search, req.query, **kwargs)
         graph_results = [r for r in results.get("results", []) if r.get("source") == "graph"]
         return {"ok": True, "results": graph_results}
-    except Exception:
+    except Exception as e:
         logger.exception("graph_search failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.post("/import")
@@ -512,9 +512,9 @@ async def list_memories(
         results = await asyncio.to_thread(mem.get_all, **kwargs)
         entries = results.get("results", results) if isinstance(results, dict) else results
         return {"ok": True, "memories": entries}
-    except Exception:
+    except Exception as e:
         logger.exception("list_memories failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.delete("/memories/{memory_id}")
@@ -523,9 +523,9 @@ async def delete_memory(memory_id: str, request: Request):
     try:
         await asyncio.to_thread(mem.delete, memory_id)
         return {"ok": True}
-    except Exception:
+    except Exception as e:
         logger.exception("delete_memory failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.get("/health")
@@ -968,8 +968,8 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to fetch memories")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch memories") from e
 
     if not isinstance(entries, list):
         return {"ok": True, "candidates": [], "message": "No memories found"}
@@ -1032,8 +1032,8 @@ async def merge_memories(req: MergeRequest, request: Request):
     try:
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.get("/fact_stats")
@@ -1044,8 +1044,8 @@ async def fact_stats(request: Request, user_id: str = "default"):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
     if not isinstance(entries, list):
         return {"ok": True, "total": 0}
@@ -1099,8 +1099,8 @@ async def retract_memory(req: RetractRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, user_id=req.user_id, limit=20)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception:
-        raise HTTPException(status_code=500, detail="Search failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Search failed") from e
 
     if not isinstance(results, list) or not results:
         return {"ok": True, "retracted": 0, "message": "No matching memories found"}
@@ -1592,8 +1592,8 @@ async def analyze_graph(req: GraphAnalyzeRequest):
             "dedup_candidates": dedup_candidates[:10],
             "scores_stored": scores_stored,
         }
-    except ImportError:
-        raise HTTPException(status_code=500, detail="networkx not installed")
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail="networkx not installed") from e
     except Exception as e:
         mark_neo4j_down()
         logger.warning("graph/analyze failed (Neo4j may be down): %s", e)
@@ -1745,8 +1745,8 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
             "aliases_resolved": {},
             "total_candidates": len(results) if isinstance(results, list) else 0,
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 # --- Relationship Type Normalization ---
@@ -2304,7 +2304,7 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
 
     except Exception as e:
         logger.exception("add_direct failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/memory/correct")
@@ -2390,7 +2390,7 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request):
 
     except Exception as e:
         logger.exception("memory/correct failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/memory/forget")
@@ -2457,7 +2457,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
 
     except Exception as e:
         logger.exception("memory/forget failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 
@@ -2549,7 +2549,7 @@ async def memory_health(request: Request, user_id: str = "default"):
         }
     except Exception as e:
         logger.exception("memory/health failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/graph/timeline")
@@ -2569,13 +2569,13 @@ async def graph_timeline(
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid 'since' date: {since}")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid 'since' date: {since}") from e
     if until:
         try:
             until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid 'until' date: {until}")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid 'until' date: {until}") from e
 
     # Get all entities from Neo4j
     try:
@@ -2700,7 +2700,7 @@ async def graph_agent_overlay(request: Request, user_id: str = "default"):
         }
     except Exception as e:
         logger.exception("graph/agent-overlay failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/graph/drift")
