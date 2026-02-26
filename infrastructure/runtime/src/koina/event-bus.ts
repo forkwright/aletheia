@@ -29,7 +29,10 @@ export type EventName =
   | "planning:phase-started"
   | "planning:phase-complete"
   | "planning:checkpoint"
-  | "planning:complete";
+  | "planning:complete"
+  | "planning:requirement-changed"
+  | "planning:phase-changed"
+  | "planning:discussion-answered";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;
