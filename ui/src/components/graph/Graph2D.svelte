@@ -30,6 +30,48 @@
     driftData?: DriftData | null;
   } = $props();
 
+  // Runtime node/link shapes from force-graph (untyped 3rd-party library)
+  interface FGNode {
+    id: string;
+    pagerank?: number;
+    community?: number;
+    x: number;
+    y: number;
+  }
+
+  interface FGLink {
+    rel_type: string;
+  }
+
+  interface ForceGraph2DInstance {
+    graphData(data?: { nodes: object[]; links: object[] }): { nodes: FGNode[]; links: FGLink[] };
+    backgroundColor(color: string): this;
+    width(w: number): this;
+    height(h: number): this;
+    nodeId(id: string): this;
+    nodeVal(fn: (node: FGNode) => number): this;
+    nodeColor(fn: (node: FGNode) => string): this;
+    nodeLabel(fn: (node: FGNode) => string): this;
+    nodeCanvasObjectMode(fn: () => string): this;
+    nodeCanvasObject(fn: (node: FGNode, ctx: CanvasRenderingContext2D, globalScale: number) => void): this;
+    linkSource(id: string): this;
+    linkTarget(id: string): this;
+    linkColor(fn: (link: FGLink) => string): this;
+    linkWidth(w: number): this;
+    linkDirectionalArrowLength(len: number): this;
+    linkDirectionalArrowRelPos(pos: number): this;
+    linkLabel(fn: (link: FGLink) => string): this;
+    onNodeClick(fn: (node: FGNode) => void): this;
+    onNodeHover(fn: (node: FGNode | null) => void): this;
+    onBackgroundClick(fn: () => void): this;
+    warmupTicks(n: number): this;
+    cooldownTime(ms: number): this;
+    centerAt(x: number, y: number, ms: number): void;
+    zoom(factor: number, ms: number): void;
+    zoomToFit(ms: number, padding: number): void;
+    _destructor(): void;
+  }
+
   // Build lookup sets for drift visualization
   let orphanedSet = $derived(new Set(driftData?.orphaned_nodes?.map(n => n.name) ?? []));
   let staleSet = $derived(new Set(driftData?.stale_entities?.map(e => e.name) ?? []));
@@ -53,7 +95,7 @@
 
   // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
   let container: HTMLDivElement;
-  let graph = $state<any>(null);
+  let graph = $state<ForceGraph2DInstance | null>(null);
   let resizeObserver: ResizeObserver | null = null;
 
   function buildGraphInput(data: AppGraphData) {
@@ -67,7 +109,7 @@
   export function focusOnNode(nodeId: string) {
     if (!graph) return;
     const gd = graph.graphData();
-    const node = gd.nodes.find((n: any) => n.id === nodeId);
+    const node = gd.nodes.find((n) => n.id === nodeId);
     if (node && node.x !== null && node.y !== null) {
       graph.centerAt(node.x, node.y, 500);
       graph.zoom(4, 500);
@@ -83,14 +125,14 @@
 
     const ForceGraph2D = (await import("force-graph")).default;
 
-    graph = new ForceGraph2D(container)
+    graph = (new ForceGraph2D(container) as unknown as ForceGraph2DInstance)
       .backgroundColor("#0a0a0f")
       .width(container.clientWidth)
       .height(container.clientHeight)
       .graphData(buildGraphInput(graphData))
       .nodeId("id")
-      .nodeVal((node: any) => pagerankSize(node.pagerank || 0.001))
-      .nodeColor((node: any) => {
+      .nodeVal((node) => pagerankSize(node.pagerank || 0.001))
+      .nodeColor((node) => {
         if (hoverNodeId && node.id === hoverNodeId) return "#ffffff";
         if (selectedNodeId === node.id) return "#ffffff";
 
@@ -113,7 +155,7 @@
         if (hl !== null && node.community !== hl) return "rgba(48, 54, 61, 0.4)";
         return communityColor(node.community ?? -1);
       })
-      .nodeLabel((node: any) => {
+      .nodeLabel((node) => {
         const pr = node.pagerank ? node.pagerank.toFixed(4) : "\u2014";
         const comm = node.community >= 0 ? node.community : "\u2014";
         let label = `${node.id}\nCommunity ${comm} \u00b7 PR ${pr}`;
@@ -129,7 +171,7 @@
         return label;
       })
       .nodeCanvasObjectMode(() => "after")
-      .nodeCanvasObject((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      .nodeCanvasObject((node, ctx, globalScale) => {
         const fontSize = Math.max(10 / globalScale, 1.5);
         if (fontSize < 1.5) return;
         ctx.font = `${fontSize}px system-ui, -apple-system, sans-serif`;
@@ -174,15 +216,15 @@
       })
       .linkSource("source")
       .linkTarget("target")
-      .linkColor((link: any) => edgeColor(link.rel_type))
+      .linkColor((link) => edgeColor(link.rel_type))
       .linkWidth(0.8)
       .linkDirectionalArrowLength(4)
       .linkDirectionalArrowRelPos(1)
-      .linkLabel((link: any) => link.rel_type)
-      .onNodeClick((node: any) => {
+      .linkLabel((link) => link.rel_type)
+      .onNodeClick((node) => {
         onNodeClick?.(node.id);
       })
-      .onNodeHover((node: any) => {
+      .onNodeHover((node) => {
         hoverNodeId = node?.id ?? null;
         container.style.cursor = node ? "pointer" : "default";
       })

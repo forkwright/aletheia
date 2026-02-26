@@ -31,7 +31,7 @@
       description: string;
       scope?: string;
     };
-    projectContext?: any;
+    projectContext?: unknown;
     contextHash?: string;
     createdAt: string;
     updatedAt: string;

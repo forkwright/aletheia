@@ -64,8 +64,8 @@
         options: q.options,
         ...(q.recommendation !== undefined && { recommendation: q.recommendation }),
         answered: q.status === "answered" || q.status === "skipped",
-        ...(q.decision != null && { decision: q.decision }),
-        ...(q.userNote != null && { userNote: q.userNote }),
+        ...(q.decision !== null && q.decision !== undefined && { decision: q.decision }),
+        ...(q.userNote !== null && q.userNote !== undefined && { userNote: q.userNote }),
         ...(q.status !== "pending" && q.updatedAt !== undefined && { answeredAt: q.updatedAt }),
       }));
     } catch (err) {

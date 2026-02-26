@@ -21,6 +21,51 @@
     onBackgroundClick?: () => void;
   } = $props();
 
+  // Runtime node/link shapes from 3d-force-graph (untyped 3rd-party library)
+  interface FGNode3D {
+    id: string;
+    pagerank?: number;
+    community?: number;
+    x: number;
+    y: number;
+    z: number;
+  }
+
+  interface FGLink3D {
+    rel_type: string;
+  }
+
+  interface ForceGraph3DInstance {
+    graphData(data?: { nodes: object[]; links: object[] }): { nodes: FGNode3D[]; links: FGLink3D[] };
+    backgroundColor(color: string): this;
+    showNavInfo(show: boolean): this;
+    width(w: number): this;
+    height(h: number): this;
+    nodeId(id: string): this;
+    nodeVal(fn: (node: FGNode3D) => number): this;
+    nodeColor(fn: (node: FGNode3D) => string): this;
+    nodeLabel(fn: (node: FGNode3D) => string): this;
+    nodeOpacity(opacity: number): this;
+    linkSource(id: string): this;
+    linkTarget(id: string): this;
+    linkColor(fn: (link: FGLink3D) => string): this;
+    linkWidth(w: number): this;
+    linkOpacity(opacity: number): this;
+    linkDirectionalArrowLength(len: number): this;
+    linkDirectionalArrowRelPos(pos: number): this;
+    linkLabel(fn: (link: FGLink3D) => string): this;
+    onNodeClick(fn: (node: FGNode3D) => void): this;
+    onNodeHover(fn: (node: FGNode3D | null) => void): this;
+    onBackgroundClick(fn: () => void): this;
+    warmupTicks(n: number): this;
+    cooldownTime(ms: number): this;
+    onEngineTick(fn: () => void): this;
+    scene(): THREE.Scene;
+    cameraPosition(pos: { x: number; y: number; z: number }, lookAt: FGNode3D, ms: number): void;
+    zoomToFit(ms: number, padding: number): void;
+    _destructor(): void;
+  }
+
   function pagerankSize(pr: number): number {
     const clamped = Math.max(pr, 0.0001);
     const scaled = (Math.log(clamped) + 10) / 10;
@@ -40,7 +85,7 @@
 
   // oxlint-disable-next-line no-unassigned-vars -- Svelte bind:this; assigned by Svelte runtime via template
   let container: HTMLDivElement;
-  let graph = $state<any>(null);
+  let graph = $state<ForceGraph3DInstance | null>(null);
   let resizeObserver: ResizeObserver | null = null;
 
   // --- Community Cloud System ---
@@ -80,10 +125,10 @@
     return sprite;
   }
 
-  function updateClouds(runtimeNodes: any[]) {
+  function updateClouds(runtimeNodes: FGNode3D[]) {
     if (!cloudScene) return;
 
-    const byCommunity = new SvelteMap<number, object[]>();
+    const byCommunity = new SvelteMap<number, FGNode3D[]>();
     for (const node of runtimeNodes) {
       if (node.community === null || node.community === undefined || node.community < 0) continue;
       if (node.x === null || node.x === undefined) continue;
@@ -147,7 +192,7 @@
 
       let sprite = cloudLabels.get(cid);
       if (!sprite) {
-        const topNode = members.reduce((a: any, b: any) =>
+        const topNode = members.reduce((a, b) =>
           (a.pagerank || 0) > (b.pagerank || 0) ? a : b
         );
         sprite = createLabelSprite(topNode.id, communityColor(cid));
@@ -185,7 +230,7 @@
   export function focusOnNode(nodeId: string) {
     if (!graph) return;
     const gd = graph.graphData();
-    const runtimeNode = gd.nodes.find((n: any) => n.id === nodeId);
+    const runtimeNode = gd.nodes.find((n) => n.id === nodeId);
     if (!runtimeNode) return;
 
     const distance = 120;
@@ -206,24 +251,24 @@
 
     const ForceGraph3D = (await import("3d-force-graph")).default;
 
-    graph = new ForceGraph3D(container)
+    graph = (new ForceGraph3D(container) as unknown as ForceGraph3DInstance)
       .backgroundColor("#0a0a0f")
       .showNavInfo(false)
       .width(container.clientWidth)
       .height(container.clientHeight)
       .graphData(buildGraphInput(graphData))
       .nodeId("id")
-      .nodeVal((node: any) => pagerankSize(node.pagerank || 0.001))
-      .nodeColor((node: any) => {
+      .nodeVal((node) => pagerankSize(node.pagerank || 0.001))
+      .nodeColor((node) => {
         if (hoverNodeId && node.id === hoverNodeId) return "#ffffff";
         if (selectedNodeId === node.id) return "#ffffff";
         const hl = highlightedCommunity;
         if (hl !== null && node.community !== hl) return "rgba(48, 54, 61, 0.4)";
         return communityColor(node.community ?? -1);
       })
-      .nodeLabel((node: any) => {
+      .nodeLabel((node) => {
         const pr = node.pagerank ? node.pagerank.toFixed(4) : "\u2014";
-        const comm = node.community >= 0 ? node.community : "\u2014";
+        const comm = node.community !== undefined && node.community >= 0 ? node.community : "\u2014";
         return `<span style="color:#e8e6e3;font-family:system-ui;font-size:12px">
           <b>${node.id}</b><br/>
           Community ${comm} \u00b7 PR ${pr}
@@ -232,16 +277,16 @@
       .nodeOpacity(0.9)
       .linkSource("source")
       .linkTarget("target")
-      .linkColor((link: any) => edgeColor(link.rel_type))
+      .linkColor((link) => edgeColor(link.rel_type))
       .linkWidth(0.5)
       .linkOpacity(0.6)
       .linkDirectionalArrowLength(3)
       .linkDirectionalArrowRelPos(1)
-      .linkLabel((link: any) => `<span style="color:#6b6560;font-size:11px">${link.rel_type}</span>`)
-      .onNodeClick((node: any) => {
+      .linkLabel((link) => `<span style="color:#6b6560;font-size:11px">${link.rel_type}</span>`)
+      .onNodeClick((node) => {
         onNodeClick?.(node.id);
       })
-      .onNodeHover((node: any) => {
+      .onNodeHover((node) => {
         hoverNodeId = node?.id ?? null;
         container.style.cursor = node ? "pointer" : "default";
       })

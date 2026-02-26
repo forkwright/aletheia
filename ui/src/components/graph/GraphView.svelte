@@ -28,9 +28,14 @@
 
   type ViewMode = "2d" | "3d";
 
+  interface Graph3DInstance {
+    focusOnNode(nodeId: string): void;
+    zoomToFit(): void;
+  }
+
   let viewMode = $state<ViewMode>("2d");
   let graph2d = $state<Graph2D | null>(null);
-  let graph3d = $state<any>(null);
+  let graph3d = $state<Graph3DInstance | null>(null);
   let showContextLookup = $state(false);
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
