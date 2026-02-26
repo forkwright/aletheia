@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Any
 
 from .llm_backend import detect_backend
 
@@ -57,18 +58,17 @@ GRAPH_EXTRACTION_PROMPT = (
     "CREATED, MAINTAINS, DEPENDS_ON, LOCATED_IN, PART_OF, "
     "SCHEDULED_FOR, DIAGNOSED_WITH, PRESCRIBED, TREATS, "
     "VEHICLE_IS, INSTALLED_ON, COMPATIBLE_WITH, CONNECTED_TO, "
-    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES, "
-    "RELATES_TO. "
+    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES. "
     "Do NOT invent new relationship types outside this list. "
-    "Use RELATES_TO as fallback when no specific type fits."
+    "If no type from this list specifically describes the relationship, skip it entirely."
 )
 
 # Detect LLM backend at import time
-_backend = detect_backend()
-LLM_BACKEND = _backend
+_backend: dict[str, Any] = detect_backend()
+LLM_BACKEND: dict[str, Any] = _backend
 
 
-def build_mem0_config(backend: dict = None) -> dict:
+def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build Mem0 config using detected backend."""
     if backend is None:
         backend = _backend
@@ -93,7 +93,7 @@ def build_mem0_config(backend: dict = None) -> dict:
         }
         embedding_dims = 384  # bge-small-en-v1.5
 
-    config = {
+    config: dict[str, Any] = {
         "embedder": embedder_config,
         "vector_store": {
             "provider": "qdrant",
@@ -104,16 +104,6 @@ def build_mem0_config(backend: dict = None) -> dict:
                 "embedding_model_dims": embedding_dims,
             },
         },
-        "graph_store": {
-            "provider": "neo4j",
-            "config": {
-                "url": NEO4J_URL,
-                "username": NEO4J_USER,
-                "password": NEO4J_PASSWORD,
-                "base_label": True,
-            },
-        },
-        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
         "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
     }
 
@@ -138,4 +128,4 @@ def build_mem0_config(backend: dict = None) -> dict:
 
 
 # Build the config for backward compat
-MEM0_CONFIG = build_mem0_config()
+MEM0_CONFIG: dict[str, Any] = build_mem0_config()

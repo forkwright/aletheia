@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-02-25T14:55:50.788Z",
+  "corpusSize": 22,
+  "aggregate": {
+    "matched": 218,
+    "extracted": 447,
+    "expected": 369,
+    "precision": 0.48769574944071586,
+    "recall": 0.5907859078590786,
+    "f1": 0.5343137254901961
+  },
+  "perType": {
+    "facts": {
+      "matched": 121,
+      "extracted": 210,
+      "expected": 217,
+      "precision": 0.5761904761904761,
+      "recall": 0.5576036866359447,
+      "f1": 0.566744730679157
+    },
+    "decisions": {
+      "matched": 15,
+      "extracted": 61,
+      "expected": 37,
+      "precision": 0.2459016393442623,
+      "recall": 0.40540540540540543,
+      "f1": 0.30612244897959184
+    },
+    "contradictions": {
+      "matched": 1,
+      "extracted": 2,
+      "expected": 12,
+      "precision": 0.5,
+      "recall": 0.08333333333333333,
+      "f1": 0.14285714285714285
+    },
+    "entities": {
+      "matched": 81,
+      "extracted": 174,
+      "expected": 103,
+      "precision": 0.46551724137931033,
+      "recall": 0.7864077669902912,
+      "f1": 0.5848375451263538
+    }
+  },
+  "perAgent": {
+    "akron": {
+      "matched": 55,
+      "extracted": 119,
+      "expected": 100,
+      "precision": 0.46218487394957986,
+      "recall": 0.55,
+      "f1": 0.5022831050228311
+    },
+    "arbor": {
+      "matched": 13,
+      "extracted": 20,
+      "expected": 19,
+      "precision": 0.65,
+      "recall": 0.6842105263157895,
+      "f1": 0.6666666666666667
+    },
+    "demiurge": {
+      "matched": 22,
+      "extracted": 43,
+      "expected": 30,
+      "precision": 0.5116279069767442,
+      "recall": 0.7333333333333333,
+      "f1": 0.6027397260273971
+    },
+    "eiron": {
+      "matched": 17,
+      "extracted": 42,
+      "expected": 31,
+      "precision": 0.40476190476190477,
+      "recall": 0.5483870967741935,
+      "f1": 0.4657534246575342
+    },
+    "syl": {
+      "matched": 32,
+      "extracted": 55,
+      "expected": 64,
+      "precision": 0.5818181818181818,
+      "recall": 0.5,
+      "f1": 0.5378151260504201
+    },
+    "syn": {
+      "matched": 79,
+      "extracted": 168,
+      "expected": 125,
+      "precision": 0.47023809523809523,
+      "recall": 0.632,
+      "f1": 0.5392491467576791
+    }
+  }
+}

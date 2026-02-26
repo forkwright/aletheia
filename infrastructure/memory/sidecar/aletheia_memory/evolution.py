@@ -1,24 +1,29 @@
-# Memory evolution — A-Mem-inspired patterns for memory lifecycle management
-# NOTE: Do NOT add 'from __future__ import annotations' — see routes.py comment.
+# Memory evolution -- A-Mem-inspired patterns for memory lifecycle management
+# NOTE: Do NOT add 'from __future__ import annotations' -- see routes.py comment.
 
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
+
+if TYPE_CHECKING:
+    import neo4j
 
 logger = logging.getLogger("aletheia_memory.evolution")
 evolution_router = APIRouter(prefix="/evolution")
 
+_background_tasks: set[asyncio.Task[None]] = set()
+
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-EVOLUTION_THRESHOLD = 0.80  # similarity above which we evolve rather than add
-REINFORCEMENT_BOOST = 0.02  # score boost per access
+EVOLUTION_THRESHOLD = 0.80
+REINFORCEMENT_BOOST = 0.02
 
 
 class EvolveRequest(BaseModel):
@@ -39,8 +44,14 @@ class DecayRequest(BaseModel):
     dry_run: bool = False
 
 
+def _open_neo4j_session() -> "neo4j.Session":
+    driver = neo4j_driver()
+    _factory = getattr(driver, "session")  # noqa: B009 -- pyright: neo4j **config is Unknown
+    return _factory()
+
+
 @evolution_router.post("/check")
-async def check_evolution(req: EvolveRequest, request: Request):
+async def check_evolution(req: EvolveRequest, request: Request) -> dict[str, Any]:
     """Check if a new memory should evolve an existing one or be added fresh.
 
     Pipeline:
@@ -49,42 +60,49 @@ async def check_evolution(req: EvolveRequest, request: Request):
     3. Replace old memory with evolved version
     4. If no match, return suggestion to add normally
     """
-    mem = getattr(request.app.state, 'memory', None)
+    mem: Any = getattr(request.app.state, 'memory', None)
     if mem is None:
         raise HTTPException(status_code=503, detail='Memory not initialized')
     kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": 5}
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
 
-    # Find candidates for evolution
     try:
-        raw = await asyncio.to_thread(mem.search, req.text, **kwargs)
-        results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Search failed")
+        raw: Any = await asyncio.to_thread(mem.search, req.text, **kwargs)
+        if isinstance(raw, dict):
+            raw_dict = cast("dict[str, Any]", raw)
+            results_any: Any = raw_dict.get("results", raw)
+        else:
+            results_any = raw
+    except Exception:
+        raise HTTPException(status_code=500, detail="Search failed") from None
 
-    if not isinstance(results, list):
+    if not isinstance(results_any, list):
         return {"ok": True, "action": "add_new", "reason": "no existing memories"}
 
-    # Find best match above threshold
-    candidates = [
-        r for r in results
-        if r.get("score", 0) > EVOLUTION_THRESHOLD
+    results_list: list[Any] = cast("list[Any]", results_any)
+    candidates: list[Any] = [
+        r for r in results_list
+        if isinstance(r, dict) and cast("dict[str, Any]", r).get("score", 0) > EVOLUTION_THRESHOLD
     ]
 
     if not candidates:
+        first_entry: Any = results_list[0] if results_list else None
+        first_score: Any = (
+            cast("dict[str, Any]", first_entry).get("score", 0)
+            if isinstance(first_entry, dict) else 0
+        )
         return {
             "ok": True,
             "action": "add_new",
             "reason": "no similar memories above threshold",
-            "closest_score": results[0].get("score", 0) if results else 0,
+            "closest_score": first_score,
         }
 
-    best = candidates[0]
-    old_text = best.get("memory", "")
-    old_id = best.get("id", "")
+    best: dict[str, Any] = candidates[0]
+    old_text: str = str(best.get("memory", ""))
+    old_id: str = str(best.get("id", ""))
 
-    # Use LLM to merge old + new into evolved version
     evolved_text = await _evolve_with_llm(old_text, req.text)
     if not evolved_text:
         return {
@@ -93,7 +111,6 @@ async def check_evolution(req: EvolveRequest, request: Request):
             "reason": "evolution merge failed, falling back to add",
         }
 
-    # Replace old memory with evolved version
     try:
         await asyncio.to_thread(mem.delete, old_id)
         add_kwargs: dict[str, Any] = {"user_id": req.user_id}
@@ -101,13 +118,16 @@ async def check_evolution(req: EvolveRequest, request: Request):
             add_kwargs["agent_id"] = req.agent_id
         add_kwargs["metadata"] = {
             "evolved_from": old_id,
-            "evolution_timestamp": datetime.now(timezone.utc).isoformat(),
+            "evolution_timestamp": datetime.now(UTC).isoformat(),
         }
-        result = await asyncio.to_thread(mem.add, evolved_text, **add_kwargs)
+        result: Any = await asyncio.to_thread(mem.add, evolved_text, **add_kwargs)
 
-        # Record evolution in Neo4j for lineage tracking
         if neo4j_available():
-            asyncio.create_task(_record_evolution_graph(old_text, evolved_text, old_id))
+            task: asyncio.Task[None] = asyncio.create_task(
+                _record_evolution_graph(old_text, evolved_text, old_id)
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
         return {
             "ok": True,
@@ -118,13 +138,15 @@ async def check_evolution(req: EvolveRequest, request: Request):
             "similarity": best.get("score", 0),
             "result": result,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Evolution failed")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Evolution failed") from None
 
 
 @evolution_router.post("/reinforce")
-async def reinforce_memory(req: ReinforcementRequest, request: Request):
-    """Reinforce a memory — mark it as accessed, boost its relevance.
+async def reinforce_memory(
+    req: ReinforcementRequest, request: Request
+) -> dict[str, Any]:
+    """Reinforce a memory -- mark it as accessed, boost its relevance.
 
     Called when a memory is retrieved and used in a response.
     Tracks access count and last access time in Neo4j.
@@ -132,12 +154,12 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
     if not neo4j_available():
         return {"ok": True, "reinforced": False, "reason": "graph_unavailable"}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            result = session.run(
+        with _open_neo4j_session() as session:
+            record = session.run(
                 """
                 MERGE (m:MemoryAccess {memory_id: $memory_id})
                 ON CREATE SET m.access_count = 1, m.first_accessed = $now, m.last_accessed = $now
@@ -146,7 +168,7 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
                 """,
                 memory_id=req.memory_id, now=now,
             ).single()
-            access_count = result["count"] if result else 0
+            access_count: Any = record["count"] if record is not None else 0
         driver.close()
 
         return {
@@ -161,49 +183,58 @@ async def reinforce_memory(req: ReinforcementRequest, request: Request):
 
 
 @evolution_router.post("/decay")
-async def decay_memories(req: DecayRequest, request: Request):
-    """Decay unused memories — reduce confidence of memories not accessed recently.
+async def decay_memories(req: DecayRequest, request: Request) -> dict[str, Any]:
+    """Decay unused memories -- reduce confidence of memories not accessed recently.
 
     Designed to run from nightly consolidation cron.
     Memories with MemoryAccess nodes accessed within days_inactive are exempt.
     """
-    mem = getattr(request.app.state, 'memory', None)
+    mem: Any = getattr(request.app.state, 'memory', None)
     if mem is None:
         raise HTTPException(status_code=503, detail='Memory not initialized')
 
     try:
-        raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)
-        entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to fetch memories")
+        raw: Any = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=500)
+        if isinstance(raw, dict):
+            raw_dict = cast("dict[str, Any]", raw)
+            entries_any: Any = raw_dict.get("results", raw)
+        else:
+            entries_any = raw
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch memories") from None
 
-    if not isinstance(entries, list):
+    if not isinstance(entries_any, list):
         return {"ok": True, "decayed": 0, "checked": 0}
 
-    # Get recently-accessed memory IDs from Neo4j
+    entries: list[Any] = cast("list[Any]", entries_any)
+
     recently_accessed: set[str] = set()
     if neo4j_available():
         try:
             driver = neo4j_driver()
-            with driver.session() as session:
+            with _open_neo4j_session() as session:
                 result = session.run(
                     "MATCH (m:MemoryAccess) WHERE m.last_accessed IS NOT NULL "
                     "RETURN m.memory_id AS id, m.access_count AS count"
                 )
                 for record in result:
-                    recently_accessed.add(record["id"])
+                    record_id: Any = record["id"]
+                    if isinstance(record_id, str):
+                        recently_accessed.add(record_id)
             driver.close()
             mark_neo4j_ok()
         except Exception:
             mark_neo4j_down()
             logger.warning("decay: Neo4j unavailable, proceeding without access data")
 
-    # Identify memories that haven't been accessed
-    decay_candidates = []
+    decay_candidates: list[dict[str, Any]] = []
     for entry in entries:
-        memory_id = entry.get("id", "")
+        if not isinstance(entry, dict):
+            continue
+        entry_dict: dict[str, Any] = cast("dict[str, Any]", entry)
+        memory_id: str = str(entry_dict.get("id", ""))
         if memory_id and memory_id not in recently_accessed:
-            decay_candidates.append(entry)
+            decay_candidates.append(entry_dict)
 
     if req.dry_run:
         return {
@@ -213,23 +244,20 @@ async def decay_memories(req: DecayRequest, request: Request):
             "decay_candidates": len(decay_candidates),
             "recently_accessed": len(recently_accessed),
             "sample": [
-                {"id": e.get("id"), "text": e.get("memory", "")[:100]}
+                {"id": e.get("id"), "text": str(e.get("memory", ""))[:100]}
                 for e in decay_candidates[:10]
             ],
         }
 
-    # For now, we track decay candidates but don't delete (soft decay via metadata)
-    # Future: could reduce vector scores or move to cold storage
     decayed = 0
-    for entry in decay_candidates:
-        memory_id = entry.get("id", "")
-        if not memory_id:
+    for entry_d in decay_candidates:
+        memory_id_val: str = str(entry_d.get("id", ""))
+        if not memory_id_val:
             continue
-        # Record decay signal in Neo4j
         if neo4j_available():
             try:
                 driver = neo4j_driver()
-                with driver.session() as session:
+                with _open_neo4j_session() as session:
                     session.run(
                         """
                         MERGE (m:MemoryAccess {memory_id: $id})
@@ -237,7 +265,7 @@ async def decay_memories(req: DecayRequest, request: Request):
                         ON MATCH SET m.decay_count = coalesce(m.decay_count, 0) + 1,
                                      m.last_decayed = $now
                         """,
-                        id=memory_id, now=datetime.now(timezone.utc).isoformat(),
+                        id=memory_id_val, now=datetime.now(UTC).isoformat(),
                     )
                 driver.close()
                 mark_neo4j_ok()
@@ -255,29 +283,35 @@ async def decay_memories(req: DecayRequest, request: Request):
 
 
 @evolution_router.get("/stats")
-async def evolution_stats():
+async def evolution_stats() -> dict[str, Any]:
     """Statistics on memory evolution and reinforcement."""
     if not neo4j_available():
         return {"ok": True, "available": False}
 
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
-            total_tracked = session.run(
+        with _open_neo4j_session() as session:
+            tracked_record = session.run(
                 "MATCH (m:MemoryAccess) RETURN count(m) AS c"
-            ).single()["c"]
-            total_evolutions = session.run(
+            ).single()
+            total_tracked: Any = tracked_record["c"] if tracked_record is not None else 0
+
+            evolutions_record = session.run(
                 "MATCH ()-[r:EVOLVED_INTO]->() RETURN count(r) AS c"
-            ).single()["c"]
-            most_accessed = session.run(
+            ).single()
+            total_evolutions: Any = evolutions_record["c"] if evolutions_record is not None else 0
+
+            most_accessed: list[dict[str, Any]] = session.run(
                 "MATCH (m:MemoryAccess) WHERE m.access_count > 1 "
                 "RETURN m.memory_id AS id, m.access_count AS count "
                 "ORDER BY m.access_count DESC LIMIT 10"
             ).data()
-            decaying = session.run(
+
+            decaying_record = session.run(
                 "MATCH (m:MemoryAccess) WHERE m.decay_count IS NOT NULL AND m.decay_count > 0 "
                 "RETURN count(m) AS c"
-            ).single()["c"]
+            ).single()
+            decaying: Any = decaying_record["c"] if decaying_record is not None else 0
         driver.close()
         mark_neo4j_ok()
 
@@ -303,7 +337,7 @@ async def _evolve_with_llm(old_text: str, new_text: str) -> str | None:
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
+            resp: httpx.Response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": ANTHROPIC_API_KEY,
@@ -329,21 +363,24 @@ async def _evolve_with_llm(old_text: str, new_text: str) -> str | None:
             )
             if resp.status_code != 200:
                 return None
-            data = resp.json()
-            text = data.get("content", [{}])[0].get("text", "").strip()
+            data: dict[str, Any] = resp.json()
+            content_list: list[dict[str, Any]] = data.get("content", [{}])
+            text: str = content_list[0].get("text", "").strip()
             return text if text and len(text) > 10 else None
     except Exception:
         logger.warning("LLM evolution merge failed", exc_info=True)
         return None
 
 
-async def _record_evolution_graph(old_text: str, evolved_text: str, old_id: str) -> None:
+async def _record_evolution_graph(
+    old_text: str, evolved_text: str, old_id: str
+) -> None:
     """Record evolution lineage in Neo4j."""
     if not neo4j_available():
         return
     try:
         driver = neo4j_driver()
-        with driver.session() as session:
+        with _open_neo4j_session() as session:
             session.run(
                 """
                 MERGE (old:Memory {text_preview: $old_text})

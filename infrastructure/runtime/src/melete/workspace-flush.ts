@@ -21,6 +21,20 @@ export interface WorkspaceFlushResult {
   error?: string;
 }
 
+export function flushToWorkspaceWithRetry(
+  opts: WorkspaceFlushOpts,
+  maxRetries = 2,
+): WorkspaceFlushResult {
+  let result = flushToWorkspace(opts);
+  for (let attempt = 1; attempt <= maxRetries && !result.written; attempt++) {
+    log.warn(
+      `Workspace flush retry ${attempt}/${maxRetries} for ${opts.nousId}`,
+    );
+    result = flushToWorkspace(opts);
+  }
+  return result;
+}
+
 export function flushToWorkspace(opts: WorkspaceFlushOpts): WorkspaceFlushResult {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
