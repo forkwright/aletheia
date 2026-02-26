@@ -10,7 +10,7 @@ import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
-import { distillSession } from "../melete/pipeline.js";
+import { cancelDistillation as cancelDistillationById, distillSession } from "../melete/pipeline.js";
 import type { MemoryFlushTarget } from "../melete/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
@@ -424,6 +424,10 @@ export class NousManager {
         log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
       }
     })();
+  }
+
+  cancelDistillation(sessionId: string): boolean {
+    return cancelDistillationById(sessionId);
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {

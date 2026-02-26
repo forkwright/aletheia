@@ -62,6 +62,15 @@ function makeManager(overrides: Record<string, unknown> = {}) {
       inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0,
     }),
     triggerDistillation: vi.fn().mockResolvedValue(undefined),
+    cancelDistillation: vi.fn().mockReturnValue(false),
+    getPlanningOrchestrator: vi.fn().mockReturnValue(undefined),
+    getExecutionOrchestrator: vi.fn().mockReturnValue(undefined),
+    approvalGate: { getPendingRequest: vi.fn().mockReturnValue(null) },
+    sessionStore: {
+      listSessions: vi.fn().mockReturnValue([]),
+      resolveThread: vi.fn(),
+      resolveBinding: vi.fn(),
+    },
     ...overrides,
   } as never;
 }
@@ -193,6 +202,33 @@ describe("session management API", () => {
     const app = createGateway(makeConfig(), manager, makeStore());
     const res = await app.request("/api/sessions/ses_1/distill", { method: "POST" });
     expect(res.status).toBe(500);
+  });
+
+  it("POST /api/sessions/:id/distill/cancel returns 404 for unknown session", async () => {
+    const store = makeStore({ findSessionById: vi.fn().mockReturnValue(null) });
+    const app = createGateway(makeConfig(), makeManager(), store);
+    const res = await app.request("/api/sessions/unknown/distill/cancel", { method: "POST" });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/sessions/:id/distill/cancel returns ok with cancelled=false when no active distillation", async () => {
+    const manager = makeManager({ cancelDistillation: vi.fn().mockReturnValue(false) });
+    const app = createGateway(makeConfig(), manager, makeStore());
+    const res = await app.request("/api/sessions/ses_1/distill/cancel", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.cancelled).toBe(false);
+  });
+
+  it("POST /api/sessions/:id/distill/cancel returns ok with cancelled=true when distillation was active", async () => {
+    const manager = makeManager({ cancelDistillation: vi.fn().mockReturnValue(true) });
+    const app = createGateway(makeConfig(), manager, makeStore());
+    const res = await app.request("/api/sessions/ses_1/distill/cancel", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.cancelled).toBe(true);
   });
 });
 
