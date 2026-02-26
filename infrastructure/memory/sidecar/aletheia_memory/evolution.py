@@ -271,21 +271,20 @@ async def evolution_stats():
     try:
         driver = neo4j_driver()
         with driver.session() as session:
-            total_tracked = session.run(
-                "MATCH (m:MemoryAccess) RETURN count(m) AS c"
-            ).single()["c"]
-            total_evolutions = session.run(
-                "MATCH ()-[r:EVOLVED_INTO]->() RETURN count(r) AS c"
-            ).single()["c"]
+            _r1 = session.run("MATCH (m:MemoryAccess) RETURN count(m) AS c").single()
+            total_tracked = _r1["c"] if _r1 is not None else 0
+            _r2 = session.run("MATCH ()-[r:EVOLVED_INTO]->() RETURN count(r) AS c").single()
+            total_evolutions = _r2["c"] if _r2 is not None else 0
             most_accessed = session.run(
                 "MATCH (m:MemoryAccess) WHERE m.access_count > 1 "
                 "RETURN m.memory_id AS id, m.access_count AS count "
                 "ORDER BY m.access_count DESC LIMIT 10"
             ).data()
-            decaying = session.run(
+            _r3 = session.run(
                 "MATCH (m:MemoryAccess) WHERE m.decay_count IS NOT NULL AND m.decay_count > 0 "
                 "RETURN count(m) AS c"
-            ).single()["c"]
+            ).single()
+            decaying = _r3["c"] if _r3 is not None else 0
         driver.close()
         mark_neo4j_ok()
 

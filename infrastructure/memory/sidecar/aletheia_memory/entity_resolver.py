@@ -7,6 +7,7 @@ registry and resolving new entities against it before creation.
 import logging
 import re
 from difflib import SequenceMatcher
+from typing import Any
 
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
@@ -234,7 +235,7 @@ def get_canonical_entities() -> list[str]:
         return []
 
 
-def merge_duplicate_entities() -> dict:
+def merge_duplicate_entities() -> dict[str, Any]:
     """Find and merge duplicate entity nodes in Neo4j.
 
     Uses the alias table and fuzzy matching to identify duplicates,
@@ -348,7 +349,7 @@ def merge_duplicate_entities() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def cleanup_orphan_entities() -> dict:
+def cleanup_orphan_entities() -> dict[str, Any]:
     """Remove entity nodes with no relationships."""
     if not neo4j_available():
         return {"ok": False, "reason": "neo4j_unavailable"}
@@ -362,7 +363,8 @@ def cleanup_orphan_entities() -> dict:
                 "DELETE e "
                 "RETURN count(e) AS deleted"
             )
-            deleted = result.single()["deleted"]
+            _single = result.single()
+            deleted = _single["deleted"] if _single is not None else 0
         driver.close()
         mark_neo4j_ok()
         return {"ok": True, "orphans_deleted": deleted}

@@ -76,16 +76,13 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
     all_resolved = Counter()
 
     while True:
-        kwargs = {
-            "collection_name": COLLECTION,
-            "limit": batch_size,
-            "with_payload": True,
-            "with_vectors": False,
-        }
-        if offset:
-            kwargs["offset"] = offset
-
-        points, next_offset = client.scroll(**kwargs)
+        points, next_offset = client.scroll(
+            collection_name=COLLECTION,
+            limit=batch_size,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
 
         if not points:
             break
@@ -165,13 +162,13 @@ def run(dry_run: bool = False, batch_size: int = SCROLL_BATCH):
     if not dry_run:
         log.info("\nRunning graph deduplication...")
         try:
-            merge_result = merge_duplicate_entities(dry_run=False)
+            merge_result = merge_duplicate_entities()
             log.info(f"  Merged {merge_result.get('duplicates_merged', 0)} duplicate groups")
         except Exception as e:
             log.warning(f"  Merge failed (non-fatal): {e}")
 
         try:
-            orphan_result = cleanup_orphan_entities(dry_run=False)
+            orphan_result = cleanup_orphan_entities()
             log.info(f"  Cleaned {orphan_result.get('orphans_deleted', 0)} orphan entities")
         except Exception as e:
             log.warning(f"  Orphan cleanup failed (non-fatal): {e}")

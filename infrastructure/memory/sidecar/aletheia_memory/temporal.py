@@ -19,7 +19,7 @@ temporal_router = APIRouter(prefix="/temporal")
 _neo4j_driver = neo4j_driver
 
 
-def _extract_entities_for_episode(text: str) -> list[str]:
+def extract_entities_for_episode(text: str) -> list[str]:
     """Extract entity names from text for episode linking."""
     import re
     entities: list[str] = []
@@ -234,7 +234,7 @@ async def create_temporal_fact(req: TemporalFactCreate):
     try:
         driver = neo4j_driver()
         with driver.session() as session:
-            invalidated = session.run(
+            _inv = session.run(
                 """
                 MATCH (s:Entity {name: $subject})-[r:TEMPORAL_FACT]->(o)
                 WHERE r.predicate = $predicate AND r.valid_to IS NULL
@@ -245,7 +245,8 @@ async def create_temporal_fact(req: TemporalFactCreate):
                 predicate=req.predicate,
                 now=now,
                 new_object=req.object,
-            ).single()["invalidated"]
+            ).single()
+            invalidated = _inv["invalidated"] if _inv is not None else 0
 
             session.run(
                 """
@@ -320,7 +321,7 @@ async def invalidate_fact(req: InvalidateRequest):
                 conditions += " AND o.name = $object"
                 params["object"] = req.object
 
-            result = session.run(
+            _res = session.run(
                 f"""
                 MATCH (s:Entity {{name: $subject}})-[r:TEMPORAL_FACT]->(o)
                 WHERE {conditions}
@@ -330,8 +331,8 @@ async def invalidate_fact(req: InvalidateRequest):
                 """,
                 **params,
             ).single()
-            invalidated = result["invalidated"]
-            objects = result["objects"]
+            invalidated = _res["invalidated"] if _res is not None else 0
+            objects = _res["objects"] if _res is not None else []
         driver.close()
         mark_neo4j_ok()
 
@@ -554,16 +555,20 @@ async def temporal_stats():
     try:
         driver = neo4j_driver()
         with driver.session() as session:
-            episodes = session.run("MATCH (e:Episode) RETURN count(e) AS c").single()["c"]
-            active_facts = session.run(
+            _ts1 = session.run("MATCH (e:Episode) RETURN count(e) AS c").single()
+            episodes = _ts1["c"] if _ts1 is not None else 0
+            _ts2 = session.run(
                 "MATCH ()-[r:TEMPORAL_FACT]->() WHERE r.valid_to IS NULL RETURN count(r) AS c"
-            ).single()["c"]
-            historical_facts = session.run(
+            ).single()
+            active_facts = _ts2["c"] if _ts2 is not None else 0
+            _ts3 = session.run(
                 "MATCH ()-[r:TEMPORAL_FACT]->() WHERE r.valid_to IS NOT NULL RETURN count(r) AS c"
-            ).single()["c"]
-            mentions = session.run(
+            ).single()
+            historical_facts = _ts3["c"] if _ts3 is not None else 0
+            _ts4 = session.run(
                 "MATCH ()-[r:MENTIONS]->() RETURN count(r) AS c"
-            ).single()["c"]
+            ).single()
+            mentions = _ts4["c"] if _ts4 is not None else 0
 
             recent = session.run(
                 "MATCH (e:Episode) RETURN e.agent_id AS agent, e.source AS source, "

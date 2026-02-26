@@ -3,7 +3,9 @@
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -29,7 +31,7 @@ def _patch_anthropic_params():
     """
     from mem0.llms import anthropic as anthropic_llm
 
-    def _patched_generate(self, messages, response_format=None, tools=None, tool_choice="auto", **kwargs):
+    def _patched_generate(self: Any, messages: Any, response_format: Any = None, tools: Any = None, tool_choice: Any = "auto", **kwargs: Any) -> Any:
         kwargs.pop("top_p", None)
         params = self._get_supported_params(messages=messages, **kwargs)
         params.pop("top_p", None)
@@ -87,7 +89,7 @@ def _patch_openai_embedder_for_voyage():
     """Voyage API doesn't support the `dimensions` parameter."""
     from mem0.embeddings import openai as openai_emb
 
-    def _patched_embed(self, text, memory_action=None):
+    def _patched_embed(self: Any, text: Any, memory_action: Any = None) -> Any:
         text = text.replace("\n", " ")
         return (
             self.client.embeddings.create(input=[text], model=self.config.model)
@@ -98,7 +100,7 @@ def _patch_openai_embedder_for_voyage():
     openai_emb.OpenAIEmbedding.embed = _patched_embed
 
 
-def _inject_oauth_llm(mem: Memory, backend: dict):
+def _inject_oauth_llm(mem: Memory, backend: dict[str, Any]) -> None:
     """For OAuth mode: replace Mem0's LLM instance with our OAuth-authenticated one."""
     if backend["provider"] == "anthropic-oauth" and backend["llm_instance"]:
         if hasattr(mem, 'llm'):
@@ -109,7 +111,7 @@ def _inject_oauth_llm(mem: Memory, backend: dict):
 
 
 memory: Memory | None = None
-_active_backend: dict = LLM_BACKEND
+_active_backend: dict[str, Any] = LLM_BACKEND
 
 
 @asynccontextmanager
@@ -164,7 +166,7 @@ AUTH_TOKEN = os.environ.get("ALETHEIA_MEMORY_TOKEN", "")
 
 
 @app.middleware("http")
-async def auth_middleware(request: Request, call_next):
+async def auth_middleware(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
     if AUTH_TOKEN and request.url.path != "/health":
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != AUTH_TOKEN:

@@ -506,19 +506,21 @@ async def discovery_stats():
     try:
         driver = neo4j_driver()
         with driver.session() as session:
-            candidate_count = session.run(
-                "MATCH (d:DiscoveryCandidate) RETURN count(d) AS c"
-            ).single()["c"]
-            bridge_count = session.run(
+            _c1 = session.run("MATCH (d:DiscoveryCandidate) RETURN count(d) AS c").single()
+            candidate_count = _c1["c"] if _c1 is not None else 0
+            _c2 = session.run(
                 "MATCH (d:DiscoveryCandidate) WHERE d.type = 'cross_community_bridge' RETURN count(d) AS c"
-            ).single()["c"]
-            hub_count = session.run(
+            ).single()
+            bridge_count = _c2["c"] if _c2 is not None else 0
+            _c3 = session.run(
                 "MATCH (d:DiscoveryCandidate) WHERE d.type = 'high_betweenness_hub' RETURN count(d) AS c"
-            ).single()["c"]
-            community_count = session.run(
+            ).single()
+            hub_count = _c3["c"] if _c3 is not None else 0
+            _c4 = session.run(
                 "MATCH (n) WHERE n.community IS NOT NULL "
                 "RETURN count(DISTINCT n.community) AS c"
-            ).single()["c"]
+            ).single()
+            community_count = _c4["c"] if _c4 is not None else 0
         driver.close()
         mark_neo4j_ok()
 

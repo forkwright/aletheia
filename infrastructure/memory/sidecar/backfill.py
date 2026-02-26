@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 try:
@@ -47,7 +48,7 @@ NOUS_DIR = ALETHEIA_ROOT / "nous"
 DOCS_DIR = ALETHEIA_ROOT / "docs"
 
 
-def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict]:
+def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict[str, Any]]:
     """Split text into overlapping chunks with metadata."""
     lines = text.strip().split("\n")
     chunks = []
@@ -155,9 +156,9 @@ def get_existing_hashes(client: QdrantClient) -> set[str]:
             with_vectors=False,
         )
         for point in results:
-            h = point.payload.get("hash")
+            h = (point.payload or {}).get("hash")
             if h:
-                hashes.add(h)
+                hashes.add(str(h))
         if offset is None:
             break
     return hashes
@@ -167,7 +168,7 @@ def backfill(
     files: list[tuple[str, str, str]],
     dry_run: bool = False,
     voyage_key: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Embed and upsert curated knowledge into Qdrant."""
 
     key = voyage_key or os.environ.get("VOYAGE_API_KEY")
@@ -176,7 +177,7 @@ def backfill(
         sys.exit(1)
 
     # Collect all chunks
-    all_chunks: list[dict] = []
+    all_chunks: list[dict[str, Any]] = []
     for file_path, agent_id, source_type in files:
         try:
             text = Path(file_path).read_text()
@@ -205,7 +206,7 @@ def backfill(
 
     # Connect
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    vo = voyageai.Client(api_key=key)
+    vo = voyageai.Client(api_key=key)  # type: ignore[attr-defined]  # voyageai lacks PEP 561 stubs
 
     # Dedup against existing backfill content
     existing_hashes = get_existing_hashes(client)

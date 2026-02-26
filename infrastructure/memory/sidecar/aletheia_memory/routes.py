@@ -13,13 +13,19 @@ import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString, cast
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorStruct,
+)
 
 from .config import LLM_BACKEND, QDRANT_HOST, QDRANT_PORT
 from .entity_resolver import (
@@ -29,7 +35,7 @@ from .entity_resolver import (
     resolve_entity,
 )
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
-from .temporal import _extract_entities_for_episode
+from .temporal import extract_entities_for_episode
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
@@ -180,7 +186,7 @@ async def add_memory(req: AddRequest, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
-def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
+def _apply_recency_boost(results: list[dict[str, Any]], max_boost: float = 0.15, window_hours: float = 24.0) -> list[dict[str, Any]]:
     """Boost scores for recently created memories (linear decay over window)."""
     from datetime import datetime
     now = datetime.now(UTC)
@@ -203,7 +209,7 @@ def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: f
     return results
 
 
-def _apply_confidence_weight(results: list, max_penalty: float = 0.10) -> list:
+def _apply_confidence_weight(results: list[dict[str, Any]], max_penalty: float = 0.10) -> list[dict[str, Any]]:
     """Penalize search scores for memories with high decay counts (frequently unreferenced)."""
     if not neo4j_available() or not results:
         return results
@@ -253,7 +259,7 @@ def _content_hash(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode()).hexdigest()
 
 
-async def _embed_texts(mem, texts: list[str]) -> list[list[float]]:
+async def _embed_texts(mem: Any, texts: list[str]) -> list[list[float]]:
     """Embed a list of texts using the Mem0 embedding model."""
     embedder = mem.embedding_model
     vectors = []
@@ -583,8 +589,10 @@ async def graph_stats():
     try:
         driver = neo4j_driver()
         with driver.session() as session:
-            node_count = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
-            rel_count = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
+            _nc = session.run("MATCH (n) RETURN count(n) AS c").single()
+            node_count = _nc["c"] if _nc is not None else 0
+            _rc = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()
+            rel_count = _rc["c"] if _rc is not None else 0
             rel_types = session.run(
                 "MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC LIMIT 30"
             ).data()
@@ -592,9 +600,10 @@ async def graph_stats():
                 "MATCH (n)-[r]-() RETURN n.name AS name, labels(n) AS labels, count(r) AS rels "
                 "ORDER BY rels DESC LIMIT 10"
             ).data()
-            singleton_types = session.run(
+            _st = session.run(
                 "MATCH ()-[r]->() WITH type(r) AS t, count(*) AS c WHERE c = 1 RETURN count(t) AS c"
-            ).single()["c"]
+            ).single()
+            singleton_types = _st["c"] if _st is not None else 0
         driver.close()
         mark_neo4j_ok()
 
@@ -637,9 +646,10 @@ async def graph_export(
         driver = neo4j_driver()
         with driver.session() as session:
             # Total node count for "loaded X of Y" UI
-            total_nodes = session.run(
+            _tn = session.run(
                 "MATCH (n) WHERE n.name IS NOT NULL RETURN count(n) AS c"
-            ).single()["c"]
+            ).single()
+            total_nodes = _tn["c"] if _tn is not None else 0
 
             # Fetch nodes based on mode
             if mode == "community" and community is not None:
@@ -651,7 +661,7 @@ async def graph_export(
                 )
                 if limit:
                     node_query += f" LIMIT {int(limit)}"
-                node_records = session.run(node_query, community=community).data()
+                node_records = session.run(cast("LiteralString", node_query), community=community).data()
             elif mode == "all":
                 node_query = (
                     "MATCH (n) WHERE n.name IS NOT NULL "
@@ -660,7 +670,7 @@ async def graph_export(
                 )
                 if limit:
                     node_query += f" LIMIT {int(limit)}"
-                node_records = session.run(node_query).data()
+                node_records = session.run(cast("LiteralString", node_query)).data()
             else:
                 # mode=top (default): top N by pagerank
                 effective_limit = limit or 200
@@ -708,10 +718,10 @@ async def graph_export(
                 ]
 
             # Community metadata for cloud visualization
-            comm_nodes: dict[int, list[dict]] = defaultdict(list)
+            comm_nodes: dict[int, list[dict[str, Any]]] = defaultdict(list)
             for n in nodes:
                 if n["community"] != -1:
-                    comm_nodes[n["community"]].append(n)
+                    comm_nodes[int(n["community"])].append(n)
 
             community_meta = []
             for cid, members in sorted(comm_nodes.items(), key=lambda x: -len(x[1])):
@@ -783,7 +793,7 @@ async def graph_search(
                 "n.pagerank AS pagerank, n.community AS community "
                 "ORDER BY n.pagerank DESC LIMIT $lim"
             )
-            records = session.run(cypher, **params).data()
+            records = session.run(cast("LiteralString", cypher), **params).data()
 
             results = []
             for r in records:
@@ -890,11 +900,14 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
             driver = neo4j_driver()
             with driver.session() as session:
                 for entity in entities[:5]:
-                    result = session.run(
+                    _depth_query = (
                         "MATCH (n)-[r*1.." + str(req.graph_depth) + "]-(neighbor) "
                         "WHERE toLower(n.name) CONTAINS toLower($name) "
                         "RETURN DISTINCT neighbor.name AS name, labels(neighbor) AS labels "
-                        "LIMIT 10",
+                        "LIMIT 10"
+                    )
+                    result = session.run(
+                        cast("LiteralString", _depth_query),
                         name=entity,
                     )
                     for record in result:
@@ -1207,7 +1220,7 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
         episode_id = f"ep_{uuid.uuid4().hex[:12]}"
         now = datetime.now(UTC).isoformat()
         session_id = (metadata or {}).get("sessionId", "")
-        entities = _extract_entities_for_episode(text)
+        entities = extract_entities_for_episode(text)
 
         driver = neo4j_driver()
         with driver.session() as session:
@@ -1351,7 +1364,8 @@ async def decay_foresight():
                 """,
                 now=now,
             )
-            decayed = decay_result.single()["decayed"]
+            _dr = decay_result.single()
+            decayed = _dr["decayed"] if _dr is not None else 0
 
             delete_result = session.run(
                 """
@@ -1361,7 +1375,8 @@ async def decay_foresight():
                 RETURN count(f) AS deleted
                 """
             )
-            deleted = delete_result.single()["deleted"]
+            _del = delete_result.single()
+            deleted = _del["deleted"] if _del is not None else 0
         driver.close()
         mark_neo4j_ok()
         return {"ok": True, "decayed": decayed, "deleted": deleted}
@@ -1780,12 +1795,13 @@ async def _normalize_neo4j_relationships() -> None:
                 src_type = row["t"]
                 target = normalize_type(src_type)
                 if src_type != target:
-                    session.run(
+                    _rename_q = (
                         f"MATCH (a)-[r:`{src_type}`]->(b) "
                         f"WITH a, b, r, properties(r) AS props "
                         f"CREATE (a)-[r2:`{target}`]->(b) "
                         f"SET r2 = props DELETE r"
                     )
+                    session.run(cast("LiteralString", _rename_q))
             if non_vocab:
                 logger.info(f"Normalized {len(non_vocab)} non-vocab relationship types")
         driver.close()
@@ -1821,12 +1837,13 @@ async def normalize_relationships():
                 count = row["c"]
                 target = normalize_type(src_type)
                 if src_type != target:
-                    session.run(
+                    _rename_q2 = (
                         f"MATCH (a)-[r:`{src_type}`]->(b) "
                         f"WITH a, b, r, properties(r) AS props "
                         f"CREATE (a)-[r2:`{target}`]->(b) "
                         f"SET r2 = props DELETE r"
                     )
+                    session.run(cast("LiteralString", _rename_q2))
                     mappings.append({"from": src_type, "to": target, "count": count})
                     total += count
 
@@ -2292,9 +2309,9 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
         if req.session_id:
             payload["session_id"] = req.session_id
         if resolved_entities:
-            payload["entities"] = resolved_entities
+            payload["entities"] = cast("Any", resolved_entities)
         if contradictions:
-            payload["contradicts"] = [c["id"] for c in contradictions]
+            payload["contradicts"] = cast("Any", [c["id"] for c in contradictions])
 
         client.upsert(
             collection_name=COLLECTION_NAME,
@@ -2381,7 +2398,7 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request):
         client.upsert(
             collection_name=COLLECTION_NAME,
             points=[
-                PointStruct(id=old_id, vector=old_point.vector or query_vector, payload=old_payload),
+                PointStruct(id=old_id, vector=cast("VectorStruct", old_point.vector or query_vector), payload=old_payload),
                 PointStruct(id=new_id, vector=new_vector, payload=new_payload),
             ],
         )
@@ -2449,7 +2466,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
             payload["forgotten_at"] = now
             payload["forgotten_reason"] = req.reason
             points_to_update.append(
-                PointStruct(id=point.id, vector=point.vector or query_vector, payload=payload)
+                PointStruct(id=point.id, vector=cast("VectorStruct", point.vector or query_vector), payload=payload)
             )
             forgotten_texts.append(((point.payload or {}).get("memory", ""))[:100])
 

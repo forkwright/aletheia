@@ -12,6 +12,8 @@ Or import and call:
 import logging
 import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
@@ -25,29 +27,29 @@ QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 COLLECTION = "aletheia_memories"
 
 
-def get_embedder():
+def get_embedder() -> tuple[Callable[[str], Any] | None, int]:
     """Get the configured embedder."""
     voyage_key = os.environ.get("VOYAGE_API_KEY", "")
     if voyage_key:
         from openai import OpenAI
         client = OpenAI(api_key=voyage_key, base_url="https://api.voyageai.com/v1")
-        def embed(text):
+        def embed_voyage(text: str) -> Any:
             r = client.embeddings.create(input=[text.replace("\n", " ")], model=VOYAGE_MODEL)
             return r.data[0].embedding
-        return embed, VOYAGE_DIMS
+        return embed_voyage, VOYAGE_DIMS
     else:
         try:
             from fastembed import TextEmbedding
             model = TextEmbedding("BAAI/bge-small-en-v1.5")
-            def embed(text):
+            def embed_fastembed(text: str) -> Any:
                 return next(iter(model.embed([text]))).tolist()
-            return embed, 384
+            return embed_fastembed, 384
         except ImportError:
             log.error("No embedder available. Install fastembed: pip install fastembed")
             return None, 0
 
 
-def reindex_zero_vectors(dry_run=False):
+def reindex_zero_vectors(dry_run: bool = False) -> int:
     """Find points with zero/missing vectors and recompute embeddings."""
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
@@ -58,7 +60,7 @@ def reindex_zero_vectors(dry_run=False):
         return 0
 
     info = client.get_collection(COLLECTION)
-    total_points = info.points_count
+    total_points = info.points_count or 0
     total_vectors = info.indexed_vectors_count or 0
     log.info(f"Collection: {total_points} points, {total_vectors} vectors")
 
