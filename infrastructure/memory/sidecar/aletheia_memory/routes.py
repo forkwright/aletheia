@@ -141,6 +141,56 @@ _RECALL_NOISE_PATTERNS: list[re.Pattern[str]] = [
 ]
 _RECALL_NOISE_MIN_LENGTH = 15  # Memories shorter than this are considered noise fragments
 
+# Stop words excluded from domain relevance token matching — common words add noise.
+_DOMAIN_STOP_WORDS: frozenset[str] = frozenset({
+    "the", "a", "an", "is", "in", "of", "to", "and", "or", "for",
+    "it", "was", "be", "has", "had", "not", "are", "but", "at", "on",
+    "with", "this", "that", "from", "by",
+})
+
+
+def _domain_relevance_score(memory_text: str, query_context: str, min_factor: float = 0.6) -> float:
+    """Compute token-level Jaccard overlap between memory text and query context.
+
+    Returns a score multiplier in [min_factor, 1.0]. Cross-domain results are
+    penalized by up to (1 - min_factor) but never excluded (soft boundaries).
+
+    Args:
+        memory_text: The memory content to score.
+        query_context: The full query string, typically including "Thread context: ..."
+        min_factor: Minimum multiplier — default 0.6 means worst penalty is 40%.
+    """
+    def tokenize(text: str) -> frozenset[str]:
+        tokens = set(text.lower().split())
+        return frozenset(tokens - _DOMAIN_STOP_WORDS)
+
+    query_tokens = tokenize(query_context)
+    if not query_tokens:
+        return 1.0
+
+    memory_tokens = tokenize(memory_text)
+    overlap = len(query_tokens & memory_tokens) / len(query_tokens)
+    return max(min_factor, min(1.0, 0.6 + overlap * 0.4))
+
+
+def _apply_domain_reranking(results: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    """Re-rank results by domain relevance using token Jaccard overlap against query context.
+
+    Only applies when the query contains context (Thread context: marker present).
+    Skipped for bare queries with no domain signal — avoids spurious penalization.
+    Modifies scores in-place and re-sorts descending.
+    """
+    if "Thread context:" not in query and "thread context:" not in query.lower():
+        return results
+
+    for r in results:
+        memory_text: str = str(r.get("memory") or r.get("data") or "").strip()
+        factor = _domain_relevance_score(memory_text, query)
+        r["score"] = (r.get("score") or 0.0) * factor
+
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return results
+
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request) -> dict[str, Any]:
@@ -612,6 +662,7 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
         results_list = _apply_recency_boost(results_list)
         results_list = _apply_confidence_weight(results_list)
         results_list = _filter_noisy_results(results_list)
+        results_list = _apply_domain_reranking(results_list, req.query)
         return {"ok": True, "results": results_list}
     except Exception:
         logger.exception("search_memory failed")

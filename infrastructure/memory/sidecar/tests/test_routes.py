@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from aletheia_memory.routes import (
+    _apply_domain_reranking,  # pyright: ignore[reportPrivateUsage]
+    _domain_relevance_score,  # pyright: ignore[reportPrivateUsage]
     _filter_noisy_results,  # pyright: ignore[reportPrivateUsage]
     _neo4j_expand_with_timeout,  # pyright: ignore[reportPrivateUsage]
     _qdrant_search_direct,  # pyright: ignore[reportPrivateUsage]
@@ -588,3 +590,101 @@ def test_graph_enhanced_search_expanded_query_uses_neo4j_neighbors(client: TestC
     result_ids = [r.get("id") for r in data["results"]]
     assert "q1" in result_ids
     assert "q2" in result_ids
+
+
+# ---------------------------------------------------------------------------
+# Task 1: Domain relevance re-ranking tests
+# ---------------------------------------------------------------------------
+
+
+def test_domain_relevance_score_returns_in_valid_range() -> None:
+    """_domain_relevance_score always returns a value in [min_factor, 1.0]."""
+    score = _domain_relevance_score("vehicle oil change schedule", "Thread context: leather crafting tools")
+    assert 0.6 <= score <= 1.0
+
+
+def test_domain_relevance_score_min_factor_prevents_full_exclusion() -> None:
+    """Completely off-domain memory still gets min_factor multiplier (0.6), not zero."""
+    # Totally disjoint vocabulary (after stop word removal)
+    score = _domain_relevance_score("zzz123 qqqfoo barrrr", "Thread context: leather crafting saddle stitching")
+    assert abs(score - 0.6) < 1e-9
+
+
+def test_domain_relevance_score_full_overlap() -> None:
+    """When memory contains all query tokens, score reaches 1.0."""
+    # Query without stop words: {"leather", "crafting", "saddle", "stitching"}
+    # Memory contains all those tokens → overlap = 1.0 → score = 0.6 + 1.0 * 0.4 = 1.0
+    context = "leather crafting saddle stitching"  # no "Thread context:" prefix so tokens are pure domain words
+    memory = "leather crafting saddle stitching"
+    score = _domain_relevance_score(memory, context)
+    assert abs(score - 1.0) < 1e-6
+
+
+def test_domain_relevance_score_stop_words_excluded() -> None:
+    """Stop words are not counted toward relevance — they are filtered before matching."""
+    # Memory only has stop words; query has "leather" (non-stop) + stop words.
+    # After filtering: query_tokens = {"leather"}, memory_tokens = {}.
+    # Overlap = 0/1 = 0.0 → score = max(0.6, 0.6 + 0.0 * 0.4) = 0.6 (min factor).
+    score = _domain_relevance_score("the is in of and", "leather the is in of and")
+    assert abs(score - 0.6) < 1e-9
+
+
+def test_domain_relevance_score_empty_context_returns_one() -> None:
+    """Empty query context (empty string) returns 1.0 — no signal, no penalty."""
+    score = _domain_relevance_score("leather saddle crafting", "")
+    assert score == 1.0  # empty query_tokens → no penalty applied
+
+
+def test_apply_domain_reranking_skips_when_no_thread_context() -> None:
+    """When query has no 'Thread context:' marker, scores are unchanged."""
+    results: list[dict[str, Any]] = [
+        {"memory": "vehicle oil change", "score": 0.9},
+        {"memory": "leather belt crafting", "score": 0.8},
+    ]
+    original_scores = [r["score"] for r in results]
+    reranked = _apply_domain_reranking(results, "tools and maintenance")
+    for r, orig in zip(reranked, original_scores, strict=False):
+        assert r["score"] == orig
+
+
+def test_apply_domain_reranking_penalizes_cross_domain_results() -> None:
+    """In leatherwork context, vehicle memories score lower than craft memories."""
+    results: list[dict[str, Any]] = [
+        {"memory": "vehicle tools oil wrench maintenance", "score": 1.0, "id": "vehicle"},
+        {"memory": "leather craft tools awl stitching saddle", "score": 1.0, "id": "craft"},
+    ]
+    query = "Thread context: leatherwork crafting saddle awl stitching"
+    reranked = _apply_domain_reranking(results, query)
+
+    craft = next(r for r in reranked if r["id"] == "craft")
+    vehicle = next(r for r in reranked if r["id"] == "vehicle")
+
+    # Craft memory should score higher than vehicle memory in leatherwork context
+    assert craft["score"] > vehicle["score"]
+
+
+def test_apply_domain_reranking_cross_domain_results_present() -> None:
+    """Cross-domain results are penalized but NOT excluded from output (soft boundaries)."""
+    results: list[dict[str, Any]] = [
+        {"memory": "vehicle oil change wrench socket", "score": 0.9, "id": "vehicle"},
+        {"memory": "leather awl saddle stitch punch", "score": 0.8, "id": "craft"},
+    ]
+    query = "Thread context: leather crafting saddle tools"
+    reranked = _apply_domain_reranking(results, query)
+
+    ids = {r["id"] for r in reranked}
+    assert "vehicle" in ids
+    assert "craft" in ids
+    assert len(reranked) == 2
+
+
+def test_apply_domain_reranking_sorted_by_score_after_reranking() -> None:
+    """After re-ranking, results are sorted by score descending."""
+    results: list[dict[str, Any]] = [
+        {"memory": "completely unrelated topic zzzz", "score": 1.0},
+        {"memory": "leather saddle crafting stitch", "score": 0.5},
+    ]
+    query = "Thread context: leather saddle crafting stitch"
+    reranked = _apply_domain_reranking(results, query)
+    scores = [r["score"] for r in reranked]
+    assert scores == sorted(scores, reverse=True)

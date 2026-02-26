@@ -47,9 +47,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **RECL-01**: Reinforcement loop wired — memory IDs from recall results call reinforce endpoint, boosting frequently-accessed memories
 - [x] **RECL-02**: Decay applied to memories not accessed within configurable window — rarely-recalled memories lose salience
-- [ ] **RECL-03**: Noise filter strengthened — expanded regex patterns + improved extraction prompt reduce noise rate below 5% (from ~13%)
-- [ ] **RECL-04**: Neo4j query timeout set to 800ms (from unbounded) — recall never blocks on slow graph queries
-- [ ] **RECL-05**: Qdrant and Neo4j queries run in parallel with independent timeouts — total recall latency under 1s P95
+- [x] **RECL-03**: Noise filter strengthened — expanded regex patterns + improved extraction prompt reduce noise rate below 5% (from ~13%)
+- [x] **RECL-04**: Neo4j query timeout set to 800ms (from unbounded) — recall never blocks on slow graph queries
+- [x] **RECL-05**: Qdrant and Neo4j queries run in parallel with independent timeouts — total recall latency under 1s P95
 - [ ] **RECL-06**: Semantic domain disambiguation prevents cross-domain bleed within an agent — "tools" in leatherwork context doesn't surface vehicle maintenance memories
 - [ ] **RECL-07**: Sufficiency gate thresholds tuned against ground-truth corpus — configurable confidence threshold for when to invoke graph fallback
 
@@ -118,9 +118,9 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | EXTR-06 | Phase 4 | Complete |
 | RECL-01 | Phase 5 | Complete |
 | RECL-02 | Phase 5 | Complete |
-| RECL-03 | Phase 5 | Pending |
-| RECL-04 | Phase 5 | Pending |
-| RECL-05 | Phase 5 | Pending |
+| RECL-03 | Phase 5 | Complete |
+| RECL-04 | Phase 5 | Complete |
+| RECL-05 | Phase 5 | Complete |
 | RECL-06 | Phase 5 | Pending |
 | RECL-07 | Phase 5 | Pending |
 | OBSV-01 | Phase 6 | Pending |

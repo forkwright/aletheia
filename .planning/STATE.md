@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 5 of 6 (Recall Quality)
-Plan: 2 of 4 in current phase (05-02 complete — noise filtering belt-and-suspenders: extraction-time NOISE_PATTERNS expansion, recall-time _filter_noisy_results in /search)
+Plan: 3 of 4 in current phase (05-03 complete — parallel Qdrant+Neo4j recall via asyncio.gather with 800ms Neo4j timeout)
 Status: In progress
-Last activity: 2026-02-26 — Plan 05-02 complete; recall-time noise filter + exponential decay confidence weight
+Last activity: 2026-02-26 — Plan 05-03 complete; parallel recall with timeout isolation, direct Qdrant helper, graceful Neo4j degradation
 
-Progress: [████████████] 78%
+Progress: [█████████████] 81%
 
 ## Performance Metrics
 
@@ -31,7 +31,7 @@ Progress: [████████████] 78%
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
 | 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
-| 05-recall-quality (partial) | 2 | ~5 min | ~3 min |
+| 05-recall-quality (partial) | 3 | ~17 min | ~6 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
@@ -93,6 +93,13 @@ Recent decisions affecting current work:
 - [Phase 05-recall-quality]: Jaccard threshold 0.25 for reinforcement — permissive, false negatives hurt learning more than false positives
 - [Phase 05-recall-quality]: Exponential decay uses days-since-last-access from Neo4j last_accessed timestamp (not tick count)
 - [Phase 05-recall-quality]: New memories without MemoryAccess Neo4j node receive no decay — full salience until first access
+- [Phase 05-recall-quality / 05-02]: Soft boundaries at recall time: 0.3x score penalty instead of removal — noisy results stay ranked lower but remain in output
+- [Phase 05-recall-quality / 05-02]: Module-level compiled regex patterns in Python for performance in hot /search path
+- [Phase 05-recall-quality / 05-02]: Consistent 15-char minimum length at both extraction time and recall time
+- [Phase 05-recall-quality / 05-03]: Direct Qdrant query bypasses Mem0 mem.search() which calls both Qdrant and Neo4j sequentially
+- [Phase 05-recall-quality / 05-03]: 800ms Neo4j timeout via asyncio.wait_for — on timeout recall returns Qdrant-only results
+- [Phase 05-recall-quality / 05-03]: return_exceptions=True in asyncio.gather allows Qdrant and Neo4j failures to be handled independently
+- [Phase 05-recall-quality / 05-03]: Result deduplication by memory ID keeps highest combined_score (respects graph_weight weighting)
 
 ### Pending Todos
 
@@ -106,5 +113,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 05-recall-quality 05-01-PLAN.md — reinforcement loop and exponential decay
+Stopped at: Completed 05-recall-quality 05-03-PLAN.md — parallel Qdrant+Neo4j recall, 800ms Neo4j timeout, graceful degradation
 Resume file: None
