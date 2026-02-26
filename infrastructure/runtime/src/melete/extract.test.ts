@@ -1,6 +1,6 @@
 // Distillation extraction tests
 import { describe, expect, it, vi } from "vitest";
-import { extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
+import { deduplicateFactsViaSidecar, extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
 
 function mockRouter(responseText: string) {
   return {
@@ -209,5 +209,87 @@ describe("noise filtering", () => {
     ], "test-model");
 
     expect(result.facts).toEqual(["This is a normal-length fact that should be kept"]);
+  });
+});
+
+describe("deduplicateFactsViaSidecar", () => {
+  it("returns original for single fact without calling fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await deduplicateFactsViaSidecar(
+      ["Only one fact here — no dedup needed"],
+      "http://localhost:8230",
+    );
+    expect(result).toEqual(["Only one fact here — no dedup needed"]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("returns original for empty array without calling fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await deduplicateFactsViaSidecar([], "http://localhost:8230");
+    expect(result).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("calls sidecar and returns deduplicated facts", async () => {
+    const facts = [
+      "User prefers chrome-tanned leather for belts",
+      "User strongly prefers chrome-tanned leather for belts",
+      "Baby #2 due October 2026",
+    ];
+    const deduped = [facts[0]!, facts[2]!];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ deduplicated: deduped, removed: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe("http://localhost:8230/dedup/batch");
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      texts: facts,
+      threshold: 0.90,
+    });
+    expect(result).toEqual(deduped);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to original facts on fetch error (fail-open)", async () => {
+    const facts = [
+      "Pitman arm torque spec is 185 ft-lbs per service manual",
+      "Baby #2 due October 2026",
+    ];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new Error("ECONNREFUSED"),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(result).toEqual(facts);
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to original facts when sidecar returns non-200 status", async () => {
+    const facts = [
+      "Pitman arm torque spec is 185 ft-lbs per service manual",
+      "Baby #2 due October 2026",
+    ];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("Service Unavailable", { status: 503 }),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(result).toEqual(facts);
+    fetchSpy.mockRestore();
   });
 });

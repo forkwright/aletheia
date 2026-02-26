@@ -127,13 +127,14 @@ export async function extractFromMessages(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
+  opts?: { sidecarUrl?: string },
 ): Promise<ExtractionResult> {
   const totalTokens = messages.reduce(
     (sum, m) => sum + estimateTokens(m.content),
     0,
   );
 
-  // If small enough, extract in one pass
+  // If small enough, extract in one pass (no cross-chunk duplicates possible)
   if (totalTokens <= MAX_CHUNK_TOKENS) {
     return extractChunk(router, messages, model);
   }
@@ -154,7 +155,43 @@ export async function extractFromMessages(
     results.push(partial);
   }
 
-  return mergeExtractions(results);
+  const merged = mergeExtractions(results);
+
+  // Cross-chunk dedup: near-duplicates emerge when the same fact appears in multiple chunks
+  if (opts?.sidecarUrl && chunks.length > 1) {
+    merged.facts = await deduplicateFactsViaSidecar(merged.facts, opts.sidecarUrl);
+  }
+
+  return merged;
+}
+
+export async function deduplicateFactsViaSidecar(
+  facts: string[],
+  sidecarUrl: string,
+  threshold = 0.90,
+): Promise<string[]> {
+  if (facts.length < 2) return facts;
+
+  try {
+    const res = await fetch(`${sidecarUrl}/dedup/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts: facts, threshold }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      log.warn(`Dedup sidecar returned ${res.status} — skipping dedup`);
+      return facts;
+    }
+    const data = await res.json() as { deduplicated: string[]; removed: number };
+    if (data.removed > 0) {
+      log.info(`Cross-chunk dedup removed ${data.removed} near-duplicate facts`);
+    }
+    return data.deduplicated;
+  } catch (err) {
+    log.warn(`Dedup sidecar error — skipping: ${err instanceof Error ? err.message : err}`);
+    return facts; // Fail-open: return original facts if dedup unavailable
+  }
 }
 
 async function extractChunk(

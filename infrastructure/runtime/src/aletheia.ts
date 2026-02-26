@@ -314,6 +314,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     },
   };
   manager.setMemoryTarget(memoryTarget);
+  manager.setSidecarUrl(getSidecarUrl());
   log.info("Memory flush target configured (sidecar /add_batch)");
 
   // Competence model + uncertainty tracker — wired into manager for runtime use

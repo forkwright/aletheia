@@ -18,6 +18,29 @@ const log = createLogger("melete");
 const workspaceFlushFailures = new Map<string, number>();
 const WORKSPACE_FLUSH_FAILURE_THRESHOLD = 3;
 
+async function invalidateContradictedFacts(
+  contradictions: string[],
+  sidecarUrl: string,
+  agentId: string,
+): Promise<void> {
+  for (const contradiction of contradictions) {
+    try {
+      const res = await fetch(`${sidecarUrl}/temporal/facts/invalidate_text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: contradiction, user_id: agentId, reason: "contradiction_detected" }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        log.warn(`Contradiction invalidation failed (${res.status}): ${contradiction.slice(0, 80)}`);
+      }
+    } catch (err) {
+      log.warn(`Contradiction invalidation error: ${err instanceof Error ? err.message : err}`);
+      // Non-fatal — contradiction invalidation should never block distillation
+    }
+  }
+}
+
 export interface DistillationOpts {
   triggerThreshold: number;
   minMessages: number;
@@ -34,6 +57,8 @@ export interface DistillationOpts {
   piiConfig?: FlushOptions["piiConfig"];
   /** Called after successful distillation to update the thread-level running summary. */
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
+  /** Sidecar base URL for contradiction invalidation (e.g. http://127.0.0.1:8230). */
+  sidecarUrl?: string;
 }
 
 export interface DistillationResult {
@@ -246,6 +271,7 @@ async function runDistillation(
       router,
       simpleMessages,
       opts.extractionModel,
+      opts.sidecarUrl ? { sidecarUrl: opts.sidecarUrl } : undefined,
     );
 
     log.info(
@@ -267,6 +293,11 @@ async function runDistillation(
           `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
         );
       }
+    }
+
+    // Wire contradictions to temporal invalidation — non-blocking, fire-and-forget
+    if (extraction.contradictions.length > 0 && opts.sidecarUrl) {
+      void invalidateContradictedFacts(extraction.contradictions, opts.sidecarUrl, nousId);
     }
 
     // Pass 2: Summarization — multi-stage for large conversations, single-pass for small

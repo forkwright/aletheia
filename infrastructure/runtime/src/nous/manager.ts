@@ -82,9 +82,12 @@ export class NousManager {
 
   get sessionStore(): SessionStore { return this.store; }
 
+  private sidecarUrl?: string;
+
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
+  setSidecarUrl(url: string): void { this.sidecarUrl = url; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
   setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
@@ -358,6 +361,7 @@ export class NousManager {
               lightweight: true,
               ...(workspace ? { workspace } : {}),
               ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+              ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
             });
           });
         } catch (error) {
@@ -408,6 +412,7 @@ export class NousManager {
             ...(workspace ? { workspace } : {}),
             ...(this.plugins ? { plugins: this.plugins } : {}),
             ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+            ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
                 this.store.updateThreadSummary(thread.id, summary, keyFacts);
@@ -447,6 +452,7 @@ export class NousManager {
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(thread ? {
         onThreadSummaryUpdate: (summary, keyFacts) => {
           this.store.updateThreadSummary(thread.id, summary, keyFacts);
