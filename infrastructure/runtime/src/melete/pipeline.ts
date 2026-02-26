@@ -54,11 +54,11 @@ export function shouldDistill(
   opts: { threshold: number; minMessages: number },
 ): boolean {
   const session = store.findSessionById(sessionId);
-  if (!session) return Promise.resolve(false);
+  if (!session) return false;
 
-  if (session.messageCount < opts.minMessages) return Promise.resolve(false);
+  if (session.messageCount < opts.minMessages) return false;
 
-  return Promise.resolve(session.tokenCountEstimate >= opts.threshold);
+  return session.tokenCountEstimate >= opts.threshold;
 }
 
 export async function distillSession(
@@ -383,12 +383,12 @@ async function runDistillation(
 
   try {
     store.runDistillationMutations(mutationOpts);
-  } catch (firstErr) {
-    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error: firstErr });
+  } catch (error) {
+    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error });
     try {
       store.runDistillationMutations(mutationOpts);
-    } catch (secondErr) {
-      log.error("Distillation mutations failed after retry", { sessionId, error: secondErr });
+    } catch (retryError) {
+      log.error("Distillation mutations failed after retry", { sessionId, error: retryError });
       // Do not rethrow — next scheduled distillation handles it
     }
   }
