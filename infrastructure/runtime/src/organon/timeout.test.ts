@@ -83,7 +83,7 @@ describe("executeWithTimeout", () => {
   });
 
   it("propagates non-timeout errors", async () => {
-    const fn = () => Promise.reject(new Error("tool error"));
+    const fn = async () => { throw new Error("tool error"); };
     await expect(executeWithTimeout(fn, 1000, "test_tool")).rejects.toThrow("tool error");
   });
 

@@ -14,7 +14,7 @@ describe("preprocessLinks", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       headers: { get: () => "text/html" },
-      text: () => Promise.resolve("<html><head><title>Test Page</title></head><body>Content here</body></html>"),
+      text: async () => ("<html><head><title>Test Page</title></head><body>Content here</body></html>"),
     }));
   });
 
@@ -52,7 +52,7 @@ describe("preprocessLinks", () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       headers: { get: () => "image/png" },
-      text: () => Promise.resolve(""),
+      text: async () => (""),
     } as never);
     const result = await preprocessLinks("Image https://example.com/photo.png");
     expect(result).toBe("Image https://example.com/photo.png");
@@ -62,7 +62,7 @@ describe("preprocessLinks", () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
       headers: { get: () => "text/html" },
-      text: () => Promise.resolve(""),
+      text: async () => (""),
     } as never);
     const result = await preprocessLinks("Check https://example.com/404");
     expect(result).toBe("Check https://example.com/404");

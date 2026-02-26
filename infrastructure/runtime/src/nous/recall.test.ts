@@ -12,7 +12,7 @@ function makeResponse(
   return {
     ok,
     status,
-    json: () => Promise.resolve({ ok: true, results }),
+    json: async () => ({ ok: true, results }),
   };
 }
 

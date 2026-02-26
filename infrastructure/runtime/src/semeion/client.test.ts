@@ -25,7 +25,7 @@ describe("SignalClient", () => {
     it("sends JSON-RPC 2.0 request", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: "ok" }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: "ok" }),
       } as never);
 
       const result = await client.rpc("listAccounts");
@@ -42,7 +42,7 @@ describe("SignalClient", () => {
     it("throws on RPC error", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({
+        json: async () => ({
           jsonrpc: "2.0", id: "1",
           error: { code: -32601, message: "Method not found" },
         }),
@@ -56,7 +56,7 @@ describe("SignalClient", () => {
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
-        text: () => Promise.resolve("error"),
+        text: async () => ("error"),
       } as never);
 
       await expect(client.rpc("test")).rejects.toThrow();
@@ -67,7 +67,7 @@ describe("SignalClient", () => {
     it("sends message via RPC", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: { timestamp: 123 } }),
+        json: async () => ({ jsonrpc: "2.0", id: "1", result: { timestamp: 123 } }),
       } as never);
 
       const result = await client.send({
@@ -83,7 +83,7 @@ describe("SignalClient", () => {
         .mockRejectedValueOnce(new Error("ECONNRESET"))
         .mockResolvedValueOnce({
           ok: true,
-          json: () => Promise.resolve({ jsonrpc: "2.0", id: "1", result: { timestamp: 123 } }),
+          json: async () => ({ jsonrpc: "2.0", id: "1", result: { timestamp: 123 } }),
         } as never);
 
       const result = await client.send({
@@ -100,7 +100,7 @@ describe("SignalClient", () => {
     it("returns true when healthy", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        text: () => Promise.resolve("ok"),
+        text: async () => ("ok"),
       } as never);
 
       const healthy = await client.health();

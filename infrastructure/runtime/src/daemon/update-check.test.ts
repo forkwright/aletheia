@@ -62,7 +62,7 @@ describe("update-check", () => {
 
       fetchSpy.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({
+        json: async () => ({
           tag_name: "v0.9.1",
           html_url: "https://github.com/forkwright/aletheia/releases/tag/v0.9.1",
         }),
@@ -90,7 +90,7 @@ describe("update-check", () => {
 
       fetchSpy.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({
+        json: async () => ({
           tag_name: "v0.9.0",
           html_url: "https://github.com/forkwright/aletheia/releases/tag/v0.9.0",
         }),
