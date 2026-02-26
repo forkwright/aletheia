@@ -10,6 +10,10 @@ import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
 
+const avgNums = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
+const fmtNum = (n: number) => n.toFixed(2);
+const padEnd = (s: string, w: number) => s.padEnd(w);
+
 process.on("unhandledRejection", (reason) => {
   log.error(`Unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : reason}`);
   process.exit(1);
@@ -869,6 +873,261 @@ auditCmd
       }
     } finally {
       db.close();
+    }
+  });
+
+// --- Memory ---
+
+const memoryCmd = program.command("memory").description("Memory management and diagnostics");
+
+memoryCmd
+  .command("audit")
+  .description("Run recall precision/recall audit against ground-truth corpus")
+  .option("-u, --url <url>", "Sidecar URL", "http://localhost:8230")
+  .option("-c, --corpus <path>", "Corpus JSONL path", "~/.aletheia/corpus/recall.jsonl")
+  .option("--save-baseline", "Save current scores as new baseline")
+  .option("--agent <id>", "Filter to a specific agent")
+  .action(async (opts: { url: string; corpus: string; saveBaseline?: boolean; agent?: string }) => {
+    const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+
+    // Resolve corpus path (expand ~)
+    const home = process.env["HOME"] ?? "/root";
+    const corpusPath = opts.corpus.replace(/^~/, home);
+    const baselinePath = join(home, ".aletheia", "corpus", "recall-baseline.json");
+
+    if (!existsSync(corpusPath)) {
+      console.log(`No corpus file found at ${corpusPath}. Create a JSONL file with {query, expected_ids, domain} entries.`);
+      return;
+    }
+
+    // Load corpus
+    type CorpusEntry = { query: string; expected_ids: string[]; domain: string };
+    let entries: CorpusEntry[];
+    try {
+      const raw = readFileSync(corpusPath, "utf-8");
+      entries = raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as CorpusEntry);
+    } catch (error) {
+      console.error(`Failed to parse corpus file: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+
+    // Filter by agent if requested
+    if (opts.agent) {
+      entries = entries.filter((e) => e.domain === opts.agent);
+      if (entries.length === 0) {
+        console.log(`No corpus entries found for agent: ${opts.agent}`);
+        return;
+      }
+    }
+
+    // Run queries against sidecar /search
+    type EntryResult = { domain: string; precision: number; recall: number; f1: number };
+    const results: EntryResult[] = [];
+
+    for (const entry of entries) {
+      let returnedIds: string[] = [];
+      try {
+        const res = await fetch(`${opts.url}/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: entry.query, user_id: "aletheia", agent_id: entry.domain, top_k: 20 }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { results?: Array<{ id?: string }> };
+          returnedIds = (data.results ?? []).map((r) => r.id ?? "").filter((id) => id.length > 0);
+        }
+      } catch { /* query failed — empty results */ }
+
+      const expectedSet = new Set(entry.expected_ids);
+      const returnedSet = new Set(returnedIds);
+      const intersection = returnedIds.filter((id) => expectedSet.has(id));
+
+      const precision = returnedSet.size === 0 ? 1 : intersection.length / returnedSet.size;
+      const recall = expectedSet.size === 0 ? 1 : intersection.length / expectedSet.size;
+      const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+
+      results.push({ domain: entry.domain, precision, recall, f1 });
+    }
+
+    // Aggregate per-domain
+    const domainMap = new Map<string, { precision: number[]; recall: number[]; f1: number[] }>();
+    for (const r of results) {
+      const existing = domainMap.get(r.domain) ?? { precision: [], recall: [], f1: [] };
+      existing.precision.push(r.precision);
+      existing.recall.push(r.recall);
+      existing.f1.push(r.f1);
+      domainMap.set(r.domain, existing);
+    }
+
+    type DomainSummary = { precision: number; recall: number; f1: number; query_count: number };
+    const byDomain: Record<string, DomainSummary> = {};
+    for (const [domain, vals] of domainMap) {
+      byDomain[domain] = {
+        precision: avgNums(vals.precision),
+        recall: avgNums(vals.recall),
+        f1: avgNums(vals.f1),
+        query_count: vals.precision.length,
+      };
+    }
+
+    const overallPrecision = avgNums(results.map((r) => r.precision));
+    const overallRecall = avgNums(results.map((r) => r.recall));
+    const overallF1 = avgNums(results.map((r) => r.f1));
+
+    // Baseline comparison
+    let baselineMsg = "";
+    let hasRegression = false;
+    if (existsSync(baselinePath) && !opts.saveBaseline) {
+      try {
+        const baseline = JSON.parse(readFileSync(baselinePath, "utf-8")) as {
+          overall: { precision: number; recall: number; f1: number };
+        };
+        const precDiff = overallPrecision - baseline.overall.precision;
+        const recDiff = overallRecall - baseline.overall.recall;
+        const THRESHOLD = 0.05;
+        const precStatus = precDiff < -THRESHOLD ? "REGRESSION" : "within threshold";
+        const recStatus = recDiff < -THRESHOLD ? "REGRESSION" : "within threshold";
+        if (precDiff < -THRESHOLD || recDiff < -THRESHOLD) {
+          hasRegression = true;
+        }
+        const precSign = precDiff >= 0 ? "+" : "";
+        const recSign = recDiff >= 0 ? "+" : "";
+        baselineMsg = `  Baseline: precision ${precSign}${fmtNum(precDiff)} (${precStatus}), recall ${recSign}${fmtNum(recDiff)} (${recStatus})`;
+      } catch { /* baseline parse failed — skip comparison */ }
+    }
+
+    // Save baseline if requested
+    if (opts.saveBaseline) {
+      const baselineData = {
+        timestamp: new Date().toISOString(),
+        overall: { precision: overallPrecision, recall: overallRecall, f1: overallF1 },
+        by_domain: byDomain,
+      };
+      mkdirSync(dirname(baselinePath), { recursive: true });
+      writeFileSync(baselinePath, JSON.stringify(baselineData, null, 2) + "\n", "utf-8");
+      console.log(`Baseline saved to ${baselinePath}`);
+    }
+
+    // Print results table
+    const domains = Object.keys(byDomain).toSorted();
+    const colW = Math.max(8, ...domains.map((d) => d.length));
+    const sep = "─".repeat(colW);
+
+    console.log(`\nRecall Audit — ${results.length} queries, ${domains.length} domains\n`);
+    console.log(`  ${padEnd("Domain", colW)}  Queries  Precision  Recall   F1`);
+    console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
+    for (const domain of domains) {
+      const d = byDomain[domain]!;
+      console.log(`  ${padEnd(domain, colW)}  ${String(d.query_count).padStart(7)}  ${fmtNum(d.precision).padStart(9)}  ${fmtNum(d.recall).padStart(6)}   ${fmtNum(d.f1)}`);
+    }
+    console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
+    console.log(`  ${padEnd("OVERALL", colW)}  ${String(results.length).padStart(7)}  ${fmtNum(overallPrecision).padStart(9)}  ${fmtNum(overallRecall).padStart(6)}   ${fmtNum(overallF1)}`);
+
+    if (baselineMsg) {
+      console.log(`\n${baselineMsg}`);
+    }
+    if (hasRegression) {
+      console.log(`\n  REGRESSION DETECTED — precision or recall dropped more than 5% from baseline`);
+      process.exit(1);
+    }
+  });
+
+memoryCmd
+  .command("health")
+  .description("Check memory system health against configured thresholds")
+  .option("-u, --url <url>", "Sidecar URL", "http://localhost:8230")
+  .option("-c, --config <path>", "Config file path")
+  .action(async (opts: { url: string; config?: string }) => {
+    const { paths } = await import("./taxis/paths.js");
+    const { AletheiaConfigSchema } = await import("./taxis/schema.js");
+    const { eventBus } = await import("./koina/event-bus.js");
+
+    const configPath = opts.config ?? paths.configFile();
+    let thresholds = {
+      noiseRateMax: 0.05,
+      orphanCountMax: 50,
+      relatesToRateMax: 0.30,
+      recallLatencyP95Ms: 1000,
+      flushSuccessRateMin: 0.95,
+    };
+
+    try {
+      const raw = await readJson(configPath);
+      const config = AletheiaConfigSchema.safeParse(raw);
+      if (config.success) {
+        thresholds = { ...thresholds, ...config.data.memoryHealth };
+      }
+    } catch { /* config unreadable — use defaults */ }
+
+    let healthData: Record<string, unknown>;
+    try {
+      const thresholdsParam = encodeURIComponent(JSON.stringify(thresholds));
+      const res = await fetch(`${opts.url}/health?thresholds=${thresholdsParam}`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        console.error(`Sidecar returned ${res.status}: ${res.statusText}`);
+        process.exit(1);
+      }
+      healthData = await res.json() as Record<string, unknown>;
+    } catch (error) {
+      console.error(`Cannot reach sidecar at ${opts.url}: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+
+    const status = String(healthData["status"] ?? "unknown").toUpperCase();
+    const qdrant = (healthData["qdrant"] ?? {}) as Record<string, unknown>;
+    const neo4j = (healthData["neo4j"] ?? {}) as Record<string, unknown>;
+    const recall = (healthData["recall"] ?? {}) as Record<string, unknown>;
+    const thresholdInfo = (healthData["thresholds"] ?? {}) as Record<string, unknown>;
+    const exceeded = (thresholdInfo["exceeded"] ?? []) as string[];
+
+    const colW = 22;
+
+    console.log(`\nMemory Health: ${status}\n`);
+    console.log(`  ${padEnd("Metric", colW)}  ${padEnd("Value", 10)}  ${padEnd("Threshold", 10)}  Status`);
+    console.log(`  ${padEnd("──────", colW)}  ${padEnd("─────", 10)}  ${padEnd("─────────", 10)}  ──────`);
+
+    const noiseRate = recall["noise_rate"] !== null && recall["noise_rate"] !== undefined ? `${(Number(recall["noise_rate"]) * 100).toFixed(1)}%` : "N/A";
+    const noiseStatus = exceeded.includes("noise_rate") ? "EXCEEDED" : (recall["noise_rate"] !== null && recall["noise_rate"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Noise rate", colW)}  ${padEnd(noiseRate, 10)}  ${padEnd(`< ${(thresholds.noiseRateMax * 100).toFixed(1)}%`, 10)}  ${noiseStatus}`);
+
+    const orphanCount = qdrant["orphan_count"] !== null && qdrant["orphan_count"] !== undefined ? String(qdrant["orphan_count"]) : "N/A";
+    const orphanStatus = exceeded.includes("orphan_count") ? "EXCEEDED" : (qdrant["orphan_count"] !== null && qdrant["orphan_count"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Orphan count", colW)}  ${padEnd(orphanCount, 10)}  ${padEnd(`< ${thresholds.orphanCountMax}`, 10)}  ${orphanStatus}`);
+
+    const relatesToRate = neo4j["relates_to_rate"] !== null && neo4j["relates_to_rate"] !== undefined ? `${(Number(neo4j["relates_to_rate"]) * 100).toFixed(1)}%` : "N/A";
+    const relatesToStatus = exceeded.includes("relates_to_rate") ? "EXCEEDED" : (neo4j["relates_to_rate"] !== null && neo4j["relates_to_rate"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("RELATES_TO rate", colW)}  ${padEnd(relatesToRate, 10)}  ${padEnd(`< ${(thresholds.relatesToRateMax * 100).toFixed(1)}%`, 10)}  ${relatesToStatus}`);
+
+    const latencyP95 = recall["latency_p95_ms"] !== null && recall["latency_p95_ms"] !== undefined ? `${Math.round(Number(recall["latency_p95_ms"]))}ms` : "N/A";
+    const latencyStatus = exceeded.includes("recall_latency_p95_ms") ? "EXCEEDED" : (recall["latency_p95_ms"] !== null && recall["latency_p95_ms"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Recall P95", colW)}  ${padEnd(latencyP95, 10)}  ${padEnd(`< ${thresholds.recallLatencyP95Ms}ms`, 10)}  ${latencyStatus}`);
+
+    console.log(`  ${padEnd("Flush success rate", colW)}  ${padEnd("N/A", 10)}  ${padEnd(`> ${(thresholds.flushSuccessRateMin * 100).toFixed(1)}%`, 10)}  N/A (CLI-side metric)`);
+
+    if (exceeded.length > 0) {
+      const values = (thresholdInfo["values"] ?? {}) as Record<string, number>;
+      eventBus.emit("memory:health_degraded", {
+        metrics: exceeded,
+        values: values as Record<string, unknown>,
+        status: healthData["status"] as string,
+      });
+    } else {
+      eventBus.emit("memory:health_recovered", {
+        metrics: [],
+        status: healthData["status"] as string,
+      });
+    }
+
+    if (status === "DEGRADED" || status === "CRITICAL") {
+      process.exit(1);
     }
   });
 

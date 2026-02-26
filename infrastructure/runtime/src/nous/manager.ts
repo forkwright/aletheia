@@ -185,6 +185,7 @@ export class NousManager {
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(this.planningOrchestrator ? { planningOrchestrator: this.planningOrchestrator } : {}),
       ...(this.executionOrchestrator ? { executionOrchestrator: this.executionOrchestrator } : {}),
     };

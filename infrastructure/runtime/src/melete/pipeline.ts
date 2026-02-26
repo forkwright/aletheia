@@ -69,6 +69,8 @@ export interface DistillationOpts {
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
   /** Sidecar base URL for contradiction invalidation (e.g. http://127.0.0.1:8230). */
   sidecarUrl?: string;
+  /** True when triggered by context overflow (90% ceiling). */
+  emergency?: boolean;
   /** AbortSignal to cancel an in-progress distillation. Cancel = full rollback. */
   signal?: AbortSignal;
 }
@@ -146,7 +148,7 @@ async function runDistillation(
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
   const distillationNumber = store.incrementDistillationCount(sessionId);
-  eventBus.emit("distill:before", { sessionId, nousId, distillationNumber });
+  eventBus.emit("distill:before", { sessionId, nousId, distillationNumber, ...(opts.emergency ? { emergency: true } : {}) });
   log.info(
     `Starting distillation #${distillationNumber} for session ${sessionId}`,
   );
@@ -573,7 +575,7 @@ async function runDistillation(
     }
   }
 
-  eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });
+  eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted, ...(opts.emergency ? { emergency: true } : {}) });
 
   log.info(
     `Distillation #${distillationNumber} complete: ${result.tokensBefore} → ${result.tokensAfter} tokens ` +

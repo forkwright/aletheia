@@ -5,17 +5,24 @@ import { generateId } from "../koina/crypto.js";
 import { PlanningError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import type {
+  AnnotationTargetType,
   DianoiaState,
   DiscussionOption,
   DiscussionQuestion,
+  EditHistoryTargetType,
+  PlanningAnnotation,
   PlanningCheckpoint,
   PlanningConfig,
+  PlanningDecision,
+  PlanningEditHistory,
+  PlanningMessage,
   PlanningPhase,
   PlanningProject,
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
   SpawnRecord,
+  TurnCount,
   VerificationResult,
 } from "./types.js";
 
@@ -921,6 +928,337 @@ export class PlanningStore {
       errorMessage: (row["error_message"] as string | null) ?? null,
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Decision Audit Trail (OBS-03) ────────────────────────
+
+  logDecision(opts: {
+    projectId: string;
+    phaseId?: string | null;
+    source: "user" | "agent" | "checkpoint" | "system";
+    type: string;
+    summary: string;
+    rationale?: string | null;
+    context?: Record<string, unknown>;
+  }): PlanningDecision {
+    const id = generateId("dec");
+    this.db.prepare(
+      `INSERT INTO planning_decisions (id, project_id, phase_id, source, type, summary, rationale, context)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      opts.projectId,
+      opts.phaseId ?? null,
+      opts.source,
+      opts.type,
+      opts.summary,
+      opts.rationale ?? null,
+      JSON.stringify(opts.context ?? {}),
+    );
+    return this.getDecision(id)!;
+  }
+
+  getDecision(id: string): PlanningDecision | undefined {
+    const row = this.db.prepare("SELECT * FROM planning_decisions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapDecision(row) : undefined;
+  }
+
+  listDecisions(projectId: string, phaseId?: string): PlanningDecision[] {
+    if (phaseId) {
+      return (this.db.prepare("SELECT * FROM planning_decisions WHERE project_id = ? AND phase_id = ? ORDER BY created_at ASC")
+        .all(projectId, phaseId) as Record<string, unknown>[]).map(r => this.mapDecision(r));
+    }
+    return (this.db.prepare("SELECT * FROM planning_decisions WHERE project_id = ? ORDER BY created_at ASC")
+      .all(projectId) as Record<string, unknown>[]).map(r => this.mapDecision(r));
+  }
+
+  private mapDecision(row: Record<string, unknown>): PlanningDecision {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: (row["phase_id"] as string | null) ?? null,
+      source: row["source"] as PlanningDecision["source"],
+      type: row["type"] as string,
+      summary: row["summary"] as string,
+      rationale: (row["rationale"] as string | null) ?? null,
+      context: JSON.parse((row["context"] as string) || "{}"),
+      createdAt: row["created_at"] as string,
+    };
+  }
+
+  // ─── Turn Tracking (OBS-05) ───────────────────────────────
+
+  recordTurn(projectId: string, phaseId: string, nousId: string, tokenCount = 0): void {
+    this.db.prepare(
+      `INSERT INTO planning_turn_counts (project_id, phase_id, nous_id, turn_count, token_count, updated_at)
+       VALUES (?, ?, ?, 1, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       ON CONFLICT (project_id, phase_id, nous_id) DO UPDATE SET
+         turn_count = turn_count + 1,
+         token_count = token_count + excluded.token_count,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+    ).run(projectId, phaseId, nousId, tokenCount);
+  }
+
+  getTurnCounts(projectId: string, phaseId?: string): TurnCount[] {
+    if (phaseId) {
+      return (this.db.prepare("SELECT * FROM planning_turn_counts WHERE project_id = ? AND phase_id = ? ORDER BY turn_count DESC")
+        .all(projectId, phaseId) as Record<string, unknown>[]).map(r => this.mapTurnCount(r));
+    }
+    return (this.db.prepare("SELECT * FROM planning_turn_counts WHERE project_id = ? ORDER BY phase_id, turn_count DESC")
+      .all(projectId) as Record<string, unknown>[]).map(r => this.mapTurnCount(r));
+  }
+
+  getProjectTurnTotal(projectId: string): { turns: number; tokens: number } {
+    const row = this.db.prepare(
+      "SELECT COALESCE(SUM(turn_count), 0) as turns, COALESCE(SUM(token_count), 0) as tokens FROM planning_turn_counts WHERE project_id = ?"
+    ).get(projectId) as { turns: number; tokens: number };
+    return row;
+  }
+
+  private mapTurnCount(row: Record<string, unknown>): TurnCount {
+    return {
+      projectId: row["project_id"] as string,
+      phaseId: row["phase_id"] as string,
+      nousId: row["nous_id"] as string,
+      turnCount: row["turn_count"] as number,
+      tokenCount: row["token_count"] as number,
+      updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Message Queue (INTERJ-01/02) ─────────────────────────
+
+  /**
+   * Enqueue a message for injection into a running execution.
+   * Messages are consumed at turn boundaries (between waves or between tasks).
+   */
+  enqueueMessage(opts: {
+    projectId: string;
+    phaseId?: string;
+    source: PlanningMessage["source"];
+    sourceSessionId?: string;
+    content: string;
+    priority?: PlanningMessage["priority"];
+    expiresAt?: string;
+  }): PlanningMessage {
+    const id = generateId("msg");
+    this.db.prepare(
+      `INSERT INTO planning_messages (id, project_id, phase_id, source, source_session_id, content, priority, status, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+    ).run(
+      id,
+      opts.projectId,
+      opts.phaseId ?? null,
+      opts.source,
+      opts.sourceSessionId ?? null,
+      opts.content,
+      opts.priority ?? "normal",
+      opts.expiresAt ?? null,
+    );
+    return this.getMessage(id)!;
+  }
+
+  getMessage(id: string): PlanningMessage | undefined {
+    const row = this.db.prepare("SELECT * FROM planning_messages WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapMessage(row) : undefined;
+  }
+
+  /**
+   * Drain all pending messages for a project, optionally filtered by phase.
+   * Marks consumed messages as 'delivered'. Respects priority ordering (critical first).
+   * Automatically expires messages past their expiresAt timestamp.
+   */
+  drainMessages(projectId: string, phaseId?: string): PlanningMessage[] {
+    const now = new Date().toISOString();
+
+    // Expire old messages first
+    this.db.prepare(
+      `UPDATE planning_messages SET status = 'expired'
+       WHERE project_id = ? AND status = 'pending' AND expires_at IS NOT NULL AND expires_at < ?`
+    ).run(projectId, now);
+
+    // Fetch pending messages (priority: critical > high > normal > low)
+    const priorityOrder = "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 END";
+    let rows: Record<string, unknown>[];
+    if (phaseId) {
+      rows = this.db.prepare(
+        `SELECT * FROM planning_messages
+         WHERE project_id = ? AND (phase_id = ? OR phase_id IS NULL) AND status = 'pending'
+         ORDER BY ${priorityOrder}, created_at ASC`
+      ).all(projectId, phaseId) as Record<string, unknown>[];
+    } else {
+      rows = this.db.prepare(
+        `SELECT * FROM planning_messages
+         WHERE project_id = ? AND status = 'pending'
+         ORDER BY ${priorityOrder}, created_at ASC`
+      ).all(projectId) as Record<string, unknown>[];
+    }
+
+    const messages = rows.map(r => this.mapMessage(r));
+
+    // Mark all drained messages as delivered
+    if (messages.length > 0) {
+      const ids = messages.map(m => m.id);
+      const placeholders = ids.map(() => "?").join(", ");
+      this.db.prepare(
+        `UPDATE planning_messages SET status = 'delivered', delivered_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id IN (${placeholders})`
+      ).run(...ids);
+    }
+
+    return messages;
+  }
+
+  /**
+   * List all messages for a project (all statuses), optionally filtered by phase.
+   */
+  listMessages(projectId: string, opts?: { phaseId?: string; status?: PlanningMessage["status"] }): PlanningMessage[] {
+    let sql = "SELECT * FROM planning_messages WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.phaseId) {
+      sql += " AND (phase_id = ? OR phase_id IS NULL)";
+      params.push(opts.phaseId);
+    }
+    if (opts?.status) {
+      sql += " AND status = ?";
+      params.push(opts.status);
+    }
+    sql += " ORDER BY created_at DESC";
+    return (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(r => this.mapMessage(r));
+  }
+
+  /**
+   * Count pending messages for a project — lightweight check for the execution loop.
+   */
+  countPendingMessages(projectId: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) as count FROM planning_messages WHERE project_id = ? AND status = 'pending'"
+    ).get(projectId) as { count: number };
+    return row.count;
+  }
+
+  private mapMessage(row: Record<string, unknown>): PlanningMessage {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: (row["phase_id"] as string | null) ?? null,
+      source: row["source"] as PlanningMessage["source"],
+      sourceSessionId: (row["source_session_id"] as string | null) ?? null,
+      content: row["content"] as string,
+      priority: row["priority"] as PlanningMessage["priority"],
+      status: row["status"] as PlanningMessage["status"],
+      deliveredAt: (row["delivered_at"] as string | null) ?? null,
+      expiresAt: (row["expires_at"] as string | null) ?? null,
+      createdAt: row["created_at"] as string,
+    };
+  }
+
+  // ─── Annotations (EDIT-07) ──────────────────────────────────
+
+  createAnnotation(opts: {
+    projectId: string;
+    targetType: AnnotationTargetType;
+    targetId: string;
+    author: string;
+    content: string;
+  }): PlanningAnnotation {
+    const id = generateId("ann");
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO planning_annotations (id, project_id, target_type, target_id, author, content, resolved, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(id, opts.projectId, opts.targetType, opts.targetId, opts.author, opts.content, now, now);
+    return { id, projectId: opts.projectId, targetType: opts.targetType, targetId: opts.targetId, author: opts.author, content: opts.content, resolved: false, createdAt: now, updatedAt: now };
+  }
+
+  listAnnotations(projectId: string, opts?: { targetType?: AnnotationTargetType; targetId?: string; includeResolved?: boolean }): PlanningAnnotation[] {
+    let sql = "SELECT * FROM planning_annotations WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.targetType) { sql += " AND target_type = ?"; params.push(opts.targetType); }
+    if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+    if (!opts?.includeResolved) { sql += " AND resolved = 0"; }
+    sql += " ORDER BY created_at DESC";
+    return this.db.prepare(sql).all(...params).map((r) => this.mapAnnotation(r as Record<string, unknown>));
+  }
+
+  updateAnnotation(id: string, updates: { content?: string; resolved?: boolean }): PlanningAnnotation | null {
+    const now = new Date().toISOString();
+    const sets: string[] = ["updated_at = ?"];
+    const params: unknown[] = [now];
+    if (updates.content !== undefined) { sets.push("content = ?"); params.push(updates.content); }
+    if (updates.resolved !== undefined) { sets.push("resolved = ?"); params.push(updates.resolved ? 1 : 0); }
+    params.push(id);
+    const result = this.db.prepare(`UPDATE planning_annotations SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    if (result.changes === 0) return null;
+    const row = this.db.prepare("SELECT * FROM planning_annotations WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapAnnotation(row) : null;
+  }
+
+  deleteAnnotation(id: string): boolean {
+    return this.db.prepare("DELETE FROM planning_annotations WHERE id = ?").run(id).changes > 0;
+  }
+
+  countAnnotations(projectId: string, targetType: AnnotationTargetType, targetId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM planning_annotations WHERE project_id = ? AND target_type = ? AND target_id = ? AND resolved = 0").get(projectId, targetType, targetId) as { count: number };
+    return row.count;
+  }
+
+  private mapAnnotation(row: Record<string, unknown>): PlanningAnnotation {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      targetType: row["target_type"] as AnnotationTargetType,
+      targetId: row["target_id"] as string,
+      author: row["author"] as string,
+      content: row["content"] as string,
+      resolved: (row["resolved"] as number) === 1,
+      createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Edit History (SYNC-06) ─────────────────────────────────
+
+  recordEdit(opts: {
+    projectId: string;
+    targetType: EditHistoryTargetType;
+    targetId: string;
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+    author: string;
+  }): PlanningEditHistory {
+    const id = generateId("edit");
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO planning_edit_history (id, project_id, target_type, target_id, field, old_value, new_value, author, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, opts.projectId, opts.targetType, opts.targetId, opts.field, opts.oldValue, opts.newValue, opts.author, now);
+    return { id, projectId: opts.projectId, targetType: opts.targetType, targetId: opts.targetId, field: opts.field, oldValue: opts.oldValue, newValue: opts.newValue, author: opts.author, createdAt: now };
+  }
+
+  listEdits(projectId: string, opts?: { targetType?: EditHistoryTargetType; targetId?: string; limit?: number }): PlanningEditHistory[] {
+    let sql = "SELECT * FROM planning_edit_history WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.targetType) { sql += " AND target_type = ?"; params.push(opts.targetType); }
+    if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+    sql += " ORDER BY created_at DESC";
+    if (opts?.limit) { sql += " LIMIT ?"; params.push(opts.limit); }
+    return this.db.prepare(sql).all(...params).map((r) => this.mapEditHistory(r as Record<string, unknown>));
+  }
+
+  private mapEditHistory(row: Record<string, unknown>): PlanningEditHistory {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      targetType: row["target_type"] as EditHistoryTargetType,
+      targetId: row["target_id"] as string,
+      field: row["field"] as string,
+      oldValue: (row["old_value"] as string | null) ?? null,
+      newValue: (row["new_value"] as string | null) ?? null,
+      author: row["author"] as string,
+      createdAt: row["created_at"] as string,
     };
   }
 }

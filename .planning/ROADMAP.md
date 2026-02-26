@@ -18,8 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
 - [x] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False (3/4 plans complete) (completed 2026-02-26)
 - [x] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements (completed 2026-02-26)
-- [ ] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
-- [ ] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling (gap closure — Phase 6 never started)
+- [x] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
+- [x] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling (gap closure — Phase 6 never started) (completed 2026-02-27)
 
 ## Phase Details
 
@@ -137,7 +137,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `distillSession()` in context.ts emergency path receives and forwards `sidecarUrl` — sidecar enrichment (dedup, evolution, invalidation) runs on emergency distills
   2. Test confirms emergency distillation path invokes sidecar endpoints
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [x] 05.1-01-PLAN.md — Wire sidecarUrl + emergency flag through emergency distillation path
 
 ### Phase 6: Observability
 **Goal**: Memory system health is visible, alerting, and continuously verifiable — operators can confirm the system stays working
@@ -148,7 +151,11 @@ Plans:
   2. Crossing any health metric threshold emits `memory:health_degraded` event — degraded state is observable without polling
   3. A CLI command runs the ground-truth corpus and reports current precision/recall vs. baseline — regression is detectable
   4. Every memory write path produces a traceable receipt visible in diagnostics — write origin is auditable
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+
+Plans:
+- [ ] 06-01-PLAN.md — Unified health endpoint with semantic metrics + threshold config + CLI command
+- [ ] 06-02-PLAN.md — Recall corpus audit CLI + write receipts on all memory paths
 
 ## Progress
 
@@ -163,5 +170,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 3. Graph Extraction Overhaul | 2/3 | In Progress|  |
 | 4. Extraction Pipeline Completion | 4/4 | Complete    | 2026-02-26 |
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
-| 5.1 Emergency Distillation Sidecar Wiring | 0/TBD | Not started | - |
-| 6. Observability | 0/TBD | Not started | - |
+| 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
+| 6. Observability | 2/2 | Complete   | 2026-02-27 |

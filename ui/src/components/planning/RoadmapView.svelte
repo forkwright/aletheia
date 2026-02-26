@@ -1,5 +1,6 @@
 <script lang="ts">
   import { updatePhase, deletePhase, reorderPhase } from "../../stores/planning.svelte";
+  import AnnotationPanel from "./AnnotationPanel.svelte";
 
   interface Phase {
     id: string;
@@ -18,10 +19,25 @@
   } = $props();
 
   let sortedPhases = $derived.by(() => {
-    return [...phases].sort((a, b) => a.order - b.order);
+    return [...visiblePhases].sort((a, b) => a.order - b.order);
   });
 
+
+
   let expandedPhase = $state<string | null>(null);
+  let collapseCompleted = $state(true);
+
+  // ENG-14: Phase grouping — collapse completed phases
+  let visiblePhases = $derived.by(() => {
+    if (!collapseCompleted) return phases;
+    const completedPhases = phases.filter(p => p.state === "complete");
+    const activePhases = phases.filter(p => p.state !== "complete");
+    // Show last completed phase as context, plus all active/pending
+    const lastCompleted = completedPhases[completedPhases.length - 1];
+    return lastCompleted ? [lastCompleted, ...activePhases] : activePhases;
+  });
+
+  let hiddenCount = $derived(phases.length - visiblePhases.length);
 
   // Inline editing state
   let editingField = $state<{ phaseId: string; field: "name" | "goal" } | null>(null);
@@ -155,8 +171,13 @@
     <h2 class="section-title">
       <span class="title-icon">🗺️</span>
       Roadmap
-      <span class="phase-count">({sortedPhases.length} phases)</span>
+      <span class="phase-count">({phases.length} phases)</span>
     </h2>
+    {#if hiddenCount > 0}
+      <button class="collapse-toggle" onclick={() => { collapseCompleted = !collapseCompleted; }}>
+        {collapseCompleted ? `Show ${hiddenCount} completed` : "Collapse completed"}
+      </button>
+    {/if}
   </div>
 
   <div class="roadmap-container">
@@ -293,6 +314,18 @@
                     </ul>
                   </div>
                 {/if}
+
+                <!-- EDIT-07: Notes/annotations per phase -->
+                {#if projectId}
+                  <div class="detail-section">
+                    <AnnotationPanel
+                      {projectId}
+                      targetType="phase"
+                      targetId={phase.id}
+                      targetLabel={phase.name}
+                    />
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -331,6 +364,21 @@
   .phase-count {
     color: var(--text-muted);
     font-weight: 400;
+  }
+
+  .collapse-toggle {
+    background: none;
+    border: 1px solid var(--border, #333);
+    border-radius: 4px;
+    color: var(--text-secondary, #999);
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    cursor: pointer;
+  }
+
+  .collapse-toggle:hover {
+    color: var(--text-primary, #e0e0e0);
+    border-color: var(--accent, #6c63ff);
   }
 
   .roadmap-container {

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 5 — Recall Quality
+**Current focus:** Phase 6 — Observability
 
 ## Current Position
 
-Phase: 5 of 6 (Recall Quality)
-Plan: 4 of 4 in current phase (05-04 complete — domain re-ranking via token Jaccard overlap, hierarchical sufficiency config, tune-sufficiency.ts)
-Status: Phase 5 complete — ready for Phase 6
-Last activity: 2026-02-26 — Plan 05-04 complete; domain relevance re-ranking in /search, sufficiency config hierarchy verified, tuning script created
+Phase: 6 of 6 (Observability)
+Plan: 2 of 2 in current phase (06-01 and 06-02 complete — all observability plans done)
+Status: Phase 6 complete — OBSV-01, OBSV-02, OBSV-03, OBSV-04 all complete
+Last activity: 2026-02-27 — Plan 06-01 complete; /health extended with semantic metrics, threshold evaluation, memory health CLI command
 
-Progress: [██████████████] 87%
+Progress: [████████████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 10 min
-- Total execution time: ~2.1 hours
+- Total plans completed: 15
+- Average duration: 9 min
+- Total execution time: ~2.3 hours
 
 **By Phase:**
 
@@ -32,12 +32,18 @@ Progress: [██████████████] 87%
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
 | 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
 | 05-recall-quality (partial) | 3 | ~17 min | ~6 min |
+| 05.1-emergency-distillation-sidecar-wiring | 1 | 3 min | 3 min |
+| 06-observability | 2 | ~16 min | ~8 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
 - Trend: Stable
 
 *Updated after each plan completion*
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 06-observability (partial) | 1 | 5 min | 5 min |
 
 ## Accumulated Context
 
@@ -104,6 +110,14 @@ Recent decisions affecting current work:
 - [Phase 05-recall-quality / 05-04]: min_factor=0.6 in _domain_relevance_score — cross-domain penalty max 40%, never excluded (soft boundaries)
 - [Phase 05-recall-quality / 05-04]: _apply_domain_reranking skips when no Thread context: in query — avoids spurious penalty on bare queries
 - [Phase 05-recall-quality / 05-04]: Hierarchical sufficiency config confirmed working via Zod .default({}) — partial pipeline.json inherits unset fields from global defaults
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: sidecarUrl added to RuntimeServices (not TurnState) — service-level config belongs on the services layer, matching memoryTarget/plugins/watchdog placement
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: emergency: true is non-conditional at call site in context.ts (that call IS the emergency path) but conditional in pipeline.ts event emits (avoids emitting emergency: undefined on normal distills)
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: Test assertion uses mock.calls[N][4] direct access instead of toHaveBeenCalledWith — services.router is undefined in makeServices, and expect.anything() excludes undefined
+- [Phase 06-observability]: memoryCmd group created in Plan 02 to handle Wave 1 parallel execution — Plan 01 will reuse idempotently
+- [Phase 06-observability]: turn_extraction receipt always logged on ok response (removed conditional if added>0 guard)
+- [Phase 06-observability / 06-01]: _compute_p95 returns None for < 5 samples — insufficient data should not trigger false thresholds
+- [Phase 06-observability / 06-01]: asyncio.gather(return_exceptions=True) for parallel Qdrant+Neo4j collection — each subsystem failure is non-fatal
+- [Phase 06-observability / 06-01]: Threshold query param as JSON string — allows CLI to pass full config without routing through sidecar config
 
 ### Pending Todos
 
@@ -116,6 +130,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-26
-Stopped at: Completed 05-recall-quality 05-04-PLAN.md — domain re-ranking, hierarchical sufficiency config, tune-sufficiency.ts
+Last session: 2026-02-27
+Stopped at: Completed 06-observability 06-01-PLAN.md — /health extended with semantic metrics, threshold evaluation, memoryHealth config, memory:health_recovered event, and aletheia memory health CLI command; all plans in Phase 6 complete
 Resume file: None

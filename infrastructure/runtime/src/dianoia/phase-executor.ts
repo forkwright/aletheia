@@ -12,6 +12,7 @@
 
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
+import { eventBus } from "../koina/event-bus.js";
 import { TaskStore, type Task } from "./task-store.js";
 import { PlanningStore } from "./store.js";
 import {
@@ -177,6 +178,16 @@ export class PhaseExecutor {
       } else if (result.status === "skipped") {
         this.taskStore.updateTask(task.id, { status: "skipped" });
       }
+
+      // Emit execution progress for file sync daemon
+      eventBus.emit("planning:execution-progress", {
+        projectId: phase.projectId,
+        phaseId,
+        step: `task-${taskResults.length}/${orderedTasks.length}`,
+        status: result.status,
+        taskId: task.taskId,
+        commitHash: result.commitHash ?? null,
+      });
     }
 
     const succeeded = taskResults.filter(r => r.status === "success").length;

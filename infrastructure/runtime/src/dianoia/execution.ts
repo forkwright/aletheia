@@ -4,11 +4,14 @@ import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
-import type { PlanningPhase, SpawnRecord } from "./types.js";
+import type { PlanningMessage, PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 import { buildContextPacketSync } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
 import { PhaseExecutor } from "./phase-executor.js";
+import { StateReconciler } from "./state-reconciler.js";
+import { buildHandoffState, writeHandoffFile, readHandoffFile, clearHandoffFile } from "./handoff.js";
+import { buildOrchestratorContext } from "./context-budget.js";
 
 const log = createLogger("dianoia:execution");
 const ZOMBIE_THRESHOLD_SECONDS = 600; // Conservative threshold; execution timeouts are per-task, zombies are per-record
@@ -110,10 +113,20 @@ export function findResumeWave(records: SpawnRecord[]): number {
   return -1; // All waves complete
 }
 
+export interface MessageDelivery {
+  id: string;
+  source: PlanningMessage["source"];
+  content: string;
+  priority: PlanningMessage["priority"];
+  deliveredAtWave: number;
+  action: "logged" | "paused" | "injected";
+}
+
 export class ExecutionOrchestrator {
   private store: PlanningStore;
   private workspaceRoot: string | null = null;
   private phaseExecutor: PhaseExecutor | null = null;
+  private reconciler: StateReconciler | null = null;
 
   constructor(
     private db: Database.Database,
@@ -132,15 +145,106 @@ export class ExecutionOrchestrator {
       enableGitCommits: true,
       enableReview: true,
     });
+    // Initialize StateReconciler for co-primary file/DB architecture (ENG-01)
+    this.reconciler = new StateReconciler(this.db, root);
+    // Run reconciliation on startup — ensures files and DB are in sync
+    const reconcileResult = this.reconciler.reconcileAll();
+    if (reconcileResult.totalErrors > 0) {
+      log.warn(`Startup reconciliation had ${reconcileResult.totalErrors} errors across ${reconcileResult.projects.length} projects`);
+    }
+  }
+
+  /** Get the state reconciler for external use (routes, tools) */
+  getReconciler(): StateReconciler | null {
+    return this.reconciler;
+  }
+
+  /**
+   * Build the orchestrator's context — budget-constrained to 40k tokens (ENG-08).
+   * Returns only PROJECT.md + ROADMAP.md + current phase status + handoff context.
+   */
+  getOrchestratorContext(projectId: string): { context: string; withinBudget: boolean } {
+    if (!this.workspaceRoot) {
+      return { context: "", withinBudget: true };
+    }
+    const project = this.store.getProjectOrThrow(projectId);
+    const phases = this.store.listPhases(projectId);
+    const { context, budget } = buildOrchestratorContext({
+      workspaceRoot: this.workspaceRoot,
+      projectId,
+      project,
+      phases,
+    });
+    return { context, withinBudget: budget.withinBudget };
+  }
+
+  /**
+   * Write a handoff file for session survival (ENG-12).
+   * Call before pausing, on distillation, or on error.
+   */
+  writeHandoff(
+    projectId: string,
+    phaseId: string,
+    currentWave: number,
+    totalWaves: number,
+    pauseReason: "manual" | "checkpoint" | "crash" | "distillation" | "timeout" | "error",
+    pauseDetail: string,
+    opts?: {
+      currentTaskId?: string;
+      currentTaskLabel?: string;
+      completedTaskIds?: string[];
+      pendingTaskIds?: string[];
+      lastCommitHash?: string;
+      uncommittedChanges?: string[];
+    },
+  ): void {
+    if (!this.workspaceRoot) return;
+    const project = this.store.getProjectOrThrow(projectId);
+    const phase = this.store.getPhaseOrThrow(phaseId);
+    const state = buildHandoffState({
+      store: this.store,
+      project,
+      phase,
+      currentWave,
+      totalWaves,
+      pauseReason,
+      pauseDetail,
+      ...opts,
+    });
+    writeHandoffFile(this.workspaceRoot, state);
+  }
+
+  /**
+   * Check for and return any pending handoff state for a project (ENG-12).
+   */
+  getHandoff(projectId: string): ReturnType<typeof readHandoffFile> {
+    if (!this.workspaceRoot) return null;
+    return readHandoffFile(this.workspaceRoot, projectId);
+  }
+
+  /**
+   * Clear handoff after successful resume (ENG-12).
+   */
+  clearHandoff(projectId: string): void {
+    if (!this.workspaceRoot) return;
+    clearHandoffFile(this.workspaceRoot, projectId);
   }
 
   async executePhase(
     projectId: string,
     toolContext: ToolContext,
-  ): Promise<{ waveCount: number; failed: number; skipped: number }> {
+  ): Promise<{ waveCount: number; failed: number; skipped: number; messages: MessageDelivery[] }> {
     const project = this.store.getProjectOrThrow(projectId);
     const allPhases = this.store.listPhases(projectId);
     const waves = computeWaves(allPhases);
+    const deliveredMessages: MessageDelivery[] = [];
+
+    // On resume: check for and clear handoff file (ENG-12)
+    const handoff = this.getHandoff(projectId);
+    if (handoff) {
+      log.info(`Resuming from handoff: ${handoff.pauseReason} at wave ${handoff.currentWave + 1}/${handoff.totalWaves}`);
+      this.clearHandoff(projectId);
+    }
 
     // On resume: detect and reap zombies (running records older than threshold)
     this.reapZombies(projectId);
@@ -161,7 +265,49 @@ export class ExecutionOrchestrator {
       // Check pause flag before each wave (reads from project config)
       if (this.isPaused(projectId)) {
         log.info(`Execution paused for project ${projectId} before wave ${waveIndex}`);
+        // Write handoff file for session survival (ENG-12)
+        const pausePhase = waves[waveIndex]?.[0];
+        if (pausePhase && this.workspaceRoot) {
+          this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", "Execution paused by user or config");
+        }
         break;
+      }
+
+      // INTERJ-01: Drain pending messages at wave boundary (turn boundary)
+      const pendingMessages = this.store.drainMessages(projectId);
+      for (const msg of pendingMessages) {
+        const delivery: MessageDelivery = {
+          id: msg.id,
+          source: msg.source,
+          content: msg.content,
+          priority: msg.priority,
+          deliveredAtWave: waveIndex,
+          action: msg.priority === "critical" ? "paused" : "logged",
+        };
+        deliveredMessages.push(delivery);
+
+        // Record message delivery as a decision for audit trail
+        this.store.logDecision({
+          projectId,
+          phaseId: msg.phaseId,
+          source: msg.source === "sub-agent" ? "agent" : msg.source,
+          type: "message-injection",
+          summary: `[${msg.priority}] ${msg.content.slice(0, 200)}`,
+          rationale: `Injected at wave ${waveIndex + 1} boundary from ${msg.source}${msg.sourceSessionId ? ` (${msg.sourceSessionId})` : ""}`,
+          context: { messageId: msg.id, priority: msg.priority, sourceSessionId: msg.sourceSessionId },
+        });
+
+        log.info(`Message ${msg.id} delivered at wave ${waveIndex + 1}: [${msg.priority}] ${msg.content.slice(0, 80)}`);
+
+        // Critical messages pause execution — human must review
+        if (msg.priority === "critical") {
+          log.warn(`Critical message received — pausing execution: ${msg.content.slice(0, 120)}`);
+          const pausePhase = waves[waveIndex]?.[0];
+          if (pausePhase && this.workspaceRoot) {
+            this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", `Critical message: ${msg.content.slice(0, 200)}`);
+          }
+          return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
+        }
       }
 
       const wave = waves[waveIndex]!;
@@ -249,6 +395,12 @@ export class ExecutionOrchestrator {
               completedAt: new Date().toISOString(),
             });
             this.store.updatePhaseStatus(plan.id, "complete");
+            // Write step-boundary STATE.md (ENG-01)
+            this.reconciler?.writeStepBoundaryState(projectId, plan.id, {
+              step: "complete",
+              label: `Phase "${plan.name}" completed`,
+              completedTasks: phaseResult.taskResults.filter(t => t.status === "success").map(t => t.taskId),
+            });
             log.info(
               `Phase "${plan.name}" completed via task executor: ${phaseResult.succeeded} tasks, ${phaseResult.commits.length} commits`,
             );
@@ -403,7 +555,7 @@ export class ExecutionOrchestrator {
       }
     }
 
-    return { waveCount: waves.length, failed, skipped };
+    return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
   }
 
   getExecutionSnapshot(projectId: string): ExecutionSnapshot {

@@ -211,10 +211,19 @@ export async function finalize(
               signal: AbortSignal.timeout(10_000),
             });
             if (res.ok) {
-              const data = await res.json() as { added?: number; skipped?: number };
-              if ((data.added ?? 0) > 0) {
-                log.info(`Turn facts: ${data.added} stored, ${data.skipped ?? 0} deduped (${nousId}, ${result.durationMs}ms)`);
-              }
+              const data = await res.json() as { added?: number; skipped?: number; errors?: number };
+              const receipt = {
+                origin: "turn_extraction" as const,
+                agentId: nousId,
+                sessionId,
+                timestamp: new Date().toISOString(),
+                factCount: result.facts.length,
+                added: data.added ?? 0,
+                skipped: data.skipped ?? 0,
+                errors: data.errors ?? 0,
+                durationMs: result.durationMs,
+              };
+              log.info("Memory write receipt", receipt);
             }
           } catch (error) {
             log.debug(`Turn fact storage failed: ${error instanceof Error ? error.message : error}`);

@@ -1,11 +1,48 @@
 // Planning API routes — /api/planning/projects and /api/planning/projects/:id
+//
+// Phase 4 (ORCH-01 through ORCH-05, SYNC-01 through SYNC-04):
+// - Full CRUD for requirements, phases, categories, discussions
+// - Bidirectional file sync: every mutation writes SQLite AND markdown
+// - SSE events emitted on every state change for real-time UI push
 import { Hono } from "hono";
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
 import type { RouteDeps, RouteRefs } from "../pylon/routes/deps.js";
 import { PlanningStore } from "./store.js";
+import { RequirementsOrchestrator } from "./requirements.js";
+import type { CategoryProposal, ScopingDecision } from "./requirements.js";
+import { writeRequirementsFile, writeRoadmapFile } from "./project-files.js";
+import { calculateBudgetAllocation } from "./context-budget.js";
 
 const log = createLogger("pylon:planning");
+
+/**
+ * Sync requirements from SQLite to REQUIREMENTS.md.
+ * Called after every requirement mutation so file stays co-primary with DB.
+ */
+function syncRequirementsFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
+  if (!workspaceRoot) return;
+  try {
+    const reqs = store.listRequirements(projectId);
+    writeRequirementsFile(workspaceRoot, projectId, reqs);
+  } catch (err) {
+    log.warn(`Failed to sync REQUIREMENTS.md for ${projectId}`, { error: err });
+  }
+}
+
+/**
+ * Sync phases from SQLite to ROADMAP.md.
+ * Called after every phase mutation.
+ */
+function syncRoadmapFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
+  if (!workspaceRoot) return;
+  try {
+    const phases = store.listPhases(projectId);
+    writeRoadmapFile(workspaceRoot, projectId, phases);
+  } catch (err) {
+    log.warn(`Failed to sync ROADMAP.md for ${projectId}`, { error: err });
+  }
+}
 
 export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   const app = new Hono();
@@ -15,6 +52,15 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   const getStore = (): PlanningStore | null => {
     try {
       return deps.store ? new PlanningStore(deps.store.getDb()) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Get workspace root from orchestrator for file sync
+  const getWorkspaceRoot = (): string | null => {
+    try {
+      return orch?.getWorkspaceOrThrow() ?? null;
     } catch {
       return null;
     }
@@ -475,6 +521,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         rationale: body.rationale ?? null,
         phaseId: body.phaseId ?? null,
       });
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "created", requirementId: req.id, reqId: req.reqId,
       });
@@ -512,7 +559,32 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         return c.json({ error: "Requirement not found" }, 404);
       }
 
+      // SYNC-05: Conflict detection via If-Unmodified-Since header
+      const ifUnmodified = c.req.header("if-unmodified-since");
+      if (ifUnmodified && req.updatedAt) {
+        const clientTime = new Date(ifUnmodified).getTime();
+        const serverTime = new Date(req.updatedAt).getTime();
+        if (serverTime > clientTime) {
+          return c.json({
+            error: "Conflict: requirement was modified since your last fetch",
+            serverUpdatedAt: req.updatedAt,
+            currentValue: req,
+          }, 409);
+        }
+      }
+
+      // Record edit history (SYNC-06) — capture old values before mutation
+      const author = (c.req.header("x-author") as string) ?? "user";
+      for (const field of Object.keys(body) as Array<keyof typeof body>) {
+        const oldVal = String(req[field] ?? "");
+        const newVal = String(body[field] ?? "");
+        if (oldVal !== newVal) {
+          store.recordEdit({ projectId, targetType: "requirement", targetId: req.id, field, oldValue: oldVal, newValue: newVal, author });
+        }
+      }
+
       const updated = store.updateRequirement(req.id, body);
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "updated", requirementId: req.id, reqId: updated.reqId, changes: Object.keys(body),
       });
@@ -541,6 +613,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       store.deleteRequirement(req.id);
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "deleted", requirementId: req.id, reqId: req.reqId,
       });
@@ -575,7 +648,31 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         return c.json({ error: "Phase not found" }, 404);
       }
 
+      // SYNC-05: Conflict detection
+      const ifUnmodified = c.req.header("if-unmodified-since");
+      if (ifUnmodified && phase.updatedAt) {
+        const clientTime = new Date(ifUnmodified).getTime();
+        const serverTime = new Date(phase.updatedAt).getTime();
+        if (serverTime > clientTime) {
+          return c.json({
+            error: "Conflict: phase was modified since your last fetch",
+            serverUpdatedAt: phase.updatedAt,
+          }, 409);
+        }
+      }
+
+      // Record edit history (SYNC-06)
+      const author = (c.req.header("x-author") as string) ?? "user";
+      for (const field of Object.keys(body) as Array<keyof typeof body>) {
+        const oldVal = JSON.stringify((phase as unknown as Record<string, unknown>)[field] ?? null);
+        const newVal = JSON.stringify(body[field] ?? null);
+        if (oldVal !== newVal) {
+          store.recordEdit({ projectId, targetType: "phase", targetId: phaseId, field, oldValue: oldVal, newValue: newVal, author });
+        }
+      }
+
       const updated = store.updatePhase(phaseId, body);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "updated", phaseId, changes: Object.keys(body),
       });
@@ -612,6 +709,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       store.deletePhase(phaseId);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "deleted", phaseId, phaseName: phase.name,
       });
@@ -638,6 +736,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     try {
       store.reorderPhase(projectId, phaseId, body.newOrder);
       const phases = store.listPhases(projectId);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "reordered", phaseId, newOrder: body.newOrder,
       });
@@ -716,6 +815,525 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     } catch (error) {
       log.error("Failed to skip discussion", { projectId, error });
       return c.json({ error: "Failed to skip discussion" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Category Proposal Workflow (ORCH-03)
+  // ============================================================
+
+  // Present a category proposal — returns formatted text for UI display
+  app.post("/api/planning/projects/:id/categories/present", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as CategoryProposal;
+
+    if (!body.category || !body.categoryName) {
+      return c.json({ error: "category and categoryName are required" }, 400);
+    }
+
+    try {
+      const reqOrch = new RequirementsOrchestrator(store["db"], getWorkspaceRoot() ?? undefined);
+      const formatted = reqOrch.formatCategoryPresentation(body);
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-presented", category: body.category,
+      });
+      return c.json({
+        projectId,
+        category: body.category,
+        categoryName: body.categoryName,
+        formatted,
+        tableStakesCount: body.tableStakes.length,
+        differentiatorCount: body.differentiators.length,
+      });
+    } catch (error) {
+      log.error("Failed to present category", { projectId, error });
+      return c.json({ error: "Failed to present category" }, 500);
+    }
+  });
+
+  // Persist category decisions — creates requirements from approved features
+  app.post("/api/planning/projects/:id/categories/persist", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as {
+      category: CategoryProposal;
+      decisions: ScopingDecision[];
+    };
+
+    if (!body.category || !body.decisions?.length) {
+      return c.json({ error: "category and decisions[] are required" }, 400);
+    }
+
+    try {
+      const reqOrch = new RequirementsOrchestrator(store["db"], getWorkspaceRoot() ?? undefined);
+      reqOrch.persistCategory(projectId, body.category, body.decisions);
+      // File sync is already handled by RequirementsOrchestrator.persistCategory()
+      // but let's ensure it happens even if workspace was null during construction
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-persisted", category: body.category.category,
+        count: body.decisions.length,
+      });
+      const reqs = store.listRequirements(projectId);
+      return c.json({
+        projectId,
+        category: body.category.category,
+        persisted: body.decisions.length,
+        totalRequirements: reqs.length,
+      }, 201);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const code = (error as any)?.code ?? "";
+      log.error("Failed to persist category", { projectId, error });
+      if (msg.includes("Table-stakes") || msg.includes("TABLE_STAKES") || code.includes("TABLE_STAKES") ||
+          msg.includes("DUPLICATE") || code.includes("DUPLICATE")) {
+        return c.json({ error: msg }, 400);
+      }
+      return c.json({ error: "Failed to persist category" }, 500);
+    }
+  });
+
+  // Adjust a category's requirements — bulk update tiers/rationale
+  app.patch("/api/planning/projects/:id/categories/:categoryCode", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const categoryCode = c.req.param("categoryCode");
+    const body = await c.req.json() as {
+      adjustments: Array<{
+        reqId: string;
+        tier?: "v1" | "v2" | "out-of-scope";
+        rationale?: string | null;
+      }>;
+    };
+
+    if (!body.adjustments?.length) {
+      return c.json({ error: "adjustments[] is required" }, 400);
+    }
+
+    try {
+      const results: Array<{ reqId: string; updated: boolean; error?: string }> = [];
+      for (const adj of body.adjustments) {
+        try {
+          const req = store.getRequirementByReqId(projectId, adj.reqId);
+          if (!req) {
+            results.push({ reqId: adj.reqId, updated: false, error: "not found" });
+            continue;
+          }
+          if (req.category !== categoryCode) {
+            results.push({ reqId: adj.reqId, updated: false, error: `belongs to ${req.category}, not ${categoryCode}` });
+            continue;
+          }
+          const updates: Record<string, unknown> = {};
+          if (adj.tier !== undefined) updates["tier"] = adj.tier;
+          if (adj.rationale !== undefined) updates["rationale"] = adj.rationale;
+          store.updateRequirement(req.id, updates as { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null });
+          results.push({ reqId: adj.reqId, updated: true });
+        } catch (err) {
+          results.push({ reqId: adj.reqId, updated: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
+      const updatedCount = results.filter(r => r.updated).length;
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-adjusted", category: categoryCode, updatedCount,
+      });
+      return c.json({ projectId, category: categoryCode, results, updatedCount });
+    } catch (error) {
+      log.error("Failed to adjust category", { projectId, categoryCode, error });
+      return c.json({ error: "Failed to adjust category" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Batch Operations (ORCH-06) — v2 but useful now
+  // ============================================================
+
+  app.post("/api/planning/projects/:id/batch", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const project = orch?.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+
+    const body = await c.req.json() as {
+      operations: Array<{
+        type: "update-requirement" | "update-phase" | "delete-requirement" | "delete-phase";
+        id: string;
+        data?: Record<string, unknown>;
+      }>;
+    };
+
+    if (!body.operations?.length) {
+      return c.json({ error: "operations[] is required" }, 400);
+    }
+
+    if (body.operations.length > 50) {
+      return c.json({ error: "Maximum 50 operations per batch" }, 400);
+    }
+
+    const results: Array<{ index: number; type: string; id: string; success: boolean; error?: string }> = [];
+    let reqsChanged = false;
+    let phasesChanged = false;
+
+    for (let i = 0; i < body.operations.length; i++) {
+      const op = body.operations[i]!;
+      try {
+        switch (op.type) {
+          case "update-requirement": {
+            const req = store.getRequirement(op.id) ?? store.getRequirementByReqId(projectId, op.id);
+            if (!req) throw new Error("Not found");
+            store.updateRequirement(req.id, op.data as { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null });
+            reqsChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "delete-requirement": {
+            const req = store.getRequirement(op.id) ?? store.getRequirementByReqId(projectId, op.id);
+            if (!req) throw new Error("Not found");
+            store.deleteRequirement(req.id);
+            reqsChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "update-phase": {
+            store.updatePhase(op.id, op.data as { name?: string; goal?: string });
+            phasesChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "delete-phase": {
+            store.deletePhase(op.id);
+            phasesChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          default:
+            results.push({ index: i, type: op.type, id: op.id, success: false, error: `Unknown type: ${op.type}` });
+        }
+      } catch (err) {
+        results.push({ index: i, type: op.type, id: op.id, success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    const wsRoot = getWorkspaceRoot();
+    if (reqsChanged) syncRequirementsFile(store, projectId, wsRoot);
+    if (phasesChanged) syncRoadmapFile(store, projectId, wsRoot);
+
+    const successCount = results.filter(r => r.success).length;
+    eventBus.emit("planning:phase-changed", {
+      projectId, action: "batch", operationCount: body.operations.length, successCount,
+    });
+
+    return c.json({
+      projectId,
+      totalOperations: body.operations.length,
+      successCount,
+      failureCount: body.operations.length - successCount,
+      results,
+    });
+  });
+
+  // ============================================================
+  // Decision Audit Trail (OBS-03)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/decisions", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+
+    try {
+      const decisions = store.listDecisions(projectId, phaseId || undefined);
+      return c.json({ projectId, decisions, count: decisions.length });
+    } catch (error) {
+      log.error("Failed to list decisions", { projectId, error });
+      return c.json({ error: "Failed to list decisions" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Turn Tracking (OBS-05)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/usage", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+
+    try {
+      const turnCounts = store.getTurnCounts(projectId, phaseId || undefined);
+      const totals = store.getProjectTurnTotal(projectId);
+      return c.json({
+        projectId,
+        turnCounts,
+        totals,
+      });
+    } catch (error) {
+      log.error("Failed to get usage", { projectId, error });
+      return c.json({ error: "Failed to get usage" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Spawn Records (INTERJ-04 / OBS-02)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/spawns", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+    const status = c.req.query("status");
+
+    try {
+      let records = store.listSpawnRecords(projectId);
+
+      if (phaseId) {
+        records = records.filter((r) => r.phaseId === phaseId);
+      }
+      if (status) {
+        records = records.filter((r) => r.status === status);
+      }
+
+      const summary = {
+        total: records.length,
+        running: records.filter((r) => r.status === "running").length,
+        complete: records.filter((r) => r.status === "complete" || r.status === "done").length,
+        failed: records.filter((r) => r.status === "failed").length,
+        pending: records.filter((r) => r.status === "pending").length,
+      };
+
+      return c.json({ projectId, spawns: records, summary });
+    } catch (error) {
+      log.error("Failed to list spawn records", { projectId, error });
+      return c.json({ error: "Failed to list spawn records" }, 500);
+    }
+  });
+
+  // ─── Message Injection (INTERJ-01/02) ────────────────────
+
+  /**
+   * POST /api/planning/projects/:id/messages — Inject a message into a running execution
+   *
+   * Body: { content: string, source?: "user"|"agent"|"sub-agent"|"system", phaseId?: string,
+   *         priority?: "low"|"normal"|"high"|"critical", sourceSessionId?: string, expiresInSeconds?: number }
+   *
+   * The message is queued and consumed at the next turn boundary (between waves or between tasks).
+   * Critical-priority messages pause execution immediately.
+   */
+  app.post("/api/planning/projects/:id/messages", async (c) => {
+    const projectId = c.req.param("id");
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      const content = body["content"] as string;
+      if (!content || typeof content !== "string" || content.trim().length === 0) {
+        return c.json({ error: "content is required and must be a non-empty string" }, 400);
+      }
+
+      const source = (body["source"] as string | undefined) ?? "user";
+      const validSources = ["user", "agent", "sub-agent", "system"];
+      if (!validSources.includes(source)) {
+        return c.json({ error: `source must be one of: ${validSources.join(", ")}` }, 400);
+      }
+
+      const priority = (body["priority"] as string | undefined) ?? "normal";
+      const validPriorities = ["low", "normal", "high", "critical"];
+      if (!validPriorities.includes(priority)) {
+        return c.json({ error: `priority must be one of: ${validPriorities.join(", ")}` }, 400);
+      }
+
+      const expiresInSeconds = body["expiresInSeconds"] as number | undefined;
+      let expiresAt: string | undefined;
+      if (expiresInSeconds && expiresInSeconds > 0) {
+        expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+      }
+
+      const enqueueOpts: Parameters<typeof store.enqueueMessage>[0] = {
+        projectId,
+        source: source as "user" | "agent" | "sub-agent" | "system",
+        content: content.trim(),
+        priority: priority as "low" | "normal" | "high" | "critical",
+      };
+      const phaseIdVal = body["phaseId"] as string | undefined;
+      if (phaseIdVal) enqueueOpts.phaseId = phaseIdVal;
+      const sessionIdVal = body["sourceSessionId"] as string | undefined;
+      if (sessionIdVal) enqueueOpts.sourceSessionId = sessionIdVal;
+      if (expiresAt) enqueueOpts.expiresAt = expiresAt;
+
+      const message = store.enqueueMessage(enqueueOpts);
+
+      eventBus.emit("planning:message-enqueued", { projectId, messageId: message.id, priority, source });
+      log.info(`Message ${message.id} enqueued for project ${projectId}: [${priority}] ${content.slice(0, 80)}`);
+
+      return c.json({ message }, 201);
+    } catch (error) {
+      log.error("Failed to enqueue message", { projectId, error });
+      return c.json({ error: "Failed to enqueue message" }, 500);
+    }
+  });
+
+  /**
+   * GET /api/planning/projects/:id/messages — List messages for a project
+   *
+   * Query params: ?status=pending|delivered|expired, ?phaseId=xxx
+   */
+  app.get("/api/planning/projects/:id/messages", (c) => {
+    const projectId = c.req.param("id");
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+
+    try {
+      const listOpts: Parameters<typeof store.listMessages>[1] = {};
+      const statusParam = c.req.query("status") as "pending" | "delivered" | "expired" | undefined;
+      if (statusParam) listOpts.status = statusParam;
+      const phaseIdParam = c.req.query("phaseId");
+      if (phaseIdParam) listOpts.phaseId = phaseIdParam;
+      const messages = store.listMessages(projectId, listOpts);
+      const pendingCount = store.countPendingMessages(projectId);
+
+      return c.json({ projectId, messages, pendingCount });
+    } catch (error) {
+      log.error("Failed to list messages", { projectId, error });
+      return c.json({ error: "Failed to list messages" }, 500);
+    }
+  });
+
+  // ─── Annotations (EDIT-07) ──────────────────────────────────
+
+  app.get("/api/planning/projects/:id/annotations", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const targetType = c.req.query("targetType") as "requirement" | "phase" | "project" | "discussion" | undefined;
+    const targetId = c.req.query("targetId");
+    const includeResolved = c.req.query("includeResolved") === "true";
+    try {
+      const annotations = store.listAnnotations(projectId, {
+        ...(targetType ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
+        includeResolved,
+      });
+      return c.json({ projectId, annotations });
+    } catch (error) {
+      log.error("Failed to list annotations", { projectId, error });
+      return c.json({ error: "Failed to list annotations" }, 500);
+    }
+  });
+
+  app.post("/api/planning/projects/:id/annotations", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as {
+      targetType: "requirement" | "phase" | "project" | "discussion";
+      targetId: string;
+      author?: string;
+      content: string;
+    };
+    if (!body.targetType || !body.targetId || !body.content?.trim()) {
+      return c.json({ error: "targetType, targetId, and content are required" }, 400);
+    }
+    try {
+      const annotation = store.createAnnotation({
+        projectId,
+        targetType: body.targetType,
+        targetId: body.targetId,
+        author: body.author ?? "user",
+        content: body.content.trim(),
+      });
+      eventBus.emit("planning:requirement-changed", { projectId, action: "annotated", targetType: body.targetType, targetId: body.targetId });
+      return c.json(annotation, 201);
+    } catch (error) {
+      log.error("Failed to create annotation", { projectId, error });
+      return c.json({ error: "Failed to create annotation" }, 500);
+    }
+  });
+
+  app.patch("/api/planning/projects/:id/annotations/:annotationId", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const annotationId = c.req.param("annotationId");
+    const body = await c.req.json() as { content?: string; resolved?: boolean };
+    try {
+      const updated = store.updateAnnotation(annotationId, body);
+      if (!updated) return c.json({ error: "Annotation not found" }, 404);
+      return c.json(updated);
+    } catch (error) {
+      log.error("Failed to update annotation", { annotationId, error });
+      return c.json({ error: "Failed to update annotation" }, 500);
+    }
+  });
+
+  app.delete("/api/planning/projects/:id/annotations/:annotationId", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const annotationId = c.req.param("annotationId");
+    try {
+      if (!store.deleteAnnotation(annotationId)) return c.json({ error: "Annotation not found" }, 404);
+      return c.json({ deleted: true });
+    } catch (error) {
+      log.error("Failed to delete annotation", { annotationId, error });
+      return c.json({ error: "Failed to delete annotation" }, 500);
+    }
+  });
+
+  // ─── Edit History (SYNC-06) ─────────────────────────────────
+
+  app.get("/api/planning/projects/:id/history", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const targetType = c.req.query("targetType") as "requirement" | "phase" | "project" | "discussion" | "checkpoint" | undefined;
+    const targetId = c.req.query("targetId");
+    const limit = parseInt(c.req.query("limit") ?? "50", 10);
+    try {
+      const edits = store.listEdits(projectId, {
+        ...(targetType ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
+        limit,
+      });
+      return c.json({ projectId, edits });
+    } catch (error) {
+      log.error("Failed to list edit history", { projectId, error });
+      return c.json({ error: "Failed to list edit history" }, 500);
+    }
+  });
+
+  // ─── Context Budget (OBS-04) ─────────────────────────────────
+
+  app.get("/api/planning/projects/:id/budget", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return c.json({ error: "Workspace not available" }, 503);
+
+    try {
+      const project = store.getProject(projectId);
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      const phases = store.listPhases(projectId);
+      const allocation = calculateBudgetAllocation({ workspaceRoot, projectId, project, phases });
+      return c.json(allocation);
+    } catch (error) {
+      log.error("Failed to calculate budget", { projectId, error });
+      return c.json({ error: "Failed to calculate budget" }, 500);
     }
   });
 
