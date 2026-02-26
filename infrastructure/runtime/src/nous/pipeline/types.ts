@@ -134,6 +134,10 @@ export interface TurnState {
   // Abort signal for cooperative cancellation
   abortSignal?: AbortSignal;
 
+  // Set by recall stage — threaded to finalize for reinforcement
+  recalledMemoryIds?: string[];
+  recalledMemoryTexts?: Map<string, string>;
+
   // Turn identifier for approval gates
   turnId?: string;
 }

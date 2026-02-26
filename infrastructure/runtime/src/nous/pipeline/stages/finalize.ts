@@ -13,6 +13,82 @@ import { getSidecarUrl, getUserId } from "../../../koina/memory-client.js";
 import type { RuntimeServices, TurnState } from "../types.js";
 
 const log = createLogger("finalize");
+const reinforcementLog = createLogger("nous:reinforcement");
+
+function tokenizeForJaccard(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.replace(/[^a-z0-9]/g, ""))
+      .filter((t) => t.length >= 3),
+  );
+}
+
+/**
+ * Token-level Jaccard overlap between two strings.
+ * Tokenizes both strings (lowercase, strips non-alphanumeric, splits on whitespace, filters tokens < 3 chars).
+ * Returns intersection / union, or 0 if both token sets are empty.
+ */
+export function tokenJaccardOverlap(a: string, b: string): number {
+  const tokensA = tokenizeForJaccard(a);
+  const tokensB = tokenizeForJaccard(b);
+  if (tokensA.size === 0 && tokensB.size === 0) return 0;
+  let intersectionCount = 0;
+  for (const t of tokensA) {
+    if (tokensB.has(t)) intersectionCount++;
+  }
+  const union = tokensA.size + tokensB.size - intersectionCount;
+  return union === 0 ? 0 : intersectionCount / union;
+}
+
+/**
+ * Fire-and-forget reinforcement of memories actually used in the response.
+ * Uses Jaccard overlap >= 0.25 to detect which recalled memories influenced the output.
+ * Only those memories are sent to /evolution/reinforce — not every recall hit.
+ */
+function reinforceUsedMemories(
+  memoryIds: string[],
+  memoryTexts: Map<string, string>,
+  responseText: string,
+  sidecarUrl: string,
+  nousId: string,
+): void {
+  try {
+    const JACCARD_THRESHOLD = 0.25;
+    const usedIds = memoryIds.filter((id) => {
+      const text = memoryTexts.get(id);
+      if (!text) return false;
+      return tokenJaccardOverlap(text, responseText) >= JACCARD_THRESHOLD;
+    });
+
+    if (usedIds.length === 0) return;
+
+    reinforcementLog.debug(
+      `Reinforcing ${usedIds.length}/${memoryIds.length} used memories for ${nousId}`,
+    );
+
+    for (const memoryId of usedIds) {
+      void (async () => {
+        try {
+          await fetch(`${sidecarUrl}/evolution/reinforce`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memory_id: memoryId, user_id: nousId }),
+            signal: AbortSignal.timeout(5_000),
+          });
+        } catch (error: unknown) {
+          reinforcementLog.warn(
+            `Reinforcement failed for ${memoryId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      })();
+    }
+  } catch (error: unknown) {
+    reinforcementLog.warn(
+      `reinforceUsedMemories failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 export async function finalize(
   state: TurnState,
@@ -148,6 +224,24 @@ export async function finalize(
         log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`);
       }
     })();
+  }
+
+  // Reinforce recalled memories that were actually used in the response
+  // Fire-and-forget — never blocks turn completion
+  const { recalledMemoryIds, recalledMemoryTexts } = state;
+  if (
+    recalledMemoryIds &&
+    recalledMemoryIds.length > 0 &&
+    recalledMemoryTexts &&
+    outcome.text.length > 100
+  ) {
+    void reinforceUsedMemories(
+      recalledMemoryIds,
+      recalledMemoryTexts,
+      outcome.text,
+      getSidecarUrl(),
+      nousId,
+    );
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

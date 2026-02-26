@@ -137,6 +137,11 @@ export async function buildContext(
       log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
       state.trace.setRecall(recall.count, recall.durationMs);
     }
+    // Thread memory IDs and texts into state for downstream reinforcement in finalize
+    if (recall.memoryIds.length > 0) {
+      state.recalledMemoryIds = recall.memoryIds;
+      state.recalledMemoryTexts = recall.memoryTexts;
+    }
   }
 
   // Domain-based proactive tool activation + skill-declared tool activation

@@ -29,7 +29,7 @@ vi.mock("../../bootstrap-diff.js", () => ({
 }));
 
 vi.mock("../../recall.js", () => ({
-  recallMemories: vi.fn().mockResolvedValue({ block: null, tokens: 0, count: 0, durationMs: 5 }),
+  recallMemories: vi.fn().mockResolvedValue({ block: null, tokens: 0, count: 0, durationMs: 5, memoryIds: [], memoryTexts: new Map() }),
 }));
 
 vi.mock("../../working-state.js", () => ({
