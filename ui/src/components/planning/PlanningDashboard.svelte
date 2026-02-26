@@ -14,10 +14,14 @@
   import { onGlobalEvent } from "../../lib/events.svelte";
   import { authFetch } from "./api";
 
+  type PlanningLayout = "panel" | "half" | "full";
+
   // Props from parent component (ChatView)
-  let { projectId: explicitProjectId, onClose }: {
+  let { projectId: explicitProjectId, onClose, layout = "panel", onLayoutChange }: {
     projectId?: string;
     onClose?: () => void;
+    layout?: PlanningLayout;
+    onLayoutChange?: () => void;
   } = $props();
 
   interface Project {
@@ -248,6 +252,8 @@
         stateLabel={stateLabel(project.state)}
         stateColor={stateColor(project.state)}
         onRefresh={loadProject}
+        {layout}
+        {...(onLayoutChange !== undefined && { onLayoutChange })}
         {...(onClose !== undefined && { onClose })}
       />
 
