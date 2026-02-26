@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -115,6 +116,13 @@ class AddBatchRequest(BaseModel):
     source: str = "distillation"
     session_id: str | None = None
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class DeduplicateRequest(BaseModel):
+    """Deduplicate a batch of texts using in-memory pairwise cosine similarity."""
+    texts: list[str]
+    user_id: str = "default"
+    threshold: float = Field(default=0.90, ge=0.5, le=1.0)
 
 
 DEDUP_THRESHOLD = 0.85
@@ -324,6 +332,51 @@ async def _semantic_dedup_check(
     return False
 
 
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two equal-length vectors. Returns 0.0 on zero-magnitude input."""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    mag_a = math.sqrt(sum(x * x for x in a))
+    mag_b = math.sqrt(sum(x * x for x in b))
+    if mag_a == 0.0 or mag_b == 0.0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+@router.post("/dedup/batch")
+async def dedup_batch(req: DeduplicateRequest, request: Request) -> dict[str, Any]:
+    """Deduplicate a batch of texts using in-memory pairwise cosine similarity.
+
+    Embeds all submitted texts and removes near-duplicates using greedy clustering:
+    each text is kept only if it has cosine similarity < threshold against all
+    already-kept texts. Does NOT query Qdrant — purely in-memory comparison of
+    the submitted batch.
+    """
+    mem = _get_memory(request)
+    texts = [t.strip() for t in req.texts if t.strip()]
+    if not texts:
+        return {"deduplicated": [], "removed": 0}
+
+    vectors = await _embed_texts(mem, texts)
+
+    kept_texts: list[str] = []
+    kept_vectors: list[list[float]] = []
+
+    for text, vector in zip(texts, vectors, strict=False):
+        is_duplicate = any(
+            _cosine_similarity(vector, kv) >= req.threshold
+            for kv in kept_vectors
+        )
+        if not is_duplicate:
+            kept_texts.append(text)
+            kept_vectors.append(vector)
+
+    removed = len(texts) - len(kept_texts)
+    if removed > 0:
+        logger.info(f"dedup_batch: removed {removed} near-duplicate(s) from {len(texts)} texts (threshold={req.threshold})")
+
+    return {"deduplicated": kept_texts, "removed": removed}
+
+
 # NOTE: /add_direct is defined below (Phase 5) with contradiction detection + entity resolution
 
 
@@ -340,6 +393,11 @@ async def add_batch(req: AddBatchRequest, request: Request) -> dict[str, Any]:
     NOTE: The aletheia.ts memory flush path (addMemories) does not currently
     pass session_id. That caller must be updated to include session_id before
     this endpoint is safe to call from that path.
+
+    EXTR-06 (infer=False): This path structurally bypasses mem.add() entirely.
+    Facts are written directly to Qdrant via client.upsert() — Mem0's LLM
+    extraction is never invoked. The infer=False requirement is satisfied
+    architecturally, not via a parameter.
     """
     missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
     if missing:
@@ -2233,6 +2291,11 @@ async def add_direct_v2(req: AddDirectRequest, request: Request) -> dict[str, An
 
     Requires agent_id and session_id — requests missing either are rejected
     with 400 to prevent creation of orphaned Qdrant entries.
+
+    EXTR-06 (infer=False): This path structurally bypasses mem.add() entirely.
+    Facts are written directly to Qdrant via client.upsert() — Mem0's LLM
+    extraction is never invoked. The infer=False requirement is satisfied
+    architecturally, not via a parameter.
     """
     missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
     if missing:
