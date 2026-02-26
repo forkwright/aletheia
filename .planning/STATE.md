@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 4 of 6 (Extraction Pipeline Completion)
-Plan: 1 of 3 in current phase (04-01 complete — contradiction invalidation wiring, invalidate_text endpoint)
+Plan: 2 of 3 in current phase (04-02 complete — cross-chunk semantic dedup via /dedup/batch and TypeScript integration)
 Status: Phase 4 in progress
-Last activity: 2026-02-26 — Plan 04-01 complete; POST /temporal/facts/invalidate_text added, contradiction invalidation wired into distillation pipeline
+Last activity: 2026-02-26 — Plan 04-02 complete; POST /dedup/batch sidecar endpoint, deduplicateFactsViaSidecar wired into extractFromMessages
 
-Progress: [█████████░] 60%
+Progress: [█████████░] 63%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 11 min
-- Total execution time: ~1.7 hours
+- Total execution time: ~1.8 hours
 
 **By Phase:**
 
@@ -30,7 +30,7 @@ Progress: [█████████░] 60%
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
-| 04-extraction-pipeline-completion | 1 | 7 min | 7 min |
+| 04-extraction-pipeline-completion | 2 | 14 min | 7 min |
 
 **Recent Trend:**
 - Last 5 plans: ~15 min, 3 min, 4 min, 3 min, 7 min
@@ -78,6 +78,10 @@ Recent decisions affecting current work:
 - [Phase 04-extraction-pipeline-completion / 04-01]: invalidate_text uses embedding-based Qdrant search (not triple parsing) for free-form contradiction matching; 0.80 similarity threshold
 - [Phase 04-extraction-pipeline-completion / 04-01]: Neo4j invalidation is best-effort — both qdrant_id match and text fragment match attempted; failures are non-fatal
 - [Phase 04-extraction-pipeline-completion / 04-01]: sidecarUrl added as optional DistillationOpts field — no mandatory change at existing call sites; NousManager.setSidecarUrl() wires via getSidecarUrl()
+- [Phase 04-extraction-pipeline-completion / 04-02]: dedup_batch uses greedy first-occurrence clustering — first text in each near-duplicate cluster wins, preserves insertion order
+- [Phase 04-extraction-pipeline-completion / 04-02]: _cosine_similarity implemented in pure Python (math.sqrt) — avoids adding numpy/scipy to sidecar dependencies
+- [Phase 04-extraction-pipeline-completion / 04-02]: Cross-chunk dedup only runs when extraction was chunked (chunks.length > 1) — no-op for single-chunk extractions
+- [Phase 04-extraction-pipeline-completion / 04-02]: deduplicateFactsViaSidecar is fail-open — any sidecar error returns original facts, never blocks distillation
 
 ### Pending Todos
 
@@ -91,5 +95,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 04-extraction-pipeline-completion 04-01-PLAN.md — contradiction invalidation wiring
+Stopped at: Completed 04-extraction-pipeline-completion 04-02-PLAN.md — cross-chunk semantic dedup
 Resume file: None
