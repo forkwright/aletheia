@@ -1,7 +1,7 @@
 # Neo4j driver factory and cached availability check
 import logging
-import time
 import threading
+import time
 from typing import Any
 
 from .config import NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER

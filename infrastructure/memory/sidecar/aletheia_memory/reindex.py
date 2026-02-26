@@ -14,9 +14,9 @@ import os
 import sys
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .config import VOYAGE_MODEL, VOYAGE_DIMS
+from .config import VOYAGE_DIMS, VOYAGE_MODEL
 
 log = logging.getLogger("aletheia.memory.reindex")
 

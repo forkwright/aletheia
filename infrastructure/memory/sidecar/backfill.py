@@ -18,14 +18,14 @@ import hashlib
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 try:
     import voyageai
     from qdrant_client import QdrantClient
-    from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 except ImportError as e:
     print(f"Missing dependency: {e}")
     print("Run from the sidecar venv: .venv/bin/python backfill.py")
@@ -56,9 +56,7 @@ def chunk_text(text: str, source_path: str, max_words: int = CHUNK_SIZE, overlap
 
     for line in lines:
         # Track markdown headers for section context
-        if line.startswith("# "):
-            current_section = line.strip("# ").strip()
-        elif line.startswith("## "):
+        if line.startswith("# ") or line.startswith("## "):
             current_section = line.strip("# ").strip()
 
         words = line.split()
@@ -93,7 +91,7 @@ def collect_agent_files(agent: str | None = None) -> list[tuple[str, str, str]]:
     Returns: list of (file_path, agent_id, source_type)
     """
     files = []
-    
+
     if agent:
         agents = [agent]
     else:
@@ -171,7 +169,7 @@ def backfill(
     voyage_key: str | None = None,
 ) -> dict:
     """Embed and upsert curated knowledge into Qdrant."""
-    
+
     key = voyage_key or os.environ.get("VOYAGE_API_KEY")
     if not key and not dry_run:
         print("ERROR: VOYAGE_API_KEY required (set in env or --voyage-key)")
@@ -213,10 +211,10 @@ def backfill(
     existing_hashes = get_existing_hashes(client)
     new_chunks = [c for c in all_chunks if c["hash"] not in existing_hashes]
     skipped = len(all_chunks) - len(new_chunks)
-    
+
     if skipped:
         print(f"Skipping {skipped} already-embedded chunks")
-    
+
     if not new_chunks:
         print("Nothing new to embed.")
         return {"chunks": len(all_chunks), "files": len(files), "embedded": 0, "skipped": skipped}
@@ -233,12 +231,12 @@ def backfill(
         print(f"  Embedded batch {i // BATCH_SIZE + 1}/{(len(texts) + BATCH_SIZE - 1) // BATCH_SIZE}")
 
     # Build points
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     points = []
     for chunk, vector in zip(new_chunks, all_vectors):
         memory_text = chunk["text"][:500]  # Mem0 convention: truncated for display
         section = f" [{chunk['section']}]" if chunk.get("section") else ""
-        
+
         points.append(PointStruct(
             id=str(uuid4()),
             vector=vector,
@@ -266,7 +264,7 @@ def backfill(
     # Verify
     info = client.get_collection(COLLECTION)
     print(f"\nDone. Collection now has {info.points_count} points.")
-    
+
     return {
         "chunks": len(all_chunks),
         "files": len(files),
@@ -285,7 +283,7 @@ def main():
     parser.add_argument("--voyage-key", help="Voyage API key (or set VOYAGE_API_KEY)")
     args = parser.parse_args()
 
-    print(f"Aletheia Memory Backfill")
+    print("Aletheia Memory Backfill")
     print(f"Root: {ALETHEIA_ROOT}")
     print(f"Collection: {COLLECTION} @ {QDRANT_HOST}:{QDRANT_PORT}")
 

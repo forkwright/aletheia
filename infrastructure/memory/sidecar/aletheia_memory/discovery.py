@@ -2,18 +2,17 @@
 
 # NOTE: Do NOT add future annotations — see routes.py comment.
 
-import asyncio
 import logging
 import os
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
 logger = logging.getLogger("aletheia_memory.discovery")
 discovery_router = APIRouter(prefix="/discovery")
@@ -390,7 +389,7 @@ async def generate_discovery_candidates():
         high_betweenness = sorted(betweenness.items(), key=lambda x: -x[1])[:20]
 
         # Store top candidates in Neo4j
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         stored = 0
 
         with driver.session() as session:

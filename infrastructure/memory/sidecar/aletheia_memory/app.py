@@ -9,12 +9,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mem0 import Memory
 
-from .config import MEM0_CONFIG, LLM_BACKEND, build_mem0_config
-from .llm_backend import refresh_oauth_token
-from .routes import router, foresight_router
+from .config import LLM_BACKEND, build_mem0_config
 from .discovery import discovery_router
 from .evolution import evolution_router
-from .temporal import temporal_router, ensure_temporal_schema
+from .routes import foresight_router, router
+from .temporal import ensure_temporal_schema, temporal_router
 
 log = logging.getLogger("aletheia.memory")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")

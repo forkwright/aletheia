@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,18 +19,17 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 
-from .config import QDRANT_HOST, QDRANT_PORT, LLM_BACKEND
-from .graph import neo4j_driver, neo4j_available, mark_neo4j_ok, mark_neo4j_down
-from .temporal import _extract_entities_for_episode
+from .config import LLM_BACKEND, QDRANT_HOST, QDRANT_PORT
 from .entity_resolver import (
-    resolve_entity,
-    is_valid_entity,
+    cleanup_orphan_entities,
     get_canonical_entities,
     merge_duplicate_entities,
-    cleanup_orphan_entities,
+    resolve_entity,
 )
+from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
+from .temporal import _extract_entities_for_episode
 from .vocab import CONTROLLED_VOCAB, normalize_type
 
 logger = logging.getLogger("aletheia_memory")
@@ -120,9 +119,10 @@ async def add_memory(req: AddRequest, request: Request):
             logger.info("Tier 3: storing text as embedding only (no fact extraction)")
             # Use Mem0's vector store directly for embedding-only storage
             try:
+                import uuid as _uuid
+
                 from qdrant_client import QdrantClient
                 from qdrant_client.models import PointStruct
-                import uuid as _uuid
                 embedder = mem.embedding_model
                 vector = await asyncio.to_thread(embedder.embed, req.text)
                 point_id = str(_uuid.uuid4())
@@ -131,7 +131,7 @@ async def add_memory(req: AddRequest, request: Request):
                     "data": req.text,
                     "user_id": req.user_id,
                     "agent_id": req.agent_id,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                     **(req.metadata or {}),
                 }
                 qclient = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
@@ -174,8 +174,8 @@ async def add_memory(req: AddRequest, request: Request):
 
 def _apply_recency_boost(results: list, max_boost: float = 0.15, window_hours: float = 24.0) -> list:
     """Boost scores for recently created memories (linear decay over window)."""
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
+    from datetime import datetime
+    now = datetime.now(UTC)
     for r in results:
         created = r.get("created_at") or (r.get("metadata") or {}).get("created_at")
         if not created:
@@ -296,7 +296,7 @@ async def add_batch(req: AddBatchRequest, request: Request):
 
     try:
         client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Content hash dedup — batch check existing hashes
         hashes = {_content_hash(t): t for t in texts}
@@ -439,7 +439,7 @@ async def search_memory(req: SearchRequest, request: Request):
             results = _apply_recency_boost(results)
             results = _apply_confidence_weight(results)
         return {"ok": True, "results": results}
-    except Exception as e:
+    except Exception:
         logger.exception("search_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -455,7 +455,7 @@ async def graph_search(req: SearchRequest, request: Request):
         results = await asyncio.to_thread(mem.search, req.query, **kwargs)
         graph_results = [r for r in results.get("results", []) if r.get("source") == "graph"]
         return {"ok": True, "results": graph_results}
-    except Exception as e:
+    except Exception:
         logger.exception("graph_search failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -512,7 +512,7 @@ async def list_memories(
         results = await asyncio.to_thread(mem.get_all, **kwargs)
         entries = results.get("results", results) if isinstance(results, dict) else results
         return {"ok": True, "memories": entries}
-    except Exception as e:
+    except Exception:
         logger.exception("list_memories failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -523,7 +523,7 @@ async def delete_memory(memory_id: str, request: Request):
     try:
         await asyncio.to_thread(mem.delete, memory_id)
         return {"ok": True}
-    except Exception as e:
+    except Exception:
         logger.exception("delete_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -968,7 +968,7 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=req.user_id, limit=req.limit)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch memories")
 
     if not isinstance(entries, list):
@@ -1032,7 +1032,7 @@ async def merge_memories(req: MergeRequest, request: Request):
     try:
         await asyncio.to_thread(mem.delete, req.source_id)
         return {"ok": True, "deleted": req.source_id, "kept": req.target_id}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1044,7 +1044,7 @@ async def fact_stats(request: Request, user_id: str = "default"):
     try:
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
 
     if not isinstance(entries, list):
@@ -1099,7 +1099,7 @@ async def retract_memory(req: RetractRequest, request: Request):
     try:
         raw = await asyncio.to_thread(mem.search, req.query, user_id=req.user_id, limit=20)
         results = raw.get("results", raw) if isinstance(raw, dict) else raw
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Search failed")
 
     if not isinstance(results, list) or not results:
@@ -1173,7 +1173,7 @@ def _log_retraction(req: RetractRequest, retracted: list[dict[str, Any]], neo4j_
     """Append retraction to audit log."""
     RETRACTION_LOG.parent.mkdir(parents=True, exist_ok=True)
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "query": req.query,
         "reason": req.reason,
         "user_id": req.user_id,
@@ -1197,7 +1197,7 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
         return
     try:
         episode_id = f"ep_{uuid.uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         session_id = (metadata or {}).get("sessionId", "")
         entities = _extract_entities_for_episode(text)
 
@@ -1293,7 +1293,7 @@ async def active_foresight():
 
     try:
         driver = neo4j_driver()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with driver.session() as session:
             result = session.run(
                 """
@@ -1332,7 +1332,7 @@ async def decay_foresight():
 
     try:
         driver = neo4j_driver()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with driver.session() as session:
             decay_result = session.run(
                 """
@@ -1745,7 +1745,7 @@ async def _simple_search(mem: Any, req: EnhancedSearchRequest) -> dict[str, Any]
             "aliases_resolved": {},
             "total_candidates": len(results) if isinstance(results, list) else 0,
         }
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -2268,7 +2268,7 @@ async def add_direct_v2(req: AddDirectRequest, request: Request):
                     resolved_entities.append(resolved)
 
         # Store
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         point_id = str(uuid.uuid4())
         payload = {
             "memory": text[:500],
@@ -2345,13 +2345,13 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request):
         old_payload = dict(old_point.payload or {})
         old_payload["confidence"] = 0.1
         old_payload["superseded_by"] = None  # Will be filled after new point is created
-        old_payload["superseded_at"] = datetime.now(timezone.utc).isoformat()
+        old_payload["superseded_at"] = datetime.now(UTC).isoformat()
         old_payload["superseded_reason"] = f"[{req.agent_id or 'user'}] {req.reason}"
 
         # Store the corrected version
         new_vector = (await _embed_texts(mem, [corrected_text]))[0]
         new_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         new_payload = {
             "memory": corrected_text[:500],
             "data": corrected_text,
@@ -2431,7 +2431,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request):
             return {"ok": True, "dry_run": True, "would_forget": len(matches), "matches": previews}
 
         # Soft-delete: set confidence=0, add forgotten flag
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         points_to_update = []
         forgotten_texts = []
         for point in matches:
@@ -2481,7 +2481,7 @@ async def memory_health(request: Request, user_id: str = "default"):
         if not isinstance(entries, list):
             entries = []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stale_count = 0
         flagged_count = 0
         forgotten_count = 0
@@ -2757,7 +2757,7 @@ async def graph_drift(request: Request, user_id: str = "default", stale_days: in
         raw = await asyncio.to_thread(mem.get_all, user_id=user_id, limit=500)
         entries = raw.get("results", raw) if isinstance(raw, dict) else raw
         if isinstance(entries, list):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             entity_dates: dict[str, datetime] = {}
             for entry in entries:
                 meta = entry.get("metadata", {}) or {}
@@ -2793,7 +2793,7 @@ async def graph_drift(request: Request, user_id: str = "default", stale_days: in
         suggestions.append({
             "type": "delete",
             "entity": o["name"],
-            "reason": f"Orphaned node (no relationships)",
+            "reason": "Orphaned node (no relationships)",
         })
     for s in stale_entities[:5]:
         suggestions.append({
