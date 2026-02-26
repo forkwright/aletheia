@@ -13,7 +13,7 @@
     onClose: () => void;
   } = $props();
 
-  let expandedIds = new SvelteSet<string>();
+  let expandedIds = $state(new SvelteSet<string>());
 
   // Auto-expand errors — untrack expandedIds to avoid reactive cycle
   $effect(() => {
@@ -132,7 +132,7 @@
   }
 
   const COLLAPSE_THRESHOLD = 20;
-  let collapsedIds = new SvelteSet<string>();
+  let collapsedIds = $state(new SvelteSet<string>());
 
   function toggleCollapse(id: string) {
     const next = new SvelteSet(collapsedIds);

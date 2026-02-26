@@ -44,7 +44,8 @@
   }
 
   interface ForceGraph2DInstance {
-    graphData(data?: { nodes: object[]; links: object[] }): { nodes: FGNode[]; links: FGLink[] };
+    graphData(): { nodes: FGNode[]; links: FGLink[] };
+    graphData(data: { nodes: object[]; links: object[] }): this;
     backgroundColor(color: string): this;
     width(w: number): this;
     height(h: number): this;
@@ -157,7 +158,7 @@
       })
       .nodeLabel((node) => {
         const pr = node.pagerank ? node.pagerank.toFixed(4) : "\u2014";
-        const comm = node.community >= 0 ? node.community : "\u2014";
+        const comm = node.community !== undefined && node.community >= 0 ? node.community : "\u2014";
         let label = `${node.id}\nCommunity ${comm} \u00b7 PR ${pr}`;
         if (agentOverlay) {
           const info = agentOverlay.node_agents[node.id];

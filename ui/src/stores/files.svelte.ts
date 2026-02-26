@@ -7,8 +7,8 @@ let selectedPath = $state<string | null>(null);
 let selectedContent = $state<string>("");
 let loading = $state(false);
 let fileLoading = $state(false);
-let gitStatuses = new SvelteMap<string, string>();
-let expandedDirs = new SvelteSet<string>();
+let gitStatuses = $state(new SvelteMap<string, string>());
+let expandedDirs = $state(new SvelteSet<string>());
 
 export function getTreeEntries(): FileTreeEntry[] {
   return treeEntries;

@@ -11,7 +11,7 @@
 
   let resolving = $state(false);
   let error = $state<string | null>(null);
-  let skippedSteps = new SvelteSet<number>();
+  let skippedSteps = $state(new SvelteSet<number>());
 
   const roleIcon: Record<string, string> = {
     self: "🧠",

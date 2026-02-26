@@ -36,7 +36,8 @@
   }
 
   interface ForceGraph3DInstance {
-    graphData(data?: { nodes: object[]; links: object[] }): { nodes: FGNode3D[]; links: FGLink3D[] };
+    graphData(): { nodes: FGNode3D[]; links: FGLink3D[] };
+    graphData(data: { nodes: object[]; links: object[] }): this;
     backgroundColor(color: string): this;
     showNavInfo(show: boolean): this;
     width(w: number): this;
@@ -296,11 +297,12 @@
       .warmupTicks(100)
       .cooldownTime(3000)
       .onEngineTick(() => {
+        if (!graph) return;
         const gd = graph.graphData();
         updateClouds(gd.nodes);
       });
 
-    cloudScene = graph.scene();
+    if (graph) cloudScene = graph.scene();
 
     resizeObserver = new ResizeObserver(() => {
       if (graph && container) {

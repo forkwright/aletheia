@@ -19,7 +19,7 @@ let loadedMode = $state<"top" | "community" | "all">("top");
 let loadedLimit = $state(200);
 let entityDetail = $state<EntityDetail | null>(null);
 let entityLoading = $state(false);
-let hiddenEdgeTypes = new SvelteSet<string>();
+let hiddenEdgeTypes = $state(new SvelteSet<string>());
 let searchResults = $state<Array<{ id: string; labels: string[]; pagerank: number; community: number }>>([]);
 let searchLoading = $state(false);
 
