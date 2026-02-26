@@ -67,3 +67,11 @@ export type { SubAgentRole, ContextPacketOptions, ModelTier } from "./context-pa
 export { OrchestrationCore } from "./orchestration-core.js";
 export type { RollbackPlan, RollbackAction, StateTransitionResult } from "./orchestration-core.js";
 export { createOrchestrationTool } from "./orchestration-tool.js";
+
+// State Foundation (ENG-01/02/08/12)
+export { StateReconciler } from "./state-reconciler.js";
+export type { ReconciliationResult, ReconciliationSummary, StepBoundaryInfo } from "./state-reconciler.js";
+export { writeHandoffFile, readHandoffFile, clearHandoffFile, discoverHandoffs, buildHandoffState } from "./handoff.js";
+export type { HandoffState } from "./handoff.js";
+export { calculateBudgetAllocation, buildOrchestratorContext, checkBudget, DEFAULT_ORCHESTRATOR_CEILING } from "./context-budget.js";
+export type { BudgetAllocation } from "./context-budget.js";
