@@ -245,11 +245,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
         required: ["name"],
       },
     },
-    async execute(input: Record<string, unknown>, context: import("./organon/registry.js").ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: import("./organon/registry.js").ToolContext): Promise<string> {
       const name = input["name"] as string;
       const ok = tools.enableTool(name, context.sessionId, 0);
-      if (ok) return JSON.stringify({ enabled: true, tool: name });
-      return JSON.stringify({ enabled: false, error: `Tool "${name}" not found` });
+      if (ok) return Promise.resolve(JSON.stringify({ enabled: true, tool: name }));
+      return Promise.resolve(JSON.stringify({ enabled: false, error: `Tool "${name}" not found` }));
     },
   };
   tools.register(enableToolHandler);

@@ -160,7 +160,7 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
         required: ["name", "code"],
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -168,15 +168,15 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
       const code = input["code"] as string;
       const testCode = input["test_code"] as string | undefined;
 
-      if (!name) return JSON.stringify({ error: "Invalid tool name" });
+      if (!name) return Promise.resolve(JSON.stringify({ error: "Invalid tool name" }));
       if (code.length > MAX_TOOL_SIZE) {
-        return JSON.stringify({ error: `Code exceeds ${MAX_TOOL_SIZE} byte limit` });
+        return Promise.resolve(JSON.stringify({ error: `Code exceeds ${MAX_TOOL_SIZE} byte limit` }));
       }
 
       // Check for quarantined tool
       const existingMeta = readMeta(dir, name);
       if (existingMeta?.quarantined) {
-        return JSON.stringify({ error: `Tool ${name} is quarantined after ${MAX_FAILURES} failures` });
+        return Promise.resolve(JSON.stringify({ error: `Tool ${name} is quarantined after ${MAX_FAILURES} failures` }));
       }
 
       // Write code + test
@@ -186,16 +186,16 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
       // Run tests
       const testResult = runTests(dir, name);
       if (!testResult.ok) {
-        return JSON.stringify({
+        return Promise.resolve(JSON.stringify({
           error: "Tests failed",
           output: testResult.output,
-        });
+        }));
       }
 
       // Try to load the tool
       const handler = loadAuthoredTool(dir, name);
       if (!handler) {
-        return JSON.stringify({ error: "Tool failed to load — check exports" });
+        return Promise.resolve(JSON.stringify({ error: "Tool failed to load — check exports" }));
       }
 
       // Write meta and register
@@ -212,12 +212,12 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
       registry.register(handler);
 
       log.info(`Tool ${name} created by ${context.nousId} (v${meta.version})`);
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         created: true,
         name,
         version: meta.version,
         tests: testResult.output,
-      });
+      }));
     },
   };
 
@@ -227,7 +227,7 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
       description: "List all self-authored tools with their status.",
       input_schema: { type: "object", properties: {} },
     },
-    async execute(): Promise<string> {
+    execute(): Promise<string> {
       const tools: Record<string, unknown>[] = [];
       for (const file of readdirSync(dir)) {
         if (!file.endsWith(".meta.json")) continue;
@@ -244,7 +244,7 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
           });
         }
       }
-      return JSON.stringify({ tools });
+      return Promise.resolve(JSON.stringify({ tools }));
     },
   };
 
@@ -262,10 +262,10 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
         required: ["name"],
       },
     },
-    async execute(input: Record<string, unknown>): Promise<string> {
+    execute(input: Record<string, unknown>): Promise<string> {
       const name = input["name"] as string;
       const meta = readMeta(dir, name);
-      if (!meta) return JSON.stringify({ error: "Tool not found" });
+      if (!meta) return Promise.resolve(JSON.stringify({ error: "Tool not found" }));
 
       meta.failures++;
       meta.updatedAt = new Date().toISOString();
@@ -275,11 +275,11 @@ export function createSelfAuthorTools(workspace: string, registry: ToolRegistry)
       }
       writeMeta(dir, meta);
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         name,
         failures: meta.failures,
         quarantined: meta.quarantined,
-      });
+      }));
     },
   };
 

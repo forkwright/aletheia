@@ -48,17 +48,17 @@ export interface DistillationResult {
   distillationNumber: number;
 }
 
-export async function shouldDistill(
+export function shouldDistill(
   store: SessionStore,
   sessionId: string,
   opts: { threshold: number; minMessages: number },
 ): Promise<boolean> {
   const session = store.findSessionById(sessionId);
-  if (!session) return false;
+  if (!session) return Promise.resolve(false);
 
-  if (session.messageCount < opts.minMessages) return false;
+  if (session.messageCount < opts.minMessages) return Promise.resolve(false);
 
-  return session.tokenCountEstimate >= opts.threshold;
+  return Promise.resolve(session.tokenCountEstimate >= opts.threshold);
 }
 
 export async function distillSession(

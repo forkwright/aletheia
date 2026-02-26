@@ -297,8 +297,8 @@ function formatZodError(error: z.ZodError): string {
  * Parse dispatch tool response using structured extraction with retry.
  * Replaces hand-rolled JSON parsing in sessions-dispatch.ts
  */
-export async function parseDispatchResponse(
-  responseText: string, 
+export function parseDispatchResponse(
+  responseText: string,
   retryCallback?: (errorMessage: string) => Promise<string>
 ): Promise<DispatchResult | null> {
   return extractStructured(responseText, DispatchResultSchema, retryCallback);
@@ -308,7 +308,7 @@ export async function parseDispatchResponse(
  * Parse sub-agent response using structured extraction with retry.
  * Replaces parseStructuredResult in roles/index.ts
  */
-export async function parseSubAgentResponse(
+export function parseSubAgentResponse(
   responseText: string,
   retryCallback?: (errorMessage: string) => Promise<string>
 ): Promise<SubAgentResult | null> {

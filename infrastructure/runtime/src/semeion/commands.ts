@@ -87,11 +87,11 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register({
     name: "ping",
     description: "Check if the system is alive",
-    async execute() {
+    execute(): Promise<string> {
       const uptime = process.uptime();
       const hours = Math.floor(uptime / 3600);
       const mins = Math.floor((uptime % 3600) / 60);
-      return `**pong** \u2014 \`${hours}h ${mins}m\` uptime`;
+      return Promise.resolve(`**pong** \u2014 \`${hours}h ${mins}m\` uptime`);
     },
   });
 
@@ -99,7 +99,7 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "help",
     aliases: ["commands"],
     description: "List available commands",
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       const cmds = ctx.manager
         ? (registry as CommandRegistry).listAll()
         : [];
@@ -110,14 +110,14 @@ export function createDefaultRegistry(): CommandRegistry {
       for (const cmd of cmds) {
         lines.push(`| \`${prefix}${cmd.name}\` | ${cmd.description} |`);
       }
-      return lines.join("\n");
+      return Promise.resolve(lines.join("\n"));
     },
   });
 
   registry.register({
     name: "status",
     description: "System status overview",
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       const metrics = ctx.store.getMetrics();
       const uptime = process.uptime();
       const hours = Math.floor(uptime / 3600);
@@ -161,17 +161,17 @@ export function createDefaultRegistry(): CommandRegistry {
         lines.push(`| ${name} | ${sessions} | ${msgs} | ${tokens} | ${lastSeen} |`);
       }
 
-      return lines.join("\n");
+      return Promise.resolve(lines.join("\n"));
     },
   });
 
   registry.register({
     name: "sessions",
     description: "List active sessions for this sender",
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       const sessions = findSessionsByCtx(ctx);
       if (!sessions || sessions.length === 0) {
-        return "No active sessions.";
+        return Promise.resolve("No active sessions.");
       }
       const lines = [`**Active sessions** (${sessions.length})\n`];
       lines.push("| Agent | Messages | Last Active |");
@@ -180,47 +180,47 @@ export function createDefaultRegistry(): CommandRegistry {
         const age = timeSince(new Date(s.updatedAt));
         lines.push(`| ${s.nousId} | ${s.messageCount} | ${age} |`);
       }
-      return lines.join("\n");
+      return Promise.resolve(lines.join("\n"));
     },
   });
 
   registry.register({
     name: "reset",
     description: "Archive current session and start fresh",
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       const sessions = findSessionsByCtx(ctx);
       if (!sessions || sessions.length === 0) {
-        return "No active session to reset.";
+        return Promise.resolve("No active session to reset.");
       }
       let count = 0;
       for (const s of sessions) {
         ctx.store.archiveSession(s.id);
         count += s.messageCount;
       }
-      return `**Reset:** ${sessions.length} session(s) archived (${count} messages). Next message starts fresh.`;
+      return Promise.resolve(`**Reset:** ${sessions.length} session(s) archived (${count} messages). Next message starts fresh.`);
     },
   });
 
   registry.register({
     name: "agent",
     description: "Show which agent handles this conversation",
-    async execute(args, ctx) {
+    execute(args, ctx): Promise<string> {
       if (!args) {
         const sessions = findSessionsByCtx(ctx);
         const nousId = sessions?.[0]?.nousId ?? "default";
         const nous = ctx.config.agents.list.find((a) => a.id === nousId);
-        return `**Agent:** \`${nous?.name ?? nousId}\``;
+        return Promise.resolve(`**Agent:** \`${nous?.name ?? nousId}\``);
       }
-      return "Agent routing is managed via config bindings. Current route would need a config change.";
+      return Promise.resolve("Agent routing is managed via config bindings. Current route would need a config change.");
     },
   });
 
   registry.register({
     name: "skills",
     description: "List available skills",
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       if (!ctx.skills || ctx.skills.size === 0) {
-        return "No skills loaded.";
+        return Promise.resolve("No skills loaded.");
       }
       const all = ctx.skills.listAll();
       const lines = [`**Available skills** (${all.length})\n`];
@@ -229,18 +229,18 @@ export function createDefaultRegistry(): CommandRegistry {
       for (const skill of all) {
         lines.push(`| \`${skill.name}\` | ${skill.description} |`);
       }
-      return lines.join("\n");
+      return Promise.resolve(lines.join("\n"));
     },
   });
 
   registry.register({
     name: "model",
     description: "Show or switch model \u2014 /model [name]",
-    async execute(args, ctx) {
+    execute(args, ctx): Promise<string> {
       const session = findSession(ctx);
       if (!args.trim()) {
         const current = session?.model ?? ctx.config.agents.defaults.model.primary;
-        return `**Model:** \`${current}\``;
+        return Promise.resolve(`**Model:** \`${current}\``);
       }
       const modelName = args.trim().toLowerCase();
       const aliases: Record<string, string> = {
@@ -251,39 +251,39 @@ export function createDefaultRegistry(): CommandRegistry {
       const resolved = aliases[modelName] ?? modelName;
       if (session) {
         ctx.store.updateSessionModel(session.id, resolved);
-        return `**Model switched to:** \`${resolved}\``;
+        return Promise.resolve(`**Model switched to:** \`${resolved}\``);
       }
-      return "No active session. Model will be set when you send your next message.";
+      return Promise.resolve("No active session. Model will be set when you send your next message.");
     },
   });
 
   registry.register({
     name: "think",
     description: "Toggle extended thinking \u2014 /think [on|off|budget]",
-    async execute(args, ctx) {
+    execute(args, ctx): Promise<string> {
       const session = findSession(ctx);
-      if (!session) return "No active session.";
+      if (!session) return Promise.resolve("No active session.");
       const cfg = ctx.store.getThinkingConfig(session.id);
       const arg = args.trim().toLowerCase();
       if (!arg) {
         const newState = !cfg.enabled;
         ctx.store.setThinkingConfig(session.id, newState, cfg.budget);
-        return `**Extended thinking:** ${newState ? "ON" : "OFF"} \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`;
+        return Promise.resolve(`**Extended thinking:** ${newState ? "ON" : "OFF"} \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`);
       }
       if (arg === "on") {
         ctx.store.setThinkingConfig(session.id, true, cfg.budget);
-        return `**Extended thinking:** ON \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`;
+        return Promise.resolve(`**Extended thinking:** ON \u00b7 **Budget:** ${cfg.budget.toLocaleString()} tokens`);
       }
       if (arg === "off") {
         ctx.store.setThinkingConfig(session.id, false, cfg.budget);
-        return "**Extended thinking:** OFF";
+        return Promise.resolve("**Extended thinking:** OFF");
       }
       const budget = parseInt(arg, 10);
       if (!isNaN(budget) && budget > 0) {
         ctx.store.setThinkingConfig(session.id, true, budget);
-        return `**Extended thinking:** ON \u00b7 **Budget:** ${budget.toLocaleString()} tokens`;
+        return Promise.resolve(`**Extended thinking:** ON \u00b7 **Budget:** ${budget.toLocaleString()} tokens`);
       }
-      return "**Usage:** `/think [on|off|<budget>]`";
+      return Promise.resolve("**Usage:** `/think [on|off|<budget>]`");
     },
   });
 
@@ -306,49 +306,49 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register({
     name: "blackboard",
     description: "Cross-agent blackboard \u2014 /blackboard [list|read|write|delete] [key] [value]",
-    async execute(args, ctx) {
+    execute(args, ctx): Promise<string> {
       const parts = args.trim().split(/\s+/);
       const sub = parts[0]?.toLowerCase();
       if (!sub || sub === "list") {
         const entries = ctx.store.blackboardList();
-        if (entries.length === 0) return "Blackboard is empty.";
+        if (entries.length === 0) return Promise.resolve("Blackboard is empty.");
         const lines = ["**Blackboard**\n"];
         lines.push("| Key | Entries | Authors |");
         lines.push("|-----|---------|---------|");
         for (const e of entries) {
           lines.push(`| \`${e.key}\` | ${e.count} | ${e.authors.join(", ")} |`);
         }
-        return lines.join("\n");
+        return Promise.resolve(lines.join("\n"));
       }
       if (sub === "read") {
         const key = parts[1];
-        if (!key) return "**Usage:** `/blackboard read <key>`";
+        if (!key) return Promise.resolve("**Usage:** `/blackboard read <key>`");
         const entries = ctx.store.blackboardRead(key);
-        if (entries.length === 0) return `No entries for key: \`${key}\``;
+        if (entries.length === 0) return Promise.resolve(`No entries for key: \`${key}\``);
         const lines = [`**Blackboard:** \`${key}\`\n`];
         for (const e of entries) {
           lines.push(`> **${e.author}:** ${e.value}`);
         }
-        return lines.join("\n");
+        return Promise.resolve(lines.join("\n"));
       }
       if (sub === "write") {
         const key = parts[1];
         const value = parts.slice(2).join(" ");
-        if (!key || !value) return "**Usage:** `/blackboard write <key> <value>`";
+        if (!key || !value) return Promise.resolve("**Usage:** `/blackboard write <key> <value>`");
         const session = findSession(ctx);
         const author = session?.nousId ?? "user";
         ctx.store.blackboardWrite(key, value, author);
-        return `**Written to blackboard:** \`${key}\` = ${value}`;
+        return Promise.resolve(`**Written to blackboard:** \`${key}\` = ${value}`);
       }
       if (sub === "delete") {
         const key = parts[1];
-        if (!key) return "**Usage:** `/blackboard delete <key>`";
+        if (!key) return Promise.resolve("**Usage:** `/blackboard delete <key>`");
         const session = findSession(ctx);
         const author = session?.nousId ?? "user";
         const count = ctx.store.blackboardDelete(key, author);
-        return count > 0 ? `**Deleted** ${count} entries for key: \`${key}\`` : `No entries found for key: \`${key}\``;
+        return Promise.resolve(count > 0 ? `**Deleted** ${count} entries for key: \`${key}\`` : `No entries found for key: \`${key}\``);
       }
-      return "**Usage:** `/blackboard [list|read|write|delete] [key] [value]`";
+      return Promise.resolve("**Usage:** `/blackboard [list|read|write|delete] [key] [value]`");
     },
   });
 
@@ -358,11 +358,11 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "approve",
     description: "Approve a pending contact request by code",
     adminOnly: true,
-    async execute(args, ctx) {
-      if (!args.trim()) return "**Usage:** `!approve <code>`";
+    execute(args, ctx): Promise<string> {
+      if (!args.trim()) return Promise.resolve("**Usage:** `!approve <code>`");
       const result = ctx.store.approveContactByCode(args.trim());
-      if (!result) return `No pending request found for code: \`${args.trim()}\``;
-      return `**Approved contact:** ${result.sender} (${result.channel})`;
+      if (!result) return Promise.resolve(`No pending request found for code: \`${args.trim()}\``);
+      return Promise.resolve(`**Approved contact:** ${result.sender} (${result.channel})`);
     },
   });
 
@@ -370,11 +370,11 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "deny",
     description: "Deny a pending contact request by code",
     adminOnly: true,
-    async execute(args, ctx) {
-      if (!args.trim()) return "**Usage:** `!deny <code>`";
+    execute(args, ctx): Promise<string> {
+      if (!args.trim()) return Promise.resolve("**Usage:** `!deny <code>`");
       const denied = ctx.store.denyContactByCode(args.trim());
-      if (!denied) return `No pending request found for code: \`${args.trim()}\``;
-      return `**Denied** contact request for code: \`${args.trim()}\``;
+      if (!denied) return Promise.resolve(`No pending request found for code: \`${args.trim()}\``);
+      return Promise.resolve(`**Denied** contact request for code: \`${args.trim()}\``);
     },
   });
 
@@ -382,9 +382,9 @@ export function createDefaultRegistry(): CommandRegistry {
     name: "contacts",
     description: "List pending contact requests",
     adminOnly: true,
-    async execute(_args, ctx) {
+    execute(_args, ctx): Promise<string> {
       const pending = ctx.store.getPendingRequests();
-      if (pending.length === 0) return "No pending contact requests.";
+      if (pending.length === 0) return Promise.resolve("No pending contact requests.");
       const lines = [`**Pending contact requests** (${pending.length})\n`];
       lines.push("| Name | Code | Requested |");
       lines.push("|------|------|-----------|");
@@ -392,7 +392,7 @@ export function createDefaultRegistry(): CommandRegistry {
         const age = timeSince(new Date(r.createdAt));
         lines.push(`| ${r.senderName} | \`${r.code}\` | ${age} |`);
       }
-      return lines.join("\n");
+      return Promise.resolve(lines.join("\n"));
     },
   });
 

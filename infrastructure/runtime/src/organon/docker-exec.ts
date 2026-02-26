@@ -37,7 +37,7 @@ export interface DockerExecOpts {
   config: SandboxSettings;
 }
 
-export async function execInDocker(opts: DockerExecOpts): Promise<{ stdout: string; stderr: string }> {
+export function execInDocker(opts: DockerExecOpts): Promise<{ stdout: string; stderr: string }> {
   const { command, workspace, nousId, timeout, config } = opts;
 
   const args: string[] = [

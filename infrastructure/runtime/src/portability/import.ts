@@ -23,7 +23,7 @@ export interface ImportResult {
   notesImported: number;
 }
 
-export async function importAgent(
+export function importAgent(
   agentFile: AgentFile,
   store: SessionStore,
   opts?: ImportOptions,
@@ -77,7 +77,7 @@ export async function importAgent(
   }
 
   log.info(`Import complete for ${nousId}: ${result.filesRestored} files, ${result.sessionsImported} sessions, ${result.messagesImported} messages, ${result.notesImported} notes`);
-  return result;
+  return Promise.resolve(result);
 }
 
 function importSession(

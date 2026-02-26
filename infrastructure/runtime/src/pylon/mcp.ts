@@ -91,7 +91,7 @@ export function createMcpRoutes(
   const maxBody = config.gateway.maxBodyBytes ?? 1_048_576;
 
   // SSE endpoint for MCP transport
-  app.get("/sse", async (c) => {
+  app.get("/sse", (c) => {
     const client = validateMcpToken(tokens, c.req.header("Authorization"), requireAuth);
     if (!client) return c.json({ error: "Unauthorized" }, 401);
 

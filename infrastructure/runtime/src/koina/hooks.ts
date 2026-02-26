@@ -100,7 +100,7 @@ export interface HookResult {
  * Execute a shell hook. The command receives event data as JSON on stdin.
  * Returns a structured result regardless of success/failure.
  */
-export async function executeShellHook(
+export function executeShellHook(
   hook: HookDefinition,
   payload: EventPayload,
 ): Promise<HookResult> {

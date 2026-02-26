@@ -39,7 +39,7 @@ export function createPlanCreateTool(orchestrator: DianoiaOrchestrator): ToolHan
         required: ["name", "description"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       try {
         const name = input["name"] as string;
         const description = input["description"] as string;
@@ -49,11 +49,11 @@ export function createPlanCreateTool(orchestrator: DianoiaOrchestrator): ToolHan
         // Check for existing active project
         const active = orchestrator.getActiveProject(context.nousId);
         if (active) {
-          return JSON.stringify({
+          return Promise.resolve(JSON.stringify({
             error: `Active project already exists: "${active.goal || active.id}". Abandon it first or resume it.`,
             activeProjectId: active.id,
             state: active.state,
-          });
+          }));
         }
 
         // Create via orchestrator — this creates project in "idle" and transitions to "questioning"
@@ -62,7 +62,7 @@ export function createPlanCreateTool(orchestrator: DianoiaOrchestrator): ToolHan
         // Now get the newly created project
         const project = orchestrator.getActiveProject(context.nousId);
         if (!project) {
-          return JSON.stringify({ error: "Project creation failed — no active project found after handle()" });
+          return Promise.resolve(JSON.stringify({ error: "Project creation failed — no active project found after handle()" }));
         }
 
         // Set the goal and context from our inputs
@@ -84,23 +84,23 @@ export function createPlanCreateTool(orchestrator: DianoiaOrchestrator): ToolHan
             constraints: scope ? [scope] : [],
           });
           log.info(`Created project ${project.id} and skipped to researching`);
-          return JSON.stringify({
+          return Promise.resolve(JSON.stringify({
             projectId: project.id,
             state: "researching",
             message: `Project "${name}" created. Questioning skipped — ready for research phase. Use plan_research to proceed.`,
-          });
+          }));
         }
 
         log.info(`Created project ${project.id} in questioning state`);
-        return JSON.stringify({
+        return Promise.resolve(JSON.stringify({
           projectId: project.id,
           state: "questioning",
           message: `Project "${name}" created. ${message}`,
-        });
+        }));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_create failed: ${message}`);
-        return JSON.stringify({ error: message });
+        return Promise.resolve(JSON.stringify({ error: message }));
       }
     },
   };

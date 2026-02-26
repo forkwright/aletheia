@@ -142,7 +142,7 @@ function isStale(index: WorkspaceIndex): boolean {
   return false;
 }
 
-export async function indexWorkspace(workspace: string, extraPaths?: string[]): Promise<WorkspaceIndex> {
+export function indexWorkspace(workspace: string, extraPaths?: string[]): Promise<WorkspaceIndex> {
   const roots = [workspace, ...(extraPaths ?? [])];
   const allFiles: FileEntry[] = [];
 
@@ -171,10 +171,10 @@ export async function indexWorkspace(workspace: string, extraPaths?: string[]): 
     }
   }
 
-  return { root: workspace, builtAt: Date.now(), files: allFiles };
+  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles });
 }
 
-export async function rebuildWorkspaceIndex(workspace: string, extraPaths?: string[]): Promise<WorkspaceIndex> {
+export function rebuildWorkspaceIndex(workspace: string, extraPaths?: string[]): Promise<WorkspaceIndex> {
   const roots = [workspace, ...(extraPaths ?? [])];
   const allFiles: FileEntry[] = [];
 
@@ -194,25 +194,26 @@ export async function rebuildWorkspaceIndex(workspace: string, extraPaths?: stri
   }
 
   log.info(`Rebuilt workspace index for ${workspace}: ${allFiles.length} files`);
-  return { root: workspace, builtAt: Date.now(), files: allFiles };
+  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles });
 }
 
-export async function loadIndexConfig(workspace: string): Promise<WorkspaceIndexConfig> {
+export function loadIndexConfig(workspace: string): Promise<WorkspaceIndexConfig> {
   const path = configPath(workspace);
-  if (!existsSync(path)) return { extraPaths: [] };
+  if (!existsSync(path)) return Promise.resolve({ extraPaths: [] });
   try {
     const raw = readFileSync(path, "utf-8");
     const parsed = JSON.parse(raw) as Partial<WorkspaceIndexConfig>;
-    return { extraPaths: Array.isArray(parsed.extraPaths) ? parsed.extraPaths : [] };
+    return Promise.resolve({ extraPaths: Array.isArray(parsed.extraPaths) ? parsed.extraPaths : [] });
   } catch {
-    return { extraPaths: [] };
+    return Promise.resolve({ extraPaths: [] });
   }
 }
 
-export async function saveIndexConfig(workspace: string, config: WorkspaceIndexConfig): Promise<void> {
+export function saveIndexConfig(workspace: string, config: WorkspaceIndexConfig): Promise<void> {
   const dir = join(workspace, INDEX_DIR);
   mkdirSync(dir, { recursive: true });
   writeFileSync(configPath(workspace), JSON.stringify(config, null, 2) + "\n", "utf-8");
+  return Promise.resolve();
 }
 
 export function queryIndex(index: WorkspaceIndex, query: string, limit: number): FileEntry[] {

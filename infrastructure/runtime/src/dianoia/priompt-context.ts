@@ -134,8 +134,8 @@ export function buildContextPacketWithPriomptSync(opts: PriomptContextOptions): 
  * Async wrapper — preserved for backward compatibility.
  * @deprecated Use buildContextPacketWithPriomptSync() instead.
  */
-export async function buildContextPacketWithPriompt(opts: PriomptContextOptions): Promise<string> {
-  return buildContextPacketWithPriomptImpl(opts);
+export function buildContextPacketWithPriompt(opts: PriomptContextOptions): Promise<string> {
+  return Promise.resolve(buildContextPacketWithPriomptImpl(opts));
 }
 
 function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string {

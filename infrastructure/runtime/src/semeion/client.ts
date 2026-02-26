@@ -138,7 +138,7 @@ export class SignalClient {
     await this.rpc("sendReaction", rpcParams);
   }
 
-  async getAttachment(params: {
+  getAttachment(params: {
     id: string;
     account?: string;
   }): Promise<unknown> {

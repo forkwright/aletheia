@@ -80,7 +80,7 @@ export function createPlanDiscussTool(
         required: ["action", "projectId"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const action = input["action"] as string;
       const projectId = input["projectId"] as string;
       const phaseId = input["phaseId"] as string | undefined;
@@ -88,84 +88,83 @@ export function createPlanDiscussTool(
       try {
         switch (action) {
           case "generate": {
-            if (!phaseId) return JSON.stringify({ error: "phaseId required for generate" });
+            if (!phaseId) return Promise.resolve(JSON.stringify({ error: "phaseId required for generate" }));
             return handleGenerate(orchestrator, store, projectId, phaseId, context, dispatchTool);
           }
 
           case "list": {
-            if (!phaseId) return JSON.stringify({ error: "phaseId required for list" });
-            return handleList(orchestrator, projectId, phaseId);
+            if (!phaseId) return Promise.resolve(JSON.stringify({ error: "phaseId required for list" }));
+            return Promise.resolve(handleList(orchestrator, projectId, phaseId));
           }
 
           case "add": {
-            if (!phaseId) return JSON.stringify({ error: "phaseId required for add" });
+            if (!phaseId) return Promise.resolve(JSON.stringify({ error: "phaseId required for add" }));
             const question = input["question"] as string;
-            if (!question) return JSON.stringify({ error: "question required for add" });
+            if (!question) return Promise.resolve(JSON.stringify({ error: "question required for add" }));
             const options = (input["options"] as Array<{ label: string; rationale: string }>) ?? [];
             const recommendation = (input["recommendation"] as string) ?? null;
 
             const q = orchestrator.addDiscussionQuestion(projectId, phaseId, question, options, recommendation);
             log.info(`Added discussion question ${q.id} for phase ${phaseId}`);
-            return JSON.stringify({
+            return Promise.resolve(JSON.stringify({
               questionId: q.id,
               question: q.question,
               options: q.options,
               recommendation: q.recommendation,
               status: q.status,
-            });
+            }));
           }
 
           case "answer": {
             const questionId = input["questionId"] as string;
-            if (!questionId) return JSON.stringify({ error: "questionId required for answer" });
+            if (!questionId) return Promise.resolve(JSON.stringify({ error: "questionId required for answer" }));
             const decision = input["decision"] as string;
-            if (!decision) return JSON.stringify({ error: "decision required for answer" });
+            if (!decision) return Promise.resolve(JSON.stringify({ error: "decision required for answer" }));
             const userNote = (input["userNote"] as string) ?? null;
 
             orchestrator.answerDiscussion(questionId, decision, userNote);
             log.info(`Answered discussion question ${questionId}: ${decision}`);
-            return JSON.stringify({ answered: true, questionId, decision });
+            return Promise.resolve(JSON.stringify({ answered: true, questionId, decision }));
           }
 
           case "skip": {
             const questionId = input["questionId"] as string;
-            if (!questionId) return JSON.stringify({ error: "questionId required for skip" });
+            if (!questionId) return Promise.resolve(JSON.stringify({ error: "questionId required for skip" }));
 
             orchestrator.skipDiscussion(questionId);
             log.info(`Skipped discussion question ${questionId}`);
-            return JSON.stringify({ skipped: true, questionId });
+            return Promise.resolve(JSON.stringify({ skipped: true, questionId }));
           }
 
           case "complete": {
-            if (!phaseId) return JSON.stringify({ error: "phaseId required for complete" });
+            if (!phaseId) return Promise.resolve(JSON.stringify({ error: "phaseId required for complete" }));
 
-            // Check all questions are resolved
             const pending = orchestrator.getPendingDiscussions(projectId, phaseId);
             if (pending.length > 0) {
-              return JSON.stringify({
+              return Promise.resolve(JSON.stringify({
                 error: "Unresolved questions remain",
                 pendingCount: pending.length,
                 pendingQuestions: pending.map((q) => ({ id: q.id, question: q.question })),
                 message: "Answer or skip all pending questions before completing discussion.",
-              });
+              }));
             }
 
             const result = orchestrator.completeDiscussion(projectId, phaseId, context.nousId, context.sessionId);
             log.info(`Discussion completed for phase ${phaseId}`);
-            return JSON.stringify({
+            return Promise.resolve(JSON.stringify({
               complete: true,
               message: result,
               nextState: "phase-planning",
-            });
+            }));
           }
 
           default:
-            return JSON.stringify({ error: `Unknown action: ${action}` });
+            return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_discuss [${action}] failed: ${message}`);
-        return JSON.stringify({ error: message });
+        return Promise.resolve(JSON.stringify({ error: message }));
       }
     },
   };
