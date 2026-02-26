@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 4 of 6 (Extraction Pipeline Completion)
-Plan: 2 of 3 in current phase (04-02 complete — cross-chunk semantic dedup via /dedup/batch and TypeScript integration)
-Status: Phase 4 in progress
-Last activity: 2026-02-26 — Plan 04-02 complete; POST /dedup/batch sidecar endpoint, deduplicateFactsViaSidecar wired into extractFromMessages
+Plan: 3 of 3 in current phase (04-03 complete — cross-chunk LLM contradiction detection + evolution pre-check before memory flush)
+Status: Phase 4 complete
+Last activity: 2026-02-26 — Plan 04-03 complete; detectCrossChunkContradictions, checkEvolutionBeforeFlush, full pipeline wiring
 
-Progress: [█████████░] 63%
+Progress: [██████████] 70%
 
 ## Performance Metrics
 
@@ -30,7 +30,7 @@ Progress: [█████████░] 63%
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
-| 04-extraction-pipeline-completion | 2 | 14 min | 7 min |
+| 04-extraction-pipeline-completion | 3 | 21 min | 7 min |
 
 **Recent Trend:**
 - Last 5 plans: ~15 min, 3 min, 4 min, 3 min, 7 min
@@ -82,6 +82,10 @@ Recent decisions affecting current work:
 - [Phase 04-extraction-pipeline-completion / 04-02]: _cosine_similarity implemented in pure Python (math.sqrt) — avoids adding numpy/scipy to sidecar dependencies
 - [Phase 04-extraction-pipeline-completion / 04-02]: Cross-chunk dedup only runs when extraction was chunked (chunks.length > 1) — no-op for single-chunk extractions
 - [Phase 04-extraction-pipeline-completion / 04-02]: deduplicateFactsViaSidecar is fail-open — any sidecar error returns original facts, never blocks distillation
+- [Phase 04-extraction-pipeline-completion / 04-03]: Cross-chunk contradiction pass runs for 2+ fact extractions (option B) — no wasChunked flag needed, avoids extract.ts API change
+- [Phase 04-extraction-pipeline-completion / 04-03]: checkEvolutionBeforeFlush uses Promise.allSettled in batches of 5 — parallel but bounded, fail-open per memory
+- [Phase 04-extraction-pipeline-completion / 04-03]: Response.mockImplementation(async () => new Response(...)) required for multi-call fetch mocks — body streams single-use
+- [Phase 04-extraction-pipeline-completion / 04-03]: FlushOptions.sidecarUrl added; spread conditionally in pipeline.ts to satisfy exactOptionalPropertyTypes
 
 ### Pending Todos
 
@@ -95,5 +99,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 04-extraction-pipeline-completion 04-02-PLAN.md — cross-chunk semantic dedup
+Stopped at: Completed 04-extraction-pipeline-completion 04-03-PLAN.md — cross-chunk LLM contradiction detection + evolution pre-check
 Resume file: None

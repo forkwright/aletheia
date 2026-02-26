@@ -127,7 +127,7 @@ export async function extractFromMessages(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
-  opts?: { sidecarUrl?: string },
+  opts?: { sidecarUrl?: string; signal?: AbortSignal },
 ): Promise<ExtractionResult> {
   const totalTokens = messages.reduce(
     (sum, m) => sum + estimateTokens(m.content),
@@ -136,7 +136,7 @@ export async function extractFromMessages(
 
   // If small enough, extract in one pass (no cross-chunk duplicates possible)
   if (totalTokens <= MAX_CHUNK_TOKENS) {
-    return extractChunk(router, messages, model);
+    return extractChunk(router, messages, model, opts?.signal);
   }
 
   // Split into chunks and extract each, then merge
@@ -151,7 +151,7 @@ export async function extractFromMessages(
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]!;
     log.info(`Extracting chunk ${i + 1}/${chunks.length} (${chunk.length} messages)`);
-    const partial = await extractChunk(router, chunk, model);
+    const partial = await extractChunk(router, chunk, model, opts?.signal);
     results.push(partial);
   }
 
@@ -198,6 +198,7 @@ async function extractChunk(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
+  signal?: AbortSignal,
 ): Promise<ExtractionResult> {
   const conversation = messages
     .map((m) => `${m.role}: ${m.content}`)
@@ -208,6 +209,7 @@ async function extractChunk(
     system: EXTRACTION_PROMPT,
     messages: [{ role: "user", content: conversation }],
     maxTokens: 4096,
+    ...(signal ? { signal } : {}),
   });
 
   const text = result.content

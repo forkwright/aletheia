@@ -1,6 +1,6 @@
 // Distillation pipeline tests
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { distillSession, shouldDistill } from "./pipeline.js";
+import { cancelDistillation, distillSession, shouldDistill } from "./pipeline.js";
 
 // Mock extraction
 vi.mock("./extract.js", () => ({
@@ -860,6 +860,143 @@ describe("distillSession", () => {
         expect.objectContaining({ sidecarUrl: "http://localhost:8230" }),
         "ses_evolution",
       );
+    });
+  });
+
+  describe("AbortSignal cancellation", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("aborts before extraction when signal is already aborted", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockClear();
+
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        distillSession(makeStore(), makeRouter(), "ses_abort_pre", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      expect(extractFromMessages).not.toHaveBeenCalled();
+    });
+
+    it("aborts before mutations when signal fires after extraction", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const store = makeStore();
+
+      // Create a controller we'll abort after extraction resolves
+      const controller = new AbortController();
+
+      // After extractFromMessages resolves, abort the signal
+      vi.mocked(extractFromMessages).mockImplementationOnce(async () => {
+        controller.abort();
+        return {
+          facts: ["fact1"],
+          decisions: [],
+          openItems: [],
+          keyEntities: [],
+          contradictions: [],
+        };
+      });
+
+      await expect(
+        distillSession(store, makeRouter(), "ses_abort_mid", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      // Mutations must NOT have been called — clean rollback
+      expect(store.runDistillationMutations).not.toHaveBeenCalled();
+    });
+
+    it("releases lock even when aborted mid-distillation", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+
+      const controller = new AbortController();
+
+      // Abort during extraction
+      vi.mocked(extractFromMessages).mockImplementationOnce(async () => {
+        controller.abort();
+        return {
+          facts: ["fact1"],
+          decisions: [],
+          openItems: [],
+          keyEntities: [],
+          contradictions: [],
+        };
+      });
+
+      const store = makeStore();
+      await expect(
+        distillSession(store, makeRouter(), "ses_abort_lock", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      // Lock was acquired so it must be released
+      expect(store.acquireDistillationLock).toHaveBeenCalled();
+      expect(store.releaseDistillationLock).toHaveBeenCalledWith("ses_abort_lock");
+    });
+  });
+
+  describe("cancelDistillation", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("returns false for no active distillation", () => {
+      expect(cancelDistillation("ses_no_active")).toBe(false);
+    });
+
+    it("aborts an active distillation and returns true", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+
+      let resolveExtraction!: (v: Awaited<ReturnType<typeof extractFromMessages>>) => void;
+      const extractionPromise = new Promise<Awaited<ReturnType<typeof extractFromMessages>>>(
+        (resolve) => { resolveExtraction = resolve; },
+      );
+
+      vi.mocked(extractFromMessages).mockImplementationOnce(() => extractionPromise);
+
+      const distillPromise = distillSession(makeStore(), makeRouter(), "ses_cancel_active", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+      });
+
+      // Give distillSession time to reach the extractFromMessages await
+      await new Promise((r) => setTimeout(r, 0));
+
+      const wasCancelled = cancelDistillation("ses_cancel_active");
+      expect(wasCancelled).toBe(true);
+
+      // Resolve extraction after cancel — distillation should still abort before mutations
+      resolveExtraction({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+
+      await expect(distillPromise).rejects.toThrow();
     });
   });
 

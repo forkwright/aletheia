@@ -70,10 +70,11 @@ export async function summarizeInStages(
   extraction: ExtractionResult,
   model: string,
   nousId?: string,
-  opts?: { maxChunkTokens?: number; minMessagesForSplit?: number },
+  opts?: { maxChunkTokens?: number; minMessagesForSplit?: number; signal?: AbortSignal },
 ): Promise<string> {
   if (messages.length === 0) return "No prior conversation history.";
 
+  const signal = opts?.signal;
   const maxChunkTokens = opts?.maxChunkTokens ?? 30000;
   const minMessagesForSplit = opts?.minMessagesForSplit ?? 8;
   const totalTokens = messages.reduce(
@@ -82,7 +83,7 @@ export async function summarizeInStages(
   );
 
   if (messages.length < minMessagesForSplit || totalTokens <= maxChunkTokens) {
-    return summarizeMessages(router, messages, extraction, model, nousId);
+    return summarizeMessages(router, messages, extraction, model, nousId, signal);
   }
 
   const parts = Math.max(2, Math.ceil(totalTokens / maxChunkTokens));
@@ -91,7 +92,7 @@ export async function summarizeInStages(
   );
 
   if (chunks.length <= 1) {
-    return summarizeMessages(router, messages, extraction, model, nousId);
+    return summarizeMessages(router, messages, extraction, model, nousId, signal);
   }
 
   log.info(
@@ -115,6 +116,7 @@ export async function summarizeInStages(
       ext,
       model,
       nousId,
+      signal,
     );
     partialSummaries.push(partial);
   }
@@ -137,6 +139,7 @@ export async function summarizeInStages(
       "Remove redundancies. Write in first person (\"I\"). Keep under 600 words.",
     messages: [{ role: "user", content: mergeContent }],
     maxTokens: 2048,
+    ...(signal ? { signal } : {}),
   });
 
   return mergeResult.content
