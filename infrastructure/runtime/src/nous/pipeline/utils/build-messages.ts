@@ -131,8 +131,8 @@ export function buildMessages(
           const decoded = Buffer.from(data, "base64").toString("utf-8");
           const label = item.filename ? `[File: ${item.filename}]` : "[Text file]";
           blocks.push({ type: "text", text: `${label}\n\n${decoded}` });
-        } catch (err) {
-          log.debug(`Base64 decode failed for ${item.filename ?? "unknown"}: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.debug(`Base64 decode failed for ${item.filename ?? "unknown"}: ${error instanceof Error ? error.message : error}`);
           blocks.push({ type: "text", text: `[Could not decode text file: ${item.filename ?? "unknown"}]` });
         }
       } else {

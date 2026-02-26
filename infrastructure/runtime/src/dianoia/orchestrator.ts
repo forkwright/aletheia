@@ -6,18 +6,18 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import {
   ensureProjectDir,
+  writeDiscussFile,
+  writePlanFile,
   writeProjectFile,
   writeRequirementsFile,
   writeResearchFile,
   writeRoadmapFile,
-  writeDiscussFile,
-  writePlanFile,
   writeVerifyFile,
 } from "./project-files.js";
 import { PlanningError } from "../koina/errors.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext, VerificationGap, RollbackPlan, RollbackAction } from "./types.js";
+import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext, RollbackAction, RollbackPlan, VerificationGap } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 import { RetrospectiveGenerator } from "./retrospective.js";
 
@@ -44,11 +44,11 @@ function verifyFileWritten(filePath: string, fileType: string): void {
   let content: string;
   try {
     content = readFileSync(filePath, "utf-8");
-  } catch (err) {
+  } catch (error) {
     throw new PlanningError(`Failed to read ${fileType} file: ${filePath}`, {
       code: "FILE_PERMISSION_DENIED",
       context: { filePath, fileType },
-      cause: err
+      cause: error
     });
   }
 
@@ -490,9 +490,9 @@ export class DianoiaOrchestrator {
         this.retroGenerator.writeRetroJson(this.workspaceRoot, retro);
       }
       log.info(`Retrospective generated for project ${projectId}: ${retro.patterns.length} patterns`);
-    } catch (err) {
+    } catch (error) {
       // Don't let retro failure block project state transitions
-      log.warn(`Failed to generate retrospective for ${projectId}`, { err });
+      log.warn(`Failed to generate retrospective for ${projectId}`, { error });
     }
   }
 

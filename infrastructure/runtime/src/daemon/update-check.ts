@@ -59,8 +59,8 @@ export function startUpdateChecker(
       if (available) {
         log.info(`Update available: ${currentVersion} → ${latestVersion}`);
       }
-    } catch (err) {
-      log.debug(`Update check failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Update check failed: ${error instanceof Error ? error.message : error}`);
     }
   };
 

@@ -1,14 +1,14 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
-import { mkdirSync, writeFileSync, renameSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import type {
-  PlanningProject,
+  DiscussionQuestion,
   PlanningPhase,
+  PlanningProject,
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
-  DiscussionQuestion,
 } from "./types.js";
 
 const log = createLogger("dianoia:files");

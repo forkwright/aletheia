@@ -114,8 +114,8 @@ export function flushToWorkspace(opts: WorkspaceFlushOpts): WorkspaceFlushResult
       `Workspace memory written: ${filePath} (distillation #${opts.distillationNumber})`,
     );
     return { written: true, path: filePath };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     log.error(`Workspace memory flush failed for ${opts.nousId}: ${msg}`);
     return { written: false, path: filePath, error: msg };
   }

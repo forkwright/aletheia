@@ -1,13 +1,13 @@
 // Tests for structured extraction with instructor-js and Zod validation
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { 
-  extractStructured,
-  parseSubAgentResponse,
-  parseDispatchResponse,
   classifyTask,
-  taskTypeToRole,
+  extractStructured,
+  parseDispatchResponse,
+  parseSubAgentResponse,
+  schemas,
   selectRoleForTask,
-  schemas 
+  taskTypeToRole 
 } from "./structured-extraction.js";
 
 describe("Structured Extraction", () => {

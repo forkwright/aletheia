@@ -163,7 +163,7 @@ export function createPlanRoadmapTool(
           const inputPhaseIds = input["phaseIds"] as string[] | undefined;
 
           const phases = orchestrator.listPhases(projectId);
-          const orderedPhases = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
+          const orderedPhases = [...phases].toSorted((a, b) => a.phaseOrder - b.phaseOrder);
           const phaseIds = inputPhaseIds ?? orderedPhases.map((p) => p.id);
 
           const project = orchestrator.getProject(projectId);
@@ -210,8 +210,8 @@ export function createPlanRoadmapTool(
         }
 
         return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_roadmap failed: ${message}`);
         return Promise.resolve(JSON.stringify({ error: message }));
       }

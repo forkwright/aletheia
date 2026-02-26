@@ -35,8 +35,8 @@ export class UncertaintyTracker {
     if (existsSync(this.filePath)) {
       try {
         this.points = JSON.parse(readFileSync(this.filePath, "utf-8"));
-      } catch (err) {
-        log.debug(`Calibration data corrupt, starting fresh: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.debug(`Calibration data corrupt, starting fresh: ${error instanceof Error ? error.message : error}`);
         this.points = [];
       }
     }

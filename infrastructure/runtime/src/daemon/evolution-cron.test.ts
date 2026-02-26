@@ -1,5 +1,5 @@
 // Evolutionary config search tests
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../koina/logger.js", () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
@@ -59,7 +59,7 @@ describe("variant ranking", () => {
         makeVariant({ id: "mid", score: 0.6 }),
       ],
     });
-    const sorted = [...archive.variants].sort((a, b) => b.score - a.score);
+    const sorted = [...archive.variants].toSorted((a, b) => b.score - a.score);
     expect(sorted[0].id).toBe("high");
     expect(sorted[1].id).toBe("mid");
     expect(sorted[2].id).toBe("low");
@@ -69,7 +69,7 @@ describe("variant ranking", () => {
     const variants = Array.from({ length: 7 }, (_, i) =>
       makeVariant({ id: `v${i}`, score: i * 0.1 }),
     );
-    const sorted = [...variants].sort((a, b) => b.score - a.score).slice(0, 5);
+    const sorted = [...variants].toSorted((a, b) => b.score - a.score).slice(0, 5);
     expect(sorted).toHaveLength(5);
     expect(sorted[0].score).toBeCloseTo(0.6);
     expect(sorted[4].score).toBeCloseTo(0.2);

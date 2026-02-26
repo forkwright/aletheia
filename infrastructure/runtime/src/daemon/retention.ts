@@ -32,30 +32,30 @@ export function runRetention(
     result.distilledMessagesDeleted = store.purgeDistilledMessages(
       retention.distilledMessageMaxAgeDays,
     );
-  } catch (err) {
-    log.error(`Retention: distilled purge failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.error(`Retention: distilled purge failed: ${error instanceof Error ? error.message : error}`);
   }
 
   try {
     result.archivedMessagesDeleted = store.purgeArchivedSessionMessages(
       retention.archivedSessionMaxAgeDays,
     );
-  } catch (err) {
-    log.error(`Retention: archived purge failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.error(`Retention: archived purge failed: ${error instanceof Error ? error.message : error}`);
   }
 
   try {
     result.toolResultsTruncated = store.truncateToolResults(
       retention.toolResultMaxChars,
     );
-  } catch (err) {
-    log.error(`Retention: tool result truncation failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.error(`Retention: tool result truncation failed: ${error instanceof Error ? error.message : error}`);
   }
 
   try {
     result.ephemeralSessionsDeleted = store.deleteEphemeralSessions();
-  } catch (err) {
-    log.error(`Retention: ephemeral cleanup failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.error(`Retention: ephemeral cleanup failed: ${error instanceof Error ? error.message : error}`);
   }
 
   const total =

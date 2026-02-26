@@ -62,12 +62,12 @@ class EventBus {
         const result = handler(payload);
         // Catch async errors without blocking
         if (result && typeof (result as Promise<void>).catch === "function") {
-          (result as Promise<void>).catch((err) => {
-            log.warn(`Event handler error [${event}]: ${err instanceof Error ? err.message : err}`);
+          (result as Promise<void>).catch((error) => {
+            log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
           });
         }
-      } catch (err) {
-        log.warn(`Event handler error [${event}]: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

@@ -17,8 +17,8 @@ export function initWorkspaceRepo(workspace: string): boolean {
     execFileSync("git", ["config", "user.name", "aletheia"], { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" });
     log.info(`Initialized git repo in ${workspace}`);
     return true;
-  } catch (err) {
-    log.warn(`Failed to init git in ${workspace}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Failed to init git in ${workspace}: ${error instanceof Error ? error.message : error}`);
     return false;
   }
 }
@@ -50,8 +50,8 @@ export function commitWorkspaceChange(
         { cwd: workspace, timeout: COMMIT_TIMEOUT, stdio: "ignore" },
       );
       log.debug(`Committed workspace change: ${operation}: ${name}`);
-    } catch (err) {
-      log.debug(`Workspace commit skipped: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Workspace commit skipped: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

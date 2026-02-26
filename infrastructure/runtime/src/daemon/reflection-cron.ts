@@ -66,8 +66,8 @@ export async function runNightlyReflection(
       if (opts.fetchExistingMemories) {
         try {
           existingMemories = await opts.fetchExistingMemories(nousId);
-        } catch (err) {
-          log.warn(`Failed to fetch existing memories for ${nousId}: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.warn(`Failed to fetch existing memories for ${nousId}: ${error instanceof Error ? error.message : error}`);
           // Continue without — contradiction detection will be less effective but reflection still works
         }
       }
@@ -107,13 +107,13 @@ export async function runNightlyReflection(
             const evalContent = buildEvalFeedback(nousId, result.findings, opts.competence);
             writeFileSync(join(agentConfig.workspace, "EVAL_FEEDBACK.md"), evalContent);
             log.info(`Wrote EVAL_FEEDBACK.md for ${nousId}`);
-          } catch (writeErr) {
-            log.warn(`Failed to write EVAL_FEEDBACK.md for ${nousId}: ${writeErr instanceof Error ? writeErr.message : writeErr}`);
+          } catch (error) {
+            log.warn(`Failed to write EVAL_FEEDBACK.md for ${nousId}: ${error instanceof Error ? error.message : error}`);
           }
         }
       }
-    } catch (err) {
-      const msg = `Reflection failed for ${nousId}: ${err instanceof Error ? err.message : err}`;
+    } catch (error) {
+      const msg = `Reflection failed for ${nousId}: ${error instanceof Error ? error.message : error}`;
       log.error(msg);
       errors.push(msg);
     }
@@ -178,8 +178,8 @@ export async function runWeeklyReflection(
           `${findings} findings, ${result.tokensUsed} tokens, ${result.durationMs}ms`,
         );
       }
-    } catch (err) {
-      const msg = `Weekly reflection failed for ${nousId}: ${err instanceof Error ? err.message : err}`;
+    } catch (error) {
+      const msg = `Weekly reflection failed for ${nousId}: ${error instanceof Error ? error.message : error}`;
       log.error(msg);
       errors.push(msg);
     }
@@ -209,7 +209,7 @@ function buildEvalFeedback(
     if (agent) {
       const strong = Object.entries(agent.domains)
         .filter(([, d]) => d.score >= 0.5)
-        .sort((a, b) => b[1].score - a[1].score);
+        .toSorted((a, b) => b[1].score - a[1].score);
       for (const [domain, data] of strong) {
         lines.push(`- **${domain}**: score ${data.score.toFixed(2)} (${data.successes} successes)`);
       }
@@ -228,7 +228,7 @@ function buildEvalFeedback(
     if (agent) {
       const weak = Object.entries(agent.domains)
         .filter(([, d]) => d.score < 0.5)
-        .sort((a, b) => a[1].score - b[1].score);
+        .toSorted((a, b) => a[1].score - b[1].score);
       for (const [domain, data] of weak) {
         lines.push(`- **${domain}**: score ${data.score.toFixed(2)} (${data.corrections} corrections)`);
       }

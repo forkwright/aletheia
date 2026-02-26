@@ -1,7 +1,7 @@
 // Runtime code patching — agents propose changes to their own source, gated by tsc + vitest
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
@@ -108,8 +108,8 @@ function runTsc(runtimeDir: string): { ok: boolean; output: string } {
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
     });
     return { ok: true, output: "TypeScript compilation passed" };
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; stdout?: Buffer };
+  } catch (error: unknown) {
+    const e = error as { stderr?: Buffer; stdout?: Buffer };
     const output = ((e.stdout?.toString() ?? "") + "\n" + (e.stderr?.toString() ?? "")).trim();
     return { ok: false, output: output.slice(0, 2000) };
   }
@@ -124,8 +124,8 @@ function runTests(runtimeDir: string, testFile: string): { ok: boolean; output: 
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
     }).toString();
     return { ok: true, output: output.slice(0, 2000) };
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; stdout?: Buffer };
+  } catch (error: unknown) {
+    const e = error as { stderr?: Buffer; stdout?: Buffer };
     const output = ((e.stdout?.toString() ?? "") + "\n" + (e.stderr?.toString() ?? "")).trim();
     return { ok: false, output: output.slice(0, 2000) };
   }
@@ -247,9 +247,9 @@ export function createPatchTools(): ToolHandler[] {
           timeout: BUILD_TIMEOUT,
           stdio: "pipe",
         });
-      } catch (err) {
+      } catch (error) {
         writeFileSync(absPath, originalContent, "utf-8");
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = error instanceof Error ? error.message : String(error);
         log.warn(`Patch ${patchId} rejected: build failed — ${msg}`);
         return JSON.stringify({ error: "Build failed after patch", output: msg.slice(0, 1000) });
       }
@@ -325,8 +325,8 @@ export function createPatchTools(): ToolHandler[] {
           timeout: BUILD_TIMEOUT,
           stdio: "pipe",
         });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         log.warn(`Rollback rebuild failed: ${msg}`);
         return JSON.stringify({ error: "Rollback applied but rebuild failed", output: msg.slice(0, 1000) });
       }

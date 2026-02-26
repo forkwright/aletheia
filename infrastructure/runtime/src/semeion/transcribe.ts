@@ -69,8 +69,8 @@ export async function transcribeAudio(
 
     log.info(`Transcribed audio: ${transcript.length} chars`);
     return transcript;
-  } catch (err) {
-    log.warn(`Transcription failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Transcription failed: ${error instanceof Error ? error.message : error}`);
     return null;
   } finally {
     try { unlinkSync(tmpPath); } catch { /* cleanup */ }

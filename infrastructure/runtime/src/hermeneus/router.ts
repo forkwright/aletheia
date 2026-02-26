@@ -168,11 +168,11 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
           log.warn(`Credential file ${credPath} has no valid "apiKey" or "token" field`);
         }
       }
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         log.warn(`Credential file not found: ${credPath}`);
       } else {
-        log.warn(`Failed to read credential file ${credPath}: ${err instanceof Error ? err.message : err}`);
+        log.warn(`Failed to read credential file ${credPath}: ${error instanceof Error ? error.message : error}`);
       }
     }
   } else {

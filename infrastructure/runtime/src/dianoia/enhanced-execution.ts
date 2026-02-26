@@ -14,8 +14,8 @@ import type { PlanningPhase } from "./types.js";
 import { buildContextPacketSync } from "./context-packet.js";
 import {
   mapTaskToRole,
-  selectRoleForTask,
   parseDispatchResponse,
+  selectRoleForTask,
 } from "./structured-extraction.js";
 
 // Re-export wave computation utilities (shared with base ExecutionOrchestrator)
@@ -258,12 +258,12 @@ export class EnhancedExecutionOrchestrator {
           failedPhaseIds.push(plans[i]!.id);
         }
       }
-    } catch (err) {
+    } catch (error) {
       for (let i = 0; i < plans.length; i++) {
         this.store.updateSpawnRecord(spawnIds[i]!, {
           status: "failed",
           completedAt: new Date().toISOString(),
-          errorMessage: err instanceof Error ? err.message : String(err),
+          errorMessage: error instanceof Error ? error.message : String(error),
         });
         this.store.updatePhaseStatus(plans[i]!.id, "failed");
         failed++;
@@ -323,11 +323,11 @@ export class EnhancedExecutionOrchestrator {
       });
       this.store.updatePhaseStatus(plan.id, "failed");
       return "failed";
-    } catch (err) {
+    } catch (error) {
       this.store.updateSpawnRecord(record.id, {
         status: "failed",
         completedAt: new Date().toISOString(),
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
       this.store.updatePhaseStatus(plan.id, "failed");
       return "failed";

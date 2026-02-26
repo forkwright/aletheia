@@ -1,16 +1,16 @@
 // Tests for enhanced execution orchestrator with wave concurrency and intelligent dispatch
-import { describe, expect, it, beforeEach, vi, type MockedFunction } from "vitest";
+import { beforeEach, describe, expect, it, type MockedFunction, vi } from "vitest";
 import Database from "better-sqlite3";
 import { 
-  EnhancedExecutionOrchestrator,
-  DEFAULT_EXECUTION_OPTIONS,
   computeWaves,
-  findResumeWave,
-  directDependents
+  DEFAULT_EXECUTION_OPTIONS,
+  directDependents,
+  EnhancedExecutionOrchestrator,
+  findResumeWave
 } from "./enhanced-execution.js";
 import { PlanningStore } from "./store.js";
 import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
-import type { ToolHandler, ToolContext } from "../organon/registry.js";
+import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { PlanningPhase } from "./types.js";
 
 const defaultConfig = {

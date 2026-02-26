@@ -97,8 +97,8 @@ export function teardownEphemeral(id: string): EphemeralAgent | null {
     if (existsSync(agent.workspace)) {
       rmSync(agent.workspace, { recursive: true, force: true });
     }
-  } catch (err) {
-    log.warn(`Failed to clean ephemeral workspace ${id}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Failed to clean ephemeral workspace ${id}: ${error instanceof Error ? error.message : error}`);
   }
 
   log.info(`Torn down ephemeral ${id} after ${agent.turnCount} turns`);

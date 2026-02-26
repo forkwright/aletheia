@@ -82,7 +82,7 @@ export async function finalize(
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
     extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
       .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
-      .catch((err) => { log.debug(`Skill extraction failed (non-fatal): ${err instanceof Error ? err.message : err}`); });
+      .catch((error) => { log.debug(`Skill extraction failed (non-fatal): ${error instanceof Error ? error.message : error}`); });
   }
 
   // Working state extraction — async, non-blocking, on cheap model
@@ -97,7 +97,7 @@ export async function finalize(
       .then((newState) => {
         if (newState) services.store.updateWorkingState(sessionId, newState);
       })
-      .catch((err) => { log.debug(`Working state extraction failed: ${err instanceof Error ? err.message : err}`); });
+      .catch((error) => { log.debug(`Working state extraction failed: ${error instanceof Error ? error.message : error}`); });
   }
 
   // After-turn memory extraction — lightweight, non-blocking, on cheap model
@@ -131,12 +131,12 @@ export async function finalize(
                 log.info(`Turn facts: ${data.added} stored, ${data.skipped ?? 0} deduped (${nousId}, ${result.durationMs}ms)`);
               }
             }
-          } catch (err) {
-            log.debug(`Turn fact storage failed: ${err instanceof Error ? err.message : err}`);
+          } catch (error) {
+            log.debug(`Turn fact storage failed: ${error instanceof Error ? error.message : error}`);
           }
         }
       })
-      .catch((err) => { log.debug(`Turn fact extraction failed: ${err instanceof Error ? err.message : err}`); });
+      .catch((error) => { log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`); });
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

@@ -35,8 +35,8 @@ export async function synthesize(text: string, opts?: TtsOptions): Promise<TtsRe
   if (engine === "openai" || (engine === "auto" && OPENAI_API_KEY)) {
     try {
       return await synthesizeOpenAI(text, id, opts);
-    } catch (err) {
-      log.warn(`OpenAI TTS failed, trying Piper: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`OpenAI TTS failed, trying Piper: ${error instanceof Error ? error.message : error}`);
     }
   }
 

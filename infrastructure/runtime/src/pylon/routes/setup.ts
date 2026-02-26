@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 // Setup routes — pre-auth endpoints for initial onboarding wizard
 import { Hono } from "hono";
-import { existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
@@ -25,8 +25,8 @@ async function validateAnthropicKey(key: string): Promise<{ valid: boolean; erro
     if (res.ok || res.status === 404) return { valid: true };
     if (res.status === 401) return { valid: false, error: "Invalid API key — authentication rejected" };
     return { valid: false, error: `Anthropic API returned ${res.status}` };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     return { valid: false, error: `Could not reach Anthropic API: ${msg}` };
   }
 }
@@ -119,8 +119,8 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         { mode: 0o600 },
       );
       return c.json({ success: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Failed to write credentials: ${msg}`);
       return c.json({ success: false, error: msg }, 500);
     }
@@ -165,8 +165,8 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       writeFileSync(aletheiaConfigFile(), JSON.stringify(cfg, null, 2), { mode: 0o600 });
       log.info(`Account created: ${username}`);
       return c.json({ success: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Failed to create account: ${msg}`);
       return c.json({ success: false, error: msg }, 500);
     }
@@ -176,8 +176,8 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     try {
       writeFileSync(setupFlagFile(), new Date().toISOString(), "utf-8");
       return c.json({ success: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Failed to write setup flag: ${msg}`);
       return c.json({ success: false, error: msg }, 500);
     }

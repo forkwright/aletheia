@@ -106,10 +106,10 @@ export async function recallMemories(
         }
       }
     }
-  } catch (err) {
+  } catch (error) {
     const ms = Date.now() - start;
     const reason =
-      (err as Error).name === "AbortError" ? "timeout" : String(err);
+      (error as Error).name === "AbortError" ? "timeout" : String(error);
     log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
     clearTimeout(timer);
     return { block: null, count: 0, durationMs: ms, tokens: 0 };
@@ -126,7 +126,7 @@ export async function recallMemories(
       ...h,
       score: (h.score ?? 0) + computeRecencyBoost(h.created_at, now),
     }))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    .toSorted((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   // Exact-text dedup first, then MMR diversity selection
   const seen = new Set<string>();

@@ -298,8 +298,8 @@ export function createDefaultRegistry(): CommandRegistry {
       try {
         await ctx.manager.triggerDistillation(session.id);
         return "**Context distilled.** Older messages compressed into memory.";
-      } catch (err) {
-        return `**Distillation failed:** ${err instanceof Error ? err.message : String(err)}`;
+      } catch (error) {
+        return `**Distillation failed:** ${error instanceof Error ? error.message : String(error)}`;
       }
     },
   });

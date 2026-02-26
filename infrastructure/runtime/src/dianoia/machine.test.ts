@@ -24,8 +24,8 @@ function expectInvalidTransition(state: DianoiaState, event: PlanningEvent): voi
   expect(() => transition(state, event)).toThrow();
   try {
     transition(state, event);
-  } catch (e) {
-    expect((e as AletheiaError).code).toBe("PLANNING_INVALID_TRANSITION");
+  } catch (error) {
+    expect((error as AletheiaError).code).toBe("PLANNING_INVALID_TRANSITION");
   }
 }
 

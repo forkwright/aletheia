@@ -67,8 +67,8 @@ export function metricRoutes(deps: RouteDeps, refs: RouteRefs): Hono {
         ...(job.agentId ? { nousId: job.agentId } : {}),
       });
       return c.json({ ok: true, jobId: id });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Cron trigger failed: ${msg}`);
       return c.json({ error: "Failed to trigger cron job" }, 500);
     }

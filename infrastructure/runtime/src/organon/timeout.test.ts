@@ -71,8 +71,8 @@ describe("executeWithTimeout", () => {
     let caught: unknown;
     try {
       await executeWithTimeout(fn, 10, "my_tool");
-    } catch (err) {
-      caught = err;
+    } catch (error) {
+      caught = error;
     }
     expect(caught).toBeInstanceOf(ToolTimeoutError);
     const te = caught as ToolTimeoutError;

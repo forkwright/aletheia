@@ -99,8 +99,8 @@ function loadExistingConfig(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) return {};
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-  } catch (err) {
-    log.debug(`Config parse failed for ${filePath}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Config parse failed for ${filePath}: ${error instanceof Error ? error.message : error}`);
     return {};
   }
 }

@@ -32,8 +32,8 @@ function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const previous = sessionLocks.get(key) ?? Promise.resolve();
   const current = previous.then(
     () => fn(),
-    (prevErr) => {
-      log.warn(`Previous turn on lock "${key}" failed: ${prevErr instanceof Error ? prevErr.message : prevErr}`);
+    (error) => {
+      log.warn(`Previous turn on lock "${key}" failed: ${error instanceof Error ? error.message : error}`);
       return fn();
     },
   );
@@ -232,8 +232,8 @@ export class NousManager {
           }
           channel.push(event);
         }
-      } catch (err) {
-        channel.push({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      } catch (error) {
+        channel.push({ type: "error", message: error instanceof Error ? error.message : String(error) });
       } finally {
         channel.close();
       }
@@ -249,8 +249,8 @@ export class NousManager {
       if (resolvedSessionId) {
         this.maybeScheduleDistillation(resolvedSessionId, nousId, lockKey);
       }
-    } catch (err) {
-      yield { type: "error", message: err instanceof Error ? err.message : String(err) };
+    } catch (error) {
+      yield { type: "error", message: error instanceof Error ? error.message : String(error) };
     } finally {
       this.trackTurnEnd(nousId);
       this.turnAbortControllers.delete(turnId);
@@ -354,8 +354,8 @@ export class NousManager {
           ...(workspace ? { workspace } : {}),
           ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
         });
-      }).catch((err) => {
-        log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+      }).catch((error) => {
+        log.warn(`Background distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
       });
       return;
     }
@@ -405,8 +405,8 @@ export class NousManager {
           },
         } : {}),
       });
-    }).catch((err) => {
-      log.warn(`Deferred distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
+    }).catch((error) => {
+      log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
     });
   }
 

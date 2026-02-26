@@ -75,9 +75,9 @@ export const mem0RetractTool: ToolHandler = {
 
       const data = (await res.json()) as Record<string, unknown>;
       return JSON.stringify(data);
-    } catch (err) {
+    } catch (error) {
       return JSON.stringify({
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   },

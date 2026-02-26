@@ -187,8 +187,8 @@ export function createPlanRequirementsTool(
         }
 
         return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_requirements failed: ${message}`);
         return Promise.resolve(JSON.stringify({ error: message }));
       }

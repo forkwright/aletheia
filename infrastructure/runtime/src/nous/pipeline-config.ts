@@ -61,8 +61,8 @@ export function loadPipelineConfig(workspace: string): PipelineConfig {
     const result = PipelineConfigSchema.parse(parsed);
     cache.set(filePath, { config: result, mtimeMs: stat.mtimeMs });
     return result;
-  } catch (err) {
-    log.warn(`Invalid pipeline.json in ${workspace}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Invalid pipeline.json in ${workspace}: ${error instanceof Error ? error.message : error}`);
     return DEFAULTS;
   }
 }

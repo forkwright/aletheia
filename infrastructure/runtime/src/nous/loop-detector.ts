@@ -44,7 +44,7 @@ interface CallRecord {
 
 /** Stable hash of tool input for deduplication. Order-insensitive for objects. */
 function hashInput(input: unknown): string {
-  const normalized = JSON.stringify(input, Object.keys((input as Record<string, unknown>) ?? {}).sort());
+  const normalized = JSON.stringify(input, Object.keys((input as Record<string, unknown>) ?? {}).toSorted());
   return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
 }
 

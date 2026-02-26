@@ -1,6 +1,6 @@
 // Workspace file index — manifest builder, keyword scorer, agent-managed config
-import { existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, statSync, writeFileSync, readFileSync, type Dirent } from "node:fs";
-import { join, relative, extname } from "node:path";
+import { closeSync, type Dirent, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { extname, join, relative } from "node:path";
 import { Buffer } from "node:buffer";
 import { createLogger } from "../koina/logger.js";
 
@@ -237,7 +237,7 @@ export function queryIndex(index: WorkspaceIndex, query: string, limit: number):
 
   return scored
     .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .toSorted((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((s) => s.entry);
 }

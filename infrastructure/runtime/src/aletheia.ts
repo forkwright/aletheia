@@ -300,8 +300,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
         const data = await res.json() as { added?: number; errors?: number; skipped?: number };
         log.info(`Memory flush: ${data.added ?? 0} added, ${data.skipped ?? 0} deduped, ${data.errors ?? 0} errors (agent=${agentId})`);
         return { added: data.added ?? 0, errors: data.errors ?? 0 };
-      } catch (err) {
-        log.warn(`Memory flush failed: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Memory flush failed: ${error instanceof Error ? error.message : error}`);
         return { added: 0, errors: memories.length };
       }
     },
@@ -565,8 +565,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
     try {
       await mcpManager.connectAll(config.mcp.servers as Record<string, import("./organon/mcp-client.js").McpServerConfig>);
       log.info(`MCP client: ${mcpManager.getToolCount()} tools from ${mcpManager.getStatus().filter(s => s.status === "connected").length} server(s)`);
-    } catch (err) {
-      log.error(`MCP client initialization error: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.error(`MCP client initialization error: ${error instanceof Error ? error.message : error}`);
     }
     setMcpRef(mcpManager);
   }
@@ -629,9 +629,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
         try {
           await waitForReady(handle.baseUrl);
-        } catch (err) {
+        } catch (error) {
           log.error(
-            `Signal daemon for ${accountId} failed to start: ${err instanceof Error ? err.message : err}`,
+            `Signal daemon for ${accountId} failed to start: ${error instanceof Error ? error.message : error}`,
           );
           continue;
         }
@@ -747,8 +747,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
         const { join: joinPath } = await import("node:path");
         writeBackup(joinPath(dest, filename), agentFileToJson(agentFile, false));
         count++;
-      } catch (err) {
-        log.warn(`Backup failed for ${agent.id}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Backup failed for ${agent.id}: ${error instanceof Error ? error.message : error}`);
       }
     }
 

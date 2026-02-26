@@ -100,12 +100,12 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
             });
           }
         })
-        .catch((err) => {
-          log.warn(`sessions_send to ${agentId} failed: ${err instanceof Error ? err.message : err}`);
+        .catch((error) => {
+          log.warn(`sessions_send to ${agentId} failed: ${error instanceof Error ? error.message : error}`);
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
               status: "error",
-              response: err instanceof Error ? err.message : String(err),
+              response: error instanceof Error ? error.message : String(error),
             });
           }
         })

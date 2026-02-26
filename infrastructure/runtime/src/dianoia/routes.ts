@@ -73,7 +73,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     // Map phases to plan entries
     const plans = phases.map(phase => {
       const phaseRecords = spawnRecords.filter(r => r.phaseId === phase.id);
-      const latestRecord = phaseRecords.sort((a, b) => 
+      const latestRecord = phaseRecords.toSorted((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       )[0];
       
@@ -310,7 +310,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       projectId: timelineProjectId,
       goal: project.goal,
       state: project.state,
-      milestones: milestones.sort((a, b) => a.order - b.order),
+      milestones: milestones.toSorted((a, b) => a.order - b.order),
       requirementsSummary: {
         v1: requirements.filter(r => r.tier === "v1").length,
         v2: requirements.filter(r => r.tier === "v2").length,

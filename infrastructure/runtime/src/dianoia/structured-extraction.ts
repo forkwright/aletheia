@@ -391,9 +391,9 @@ export class StructuredExtractor {
       const parsed = JSON.parse(jsonText);
       const validated = schema.parse(parsed);
       return { success: true, data: validated, rawJson: jsonText };
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        const errors = err.issues.map((issue) => {
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const errors = error.issues.map((issue) => {
           const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
           return `${path}${issue.message}`;
         });
@@ -425,7 +425,7 @@ export class StructuredExtractor {
       return {
         success: false,
         data: undefined as unknown as T,
-        validationErrors: [err instanceof Error ? err.message : String(err)],
+        validationErrors: [error instanceof Error ? error.message : String(error)],
         rawJson: jsonText,
       };
     }

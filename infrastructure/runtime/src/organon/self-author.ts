@@ -62,8 +62,8 @@ function runTests(dir: string, name: string): { ok: boolean; output: string } {
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
     }).toString();
     return { ok: true, output: output.slice(0, 1000) };
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; stdout?: Buffer };
+  } catch (error: unknown) {
+    const e = error as { stderr?: Buffer; stdout?: Buffer };
     const stderr = e.stderr?.toString() ?? "";
     const stdout = e.stdout?.toString() ?? "";
     return { ok: false, output: (stderr + "\n" + stdout).slice(0, 1000) };
@@ -97,8 +97,8 @@ function loadAuthoredTool(dir: string, name: string): ToolHandler | null {
       definition: def as unknown as ToolHandler["definition"],
       execute: exec as ToolHandler["execute"],
     };
-  } catch (err) {
-    log.warn(`Authored tool ${name} failed to load: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Authored tool ${name} failed to load: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }

@@ -242,10 +242,10 @@ export function createSessionsDispatchTool(
           };
           if (structured) dispatchResult.structuredResult = structured;
           return dispatchResult;
-        } catch (err) {
+        } catch (error) {
           clearTimeout(timer!);
           const durationMs = Date.now() - taskStart;
-          const errMsg = err instanceof Error ? err.message : String(err);
+          const errMsg = error instanceof Error ? error.message : String(error);
           const isTimeout = errMsg.includes("timeout") || errMsg.includes("Timeout");
 
           if (auditId && dispatcher.store) {

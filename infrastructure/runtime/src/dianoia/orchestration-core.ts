@@ -9,8 +9,8 @@ import { directDependents } from "./execution.js";
 import type { 
   DianoiaState, 
   PlanningPhase, 
-  VerificationResult, 
-  VerificationGap
+  VerificationGap, 
+  VerificationResult
 } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 
@@ -583,7 +583,7 @@ export class OrchestrationCore {
 
     // Return the phase with the lowest phase order
     const resumePhase = independentPhases
-      .sort((a, b) => a.phaseOrder - b.phaseOrder)[0];
+      .toSorted((a, b) => a.phaseOrder - b.phaseOrder)[0];
 
     return resumePhase?.id;
   }

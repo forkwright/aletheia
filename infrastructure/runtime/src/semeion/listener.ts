@@ -92,9 +92,9 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
         abortSignal,
       );
       backoff.current = backoff.min;
-    } catch (err) {
+    } catch (error) {
       if (abortSignal?.aborted) break;
-      log.warn(`SSE stream error: ${err instanceof Error ? err.message : err}`);
+      log.warn(`SSE stream error: ${error instanceof Error ? error.message : error}`);
     }
 
     if (abortSignal?.aborted) break;
@@ -165,9 +165,9 @@ async function consumeEventStream(
               if (envelope) {
                 onEnvelope(envelope);
               }
-            } catch (parseErr) {
+            } catch (error) {
               log.warn(
-                `Failed to parse SSE data: ${parseErr instanceof Error ? parseErr.message : parseErr}`,
+                `Failed to parse SSE data: ${error instanceof Error ? error.message : error}`,
               );
             }
           }
@@ -194,9 +194,9 @@ async function consumeEventStream(
         if (envelope) {
           onEnvelope(envelope);
         }
-      } catch (parseErr) {
+      } catch (error) {
         log.warn(
-          `Failed to parse final SSE data: ${parseErr instanceof Error ? parseErr.message : parseErr}`,
+          `Failed to parse final SSE data: ${error instanceof Error ? error.message : error}`,
         );
       }
     }
@@ -326,7 +326,7 @@ function handleEnvelope(
       match.handler
         .execute(match.args, cmdCtx)
         .then((result) => sendMessage(client, target, result, { markdown: false }))
-        .catch((err) => log.warn(`Command !${match.handler.name} failed: ${err instanceof Error ? err.message : err}`));
+        .catch((error) => log.warn(`Command !${match.handler.name} failed: ${error instanceof Error ? error.message : error}`));
       return;
     }
   }
@@ -334,20 +334,20 @@ function handleEnvelope(
   // Legacy status command fallback (if no command registry)
   if (!commands && onStatusRequest && !isGroup && text.trim().toLowerCase() === "status") {
     log.info("Status command received, handling directly");
-    onStatusRequest(target).catch((err) =>
-      log.warn(`Status command failed: ${err instanceof Error ? err.message : err}`),
+    onStatusRequest(target).catch((error) =>
+      log.warn(`Status command failed: ${error instanceof Error ? error.message : error}`),
     );
     return;
   }
 
   if (account.sendReadReceipts && !isGroup && envelope.timestamp) {
-    sendReadReceipt(client, target, envelope.timestamp).catch((err) =>
-      log.warn(`Read receipt failed: ${err}`),
+    sendReadReceipt(client, target, envelope.timestamp).catch((error) =>
+      log.warn(`Read receipt failed: ${error}`),
     );
   }
 
-  sendTyping(client, target).catch((err) =>
-    log.warn(`Typing indicator failed: ${err}`),
+  sendTyping(client, target).catch((error) =>
+    log.warn(`Typing indicator failed: ${error}`),
   );
 
   // For DMs, prefer UUID for routing (bindings use UUIDs)
@@ -371,8 +371,8 @@ function handleEnvelope(
     threadId = thread.id;
     bindingId = binding.id;
     lockKey = `binding:${binding.id}`;
-  } catch (err) {
-    log.warn(`Thread resolution failed for signal:${peerId}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Thread resolution failed for signal:${peerId}: ${error instanceof Error ? error.message : error}`);
   }
 
   const msg: InboundMessage = {
@@ -392,7 +392,7 @@ function handleEnvelope(
   if (accountTurns >= MAX_CONCURRENT_TURNS) {
     log.warn(`Concurrency limit reached for ${accountId} (${accountTurns}/${MAX_CONCURRENT_TURNS}), dropping message`);
     sendMessage(client, target, "I'm handling several conversations right now. Give me a moment and try again.", { markdown: false })
-      .catch((err) => log.warn(`Failed to send busy message: ${err}`));
+      .catch((error) => log.warn(`Failed to send busy message: ${error}`));
     return;
   }
 
@@ -473,8 +473,8 @@ async function preprocessAndProcess(
         } else {
           log.info(`Unsupported attachment type: ${ct} (${att.filename ?? att.id})`);
         }
-      } catch (err) {
-        log.warn(`Failed to fetch attachment ${att.id}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to fetch attachment ${att.id}: ${error instanceof Error ? error.message : error}`);
       }
     }
 
@@ -487,8 +487,8 @@ async function preprocessAndProcess(
   // Link pre-processing: fetch URLs and append previews
   try {
     msg.text = await preprocessLinks(msg.text);
-  } catch (err) {
-    log.debug(`Link preprocessing failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Link preprocessing failed (non-fatal): ${error instanceof Error ? error.message : error}`);
   }
   return processTurn(manager, msg, client, target);
 }
@@ -517,10 +517,10 @@ async function processTurn(
     log.info(
       `Turn complete: ${outcome.nousId} session=${outcome.sessionId} tools=${outcome.toolCalls} in=${outcome.inputTokens} out=${outcome.outputTokens}`,
     );
-  } catch (err) {
+  } catch (error) {
     sendTyping(client, target, true).catch(() => { /* typing indicator, non-critical */ });
-    log.error(`Turn failed: ${err instanceof Error ? err.message : err}`);
-    if (err instanceof Error && err.stack) log.error(err.stack);
+    log.error(`Turn failed: ${error instanceof Error ? error.message : error}`);
+    if (error instanceof Error && error.stack) log.error(error.stack);
 
     try {
       await sendMessage(
@@ -529,8 +529,8 @@ async function processTurn(
         "I encountered an error processing that message. Please try again.",
         { markdown: false },
       );
-    } catch (sendErr) {
-      log.error(`Failed to send error message: ${sendErr}`);
+    } catch (error) {
+      log.error(`Failed to send error message: ${error}`);
     }
   }
 }
@@ -579,7 +579,7 @@ function checkAccess(
       );
       log.info(`Pairing request #${id} from ${pairingCtx.senderName ?? sender} (code: ${challengeCode})`);
       sendMessage(pairingCtx.client, pairingCtx.target, `I don't know you yet. Ask an admin to approve code: ${challengeCode}`, { markdown: false })
-        .catch((err) => log.warn(`Failed to send pairing message: ${err}`));
+        .catch((error) => log.warn(`Failed to send pairing message: ${error}`));
     }
     return false;
   }
@@ -618,7 +618,7 @@ function hydrateMentions(
 ): string {
   let result = text;
 
-  const sorted = [...mentions].sort((a, b) => (b.start ?? 0) - (a.start ?? 0));
+  const sorted = [...mentions].toSorted((a, b) => (b.start ?? 0) - (a.start ?? 0));
 
   for (const mention of sorted) {
     if (mention.start === null || mention.length === null) continue;

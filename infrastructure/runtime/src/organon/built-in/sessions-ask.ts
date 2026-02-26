@@ -130,20 +130,20 @@ export function createSessionsAskTool(dispatcher?: AgentDispatcher): ToolHandler
             output: outcome.outputTokens,
           },
         });
-      } catch (err) {
+      } catch (error) {
         clearTimeout(timer!);
 
         if (auditId && dispatcher.store) {
-          const isTimeout = err instanceof Error && err.message.includes("Timeout");
+          const isTimeout = error instanceof Error && error.message.includes("Timeout");
           dispatcher.store.updateCrossAgentCall(auditId, {
             status: isTimeout ? "timeout" : "error",
-            response: err instanceof Error ? err.message : String(err),
+            response: error instanceof Error ? error.message : String(error),
           });
         }
 
         return JSON.stringify({
           agentId,
-          error: err instanceof Error ? err.message : String(err),
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     },

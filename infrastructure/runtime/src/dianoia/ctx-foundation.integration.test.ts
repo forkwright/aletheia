@@ -1,8 +1,8 @@
 // Integration test for Context & State Foundation (Spec 32 CTX-S5)
 // Tests the full pipeline using the real DianoiaOrchestrator API
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
@@ -22,8 +22,8 @@ import { PlanningStore } from "./store.js";
 import { buildContextPacketWithPriompt } from "./priompt-context.js";
 import {
   readProjectFile,
-  readResearchFile,
   readRequirementsFile,
+  readResearchFile,
 } from "./project-files.js";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
 

@@ -162,8 +162,8 @@ export function createPlanDiscussTool(
           default:
             return JSON.stringify({ error: `Unknown action: ${action}` });
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_discuss [${action}] failed: ${message}`);
         return JSON.stringify({ error: message });
       }
@@ -247,9 +247,9 @@ async function handleGenerate(
         });
       }
     }
-  } catch (err) {
+  } catch (error) {
     log.warn(`LLM question generation failed, falling back to heuristic`, {
-      err: err instanceof Error ? err.message : String(err),
+      err: error instanceof Error ? error.message : String(error),
       phaseId,
     });
   }

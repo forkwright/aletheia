@@ -85,8 +85,8 @@ export async function buildContext(
           });
           log.info(`Emergency distillation complete for ${nousId} — context cleared`);
           preflightDistilled = true;
-        } catch (distillErr) {
-          log.error(`Emergency distillation failed: ${distillErr instanceof Error ? distillErr.message : distillErr}`);
+        } catch (error) {
+          log.error(`Emergency distillation failed: ${error instanceof Error ? error.message : error}`);
         }
       }
     }
@@ -187,8 +187,8 @@ export async function buildContext(
         });
         log.debug(`Workspace index injected for ${nousId}: ${index.files.length} files, ${relevant.length} relevant`);
       }
-    } catch (idxErr) {
-      log.debug(`Workspace index unavailable: ${idxErr instanceof Error ? idxErr.message : idxErr}`);
+    } catch (error) {
+      log.debug(`Workspace index unavailable: ${error instanceof Error ? error.message : error}`);
     }
   }
 

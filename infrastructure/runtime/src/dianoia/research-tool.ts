@@ -63,8 +63,8 @@ export function createPlanResearchTool(
         }
 
         return JSON.stringify({ status: "complete", stored, partial, failed, message });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         log.error(`plan_research failed: ${message}`);
         return JSON.stringify({ error: message });
       }

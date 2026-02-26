@@ -47,8 +47,8 @@ export function commandRoutes(deps: RouteDeps, refs: RouteRefs): Hono {
       };
       const result = await match.handler.execute(match.args, ctx);
       return c.json({ ok: true, result });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       return c.json({ error: msg }, 500);
     }
   });

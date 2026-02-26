@@ -39,16 +39,16 @@ export function createWhatDoIKnowTool(
           const domains = Object.values(agent.domains);
           const strengths = domains
             .filter((d) => d.score >= 0.6 && d.successes >= 2)
-            .sort((a, b) => b.score - a.score)
+            .toSorted((a, b) => b.score - a.score)
             .map((d) => ({ domain: d.domain, score: d.score, successes: d.successes }));
 
           const weaknesses = domains
             .filter((d) => d.score < 0.4 || d.corrections >= 3)
-            .sort((a, b) => a.score - b.score)
+            .toSorted((a, b) => a.score - b.score)
             .map((d) => ({ domain: d.domain, score: d.score, corrections: d.corrections }));
 
           const active = domains
-            .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+            .toSorted((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
             .slice(0, 5)
             .map((d) => ({ domain: d.domain, lastUpdated: d.lastUpdated }));
 

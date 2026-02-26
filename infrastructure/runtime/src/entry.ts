@@ -287,8 +287,8 @@ program
           console.log(`  ${job["id"]}: ${job["schedule"]} (next: ${job["nextRun"] ?? "unknown"})`);
         }
       }
-    } catch (err) {
-      console.error(`Failed to reach gateway: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed to reach gateway: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -324,8 +324,8 @@ program
       if (usage) {
         console.log(`\n--- ${usage["inputTokens"]} in / ${usage["outputTokens"]} out / ${data["toolCalls"]} tool calls ---`);
       }
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -358,8 +358,8 @@ program
         process.exit(1);
       }
       console.log((data["response"] as string | undefined) ?? "(no response)");
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -388,8 +388,8 @@ program
       for (const s of data.sessions.slice(0, 30)) {
         console.log(`  ${s["id"]} ${s["nousId"]} [${s["status"]}] ${s["messageCount"]} msgs (${s["updatedAt"]})`);
       }
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -417,8 +417,8 @@ cronCmd
       for (const job of data.jobs) {
         console.log(`  ${job["id"]}: ${job["schedule"]} agent=${job["agentId"]} last=${job["lastRun"] ?? "never"} next=${job["nextRun"] ?? "unknown"}`);
       }
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -442,8 +442,8 @@ cronCmd
         process.exit(1);
       }
       console.log(`Triggered cron job: ${id}`);
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -561,17 +561,17 @@ program
               console.log(
                 `Replay response:\n${response.slice(0, 500)}\n`,
               );
-            } catch (err) {
+            } catch (error) {
               console.error(
-                `Replay failed at turn ${um.seq}: ${err instanceof Error ? err.message : err}`,
+                `Replay failed at turn ${um.seq}: ${error instanceof Error ? error.message : error}`,
               );
               break;
             }
           }
         }
-      } catch (err) {
+      } catch (error) {
         console.error(
-          `Failed: ${err instanceof Error ? err.message : err}`,
+          `Failed: ${error instanceof Error ? error.message : error}`,
         );
         process.exit(1);
       }
@@ -600,8 +600,8 @@ program
       console.log(`Forked session: ${result.newSessionId}`);
       console.log(`  Source: ${sessionId} @ distillation #${distillationNumber}`);
       console.log(`  Messages copied: ${result.messagesCopied}`);
-    } catch (err) {
-      console.error(`Fork failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Fork failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     } finally {
       store.close();
@@ -662,8 +662,8 @@ agentCmd
       console.log(`  Workspace: ${result.workspace}`);
       console.log(`  Files: ${result.filesCreated.join(", ")}`);
       console.log(`\nStart onboarding: open the web UI and select ${name}.`);
-    } catch (err) {
-      console.error(`Failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
   });
@@ -753,8 +753,8 @@ program
 
       try {
         execFileSync(script, args, { stdio: "inherit" });
-      } catch (err) {
-        const code = (err as { status?: number }).status ?? 1;
+      } catch (error) {
+        const code = (error as { status?: number }).status ?? 1;
         process.exit(code);
       }
     },
@@ -780,9 +780,9 @@ program
     let raw: string;
     try {
       raw = readFileSync(filePath, "utf-8");
-    } catch (err) {
+    } catch (error) {
       console.error(`Cannot read file: ${filePath}`);
-      console.error(err instanceof Error ? err.message : err);
+      console.error(error instanceof Error ? error.message : error);
       process.exit(1);
     }
 
@@ -841,9 +841,9 @@ auditCmd
     let db: InstanceType<typeof Database>;
     try {
       db = new Database(dbPath, { readonly: true });
-    } catch (err) {
+    } catch (error) {
       console.error(`Cannot open database: ${dbPath}`);
-      console.error(err instanceof Error ? err.message : err);
+      console.error(error instanceof Error ? error.message : error);
       process.exit(1);
     }
 
@@ -959,8 +959,8 @@ program
     // Write config
     try {
       writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-    } catch (err) {
-      console.error(`Failed to write config: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      console.error(`Failed to write config: ${error instanceof Error ? error.message : error}`);
       process.exit(1);
     }
 

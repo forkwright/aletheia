@@ -608,11 +608,11 @@ export class PlanningStore {
     let config: PlanningConfig;
     try {
       config = JSON.parse(row["config"] as string) as PlanningConfig;
-    } catch (cause) {
+    } catch (error) {
       throw new PlanningError("Corrupt config JSON in planning_projects", {
         code: "PLANNING_STATE_CORRUPT",
         context: { id: row["id"] },
-        cause,
+        cause: error,
       });
     }
     let projectContext: ProjectContext | null = null;
@@ -650,11 +650,11 @@ export class PlanningStore {
       dependencies = row["dependencies"]
         ? (JSON.parse(row["dependencies"] as string) as string[])
         : [];
-    } catch (cause) {
+    } catch (error) {
       throw new PlanningError("Corrupt JSON in planning_phases", {
         code: "PLANNING_STATE_CORRUPT",
         context: { id: row["id"] },
-        cause,
+        cause: error,
       });
     }
     return {
@@ -706,11 +706,11 @@ export class PlanningStore {
     let context: Record<string, unknown>;
     try {
       context = JSON.parse(row["context"] as string) as Record<string, unknown>;
-    } catch (cause) {
+    } catch (error) {
       throw new PlanningError("Corrupt context JSON in planning_checkpoints", {
         code: "PLANNING_STATE_CORRUPT",
         context: { id: row["id"] },
-        cause,
+        cause: error,
       });
     }
     return {

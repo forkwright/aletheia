@@ -75,8 +75,8 @@ export const mem0SearchTool: ToolHandler = {
         if (enhancedRes.ok) {
           results = await extract(enhancedRes);
         }
-      } catch (err) {
-        log.debug(`Tier 1 (enhanced) failed: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.debug(`Tier 1 (enhanced) failed: ${error instanceof Error ? error.message : error}`);
       }
 
       // Tier 2: Graph-enhanced search (vector + graph neighbor expansion)
@@ -98,8 +98,8 @@ export const mem0SearchTool: ToolHandler = {
           if (graphRes.ok) {
             results = await extract(graphRes);
           }
-        } catch (err) {
-          log.debug(`Tier 2 (graph-enhanced) failed: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.debug(`Tier 2 (graph-enhanced) failed: ${error instanceof Error ? error.message : error}`);
         }
       }
 
@@ -130,8 +130,8 @@ export const mem0SearchTool: ToolHandler = {
           const agentResults = await extract(aRes);
           const globalResults = await extract(gRes);
           results = [...agentResults, ...globalResults];
-        } catch (err) {
-          log.debug(`Tier 3 (basic) failed: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.debug(`Tier 3 (basic) failed: ${error instanceof Error ? error.message : error}`);
         }
       }
 
@@ -158,13 +158,13 @@ export const mem0SearchTool: ToolHandler = {
       }));
 
       return JSON.stringify({ results: memories, count: memories.length });
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
         return JSON.stringify({ results: [], error: "mem0 search timed out" });
       }
       return JSON.stringify({
         results: [],
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   },

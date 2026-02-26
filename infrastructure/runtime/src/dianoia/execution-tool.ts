@@ -119,13 +119,13 @@ async function handleAction(
                   message: `Execution succeeded but verification found gaps in "${phase.name}". See rollback plan.`,
                 }, null, 2);
               }
-            } catch (err) {
-              log.warn(`Verification failed for phase ${phase.id}, continuing`, { err });
+            } catch (error) {
+              log.warn(`Verification failed for phase ${phase.id}, continuing`, { error });
               verificationResults.push({
                 phaseId: phase.id,
                 name: phase.name,
                 status: "error",
-                summary: err instanceof Error ? err.message : String(err),
+                summary: error instanceof Error ? error.message : String(error),
               });
             }
           }
@@ -186,8 +186,8 @@ async function handleAction(
       default:
         return JSON.stringify({ error: `Unknown action: ${action}` });
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     log.error(`plan_execute [${action}] failed: ${message}`);
     return JSON.stringify({ error: message });
   }

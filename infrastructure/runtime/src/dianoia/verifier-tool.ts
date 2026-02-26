@@ -203,8 +203,8 @@ async function handleVerifyAction(
       default:
         return JSON.stringify({ error: `Unknown action: ${action}` });
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     log.error(`plan_verify [${action}] failed: ${message}`);
     return JSON.stringify({ error: message });
   }

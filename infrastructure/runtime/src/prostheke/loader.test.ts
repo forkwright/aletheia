@@ -84,7 +84,7 @@ describe("discoverPlugins", () => {
     const result = await discoverPlugins(TEST_ROOT);
     expect(result).toHaveLength(2);
 
-    const ids = result.map((p) => p.manifest.id).sort();
+    const ids = result.map((p) => p.manifest.id).toSorted();
     expect(ids).toEqual(["plugin-a", "plugin-b"]);
   });
 

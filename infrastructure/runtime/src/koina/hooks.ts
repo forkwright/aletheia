@@ -184,8 +184,8 @@ export function loadHookDefinitions(hooksDir: string): HookDefinition[] {
     files = readdirSync(hooksDir).filter(
       (f) => f.endsWith(".yaml") || f.endsWith(".yml"),
     );
-  } catch (err) {
-    log.warn(`Cannot read hooks directory ${hooksDir}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Cannot read hooks directory ${hooksDir}: ${error instanceof Error ? error.message : error}`);
     return [];
   }
 
@@ -229,8 +229,8 @@ export function loadHookDefinitions(hooksDir: string): HookDefinition[] {
 
       hooks.push(hook);
       log.info(`Loaded hook: ${hook.name} → ${hook.event}`);
-    } catch (err) {
-      log.warn(`Error loading hook file ${file}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Error loading hook file ${file}: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -474,9 +474,9 @@ function createHookHandler(hook: HookDefinition): (payload: EventPayload) => voi
             break;
         }
       })
-      .catch((err) => {
+      .catch((error) => {
         if (hook.handler.failAction !== "silent") {
-          log.warn(`Hook ${hook.name} execution error: ${err instanceof Error ? err.message : err}`);
+          log.warn(`Hook ${hook.name} execution error: ${error instanceof Error ? error.message : error}`);
         }
       });
   };

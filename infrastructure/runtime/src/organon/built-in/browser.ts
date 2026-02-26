@@ -139,7 +139,7 @@ export const browserTool: ToolHandler = {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout });
 
         if (waitFor) {
-          await page.waitForSelector(waitFor, { timeout }).catch((err) => { log.debug(`waitForSelector "${waitFor}" timed out: ${err instanceof Error ? err.message : err}`); });
+          await page.waitForSelector(waitFor, { timeout }).catch((error) => { log.debug(`waitForSelector "${waitFor}" timed out: ${error instanceof Error ? error.message : error}`); });
         }
 
         switch (action) {

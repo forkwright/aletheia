@@ -65,8 +65,8 @@ export async function importAgent(
         result.sessionsImported++;
         result.messagesImported += imported.messages;
         result.notesImported += imported.notes;
-      } catch (err) {
-        log.warn(`Failed to import session ${exportedSession.id}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to import session ${exportedSession.id}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -89,7 +89,7 @@ function importSession(
   let notes = 0;
 
   // Import messages in sequence order
-  const sortedMessages = [...exported.messages].sort((a, b) => a.seq - b.seq);
+  const sortedMessages = [...exported.messages].toSorted((a, b) => a.seq - b.seq);
 
   for (const msg of sortedMessages) {
     store.appendMessage(session.id, msg.role as "user" | "assistant" | "tool_result", msg.content, {

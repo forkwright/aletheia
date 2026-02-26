@@ -1,8 +1,8 @@
 // End-to-end integration test for S5 Context & State Foundation
 // Tests the full pipeline: project creation → questioning → research → requirements → roadmap
 // Validates all .md files are written with expected content, context packet assembly, and token counting
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
@@ -33,7 +33,7 @@ const encoder = getEncoding("cl100k_base");
 function countTokens(text: string): number {
   try {
     return encoder.encode(text).length;
-  } catch (err) {
+  } catch (error) {
     // Fallback to character estimation
     return Math.ceil(text.length / 4);
   }
