@@ -1,6 +1,7 @@
 // Agent workspace scaffolding with onboarding SOUL.md
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ConfigError } from "../koina/errors.js";
 import { readJson, writeJson } from "../koina/fs.js";
 import type { AletheiaConfig } from "./schema.js";
 
@@ -111,22 +112,22 @@ After writing these files, naturally transition to your first real task. Your fi
 export function scaffoldAgent(opts: ScaffoldOpts): ScaffoldResult {
   const validation = validateAgentId(opts.id);
   if (!validation.valid) {
-    throw new Error(`Invalid agent ID: ${validation.reason}`);
+    throw new ConfigError(`Invalid agent ID: ${validation.reason}`, { code: "CONFIG_SCAFFOLD_INVALID_ID", context: { id: opts.id, reason: validation.reason } });
   }
 
   const workspace = join(opts.nousDir, opts.id);
   if (existsSync(workspace)) {
-    throw new Error(`Workspace already exists: ${workspace}`);
+    throw new ConfigError(`Workspace already exists: ${workspace}`, { code: "CONFIG_SCAFFOLD_EXISTS", context: { workspace } });
   }
 
   const config = readJson<AletheiaConfig>(opts.configPath);
   if (!config) {
-    throw new Error(`Cannot read config: ${opts.configPath}`);
+    throw new ConfigError(`Cannot read config: ${opts.configPath}`, { code: "CONFIG_SCAFFOLD_NO_CONFIG", context: { configPath: opts.configPath } });
   }
 
   const agents = config.agents?.list ?? [];
   if (agents.some((a: { id: string }) => a.id === opts.id)) {
-    throw new Error(`Agent ID "${opts.id}" already exists in config`);
+    throw new ConfigError(`Agent ID "${opts.id}" already exists in config`, { code: "CONFIG_SCAFFOLD_DUPLICATE_ID", context: { id: opts.id } });
   }
 
   mkdirSync(workspace, { recursive: true });

@@ -53,10 +53,22 @@ export const ERROR_CODES = {
   SIGNAL_SSE_FAILED: "SSE connection to Signal daemon failed",
   SIGNAL_RPC_ERROR: "Signal RPC call returned an error",
 
+  // semeion (TTS)
+  TRANSPORT_TTS_NO_ENGINE: "No TTS engine available — set OPENAI_API_KEY or install Piper",
+  TRANSPORT_TTS_HTTP_ERROR: "OpenAI TTS HTTP request failed",
+  TRANSPORT_TTS_BINARY_NOT_FOUND: "Piper binary not found at configured path",
+  TRANSPORT_TTS_MODEL_NOT_FOUND: "Piper model not found at configured path",
+
   // taxis (config)
   CONFIG_NOT_FOUND: "Configuration file not found at expected path",
   CONFIG_VALIDATION_FAILED: "Configuration failed schema validation",
   CONFIG_MISSING_REQUIRED: "Required configuration field is missing",
+
+  // taxis (scaffold)
+  CONFIG_SCAFFOLD_INVALID_ID: "Agent scaffold failed — invalid agent ID",
+  CONFIG_SCAFFOLD_EXISTS: "Agent workspace already exists at target path",
+  CONFIG_SCAFFOLD_NO_CONFIG: "Cannot read config file for scaffold operation",
+  CONFIG_SCAFFOLD_DUPLICATE_ID: "Agent ID already exists in configuration",
 
   // distillation
   DISTILL_EXTRACTION_FAILED: "Fact extraction returned no results",
