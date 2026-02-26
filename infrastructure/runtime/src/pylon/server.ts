@@ -36,6 +36,7 @@ import { blackboardRoutes } from "./routes/blackboard.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { setupRoutes } from "./routes/setup.js";
 import { planningRoutes } from "../dianoia/routes.js";
+import { taskRoutes } from "../dianoia/task-routes.js";
 
 const log = createLogger("pylon");
 
@@ -207,6 +208,7 @@ export function createGateway(
     blackboardRoutes,
     workspaceRoutes,
     planningRoutes,
+    taskRoutes,
   ];
 
   for (const factory of modules) {

@@ -32,7 +32,12 @@ export type EventName =
   | "planning:complete"
   | "planning:requirement-changed"
   | "planning:phase-changed"
-  | "planning:discussion-answered";
+  | "planning:discussion-answered"
+  | "task:created"
+  | "task:updated"
+  | "task:completed"
+  | "task:deleted"
+  | "task:bulk-created";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;
