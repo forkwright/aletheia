@@ -585,7 +585,7 @@ export class RoadmapOrchestrator {
         return { pass: true, issues: [] };
       }
 
-      throw new Error(`Cannot extract check result from: ${raw.slice(0, 200)}`);
+      throw new PlanningError(`Cannot extract check result from: ${raw.slice(0, 200)}`, { code: "PLANNING_VERIFICATION_PARSE_FAILED" });
     }
   }
 }

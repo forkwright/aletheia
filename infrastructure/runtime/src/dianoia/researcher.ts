@@ -13,6 +13,7 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import { writeResearchFile } from "./project-files.js";
 import { buildContextPacketSync } from "./context-packet.js";
+import { PlanningError } from "../koina/errors.js";
 import { z } from "zod";
 
 const log = createLogger("dianoia:researcher");
@@ -306,8 +307,9 @@ export class ResearchOrchestrator {
     // Fail-fast only if NO dimensions have usable content
     const usableCount = stored + partial;
     if (usableCount === 0) {
-      throw new Error(
+      throw new PlanningError(
         `Research failed: No dimensions completed successfully (${failed} failed, ${partial} partial)`,
+        { code: "PLANNING_RESEARCH_ALL_FAILED", context: { failed, partial } },
       );
     }
 

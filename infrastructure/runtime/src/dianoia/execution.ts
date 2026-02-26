@@ -1,6 +1,7 @@
 // ExecutionOrchestrator — wave-based plan execution, dependency graph, cascade-skip, spawn records
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
+import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
@@ -231,12 +232,12 @@ export class ExecutionOrchestrator {
             const retryRaw = await this.dispatchTool.execute({ tasks: feedbackTasks }, toolContext);
             return retryRaw as string;
           } catch (error) {
-            throw new Error(`Retry dispatch also failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+            throw new PlanningError(`Retry dispatch also failed: ${error instanceof Error ? error.message : String(error)}`, { code: "PLANNING_DISPATCH_FAILED", cause: error instanceof Error ? error : undefined });
           }
         });
-        
+
         if (!dispatchResult) {
-          throw new Error("Failed to parse dispatch response after retry");
+          throw new PlanningError("Failed to parse dispatch response after retry", { code: "PLANNING_DISPATCH_PARSE_FAILED" });
         }
       } catch (error) {
         // Dispatch or parsing failed — mark all as failed

@@ -77,7 +77,7 @@ export class DianoiaOrchestrator {
 
   getWorkspaceOrThrow(): string {
     if (!this.workspaceRoot) {
-      throw new Error("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first");
+      throw new PlanningError("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first", { code: "PLANNING_WORKSPACE_NOT_SET" });
     }
     return this.workspaceRoot;
   }

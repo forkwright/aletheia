@@ -120,6 +120,17 @@ export const ERROR_CODES = {
   PLANNING_DISCUSSION_NOT_FOUND: "Discussion question ID does not exist",
   PLANNING_DUPLICATE_REQUIREMENT_ID: "Requirement ID already exists for this project",
   PLANNING_TABLE_STAKES_OUT_OF_SCOPE: "Table-stakes feature cannot be out-of-scope without rationale",
+  PLANNING_PLAN_NOT_FOUND: "Plan ID not found in execution snapshot",
+  PLANNING_PLAN_ID_REQUIRED: "planId is required for this operation",
+  PLANNING_PHASE_ID_REQUIRED: "phaseId is required for this operation",
+  PLANNING_OVERRIDE_NOTE_REQUIRED: "overrideNote is required for verification override",
+  PLANNING_CHECKPOINT_ID_REQUIRED: "checkpointId is required for this operation",
+  PLANNING_WORKSPACE_NOT_SET: "Workspace root not configured — call setWorkspaceRoot() first",
+  PLANNING_FILE_WRITE_FAILED: "File integrity check failed after write operation",
+  PLANNING_RESEARCH_ALL_FAILED: "All research dimensions failed — cannot proceed without domain research",
+  PLANNING_DISPATCH_FAILED: "Plan dispatch failed after retry",
+  PLANNING_DISPATCH_PARSE_FAILED: "Failed to parse dispatch response",
+  PLANNING_VERIFICATION_PARSE_FAILED: "Cannot extract verification check result from response",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
