@@ -83,6 +83,7 @@ export async function startListener(opts: ListenerOpts): Promise<void> {
 
   const backoff = { min: 1000, max: 10000, current: 1000 };
 
+  // oxlint-disable-next-line no-unmodified-loop-condition -- abortSignal.aborted changes externally via abort()
   while (!abortSignal?.aborted) {
     try {
       await consumeEventStream(
@@ -547,8 +548,9 @@ async function processTurn(
         "I encountered an error processing that message. Please try again.",
         { markdown: false },
       );
-    } catch (sendErr) {
-      log.error(`Failed to send error message: ${sendErr}`);
+    // oxlint-disable-next-line unicorn/catch-error-name -- `sendError` distinguishes from outer turn error
+    } catch (sendError) {
+      log.error(`Failed to send error message: ${sendError}`);
     }
   }
 }
@@ -676,13 +678,19 @@ function sanitizeAttachmentField(value: string): string {
 
 function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
     const onAbort = () => {
       clearTimeout(timer);
-      resolve();
+      done();
     };
     const timer = setTimeout(() => {
       abortSignal?.removeEventListener("abort", onAbort);
-      resolve();
+      done();
     }, ms);
     abortSignal?.addEventListener("abort", onAbort, { once: true });
   });

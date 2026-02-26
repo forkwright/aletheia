@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import { PlanningStore } from "./store.js";
-import { transition } from "./machine.js";
+import { type PlanningEvent, transition } from "./machine.js";
 import { directDependents } from "./execution.js";
 import type { 
   DianoiaState, 
@@ -72,7 +72,7 @@ export class OrchestrationCore {
 
     try {
       // Validate transition using the state machine
-      const toState = transition(fromState, event as any);
+      const toState = transition(fromState, event as PlanningEvent);
       
       // Execute the transition
       this.store.updateProjectState(projectId, toState);

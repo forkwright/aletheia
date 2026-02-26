@@ -883,12 +883,12 @@ export async function startRuntime(configPath?: string): Promise<void> {
       log.warn(`Forcing shutdown with ${runtime.manager.activeTurns} active turns`);
     }
 
-    if (mcpManager) await mcpManager.disconnectAll().catch(() => {});
+    if (mcpManager) await mcpManager.disconnectAll().catch(() => { /* disconnect errors suppressed on shutdown */ });
     abortController.abort();
     for (const daemon of daemons) {
       daemon.stop();
     }
-    await closeBrowser().catch(() => {});
+    await closeBrowser().catch(() => { /* browser close errors suppressed on shutdown */ });
     await runtime.plugins.dispatchShutdown();
     hookRegistry.teardown();
     for (const reg of perNousHookRegistries) reg.teardown();

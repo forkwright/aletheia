@@ -209,8 +209,9 @@ export function registerCustomCommands(
             ...(def.allowedTools ? { toolFilter: def.allowedTools } : {}),
           });
           return outcome.text;
-        } catch (err) {
-          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
+        // oxlint-disable-next-line unicorn/catch-error-name -- `cmdError` distinguishes from outer destructured `error` variable
+        } catch (cmdError) {
+          return `Command failed: ${cmdError instanceof Error ? cmdError.message : String(cmdError)}`;
         }
       },
     };

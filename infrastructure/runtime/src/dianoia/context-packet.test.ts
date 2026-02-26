@@ -116,6 +116,7 @@ describe("buildContextPacketSync", () => {
       sessionId: "test",
       goal: "Big project",
       state: "executing",
+      // oxlint-disable-next-line typescript/no-explicit-any -- partial mock config in test
       config: {} as any,
       contextHash: "",
       projectDir: null,

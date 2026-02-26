@@ -169,6 +169,7 @@ describe("deliberate", () => {
         auditCalls.push(args);
         return 1;
       },
+    // oxlint-disable-next-line typescript/no-explicit-any -- partial mock store, type narrowing not practical
     } as any;
 
     const tool = createDeliberateTool(dispatcher);

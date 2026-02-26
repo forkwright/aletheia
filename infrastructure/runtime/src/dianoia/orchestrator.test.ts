@@ -286,6 +286,7 @@ describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-
     const project = orch.getActiveProject("nous-1")!;
 
     // Create test phases with dependencies
+    // oxlint-disable-next-line typescript/no-explicit-any -- accessing private field in test
     const db = (orch as any).store.db;
     const _phaseA = db.prepare(`
       INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, created_at, updated_at)

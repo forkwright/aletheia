@@ -7,7 +7,7 @@ import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { OrchestrationCore } from "./orchestration-core.js";
 import { PlanningStore } from "./store.js";
-import type { VerificationResult } from "./types.js";
+import type { PlanningProject, VerificationResult } from "./types.js";
 
 const log = createLogger("dianoia:orchestration-tool");
 
@@ -348,9 +348,19 @@ function getValidEvents(state: string): string[] {
   return transitions[state] || [];
 }
 
+interface ExecutionStatus {
+  failedPhases: string[];
+  skippedPhases: string[];
+  runningPhases: string[];
+  pendingPhases: string[];
+  completedPhases: string[];
+  currentWave: number;
+  totalWaves: number;
+}
+
 function determineOverallHealth(
-  project: any,
-  executionStatus: any,
+  project: PlanningProject,
+  executionStatus: ExecutionStatus,
   failedVerifications: number
 ): "healthy" | "warning" | "critical" {
   if (failedVerifications > 0 || executionStatus.failedPhases.length > 0) {
@@ -364,7 +374,7 @@ function determineOverallHealth(
   return "healthy";
 }
 
-function getNextSteps(project: any, executionStatus: any): string[] {
+function getNextSteps(project: PlanningProject, executionStatus: ExecutionStatus): string[] {
   const steps: string[] = [];
   
   if (project.state === "blocked") {

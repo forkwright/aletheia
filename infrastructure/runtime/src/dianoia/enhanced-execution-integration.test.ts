@@ -50,6 +50,7 @@ describe("Enhanced Execution Engine Integration", () => {
     db = makeDb();
     store = new PlanningStore(db);
 
+    // oxlint-disable-next-line typescript/no-explicit-any -- vi.fn() return type not assignable without cast
     mockDispatchTool = {
       definition: {
         name: "mock_enhanced_dispatch",
@@ -57,7 +58,7 @@ describe("Enhanced Execution Engine Integration", () => {
         input_schema: { type: "object", properties: {}, required: [] }
       },
       execute: vi.fn()
-    } as any;
+    } as unknown as ToolHandler;
 
     _mockToolContext = {
       nousId: "test-nous",
