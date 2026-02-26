@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 4 of 6 (Extraction Pipeline Completion)
-Plan: 3 of 3 in current phase (04-03 complete — cross-chunk LLM contradiction detection + evolution pre-check before memory flush)
+Plan: 4 of 4 in current phase (04-04 complete — AbortSignal threading, cancelDistillation export, POST distill/cancel endpoint)
 Status: Phase 4 complete
-Last activity: 2026-02-26 — Plan 04-03 complete; detectCrossChunkContradictions, checkEvolutionBeforeFlush, full pipeline wiring
+Last activity: 2026-02-26 — Plan 04-04 complete; AbortSignal threading through full pipeline, cancel API endpoint
 
-Progress: [██████████] 70%
+Progress: [██████████] 72%
 
 ## Performance Metrics
 
@@ -30,7 +30,7 @@ Progress: [██████████] 70%
 | 01-test-infrastructure | 3 | 48 min | 16 min |
 | 02-data-integrity | 4 | ~66 min | ~17 min |
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
-| 04-extraction-pipeline-completion | 3 | 21 min | 7 min |
+| 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
 
 **Recent Trend:**
 - Last 5 plans: ~15 min, 3 min, 4 min, 3 min, 7 min
@@ -86,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase 04-extraction-pipeline-completion / 04-03]: checkEvolutionBeforeFlush uses Promise.allSettled in batches of 5 — parallel but bounded, fail-open per memory
 - [Phase 04-extraction-pipeline-completion / 04-03]: Response.mockImplementation(async () => new Response(...)) required for multi-call fetch mocks — body streams single-use
 - [Phase 04-extraction-pipeline-completion / 04-03]: FlushOptions.sidecarUrl added; spread conditionally in pipeline.ts to satisfy exactOptionalPropertyTypes
+- [Phase 04-extraction-pipeline-completion / 04-04]: AbortController created per-distillSession call; external opts.signal linked via addEventListener to internal controller
+- [Phase 04-extraction-pipeline-completion / 04-04]: Signal propagated through opts object in summarizeInStages (not positional param) — avoids breaking existing test callers
+- [Phase 04-extraction-pipeline-completion / 04-04]: Cancel returns {ok: true, cancelled: boolean} immediately — does not await distillation; pipeline finally handles cleanup
 
 ### Pending Todos
 
@@ -99,5 +102,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 04-extraction-pipeline-completion 04-03-PLAN.md — cross-chunk LLM contradiction detection + evolution pre-check
+Stopped at: Completed 04-extraction-pipeline-completion 04-04-PLAN.md — AbortSignal threading and cancel API endpoint
 Resume file: None

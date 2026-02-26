@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Data Integrity** - Crash-safe locking, transactional rollback, workspace flush reliability, orphan cleanup (completed 2026-02-25)
 - [x] **Phase 2.1: Fix addMemories Session Wiring** - INSERTED: Gap closure — wire session_id through distillation → Qdrant path (completed 2026-02-25)
 - [ ] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
-- [ ] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False (3/4 plans complete)
+- [x] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False (3/4 plans complete) (completed 2026-02-26)
 - [ ] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements
 - [ ] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling
 
@@ -99,7 +99,7 @@ Plans:
   3. A long distillation can be cancelled via API — AbortSignal propagates through the pipeline and stops work cleanly
   4. Evolution endpoint is in the main distillation flow — new facts that supersede old ones produce one coherent entry, not two contradicting entries
   5. Direct-write paths (`add_direct`, `add_batch`) never trigger double-extraction — Mem0 `infer=False` is enforced
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 04-01-PLAN.md — Contradiction wire-up (invalidate_text endpoint) + infer=False enforcement audit
@@ -143,6 +143,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 2. Data Integrity | 4/4 | Complete    | 2026-02-25 |
 | 2.1 Fix addMemories Session Wiring | 0/1 | Complete    | 2026-02-25 |
 | 3. Graph Extraction Overhaul | 2/3 | In Progress|  |
-| 4. Extraction Pipeline Completion | 3/4 | In Progress|  |
+| 4. Extraction Pipeline Completion | 4/4 | Complete   | 2026-02-26 |
 | 5. Recall Quality | 0/TBD | Not started | - |
 | 6. Observability | 0/TBD | Not started | - |

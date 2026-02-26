@@ -39,7 +39,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **EXTR-01**: Contradiction field from extract.ts wired downstream to temporal invalidation endpoint — contradictions trigger automatic fact invalidation
 - [x] **EXTR-02**: Cross-chunk semantic dedup pass via sidecar after mergeExtractions() — cosine similarity check prevents near-duplicate facts from different chunks
 - [x] **EXTR-03**: Cross-chunk contradiction detection — second LLM pass on merged facts identifies contradictions spanning chunks
-- [ ] **EXTR-04**: AbortSignal threaded through distillation pipeline — long distillations can be cancelled via API
+- [x] **EXTR-04**: AbortSignal threaded through distillation pipeline — long distillations can be cancelled via API
 - [x] **EXTR-05**: Evolution endpoint wired into main distillation flow — new facts that supersede old ones produce one coherent fact, not two contradicting entries
 - [x] **EXTR-06**: Direct-write paths (add_direct, add_batch) enforce `infer=False` on Mem0 to prevent double-extraction
 
@@ -113,7 +113,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | EXTR-01 | Phase 4 | Complete |
 | EXTR-02 | Phase 4 | Complete |
 | EXTR-03 | Phase 4 | Complete |
-| EXTR-04 | Phase 4 | Pending |
+| EXTR-04 | Phase 4 | Complete |
 | EXTR-05 | Phase 4 | Complete |
 | EXTR-06 | Phase 4 | Complete |
 | RECL-01 | Phase 5 | Pending |
