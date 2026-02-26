@@ -188,8 +188,8 @@ export async function deduplicateFactsViaSidecar(
       log.info(`Cross-chunk dedup removed ${data.removed} near-duplicate facts`);
     }
     return data.deduplicated;
-  } catch (err) {
-    log.warn(`Dedup sidecar error — skipping: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Dedup sidecar error — skipping: ${error instanceof Error ? error.message : error}`);
     return facts; // Fail-open: return original facts if dedup unavailable
   }
 }

@@ -34,8 +34,8 @@ async function invalidateContradictedFacts(
       if (!res.ok) {
         log.warn(`Contradiction invalidation failed (${res.status}): ${contradiction.slice(0, 80)}`);
       }
-    } catch (err) {
-      log.warn(`Contradiction invalidation error: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Contradiction invalidation error: ${error instanceof Error ? error.message : error}`);
       // Non-fatal — contradiction invalidation should never block distillation
     }
   }
