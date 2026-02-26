@@ -1,14 +1,15 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
-import { mkdirSync, writeFileSync, renameSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { PlanningError } from "../koina/errors.js";
 import type {
-  PlanningProject,
+  DiscussionQuestion,
   PlanningPhase,
+  PlanningProject,
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
-  DiscussionQuestion,
 } from "./types.js";
 
 const log = createLogger("dianoia:files");
@@ -40,11 +41,11 @@ function atomicWriteFile(filePath: string, content: string, encoding: BufferEnco
  */
 function validateFileWritten(filePath: string, operation: string): void {
   if (!existsSync(filePath)) {
-    throw new Error(`${operation}: File not found after write: ${filePath}`);
+    throw new PlanningError(`${operation}: File not found after write: ${filePath}`, { code: "PLANNING_FILE_WRITE_FAILED", context: { operation, filePath } });
   }
   const content = readFileSync(filePath, "utf-8");
   if (content.trim().length === 0) {
-    throw new Error(`${operation}: File is empty after write: ${filePath}`);
+    throw new PlanningError(`${operation}: File is empty after write: ${filePath}`, { code: "PLANNING_FILE_WRITE_FAILED", context: { operation, filePath } });
   }
 }
 

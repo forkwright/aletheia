@@ -31,61 +31,61 @@ export function createConfigReadTool(config?: AletheiaConfig): ToolHandler {
         required: ["section"],
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
       const section = input["section"] as string;
 
       if (!config) {
-        return JSON.stringify({ error: "Config not available" });
+        return Promise.resolve(JSON.stringify({ error: "Config not available" }));
       }
 
       switch (section) {
         case "agent": {
           const nous = resolveNous(config, context.nousId);
-          if (!nous) return JSON.stringify({ error: `Unknown nous: ${context.nousId}` });
-          return JSON.stringify({
+          if (!nous) return Promise.resolve(JSON.stringify({ error: `Unknown nous: ${context.nousId}` }));
+          return Promise.resolve(JSON.stringify({
             id: nous.id,
             name: nous.name,
             workspace: nous.workspace,
             model: nous.model ?? config.agents.defaults.model,
             tools: nous.tools,
             heartbeat: nous.heartbeat,
-          });
+          }));
         }
         case "agents":
-          return JSON.stringify(
+          return Promise.resolve(JSON.stringify(
             config.agents.list.map((a) => ({
               id: a.id,
               name: a.name ?? a.id,
             })),
-          );
+          ));
         case "bindings":
-          return JSON.stringify(
+          return Promise.resolve(JSON.stringify(
             config.bindings.filter((b) => b.agentId === context.nousId),
-          );
+          ));
         case "cron":
-          return JSON.stringify(
+          return Promise.resolve(JSON.stringify(
             config.cron.jobs.filter(
               (j) => !j.agentId || j.agentId === context.nousId,
             ),
-          );
+          ));
         case "gateway":
-          return JSON.stringify({
+          return Promise.resolve(JSON.stringify({
             port: config.gateway.port,
             bind: config.gateway.bind,
-          });
+          }));
         case "plugins":
-          return JSON.stringify({
+          return Promise.resolve(JSON.stringify({
             enabled: config.plugins.enabled,
             count: Object.keys(config.plugins.entries).length,
             plugins: Object.entries(config.plugins.entries).map(
               ([id, p]) => ({ id, enabled: p.enabled }),
             ),
-          });
+          }));
         default:
-          return JSON.stringify({ error: `Unknown section: ${section}` });
+          return Promise.resolve(JSON.stringify({ error: `Unknown section: ${section}` }));
       }
     },
   };

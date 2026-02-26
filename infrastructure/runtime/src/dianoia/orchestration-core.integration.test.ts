@@ -1,11 +1,12 @@
 // Integration test demonstrating ORCH-04: Verification failure auto-skip and rollback plan
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { GoalBackwardVerifier } from "./verifier.js";
 import { createPlanVerifyTool } from "./verifier-tool.js";
 import { PlanningStore } from "./store.js";
+import type { CheckpointSystem } from "./checkpoint.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
 
@@ -73,7 +74,7 @@ describe("ORCH-04 Integration Test: Verification Failure Auto-Skip", () => {
     const store = new PlanningStore(db);
     const orchestrator = new DianoiaOrchestrator(db, DEFAULT_CONFIG);
     const verifier = new GoalBackwardVerifier(db, mockDispatchTool);
-    const verifyTool = createPlanVerifyTool(orchestrator, verifier, {} as any, store);
+    const verifyTool = createPlanVerifyTool(orchestrator, verifier, null as unknown as CheckpointSystem, store);
 
     // Create a project with dependent phases and advance to verifying state
     const project = store.createProject({
@@ -170,7 +171,9 @@ describe("ORCH-04 Integration Test: Verification Failure Auto-Skip", () => {
 
     // Verify rollback actions are actionable
     const actions = parsed.rollbackPlan.actions;
+    // oxlint-disable-next-line typescript/no-explicit-any -- parsed JSON from runtime output
     const gapActions = actions.filter((a: any) => a.type === "fix-verification-gap");
+    // oxlint-disable-next-line typescript/no-explicit-any -- parsed JSON from runtime output
     const verifyAction = actions.find((a: any) => a.type === "verify-phase");
 
     expect(gapActions[0].priority).toBe("high"); // not-met

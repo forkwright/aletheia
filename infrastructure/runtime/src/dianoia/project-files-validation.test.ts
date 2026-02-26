@@ -1,24 +1,24 @@
 // Tests for file validation and cross-phase persistence (Spec 32 CTX-02)
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  writeProjectFile,
-  writeRequirementsFile,
-  writeResearchFile,
-  writeRoadmapFile,
-  writeDiscussFile,
-  writePlanFile,
-  writeStateFile,
-  writeVerifyFile,
+  readDiscussFile,
+  readPlanFile,
   readProjectFile,
   readRequirementsFile,
   readResearchFile,
   readRoadmapFile,
-  readDiscussFile,
-  readPlanFile,
+  writeDiscussFile,
+  writePlanFile,
+  writeProjectFile,
+  writeRequirementsFile,
+  writeResearchFile,
+  writeRoadmapFile,
+  writeStateFile,
+  writeVerifyFile,
 } from "./project-files.js";
 
 const TEST_PROJECT_ID = "proj_validation_test";

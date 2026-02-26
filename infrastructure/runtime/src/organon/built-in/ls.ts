@@ -33,7 +33,7 @@ export const lsTool: ToolHandler = {
       },
     },
   },
-  async execute(
+  execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
@@ -62,12 +62,12 @@ export const lsTool: ToolHandler = {
         }
       }
 
-      return lines.length > 0
+      return Promise.resolve(lines.length > 0
         ? lines.join("\n")
-        : "(empty directory)";
+        : "(empty directory)");
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      return `Error: ${msg}`;
+      return Promise.resolve(`Error: ${msg}`);
     }
   },
 };

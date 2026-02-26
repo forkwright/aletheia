@@ -5,6 +5,13 @@ import { getSidecarUrl, getUserId } from "../../koina/memory-client.js";
 
 const log = createLogger("tool:mem0-search");
 
+async function extractResults(res: Response): Promise<unknown[]> {
+  if (!res.ok) return [];
+  const data = (await res.json()) as Record<string, unknown>;
+  const results = (data["results"] as unknown[]) ?? [];
+  return Array.isArray(results) ? results : [];
+}
+
 export const mem0SearchTool: ToolHandler = {
   definition: {
     name: "mem0_search",
@@ -49,13 +56,6 @@ export const mem0SearchTool: ToolHandler = {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 12000);
 
-      const extract = async (res: Response) => {
-        if (!res.ok) return [];
-        const data = (await res.json()) as Record<string, unknown>;
-        const results = (data["results"] as unknown[]) ?? [];
-        return Array.isArray(results) ? results : [];
-      };
-
       let results: unknown[] = [];
 
       // Tier 1: Enhanced search with query rewriting + alias resolution
@@ -73,10 +73,10 @@ export const mem0SearchTool: ToolHandler = {
           signal: controller.signal,
         });
         if (enhancedRes.ok) {
-          results = await extract(enhancedRes);
+          results = await extractResults(enhancedRes);
         }
-      } catch (err) {
-        log.debug(`Tier 1 (enhanced) failed: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.debug(`Tier 1 (enhanced) failed: ${error instanceof Error ? error.message : error}`);
       }
 
       // Tier 2: Graph-enhanced search (vector + graph neighbor expansion)
@@ -96,10 +96,10 @@ export const mem0SearchTool: ToolHandler = {
             signal: controller.signal,
           });
           if (graphRes.ok) {
-            results = await extract(graphRes);
+            results = await extractResults(graphRes);
           }
-        } catch (err) {
-          log.debug(`Tier 2 (graph-enhanced) failed: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.debug(`Tier 2 (graph-enhanced) failed: ${error instanceof Error ? error.message : error}`);
         }
       }
 
@@ -127,11 +127,11 @@ export const mem0SearchTool: ToolHandler = {
               signal: controller.signal,
             }),
           ]);
-          const agentResults = await extract(aRes);
-          const globalResults = await extract(gRes);
+          const agentResults = await extractResults(aRes);
+          const globalResults = await extractResults(gRes);
           results = [...agentResults, ...globalResults];
-        } catch (err) {
-          log.debug(`Tier 3 (basic) failed: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.debug(`Tier 3 (basic) failed: ${error instanceof Error ? error.message : error}`);
         }
       }
 
@@ -158,13 +158,13 @@ export const mem0SearchTool: ToolHandler = {
       }));
 
       return JSON.stringify({ results: memories, count: memories.length });
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
         return JSON.stringify({ results: [], error: "mem0 search timed out" });
       }
       return JSON.stringify({
         results: [],
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   },

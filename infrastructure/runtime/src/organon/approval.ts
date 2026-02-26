@@ -127,7 +127,7 @@ export class ApprovalGate {
     this.sessionAllowLists.get(sessionId)!.add(toolName);
   }
 
-  async waitForApproval(
+  waitForApproval(
     turnId: string,
     toolId: string,
     toolName: string,

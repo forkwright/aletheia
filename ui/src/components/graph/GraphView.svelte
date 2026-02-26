@@ -7,19 +7,19 @@
   import DriftPanel from "./DriftPanel.svelte";
   import TimelineSlider from "./TimelineSlider.svelte";
   import ContextLookup from "./ContextLookup.svelte";
-  import { communityColor, agentColor, AGENT_COLORS } from "../../lib/graph-colors";
+  import { communityColor, AGENT_COLORS } from "../../lib/graph-colors";
   import {
     getGraphData, getLoading, getError, getSelectedNodeId,
     getSelectedNode, getNodeEdges, getCommunityIds,
     getHighlightedCommunity, getSearchQuery, getLoadedMode, getLoadedLimit,
     getTotalNodes, getEntityDetail, getEntityLoading, getCommunityMeta,
-    getHiddenEdgeTypes, getEdgeTypes, toggleEdgeType, getFilteredEdges,
-    searchGraph, getSearchResults, getSearchLoading, clearSearchResults,
+    getHiddenEdgeTypes, getEdgeTypes, toggleEdgeType,
+    searchGraph, getSearchResults, getSearchLoading,
     setSelectedNodeId, setHighlightedCommunity, setSearchQuery,
     loadGraph, loadEntityDetail, removeEntity, mergeEntityNodes,
     // Graph Intelligence (Phases 8-13)
     getMemoryHealth, getHealthLoading, loadMemoryHealth,
-    getAgentOverlay, getAgentOverlayLoading, loadAgentOverlay,
+    getAgentOverlay, loadAgentOverlay,
     getDriftData, getDriftLoading, loadDriftData,
     getActiveOverlay, setActiveOverlay,
     getSelectedAgentFilter, setSelectedAgentFilter,
@@ -28,19 +28,21 @@
 
   type ViewMode = "2d" | "3d";
 
+  interface Graph3DInstance {
+    focusOnNode(nodeId: string): void;
+    zoomToFit(): void;
+  }
+
   let viewMode = $state<ViewMode>("2d");
   let graph2d = $state<Graph2D | null>(null);
-  let graph3d = $state<any>(null);
-  let progressivePhase = $state<"initial" | "full">("initial");
+  let graph3d = $state<Graph3DInstance | null>(null);
   let showContextLookup = $state(false);
   let showTimeline = $state(false);
   let showEdgeFilter = $state(true);
 
   // --- Progressive loading ---
   async function initialLoad() {
-    progressivePhase = "initial";
     await loadGraph({ mode: "top", limit: 20 });
-    progressivePhase = "full";
     await loadGraph({ mode: "top", limit: 200 });
     // Load health data in background
     loadMemoryHealth();
@@ -259,7 +261,7 @@
           class:active={selectedAgentFilter === null}
           onclick={() => setSelectedAgentFilter(null)}
         >All agents</button>
-        {#each agentOverlay.all_agents as agent}
+        {#each agentOverlay.all_agents as agent (agent)}
           <button
             class="pill agent-pill"
             class:active={selectedAgentFilter === agent}
@@ -278,7 +280,7 @@
           class:active={getHighlightedCommunity() === null}
           onclick={() => { setHighlightedCommunity(null); reloadGraph(); }}
         >All</button>
-        {#each communityIds.slice(0, 12) as cid}
+        {#each communityIds.slice(0, 12) as cid (cid)}
           <button
             class="pill"
             class:active={getHighlightedCommunity() === cid}
@@ -394,7 +396,7 @@
   {#if edgeTypes.length > 0 && showEdgeFilter}
     <div class="edge-filter-panel">
       <h4 class="panel-heading">Edge Types</h4>
-      {#each edgeTypes as type}
+      {#each edgeTypes as type (type)}
         {@const hidden = hiddenEdges.has(type)}
         <label class="edge-toggle">
           <input type="checkbox" checked={!hidden} onchange={() => toggleEdgeType(type)} />

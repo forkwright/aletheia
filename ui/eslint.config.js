@@ -16,6 +16,8 @@ export default [
     rules: {
       "svelte/no-at-html-tags": "error",
       "svelte/no-target-blank": "error",
+      // Allow $state() wrapping when the variable is reassigned (needed for reactivity)
+      "svelte/no-unnecessary-state-wrap": ["error", { "allowReassign": true }],
       // Deferred to Phase 13 remediation — widespread in existing codebase
       "svelte/require-each-key": "warn",
       "svelte/prefer-svelte-reactivity": "warn",
@@ -31,6 +33,8 @@ export default [
       },
     },
     rules: {
+      // Allow $state() wrapping when the variable is reassigned (needed for reactivity)
+      "svelte/no-unnecessary-state-wrap": ["error", { "allowReassign": true }],
       // Deferred to Phase 13 remediation — widespread in existing store files
       "svelte/prefer-svelte-reactivity": "warn",
     },

@@ -7,7 +7,7 @@ import { createLogger } from "../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { OrchestrationCore } from "./orchestration-core.js";
 import { PlanningStore } from "./store.js";
-import type { VerificationResult } from "./types.js";
+import type { PlanningProject, VerificationResult } from "./types.js";
 
 const log = createLogger("dianoia:orchestration-tool");
 
@@ -71,261 +71,194 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
         required: ["action", "projectId"]
       }
     },
-    async execute(input: Record<string, unknown>, _context: ToolContext): Promise<string> {
-      const action = input['action'] as string;
-      const projectId = input['projectId'] as string;
-
-      try {
-        // Validate project exists
-        const project = store.getProject(projectId);
-        if (!project) {
-          return JSON.stringify({
-            error: `Project ${projectId} not found`
-          });
-        }
-
-        switch (action) {
-          case "state_transition": {
-            const event = input['event'] as string;
-            if (!event) {
-              return JSON.stringify({
-                error: "Event parameter required for state_transition"
-              });
-            }
-
-            const metadata = input['metadata'] as Record<string, unknown> || {};
-            const result = orchestrator.executeStateTransition(projectId, event, metadata);
-
-            return JSON.stringify({
-              action: "state_transition",
-              projectId,
-              result,
-              success: result.success,
-              message: result.success 
-                ? `State transition: ${result.fromState} → ${result.toState}`
-                : `Transition failed: ${result.metadata?.['error']}`
-            }, null, 2);
-          }
-
-          case "execution_status": {
-            const status = orchestrator.getExecutionStatus(projectId);
-            const phases = store.listPhases(projectId);
-            
-            return JSON.stringify({
-              action: "execution_status",
-              projectId,
-              project: {
-                goal: project.goal,
-                state: project.state,
-                totalPhases: phases.length
-              },
-              execution: status,
-              phases: phases.map(p => ({
-                id: p.id,
-                name: p.name,
-                status: p.status,
-                phaseOrder: p.phaseOrder
-              })),
-              summary: {
-                progress: `${status.completedPhases.length}/${phases.length} phases complete`,
-                currentState: project.state,
-                currentWave: status.currentWave >= 0 ? `${status.currentWave + 1}/${status.totalWaves}` : "N/A"
-              }
-            }, null, 2);
-          }
-
-          case "verify_analysis": {
-            const phaseId = input['phaseId'] as string;
-            const verificationResult = input['verificationResult'] as VerificationResult;
-            
-            if (!phaseId) {
-              return JSON.stringify({ error: "phaseId required for verify_analysis" });
-            }
-            if (!verificationResult) {
-              return JSON.stringify({ error: "verificationResult required for verify_analysis" });
-            }
-
-            const analysis = orchestrator.analyzeVerificationResult(
-              projectId,
-              phaseId,
-              verificationResult
-            );
-
-            const phase = store.getPhase(phaseId);
-            
-            return JSON.stringify({
-              action: "verify_analysis",
-              projectId,
-              phaseId,
-              phaseName: phase?.name || "Unknown",
-              analysis,
-              verificationResult,
-              summary: {
-                status: analysis.overallStatus,
-                totalGaps: analysis.criticalGaps.length + analysis.minorGaps.length,
-                criticalGaps: analysis.criticalGaps.length,
-                minorGaps: analysis.minorGaps.length,
-                nextAction: analysis.nextActions[0] || "No action needed"
-              }
-            }, null, 2);
-          }
-
-          case "rollback_plan": {
-            const phaseId = input['phaseId'] as string;
-            const verificationResult = input['verificationResult'] as VerificationResult;
-            const failureReason = input['failureReason'] as string || "Phase verification failed";
-            
-            if (!phaseId) {
-              return JSON.stringify({ error: "phaseId required for rollback_plan" });
-            }
-            if (!verificationResult) {
-              return JSON.stringify({ error: "verificationResult required for rollback_plan" });
-            }
-
-            const rollbackPlan = orchestrator.generateRollbackPlan(
-              projectId,
-              phaseId,
-              verificationResult,
-              failureReason
-            );
-
-            const phase = store.getPhase(phaseId);
-            
-            return JSON.stringify({
-              action: "rollback_plan",
-              projectId,
-              phaseId,
-              phaseName: phase?.name || "Unknown",
-              rollbackPlan,
-              summary: {
-                failedPhase: phase?.name || "Unknown",
-                skippedPhases: rollbackPlan.skippedPhases.length,
-                rollbackActions: rollbackPlan.rollbackActions.length,
-                hasResumePoint: !!rollbackPlan.resumePoint,
-                actionsByType: rollbackPlan.rollbackActions.reduce((acc, action) => {
-                  acc[action.type] = (acc[action.type] || 0) + 1;
-                  return acc;
-                }, {} as Record<string, number>)
-              }
-            }, null, 2);
-          }
-
-          case "discussion_questions": {
-            const phaseId = input['phaseId'] as string;
-            
-            if (!phaseId) {
-              return JSON.stringify({ error: "phaseId required for discussion_questions" });
-            }
-
-            const questions = orchestrator.generateDiscussionQuestions(projectId, phaseId);
-            const phase = store.getPhase(phaseId);
-            
-            return JSON.stringify({
-              action: "discussion_questions",
-              projectId,
-              phaseId,
-              phaseName: phase?.name || "Unknown",
-              questions,
-              summary: {
-                totalQuestions: questions.length,
-                highPriority: questions.filter(q => q.priority === "high").length,
-                mediumPriority: questions.filter(q => q.priority === "medium").length,
-                lowPriority: questions.filter(q => q.priority === "low").length,
-                categories: [...new Set(questions.map(q => q.category))]
-              }
-            }, null, 2);
-          }
-
-          case "integration_report": {
-            // Comprehensive report across all orchestration capabilities
-            const phases = store.listPhases(projectId);
-            const executionStatus = orchestrator.getExecutionStatus(projectId);
-            
-            // Check for verification results
-            const phasesWithVerification = phases.filter(p => p.verificationResult);
-            const failedVerifications = phasesWithVerification.filter(p => 
-              p.verificationResult && p.verificationResult.status !== "met"
-            );
-
-            // Generate sample discussion questions for pending phases
-            const pendingPhases = phases.filter(p => p.status === "pending").slice(0, 3);
-            const sampleQuestions = pendingPhases.map(phase => ({
-              phaseId: phase.id,
-              phaseName: phase.name,
-              questionCount: orchestrator.generateDiscussionQuestions(projectId, phase.id).length
-            }));
-
-            return JSON.stringify({
-              action: "integration_report",
-              projectId,
-              timestamp: new Date().toISOString(),
-              project: {
-                goal: project.goal,
-                state: project.state,
-                created: project.createdAt,
-                updated: project.updatedAt
-              },
-              orchestration: {
-                stateTransitions: {
-                  currentState: project.state,
-                  validNextEvents: getValidEvents(project.state)
-                },
-                executionTracking: executionStatus,
-                verification: {
-                  phasesWithResults: phasesWithVerification.length,
-                  failedVerifications: failedVerifications.length,
-                  phases: phasesWithVerification.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    status: p.verificationResult?.status,
-                    gapCount: p.verificationResult?.gaps?.length || 0
-                  }))
-                },
-                rollbackPlanning: {
-                  phasesNeedingRollback: failedVerifications.length,
-                  potentialSkippedPhases: failedVerifications.reduce((count, phase) => {
-                    if (phase.verificationResult) {
-                      const plan = orchestrator.generateRollbackPlan(
-                        projectId,
-                        phase.id,
-                        phase.verificationResult
-                      );
-                      return count + plan.skippedPhases.length;
-                    }
-                    return count;
-                  }, 0)
-                },
-                discussionQuestions: {
-                  sampledPhases: sampleQuestions,
-                  totalSampleQuestions: sampleQuestions.reduce((sum, p) => sum + p.questionCount, 0)
-                }
-              },
-              summary: {
-                overallHealth: determineOverallHealth(project, executionStatus, failedVerifications.length),
-                criticalIssues: failedVerifications.length,
-                phasesAtRisk: executionStatus.failedPhases.length + executionStatus.skippedPhases.length,
-                nextSteps: getNextSteps(project, executionStatus)
-              }
-            }, null, 2);
-          }
-
-          default:
-            return JSON.stringify({
-              error: `Unknown orchestration action: ${action}`
-            });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log.error(`Orchestration action [${action}] failed: ${message}`);
-        
-        return JSON.stringify({
-          error: `Orchestration action failed: ${message}`,
-          action,
-          projectId
-        });
-      }
+    execute(input: Record<string, unknown>, _context: ToolContext): Promise<string> {
+      return Promise.resolve(executeOrchestrationSync(input, store, orchestrator));
     }
   };
+}
+
+function executeOrchestrationSync(
+  input: Record<string, unknown>,
+  store: PlanningStore,
+  orchestrator: OrchestrationCore,
+): string {
+  const action = input['action'] as string;
+  const projectId = input['projectId'] as string;
+
+  try {
+    const project = store.getProject(projectId);
+    if (!project) {
+      return JSON.stringify({ error: `Project ${projectId} not found` });
+    }
+
+    switch (action) {
+      case "state_transition": {
+        const event = input['event'] as string;
+        if (!event) {
+          return JSON.stringify({ error: "Event parameter required for state_transition" });
+        }
+        const metadata = input['metadata'] as Record<string, unknown> || {};
+        const result = orchestrator.executeStateTransition(projectId, event, metadata);
+        return JSON.stringify({
+          action: "state_transition",
+          projectId,
+          result,
+          success: result.success,
+          message: result.success
+            ? `State transition: ${result.fromState} → ${result.toState}`
+            : `Transition failed: ${result.metadata?.['error']}`,
+        }, null, 2);
+      }
+
+      case "execution_status": {
+        const status = orchestrator.getExecutionStatus(projectId);
+        const phases = store.listPhases(projectId);
+        return JSON.stringify({
+          action: "execution_status",
+          projectId,
+          project: { goal: project.goal, state: project.state, totalPhases: phases.length },
+          execution: status,
+          phases: phases.map(p => ({ id: p.id, name: p.name, status: p.status, phaseOrder: p.phaseOrder })),
+          summary: {
+            progress: `${status.completedPhases.length}/${phases.length} phases complete`,
+            currentState: project.state,
+            currentWave: status.currentWave >= 0 ? `${status.currentWave + 1}/${status.totalWaves}` : "N/A",
+          },
+        }, null, 2);
+      }
+
+      case "verify_analysis": {
+        const phaseId = input['phaseId'] as string;
+        const verificationResult = input['verificationResult'] as VerificationResult;
+        if (!phaseId) return JSON.stringify({ error: "phaseId required for verify_analysis" });
+        if (!verificationResult) return JSON.stringify({ error: "verificationResult required for verify_analysis" });
+        const analysis = orchestrator.analyzeVerificationResult(projectId, phaseId, verificationResult);
+        const phase = store.getPhase(phaseId);
+        return JSON.stringify({
+          action: "verify_analysis",
+          projectId,
+          phaseId,
+          phaseName: phase?.name || "Unknown",
+          analysis,
+          verificationResult,
+          summary: {
+            status: analysis.overallStatus,
+            totalGaps: analysis.criticalGaps.length + analysis.minorGaps.length,
+            criticalGaps: analysis.criticalGaps.length,
+            minorGaps: analysis.minorGaps.length,
+            nextAction: analysis.nextActions[0] || "No action needed",
+          },
+        }, null, 2);
+      }
+
+      case "rollback_plan": {
+        const phaseId = input['phaseId'] as string;
+        const verificationResult = input['verificationResult'] as VerificationResult;
+        const failureReason = input['failureReason'] as string || "Phase verification failed";
+        if (!phaseId) return JSON.stringify({ error: "phaseId required for rollback_plan" });
+        if (!verificationResult) return JSON.stringify({ error: "verificationResult required for rollback_plan" });
+        const rollbackPlan = orchestrator.generateRollbackPlan(projectId, phaseId, verificationResult, failureReason);
+        const phase = store.getPhase(phaseId);
+        return JSON.stringify({
+          action: "rollback_plan",
+          projectId,
+          phaseId,
+          phaseName: phase?.name || "Unknown",
+          rollbackPlan,
+          summary: {
+            failedPhase: phase?.name || "Unknown",
+            skippedPhases: rollbackPlan.skippedPhases.length,
+            rollbackActions: rollbackPlan.rollbackActions.length,
+            hasResumePoint: !!rollbackPlan.resumePoint,
+            actionsByType: rollbackPlan.rollbackActions.reduce((acc, act) => {
+              acc[act.type] = (acc[act.type] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+          },
+        }, null, 2);
+      }
+
+      case "discussion_questions": {
+        const phaseId = input['phaseId'] as string;
+        if (!phaseId) return JSON.stringify({ error: "phaseId required for discussion_questions" });
+        const questions = orchestrator.generateDiscussionQuestions(projectId, phaseId);
+        const phase = store.getPhase(phaseId);
+        return JSON.stringify({
+          action: "discussion_questions",
+          projectId,
+          phaseId,
+          phaseName: phase?.name || "Unknown",
+          questions,
+          summary: {
+            totalQuestions: questions.length,
+            highPriority: questions.filter(q => q.priority === "high").length,
+            mediumPriority: questions.filter(q => q.priority === "medium").length,
+            lowPriority: questions.filter(q => q.priority === "low").length,
+            categories: [...new Set(questions.map(q => q.category))],
+          },
+        }, null, 2);
+      }
+
+      case "integration_report": {
+        const phases = store.listPhases(projectId);
+        const executionStatus = orchestrator.getExecutionStatus(projectId);
+        const phasesWithVerification = phases.filter(p => p.verificationResult);
+        const failedVerifications = phasesWithVerification.filter(p =>
+          p.verificationResult && p.verificationResult.status !== "met"
+        );
+        const pendingPhases = phases.filter(p => p.status === "pending").slice(0, 3);
+        const sampleQuestions = pendingPhases.map(phase => ({
+          phaseId: phase.id,
+          phaseName: phase.name,
+          questionCount: orchestrator.generateDiscussionQuestions(projectId, phase.id).length,
+        }));
+        return JSON.stringify({
+          action: "integration_report",
+          projectId,
+          timestamp: new Date().toISOString(),
+          project: { goal: project.goal, state: project.state, created: project.createdAt, updated: project.updatedAt },
+          orchestration: {
+            stateTransitions: { currentState: project.state, validNextEvents: getValidEvents(project.state) },
+            executionTracking: executionStatus,
+            verification: {
+              phasesWithResults: phasesWithVerification.length,
+              failedVerifications: failedVerifications.length,
+              phases: phasesWithVerification.map(p => ({
+                id: p.id, name: p.name, status: p.verificationResult?.status, gapCount: p.verificationResult?.gaps?.length || 0,
+              })),
+            },
+            rollbackPlanning: {
+              phasesNeedingRollback: failedVerifications.length,
+              potentialSkippedPhases: failedVerifications.reduce((count, phase) => {
+                if (phase.verificationResult) {
+                  const plan = orchestrator.generateRollbackPlan(projectId, phase.id, phase.verificationResult);
+                  return count + plan.skippedPhases.length;
+                }
+                return count;
+              }, 0),
+            },
+            discussionQuestions: {
+              sampledPhases: sampleQuestions,
+              totalSampleQuestions: sampleQuestions.reduce((sum, p) => sum + p.questionCount, 0),
+            },
+          },
+          summary: {
+            overallHealth: determineOverallHealth(project, executionStatus, failedVerifications.length),
+            criticalIssues: failedVerifications.length,
+            phasesAtRisk: executionStatus.failedPhases.length + executionStatus.skippedPhases.length,
+            nextSteps: getNextSteps(project, executionStatus),
+          },
+        }, null, 2);
+      }
+
+      default:
+        return JSON.stringify({ error: `Unknown orchestration action: ${action}` });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.error(`Orchestration action [${action}] failed: ${message}`);
+    return JSON.stringify({ error: `Orchestration action failed: ${message}`, action, projectId });
+  }
 }
 
 function getValidEvents(state: string): string[] {
@@ -348,9 +281,19 @@ function getValidEvents(state: string): string[] {
   return transitions[state] || [];
 }
 
+interface ExecutionStatus {
+  failedPhases: string[];
+  skippedPhases: string[];
+  runningPhases: string[];
+  pendingPhases: string[];
+  completedPhases: string[];
+  currentWave: number;
+  totalWaves: number;
+}
+
 function determineOverallHealth(
-  project: any,
-  executionStatus: any,
+  project: PlanningProject,
+  executionStatus: ExecutionStatus,
   failedVerifications: number
 ): "healthy" | "warning" | "critical" {
   if (failedVerifications > 0 || executionStatus.failedPhases.length > 0) {
@@ -364,7 +307,7 @@ function determineOverallHealth(
   return "healthy";
 }
 
-function getNextSteps(project: any, executionStatus: any): string[] {
+function getNextSteps(project: PlanningProject, executionStatus: ExecutionStatus): string[] {
   const steps: string[] = [];
   
   if (project.state === "blocked") {

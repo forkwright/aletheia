@@ -53,8 +53,8 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       );
       log.info(`System update completed: ${output.slice(-200)}`);
       return c.json({ ok: true, message: "Update complete. Restart service to apply." });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.warn(`System update failed: ${msg}`);
       return c.json({ error: msg }, 500);
     }
@@ -130,8 +130,8 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       writeFileSync(credPath, JSON.stringify(updated), "utf-8");
       log.info("Primary credential updated", { type: credType });
       return c.json({ ok: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.warn("Failed to update primary credential", { err: msg });
       return c.json({ error: msg }, 500);
     }
@@ -159,8 +159,8 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       writeFileSync(credPath, JSON.stringify({ ...existing, backupCredentials: backups }), "utf-8");
       log.info("Backup credential added", { label: body.label, type: credType });
       return c.json({ ok: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       return c.json({ error: msg }, 500);
     }
   });
@@ -180,8 +180,8 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       writeFileSync(credPath, JSON.stringify({ ...existing, backupCredentials: backups }), "utf-8");
       log.info("Backup credential removed", { label });
       return c.json({ ok: true });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       return c.json({ error: msg }, 500);
     }
   });

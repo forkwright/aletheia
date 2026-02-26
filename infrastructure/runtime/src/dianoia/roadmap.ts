@@ -85,8 +85,8 @@ export class RoadmapOrchestrator {
           requirements: v1Reqs,
           maxTokens: 8000,
         });
-      } catch (err) {
-        log.warn(`Failed to build context packet for roadmap generation: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        log.warn(`Failed to build context packet for roadmap generation: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -416,8 +416,8 @@ export class RoadmapOrchestrator {
             .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
           maxTokens: 6000,
         });
-      } catch (err) {
-        log.warn(`Failed to build context packet for plan check: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        log.warn(`Failed to build context packet for plan check: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -463,8 +463,8 @@ export class RoadmapOrchestrator {
 
       const parsed = this.extractCheckResult(result.result);
       return { pass: parsed.pass, issues: parsed.issues ?? [] };
-    } catch (cause) {
-      log.warn("Plan checker parse error — treating as pass (best-effort)", { cause, phaseId: phase.id, attempt });
+    } catch (error) {
+      log.warn("Plan checker parse error — treating as pass (best-effort)", { error, phaseId: phase.id, attempt });
       return { pass: true, issues: [] };
     }
   }
@@ -496,8 +496,8 @@ export class RoadmapOrchestrator {
             .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
           maxTokens: 8000,
         });
-      } catch (err) {
-        log.warn(`Failed to build context packet for plan revision: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        log.warn(`Failed to build context packet for plan revision: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -585,7 +585,7 @@ export class RoadmapOrchestrator {
         return { pass: true, issues: [] };
       }
 
-      throw new Error(`Cannot extract check result from: ${raw.slice(0, 200)}`);
+      throw new PlanningError(`Cannot extract check result from: ${raw.slice(0, 200)}`, { code: "PLANNING_VERIFICATION_PARSE_FAILED" });
     }
   }
 }

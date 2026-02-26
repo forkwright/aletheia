@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Extract isNewer for testing by re-implementing the logic
 // (the actual function is private, so we test via the module's behavior)
+function parseVersionParts(v: string): number[] {
+  return v.split(".").map(Number);
+}
+
 function isNewer(latest: string, current: string): boolean {
-  const parse = (v: string) => v.split(".").map(Number);
-  const [lMajor = 0, lMinor = 0, lPatch = 0] = parse(latest);
-  const [cMajor = 0, cMinor = 0, cPatch = 0] = parse(current);
+  const [lMajor = 0, lMinor = 0, lPatch = 0] = parseVersionParts(latest);
+  const [cMajor = 0, cMinor = 0, cPatch = 0] = parseVersionParts(current);
   if (lMajor !== cMajor) return lMajor > cMajor;
   if (lMinor !== cMinor) return lMinor > cMinor;
   return lPatch > cPatch;
@@ -62,7 +65,7 @@ describe("update-check", () => {
 
       fetchSpy.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({
+        json: async () => ({
           tag_name: "v0.9.1",
           html_url: "https://github.com/forkwright/aletheia/releases/tag/v0.9.1",
         }),
@@ -90,7 +93,7 @@ describe("update-check", () => {
 
       fetchSpy.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({
+        json: async () => ({
           tag_name: "v0.9.0",
           html_url: "https://github.com/forkwright/aletheia/releases/tag/v0.9.0",
         }),

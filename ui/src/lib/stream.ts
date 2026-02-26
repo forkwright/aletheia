@@ -39,7 +39,7 @@ export async function* streamMessage(
       sessionKey,
       ...(media?.length ? { media } : {}),
     }),
-    signal,
+    ...(signal !== undefined ? { signal } : {}),
   });
 
   if (!res.ok) {

@@ -1,5 +1,6 @@
 // Enhanced plan_execute tool with support for both execution orchestrators
 import { createLogger } from "../koina/logger.js";
+import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { DianoiaOrchestrator } from "./orchestrator.js";
 import type { ExecutionOrchestrator } from "./execution.js";
@@ -195,12 +196,12 @@ async function handleEnhancedAction(
       }
 
       case "retry": {
-        if (!planId) throw new Error("planId required for retry");
-        
+        if (!planId) throw new PlanningError("planId required for retry", { code: "PLANNING_PLAN_ID_REQUIRED" });
+
         const snapshot = executionOrchestrator.getExecutionSnapshot(projectId);
         const planEntry = snapshot.plans.find((p) => p.phaseId === planId);
         if (!planEntry) {
-          throw new Error(`Plan ${planId} not found in execution snapshot`);
+          throw new PlanningError(`Plan ${planId} not found in execution snapshot`, { code: "PLANNING_PLAN_NOT_FOUND", context: { planId } });
         }
         
         log.info("Retrying specific plan", { projectId, planId, previousStatus: planEntry.status });
@@ -216,11 +217,11 @@ async function handleEnhancedAction(
       }
 
       case "skip": {
-        if (!planId) throw new Error("planId required for skip");
-        
+        if (!planId) throw new PlanningError("planId required for skip", { code: "PLANNING_PLAN_ID_REQUIRED" });
+
         const snapshot = executionOrchestrator.getExecutionSnapshot(projectId);
         const planEntry = snapshot.plans.find((p) => p.phaseId === planId);
-        if (!planEntry) throw new Error(`Plan ${planId} not found`);
+        if (!planEntry) throw new PlanningError(`Plan ${planId} not found`, { code: "PLANNING_PLAN_NOT_FOUND", context: { planId } });
         
         log.info("Skipping plan", { projectId, planId, planName: planEntry.name });
         

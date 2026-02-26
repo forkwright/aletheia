@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteMap } from "svelte/reactivity";
   import Spinner from "../shared/Spinner.svelte";
 
   interface PlanEntry {
@@ -86,10 +87,10 @@
     return new Date(timestamp).toLocaleTimeString();
   }
 
-  let waveGroups = $derived(() => {
+  let waveGroups = $derived.by(() => {
     // Group plans by wave number
-    const groups = new Map<number, PlanEntry[]>();
-    
+    const groups = new SvelteMap<number, PlanEntry[]>();
+
     execution.plans.forEach(plan => {
       const wave = plan.waveNumber ?? 0;
       if (!groups.has(wave)) {
@@ -97,7 +98,7 @@
       }
       groups.get(wave)!.push(plan);
     });
-    
+
     // Convert to sorted array
     return Array.from(groups.entries())
       .sort(([a], [b]) => a - b)
@@ -110,14 +111,14 @@
       }));
   });
 
-  let overallStats = $derived(() => {
+  let overallStats = $derived.by(() => {
     const total = execution.plans.length;
     const done = execution.plans.filter(p => p.status === "done").length;
     const running = execution.plans.filter(p => p.status === "running").length;
     const failed = execution.plans.filter(p => p.status === "failed" || p.status === "zombie").length;
     const skipped = execution.plans.filter(p => p.status === "skipped").length;
     const pending = execution.plans.filter(p => p.status === "pending").length;
-    
+
     return {
       total,
       done,

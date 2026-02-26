@@ -33,7 +33,7 @@ export const readTool: ToolHandler = {
       required: ["path"],
     },
   },
-  async execute(
+  execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
@@ -45,21 +45,21 @@ export const readTool: ToolHandler = {
       // Read atomically — no stat-then-read race
       const buf = readFileSync(resolved);
       if (buf.length > 5 * 1024 * 1024) {
-        return `Error: File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`;
+        return Promise.resolve(`Error: File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`);
       }
       // Check for null bytes (binary indicator)
       for (let i = 0; i < Math.min(buf.length, 8192); i++) {
-        if (buf[i] === 0x00) return "Error: Binary file detected — cannot display";
+        if (buf[i] === 0x00) return Promise.resolve("Error: Binary file detected — cannot display");
       }
       let content = buf.toString("utf-8");
       if (maxLines) {
         content = content.split("\n").slice(0, maxLines).join("\n");
       }
-      return content;
+      return Promise.resolve(content);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : String(error);
-      return `Error: ${msg}`;
+      return Promise.resolve(`Error: ${msg}`);
     }
   },
 };

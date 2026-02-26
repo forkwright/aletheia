@@ -9,7 +9,7 @@
 </script>
 
 <div class="slash-menu">
-  {#each commands as cmd, i}
+  {#each commands as cmd, i (cmd.command)}
     <button
       class="slash-item"
       class:selected={i === selectedIndex}

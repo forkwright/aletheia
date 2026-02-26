@@ -17,8 +17,8 @@ export function getVersion(): string {
     const pkgPath = join(dir, "..", "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string };
     cached = pkg.version;
-  } catch (err) {
-    log.debug(`Could not read package.json for version: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Could not read package.json for version: ${error instanceof Error ? error.message : error}`);
     cached = "0.0.0";
   }
   return cached;

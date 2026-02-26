@@ -73,10 +73,10 @@ export class SignalClient {
     for (let attempt = 0; attempt <= backoffs.length; attempt++) {
       try {
         return await this.rpc("send", rpcParams);
-      } catch (err) {
-        lastErr = err;
+      } catch (error) {
+        lastErr = error;
         // Don't retry HTTP 4xx (application errors) — only network/server errors
-        if (err instanceof Error && /RPC -?\d+:/.test(err.message)) throw err;
+        if (error instanceof Error && /RPC -?\d+:/.test(error.message)) throw error;
         if (attempt < backoffs.length) {
           log.warn(`Send attempt ${attempt + 1} failed, retrying in ${backoffs[attempt]}ms`);
           await new Promise((r) => setTimeout(r, backoffs[attempt]));
@@ -138,7 +138,7 @@ export class SignalClient {
     await this.rpc("sendReaction", rpcParams);
   }
 
-  async getAttachment(params: {
+  getAttachment(params: {
     id: string;
     account?: string;
   }): Promise<unknown> {

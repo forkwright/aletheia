@@ -488,7 +488,7 @@ handler:
 
       const hooks = loadHookDefinitions(tmpDir);
       expect(hooks).toHaveLength(2);
-      const names = hooks.map((h) => h.name).sort();
+      const names = hooks.map((h) => h.name).toSorted();
       expect(names).toEqual(["hook-a", "hook-b"]);
     } finally {
       rmSync(tmpDir, { recursive: true });

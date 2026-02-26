@@ -208,7 +208,7 @@ export class SessionStore {
       }
     } else {
       // Incremental migrations for existing databases
-      const pending = MIGRATIONS.filter((m) => m.version > version).sort(
+      const pending = MIGRATIONS.filter((m) => m.version > version).toSorted(
         (a, b) => a.version - b.version,
       );
       for (const m of pending) {
@@ -1531,8 +1531,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as WorkingState;
-    } catch (err) {
-      log.debug(`Corrupt working state JSON: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Corrupt working state JSON: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }
@@ -1541,8 +1541,8 @@ export class SessionStore {
     if (!raw) return null;
     try {
       return JSON.parse(raw) as T;
-    } catch (err) {
-      log.debug(`Corrupt JSON field: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`Corrupt JSON field: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }
@@ -1577,8 +1577,8 @@ export class SessionStore {
           "INSERT INTO interaction_signals (session_id, nous_id, turn_seq, signal, confidence) VALUES (?, ?, ?, ?, ?)",
         )
         .run(signal.sessionId, signal.nousId, signal.turnSeq, signal.signal, signal.confidence);
-    } catch (err) {
-      log.warn(`recordSignal failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`recordSignal failed (non-fatal): ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -1602,8 +1602,8 @@ export class SessionStore {
         confidence: r["confidence"] as number,
         createdAt: r["created_at"] as string,
       }));
-    } catch (err) {
-      log.warn(`getSignalHistory failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`getSignalHistory failed (non-fatal): ${error instanceof Error ? error.message : error}`);
       return [];
     }
   }
@@ -1989,8 +1989,8 @@ export class SessionStore {
         this.resolveBinding(thread.id, transport, channelKey);
         this.linkSessionToThread(sessionId, thread.id, transport);
         migrated++;
-      } catch (err) {
-        log.warn(`Failed to migrate session ${sessionId} to thread: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to migrate session ${sessionId} to thread: ${error instanceof Error ? error.message : error}`);
       }
     }
 
@@ -2004,7 +2004,7 @@ export class SessionStore {
       .get(threadId) as Record<string, unknown> | undefined;
     if (!row) return null;
     let keyFacts: string[] = [];
-    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (err) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${err instanceof Error ? err.message : err}`); }
+    try { keyFacts = JSON.parse(row["key_facts"] as string) as string[]; } catch (error) { log.warn(`Malformed key_facts JSON in thread ${threadId}: ${error instanceof Error ? error.message : error}`); }
     return {
       threadId: row["thread_id"] as string,
       summary: row["summary"] as string,
@@ -2100,7 +2100,7 @@ export class SessionStore {
       )
       .all(...params, limit) as Record<string, unknown>[];
     // Return in chronological order
-    return rows.reverse().map((r) => this.mapMessage(r));
+    return rows.toReversed().map((r) => this.mapMessage(r));
   }
 
   // --- Working State ---
@@ -2267,7 +2267,7 @@ export class SessionStore {
       )
       .all(...params, limit) as Record<string, unknown>[];
 
-    return rows.reverse().map((r) => ({
+    return rows.toReversed().map((r) => ({
       id: r["id"] as number,
       sessionId: r["session_id"] as string,
       nousId: r["nous_id"] as string,
@@ -2292,7 +2292,7 @@ export class SessionStore {
       )
       .all(nousId, limit) as Record<string, unknown>[];
 
-    return rows.reverse().map((r) => ({
+    return rows.toReversed().map((r) => ({
       id: r["id"] as number,
       sessionId: r["session_id"] as string,
       nousId: r["nous_id"] as string,

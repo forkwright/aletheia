@@ -113,16 +113,16 @@ export class McpClientManager {
       client.fallbackNotificationHandler = async (notification) => {
         if (notification.method === "notifications/tools/list_changed") {
           log.info(`Tools changed on MCP server "${name}", refreshing`);
-          await this.refreshTools(name).catch((err) =>
-            log.error(`Failed to refresh tools for "${name}": ${err}`),
+          await this.refreshTools(name).catch((error) =>
+            log.error(`Failed to refresh tools for "${name}": ${error}`),
           );
         }
       };
-    } catch (err) {
+    } catch (error) {
       managed.status = "error";
-      managed.error = err instanceof Error ? err.message : String(err);
+      managed.error = error instanceof Error ? error.message : String(error);
       log.error(`MCP server "${name}" connection failed: ${managed.error}`);
-      throw err;
+      throw error;
     }
   }
 
@@ -217,8 +217,8 @@ export class McpClientManager {
         this.registry.register(handler);
         managed.tools.push(qualifiedName);
       }
-    } catch (err) {
-      log.error(`Failed to list tools from MCP server "${name}": ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.error(`Failed to list tools from MCP server "${name}": ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -233,8 +233,8 @@ export class McpClientManager {
 
     try {
       await managed.client.close();
-    } catch (err) {
-      log.warn(`Error closing MCP server "${name}": ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Error closing MCP server "${name}": ${error instanceof Error ? error.message : error}`);
     }
 
     this.servers.delete(name);

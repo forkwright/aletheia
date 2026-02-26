@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { EntityDetail } from "../../lib/types";
 
   let {
@@ -21,8 +22,13 @@
     onClose: () => void;
   } = $props();
 
-  let query = $state(searchQuery);
+  let query = $state(untrack(() => searchQuery));
   let showDetail = $state(false);
+  let inputEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    inputEl?.focus();
+  });
 
   function handleSearch() {
     if (query.trim()) {
@@ -54,8 +60,8 @@
       class="lookup-input"
       placeholder="What does the system know about…"
       bind:value={query}
+      bind:this={inputEl}
       onkeydown={handleKeydown}
-      autofocus
     />
     <button class="search-btn" onclick={handleSearch} disabled={searchLoading}>
       {searchLoading ? "…" : "→"}
@@ -65,12 +71,12 @@
   {#if searchResults.length > 0}
     <div class="results-list">
       <div class="results-header">{searchResults.length} entities found</div>
-      {#each searchResults.slice(0, 15) as result}
+      {#each searchResults.slice(0, 15) as result (result.id)}
         <button class="result-item" onclick={() => selectEntity(result.id)}>
           <span class="result-name">{result.id}</span>
           <div class="result-meta">
             {#if result.labels.length > 0}
-              {#each result.labels.slice(0, 2) as label}
+              {#each result.labels.slice(0, 2) as label (label)}
                 <span class="result-label">{label}</span>
               {/each}
             {/if}
@@ -96,7 +102,7 @@
       </div>
       {#if entityDetail.memories.length > 0}
         <div class="memory-preview">
-          {#each entityDetail.memories.slice(0, 3) as mem}
+          {#each entityDetail.memories.slice(0, 3) as mem, i (i)}
             <div class="preview-memory">
               <span class="preview-score">{(mem.score * 100).toFixed(0)}%</span>
               <span class="preview-text">{mem.text}</span>
@@ -109,7 +115,7 @@
       {/if}
       {#if entityDetail.relationships.length > 0}
         <div class="rel-preview">
-          {#each entityDetail.relationships.slice(0, 5) as rel}
+          {#each entityDetail.relationships.slice(0, 5) as rel, i (i)}
             <span class="rel-chip">
               {rel.direction === "out" ? "→" : "←"} {rel.type} {rel.target}
             </span>
@@ -303,6 +309,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 

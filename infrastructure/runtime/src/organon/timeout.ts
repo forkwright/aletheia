@@ -68,8 +68,8 @@ export async function executeWithTimeout(
     const result = await Promise.race([fn(), timeoutPromise]);
     clearTimeout(timer!);
     return result;
-  } catch (err) {
+  } catch (error) {
     clearTimeout(timer!);
-    throw err;
+    throw error;
   }
 }

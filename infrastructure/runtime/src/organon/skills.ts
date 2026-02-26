@@ -28,8 +28,8 @@ export class SkillRegistry {
       entries = readdirSync(dir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name);
-    } catch (err) {
-      log.warn(`Failed to read skills directory ${dir}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Failed to read skills directory ${dir}: ${error instanceof Error ? error.message : error}`);
       return;
     }
 
@@ -44,8 +44,8 @@ export class SkillRegistry {
           this.skills.set(skill.id, skill);
           log.debug(`Loaded skill: ${skill.id} — ${skill.name}`);
         }
-      } catch (err) {
-        log.warn(`Failed to load skill ${entry}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to load skill ${entry}: ${error instanceof Error ? error.message : error}`);
       }
     }
 

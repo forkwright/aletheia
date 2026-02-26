@@ -17,11 +17,10 @@ if runtime_changed; then
   npm run typecheck && npm run lint:check
 fi
 
-# UI: oxlint + eslint-plugin-svelte only
-# svelte-check gate deferred until Phase 13 clears existing 112 errors
+# UI: oxlint + eslint-plugin-svelte + svelte-check
 if ui_changed; then
   cd "$ROOT/ui"
-  npm run lint:check
+  npm run lint:check && npm run typecheck
 fi
 
 # Python sidecar: ruff + pyright

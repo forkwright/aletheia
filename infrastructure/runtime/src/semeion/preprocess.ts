@@ -84,8 +84,8 @@ async function fetchPreview(url: string): Promise<string | null> {
     lines.push("[/Link]");
 
     return lines.join("\n");
-  } catch (err) {
-    log.debug(`Failed to preview ${url}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Failed to preview ${url}: ${error instanceof Error ? error.message : error}`);
     return null;
   }
 }

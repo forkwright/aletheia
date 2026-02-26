@@ -1,3 +1,4 @@
+import { SvelteDate } from "svelte/reactivity";
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
 import { setActiveCredentialLabel } from "./credentials.svelte";
@@ -65,6 +66,7 @@ function writeState(agentId: string): AgentChatState {
       pendingApproval: null,
       pendingPlan: null,
       turnStartedAt: null,
+      activeTurnId: null,
       _textBuffer: "",
       _thinkingBuffer: "",
       _flushTimer: null,
@@ -140,7 +142,7 @@ export function addRemoteToolCall(agentId: string, toolName: string, durationMs?
     id: `remote-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     name: toolName,
     status: "complete",
-    durationMs,
+    ...(durationMs !== undefined && { durationMs }),
   };
   state.activeToolCalls = [...state.activeToolCalls, tc];
 }
@@ -151,7 +153,7 @@ export function injectUserMessage(agentId: string, content: string): void {
     id: `user-${Date.now()}`,
     role: "user",
     content,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
   };
   state.messages = [...state.messages, msg];
 }
@@ -192,7 +194,7 @@ export function injectLocalMessage(agentId: string, content: string): void {
     id: `system-${Date.now()}`,
     role: "assistant",
     content,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
   };
   state.messages = [...state.messages, msg];
 }
@@ -246,7 +248,7 @@ export async function sendMessage(
     id: `user-${Date.now()}`,
     role: "user",
     content: text,
-    timestamp: new Date().toISOString(),
+    timestamp: new SvelteDate().toISOString(),
     ...(media?.length ? { media } : {}),
   };
   state.messages = [...state.messages, userMsg];
@@ -265,8 +267,8 @@ export async function sendMessage(
     for await (const event of streamMessage(agentId, text, sessionKey, state.abortController!.signal, media)) {
       switch (event.type) {
         case "turn_start":
-          resolvedSessionId = event.sessionId;
-          state.activeTurnId = event.turnId;
+resolvedSessionId = event.sessionId ?? null;
+          state.activeTurnId = event.turnId ?? null;
           break;
 
         case "thinking_delta":
@@ -282,7 +284,7 @@ export async function sendMessage(
         case "tool_start":
           state.activeToolCalls = [
             ...state.activeToolCalls,
-            { id: event.toolId, name: event.toolName, status: "running", input: event.input },
+            { id: event.toolId, name: event.toolName, status: "running", ...(event.input !== undefined && { input: event.input }) },
           ];
           break;
 
@@ -293,8 +295,8 @@ export async function sendMessage(
                   ...tc,
                   status: event.isError ? "error" as const : "complete" as const,
                   result: event.result,
-                  durationMs: event.durationMs,
-                  tokenEstimate: event.tokenEstimate,
+...(event.durationMs !== undefined && { durationMs: event.durationMs }),
+                  ...(event.tokenEstimate !== undefined && { tokenEstimate: event.tokenEstimate }),
                 }
               : tc,
           );
@@ -333,8 +335,8 @@ export async function sendMessage(
             id: `assistant-${Date.now()}`,
             role: "assistant",
             content: state.streamingText || event.outcome.text,
-            timestamp: new Date().toISOString(),
-            toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+            timestamp: new SvelteDate().toISOString(),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
             turnOutcome: event.outcome,
           };
@@ -354,8 +356,8 @@ export async function sendMessage(
               id: `assistant-${Date.now()}`,
               role: "assistant",
               content: state.streamingText,
-              timestamp: new Date().toISOString(),
-              toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+              timestamp: new SvelteDate().toISOString(),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
             };
             state.messages = [...state.messages, partial];
             state.streamingText = "";
@@ -382,8 +384,8 @@ export async function sendMessage(
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: state.streamingText,
-        timestamp: new Date().toISOString(),
-        toolCalls: state.activeToolCalls.length > 0 ? [...state.activeToolCalls] : undefined,
+        timestamp: new SvelteDate().toISOString(),
+...(state.activeToolCalls.length > 0 && { toolCalls: [...state.activeToolCalls] }),
         ...(state.thinkingText ? { thinking: state.thinkingText } : {}),
       };
       state.messages = [...state.messages, partial];
@@ -427,7 +429,8 @@ export function abortStream(agentId: string): void {
 }
 
 async function abortServerTurn(turnId: string): Promise<void> {
-  const base = import.meta.env.DEV ? "" : window.location.origin;
+  const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? false;
+  const base = isDev ? "" : window.location.origin;
   const token = localStorage.getItem("aletheia_token");
   await fetch(`${base}/api/turns/${encodeURIComponent(turnId)}/abort`, {
     method: "POST",
@@ -470,7 +473,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 id: b.id,
                 name: b.name,
                 status: "complete" as const,
-                input: b.input,
+                ...(b.input !== undefined && { input: b.input }),
               })),
             );
           }
@@ -484,7 +487,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
                 role: "assistant",
                 content: text,
                 timestamp: msg.createdAt,
-                toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
+...(pendingToolCalls.length > 0 && { toolCalls: [...pendingToolCalls] }),
                 ...(thinkingText ? { thinking: thinkingText } : {}),
               });
               pendingToolCalls = [];
@@ -504,7 +507,7 @@ function historyToMessages(history: HistoryMessage[]): ChatMessage[] {
         role: "assistant",
         content: msg.content,
         timestamp: msg.createdAt,
-        toolCalls: pendingToolCalls.length > 0 ? [...pendingToolCalls] : undefined,
+...(pendingToolCalls.length > 0 && { toolCalls: [...pendingToolCalls] }),
       });
       pendingToolCalls = [];
     } else if (msg.role === "tool_result") {

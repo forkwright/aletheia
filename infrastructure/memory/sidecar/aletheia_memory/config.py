@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 from .llm_backend import detect_backend
 
@@ -64,8 +64,8 @@ GRAPH_EXTRACTION_PROMPT = (
 )
 
 # Detect LLM backend at import time
-_backend: dict[str, Any] = detect_backend()
-LLM_BACKEND: dict[str, Any] = _backend
+_backend = detect_backend()
+LLM_BACKEND = _backend
 
 
 def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -93,7 +93,7 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
         }
         embedding_dims = 384  # bge-small-en-v1.5
 
-    config: dict[str, Any] = {
+    config = {
         "embedder": embedder_config,
         "vector_store": {
             "provider": "qdrant",
@@ -104,6 +104,16 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
                 "embedding_model_dims": embedding_dims,
             },
         },
+        "graph_store": {
+            "provider": "neo4j",
+            "config": {
+                "url": NEO4J_URL,
+                "username": NEO4J_USER,
+                "password": NEO4J_PASSWORD,
+                "base_label": True,
+            },
+        },
+        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
         "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
     }
 
@@ -114,7 +124,7 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
     elif backend["provider"] == "anthropic-oauth":
         # OAuth mode: Mem0 needs an LLM config to init, but we'll replace
         # the LLM instance after creation. Use a placeholder.
-        config["llm"] = {
+        config["llm"] = cast("Any", {
             "provider": "anthropic",
             "config": {
                 "model": backend.get("model", "claude-haiku-4-5-20251001"),
@@ -122,10 +132,10 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
                 "temperature": 0.1,
                 "max_tokens": 2000,
             },
-        }
+        })
 
     return config
 
 
 # Build the config for backward compat
-MEM0_CONFIG: dict[str, Any] = build_mem0_config()
+MEM0_CONFIG = build_mem0_config()

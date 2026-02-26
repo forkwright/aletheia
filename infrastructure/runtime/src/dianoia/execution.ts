@@ -1,6 +1,7 @@
 // ExecutionOrchestrator — wave-based plan execution, dependency graph, cascade-skip, spawn records
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
+import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase, SpawnRecord } from "./types.js";
@@ -45,7 +46,7 @@ export function computeWaves(phases: PlanningPhase[]): PlanningPhase[][] {
   // the dependencies column set (even to []), infer sequential ordering from
   // phaseOrder. `dependencies: []` means "explicitly no deps" — don't override.
   if (!hasExplicitDeps && !hasDependencyColumn && phases.length > 1) {
-    const sorted = [...phases].sort((a, b) => a.phaseOrder - b.phaseOrder);
+    const sorted = [...phases].toSorted((a, b) => a.phaseOrder - b.phaseOrder);
     for (let i = 1; i < sorted.length; i++) {
       const prev = sorted[i - 1]!;
       const curr = sorted[i]!;
@@ -98,7 +99,7 @@ export function findResumeWave(records: SpawnRecord[]): number {
     if (!byWave.has(r.waveNumber)) byWave.set(r.waveNumber, []);
     byWave.get(r.waveNumber)!.push(r);
   }
-  const sortedWaves = [...byWave.keys()].sort((a, b) => a - b);
+  const sortedWaves = [...byWave.keys()].toSorted((a, b) => a - b);
   for (const waveNum of sortedWaves) {
     const waveRecords = byWave.get(waveNum) ?? [];
     if (waveRecords.some((r) => r.status !== "done" && r.status !== "skipped")) {
@@ -230,15 +231,15 @@ export class ExecutionOrchestrator {
           try {
             const retryRaw = await this.dispatchTool.execute({ tasks: feedbackTasks }, toolContext);
             return retryRaw as string;
-          } catch (retryErr) {
-            throw new Error(`Retry dispatch also failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`);
+          } catch (error) {
+            throw new PlanningError(`Retry dispatch also failed: ${error instanceof Error ? error.message : String(error)}`, { code: "PLANNING_DISPATCH_FAILED", cause: error instanceof Error ? error : undefined });
           }
         });
-        
+
         if (!dispatchResult) {
-          throw new Error("Failed to parse dispatch response after retry");
+          throw new PlanningError("Failed to parse dispatch response after retry", { code: "PLANNING_DISPATCH_PARSE_FAILED" });
         }
-      } catch (err) {
+      } catch (error) {
         // Dispatch or parsing failed — mark all as failed
         dispatchResult = {
           taskCount: activePlans.length,
@@ -248,7 +249,7 @@ export class ExecutionOrchestrator {
             index,
             task: activePlans[index]?.goal ?? "unknown",
             status: "error" as const,
-            error: String(err),
+            error: String(error),
             durationMs: 0,
           })),
           timing: {

@@ -3,8 +3,8 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
-import { OrchestrationCore, type RollbackPlan } from "./orchestration-core.js";
-import type { PlanningPhase, VerificationResult } from "./types.js";
+import { OrchestrationCore } from "./orchestration-core.js";
+import type { VerificationResult } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 
 let db: Database.Database;
@@ -34,27 +34,6 @@ function makeDb(): Database.Database {
   d.exec(PLANNING_V26_MIGRATION);
   d.exec(PLANNING_V27_MIGRATION);
   return d;
-}
-
-function makePhase(id: string, name: string, deps: string[] = [], order: number = 1): PlanningPhase {
-  const plan: PhasePlan = {
-    steps: [],
-    dependencies: deps,
-    acceptanceCriteria: [],
-  };
-  return {
-    id,
-    projectId: "proj-test",
-    name,
-    goal: `Goal for ${name}`,
-    requirements: [],
-    successCriteria: [`Success criterion 1 for ${name}`, `Success criterion 2 for ${name}`],
-    plan,
-    status: "pending",
-    phaseOrder: order,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
 }
 
 beforeEach(() => {
@@ -238,10 +217,10 @@ describe("ORCH-02: Wave-based Execution Status", () => {
       phaseId: phaseA.id, 
       waveNumber: 0 
     });
-    const recordB = store.createSpawnRecord({ 
-      projectId: project.id, 
-      phaseId: phaseB.id, 
-      waveNumber: 0 
+    const _recordB = store.createSpawnRecord({
+      projectId: project.id,
+      phaseId: phaseB.id,
+      waveNumber: 0
     });
 
     // Mark A as completed

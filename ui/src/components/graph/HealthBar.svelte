@@ -52,7 +52,7 @@
     </div>
     {#if health.by_agent && Object.keys(health.by_agent).length > 0}
       <div class="agent-breakdown">
-        {#each Object.entries(health.by_agent).slice(0, 5) as [agent, count]}
+        {#each Object.entries(health.by_agent).slice(0, 5) as [agent, count] (agent)}
           <span class="agent-chip" title="{agent}: {count} memories">{agent} <b>{count}</b></span>
         {/each}
       </div>

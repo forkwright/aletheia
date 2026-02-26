@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { AuthSessionStore } from "./sessions.js";
 
+function createOpts(overrides?: Partial<{ username: string; role: string; refreshTokenTtl: number }>): { username: string; role: string; refreshTokenTtl: number } {
+  return {
+    username: "alice",
+    role: "user",
+    refreshTokenTtl: 3600,
+    ...overrides,
+  };
+}
+
 describe("AuthSessionStore", () => {
   let db: Database.Database;
   let store: AuthSessionStore;
@@ -10,13 +19,6 @@ describe("AuthSessionStore", () => {
   beforeEach(() => {
     db = new Database(":memory:");
     store = new AuthSessionStore(db);
-  });
-
-  const createOpts = (overrides?: Record<string, unknown>) => ({
-    username: "alice",
-    role: "user",
-    refreshTokenTtl: 3600,
-    ...overrides,
   });
 
   it("creates a session and returns sessionId + refreshToken", () => {

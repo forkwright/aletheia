@@ -142,7 +142,7 @@
             {/if}
           </h3>
           <div class="gaps-list">
-            {#each verification.gaps as gap, i}
+            {#each verification.gaps as gap, i (i)}
               <div class="gap-item" style="--gap-color: {statusColor(gap.status)}">
                 <div class="gap-header">
                   <span class="gap-icon">{statusIcon(gap.status)}</span>

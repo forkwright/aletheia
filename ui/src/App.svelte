@@ -22,6 +22,7 @@
         removeMobileHandlers();
       };
     }
+    return;
   });
 
   function handleKeydown(e: KeyboardEvent) {

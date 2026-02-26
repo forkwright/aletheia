@@ -3,6 +3,30 @@ import Database from "better-sqlite3";
 import { AuditLog } from "./audit.js";
 import { verifyAuditChain } from "./audit-verify.js";
 
+function makeEntry(action: string): Record<string, unknown> {
+  return {
+    timestamp: new Date().toISOString(),
+    actor: "test",
+    role: "admin",
+    action,
+    ip: "127.0.0.1",
+    status: 200,
+    durationMs: 10,
+  };
+}
+
+function makeEntryWithActor(action: string, actor = "test"): Record<string, unknown> {
+  return {
+    timestamp: new Date().toISOString(),
+    actor,
+    role: "admin",
+    action,
+    ip: "127.0.0.1",
+    status: 200,
+    durationMs: 10,
+  };
+}
+
 describe("AuditLog hash chain", () => {
   let db: Database.Database;
   let audit: AuditLog;
@@ -12,18 +36,8 @@ describe("AuditLog hash chain", () => {
     audit = new AuditLog(db);
   });
 
-  const entry = (action: string) => ({
-    timestamp: new Date().toISOString(),
-    actor: "test",
-    role: "admin",
-    action,
-    ip: "127.0.0.1",
-    status: 200,
-    durationMs: 10,
-  });
-
   it("records entries with checksums", () => {
-    audit.record(entry("login"));
+    audit.record(makeEntry("login"));
     const rows = db.prepare("SELECT checksum, previous_checksum FROM audit_log").all() as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
     expect(rows[0]!["checksum"]).toBeTruthy();
@@ -31,26 +45,26 @@ describe("AuditLog hash chain", () => {
   });
 
   it("chains checksums across entries", () => {
-    audit.record(entry("login"));
-    audit.record(entry("logout"));
+    audit.record(makeEntry("login"));
+    audit.record(makeEntry("logout"));
     const rows = db.prepare("SELECT checksum, previous_checksum FROM audit_log ORDER BY id ASC").all() as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(2);
     expect(rows[1]!["previous_checksum"]).toBe(rows[0]!["checksum"]);
   });
 
   it("verifies valid chain", () => {
-    audit.record(entry("login"));
-    audit.record(entry("read"));
-    audit.record(entry("logout"));
+    audit.record(makeEntry("login"));
+    audit.record(makeEntry("read"));
+    audit.record(makeEntry("logout"));
     const result = verifyAuditChain(db);
     expect(result.valid).toBe(true);
     expect(result.checkedEntries).toBe(3);
   });
 
   it("detects tampered entry", () => {
-    audit.record(entry("login"));
-    audit.record(entry("secret_action"));
-    audit.record(entry("logout"));
+    audit.record(makeEntry("login"));
+    audit.record(makeEntry("secret_action"));
+    audit.record(makeEntry("logout"));
 
     db.prepare("UPDATE audit_log SET action = 'normal_action' WHERE id = 2").run();
 
@@ -60,9 +74,9 @@ describe("AuditLog hash chain", () => {
   });
 
   it("detects chain break (deleted entry)", () => {
-    audit.record(entry("login"));
-    audit.record(entry("secret"));
-    audit.record(entry("logout"));
+    audit.record(makeEntry("login"));
+    audit.record(makeEntry("secret"));
+    audit.record(makeEntry("logout"));
 
     db.prepare("DELETE FROM audit_log WHERE id = 2").run();
 
@@ -78,7 +92,7 @@ describe("AuditLog hash chain", () => {
 
   it("verifies large chain (100 entries)", () => {
     for (let i = 0; i < 100; i++) {
-      audit.record(entry(`action_${i}`));
+      audit.record(makeEntry(`action_${i}`));
     }
     const result = verifyAuditChain(db);
     expect(result.valid).toBe(true);
@@ -95,26 +109,16 @@ describe("AuditLog.query", () => {
     audit = new AuditLog(db);
   });
 
-  const entry = (action: string, actor = "test") => ({
-    timestamp: new Date().toISOString(),
-    actor,
-    role: "admin",
-    action,
-    ip: "127.0.0.1",
-    status: 200,
-    durationMs: 10,
-  });
-
   it("returns all entries with no filters", () => {
-    audit.record(entry("login"));
-    audit.record(entry("read"));
+    audit.record(makeEntryWithActor("login"));
+    audit.record(makeEntryWithActor("read"));
     const results = audit.query();
     expect(results).toHaveLength(2);
   });
 
   it("filters by actor", () => {
-    audit.record(entry("login", "alice"));
-    audit.record(entry("login", "bob"));
+    audit.record(makeEntryWithActor("login", "alice"));
+    audit.record(makeEntryWithActor("login", "bob"));
     const results = audit.query({ actor: "alice" });
     expect(results).toHaveLength(1);
     expect(results[0]!.actor).toBe("alice");
@@ -122,8 +126,8 @@ describe("AuditLog.query", () => {
 
   it("filters by since", () => {
     const old = new Date(Date.now() - 86400000).toISOString();
-    audit.record({ ...entry("old_action"), timestamp: old });
-    audit.record(entry("new_action"));
+    audit.record({ ...makeEntryWithActor("old_action"), timestamp: old });
+    audit.record(makeEntryWithActor("new_action"));
 
     const results = audit.query({ since: new Date(Date.now() - 3600000).toISOString() });
     expect(results).toHaveLength(1);
@@ -131,7 +135,7 @@ describe("AuditLog.query", () => {
   });
 
   it("respects limit", () => {
-    for (let i = 0; i < 10; i++) audit.record(entry(`action_${i}`));
+    for (let i = 0; i < 10; i++) audit.record(makeEntryWithActor(`action_${i}`));
     const results = audit.query({ limit: 3 });
     expect(results).toHaveLength(3);
   });
@@ -139,8 +143,8 @@ describe("AuditLog.query", () => {
   it("returns entries ordered by timestamp descending", () => {
     const t1 = "2025-01-01T00:00:00.000Z";
     const t2 = "2025-01-02T00:00:00.000Z";
-    audit.record({ ...entry("first"), timestamp: t1 });
-    audit.record({ ...entry("second"), timestamp: t2 });
+    audit.record({ ...makeEntryWithActor("first"), timestamp: t1 });
+    audit.record({ ...makeEntryWithActor("second"), timestamp: t2 });
     const results = audit.query();
     expect(results[0]!.action).toBe("second");
     expect(results[1]!.action).toBe("first");

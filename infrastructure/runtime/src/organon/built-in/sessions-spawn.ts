@@ -169,8 +169,8 @@ export function createSessionsSpawnTool(
         let agent;
         try {
           agent = spawnEphemeral({ name, soul, maxTurns, maxDurationMs }, sharedRoot);
-        } catch (err) {
-          return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+        } catch (error) {
+          return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
         }
 
         log.info(`Ephemeral ${agent.id} (${name}) spawned by ${context.nousId}`);
@@ -239,14 +239,14 @@ export function createSessionsSpawnTool(
               overBudget: overBudget ?? false,
             },
           });
-        } catch (err) {
+        } catch (error) {
           clearTimeout(timer!);
           teardownEphemeral(agent.id);
 
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
               status: "error",
-              response: err instanceof Error ? err.message : String(err),
+              response: error instanceof Error ? error.message : String(error),
             });
           }
 
@@ -254,7 +254,7 @@ export function createSessionsSpawnTool(
             ephemeral: true,
             agentId: agent.id,
             name,
-            error: err instanceof Error ? err.message : String(err),
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -341,13 +341,13 @@ export function createSessionsSpawnTool(
           },
           durationMs,
         });
-      } catch (err) {
+      } catch (error) {
         clearTimeout(timer!);
         const durationMs = Date.now() - startTime;
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = error instanceof Error ? error.message : String(error);
 
         if (auditId && dispatcher.store) {
-          const isTimeout = err instanceof Error && err.message.includes("Timeout");
+          const isTimeout = error instanceof Error && error.message.includes("Timeout");
           dispatcher.store.updateCrossAgentCall(auditId, {
             status: isTimeout ? "timeout" : "error",
             response: errMsg,
@@ -464,12 +464,12 @@ async function executeParallel(
         tokens: { input: outcome.inputTokens, output: outcome.outputTokens, total: totalTokens, budget: budgetTokens ?? null },
         durationMs,
       };
-    } catch (err) {
+    } catch (error) {
       clearTimeout(timer!);
       return {
         index: idx,
         task: task.slice(0, 200),
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   });

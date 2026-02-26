@@ -108,7 +108,7 @@ async function runDistillation(
   const allMessages = store.getHistory(sessionId, {});
 
   // Guard: reject distillation if history has orphaned tool_use blocks
-  const lastAssistant = [...allMessages].reverse().find(m => !m.isDistilled && m.role === "assistant");
+  const lastAssistant = [...allMessages].toReversed().find(m => !m.isDistilled && m.role === "assistant");
   if (lastAssistant) {
     try {
       const parsed = JSON.parse(lastAssistant.content);
@@ -132,9 +132,9 @@ async function runDistillation(
           }
         }
       }
-    } catch (e) {
-      if (e instanceof AletheiaError) throw e;
-      log.warn(`Unexpected error during distillation pre-check: ${e instanceof Error ? e.message : e}`);
+    } catch (error) {
+      if (error instanceof AletheiaError) throw error;
+      log.warn(`Unexpected error during distillation pre-check: ${error instanceof Error ? error.message : error}`);
     }
   }
 
@@ -383,12 +383,12 @@ async function runDistillation(
 
   try {
     store.runDistillationMutations(mutationOpts);
-  } catch (firstErr) {
-    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error: firstErr });
+  } catch (error) {
+    log.warn("Distillation mutations failed (attempt 1)", { sessionId, error });
     try {
       store.runDistillationMutations(mutationOpts);
-    } catch (secondErr) {
-      log.error("Distillation mutations failed after retry", { sessionId, error: secondErr });
+    } catch (retryError) {
+      log.error("Distillation mutations failed after retry", { sessionId, error: retryError });
       // Do not rethrow — next scheduled distillation handles it
     }
   }

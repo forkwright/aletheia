@@ -1,6 +1,7 @@
 // plan_verify tool — run goal-backward verification, override, status, and checkpoint management
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
+import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import type { DianoiaOrchestrator } from "./orchestrator.js";
 import type { GoalBackwardVerifier } from "./verifier.js";
@@ -83,7 +84,7 @@ async function handleVerifyAction(
     switch (action) {
       case "run": {
         const phaseId = input["phaseId"] as string | undefined;
-        if (!phaseId) throw new Error("phaseId required for action=run");
+        if (!phaseId) throw new PlanningError("phaseId required for action=run", { code: "PLANNING_PHASE_ID_REQUIRED" });
 
         const result = await verifierOrchestrator.verify(projectId, phaseId, context);
 
@@ -120,8 +121,8 @@ async function handleVerifyAction(
       case "override": {
         const phaseId = input["phaseId"] as string | undefined;
         const overrideNote = input["overrideNote"] as string | undefined;
-        if (!phaseId) throw new Error("phaseId required for action=override");
-        if (!overrideNote) throw new Error("overrideNote required for action=override");
+        if (!phaseId) throw new PlanningError("phaseId required for action=override", { code: "PLANNING_PHASE_ID_REQUIRED" });
+        if (!overrideNote) throw new PlanningError("overrideNote required for action=override", { code: "PLANNING_OVERRIDE_NOTE_REQUIRED" });
 
         const phase = store.getPhaseOrThrow(phaseId);
         const existing = phase.verificationResult;
@@ -155,7 +156,7 @@ async function handleVerifyAction(
 
       case "status": {
         const phaseId = input["phaseId"] as string | undefined;
-        if (!phaseId) throw new Error("phaseId required for action=status");
+        if (!phaseId) throw new PlanningError("phaseId required for action=status", { code: "PLANNING_PHASE_ID_REQUIRED" });
 
         const phase = store.getPhaseOrThrow(phaseId);
         if (!phase.verificationResult) {
@@ -166,7 +167,7 @@ async function handleVerifyAction(
 
       case "approve_checkpoint": {
         const checkpointId = input["checkpointId"] as string | undefined;
-        if (!checkpointId) throw new Error("checkpointId required for action=approve_checkpoint");
+        if (!checkpointId) throw new PlanningError("checkpointId required for action=approve_checkpoint", { code: "PLANNING_CHECKPOINT_ID_REQUIRED" });
 
         const userNote = input["userNote"] as string | undefined;
         store.resolveCheckpoint(checkpointId, "approved", {
@@ -184,7 +185,7 @@ async function handleVerifyAction(
 
       case "skip_checkpoint": {
         const checkpointId = input["checkpointId"] as string | undefined;
-        if (!checkpointId) throw new Error("checkpointId required for action=skip_checkpoint");
+        if (!checkpointId) throw new PlanningError("checkpointId required for action=skip_checkpoint", { code: "PLANNING_CHECKPOINT_ID_REQUIRED" });
 
         const userNote = input["userNote"] as string | undefined;
         store.resolveCheckpoint(checkpointId, "skipped", {
@@ -203,8 +204,8 @@ async function handleVerifyAction(
       default:
         return JSON.stringify({ error: `Unknown action: ${action}` });
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     log.error(`plan_verify [${action}] failed: ${message}`);
     return JSON.stringify({ error: message });
   }

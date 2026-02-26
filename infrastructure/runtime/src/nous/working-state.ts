@@ -96,9 +96,9 @@ export async function extractWorkingState(
     }
 
     return state;
-  } catch (err) {
+  } catch (error) {
     log.debug(
-      `Working state extraction failed (non-fatal): ${err instanceof Error ? err.message : err}`,
+      `Working state extraction failed (non-fatal): ${error instanceof Error ? error.message : error}`,
     );
     return previousState;
   }

@@ -1,8 +1,8 @@
 // Tests for agent workspace scaffolding
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { validateAgentId, scaffoldAgent } from "./scaffold.js";
+import { scaffoldAgent, validateAgentId } from "./scaffold.js";
 
 const TEST_ROOT = `/tmp/scaffold-test-${Date.now()}`;
 

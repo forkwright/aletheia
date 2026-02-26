@@ -39,8 +39,8 @@ export function agentRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         name: parsedName,
         emoji: parsedEmoji,
       });
-    } catch (err) {
-      log.debug(`IDENTITY.md read failed for ${id}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.debug(`IDENTITY.md read failed for ${id}: ${error instanceof Error ? error.message : error}`);
       return c.json({
         id: agent.id,
         name: agent.identity?.name ?? agent.name ?? agent.id,
@@ -110,8 +110,8 @@ export function agentRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       return c.json({ ok: true, id: body.id, workspace: result.workspace, filesCreated: result.filesCreated });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       const status = msg.includes("already exists") ? 409 : 400;
       return c.json({ error: msg }, status);
     }

@@ -5,7 +5,7 @@ import { assembleBootstrap } from "./bootstrap.js";
 import { estimateTokens, estimateToolDefTokens } from "../hermeneus/token-counter.js";
 import { ToolRegistry } from "../organon/registry.js";
 
-export async function auditTokens(agentId: string): Promise<void> {
+export function auditTokens(agentId: string): void {
   const config = loadConfig();
   const nous = resolveNous(config, agentId);
   if (!nous) {

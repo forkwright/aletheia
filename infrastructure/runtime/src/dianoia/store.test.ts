@@ -65,8 +65,8 @@ describe("getProjectOrThrow", () => {
     expect(() => store.getProjectOrThrow("nonexistent-id")).toThrow(PlanningError);
     try {
       store.getProjectOrThrow("nonexistent-id");
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 
@@ -289,8 +289,8 @@ describe("corrupt JSON handling", () => {
     expect(() => store.getProjectOrThrow(project.id)).toThrow(PlanningError);
     try {
       store.getProjectOrThrow(project.id);
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_STATE_CORRUPT");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_STATE_CORRUPT");
     }
   });
 });
@@ -333,8 +333,8 @@ describe("updateProjectGoal", () => {
     expect(() => store.updateProjectGoal("nonexistent", "goal")).toThrow(PlanningError);
     try {
       store.updateProjectGoal("nonexistent", "goal");
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 });
@@ -370,8 +370,8 @@ describe("updateProjectContext", () => {
     expect(() => store.updateProjectContext("nonexistent", { goal: "x" })).toThrow(PlanningError);
     try {
       store.updateProjectContext("nonexistent", { goal: "x" });
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 });
@@ -481,8 +481,8 @@ describe("updateRequirement", () => {
     expect(() => store.updateRequirement("nonexistent-req-id", { tier: "v2" })).toThrow(PlanningError);
     try {
       store.updateRequirement("nonexistent-req-id", { tier: "v2" });
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_REQUIREMENT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_REQUIREMENT_NOT_FOUND");
     }
   });
 });

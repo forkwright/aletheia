@@ -4,12 +4,12 @@
 import { getEncoding } from "js-tiktoken";
 import { createLogger } from "../koina/logger.js";
 import {
-  readProjectFile,
-  readRequirementsFile,
-  readRoadmapFile,
-  readResearchFile,
   readDiscussFile,
   readPlanFile,
+  readProjectFile,
+  readRequirementsFile,
+  readResearchFile,
+  readRoadmapFile,
 } from "./project-files.js";
 import type { PlanningPhase, PlanningRequirement } from "./types.js";
 import type { SubAgentRole } from "./context-packet.js";
@@ -108,8 +108,8 @@ const encoder = getEncoding("cl100k_base");
 function countTokens(text: string): number {
   try {
     return encoder.encode(text).length;
-  } catch (err) {
-    log.warn(`Failed to encode text for token counting: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    log.warn(`Failed to encode text for token counting: ${error instanceof Error ? error.message : String(error)}`);
     // Fallback to character estimation
     return Math.ceil(text.length / 4);
   }
@@ -134,8 +134,8 @@ export function buildContextPacketWithPriomptSync(opts: PriomptContextOptions): 
  * Async wrapper — preserved for backward compatibility.
  * @deprecated Use buildContextPacketWithPriomptSync() instead.
  */
-export async function buildContextPacketWithPriompt(opts: PriomptContextOptions): Promise<string> {
-  return buildContextPacketWithPriomptImpl(opts);
+export function buildContextPacketWithPriompt(opts: PriomptContextOptions): Promise<string> {
+  return Promise.resolve(buildContextPacketWithPriomptImpl(opts));
 }
 
 function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string {
@@ -325,8 +325,8 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
     }
 
     return result.content;
-  } catch (err) {
-    log.error(`Failed to render context packet: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (error) {
+    log.error(`Failed to render context packet: ${error instanceof Error ? error.message : String(error)}`);
     // Fallback to empty context rather than throwing
     return "# Context Error\n\nFailed to assemble context packet.";
   }
@@ -338,7 +338,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
  */
 function assembleWithAccurateTokens(sections: ContextSection[], maxTokens: number) {
   // Sort by priority (lower = higher priority)
-  const sorted = [...sections].sort((a, b) => a.priority - b.priority);
+  const sorted = [...sections].toSorted((a, b) => a.priority - b.priority);
   
   const includedSections: ContextSection[] = [];
   let totalTokens = 0;

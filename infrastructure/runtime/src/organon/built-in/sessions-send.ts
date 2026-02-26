@@ -50,7 +50,7 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
         required: ["agentId", "message"],
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -59,15 +59,15 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
       const sessionKey = (input["sessionKey"] as string) ?? "main";
 
       if (!dispatcher) {
-        return JSON.stringify({ error: "Agent dispatch not available" });
+        return Promise.resolve(JSON.stringify({ error: "Agent dispatch not available" }));
       }
 
       if (agentId === context.nousId) {
-        return JSON.stringify({ error: "Cannot send to yourself" });
+        return Promise.resolve(JSON.stringify({ error: "Cannot send to yourself" }));
       }
 
       if (pendingSends >= MAX_PENDING_SENDS) {
-        return JSON.stringify({ error: "Too many pending sends — try again later" });
+        return Promise.resolve(JSON.stringify({ error: "Too many pending sends — try again later" }));
       }
 
       // Audit trail
@@ -80,18 +80,17 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
       });
 
       pendingSends++;
-      // eslint-disable-next-line promise/catch-or-return -- fire-and-forget; .catch() below handles errors
-      dispatcher
-        .handleMessage({
-          text: message,
-          nousId: agentId,
-          sessionKey,
-          channel: "internal",
-          peerKind: "agent",
-          peerId: context.nousId,
-          depth: (context.depth ?? 0) + 1,
-        })
-        .then((outcome) => {
+      void (async () => {
+        try {
+          const outcome = await dispatcher.handleMessage({
+            text: message,
+            nousId: agentId,
+            sessionKey,
+            channel: "internal",
+            peerKind: "agent",
+            peerId: context.nousId,
+            depth: (context.depth ?? 0) + 1,
+          });
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
               targetSessionId: outcome.sessionId,
@@ -99,19 +98,20 @@ export function createSessionsSendTool(dispatcher?: AgentDispatcher): ToolHandle
               response: outcome.text,
             });
           }
-        })
-        .catch((err) => {
-          log.warn(`sessions_send to ${agentId} failed: ${err instanceof Error ? err.message : err}`);
+        } catch (error) {
+          log.warn(`sessions_send to ${agentId} failed: ${error instanceof Error ? error.message : error}`);
           if (auditId && dispatcher.store) {
             dispatcher.store.updateCrossAgentCall(auditId, {
               status: "error",
-              response: err instanceof Error ? err.message : String(err),
+              response: error instanceof Error ? error.message : String(error),
             });
           }
-        })
-        .finally(() => { pendingSends--; });
+        } finally {
+          pendingSends--;
+        }
+      })();
 
-      return JSON.stringify({ sent: true, agentId, sessionKey });
+      return Promise.resolve(JSON.stringify({ sent: true, agentId, sessionKey }));
     },
   };
 }

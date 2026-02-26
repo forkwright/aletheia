@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteSet } from "svelte/reactivity";
   import type { PlanProposal } from "../../lib/types";
   import { approvePlan, cancelPlan } from "../../lib/api";
   import Spinner from "../shared/Spinner.svelte";
@@ -10,7 +11,7 @@
 
   let resolving = $state(false);
   let error = $state<string | null>(null);
-  let skippedSteps = $state<Set<number>>(new Set());
+  let skippedSteps = $state(new SvelteSet<number>());
 
   const roleIcon: Record<string, string> = {
     self: "🧠",
@@ -31,7 +32,7 @@
   };
 
   function toggleStep(stepId: number) {
-    const next = new Set(skippedSteps);
+    const next = new SvelteSet(skippedSteps);
     if (next.has(stepId)) next.delete(stepId);
     else next.add(stepId);
     skippedSteps = next;
