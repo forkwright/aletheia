@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 5 of 6 (Recall Quality)
-Plan: 3 of 4 in current phase (05-03 complete — parallel Qdrant+Neo4j recall via asyncio.gather with 800ms Neo4j timeout)
-Status: In progress
-Last activity: 2026-02-26 — Plan 05-03 complete; parallel recall with timeout isolation, direct Qdrant helper, graceful Neo4j degradation
+Plan: 4 of 4 in current phase (05-04 complete — domain re-ranking via token Jaccard overlap, hierarchical sufficiency config, tune-sufficiency.ts)
+Status: Phase 5 complete — ready for Phase 6
+Last activity: 2026-02-26 — Plan 05-04 complete; domain relevance re-ranking in /search, sufficiency config hierarchy verified, tuning script created
 
-Progress: [█████████████] 81%
+Progress: [██████████████] 87%
 
 ## Performance Metrics
 
@@ -100,6 +100,10 @@ Recent decisions affecting current work:
 - [Phase 05-recall-quality / 05-03]: 800ms Neo4j timeout via asyncio.wait_for — on timeout recall returns Qdrant-only results
 - [Phase 05-recall-quality / 05-03]: return_exceptions=True in asyncio.gather allows Qdrant and Neo4j failures to be handled independently
 - [Phase 05-recall-quality / 05-03]: Result deduplication by memory ID keeps highest combined_score (respects graph_weight weighting)
+- [Phase 05-recall-quality / 05-04]: Token Jaccard overlap for domain relevance — no API calls in hot path, Thread context: marker provides domain signal
+- [Phase 05-recall-quality / 05-04]: min_factor=0.6 in _domain_relevance_score — cross-domain penalty max 40%, never excluded (soft boundaries)
+- [Phase 05-recall-quality / 05-04]: _apply_domain_reranking skips when no Thread context: in query — avoids spurious penalty on bare queries
+- [Phase 05-recall-quality / 05-04]: Hierarchical sufficiency config confirmed working via Zod .default({}) — partial pipeline.json inherits unset fields from global defaults
 
 ### Pending Todos
 
@@ -113,5 +117,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 05-recall-quality 05-03-PLAN.md — parallel Qdrant+Neo4j recall, 800ms Neo4j timeout, graceful degradation
+Stopped at: Completed 05-recall-quality 05-04-PLAN.md — domain re-ranking, hierarchical sufficiency config, tune-sufficiency.ts
 Resume file: None

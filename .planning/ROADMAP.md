@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2.1: Fix addMemories Session Wiring** - INSERTED: Gap closure — wire session_id through distillation → Qdrant path (completed 2026-02-25)
 - [ ] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
 - [x] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False (3/4 plans complete) (completed 2026-02-26)
-- [ ] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements
+- [x] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements (completed 2026-02-26)
 - [ ] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling
 
 ## Phase Details
@@ -119,7 +119,7 @@ Plans:
   5. Recall P95 latency is under 1 second measured against representative queries
   6. "tools" in a leatherwork conversation does not surface vehicle maintenance memories for the same agent — domain disambiguation prevents cross-domain bleed
   7. Sufficiency gate thresholds are tuned against the corpus — configurable confidence threshold determines when graph fallback is invoked
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 05-01-PLAN.md — Reinforcement loop wiring + exponential decay
@@ -150,5 +150,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 2.1 Fix addMemories Session Wiring | 0/1 | Complete    | 2026-02-25 |
 | 3. Graph Extraction Overhaul | 2/3 | In Progress|  |
 | 4. Extraction Pipeline Completion | 4/4 | Complete    | 2026-02-26 |
-| 5. Recall Quality | 3/4 | In Progress|  |
+| 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
 | 6. Observability | 0/TBD | Not started | - |
