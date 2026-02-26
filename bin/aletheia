@@ -74,7 +74,20 @@ _gateway_running() {
   [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
+_write_compose_env() {
+  local data_dir="${ALETHEIA_DATA:-$HOME/.aletheia/data}"
+  mkdir -p "$data_dir/qdrant" "$data_dir/neo4j"
+  # Write .env for Docker Desktop macOS compat (env var expansion regression in 4.40.0)
+  printf 'ALETHEIA_DATA=%s\n' "$data_dir" > "$(dirname "$MEMORY_COMPOSE")/.env"
+  # Warn if the user might have data at the old /mnt/ssd/ location
+  if [[ -z "${ALETHEIA_DATA:-}" ]] && [[ -d "/mnt/ssd/" ]]; then
+    echo "Warning: Found /mnt/ssd/ — this was the old data location." >&2
+    echo "  Set ALETHEIA_DATA=/mnt/ssd/aletheia/data if your data is there." >&2
+  fi
+}
+
 _start_memory() {
+  _write_compose_env    # resolve path, write .env, warn if old location exists
   local compose_cmd
   compose_cmd="$(_compose_cmd)"
 

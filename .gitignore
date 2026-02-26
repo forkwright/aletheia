@@ -5,6 +5,7 @@ projects/
 
 # === Secrets ===
 *.env
+infrastructure/memory/.env
 **/credentials.json
 **/credentials.yaml
 **/credentials.yml
