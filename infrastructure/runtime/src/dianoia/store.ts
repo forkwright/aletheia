@@ -263,6 +263,88 @@ export class PlanningStore {
     update();
   }
 
+  /** Update phase metadata (name, goal, success criteria, requirements, order) */
+  updatePhase(
+    id: string,
+    updates: {
+      name?: string;
+      goal?: string;
+      successCriteria?: string[];
+      requirements?: string[];
+      phaseOrder?: number;
+    },
+  ): PlanningPhase {
+    const update = this.db.transaction(() => {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (updates.name !== undefined) { sets.push("name = ?"); vals.push(updates.name); }
+      if (updates.goal !== undefined) { sets.push("goal = ?"); vals.push(updates.goal); }
+      if (updates.successCriteria !== undefined) { sets.push("success_criteria = ?"); vals.push(JSON.stringify(updates.successCriteria)); }
+      if (updates.requirements !== undefined) { sets.push("requirements = ?"); vals.push(JSON.stringify(updates.requirements)); }
+      if (updates.phaseOrder !== undefined) { sets.push("phase_order = ?"); vals.push(updates.phaseOrder); }
+      if (sets.length === 0) return;
+      sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+      vals.push(id);
+      const result = this.db
+        .prepare(`UPDATE planning_phases SET ${sets.join(", ")} WHERE id = ?`)
+        .run(...vals);
+      if (result.changes === 0) {
+        throw new PlanningError(`Planning phase not found: ${id}`, {
+          code: "PLANNING_PHASE_NOT_FOUND",
+          context: { id },
+        });
+      }
+    });
+    update();
+    return this.getPhaseOrThrow(id);
+  }
+
+  deletePhase(id: string): void {
+    const result = this.db.prepare("DELETE FROM planning_phases WHERE id = ?").run(id);
+    if (result.changes === 0) {
+      throw new PlanningError(`Planning phase not found: ${id}`, {
+        code: "PLANNING_PHASE_NOT_FOUND",
+        context: { id },
+      });
+    }
+    // Clean up orphaned requirements that pointed to this phase
+    this.db.prepare("UPDATE planning_requirements SET phase_id = NULL WHERE phase_id = ?").run(id);
+  }
+
+  /** Reorder phases: move phaseId to newOrder, shift others accordingly */
+  reorderPhase(projectId: string, phaseId: string, newOrder: number): void {
+    const reorder = this.db.transaction(() => {
+      const phase = this.getPhaseOrThrow(phaseId);
+      if (phase.projectId !== projectId) {
+        throw new PlanningError("Phase does not belong to project", {
+          code: "PLANNING_PHASE_NOT_FOUND",
+          context: { phaseId, projectId },
+        });
+      }
+      const oldOrder = phase.phaseOrder;
+      if (oldOrder === newOrder) return;
+
+      if (newOrder > oldOrder) {
+        // Moving down: shift items between (old, new] up by 1
+        this.db.prepare(
+          `UPDATE planning_phases SET phase_order = phase_order - 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE project_id = ? AND phase_order > ? AND phase_order <= ?`
+        ).run(projectId, oldOrder, newOrder);
+      } else {
+        // Moving up: shift items between [new, old) down by 1
+        this.db.prepare(
+          `UPDATE planning_phases SET phase_order = phase_order + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE project_id = ? AND phase_order >= ? AND phase_order < ?`
+        ).run(projectId, newOrder, oldOrder);
+      }
+
+      this.db.prepare(
+        `UPDATE planning_phases SET phase_order = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`
+      ).run(newOrder, phaseId);
+    });
+    reorder();
+  }
+
   // --- Requirements ---
 
   createRequirement(opts: {
@@ -311,13 +393,26 @@ export class PlanningStore {
 
   updateRequirement(
     id: string,
-    updates: { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null },
-  ): void {
+    updates: {
+      tier?: "v1" | "v2" | "out-of-scope";
+      rationale?: string | null;
+      description?: string;
+      category?: string;
+      reqId?: string;
+      status?: "pending" | "validated" | "skipped";
+      phaseId?: string | null;
+    },
+  ): PlanningRequirement {
     const update = this.db.transaction(() => {
       const sets: string[] = [];
       const vals: unknown[] = [];
       if (updates.tier !== undefined) { sets.push("tier = ?"); vals.push(updates.tier); }
       if (updates.rationale !== undefined) { sets.push("rationale = ?"); vals.push(updates.rationale); }
+      if (updates.description !== undefined) { sets.push("description = ?"); vals.push(updates.description); }
+      if (updates.category !== undefined) { sets.push("category = ?"); vals.push(updates.category); }
+      if (updates.reqId !== undefined) { sets.push("req_id = ?"); vals.push(updates.reqId); }
+      if (updates.status !== undefined) { sets.push("status = ?"); vals.push(updates.status); }
+      if (updates.phaseId !== undefined) { sets.push("phase_id = ?"); vals.push(updates.phaseId); }
       if (sets.length === 0) return;
       sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
       vals.push(id);
@@ -332,6 +427,58 @@ export class PlanningStore {
       }
     });
     update();
+    return this.getRequirementOrThrow(id);
+  }
+
+  getRequirement(id: string): PlanningRequirement | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM planning_requirements WHERE id = ?")
+      .get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapRequirement(row) : undefined;
+  }
+
+  getRequirementByReqId(projectId: string, reqId: string): PlanningRequirement | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM planning_requirements WHERE project_id = ? AND req_id = ?")
+      .get(projectId, reqId) as Record<string, unknown> | undefined;
+    return row ? this.mapRequirement(row) : undefined;
+  }
+
+  getRequirementOrThrow(id: string): PlanningRequirement {
+    const req = this.getRequirement(id);
+    if (!req) {
+      throw new PlanningError(`Planning requirement not found: ${id}`, {
+        code: "PLANNING_REQUIREMENT_NOT_FOUND",
+        context: { id },
+      });
+    }
+    return req;
+  }
+
+  deleteRequirement(id: string): void {
+    const result = this.db.prepare("DELETE FROM planning_requirements WHERE id = ?").run(id);
+    if (result.changes === 0) {
+      throw new PlanningError(`Planning requirement not found: ${id}`, {
+        code: "PLANNING_REQUIREMENT_NOT_FOUND",
+        context: { id },
+      });
+    }
+  }
+
+  /** Generate next sequential reqId for a category (e.g., "EDIT" → "EDIT-09") */
+  nextReqId(projectId: string, category: string): string {
+    const prefix = category.toUpperCase();
+    const rows = this.db
+      .prepare("SELECT req_id FROM planning_requirements WHERE project_id = ? AND req_id LIKE ?")
+      .all(projectId, `${prefix}-%`) as Array<Record<string, unknown>>;
+    const nums = rows
+      .map(r => {
+        const match = (r["req_id"] as string).match(new RegExp(`^${prefix}-(\\d+)$`));
+        return match ? parseInt(match[1]!, 10) : 0;
+      })
+      .filter(n => !isNaN(n));
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+    return `${prefix}-${String(next).padStart(2, "0")}`;
   }
 
   // --- Checkpoints ---

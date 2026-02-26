@@ -161,6 +161,8 @@ function connect() {
     "planning:project-created", "planning:project-resumed",
     "planning:phase-started", "planning:phase-complete",
     "planning:checkpoint", "planning:complete",
+    "planning:requirement-changed", "planning:phase-changed",
+    "planning:discussion-answered",
   ];
   for (const type of eventTypes) {
     source.addEventListener(type, (e) => {
