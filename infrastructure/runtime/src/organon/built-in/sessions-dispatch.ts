@@ -190,10 +190,10 @@ export function createSessionsDispatchTool(
           const durationMs = Date.now() - taskStart;
           
           // Try new structured extraction with retry capability
-          const structuredNew = await parseSubAgentResponse(outcome.text, async (errorMessage) => {
+          const structuredNew = await parseSubAgentResponse(outcome.text, (errorMessage) => {
             log.debug(`Sub-agent result parsing failed for task ${index}: ${errorMessage}. Using fallback.`);
             // For sub-agent responses, we don't retry the actual call, just fall back to old parsing
-            return outcome.text; // Return original text, parseSubAgentResponse will return null
+            return Promise.resolve(outcome.text); // Return original text, parseSubAgentResponse will return null
           });
           
           // Use new structured result if available, fall back to old method

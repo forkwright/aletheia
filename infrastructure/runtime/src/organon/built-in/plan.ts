@@ -55,7 +55,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         required: ["goal", "steps"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const goal = input["goal"] as string;
       const rawSteps = input["steps"] as Array<Record<string, unknown>>;
 
@@ -71,7 +71,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
       for (const step of steps) {
         for (const dep of step.dependsOn) {
           if (!stepIds.has(dep)) {
-            return JSON.stringify({ error: `Step "${step.id}" depends on unknown step "${dep}"` });
+            return Promise.resolve(JSON.stringify({ error: `Step "${step.id}" depends on unknown step "${dep}"` }));
           }
         }
       }
@@ -91,12 +91,12 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         .filter((s) => s.dependsOn.length === 0)
         .map((s) => s.id);
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         planId,
         stepCount: steps.length,
         actionableNow: actionable,
         deprecationWarning: "Deprecated: use /plan instead.",
-      });
+      }));
     },
   };
 
@@ -116,10 +116,10 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         required: ["planId"],
       },
     },
-    async execute(input: Record<string, unknown>): Promise<string> {
+    execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
       const plan = store.getPlan(planId);
-      if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
+      if (!plan) return Promise.resolve(JSON.stringify({ error: `Plan not found: ${planId}` }));
 
       const steps = plan.steps as unknown as ExecutionPlanStep[];
       const completed = steps.filter((s) => s.status === "completed");
@@ -132,7 +132,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         s.dependsOn.every((dep) => completedIds.has(dep)),
       );
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         planId: plan.id,
         goal: plan.steps.length > 0 ? (steps[0] as ExecutionPlanStep).description : "",
         status: plan.status,
@@ -155,7 +155,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
           inProgress: inProgress.length,
           pending: pending.length,
         },
-      });
+      }));
     },
   };
 
@@ -173,17 +173,17 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         required: ["planId", "stepId"],
       },
     },
-    async execute(input: Record<string, unknown>): Promise<string> {
+    execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
       const stepId = input["stepId"] as string;
       const result = input["result"] as string | undefined;
 
       const plan = store.getPlan(planId);
-      if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
+      if (!plan) return Promise.resolve(JSON.stringify({ error: `Plan not found: ${planId}` }));
 
       const steps = plan.steps as unknown as ExecutionPlanStep[];
       const step = steps.find((s) => s.id === stepId);
-      if (!step) return JSON.stringify({ error: `Step not found: ${stepId}` });
+      if (!step) return Promise.resolve(JSON.stringify({ error: `Step not found: ${stepId}` }));
 
       step.status = "completed";
       if (result) step.result = result;
@@ -208,12 +208,12 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
           s.dependsOn.every((dep) => completedIds.has(dep)),
       );
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         stepId,
         status: "completed",
         planStatus: allDone ? "completed" : plan.status,
         nextSteps: newlyActionable.map((s) => s.id),
-      });
+      }));
     },
   };
 
@@ -232,18 +232,18 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         required: ["planId", "stepId", "reason"],
       },
     },
-    async execute(input: Record<string, unknown>): Promise<string> {
+    execute(input: Record<string, unknown>): Promise<string> {
       const planId = input["planId"] as string;
       const stepId = input["stepId"] as string;
       const reason = input["reason"] as string;
       const abandon = input["abandon"] as boolean | undefined;
 
       const plan = store.getPlan(planId);
-      if (!plan) return JSON.stringify({ error: `Plan not found: ${planId}` });
+      if (!plan) return Promise.resolve(JSON.stringify({ error: `Plan not found: ${planId}` }));
 
       const steps = plan.steps as unknown as ExecutionPlanStep[];
       const step = steps.find((s) => s.id === stepId);
-      if (!step) return JSON.stringify({ error: `Step not found: ${stepId}` });
+      if (!step) return Promise.resolve(JSON.stringify({ error: `Step not found: ${stepId}` }));
 
       step.status = "failed";
       step.failureReason = reason;
@@ -275,7 +275,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
       store.updatePlanSteps(planId, steps);
       store.updatePlanStatus(planId, planStatus);
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         stepId,
         status: "failed",
         reason,
@@ -283,7 +283,7 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
         skipped: steps
           .filter((s) => s.status === "skipped")
           .map((s) => s.id),
-      });
+      }));
     },
   };
 

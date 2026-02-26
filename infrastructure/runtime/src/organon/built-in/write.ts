@@ -40,7 +40,7 @@ export const writeTool: ToolHandler = {
       required: ["path", "content"],
     },
   },
-  async execute(
+  execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
@@ -56,11 +56,11 @@ export const writeTool: ToolHandler = {
         encoding: "utf-8",
       });
       trySafe("workspace git commit", () => commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"), undefined);
-      return `Written to ${filePath}`;
+      return Promise.resolve(`Written to ${filePath}`);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : String(error);
-      return `Error: ${msg}`;
+      return Promise.resolve(`Error: ${msg}`);
     }
   },
 };

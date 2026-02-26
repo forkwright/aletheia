@@ -27,7 +27,7 @@ export function createWhatDoIKnowTool(
         properties: {},
       },
     },
-    async execute(
+    execute(
       _input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -75,7 +75,7 @@ export function createWhatDoIKnowTool(
         };
       }
 
-      return JSON.stringify(result);
+      return Promise.resolve(JSON.stringify(result));
     },
   };
 }

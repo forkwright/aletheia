@@ -81,12 +81,12 @@ export function createPlanProposeHandler(): ToolHandler {
         required: ["goal", "steps"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const goal = input["goal"] as string;
       const rawSteps = input["steps"] as Array<Record<string, unknown>>;
 
       if (!rawSteps?.length) {
-        return JSON.stringify({ error: "Plan must have at least one step" });
+        return Promise.resolve(JSON.stringify({ error: "Plan must have at least one step" }));
       }
 
       const steps = rawSteps.map((s, i) => ({
@@ -105,7 +105,7 @@ export function createPlanProposeHandler(): ToolHandler {
 
       // Store plan data in context metadata for the execute stage to pick up
       // The execute stage reads this marker and yields plan_proposed
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         __marker: PLAN_PROPOSED_MARKER,
         deprecationWarning: "Deprecated: use /plan instead.",
         plan: {
@@ -118,7 +118,7 @@ export function createPlanProposeHandler(): ToolHandler {
           status: "awaiting_approval",
           createdAt: new Date().toISOString(),
         },
-      });
+      }));
     },
   };
 }

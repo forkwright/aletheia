@@ -3,7 +3,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { clearPipelineConfigCache, loadPipelineConfig, PipelineConfigSchema } from "../../nous/pipeline-config.js";
 import { createLogger } from "../../koina/logger.js";
-import type { ToolHandler } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("pipeline-config");
 
@@ -55,13 +55,13 @@ export function createPipelineConfigTool(): ToolHandler {
         required: ["action"],
       },
     },
-    async execute(input, context) {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const action = input["action"] as string;
       const filePath = join(context.workspace, "pipeline.json");
 
       if (action === "read") {
         const config = loadPipelineConfig(context.workspace);
-        return JSON.stringify({ config, source: existsSync(filePath) ? "workspace" : "defaults" });
+        return Promise.resolve(JSON.stringify({ config, source: existsSync(filePath) ? "workspace" : "defaults" }));
       }
 
       if (action === "reset") {
@@ -70,27 +70,27 @@ export function createPipelineConfigTool(): ToolHandler {
           clearPipelineConfigCache(context.workspace);
         }
         const defaults = PipelineConfigSchema.parse({});
-        return JSON.stringify({ config: defaults, source: "defaults", message: "Pipeline config reset to defaults." });
+        return Promise.resolve(JSON.stringify({ config: defaults, source: "defaults", message: "Pipeline config reset to defaults." }));
       }
 
       if (action === "write") {
         const partial = input["config"] as Record<string, unknown> | undefined;
-        if (!partial) return JSON.stringify({ error: "config object required for action=write" });
+        if (!partial) return Promise.resolve(JSON.stringify({ error: "config object required for action=write" }));
 
         const existing = loadExistingConfig(filePath);
         const merged = deepMerge(existing, partial);
 
         const result = PipelineConfigSchema.safeParse(merged);
         if (!result.success) {
-          return JSON.stringify({ error: "Validation failed", issues: result.error.issues });
+          return Promise.resolve(JSON.stringify({ error: "Validation failed", issues: result.error.issues }));
         }
 
         writeFileSync(filePath, JSON.stringify(result.data, null, 2) + "\n", "utf-8");
         clearPipelineConfigCache(context.workspace);
-        return JSON.stringify({ config: result.data, source: "workspace", message: "Pipeline config updated." });
+        return Promise.resolve(JSON.stringify({ config: result.data, source: "workspace", message: "Pipeline config updated." }));
       }
 
-      return JSON.stringify({ error: `Unknown action: ${action}` });
+      return Promise.resolve(JSON.stringify({ error: `Unknown action: ${action}` }));
     },
   };
 }

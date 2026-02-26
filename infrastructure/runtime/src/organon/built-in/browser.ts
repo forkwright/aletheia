@@ -17,7 +17,7 @@ const PAGE_TIMEOUT = 30000;
 type Browser = import("playwright-core").Browser;
 type Page = import("playwright-core").Page;
 
-async function getBrowser(): Promise<Browser> {
+function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = (async () => {
       const { chromium } = await import("playwright-core");
@@ -52,7 +52,8 @@ async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
     if (!cleaned) {
       cleaned = true;
       pageCount--;
-      page.close().catch(() => { /* page cleanup */ });
+      // eslint-disable-next-line promise/prefer-await-to-then -- sync cleanup callback cannot await
+      void page.close().then(undefined, () => { /* page cleanup — best-effort */ });
     }
   };
 
@@ -192,9 +193,9 @@ const BROWSER_USE_SCRIPT = join(
   "infrastructure/browser-use/run_task.py",
 );
 
-async function runBrowserUseTask(task: string): Promise<string> {
+function runBrowserUseTask(task: string): Promise<string> {
   if (!existsSync(BROWSER_USE_SCRIPT)) {
-    return "Error: browser-use not installed (run_task.py not found)";
+    return Promise.resolve("Error: browser-use not installed (run_task.py not found)");
   }
 
   return new Promise((resolve) => {
