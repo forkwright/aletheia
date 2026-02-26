@@ -1,10 +1,11 @@
 // Browser tool — navigate, screenshot, extract via headless Chromium + LLM-driven browsing
-import type { ToolHandler } from "../registry.js";
-import { validateUrl } from "./ssrf-guard.js";
-import { createLogger } from "../../koina/logger.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { ToolError } from "../../koina/errors.js";
+import { createLogger } from "../../koina/logger.js";
+import type { ToolHandler } from "../registry.js";
+import { validateUrl } from "./ssrf-guard.js";
 
 const log = createLogger("browser");
 
@@ -40,7 +41,7 @@ function getBrowser(): Promise<Browser> {
 
 async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   if (pageCount >= MAX_PAGES) {
-    throw new Error(`Max concurrent pages (${MAX_PAGES}) reached`);
+    throw new ToolError(`Max concurrent pages (${MAX_PAGES}) reached`, { code: "BROWSER_MAX_PAGES", context: { maxPages: MAX_PAGES } });
   }
 
   const browser = await getBrowser();

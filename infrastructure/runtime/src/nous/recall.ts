@@ -1,7 +1,8 @@
 // Pre-turn memory recall — surfaces relevant memories before LLM reasoning
+import { PipelineError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
-import { estimateTokens } from "../hermeneus/token-counter.js";
 import { getSidecarUrl, getUserId } from "../koina/memory-client.js";
+import { estimateTokens } from "../hermeneus/token-counter.js";
 
 const log = createLogger("recall");
 
@@ -275,7 +276,7 @@ async function fetchGraphEnhanced(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`graph_enhanced_search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`graph_enhanced_search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "graph_enhanced_search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }
@@ -299,7 +300,7 @@ async function fetchBasicSearch(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }

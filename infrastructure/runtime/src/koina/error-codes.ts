@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   PIPELINE_MAX_LOOPS: "Turn exceeded maximum tool loop count",
   PIPELINE_WALL_CLOCK: "Turn exceeded wall-clock time limit",
   PIPELINE_STREAM_INCOMPLETE: "Streaming pipeline ended without message_complete",
+  PIPELINE_RECALL_FAILED: "Memory recall HTTP request failed",
   TOOL_EXECUTION_FAILED: "Tool call returned an error",
   TOOL_NOT_FOUND: "Agent requested a tool that is not registered",
   EPHEMERAL_LIMIT: "Maximum concurrent ephemeral agents reached",
@@ -43,6 +44,7 @@ export const ERROR_CODES = {
   BROWSER_LAUNCH_FAILED: "Could not launch browser instance",
   BROWSER_MAX_PAGES: "Maximum concurrent browser pages reached",
   PATH_OUTSIDE_WORKSPACE: "Path is outside the agent workspace",
+  TOOL_SSRF_BLOCKED: "SSRF protection blocked the requested URL",
 
   // semeion (Signal)
   SIGNAL_DAEMON_DOWN: "Signal CLI daemon is not running",
@@ -85,8 +87,15 @@ export const ERROR_CODES = {
   PATCH_TEST_FAILED: "Test suite failed after patch",
   PATCH_NOT_FOUND: "Patch ID not found in history",
 
+  // koina (encryption)
+  ENCRYPTION_NOT_INITIALIZED: "Encryption not initialized — call initEncryption first",
+  ENCRYPTION_VERSION_UNSUPPORTED: "Unsupported encryption version",
+
   // koina (PII)
   PII_SCAN_FAILED: "PII scan threw unexpectedly",
+
+  // portability
+  PORTABILITY_IMPORT_FAILED: "Agent file version not supported for import",
 
   // dianoia (planning)
   PLANNING_PROJECT_NOT_FOUND: "Planning project ID does not exist",

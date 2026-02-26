@@ -1,6 +1,7 @@
 // Agent import — restore an agent from an AgentFile export
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { AletheiaError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import type { AgentNote, DistillationPriming, SessionStore, WorkingState } from "../mneme/store.js";
 import { paths } from "../taxis/paths.js";
@@ -28,7 +29,7 @@ export async function importAgent(
   opts?: ImportOptions,
 ): Promise<ImportResult> {
   if (agentFile.version !== 1) {
-    throw new Error(`Unsupported agent file version: ${agentFile.version}`);
+    throw new AletheiaError({ code: "PORTABILITY_IMPORT_FAILED", module: "portability", message: `Unsupported agent file version: ${agentFile.version}`, context: { version: agentFile.version } });
   }
 
   const nousId = opts?.targetNousId ?? agentFile.nous.id;
