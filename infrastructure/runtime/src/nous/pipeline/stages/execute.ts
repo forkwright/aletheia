@@ -491,7 +491,7 @@ export async function executeBuffered(
       throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
     }
 
-    const result = await services.router.complete({
+    const llmResult = await services.router.complete({
       model,
       system: systemPrompt,
       messages: currentMessages,
@@ -509,27 +509,27 @@ export async function executeBuffered(
       return state;
     }
 
-    totalInputTokens += result.usage.inputTokens;
-    totalOutputTokens += result.usage.outputTokens;
-    totalCacheReadTokens += result.usage.cacheReadTokens;
-    totalCacheWriteTokens += result.usage.cacheWriteTokens;
+    totalInputTokens += llmResult.usage.inputTokens;
+    totalOutputTokens += llmResult.usage.outputTokens;
+    totalCacheReadTokens += llmResult.usage.cacheReadTokens;
+    totalCacheWriteTokens += llmResult.usage.cacheWriteTokens;
 
     services.store.recordUsage({
       sessionId,
       turnSeq: seq + loop,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      cacheReadTokens: result.usage.cacheReadTokens,
-      cacheWriteTokens: result.usage.cacheWriteTokens,
-      model: result.model,
+      inputTokens: llmResult.usage.inputTokens,
+      outputTokens: llmResult.usage.outputTokens,
+      cacheReadTokens: llmResult.usage.cacheReadTokens,
+      cacheWriteTokens: llmResult.usage.cacheWriteTokens,
+      model: llmResult.model,
     });
 
-    const toolUses = result.content.filter(
+    const toolUses = llmResult.content.filter(
       (b): b is ToolUseBlock => b.type === "tool_use",
     );
 
     if (toolUses.length === 0) {
-      const text = result.content
+      const text = llmResult.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
         .join("\n");
@@ -567,19 +567,19 @@ export async function executeBuffered(
         text, nousId, sessionId, model, toolCalls: totalToolCalls,
         inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
         cacheReadTokens: totalCacheReadTokens, cacheWriteTokens: totalCacheWriteTokens,
-        ...(result.credentialLabel ? { credentialLabel: result.credentialLabel } : {}),
+        ...(llmResult.credentialLabel ? { credentialLabel: llmResult.credentialLabel } : {}),
       };
 
       return state;
     }
 
-    services.store.appendMessage(sessionId, "assistant", JSON.stringify(result.content), {
-      tokenEstimate: estimateTokens(JSON.stringify(result.content)),
+    services.store.appendMessage(sessionId, "assistant", JSON.stringify(llmResult.content), {
+      tokenEstimate: estimateTokens(JSON.stringify(llmResult.content)),
     });
 
     currentMessages = [
       ...currentMessages,
-      { role: "assistant" as const, content: result.content as ContentBlock[] },
+      { role: "assistant" as const, content: llmResult.content as ContentBlock[] },
     ];
 
     const toolResults: UserContentBlock[] = [];

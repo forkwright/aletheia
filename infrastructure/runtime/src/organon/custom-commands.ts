@@ -209,8 +209,8 @@ export function registerCustomCommands(
             ...(def.allowedTools ? { toolFilter: def.allowedTools } : {}),
           });
           return outcome.text;
-        } catch (error) {
-          return `Command failed: ${error instanceof Error ? error.message : String(error)}`;
+        } catch (err) {
+          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       },
     };

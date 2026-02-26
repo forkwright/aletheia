@@ -202,8 +202,8 @@ export function createOrchestrationTool(db: Database.Database): ToolHandler {
                 skippedPhases: rollbackPlan.skippedPhases.length,
                 rollbackActions: rollbackPlan.rollbackActions.length,
                 hasResumePoint: !!rollbackPlan.resumePoint,
-                actionsByType: rollbackPlan.rollbackActions.reduce((acc, action) => {
-                  acc[action.type] = (acc[action.type] || 0) + 1;
+                actionsByType: rollbackPlan.rollbackActions.reduce((acc, act) => {
+                  acc[act.type] = (acc[act.type] || 0) + 1;
                   return acc;
                 }, {} as Record<string, number>)
               }

@@ -23,7 +23,6 @@ import { buildContextPacketWithPriompt } from "./priompt-context.js";
 import {
   readProjectFile,
   readRequirementsFile,
-  readResearchFile,
 } from "./project-files.js";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
 

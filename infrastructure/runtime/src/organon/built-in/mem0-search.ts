@@ -5,6 +5,13 @@ import { getSidecarUrl, getUserId } from "../../koina/memory-client.js";
 
 const log = createLogger("tool:mem0-search");
 
+async function extractResults(res: Response): Promise<unknown[]> {
+  if (!res.ok) return [];
+  const data = (await res.json()) as Record<string, unknown>;
+  const results = (data["results"] as unknown[]) ?? [];
+  return Array.isArray(results) ? results : [];
+}
+
 export const mem0SearchTool: ToolHandler = {
   definition: {
     name: "mem0_search",
@@ -49,13 +56,6 @@ export const mem0SearchTool: ToolHandler = {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 12000);
 
-      const extract = async (res: Response) => {
-        if (!res.ok) return [];
-        const data = (await res.json()) as Record<string, unknown>;
-        const results = (data["results"] as unknown[]) ?? [];
-        return Array.isArray(results) ? results : [];
-      };
-
       let results: unknown[] = [];
 
       // Tier 1: Enhanced search with query rewriting + alias resolution
@@ -73,7 +73,7 @@ export const mem0SearchTool: ToolHandler = {
           signal: controller.signal,
         });
         if (enhancedRes.ok) {
-          results = await extract(enhancedRes);
+          results = await extractResults(enhancedRes);
         }
       } catch (error) {
         log.debug(`Tier 1 (enhanced) failed: ${error instanceof Error ? error.message : error}`);
@@ -96,7 +96,7 @@ export const mem0SearchTool: ToolHandler = {
             signal: controller.signal,
           });
           if (graphRes.ok) {
-            results = await extract(graphRes);
+            results = await extractResults(graphRes);
           }
         } catch (error) {
           log.debug(`Tier 2 (graph-enhanced) failed: ${error instanceof Error ? error.message : error}`);
@@ -127,8 +127,8 @@ export const mem0SearchTool: ToolHandler = {
               signal: controller.signal,
             }),
           ]);
-          const agentResults = await extract(aRes);
-          const globalResults = await extract(gRes);
+          const agentResults = await extractResults(aRes);
+          const globalResults = await extractResults(gRes);
           results = [...agentResults, ...globalResults];
         } catch (error) {
           log.debug(`Tier 3 (basic) failed: ${error instanceof Error ? error.message : error}`);

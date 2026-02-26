@@ -1,8 +1,7 @@
 // Integration test demonstrating Enhanced Execution Engine features
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { 
-  DEFAULT_EXECUTION_OPTIONS,
+import {
   EnhancedExecutionOrchestrator
 } from "./enhanced-execution.js";
 import {
@@ -45,7 +44,7 @@ describe("Enhanced Execution Engine Integration", () => {
   let db: Database.Database;
   let store: PlanningStore;
   let mockDispatchTool: ToolHandler;
-  let mockToolContext: ToolContext;
+  let _mockToolContext: ToolContext;
 
   beforeEach(() => {
     db = makeDb();
@@ -60,7 +59,7 @@ describe("Enhanced Execution Engine Integration", () => {
       execute: vi.fn()
     } as any;
 
-    mockToolContext = {
+    _mockToolContext = {
       nousId: "test-nous",
       sessionId: "test-session",
       depth: 0

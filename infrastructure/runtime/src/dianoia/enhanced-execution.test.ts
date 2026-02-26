@@ -1,9 +1,8 @@
 // Tests for enhanced execution orchestrator with wave concurrency and intelligent dispatch
 import { beforeEach, describe, expect, it, type MockedFunction, vi } from "vitest";
 import Database from "better-sqlite3";
-import { 
+import {
   computeWaves,
-  DEFAULT_EXECUTION_OPTIONS,
   directDependents,
   EnhancedExecutionOrchestrator,
   findResumeWave
@@ -181,7 +180,7 @@ describe("EnhancedExecutionOrchestrator", () => {
         enableWaveConcurrency: false
       });
 
-      const result = await orchestrator.executePhase(testProjectId, mockToolContext);
+      const _result = await orchestrator.executePhase(testProjectId, mockToolContext);
 
       expect(mockExecute).toHaveBeenCalled();
       const dispatchCall = mockExecute.mock.calls[0][0];
@@ -374,20 +373,3 @@ describe("utility functions", () => {
   });
 });
 
-// Helper function to create mock sub-agent results
-function createMockSubAgentResult(role: string, status: string, confidence: number = 0.8): string {
-  return `
-Response text here.
-
-\`\`\`json
-{
-  "role": "${role}",
-  "task": "mock task",
-  "status": "${status}",
-  "summary": "Mock summary that is long enough to pass validation",
-  "details": {},
-  "confidence": ${confidence}
-}
-\`\`\`
-`;
-}

@@ -370,14 +370,14 @@ function handleEnvelope(
   let bindingId: string | undefined;
   let lockKey: string | undefined;
   try {
-    const store = manager.sessionStore;
+    const sessionStore = manager.sessionStore;
     // Groups share a thread per group (not per member). DMs share a thread per contact identity.
     const identity = isGroup
       ? `group:${groupId ?? peerId}`
-      : store.getIdentityForSignalSender(sender, accountId);
+      : sessionStore.getIdentityForSignalSender(sender, accountId);
     const nousIdForThread = isGroup ? (groupId ?? "main") : peerId;
-    const thread = store.resolveThread(nousIdForThread, identity);
-    const binding = store.resolveBinding(thread.id, "signal", sessionKey);
+    const thread = sessionStore.resolveThread(nousIdForThread, identity);
+    const binding = sessionStore.resolveBinding(thread.id, "signal", sessionKey);
     threadId = thread.id;
     bindingId = binding.id;
     lockKey = `binding:${binding.id}`;
@@ -547,8 +547,8 @@ async function processTurn(
         "I encountered an error processing that message. Please try again.",
         { markdown: false },
       );
-    } catch (error) {
-      log.error(`Failed to send error message: ${error}`);
+    } catch (sendErr) {
+      log.error(`Failed to send error message: ${sendErr}`);
     }
   }
 }

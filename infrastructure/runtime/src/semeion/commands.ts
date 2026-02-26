@@ -66,24 +66,23 @@ export class CommandRegistry {
   }
 }
 
+function findSession(ctx: CommandContext, nousId?: string): ReturnType<SessionStore["findSessionById"]> {
+  if (ctx.sessionId) return ctx.store.findSessionById(ctx.sessionId);
+  const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+  return ctx.store.findSession(nousId ?? ctx.config.agents.list[0]?.id ?? "syn", sessionKey);
+}
+
+function findSessionsByCtx(ctx: CommandContext): ReturnType<SessionStore["findSessionsByKey"]> {
+  if (ctx.sessionId) {
+    const s = ctx.store.findSessionById(ctx.sessionId);
+    return s ? [s] : [];
+  }
+  const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
+  return ctx.store.findSessionsByKey(sessionKey);
+}
+
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-
-  // Helper: find session via sessionId (WebUI) or sessionKey (Signal)
-  function findSession(ctx: CommandContext, nousId?: string): ReturnType<SessionStore["findSessionById"]> {
-    if (ctx.sessionId) return ctx.store.findSessionById(ctx.sessionId);
-    const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-    return ctx.store.findSession(nousId ?? ctx.config.agents.list[0]?.id ?? "syn", sessionKey);
-  }
-
-  function findSessionsByCtx(ctx: CommandContext): ReturnType<SessionStore["findSessionsByKey"]> {
-    if (ctx.sessionId) {
-      const s = ctx.store.findSessionById(ctx.sessionId);
-      return s ? [s] : [];
-    }
-    const sessionKey = `signal:${ctx.isGroup ? ctx.target.groupId : ctx.sender}`;
-    return ctx.store.findSessionsByKey(sessionKey);
-  }
 
   registry.register({
     name: "ping",

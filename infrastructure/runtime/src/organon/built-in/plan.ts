@@ -249,10 +249,10 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
       step.failureReason = reason;
       step.completedAt = new Date().toISOString();
 
-      let planStatus = plan.status;
+      let updatedStatus = plan.status;
 
       if (abandon) {
-        planStatus = "abandoned";
+        updatedStatus = "abandoned";
         log.info(`Plan abandoned: ${planId} — step ${stepId} failed: ${reason}`);
       } else {
         const skippable = findDependents(steps, stepId);
@@ -267,19 +267,19 @@ export function createPlanTools(store: SessionStore): ToolHandler[] {
           (s) => s.status === "pending" || s.status === "in_progress",
         );
         if (remaining.length === 0) {
-          planStatus = "failed";
+          updatedStatus = "failed";
           log.info(`Plan failed: ${planId} — no remaining steps`);
         }
       }
 
       store.updatePlanSteps(planId, steps);
-      store.updatePlanStatus(planId, planStatus);
+      store.updatePlanStatus(planId, updatedStatus);
 
       return Promise.resolve(JSON.stringify({
         stepId,
         status: "failed",
         reason,
-        planStatus,
+        planStatus: updatedStatus,
         skipped: steps
           .filter((s) => s.status === "skipped")
           .map((s) => s.id),

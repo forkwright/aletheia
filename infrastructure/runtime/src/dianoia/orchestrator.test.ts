@@ -287,21 +287,21 @@ describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-
 
     // Create test phases with dependencies
     const db = (orch as any).store.db;
-    const phaseA = db.prepare(`
+    const _phaseA = db.prepare(`
       INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run("phase-a", project.id, "Phase A", "Build foundation", "[]", "[]", 1, "pending", new Date().toISOString(), new Date().toISOString());
 
-    const phaseB = db.prepare(`
+    const _phaseB = db.prepare(`
       INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, plan, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run("phase-b", project.id, "Phase B", "Depends on A", "[]", "[]", 2, "pending", 
+    `).run("phase-b", project.id, "Phase B", "Depends on A", "[]", "[]", 2, "pending",
       JSON.stringify({ dependencies: ["phase-a"] }), new Date().toISOString(), new Date().toISOString());
 
-    const phaseC = db.prepare(`
+    const _phaseC = db.prepare(`
       INSERT INTO planning_phases (id, project_id, name, goal, requirements, success_criteria, phase_order, status, plan, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run("phase-c", project.id, "Phase C", "Independent", "[]", "[]", 3, "pending", 
+    `).run("phase-c", project.id, "Phase C", "Independent", "[]", "[]", 3, "pending",
       JSON.stringify({ dependencies: [] }), new Date().toISOString(), new Date().toISOString());
 
     // Phase A fails verification

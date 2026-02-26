@@ -68,10 +68,13 @@ export function startUpdateChecker(
   return setInterval(check, CHECK_INTERVAL);
 }
 
+function parseVersionParts(v: string): number[] {
+  return v.split(".").map(Number);
+}
+
 function isNewer(latest: string, current: string): boolean {
-  const parse = (v: string) => v.split(".").map(Number);
-  const [lMajor = 0, lMinor = 0, lPatch = 0] = parse(latest);
-  const [cMajor = 0, cMinor = 0, cPatch = 0] = parse(current);
+  const [lMajor = 0, lMinor = 0, lPatch = 0] = parseVersionParts(latest);
+  const [cMajor = 0, cMinor = 0, cPatch = 0] = parseVersionParts(current);
   if (lMajor !== cMajor) return lMajor > cMajor;
   if (lMinor !== cMinor) return lMinor > cMinor;
   return lPatch > cPatch;

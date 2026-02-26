@@ -11,6 +11,14 @@ vi.mock("./logger.js", () => ({
   }),
 }));
 
+const syncBadHandler: EventHandler = () => {
+  throw new Error("handler blew up");
+};
+
+const asyncBadHandler: EventHandler = async () => {
+  throw new Error("async handler blew up");
+};
+
 describe("EventBus", () => {
   it("emit fires registered handlers", () => {
     const handler = vi.fn();
@@ -82,12 +90,9 @@ describe("EventBus", () => {
   });
 
   it("errors in sync handlers do not block other handlers", () => {
-    const badHandler: EventHandler = () => {
-      throw new Error("handler blew up");
-    };
     const goodHandler = vi.fn();
 
-    eventBus.on("tool:called", badHandler);
+    eventBus.on("tool:called", syncBadHandler);
     eventBus.on("tool:called", goodHandler);
 
     // Should not throw
@@ -95,17 +100,14 @@ describe("EventBus", () => {
 
     expect(goodHandler).toHaveBeenCalledTimes(1);
 
-    eventBus.off("tool:called", badHandler);
+    eventBus.off("tool:called", syncBadHandler);
     eventBus.off("tool:called", goodHandler);
   });
 
   it("errors in async handlers do not block other handlers", async () => {
-    const badHandler: EventHandler = async () => {
-      throw new Error("async handler blew up");
-    };
     const goodHandler = vi.fn();
 
-    eventBus.on("tool:failed", badHandler);
+    eventBus.on("tool:failed", asyncBadHandler);
     eventBus.on("tool:failed", goodHandler);
 
     eventBus.emit("tool:failed", { name: "write", error: "denied" });
@@ -115,7 +117,7 @@ describe("EventBus", () => {
     // Let async rejection be caught
     await new Promise((r) => setTimeout(r, 10));
 
-    eventBus.off("tool:failed", badHandler);
+    eventBus.off("tool:failed", asyncBadHandler);
     eventBus.off("tool:failed", goodHandler);
   });
 

@@ -903,8 +903,8 @@ program
       process.exit(1);
     }
 
-    const gateway = (config["gateway"] ?? {}) as Record<string, unknown>;
-    const auth = (gateway["auth"] ?? {}) as Record<string, unknown>;
+    const gatewayConfig = (config["gateway"] ?? {}) as Record<string, unknown>;
+    const auth = (gatewayConfig["auth"] ?? {}) as Record<string, unknown>;
     const currentMode = (auth["mode"] as string) ?? "token";
 
     if (currentMode === "session") {
@@ -953,8 +953,8 @@ program
         secureCookies: true,
       };
     }
-    gateway["auth"] = auth;
-    config["gateway"] = gateway;
+    gatewayConfig["auth"] = auth;
+    config["gateway"] = gatewayConfig;
 
     // Write config
     try {
