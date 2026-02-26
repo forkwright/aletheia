@@ -58,10 +58,9 @@ GRAPH_EXTRACTION_PROMPT = (
     "CREATED, MAINTAINS, DEPENDS_ON, LOCATED_IN, PART_OF, "
     "SCHEDULED_FOR, DIAGNOSED_WITH, PRESCRIBED, TREATS, "
     "VEHICLE_IS, INSTALLED_ON, COMPATIBLE_WITH, CONNECTED_TO, "
-    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES, "
-    "RELATES_TO. "
+    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES. "
     "Do NOT invent new relationship types outside this list. "
-    "Use RELATES_TO as fallback when no specific type fits."
+    "If no type from this list specifically describes the relationship, skip it entirely."
 )
 
 # Detect LLM backend at import time
