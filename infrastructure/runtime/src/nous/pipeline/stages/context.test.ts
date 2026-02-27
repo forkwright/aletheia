@@ -277,4 +277,20 @@ describe("buildContext", () => {
     const lastOpts = calls[calls.length - 1]?.[4];
     expect(lastOpts).toEqual(expect.objectContaining({ sidecarUrl: "http://localhost:8230" }));
   });
+
+  it("passes emergency: true in opts during emergency distillation", async () => {
+    const services = makeServices();
+    (services.store.findSessionById as ReturnType<typeof vi.fn>).mockReturnValue({
+      messageCount: 50,
+      lastInputTokens: 185000,
+      tokenCountEstimate: 185000,
+      workingState: null,
+    });
+
+    await buildContext(makeState(), services);
+    const calls = vi.mocked(distillSession).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const lastOpts = calls[calls.length - 1]?.[4];
+    expect(lastOpts).toEqual(expect.objectContaining({ emergency: true }));
+  });
 });

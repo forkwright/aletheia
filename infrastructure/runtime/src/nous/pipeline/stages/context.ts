@@ -77,6 +77,7 @@ export async function buildContext(
             summaryModel: compaction.distillationModel,
             preserveRecentMessages: compaction.preserveRecentMessages,
             preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+            emergency: true,
             ...(workspace ? { workspace } : {}),
             ...(services.plugins ? { plugins: services.plugins } : {}),
             ...(services.memoryTarget ? { memoryTarget: services.memoryTarget } : {}),
