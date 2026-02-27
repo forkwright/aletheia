@@ -2,6 +2,7 @@
 import { closeSync, type Dirent, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 import { Buffer } from "node:buffer";
+import ignore from "ignore";
 import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("workspace-indexer");
@@ -33,11 +34,16 @@ export interface WorkspaceIndex {
   root: string;
   builtAt: number;
   files: FileEntry[];
+  staleWarning: boolean; // true if any file mtime > builtAt at query time
 }
 
 export interface WorkspaceIndexConfig {
   extraPaths: string[];
 }
+
+let _sharedIndex: WorkspaceIndex | null = null;
+export function getSharedIndex(): WorkspaceIndex | null { return _sharedIndex; }
+export function setSharedIndex(index: WorkspaceIndex | null): void { _sharedIndex = index; }
 
 function manifestKey(root: string): string {
   return Buffer.from(root).toString("base64url").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -65,12 +71,29 @@ function readFirstLine(filePath: string): string {
     return "";
   } finally {
     if (fd !== undefined) {
-      try { closeSync(fd); } catch { /* ignore */ }
+      try { closeSync(fd); } catch { /* ignore close error */ }
     }
   }
 }
 
-function scanDirectory(root: string, relBase: string, depth: number, entries: FileEntry[]): void {
+function buildIgnoreFilter(root: string): ReturnType<typeof ignore> {
+  const ig = ignore();
+  const gitignorePath = join(root, ".gitignore");
+  if (existsSync(gitignorePath)) {
+    try {
+      ig.add(readFileSync(gitignorePath, "utf-8"));
+    } catch { /* unreadable .gitignore — no filter applied */ }
+  }
+  return ig;
+}
+
+function scanDirectory(
+  root: string,
+  relBase: string,
+  depth: number,
+  entries: FileEntry[],
+  ig: ReturnType<typeof ignore>,
+): void {
   if (depth > MAX_DEPTH || entries.length >= MAX_FILES) return;
 
   let dirents: Dirent<string>[];
@@ -83,13 +106,17 @@ function scanDirectory(root: string, relBase: string, depth: number, entries: Fi
   for (const dirent of dirents) {
     if (entries.length >= MAX_FILES) break;
     const name = dirent.name;
+    const relPath = relBase ? join(relBase, name) : name;
+
+    if (dirent.isSymbolicLink()) continue; // INDX-03: never traverse symlinks
 
     if (dirent.isDirectory()) {
       if (SKIP_DIRS.has(name)) continue;
-      scanDirectory(root, relBase ? join(relBase, name) : name, depth + 1, entries);
+      if (ig.ignores(relPath + "/")) continue; // INDX-02: gitignore dir check
+      scanDirectory(root, relPath, depth + 1, entries, ig);
     } else if (dirent.isFile()) {
       if (BINARY_EXTENSIONS.has(extname(name).toLowerCase())) continue;
-      const relPath = relBase ? join(relBase, name) : name;
+      if (ig.ignores(relPath)) continue; // INDX-02: gitignore file check
       const absPath = join(root, relPath);
       let mtime = 0;
       try {
@@ -103,10 +130,24 @@ function scanDirectory(root: string, relBase: string, depth: number, entries: Fi
   }
 }
 
+function computeStaleWarning(files: FileEntry[], root: string, builtAt: number): boolean {
+  for (const f of files) {
+    try {
+      if (statSync(join(root, f.path)).mtimeMs > builtAt) return true;
+    } catch {
+      return true; // deleted file counts as stale
+    }
+  }
+  return false;
+}
+
 function buildIndex(root: string): WorkspaceIndex {
   const entries: FileEntry[] = [];
-  scanDirectory(root, "", 0, entries);
-  return { root, builtAt: Date.now(), files: entries };
+  const ig = buildIgnoreFilter(root);
+  scanDirectory(root, "", 0, entries, ig);
+  const builtAt = Date.now();
+  const staleWarning = computeStaleWarning(entries, root, builtAt);
+  return { root, builtAt, files: entries, staleWarning };
 }
 
 function loadManifest(workspace: string, root: string): WorkspaceIndex | null {
@@ -114,7 +155,12 @@ function loadManifest(workspace: string, root: string): WorkspaceIndex | null {
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as WorkspaceIndex;
+    const parsed = JSON.parse(raw) as WorkspaceIndex;
+    // Backfill staleWarning for manifests written before Phase 22
+    if (typeof parsed.staleWarning !== "boolean") {
+      parsed.staleWarning = computeStaleWarning(parsed.files, parsed.root, parsed.builtAt);
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -171,7 +217,7 @@ export function indexWorkspace(workspace: string, extraPaths?: string[]): Promis
     }
   }
 
-  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles });
+  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles, staleWarning: false });
 }
 
 export function rebuildWorkspaceIndex(workspace: string, extraPaths?: string[]): Promise<WorkspaceIndex> {
@@ -194,7 +240,7 @@ export function rebuildWorkspaceIndex(workspace: string, extraPaths?: string[]):
   }
 
   log.info(`Rebuilt workspace index for ${workspace}: ${allFiles.length} files`);
-  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles });
+  return Promise.resolve({ root: workspace, builtAt: Date.now(), files: allFiles, staleWarning: false });
 }
 
 export function loadIndexConfig(workspace: string): Promise<WorkspaceIndexConfig> {
