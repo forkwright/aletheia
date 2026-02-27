@@ -140,12 +140,15 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     const nousDir = nousSharedDir(); // called inside callback — requires initPaths() to have run
     const sharedDir = join(nousDir, "_shared");
     if (existsSync(sharedDir)) {
-      void rebuildWorkspaceIndex(sharedDir).then((index) => {
-        setSharedIndex(index);
-        log.debug("Workspace index background build complete", { fileCount: index.files.length });
-      }).catch((err: unknown) => {
-        log.warn("Workspace index startup build failed", { err: err instanceof Error ? err.message : err });
-      });
+      void (async () => {
+        try {
+          const index = await rebuildWorkspaceIndex(sharedDir);
+          setSharedIndex(index);
+          log.debug("Workspace index background build complete", { fileCount: index.files.length });
+        } catch (error: unknown) {
+          log.warn("Workspace index startup build failed", { err: error instanceof Error ? error.message : error });
+        }
+      })();
     }
   }, undefined);
 
@@ -639,12 +642,15 @@ export async function startRuntime(configPath?: string): Promise<void> {
         if (!filename || filename.includes(".aletheia-index")) return; // avoid recursive trigger on index writes
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          void rebuildWorkspaceIndex(capturedSharedDir).then((index) => {
-            setSharedIndex(index);
-            log.debug("Workspace index rebuilt after file change", { filename });
-          }).catch((err: unknown) => {
-            log.warn("Workspace index rebuild after file change failed", { err: err instanceof Error ? err.message : err });
-          });
+          void (async () => {
+            try {
+              const index = await rebuildWorkspaceIndex(capturedSharedDir);
+              setSharedIndex(index);
+              log.debug("Workspace index rebuilt after file change", { filename });
+            } catch (error: unknown) {
+              log.warn("Workspace index rebuild after file change failed", { err: error instanceof Error ? error.message : error });
+            }
+          })();
         }, 300); // 300ms debounce — avoids burst rebuilds on bulk saves (inotify on Linux)
       });
       log.debug("Workspace index file watcher started", { dir: capturedSharedDir });
