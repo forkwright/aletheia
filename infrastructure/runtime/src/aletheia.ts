@@ -2,7 +2,8 @@
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
-import { paths } from "./taxis/paths.js";
+import { loadBootstrapAnchor } from "./taxis/bootstrap-loader.js";
+import { initPaths, paths } from "./taxis/paths.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
 import { ToolRegistry } from "./organon/registry.js";
@@ -115,6 +116,9 @@ export interface AletheiaRuntime {
 }
 
 export function createRuntime(configPath?: string): AletheiaRuntime {
+  const { anchor } = loadBootstrapAnchor();
+  initPaths(anchor);
+
   eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
 
