@@ -63,6 +63,7 @@ import { createMcpRoutes } from "./pylon/mcp.js";
 import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
 import { AgoraRegistry } from "./agora/registry.js";
 import { SignalChannelProvider } from "./semeion/provider.js";
+import { SlackChannelProvider } from "./agora/channels/slack/provider.js";
 import { sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
@@ -644,6 +645,12 @@ export async function startRuntime(configPath?: string): Promise<void> {
     },
   });
   agora.register(signalProvider);
+
+  // Slack channel provider (if configured)
+  if (config.channels.slack?.enabled) {
+    const slackProvider = new SlackChannelProvider(config);
+    agora.register(slackProvider);
+  }
 
   // Start all registered channels
   await agora.startAll({
