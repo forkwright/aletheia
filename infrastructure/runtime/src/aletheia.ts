@@ -643,6 +643,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
         const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
         const sessionId = ctx.sessionId ?? "";
         const userInput = args.trim();
+        // Routing note: DianoiaOrchestrator intake state is checked here in the /plan command
+        // handler, not in nous/manager.ts. The /plan command is the exclusive entry point to
+        // planOrch — no pipeline stage or tool invokes planOrch.handle() directly — so the
+        // consumer boundary (here) is the correct and complete routing location.
         // Migration response routing — highest priority (before slug intake)
         if (planOrch.hasPendingMigration()) {
           return Promise.resolve(planOrch.handleMigrationResponse(userInput, nousId, sessionId));

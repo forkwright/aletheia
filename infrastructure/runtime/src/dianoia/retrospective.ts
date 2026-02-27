@@ -9,7 +9,7 @@
 // Persisted as RETRO.md in the project directory and available for
 // future projects via context packet assembly.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { nousSharedDir } from "../taxis/paths.js";
@@ -175,7 +175,6 @@ export class RetrospectiveGenerator {
     if (!existsSync(plansDir)) return [];
 
     const retros: RetrospectiveEntry[] = [];
-    const { readdirSync } = require("node:fs") as typeof import("node:fs");
     try {
       const dirs = readdirSync(plansDir);
       for (const dir of dirs) {
