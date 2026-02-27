@@ -388,3 +388,21 @@ Channel-agnostic messaging layer. Signal becomes a channel provider within agora
 - **Idempotent reactions** — `addSlackReaction`/`removeSlackReaction` handle `already_reacted`/`no_reaction` errors silently. Processing emoji wraps entire dispatch lifecycle in `finally`.
 - **No runtime entanglement** — unconfigured channels don't load, crashed channels don't take down others or the pipeline. Channel isolation is structural.
 - 142 agora tests across 6 phases. Config hot-reload deferred (cross-cutting concern).
+
+
+### Dianoia — Persistent Multi-Phase Planning Runtime (Spec 31)
+
+Replaced session-scoped planning tools with a persistent SQLite-backed planning runtime driven by an 11-state FSM.
+
+- **SQLite persistence over session memory.** All planning state survives runtime restart, session expiry, and agent swaps. 6 migrations (v20–v25) building incrementally.
+- **Pure FSM as single source of truth.** `transition()` in `machine.ts` is a pure function — no I/O, no side effects. All state changes go through `DianoiaOrchestrator` which delegates to the FSM. No direct state writes bypass it.
+- **Constructor injection everywhere.** Every orchestrator accepts `db` and `dispatchTool` as constructor arguments. Zero global state.
+- **11 states, 15 transitions.** idle → questioning → researching → requirements → roadmap → phase-planning → executing → verifying → complete. Plus `blocked` and `abandoned` terminal/recovery states.
+- **Wave-based parallel execution.** Dependency graph determines which phases can run in parallel. Phases within a wave execute concurrently via `sessions_dispatch`. Failed phases cascade-skip dependents.
+- **Four parallel research dimensions.** Stack, features, architecture, pitfalls — spawned as parallel subagents, synthesized before requirements.
+- **Interactive category-scoped requirements.** Requirements presented by category with table-stakes vs. differentiators. REQ-ID assignment. v1/v2/out-of-scope tiering with rationale.
+- **Goal-backward verification.** `GoalBackwardVerifier` checks completed phases against their stated goals. Gap analysis generates closure plans.
+- **3-tier risk checkpoints.** Low/medium/high risk evaluation. YOLO mode auto-approves low/medium. True-blocker category for high-risk items requiring human decision.
+- **Spawn records survive restart.** v24 migration adds `planning_spawn_records` table. Zombie detection for spawns that started but never completed.
+- **Legacy tools deprecated.** `plan_create` and `plan_propose` still work but emit deprecation warnings. New tool surface: `plan_research`, `plan_requirements`, `plan_roadmap`, `plan_execute`, `plan_verify`, `plan_discuss`.
+- 88 source files, 40 test files. Integration test exercises full idle→complete pipeline with mocked dispatch.
