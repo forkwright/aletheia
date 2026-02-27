@@ -151,7 +151,11 @@ Plans:
   2. Crossing any health metric threshold emits `memory:health_degraded` event — degraded state is observable without polling
   3. A CLI command runs the ground-truth corpus and reports current precision/recall vs. baseline — regression is detectable
   4. Every memory write path produces a traceable receipt visible in diagnostics — write origin is auditable
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Unified health endpoint with semantic metrics + threshold config + CLI command
+- [ ] 06-02-PLAN.md — Recall corpus audit CLI + write receipts on all memory paths
 
 ## Progress
 
@@ -167,4 +171,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 4. Extraction Pipeline Completion | 4/4 | Complete    | 2026-02-26 |
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
 | 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
-| 6. Observability | 0/TBD | Not started | - |
+| 6. Observability | 0/2 | Not started | - |

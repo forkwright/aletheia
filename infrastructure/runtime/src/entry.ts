@@ -872,6 +872,172 @@ auditCmd
     }
   });
 
+// --- Memory ---
+
+const memoryCmd = program.command("memory").description("Memory management and diagnostics");
+
+memoryCmd
+  .command("audit")
+  .description("Run recall precision/recall audit against ground-truth corpus")
+  .option("-u, --url <url>", "Sidecar URL", "http://localhost:8230")
+  .option("-c, --corpus <path>", "Corpus JSONL path", "~/.aletheia/corpus/recall.jsonl")
+  .option("--save-baseline", "Save current scores as new baseline")
+  .option("--agent <id>", "Filter to a specific agent")
+  .action(async (opts: { url: string; corpus: string; saveBaseline?: boolean; agent?: string }) => {
+    const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+
+    // Resolve corpus path (expand ~)
+    const home = process.env["HOME"] ?? "/root";
+    const corpusPath = opts.corpus.replace(/^~/, home);
+    const baselinePath = join(home, ".aletheia", "corpus", "recall-baseline.json");
+
+    if (!existsSync(corpusPath)) {
+      console.log(`No corpus file found at ${corpusPath}. Create a JSONL file with {query, expected_ids, domain} entries.`);
+      return;
+    }
+
+    // Load corpus
+    type CorpusEntry = { query: string; expected_ids: string[]; domain: string };
+    let entries: CorpusEntry[];
+    try {
+      const raw = readFileSync(corpusPath, "utf-8");
+      entries = raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as CorpusEntry);
+    } catch (error) {
+      console.error(`Failed to parse corpus file: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+
+    // Filter by agent if requested
+    if (opts.agent) {
+      entries = entries.filter((e) => e.domain === opts.agent);
+      if (entries.length === 0) {
+        console.log(`No corpus entries found for agent: ${opts.agent}`);
+        return;
+      }
+    }
+
+    // Run queries against sidecar /search
+    type EntryResult = { domain: string; precision: number; recall: number; f1: number };
+    const results: EntryResult[] = [];
+
+    for (const entry of entries) {
+      let returnedIds: string[] = [];
+      try {
+        const res = await fetch(`${opts.url}/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: entry.query, user_id: "aletheia", agent_id: entry.domain, top_k: 20 }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { results?: Array<{ id?: string }> };
+          returnedIds = (data.results ?? []).map((r) => r.id ?? "").filter((id) => id.length > 0);
+        }
+      } catch { /* query failed — empty results */ }
+
+      const expectedSet = new Set(entry.expected_ids);
+      const returnedSet = new Set(returnedIds);
+      const intersection = returnedIds.filter((id) => expectedSet.has(id));
+
+      const precision = returnedSet.size === 0 ? 1 : intersection.length / returnedSet.size;
+      const recall = expectedSet.size === 0 ? 1 : intersection.length / expectedSet.size;
+      const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+
+      results.push({ domain: entry.domain, precision, recall, f1 });
+    }
+
+    // Aggregate per-domain
+    const domainMap = new Map<string, { precision: number[]; recall: number[]; f1: number[] }>();
+    for (const r of results) {
+      const existing = domainMap.get(r.domain) ?? { precision: [], recall: [], f1: [] };
+      existing.precision.push(r.precision);
+      existing.recall.push(r.recall);
+      existing.f1.push(r.f1);
+      domainMap.set(r.domain, existing);
+    }
+
+    const avg = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
+    const fmt = (n: number) => n.toFixed(2);
+
+    type DomainSummary = { precision: number; recall: number; f1: number; query_count: number };
+    const byDomain: Record<string, DomainSummary> = {};
+    for (const [domain, vals] of domainMap) {
+      byDomain[domain] = {
+        precision: avg(vals.precision),
+        recall: avg(vals.recall),
+        f1: avg(vals.f1),
+        query_count: vals.precision.length,
+      };
+    }
+
+    const overallPrecision = avg(results.map((r) => r.precision));
+    const overallRecall = avg(results.map((r) => r.recall));
+    const overallF1 = avg(results.map((r) => r.f1));
+
+    // Baseline comparison
+    let baselineMsg = "";
+    let hasRegression = false;
+    if (existsSync(baselinePath) && !opts.saveBaseline) {
+      try {
+        const baseline = JSON.parse(readFileSync(baselinePath, "utf-8")) as {
+          overall: { precision: number; recall: number; f1: number };
+        };
+        const precDiff = overallPrecision - baseline.overall.precision;
+        const recDiff = overallRecall - baseline.overall.recall;
+        const THRESHOLD = 0.05;
+        const precStatus = precDiff < -THRESHOLD ? "REGRESSION" : "within threshold";
+        const recStatus = recDiff < -THRESHOLD ? "REGRESSION" : "within threshold";
+        if (precDiff < -THRESHOLD || recDiff < -THRESHOLD) {
+          hasRegression = true;
+        }
+        const precSign = precDiff >= 0 ? "+" : "";
+        const recSign = recDiff >= 0 ? "+" : "";
+        baselineMsg = `  Baseline: precision ${precSign}${fmt(precDiff)} (${precStatus}), recall ${recSign}${fmt(recDiff)} (${recStatus})`;
+      } catch { /* baseline parse failed — skip comparison */ }
+    }
+
+    // Save baseline if requested
+    if (opts.saveBaseline) {
+      const baselineData = {
+        timestamp: new Date().toISOString(),
+        overall: { precision: overallPrecision, recall: overallRecall, f1: overallF1 },
+        by_domain: byDomain,
+      };
+      mkdirSync(dirname(baselinePath), { recursive: true });
+      writeFileSync(baselinePath, JSON.stringify(baselineData, null, 2) + "\n", "utf-8");
+      console.log(`Baseline saved to ${baselinePath}`);
+    }
+
+    // Print results table
+    const domains = Object.keys(byDomain).sort();
+    const colW = Math.max(8, ...domains.map((d) => d.length));
+    const sep = "─".repeat(colW);
+    const pad = (s: string, w: number) => s.padEnd(w);
+
+    console.log(`\nRecall Audit — ${results.length} queries, ${domains.length} domains\n`);
+    console.log(`  ${pad("Domain", colW)}  Queries  Precision  Recall   F1`);
+    console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
+    for (const domain of domains) {
+      const d = byDomain[domain]!;
+      console.log(`  ${pad(domain, colW)}  ${String(d.query_count).padStart(7)}  ${fmt(d.precision).padStart(9)}  ${fmt(d.recall).padStart(6)}   ${fmt(d.f1)}`);
+    }
+    console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
+    console.log(`  ${pad("OVERALL", colW)}  ${String(results.length).padStart(7)}  ${fmt(overallPrecision).padStart(9)}  ${fmt(overallRecall).padStart(6)}   ${fmt(overallF1)}`);
+
+    if (baselineMsg) {
+      console.log(`\n${baselineMsg}`);
+    }
+    if (hasRegression) {
+      console.log(`\n  REGRESSION DETECTED — precision or recall dropped more than 5% from baseline`);
+      process.exit(1);
+    }
+  });
+
 // --- Auth Migration ---
 
 program
