@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements (completed 2026-02-26)
 - [x] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
 - [x] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling (gap closure — Phase 6 never started) (completed 2026-02-27)
-- [ ] **Phase 7: Tech Debt Cleanup** - Resolve 6 accumulated tech debt items from milestone audit before archiving v1.0
+- [x] **Phase 7: Tech Debt Cleanup** - Resolve 6 accumulated tech debt items from milestone audit before archiving v1.0 (completed 2026-02-27)
 
 ## Phase Details
 
@@ -171,11 +171,11 @@ Plans:
   5. Single-slash comment typos in pipeline.ts, extract.ts, hooks.ts are fixed
   6. Baseline precision/recall scores recorded against live corpus (not test doubles)
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 07-01-PLAN.md — Health event subscribers + flush metric tracking/display + comment typo fixes + /add ADR closure (code)
-- [ ] 07-02-PLAN.md — Server-side: RELATES_TO backfill execution + live baseline recording (requires SSH)
+- [x] 07-01-PLAN.md — Health event subscribers + flush metric tracking/display + comment typo fixes + /add ADR closure (code)
+- [x] 07-02-PLAN.md — Server-side: RELATES_TO backfill execution + live baseline recording (requires SSH)
 
 ## Progress
 
@@ -192,4 +192,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
 | 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
 | 6. Observability | 2/2 | Complete   | 2026-02-27 |
-| 7. Tech Debt Cleanup | 1/2 | In Progress|  |
+| 7. Tech Debt Cleanup | 2/2 | Complete   | 2026-02-27 |

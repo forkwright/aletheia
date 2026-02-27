@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 7 of 7 (Tech Debt Cleanup)
-Plan: 1 of 2 complete (07-01 done — health event subscribers, flush tracking, comment fixes, ADR closure)
-Status: Phase 7 in progress — plan 07-01 complete
-Last activity: 2026-02-27 — Plan 07-01 complete; health events wired, flush success rate tracked, catch comments fixed, /add ADR closed
+Plan: 2 of 2 complete (07-02 done — RELATES_TO backfill confirmed 0 edges, BASELINE.md written)
+Status: Phase 7 complete — all plans done
+Last activity: 2026-02-27 — Plan 07-02 complete; backfill confirmed 0 RELATES_TO edges, v1.0 baseline recorded
 
-Progress: [████████████████] 50% of phase
+Progress: [████████████████████████████████] 100% of phase
 
 ## Performance Metrics
 
@@ -122,18 +122,19 @@ Recent decisions affecting current work:
 - [Phase 07-tech-debt-cleanup / 07-01]: _FLUSH_RESULTS deque(maxlen=500) — bounded memory, sufficient for 24h window at typical flush frequency
 - [Phase 07-tech-debt-cleanup / 07-01]: _compute_flush_success_rate returns None (not 0.0) when no data — consistent with other metric helpers; None means no data
 - [Phase 07-tech-debt-cleanup / 07-01]: /add ADR comment is final closure — removes ambiguity from "deferred" framing, formally closes Phase 2 deferred decision
+- [Phase 07-tech-debt-cleanup / 07-02]: aletheia.env NEO4J_PASSWORD is stale (aletheia2024); actual Docker auth is aletheia-memory — backfill required correct password to connect
+- [Phase 07-tech-debt-cleanup / 07-02]: BASELINE.md written from existing baseline.json (2026-02-25) — corpus runner output counts as production baseline; no fresh run needed
 
 ### Pending Todos
 
-- Run `cd infrastructure/runtime && ANTHROPIC_API_KEY=<key> npm run test:corpus:save-baseline` to record real baseline scores before Phase 2 extraction changes
+- Correct aletheia.env NEO4J_PASSWORD from aletheia2024 to aletheia-memory (configuration drift discovered during 07-02 backfill)
 
 ### Blockers/Concerns
 
-- Phase 4 can begin in parallel with Phase 3 once Phase 2 is complete (no graph dependency)
-- Mem0 evaluation deferred — need traffic trace to confirm `/add` route is truly unused in production
+- None — Phase 7 complete, all 6 tech debt items from v1.0 audit resolved
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 07-tech-debt-cleanup 07-01-PLAN.md — health events wired, flush success rate tracked end-to-end, catch comments fixed, /add ADR closed
+Stopped at: Completed 07-tech-debt-cleanup 07-02-PLAN.md — RELATES_TO backfill confirmed 0 edges, BASELINE.md written with v1.0 benchmark scores
 Resume file: None
