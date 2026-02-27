@@ -1,0 +1,719 @@
+# Spec 34: Agora — Channel Abstraction and Slack Integration
+
+**Status:** Draft
+**Author:** Syn
+**Date:** 2026-02-27
+**Spec:** 34
+
+---
+
+## Naming
+
+**Agora** (ἀγορά) — the gathering place where speech happens.
+
+| Layer | Reading |
+|-------|---------|
+| **L1** | The channel subsystem — where messages arrive from and are sent to external platforms |
+| **L2** | The abstraction layer between nous (the thinking) and the outside world; the common ground all messaging platforms share |
+| **L3** | In Athens, the agora was not the market — that's the Roman reduction. The agora was the place of gathering and speech, where different parties came to communicate. The private thought of the citizen became public speech in the agora. Different voices entered through different stoa (covered walkways), but once inside, all participated in the same discourse |
+| **L4** | The module IS an agora — different channels (Signal, Slack, future platforms) enter through their own stoa but converge into a single discourse (the nous pipeline). The module doesn't communicate; it is the *place where communication becomes possible* |
+
+**Topology:** Agora sits between semeion (which becomes Signal's stoa) and nous. Where semeion currently couples Signal directly to nous, agora interposes a common gathering point. New channels don't modify the agora — they enter through their own stoa.
+
+**Semeion** retains its name — σημεῖον (the sign) is the artifact of Signal communication, and the module continues to implement Signal-specific protocol. But semeion becomes a channel provider *within* agora rather than a direct wire to nous.
+
+---
+
+## Problem
+
+Signal integration is hardwired into `aletheia.ts` and `semeion/`. There is no channel abstraction — adding a second messaging platform means duplicating the entire listener/sender/routing flow. The current architecture:
+
+```
+Signal ← semeion/listener.ts → NousManager.handleMessage()
+       ← semeion/sender.ts  ← message tool (hardcoded to Signal)
+```
+
+Every platform-specific concern (SSE parsing, signal-cli daemon management, read receipts, typing indicators, markdown → Signal formatting) is entangled with platform-agnostic concerns (message routing, agent binding resolution, session management, send/receive lifecycle).
+
+Slack integration is the forcing function, but the real deliverable is a channel abstraction that makes the *next* integration (Discord, Matrix, email, webhook) a focused implementation rather than another architectural entanglement.
+
+---
+
+## Principles
+
+1. **Channels are stoa, not the agora.** Each channel implementation handles its platform's protocol. The agora handles what's common: routing, binding resolution, lifecycle, send dispatch. A new channel never touches agora internals — it implements the interface and registers.
+
+2. **Signal is the first channel, not the special one.** After this spec, Signal and Slack have identical architectural status. No channel gets privileged access to nous. This means refactoring Signal out of `aletheia.ts` into the same plugin interface Slack uses.
+
+3. **CLI onboarding.** `aletheia channel add slack` guides the user through token creation, scopes, and configuration. Same pattern for any future channel. The CLI is the front door.
+
+4. **Configuration is declarative.** Channel config lives in `channels:` in `aletheia.yaml`. Bindings already support `channel: "signal"` matching — extending to `channel: "slack"` is schema-only.
+
+5. **No runtime entanglement.** A channel that isn't configured doesn't load. A channel that crashes doesn't take down other channels or the nous pipeline.
+
+---
+
+## Design
+
+### Channel Provider Interface
+
+```typescript
+// src/agora/types.ts
+
+export interface ChannelProvider {
+  /** Unique channel identifier — used in config, bindings, routing */
+  readonly id: string;
+
+  /** Human-readable name */
+  readonly name: string;
+
+  /** What this channel supports */
+  readonly capabilities: ChannelCapabilities;
+
+  /**
+   * Start listening for inbound messages.
+   * Called during runtime startup if the channel is configured and enabled.
+   * Must wire inbound messages to the provided dispatcher.
+   */
+  start(ctx: ChannelContext): Promise<void>;
+
+  /**
+   * Send a message outbound through this channel.
+   * Called by the agora send dispatcher when routing determines this channel.
+   */
+  send(params: ChannelSendParams): Promise<ChannelSendResult>;
+
+  /**
+   * Send a typing indicator (if supported).
+   */
+  sendTyping?(params: ChannelTypingParams): Promise<void>;
+
+  /**
+   * Send a reaction (if supported).
+   */
+  sendReaction?(params: ChannelReactionParams): Promise<void>;
+
+  /**
+   * Gracefully stop the channel.
+   */
+  stop(): Promise<void>;
+
+  /**
+   * Health probe — is this channel connected and functional?
+   */
+  probe?(): Promise<ChannelProbeResult>;
+}
+
+export interface ChannelCapabilities {
+  /** Supports threading (Slack threads, Signal quotes) */
+  threads: boolean;
+  /** Supports emoji reactions */
+  reactions: boolean;
+  /** Supports typing indicators */
+  typing: boolean;
+  /** Supports file/media attachments */
+  media: boolean;
+  /** Supports native streaming/progressive updates */
+  streaming: boolean;
+  /** Supports rich formatting (blocks, embeds) beyond markdown */
+  richFormatting: boolean;
+  /** Max text length per message */
+  maxTextLength: number;
+}
+
+export interface ChannelContext {
+  /** Dispatch an inbound message to the nous pipeline */
+  dispatch: (msg: InboundMessage) => Promise<TurnOutcome>;
+  /** Stream an inbound message through the nous pipeline */
+  dispatchStream: (msg: InboundMessage) => AsyncIterable<TurnStreamEvent>;
+  /** The runtime config */
+  config: AletheiaConfig;
+  /** Session store for thread/session lookups */
+  store: SessionStore;
+  /** Abort signal for graceful shutdown */
+  abortSignal: AbortSignal;
+  /** Command registry for slash-command handling */
+  commands?: CommandRegistry;
+  /** Logger scoped to this channel */
+  log: Logger;
+}
+
+export interface ChannelSendParams {
+  /** Target identifier (channel-specific format) */
+  to: string;
+  /** Message text (markdown) */
+  text: string;
+  /** Account ID within the channel (for multi-account setups) */
+  accountId?: string;
+  /** Thread/reply context */
+  threadId?: string;
+  /** Media attachments */
+  media?: MediaAttachment[];
+  /** Sender identity override (agent name, emoji) */
+  identity?: ChannelIdentity;
+}
+
+export interface ChannelSendResult {
+  /** Channel-assigned message ID */
+  messageId: string;
+  /** Resolved channel/conversation ID */
+  channelId: string;
+}
+
+export interface ChannelIdentity {
+  name?: string;
+  emoji?: string;
+  avatarUrl?: string;
+}
+
+export interface ChannelProbeResult {
+  ok: boolean;
+  latencyMs?: number;
+  error?: string;
+  details?: Record<string, unknown>;
+}
+```
+
+### Agora Registry
+
+```typescript
+// src/agora/registry.ts
+
+export class AgoraRegistry {
+  private providers = new Map<string, ChannelProvider>();
+
+  /** Register a channel provider */
+  register(provider: ChannelProvider): void;
+
+  /** Get a provider by channel ID */
+  get(channelId: string): ChannelProvider | undefined;
+
+  /** List all registered providers */
+  list(): ChannelProvider[];
+
+  /** Start all configured and enabled channels */
+  startAll(ctx: Omit<ChannelContext, 'log'>): Promise<void>;
+
+  /** Stop all channels gracefully */
+  stopAll(): Promise<void>;
+
+  /** Probe all channels */
+  probeAll(): Promise<Map<string, ChannelProbeResult>>;
+
+  /**
+   * Send a message through the appropriate channel.
+   * Resolves channel from the target format or explicit channelId.
+   */
+  send(channelId: string, params: ChannelSendParams): Promise<ChannelSendResult>;
+}
+```
+
+### Signal as Channel Provider
+
+Semeion's existing code refactors into a `SignalChannelProvider` implementing `ChannelProvider`:
+
+- `semeion/listener.ts` → `SignalChannelProvider.start()` — SSE consumption, envelope parsing, mention hydration, authorization
+- `semeion/sender.ts` → `SignalChannelProvider.send()` — message chunking, markdown → Signal formatting, PII scanning
+- `semeion/client.ts` → stays as internal Signal-specific HTTP client
+- `semeion/daemon.ts` → stays as signal-cli process management (start/stop/ready)
+- `semeion/commands.ts` → commands register with agora via `ChannelContext.commands`
+- `semeion/format.ts` → stays as Signal-specific formatting
+- `semeion/tts.ts` → stays as Signal-specific TTS (audio messages)
+
+The key refactor: `aletheia.ts` stops importing semeion directly. Instead:
+
+```typescript
+// aletheia.ts — after this spec
+import { AgoraRegistry } from "./agora/registry.js";
+import { SignalChannelProvider } from "./semeion/provider.js";
+import { SlackChannelProvider } from "./agora/channels/slack/provider.js";
+
+// During startRuntime:
+const agora = new AgoraRegistry();
+
+if (config.channels.signal?.enabled) {
+  agora.register(new SignalChannelProvider(config, commandRegistry));
+}
+if (config.channels.slack?.enabled) {
+  agora.register(new SlackChannelProvider(config));
+}
+
+await agora.startAll({ dispatch, dispatchStream, config, store, abortSignal, commands });
+```
+
+### Slack Channel Provider
+
+```typescript
+// src/agora/channels/slack/provider.ts
+
+export class SlackChannelProvider implements ChannelProvider {
+  readonly id = "slack";
+  readonly name = "Slack";
+  readonly capabilities: ChannelCapabilities = {
+    threads: true,
+    reactions: true,
+    typing: false,  // Slack has no typing indicator API for bots
+    media: true,
+    streaming: true,  // Native text streaming via chat.startStream
+    richFormatting: true,  // Block Kit (v2)
+    maxTextLength: 4000,
+  };
+
+  // Uses @slack/bolt in Socket Mode (no public URL required)
+  // Inbound: message events → parse → dispatch to nous
+  // Outbound: WebClient.chat.postMessage with mrkdwn formatting
+}
+```
+
+### Configuration Schema
+
+```yaml
+# aletheia.yaml
+channels:
+  signal:
+    enabled: true
+    accounts:
+      default:
+        account: "+1..."
+        # ... existing signal config
+  slack:
+    enabled: true
+    mode: socket  # "socket" (default) or "http"
+    appToken: "xapp-..."  # Socket Mode app token
+    botToken: "xoxb-..."  # Bot user token
+    # Optional:
+    dmPolicy: open  # "open" | "allowlist" | "disabled"
+    groupPolicy: allowlist  # "open" | "allowlist" | "disabled"
+    allowedChannels: []  # Slack channel IDs/names
+    requireMention: true  # Only respond when @mentioned in channels
+    identity:
+      # Per-agent identity in Slack (requires chat:write.customize scope)
+      useAgentIdentity: true
+```
+
+Binding example:
+```yaml
+bindings:
+  - agentId: syn
+    match:
+      channel: slack
+      peer:
+        kind: channel
+        id: C0123456789  # Slack channel ID
+  - agentId: syn
+    match:
+      channel: slack
+      peer:
+        kind: direct  # DMs
+```
+
+### CLI Onboarding
+
+```
+$ aletheia channel add slack
+
+  Slack Integration Setup
+  ─────────────────────────
+
+  Step 1: Create a Slack App
+
+    Visit https://api.slack.com/apps and click "Create New App"
+    Choose "From scratch" and select your workspace
+
+  Step 2: Enable Socket Mode
+
+    In your app settings, go to "Socket Mode" and enable it
+    Create an App-Level Token with 'connections:write' scope
+    Copy the token (starts with xapp-)
+
+  ? App Token (xapp-...): xapp-1-A0123...
+
+  Step 3: Bot Token
+
+    Go to "OAuth & Permissions"
+    Add these Bot Token Scopes:
+      • channels:history    • channels:read
+      • chat:write          • groups:history
+      • groups:read         • im:history
+      • im:read             • reactions:read
+      • reactions:write     • users:read
+      • chat:write.customize (optional — agent identity)
+      • assistant:write     (optional — native streaming)
+
+    Install the app to your workspace
+    Copy the Bot User OAuth Token (starts with xoxb-)
+
+  ? Bot Token (xoxb-...): xoxb-1234...
+
+  Step 4: Subscribe to Events
+
+    Go to "Event Subscriptions" → "Subscribe to bot events"
+    Add these events:
+      • app_mention         • message.channels
+      • message.groups      • message.im
+      • reaction_added
+
+  Step 5: Configure access
+
+  ? DM policy (open/allowlist/disabled): open
+  ? Channel policy (open/allowlist/disabled): allowlist
+  ? Require @mention in channels? (Y/n): Y
+
+  ✓ Slack configuration written to aletheia.yaml
+  ✓ Restart Aletheia to activate: systemctl restart aletheia
+
+  To bind an agent to a Slack channel:
+    aletheia binding add --agent syn --channel slack --peer channel:C0123456789
+```
+
+### Message Flow
+
+**Inbound (Slack → Nous):**
+
+```
+Slack WebSocket (Socket Mode)
+  → @slack/bolt App event handler
+  → SlackChannelProvider.onMessage()
+    → Parse Slack event → normalize to InboundMessage
+      - channel: "slack"
+      - peerId: channel ID or user ID
+      - peerKind: "channel" | "direct" | "thread"
+      - accountId: Slack account
+      - text: strip bot mention, convert mrkdwn → markdown
+      - threadId: Slack thread_ts
+      - media: Slack file attachments
+    → ctx.dispatch(msg) or ctx.dispatchStream(msg)
+```
+
+**Outbound (Nous → Slack):**
+
+```
+NousManager turn completes
+  → pylon routes or agora send dispatcher
+  → agora.send("slack", { to, text, threadId, identity })
+  → SlackChannelProvider.send()
+    → Format: markdown → Slack mrkdwn
+    → Chunk at 4000 chars
+    → Resolve identity from agent config
+    → WebClient.chat.postMessage({ channel, text, thread_ts, username, icon_emoji })
+```
+
+### Module Structure
+
+```
+infrastructure/runtime/src/
+├── agora/                        # NEW — channel abstraction
+│   ├── types.ts                  # ChannelProvider interface, capabilities, params
+│   ├── registry.ts               # AgoraRegistry — register, start, stop, send, probe
+│   ├── format.ts                 # Shared formatting utilities (markdown normalization)
+│   ├── cli.ts                    # CLI onboarding: `aletheia channel add <id>`
+│   └── channels/
+│       └── slack/
+│           ├── provider.ts       # SlackChannelProvider implements ChannelProvider
+│           ├── listener.ts       # Socket Mode event handling, message parsing
+│           ├── sender.ts         # Outbound message delivery via WebClient
+│           ├── format.ts         # Markdown → Slack mrkdwn conversion
+│           ├── client.ts         # @slack/bolt App wrapper and WebClient factory
+│           ├── types.ts          # Slack-specific types
+│           └── streaming.ts      # Native Slack text streaming (Phase 4)
+├── semeion/                      # REFACTORED — becomes Signal channel provider
+│   ├── provider.ts               # NEW — SignalChannelProvider implements ChannelProvider
+│   ├── client.ts                 # Unchanged — signal-cli HTTP client
+│   ├── daemon.ts                 # Unchanged — signal-cli process management
+│   ├── listener.ts               # Refactored — SSE parsing, extracted from direct nous coupling
+│   ├── sender.ts                 # Refactored — extracted from direct nous coupling
+│   ├── format.ts                 # Unchanged — Signal markdown formatting
+│   ├── commands.ts               # Unchanged — command registry
+│   ├── tts.ts                    # Unchanged — text-to-speech
+│   ├── transcribe.ts             # Unchanged — audio transcription
+│   └── preprocess.ts             # Unchanged — link preprocessing
+```
+
+### Dependency Position
+
+Agora sits at the same layer as semeion in the dependency graph:
+
+| Module | May Import | Must Not Import |
+|--------|-----------|-----------------|
+| `agora` | `koina`, `taxis`, `mneme`, `nous` (types only), `organon` (commands type) | `pylon`, `prostheke`, `daemon`, `symbolon`, `dianoia`, `portability`, `hermeneus` |
+
+Semeion's dependency rules remain unchanged. Agora imports semeion for the Signal provider registration, or semeion self-registers. The preferred pattern is that `aletheia.ts` creates both providers and registers them with agora.
+
+---
+
+## Phases
+
+### Phase 1: Agora Core + Signal Refactor
+
+**Scope:** Create the `agora/` module with the `ChannelProvider` interface and `AgoraRegistry`. Refactor Signal out of `aletheia.ts` into `semeion/provider.ts` implementing `ChannelProvider`. Zero behavioral change — Signal works exactly as before, but through the abstraction.
+
+**Changes:**
+
+- Create `src/agora/types.ts` — all interfaces defined above
+- Create `src/agora/registry.ts` — `AgoraRegistry` class
+- Create `src/semeion/provider.ts` — `SignalChannelProvider` wrapping existing listener/sender
+- Refactor `src/aletheia.ts` — replace direct semeion wiring with agora registry
+- Update `src/pylon/routes/system.ts` — health probe via `agora.probeAll()`
+- Update `taxis/schema.ts` — ensure `ChannelsConfig` is extensible
+
+**Acceptance criteria:**
+- [ ] All existing Signal tests pass unchanged
+- [ ] `ChannelProvider` interface is defined and documented
+- [ ] `AgoraRegistry` manages provider lifecycle
+- [ ] `aletheia.ts` creates Signal provider via agora, not direct wiring
+- [ ] No behavioral change to any existing functionality
+- [ ] New tests for registry (register, start, stop, send dispatch)
+
+**Tests:**
+- `agora/registry.test.ts` — mock provider registration, lifecycle, send routing
+- `semeion/provider.test.ts` — SignalChannelProvider satisfies ChannelProvider contract
+
+---
+
+### Phase 2: Configuration + CLI Onboarding
+
+**Scope:** Extend the config schema for Slack. Build `aletheia channel add` CLI command with interactive onboarding. This is infra — no Slack runtime code yet, just the config layer and the front door.
+
+**Changes:**
+
+- Extend `taxis/schema.ts` — add `SlackChannelConfig` schema under `channels.slack`
+- Create `src/agora/cli.ts` — `aletheia channel add <id>` interactive wizard
+  - Generic scaffolding that delegates to channel-specific onboarding steps
+  - Signal gets a retroactive onboarding flow too (for consistency)
+- Create `src/agora/channels/slack/config.ts` — Slack-specific config validation, token format checks
+- Create `src/agora/channels/slack/onboarding.ts` — Slack-specific CLI wizard steps
+- Wire CLI command into `infrastructure/runtime/src/entry.ts`
+
+**Acceptance criteria:**
+- [ ] `aletheia channel add slack` runs the full onboarding wizard
+- [ ] Wizard validates token formats (xapp-, xoxb-) before writing config
+- [ ] Config is written to `aletheia.yaml` under `channels.slack`
+- [ ] `aletheia channel list` shows configured channels and status
+- [ ] `aletheia channel remove slack` removes config cleanly
+- [ ] Schema validation catches invalid Slack config on startup
+
+**Tests:**
+- `agora/cli.test.ts` — wizard flow with mocked prompts
+- `agora/channels/slack/config.test.ts` — token validation, schema edge cases
+
+---
+
+### Phase 3: Slack Channel Provider — Core Messaging
+
+**Scope:** Implement `SlackChannelProvider` with Socket Mode inbound and WebClient outbound. This is the first real Slack integration — messages flow both directions.
+
+**Changes:**
+
+- Add dependencies: `@slack/bolt`, `@slack/web-api`
+- Create `src/agora/channels/slack/provider.ts` — `SlackChannelProvider`
+- Create `src/agora/channels/slack/listener.ts` — Socket Mode event handler
+  - `message` events (DM, channel, thread)
+  - `app_mention` events
+  - Mention-gating for channels (configurable)
+  - Message normalization: strip bot mention, mrkdwn → markdown
+  - Thread context extraction (thread_ts → threadId)
+  - File attachment handling
+- Create `src/agora/channels/slack/sender.ts` — outbound message delivery
+  - Markdown → mrkdwn formatting
+  - Message chunking at 4000 chars
+  - Thread replies via thread_ts
+  - File upload for media
+  - Agent identity via username + icon_emoji (chat:write.customize)
+- Create `src/agora/channels/slack/format.ts` — bidirectional format conversion
+  - Markdown → mrkdwn (bold, italic, code, links, lists, blockquotes)
+  - mrkdwn → markdown (for inbound message normalization)
+  - Slack user/channel mention handling
+- Create `src/agora/channels/slack/client.ts` — @slack/bolt App wrapper
+  - Socket Mode initialization
+  - WebClient factory with retry config
+  - Connection health monitoring
+- Wire into `aletheia.ts` — register Slack provider with agora when configured
+
+**Acceptance criteria:**
+- [ ] Slack bot receives DMs and responds through the nous pipeline
+- [ ] Slack bot receives @mentions in channels and responds in-thread
+- [ ] Bindings route Slack channels/DMs to correct agents
+- [ ] Outbound messages use Slack mrkdwn formatting
+- [ ] Messages >4000 chars are chunked properly
+- [ ] Thread context is maintained (replies stay in thread)
+- [ ] Agent identity appears in Slack (name + emoji) when scope permits
+- [ ] Graceful reconnection on WebSocket drop
+- [ ] Probe endpoint reports Slack health
+- [ ] No impact on Signal functionality
+
+**Tests:**
+- `agora/channels/slack/provider.test.ts` — provider lifecycle, contract compliance
+- `agora/channels/slack/listener.test.ts` — event parsing, mention extraction, normalization
+- `agora/channels/slack/sender.test.ts` — formatting, chunking, identity resolution
+- `agora/channels/slack/format.test.ts` — markdown ↔ mrkdwn conversion
+- `agora/channels/slack/client.test.ts` — connection management, retry behavior
+
+---
+
+### Phase 4: Message Tool + Outbound Routing
+
+**Scope:** The `message` tool currently hardcodes Signal. After this phase, it routes to the correct channel based on target format, and agents can send to Slack channels/users.
+
+**Changes:**
+
+- Refactor `organon/built-in/message.ts` — accept channel-prefixed targets
+  - `slack:C0123456789` → Slack channel
+  - `slack:U0123456789` → Slack DM
+  - `slack:@username` → Slack DM (resolved)
+  - `+1234567890` or `signal:+1234567890` → Signal (backward compatible)
+  - `group:...` → Signal group (backward compatible)
+- Create `src/agora/routing.ts` — target format parsing, channel resolution
+- Wire message tool to agora registry instead of direct Signal sender
+- Update `voice_reply` tool to note Signal-only constraint
+
+**Acceptance criteria:**
+- [ ] `message` tool sends to Slack when target starts with `slack:`
+- [ ] `message` tool sends to Signal for existing target formats (backward compat)
+- [ ] Error handling for invalid targets, unconfigured channels
+- [ ] Agents can proactively message Slack channels and users
+
+**Tests:**
+- `agora/routing.test.ts` — target parsing, channel resolution
+- `organon/built-in/message.test.ts` — multi-channel routing
+
+---
+
+### Phase 5: Streaming + Reactions
+
+**Scope:** Native Slack text streaming (progressive message updates while the agent thinks) and reaction support (ack emoji while processing).
+
+**Changes:**
+
+- Implement `src/agora/channels/slack/streaming.ts` — native Slack streaming
+  - `chat.startStream` / `chat.appendStream` / `chat.stopStream`
+  - Integrates with `dispatchStream` from `ChannelContext`
+  - Fallback to normal send when streaming unavailable
+- Implement reaction support in `SlackChannelProvider`
+  - Processing ack: add ⏳ reaction on message receive, remove on complete
+  - Inbound reaction events → forward to nous if configured
+  - Outbound reactions via `sendReaction()`
+- Add `streaming` and `reactions` config toggles
+
+**Acceptance criteria:**
+- [ ] Agent responses stream progressively in Slack
+- [ ] Streaming gracefully falls back on error or unsupported workspace
+- [ ] ⏳ reaction appears while agent is processing
+- [ ] Reaction removed on completion
+- [ ] Streaming and reactions independently toggleable
+
+**Tests:**
+- `agora/channels/slack/streaming.test.ts` — stream lifecycle, fallback
+- Reaction lifecycle tests in provider test
+
+---
+
+### Phase 6: Access Control + DM Pairing
+
+**Scope:** Slack-specific access control — DM policies, channel allowlists, admin-only commands. Pairing flow for new DM users.
+
+**Changes:**
+
+- Implement DM policy enforcement in Slack listener
+  - `open` — respond to all DMs
+  - `allowlist` — check user ID against allowlist
+  - `disabled` — ignore DMs
+- Implement channel allowlist enforcement
+  - `groupPolicy: allowlist` + `allowedChannels` config
+  - Mention-gating: require @mention unless configured otherwise
+- Implement pairing flow for Slack DMs
+  - User sends DM → bot responds with pairing instructions
+  - `aletheia pairing approve slack <userId>` CLI command
+  - Approved users added to allowlist in config
+
+**Acceptance criteria:**
+- [ ] DM policy respected (open, allowlist, disabled)
+- [ ] Channel allowlist enforced
+- [ ] Mention-gating works in channels
+- [ ] Pairing flow guides new DM users
+- [ ] Admin can approve pairings via CLI
+- [ ] Policy changes via config reload without restart
+
+**Tests:**
+- Policy enforcement unit tests
+- Pairing flow integration test
+
+---
+
+## Dependency Graph
+
+```
+Phase 1 (agora core + Signal refactor) — prerequisite for everything
+  ├── Phase 2 (config + CLI) — can overlap late Phase 1
+  │     └── Phase 3 (Slack core messaging) — needs config schema
+  │           ├── Phase 4 (message tool + routing) — needs working send
+  │           ├── Phase 5 (streaming + reactions) — needs working provider
+  │           └── Phase 6 (access control + pairing) — needs working provider
+```
+
+Phase 1 is the critical path. Phases 4, 5, 6 are independent of each other once Phase 3 lands.
+
+---
+
+## Architecture Impact
+
+### New Module: agora
+
+Add to ARCHITECTURE.md module table:
+
+| Module | Domain | Files | Public Surface |
+|--------|--------|-------|----------------|
+| `agora` | Channel abstraction — provider interface, registry, routing, CLI onboarding | ~15 | `AgoraRegistry`, `ChannelProvider`, `ChannelSendParams`, CLI commands |
+
+### Initialization Order Change
+
+Current: semeion initialized directly in `startRuntime`
+
+After: agora initialized in `startRuntime`, semeion registered as provider via agora
+
+```
+taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon
+                                                                      ↑
+                                              agora initialized in startRuntime
+                                              ├── registers SignalChannelProvider (semeion)
+                                              └── registers SlackChannelProvider
+```
+
+### Dependency Rule Additions
+
+| Module | May Import |
+|--------|-----------|
+| `agora` | `koina`, `taxis`, `mneme`, `nous` (InboundMessage type), `organon` (command types) |
+| `semeion` | unchanged + `agora` (ChannelProvider type) |
+
+### Config Schema Extension
+
+```typescript
+const ChannelsConfig = z.object({
+  signal: SignalConfig,
+  slack: SlackConfig.optional(),   // NEW
+}).default({});
+```
+
+---
+
+## Open Questions
+
+1. **Slash commands in Slack.** Should Slack slash commands map to the existing semeion command registry, or does Slack get its own command surface? Recommendation: shared `CommandRegistry` in agora, populated by both channels. Slash commands in Slack are just a different trigger for the same commands.
+
+2. **Multi-workspace Slack.** Do we need multi-account Slack support (analogous to Signal multi-account)? Recommendation: defer. Single workspace is sufficient. The config schema should support it structurally (`accounts: { default: ... }`) so we don't paint ourselves into a corner.
+
+3. **Web UI awareness.** The web UI shows sessions with channel metadata. Slack sessions should display with Slack-specific context (channel name, thread link). This is UI work that can happen incrementally after Phase 3.
+
+4. **Event bus integration.** Should channel events (connect, disconnect, message received, message sent) emit on the global event bus? Yes — this enables the watchdog to monitor channel health. Define event format in Phase 1.
+
+---
+
+## References
+
+- Issue #210 — Investigate Slack integration
+- `docs/gnomon.md` — Naming system and philosophy
+- `docs/ARCHITECTURE.md` — Module dependency matrix
+- OpenClaw Slack implementation — `/tmp/oc-fresh/openclaw/src/slack/` (reference)
+- `@slack/bolt` — https://slack.dev/bolt-js/
+- Slack Socket Mode — https://api.slack.com/apis/socket-mode
+- Slack Events API — https://api.slack.com/events-api
