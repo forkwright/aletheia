@@ -1,6 +1,6 @@
 # Spec 34: Agora — Channel Abstraction and Slack Integration
 
-**Status:** Draft
+**Status:** In Progress (Phase 3)
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 34
@@ -443,7 +443,7 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 
 ## Phases
 
-### Phase 1: Agora Core + Signal Refactor
+### Phase 1: Agora Core + Signal Refactor ✅
 
 **Scope:** Create the `agora/` module with the `ChannelProvider` interface and `AgoraRegistry`. Refactor Signal out of `aletheia.ts` into `semeion/provider.ts` implementing `ChannelProvider`. Zero behavioral change — Signal works exactly as before, but through the abstraction.
 
@@ -457,20 +457,22 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 - Update `taxis/schema.ts` — ensure `ChannelsConfig` is extensible
 
 **Acceptance criteria:**
-- [ ] All existing Signal tests pass unchanged
-- [ ] `ChannelProvider` interface is defined and documented
-- [ ] `AgoraRegistry` manages provider lifecycle
-- [ ] `aletheia.ts` creates Signal provider via agora, not direct wiring
-- [ ] No behavioral change to any existing functionality
-- [ ] New tests for registry (register, start, stop, send dispatch)
+- [x] All existing Signal tests pass unchanged
+- [x] `ChannelProvider` interface is defined and documented
+- [x] `AgoraRegistry` manages provider lifecycle
+- [x] `aletheia.ts` creates Signal provider via agora, not direct wiring
+- [x] No behavioral change to any existing functionality
+- [x] New tests for registry (register, start, stop, send dispatch)
+
+**Result:** Merged as PR #283 (commit `93f0e442`). 15 registry tests, `SignalChannelProvider` wraps existing semeion code. Net -67 lines in `aletheia.ts` — cleaner than before.
 
 **Tests:**
-- `agora/registry.test.ts` — mock provider registration, lifecycle, send routing
+- `agora/registry.test.ts` — mock provider registration, lifecycle, send routing (15 tests)
 - `semeion/provider.test.ts` — SignalChannelProvider satisfies ChannelProvider contract
 
 ---
 
-### Phase 2: Configuration + CLI Onboarding
+### Phase 2: Configuration + CLI Onboarding ✅
 
 **Scope:** Extend the config schema for Slack. Build `aletheia channel add` CLI command with interactive onboarding. This is infra — no Slack runtime code yet, just the config layer and the front door.
 
@@ -485,22 +487,34 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 - Wire CLI command into `infrastructure/runtime/src/entry.ts`
 
 **Acceptance criteria:**
-- [ ] `aletheia channel add slack` runs the full onboarding wizard
-- [ ] Wizard validates token formats (xapp-, xoxb-) before writing config
-- [ ] Config is written to `aletheia.yaml` under `channels.slack`
-- [ ] `aletheia channel list` shows configured channels and status
-- [ ] `aletheia channel remove slack` removes config cleanly
-- [ ] Schema validation catches invalid Slack config on startup
+- [x] `aletheia channel add slack` runs the full onboarding wizard
+- [x] Wizard validates token formats (xapp-, xoxb-) before writing config
+- [x] Config is written to `aletheia.yaml` under `channels.slack`
+- [x] `aletheia channel list` shows configured channels and status
+- [x] `aletheia channel remove slack` removes config cleanly
+- [x] Schema validation catches invalid Slack config on startup
+
+**Result:** Merged as PR #284 (commit `1f0f6b75`). 14 new tests (7 config schema + 7 CLI). Interactive wizard validates `xapp-`/`xoxb-` prefixes, guides through scopes and event subscriptions.
 
 **Tests:**
-- `agora/cli.test.ts` — wizard flow with mocked prompts
-- `agora/channels/slack/config.test.ts` — token validation, schema edge cases
+- `agora/cli.test.ts` — wizard flow (7 tests)
+- `agora/config.test.ts` — schema validation, defaults, rejection (7 tests)
 
 ---
 
-### Phase 3: Slack Channel Provider — Core Messaging
+### Phase 3: Slack Channel Provider — Core Messaging 🔨
 
 **Scope:** Implement `SlackChannelProvider` with Socket Mode inbound and WebClient outbound. This is the first real Slack integration — messages flow both directions.
+
+**Reference implementation:** OpenClaw (`github.com/openclaw/openclaw`, MIT, 236k stars) — their `src/slack/` directory (~15,900 lines) is production-grade Slack integration. Full analysis saved to `nous/syn/context/openclaw-slack-reference.md`. Key patterns to adopt:
+
+- `@slack/bolt` App with `socketMode: true` — handles reconnect automatically
+- Inbound debouncing (`createInboundDebouncer`) — rapid messages coalesced into single turn
+- `markMessageSeen(channel, ts)` dedup — prevents duplicate event processing
+- Identity override with `chat:write.customize` scope + graceful fallback on `missing_scope`
+- IR-based markdown → mrkdwn conversion (not regex) — handles edge cases properly
+- `AbortSignal` lifecycle for clean start/stop
+- `auth.test()` on startup to get `botUserId` for self-message filtering
 
 **Changes:**
 
@@ -513,19 +527,23 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
   - Message normalization: strip bot mention, mrkdwn → markdown
   - Thread context extraction (thread_ts → threadId)
   - File attachment handling
+  - Inbound debouncing (per OpenClaw pattern — coalesce rapid messages from same user/thread)
+  - Message dedup via seen-set (per OpenClaw `markMessageSeen` pattern)
 - Create `src/agora/channels/slack/sender.ts` — outbound message delivery
   - Markdown → mrkdwn formatting
   - Message chunking at 4000 chars
   - Thread replies via thread_ts
-  - File upload for media
-  - Agent identity via username + icon_emoji (chat:write.customize)
+  - File upload for media via `files.uploadV2`
+  - Agent identity via username + icon_emoji (chat:write.customize) with scope fallback
 - Create `src/agora/channels/slack/format.ts` — bidirectional format conversion
   - Markdown → mrkdwn (bold, italic, code, links, lists, blockquotes)
   - mrkdwn → markdown (for inbound message normalization)
-  - Slack user/channel mention handling
+  - Slack user/channel mention handling (`<@U123>`, `<#C456>`)
+  - Escape `&`, `<`, `>` while preserving Slack angle-bracket tokens
 - Create `src/agora/channels/slack/client.ts` — @slack/bolt App wrapper
-  - Socket Mode initialization
-  - WebClient factory with retry config
+  - Socket Mode initialization with retry config
+  - WebClient factory (per OpenClaw `createSlackWebClient` pattern)
+  - `auth.test()` on connect for botUserId/teamId
   - Connection health monitoring
 - Wire into `aletheia.ts` — register Slack provider with agora when configured
 
@@ -713,7 +731,7 @@ const ChannelsConfig = z.object({
 - Issue #210 — Investigate Slack integration
 - `docs/gnomon.md` — Naming system and philosophy
 - `docs/ARCHITECTURE.md` — Module dependency matrix
-- OpenClaw Slack implementation — `/tmp/oc-fresh/openclaw/src/slack/` (reference)
+- **OpenClaw** (`github.com/openclaw/openclaw`, MIT, 236k stars) — production-grade multi-channel assistant with Slack integration. Their `src/slack/` (~15,900 lines across 40+ files) is the primary reference implementation. Key files: `monitor/provider.ts` (Socket Mode bootstrap), `send.ts` (outbound delivery), `format.ts` (mrkdwn conversion), `monitor/message-handler.ts` (inbound debouncing). Full analysis: `nous/syn/context/openclaw-slack-reference.md`
 - `@slack/bolt` — https://slack.dev/bolt-js/
 - Slack Socket Mode — https://api.slack.com/apis/socket-mode
 - Slack Events API — https://api.slack.com/events-api
