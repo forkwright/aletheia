@@ -23,8 +23,15 @@ if ui_changed; then
   npm run lint:check && npm run typecheck
 fi
 
-# Python sidecar: ruff + pyright
+# Python sidecar: ruff + pyright + invariant tests
 if sidecar_changed; then
   cd "$ROOT/infrastructure/memory/sidecar"
   uv run ruff check . && uv run pyright
+  # Run invariant tests (fast design-decision tests that must never regress)
+  if [ -f tests/test_invariants.py ] || [ -f tests/test_vocab.py ]; then
+    uv run pytest tests/test_vocab.py tests/test_invariants.py -x -q --tb=short 2>/dev/null || {
+      echo "Invariant tests failed — fix before committing"
+      exit 1
+    }
+  fi
 fi
