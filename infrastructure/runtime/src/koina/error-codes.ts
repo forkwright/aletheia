@@ -64,6 +64,8 @@ export const ERROR_CODES = {
   CONFIG_NOT_FOUND: "Configuration file not found at expected path",
   CONFIG_VALIDATION_FAILED: "Configuration failed schema validation",
   CONFIG_MISSING_REQUIRED: "Required configuration field is missing",
+  CONFIG_ANCHOR_NOT_FOUND: "Bootstrap anchor not found — run 'aletheia init' to configure",
+  CONFIG_ANCHOR_INVALID: "Bootstrap anchor.json failed schema validation",
 
   // taxis (scaffold)
   CONFIG_SCAFFOLD_INVALID_ID: "Agent scaffold failed — invalid agent ID",
