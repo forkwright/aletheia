@@ -75,6 +75,30 @@ _background_tasks: set[asyncio.Task[Any]] = set()  # prevent GC of fire-and-forg
 # Rolling latency buffer for /search endpoint — captured per request, P95 computed on /health.
 _RECALL_LATENCY_SAMPLES: deque[float] = deque(maxlen=100)
 
+# Rolling flush result buffer — (timestamp, success) pairs, capped at 500 entries.
+# Appended by add_batch after each upsert loop. P24h flush success rate computed on /health.
+_FLUSH_RESULTS: deque[tuple[float, bool]] = deque(maxlen=500)
+
+
+def _compute_flush_success_rate(window_hours: float = 24.0) -> dict[str, Any] | None:
+    """Compute flush success rate from the rolling _FLUSH_RESULTS buffer.
+
+    Returns a dict with success_rate, sample_count, and window_hours, or None
+    if no data exists within the window.
+    """
+    if not _FLUSH_RESULTS:
+        return None
+    cutoff = time.time() - window_hours * 3600
+    window_entries = [(ts, ok) for ts, ok in _FLUSH_RESULTS if ts >= cutoff]
+    if not window_entries:
+        return None
+    success_count = sum(1 for _, ok in window_entries if ok)
+    return {
+        "success_rate": success_count / len(window_entries),
+        "sample_count": len(window_entries),
+        "window_hours": window_hours,
+    }
+
 
 def _compute_p95(samples: deque[float]) -> float | None:
     """Compute P95 latency from a rolling sample deque. Returns None if < 5 samples."""
@@ -629,6 +653,9 @@ async def add_batch(req: AddBatchRequest, request: Request) -> dict[str, Any]:
             f"{errors} errors (source={req.source}, agent={req.agent_id})"
         )
 
+        # Record flush outcome for success rate tracking — success when no errors occurred
+        _FLUSH_RESULTS.append((time.time(), errors == 0))
+
         # Graph extraction via SimpleKGPipeline — fire and forget
         if added > 0 and new_texts:
             backend: dict[str, Any] = getattr(request.app.state, "backend", LLM_BACKEND)
@@ -909,6 +936,7 @@ def _evaluate_thresholds(
     latency_p95_ms: float | None,
     thresholds: dict[str, float],
     connectivity_failed: bool,
+    flush_success_rate: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate metrics against thresholds and compute status."""
     exceeded: list[str] = []
@@ -929,6 +957,10 @@ def _evaluate_thresholds(
     if latency_p95_ms is not None and latency_p95_ms > thresholds["recallLatencyP95Ms"]:
         exceeded.append("recall_latency_p95_ms")
         exceeded_values["recall_latency_p95_ms"] = latency_p95_ms
+
+    if flush_success_rate is not None and flush_success_rate < thresholds.get("flushSuccessRateMin", 0.95):
+        exceeded.append("flush_success_rate")
+        exceeded_values["flush_success_rate"] = flush_success_rate
 
     if connectivity_failed or len(exceeded) >= 2:
         status = "critical"
@@ -1007,6 +1039,10 @@ async def health_check(request: Request, thresholds: str | None = None) -> dict[
     latency_p95_ms = latency_p95_s * 1000 if latency_p95_s is not None else None
     sample_count = len(_RECALL_LATENCY_SAMPLES)
 
+    # Flush success rate from module-level buffer
+    flush_data = _compute_flush_success_rate()
+    flush_success_rate = flush_data["success_rate"] if flush_data is not None else None
+
     # Parse thresholds and evaluate
     threshold_config = _parse_thresholds(thresholds)
     evaluation = _evaluate_thresholds(
@@ -1016,6 +1052,7 @@ async def health_check(request: Request, thresholds: str | None = None) -> dict[
         latency_p95_ms=latency_p95_ms,
         thresholds=threshold_config,
         connectivity_failed=connectivity_failed,
+        flush_success_rate=flush_success_rate,
     )
 
     all_ok = all(v == "ok" for v in checks.values())
@@ -1039,6 +1076,7 @@ async def health_check(request: Request, thresholds: str | None = None) -> dict[
             "noise_rate": noise_rate,
             "sample_count": sample_count,
         },
+        "flush": flush_data,
         "thresholds": evaluation["thresholds"],
     }
 
