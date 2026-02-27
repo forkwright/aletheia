@@ -26,7 +26,7 @@ jobs:
         run: cd infrastructure/runtime && npm run test:coverage
       - name: Integration tests
         run: cd infrastructure/runtime && npm run test:integration
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-coverage
@@ -64,7 +64,7 @@ jobs:
               }
             } catch { console.log('No dead code report generated'); }
           "
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nightly-dead-code
