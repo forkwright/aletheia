@@ -10,6 +10,10 @@ import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
 
+const avgNums = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
+const fmtNum = (n: number) => n.toFixed(2);
+const padEnd = (s: string, w: number) => s.padEnd(w);
+
 process.on("unhandledRejection", (reason) => {
   log.error(`Unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : reason}`);
   process.exit(1);
@@ -961,23 +965,20 @@ memoryCmd
       domainMap.set(r.domain, existing);
     }
 
-    const avg = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
-    const fmt = (n: number) => n.toFixed(2);
-
     type DomainSummary = { precision: number; recall: number; f1: number; query_count: number };
     const byDomain: Record<string, DomainSummary> = {};
     for (const [domain, vals] of domainMap) {
       byDomain[domain] = {
-        precision: avg(vals.precision),
-        recall: avg(vals.recall),
-        f1: avg(vals.f1),
+        precision: avgNums(vals.precision),
+        recall: avgNums(vals.recall),
+        f1: avgNums(vals.f1),
         query_count: vals.precision.length,
       };
     }
 
-    const overallPrecision = avg(results.map((r) => r.precision));
-    const overallRecall = avg(results.map((r) => r.recall));
-    const overallF1 = avg(results.map((r) => r.f1));
+    const overallPrecision = avgNums(results.map((r) => r.precision));
+    const overallRecall = avgNums(results.map((r) => r.recall));
+    const overallF1 = avgNums(results.map((r) => r.f1));
 
     // Baseline comparison
     let baselineMsg = "";
@@ -997,7 +998,7 @@ memoryCmd
         }
         const precSign = precDiff >= 0 ? "+" : "";
         const recSign = recDiff >= 0 ? "+" : "";
-        baselineMsg = `  Baseline: precision ${precSign}${fmt(precDiff)} (${precStatus}), recall ${recSign}${fmt(recDiff)} (${recStatus})`;
+        baselineMsg = `  Baseline: precision ${precSign}${fmtNum(precDiff)} (${precStatus}), recall ${recSign}${fmtNum(recDiff)} (${recStatus})`;
       } catch { /* baseline parse failed — skip comparison */ }
     }
 
@@ -1014,20 +1015,19 @@ memoryCmd
     }
 
     // Print results table
-    const domains = Object.keys(byDomain).sort();
+    const domains = Object.keys(byDomain).toSorted();
     const colW = Math.max(8, ...domains.map((d) => d.length));
     const sep = "─".repeat(colW);
-    const pad = (s: string, w: number) => s.padEnd(w);
 
     console.log(`\nRecall Audit — ${results.length} queries, ${domains.length} domains\n`);
-    console.log(`  ${pad("Domain", colW)}  Queries  Precision  Recall   F1`);
+    console.log(`  ${padEnd("Domain", colW)}  Queries  Precision  Recall   F1`);
     console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
     for (const domain of domains) {
       const d = byDomain[domain]!;
-      console.log(`  ${pad(domain, colW)}  ${String(d.query_count).padStart(7)}  ${fmt(d.precision).padStart(9)}  ${fmt(d.recall).padStart(6)}   ${fmt(d.f1)}`);
+      console.log(`  ${padEnd(domain, colW)}  ${String(d.query_count).padStart(7)}  ${fmtNum(d.precision).padStart(9)}  ${fmtNum(d.recall).padStart(6)}   ${fmtNum(d.f1)}`);
     }
     console.log(`  ${sep}  ───────  ─────────  ──────   ──`);
-    console.log(`  ${pad("OVERALL", colW)}  ${String(results.length).padStart(7)}  ${fmt(overallPrecision).padStart(9)}  ${fmt(overallRecall).padStart(6)}   ${fmt(overallF1)}`);
+    console.log(`  ${padEnd("OVERALL", colW)}  ${String(results.length).padStart(7)}  ${fmtNum(overallPrecision).padStart(9)}  ${fmtNum(overallRecall).padStart(6)}   ${fmtNum(overallF1)}`);
 
     if (baselineMsg) {
       console.log(`\n${baselineMsg}`);
