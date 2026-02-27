@@ -14,6 +14,7 @@ import type { SkillRegistry } from "../organon/skills.js";
 import type { McpClientManager } from "../organon/mcp-client.js";
 import type { CommandRegistry } from "../semeion/commands.js";
 import type { RouteDeps, RouteRefs } from "./routes/deps.js";
+import { DeliveryQueue } from "./delivery-queue.js";
 
 import { authRoutes } from "./routes/auth.js";
 import { auditRoutes } from "./routes/audit.js";
@@ -166,6 +167,7 @@ export function createGateway(
 
   // Build shared dependencies and refs for route modules
   const planningOrchestrator = manager.getPlanningOrchestrator();
+  const deliveryQueue = new DeliveryQueue();
   const deps: RouteDeps = {
     config,
     manager,
@@ -174,6 +176,7 @@ export function createGateway(
     authSessionStore,
     auditLog,
     authRoutes: authRouteFns,
+    deliveryQueue,
     ...(planningOrchestrator ? { planningOrchestrator } : {}),
   };
 

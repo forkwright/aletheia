@@ -281,6 +281,35 @@ gateway
   });
 
 program
+  .command("refresh-token")
+  .description("Check OAuth token expiry and refresh if needed")
+  .action(async () => {
+    const { readCredentials, isTokenExpired, refreshOAuthToken } = await import("./hermeneus/oauth-refresh.js");
+    const creds = readCredentials();
+    if (!creds) {
+      console.log("❌ No OAuth credentials found (not using OAuth authentication)");
+      process.exit(0);
+    }
+
+    const remaining = creds.expiresAt - Date.now();
+    const hoursLeft = (remaining / 3_600_000).toFixed(1);
+
+    if (!isTokenExpired(creds.expiresAt)) {
+      console.log(`✅ Token valid — ${hoursLeft}h remaining (expires ${new Date(creds.expiresAt).toISOString()})`);
+      process.exit(0);
+    }
+
+    console.log(`⚠️  Token expired or expiring soon (${hoursLeft}h) — attempting refresh...`);
+    const result = await refreshOAuthToken();
+    if (result.success) {
+      console.log(`✅ Token refreshed — new expiry: ${new Date(result.newExpiresAt!).toISOString()}`);
+    } else {
+      console.log(`❌ Refresh failed: ${result.error}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("doctor")
   .description("Check system health — connectivity, dependencies, and boot persistence")
   .action(async () => {
@@ -416,40 +445,6 @@ program
       }
     } catch (error) {
       console.error(`Failed: ${error instanceof Error ? error.message : error}`);
-      process.exit(1);
-    }
-  });
-
-program
-  .command("plan")
-  .description("Start or resume a Dianoia planning project")
-  .option("-a, --agent <id>", "Agent ID to plan for")
-  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
-  .option("-t, --token <token>", "Auth token")
-  .action(async (opts: { agent?: string; url: string; token?: string }) => {
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (opts.token) headers["Authorization"] = `Bearer ${opts.token}`;
-
-      const res = await fetch(`${opts.url}/api/sessions/send`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          agentId: opts.agent ?? "syn",
-          message: "/plan",
-          sessionKey: "cli:plan",
-        }),
-        signal: AbortSignal.timeout(120000),
-      });
-
-      const data = await res.json() as Record<string, unknown>;
-      if (!res.ok) {
-        console.error(`Error: ${(data["error"] as string | undefined) ?? res.statusText}`);
-        process.exit(1);
-      }
-      console.log((data["response"] as string | undefined) ?? "(no response)");
-    } catch (error) {
-      console.error(`Failed: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
     }
   });
@@ -1358,6 +1353,292 @@ channelCmd
   .action(async (channel: string) => {
     const { channelRemove } = await import("./agora/cli.js");
     channelRemove(channel);
+  });
+
+// --- Plan (Dianoia) ---
+const planCmd = program.command("plan").description("Dianoia planning projects");
+
+async function planApi(path: string, opts: { url: string; token?: string }, method = "GET", body?: unknown): Promise<unknown> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  let token = opts.token;
+  if (!token) {
+    try {
+      const { loadConfig: lc } = await import("./taxis/loader.js");
+      const cfg = lc();
+      const raw = cfg.gateway?.auth?.token;
+      if (typeof raw === "string") token = raw;
+    } catch { /* config unavailable */ }
+  }
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${opts.url}${path}`, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+planCmd
+  .command("list")
+  .description("List all planning projects")
+  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
+  .option("-t, --token <token>", "Auth token")
+  .action(async (opts: { url: string; token?: string }) => {
+    try {
+      const data = await planApi("/api/planning/projects", opts) as { projects: Array<Record<string, unknown>> };
+      const projects = data.projects ?? [];
+      if (projects.length === 0) {
+        console.log("No planning projects.");
+        return;
+      }
+      console.log(`${"ID".padEnd(30)}  ${"State".padEnd(12)}  Goal`);
+      console.log(`${"─".repeat(30)}  ${"─".repeat(12)}  ${"─".repeat(40)}`);
+      for (const p of projects) {
+        const id = String(p["id"] ?? "").slice(0, 28);
+        const state = String(p["state"] ?? "unknown").padEnd(12);
+        const goal = String(p["goal"] ?? "").slice(0, 60);
+        console.log(`${id.padEnd(30)}  ${state}  ${goal}`);
+      }
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+planCmd
+  .command("show <id>")
+  .description("Show project details and roadmap")
+  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
+  .option("-t, --token <token>", "Auth token")
+  .action(async (id: string, opts: { url: string; token?: string }) => {
+    try {
+      const data = await planApi(`/api/planning/projects/${id}`, opts) as { project: Record<string, unknown> };
+      const p = data.project;
+      if (!p) { console.error("Project not found."); process.exit(1); }
+
+      console.log(`Project: ${p["goal"]}`);
+      console.log(`  ID:    ${p["id"]}`);
+      console.log(`  State: ${p["state"]}`);
+      if (p["constraints"]) console.log(`  Scope: ${p["constraints"]}`);
+      console.log();
+
+      // Phases
+      const phases = (p["phases"] ?? []) as Array<Record<string, unknown>>;
+      if (phases.length > 0) {
+        console.log("Phases:");
+        for (const ph of phases) {
+          const icon = ph["state"] === "complete" ? "✅" : ph["state"] === "executing" ? "🔄" : "⬜";
+          const reqs = (ph["requirements"] ?? []) as string[];
+          console.log(`  ${icon} ${ph["name"]}${reqs.length > 0 ? ` (${reqs.length} reqs)` : ""}`);
+          if (ph["goal"]) console.log(`     ${ph["goal"]}`);
+        }
+      }
+
+      // Requirements summary
+      const reqs = (p["requirements"] ?? []) as Array<Record<string, unknown>>;
+      if (reqs.length > 0) {
+        const v1 = reqs.filter(r => r["tier"] === "v1").length;
+        const v2 = reqs.filter(r => r["tier"] === "v2").length;
+        const oos = reqs.filter(r => r["tier"] === "out-of-scope").length;
+        console.log(`\nRequirements: ${v1} v1, ${v2} v2, ${oos} out-of-scope`);
+      }
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+planCmd
+  .command("abandon <id>")
+  .description("Abandon a planning project")
+  .option("-u, --url <url>", "Gateway URL", "http://localhost:18789")
+  .option("-t, --token <token>", "Auth token")
+  .action(async (id: string, opts: { url: string; token?: string }) => {
+    try {
+      await planApi(`/api/planning/projects/${id}`, opts, "DELETE");
+      console.log(`Project ${id} abandoned.`);
+    } catch (error) {
+      console.error(`Failed: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+  });
+
+// --- Deploy ---
+program
+  .command("deploy")
+  .description("Build and deploy Aletheia from current source")
+  .option("--dry-run", "Show what would be done without executing")
+  .option("--skip-ui", "Skip UI build (runtime-only update)")
+  .option("--no-restart", "Build and copy but don't restart the daemon")
+  .action(async (opts: { dryRun?: boolean; skipUi?: boolean; restart?: boolean }) => {
+    const { existsSync: exists } = await import("node:fs");
+    const { execSync } = await import("node:child_process");
+    const { join } = await import("node:path");
+    const { loadBootstrapAnchor } = await import("./taxis/bootstrap-loader.js");
+
+    const dryRun = opts.dryRun ?? false;
+    const skipUi = opts.skipUi ?? false;
+    const restart = opts.restart !== false; // default true unless --no-restart
+
+    const run = (cmd: string, label: string, cwd?: string): boolean => {
+      if (dryRun) {
+        console.log(`  [dry-run] ${label}: ${cmd}${cwd ? ` (in ${cwd})` : ""}`);
+        return true;
+      }
+      try {
+        console.log(`  ${label}...`);
+        execSync(cmd, { cwd, stdio: "pipe", timeout: 120_000 });
+        console.log(`    ✅ done`);
+        return true;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`    ❌ ${msg.split("\n")[0]}`);
+        return false;
+      }
+    };
+
+    // Find source root — look for infrastructure/runtime/package.json
+    let sourceRoot: string;
+    try {
+      const { anchor } = loadBootstrapAnchor();
+      // Anchor gives us deploy dir; source root is typically the repo root
+      // Walk up from anchor's nousDir to find the repo
+      const repoMarkers = ["infrastructure/runtime/package.json", ".git"];
+      let candidate = join(anchor.nousDir, "..");
+      let found = false;
+      for (let i = 0; i < 5; i++) {
+        if (repoMarkers.every(m => exists(join(candidate, m)))) {
+          sourceRoot = candidate;
+          found = true;
+          break;
+        }
+        candidate = join(candidate, "..");
+      }
+      if (!found) {
+        // Fallback: common location
+        if (exists("/mnt/ssd/aletheia/infrastructure/runtime/package.json")) {
+          sourceRoot = "/mnt/ssd/aletheia";
+        } else {
+          console.error("Cannot locate Aletheia source root. Run from the repo or set anchor.json.");
+          process.exit(1);
+          return;
+        }
+      }
+    } catch {
+      if (exists("/mnt/ssd/aletheia/infrastructure/runtime/package.json")) {
+        sourceRoot = "/mnt/ssd/aletheia";
+      } else {
+        console.error("Cannot locate Aletheia source root.");
+        process.exit(1);
+        return;
+      }
+    }
+
+    const runtimeDir = join(sourceRoot!, "infrastructure", "runtime");
+    const uiDir = join(sourceRoot!, "ui");
+
+    // Determine deploy target
+    let deployDir: string;
+    try {
+      const { anchor } = loadBootstrapAnchor();
+      deployDir = anchor.deployDir;
+    } catch {
+      deployDir = join(sourceRoot!, "deploy");
+    }
+
+    console.log(`\nAletheia Update${dryRun ? " (dry run)" : ""}`);
+    console.log(`  Source:  ${sourceRoot!}`);
+    console.log(`  Deploy:  ${deployDir}`);
+    console.log();
+
+    // Step 1: Git pull (with dirty check)
+    try {
+      if (!dryRun) {
+        const status = execSync("git status --porcelain", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+        if (status) {
+          console.log(`  ⚠️  Working tree has uncommitted changes (${status.split("\n").length} files)`);
+        }
+      }
+    } catch { /* git status failed — proceed anyway */ }
+
+    const sha1 = dryRun ? "abc1234" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+    if (!run("git pull origin main --ff-only", "Git pull", sourceRoot!)) {
+      console.error("\nGit pull failed. Resolve conflicts first.");
+      process.exit(1);
+    }
+    const sha2 = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+    if (sha1 === sha2 && !dryRun) {
+      console.log("  Already up to date.");
+    }
+
+    // Step 2: Build runtime
+    if (!run("npx tsdown", "Build runtime", runtimeDir)) {
+      process.exit(1);
+    }
+
+    // Step 3: Build UI (unless --skip-ui)
+    if (!skipUi) {
+      if (exists(join(uiDir, "package.json"))) {
+        if (!run("npm run build", "Build UI", uiDir)) {
+          process.exit(1);
+        }
+      } else {
+        console.log("  [skip] UI directory not found");
+      }
+    } else {
+      console.log("  [skip] UI build (--skip-ui)");
+    }
+
+    // Step 4: Copy artifacts
+    const { mkdirSync } = await import("node:fs");
+    if (!dryRun) mkdirSync(deployDir, { recursive: true });
+
+    run(`cp -r ${join(runtimeDir, "dist", "entry.mjs")} ${join(deployDir, "entry.mjs")}`, "Copy runtime artifact");
+
+    if (!skipUi && exists(join(uiDir, "dist"))) {
+      run(`rm -rf ${join(deployDir, "ui")} && cp -r ${join(uiDir, "dist")} ${join(deployDir, "ui")}`, "Copy UI build");
+    }
+
+    // Copy shared assets
+    for (const dir of ["shared/bin", "shared/config", "shared/templates"]) {
+      const src = join(sourceRoot!, dir);
+      const dest = join(deployDir, dir);
+      if (exists(src)) {
+        run(`mkdir -p ${dest} && rsync -a --delete ${src}/ ${dest}/`, `Sync ${dir}`);
+      }
+    }
+
+    // Step 5: Restart
+    if (restart) {
+      const finalSha = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+      run("systemctl --user restart aletheia", "Restart daemon");
+
+      if (!dryRun) {
+        // Wait for startup, check health
+        console.log("  Waiting for startup...");
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const res = await fetch("http://localhost:18789/api/metrics", { signal: AbortSignal.timeout(5000) });
+          if (res.ok) {
+            console.log(`  ✅ Gateway responding`);
+          } else {
+            console.log(`  ⚠️  Gateway returned ${res.status}`);
+          }
+        } catch {
+          console.log("  ⚠️  Gateway not responding — check logs: journalctl --user -u aletheia -n 50");
+        }
+      }
+
+      console.log(`\n✅ Updated to ${dryRun ? sha2 : finalSha}`);
+    } else {
+      console.log("\n✅ Build complete (restart skipped — use systemctl --user restart aletheia)");
+    }
   });
 
 program.parse();

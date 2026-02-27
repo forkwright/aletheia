@@ -9,6 +9,7 @@ import { initPaths, nousSharedDir, paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
+import { proactiveRefresh } from "./hermeneus/oauth-refresh.js";
 import { ToolRegistry } from "./organon/registry.js";
 import { execTool } from "./organon/built-in/exec.js";
 import { readTool } from "./organon/built-in/read.js";
@@ -77,6 +78,7 @@ import { PluginRegistry } from "./prostheke/registry.js";
 import { CronScheduler } from "./daemon/cron.js";
 import { runNightlyReflection, runWeeklyReflection } from "./daemon/reflection-cron.js";
 import { runEvolutionCycle } from "./daemon/evolution-cron.js";
+import { runGraphMaintenance } from "./daemon/graph-maintenance-cron.js";
 import { runRetention } from "./daemon/retention.js";
 import { type ServiceProbe, Watchdog } from "./daemon/watchdog.js";
 import { startUpdateChecker } from "./daemon/update-check.js";
@@ -177,6 +179,13 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
       }
     }
   }
+
+  // Proactive OAuth refresh — check token expiry on startup, refresh if needed.
+  // Fire-and-forget: runs async while the rest of startup continues.
+  // If refresh succeeds, the credential file is updated before the first API call.
+  proactiveRefresh().catch((err) =>
+    log.warn(`Proactive OAuth refresh failed (non-fatal): ${err instanceof Error ? err.message : err}`),
+  );
 
   const router = createDefaultRouter(config.models);
 
@@ -802,6 +811,21 @@ export async function startRuntime(configPath?: string): Promise<void> {
     }
     const result = await runEvolutionCycle(runtime.store, runtime.router, config, opts);
     return `Evolution: ${result.agentsProcessed} agents, ${result.variantsCreated} variants, ${result.promotions} promotions`;
+  });
+
+  // Graph and vector store maintenance — monthly cleanup of Neo4j drift, Qdrant duplicates, orphans
+  cron.registerCommand("graph:maintenance", async () => {
+    const result = await runGraphMaintenance({
+      neo4jPassword: process.env["NEO4J_PASSWORD"],
+    });
+    return (
+      `Graph maintenance: ${result.graphSanity.nodes} nodes, ` +
+      `${result.graphSanity.violations.length} violations, ` +
+      `${result.dedup.removed} deduped, ` +
+      `${result.orphans.removed} orphans purged ` +
+      `(${(result.durationMs / 1000).toFixed(1)}s)` +
+      (result.errors.length > 0 ? ` [${result.errors.length} errors]` : "")
+    );
   });
 
   if (config.cron.enabled) {
