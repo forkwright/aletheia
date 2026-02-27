@@ -1,11 +1,47 @@
 // Planning API routes — /api/planning/projects and /api/planning/projects/:id
+//
+// Phase 4 (ORCH-01 through ORCH-05, SYNC-01 through SYNC-04):
+// - Full CRUD for requirements, phases, categories, discussions
+// - Bidirectional file sync: every mutation writes SQLite AND markdown
+// - SSE events emitted on every state change for real-time UI push
 import { Hono } from "hono";
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
 import type { RouteDeps, RouteRefs } from "../pylon/routes/deps.js";
 import { PlanningStore } from "./store.js";
+import { RequirementsOrchestrator } from "./requirements.js";
+import type { CategoryProposal, ScopingDecision } from "./requirements.js";
+import { writeRequirementsFile, writeRoadmapFile } from "./project-files.js";
 
 const log = createLogger("pylon:planning");
+
+/**
+ * Sync requirements from SQLite to REQUIREMENTS.md.
+ * Called after every requirement mutation so file stays co-primary with DB.
+ */
+function syncRequirementsFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
+  if (!workspaceRoot) return;
+  try {
+    const reqs = store.listRequirements(projectId);
+    writeRequirementsFile(workspaceRoot, projectId, reqs);
+  } catch (err) {
+    log.warn(`Failed to sync REQUIREMENTS.md for ${projectId}`, { error: err });
+  }
+}
+
+/**
+ * Sync phases from SQLite to ROADMAP.md.
+ * Called after every phase mutation.
+ */
+function syncRoadmapFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
+  if (!workspaceRoot) return;
+  try {
+    const phases = store.listPhases(projectId);
+    writeRoadmapFile(workspaceRoot, projectId, phases);
+  } catch (err) {
+    log.warn(`Failed to sync ROADMAP.md for ${projectId}`, { error: err });
+  }
+}
 
 export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   const app = new Hono();
@@ -15,6 +51,15 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   const getStore = (): PlanningStore | null => {
     try {
       return deps.store ? new PlanningStore(deps.store.getDb()) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Get workspace root from orchestrator for file sync
+  const getWorkspaceRoot = (): string | null => {
+    try {
+      return orch?.getWorkspaceOrThrow() ?? null;
     } catch {
       return null;
     }
@@ -475,6 +520,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         rationale: body.rationale ?? null,
         phaseId: body.phaseId ?? null,
       });
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "created", requirementId: req.id, reqId: req.reqId,
       });
@@ -513,6 +559,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       const updated = store.updateRequirement(req.id, body);
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "updated", requirementId: req.id, reqId: updated.reqId, changes: Object.keys(body),
       });
@@ -541,6 +588,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       store.deleteRequirement(req.id);
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
         projectId, action: "deleted", requirementId: req.id, reqId: req.reqId,
       });
@@ -576,6 +624,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       const updated = store.updatePhase(phaseId, body);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "updated", phaseId, changes: Object.keys(body),
       });
@@ -612,6 +661,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       }
 
       store.deletePhase(phaseId);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "deleted", phaseId, phaseName: phase.name,
       });
@@ -638,6 +688,7 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     try {
       store.reorderPhase(projectId, phaseId, body.newOrder);
       const phases = store.listPhases(projectId);
+      syncRoadmapFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:phase-changed", {
         projectId, action: "reordered", phaseId, newOrder: body.newOrder,
       });
@@ -717,6 +768,230 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       log.error("Failed to skip discussion", { projectId, error });
       return c.json({ error: "Failed to skip discussion" }, 500);
     }
+  });
+
+  // ============================================================
+  // Category Proposal Workflow (ORCH-03)
+  // ============================================================
+
+  // Present a category proposal — returns formatted text for UI display
+  app.post("/api/planning/projects/:id/categories/present", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as CategoryProposal;
+
+    if (!body.category || !body.categoryName) {
+      return c.json({ error: "category and categoryName are required" }, 400);
+    }
+
+    try {
+      const reqOrch = new RequirementsOrchestrator(store["db"], getWorkspaceRoot() ?? undefined);
+      const formatted = reqOrch.formatCategoryPresentation(body);
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-presented", category: body.category,
+      });
+      return c.json({
+        projectId,
+        category: body.category,
+        categoryName: body.categoryName,
+        formatted,
+        tableStakesCount: body.tableStakes.length,
+        differentiatorCount: body.differentiators.length,
+      });
+    } catch (error) {
+      log.error("Failed to present category", { projectId, error });
+      return c.json({ error: "Failed to present category" }, 500);
+    }
+  });
+
+  // Persist category decisions — creates requirements from approved features
+  app.post("/api/planning/projects/:id/categories/persist", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as {
+      category: CategoryProposal;
+      decisions: ScopingDecision[];
+    };
+
+    if (!body.category || !body.decisions?.length) {
+      return c.json({ error: "category and decisions[] are required" }, 400);
+    }
+
+    try {
+      const reqOrch = new RequirementsOrchestrator(store["db"], getWorkspaceRoot() ?? undefined);
+      reqOrch.persistCategory(projectId, body.category, body.decisions);
+      // File sync is already handled by RequirementsOrchestrator.persistCategory()
+      // but let's ensure it happens even if workspace was null during construction
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-persisted", category: body.category.category,
+        count: body.decisions.length,
+      });
+      const reqs = store.listRequirements(projectId);
+      return c.json({
+        projectId,
+        category: body.category.category,
+        persisted: body.decisions.length,
+        totalRequirements: reqs.length,
+      }, 201);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const code = (error as any)?.code ?? "";
+      log.error("Failed to persist category", { projectId, error });
+      if (msg.includes("Table-stakes") || msg.includes("TABLE_STAKES") || code.includes("TABLE_STAKES") ||
+          msg.includes("DUPLICATE") || code.includes("DUPLICATE")) {
+        return c.json({ error: msg }, 400);
+      }
+      return c.json({ error: "Failed to persist category" }, 500);
+    }
+  });
+
+  // Adjust a category's requirements — bulk update tiers/rationale
+  app.patch("/api/planning/projects/:id/categories/:categoryCode", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const categoryCode = c.req.param("categoryCode");
+    const body = await c.req.json() as {
+      adjustments: Array<{
+        reqId: string;
+        tier?: "v1" | "v2" | "out-of-scope";
+        rationale?: string | null;
+      }>;
+    };
+
+    if (!body.adjustments?.length) {
+      return c.json({ error: "adjustments[] is required" }, 400);
+    }
+
+    try {
+      const results: Array<{ reqId: string; updated: boolean; error?: string }> = [];
+      for (const adj of body.adjustments) {
+        try {
+          const req = store.getRequirementByReqId(projectId, adj.reqId);
+          if (!req) {
+            results.push({ reqId: adj.reqId, updated: false, error: "not found" });
+            continue;
+          }
+          if (req.category !== categoryCode) {
+            results.push({ reqId: adj.reqId, updated: false, error: `belongs to ${req.category}, not ${categoryCode}` });
+            continue;
+          }
+          const updates: Record<string, unknown> = {};
+          if (adj.tier !== undefined) updates["tier"] = adj.tier;
+          if (adj.rationale !== undefined) updates["rationale"] = adj.rationale;
+          store.updateRequirement(req.id, updates as { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null });
+          results.push({ reqId: adj.reqId, updated: true });
+        } catch (err) {
+          results.push({ reqId: adj.reqId, updated: false, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      syncRequirementsFile(store, projectId, getWorkspaceRoot());
+      const updatedCount = results.filter(r => r.updated).length;
+      eventBus.emit("planning:requirement-changed", {
+        projectId, action: "category-adjusted", category: categoryCode, updatedCount,
+      });
+      return c.json({ projectId, category: categoryCode, results, updatedCount });
+    } catch (error) {
+      log.error("Failed to adjust category", { projectId, categoryCode, error });
+      return c.json({ error: "Failed to adjust category" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Batch Operations (ORCH-06) — v2 but useful now
+  // ============================================================
+
+  app.post("/api/planning/projects/:id/batch", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const project = orch?.getProject(projectId);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+
+    const body = await c.req.json() as {
+      operations: Array<{
+        type: "update-requirement" | "update-phase" | "delete-requirement" | "delete-phase";
+        id: string;
+        data?: Record<string, unknown>;
+      }>;
+    };
+
+    if (!body.operations?.length) {
+      return c.json({ error: "operations[] is required" }, 400);
+    }
+
+    if (body.operations.length > 50) {
+      return c.json({ error: "Maximum 50 operations per batch" }, 400);
+    }
+
+    const results: Array<{ index: number; type: string; id: string; success: boolean; error?: string }> = [];
+    let reqsChanged = false;
+    let phasesChanged = false;
+
+    for (let i = 0; i < body.operations.length; i++) {
+      const op = body.operations[i]!;
+      try {
+        switch (op.type) {
+          case "update-requirement": {
+            const req = store.getRequirement(op.id) ?? store.getRequirementByReqId(projectId, op.id);
+            if (!req) throw new Error("Not found");
+            store.updateRequirement(req.id, op.data as { tier?: "v1" | "v2" | "out-of-scope"; rationale?: string | null });
+            reqsChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "delete-requirement": {
+            const req = store.getRequirement(op.id) ?? store.getRequirementByReqId(projectId, op.id);
+            if (!req) throw new Error("Not found");
+            store.deleteRequirement(req.id);
+            reqsChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "update-phase": {
+            store.updatePhase(op.id, op.data as { name?: string; goal?: string });
+            phasesChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          case "delete-phase": {
+            store.deletePhase(op.id);
+            phasesChanged = true;
+            results.push({ index: i, type: op.type, id: op.id, success: true });
+            break;
+          }
+          default:
+            results.push({ index: i, type: op.type, id: op.id, success: false, error: `Unknown type: ${op.type}` });
+        }
+      } catch (err) {
+        results.push({ index: i, type: op.type, id: op.id, success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    const wsRoot = getWorkspaceRoot();
+    if (reqsChanged) syncRequirementsFile(store, projectId, wsRoot);
+    if (phasesChanged) syncRoadmapFile(store, projectId, wsRoot);
+
+    const successCount = results.filter(r => r.success).length;
+    eventBus.emit("planning:phase-changed", {
+      projectId, action: "batch", operationCount: body.operations.length, successCount,
+    });
+
+    return c.json({
+      projectId,
+      totalOperations: body.operations.length,
+      successCount,
+      failureCount: body.operations.length - successCount,
+      results,
+    });
   });
 
   log.debug("planning routes mounted");
