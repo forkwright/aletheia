@@ -368,7 +368,7 @@ export async function runConnectivityChecks(): Promise<CheckResult[]> {
     { name: "gateway", url: `http://localhost:${port}/health` },
     { name: "qdrant", url: "http://localhost:6333/healthz" },
     { name: "neo4j", url: "http://localhost:7474/" },
-    { name: "mem0", url: "http://localhost:8000/health" },
+    { name: "mem0", url: "http://localhost:8230/health" },
   ];
 
   return Promise.all(
@@ -459,12 +459,15 @@ function isLaunchdLoaded(label: string, uid: string): boolean {
 }
 
 function isSystemdEnabled(unit: string): boolean {
-  try {
-    const out = execSync(`systemctl --user is-enabled ${unit} 2>/dev/null`, { encoding: "utf-8" }).trim();
-    return out === "enabled";
-  } catch {
-    return false;
+  // Check user-level first, then fall back to system-level
+  for (const scope of ["--user", ""]) {
+    try {
+      const cmd = scope ? `systemctl ${scope} is-enabled ${unit} 2>/dev/null` : `systemctl is-enabled ${unit} 2>/dev/null`;
+      const out = execSync(cmd, { encoding: "utf-8" }).trim();
+      if (out === "enabled") return true;
+    } catch { /* not found at this scope */ }
   }
+  return false;
 }
 
 export function formatDoctorOutput(

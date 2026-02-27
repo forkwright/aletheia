@@ -251,7 +251,16 @@ program
   .action(async (opts: { url: string; token?: string }) => {
     try {
       const headers: Record<string, string> = {};
-      if (opts.token) headers["Authorization"] = `Bearer ${opts.token}`;
+      // Auto-read token from config if not provided
+      let token = opts.token;
+      if (!token) {
+        try {
+          const { loadConfig } = await import("./taxis/loader.js");
+          const cfg = loadConfig();
+          token = cfg.auth?.token;
+        } catch { /* config unavailable */ }
+      }
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const res = await fetch(`${opts.url}/api/metrics`, { headers, signal: AbortSignal.timeout(5000) });
       if (!res.ok) {
