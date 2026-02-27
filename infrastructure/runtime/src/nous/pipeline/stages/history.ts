@@ -50,7 +50,7 @@ export async function prepareHistory(
     ? crossAgentNotice + "\n\n" + msg.text
     : msg.text;
 
-  const tz = nous["userTimezone"] as string | undefined;
+  const tz = (nous["userTimezone"] ?? services.config.agents.defaults.userTimezone) as string | undefined;
   const messages = buildMessages(history, currentText, msg.media, tz);
 
   state.seq = seq;
