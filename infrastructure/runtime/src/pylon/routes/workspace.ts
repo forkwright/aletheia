@@ -98,7 +98,6 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
     const resolved = safeWorkspacePath(workspace, filePath);
     if (!resolved) return c.json({ error: "Invalid path" }, 400);
-    if (!existsSync(resolved)) return c.json({ error: "File not found" }, 404);
 
     try {
       const stat = statSync(resolved);
@@ -108,6 +107,9 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       const content = readFileSync(resolved, "utf-8");
       return c.json({ path: filePath, size: stat.size, content });
     } catch (error) {
+      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
       return c.json({ error: error instanceof Error ? error.message : "Read failed" }, 500);
     }
   });

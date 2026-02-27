@@ -135,9 +135,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     } else {
       const saltPath = join(paths.configDir(), "encryption.salt");
       let salt: string | undefined;
-      if (existsSync(saltPath)) {
+      try {
         salt = readFileSync(saltPath, "utf-8").trim();
-      }
+      } catch { /* salt file doesn't exist yet */ }
       initEncryption(passphrase, salt);
       if (!salt) {
         writeFileSync(saltPath, getKeySalt()!, { mode: 0o600 });

@@ -26,25 +26,29 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@anysphere/priompt": "^0.2.1",
-    "@hono/node-server": "^1.14.0",
+    "@hono/node-server": "^1.19.9",
     "@instructor-ai/instructor": "^1.7.0",
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
     "commander": "^14.0.3",
-    "hono": "^4.12.2",
+    "hono": "^4.12.3",
     "js-tiktoken": "^1.0.21",
     "playwright-core": "^1.58.2",
-    "tslog": "^4.9.3",
-    "zod": "^3.24.2"
+    "tslog": "^4.10.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.3.0",
+    "@types/node": "^25.3.2",
     "@vitest/coverage-v8": "^4.0.18",
     "oxlint": "^1.50.0",
     "tsdown": "^0.20.3",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "axios": "^1.8.0",
+    "js-yaml": "^4.1.1"
   }
 }

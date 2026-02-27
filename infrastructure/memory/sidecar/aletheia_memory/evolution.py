@@ -193,7 +193,7 @@ async def reinforce_memory(
             "access_count": access_count,
         }
     except Exception as e:
-        logger.warning(f"Reinforcement failed: {e}")
+        logger.warning("Reinforcement failed: %s", e)
         return {"ok": True, "reinforced": False, "error": "Internal error"}
 
 

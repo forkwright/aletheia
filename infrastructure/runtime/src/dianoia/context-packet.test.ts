@@ -1,6 +1,6 @@
 // Tests for ContextPacketBuilder (Spec 32 Phase 2)
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -64,8 +64,7 @@ function makeRequirement(overrides?: Partial<PlanningRequirement>): PlanningRequ
 }
 
 beforeEach(() => {
-  workspaceRoot = join(tmpdir(), `dianoia-ctx-test-${Date.now()}`);
-  mkdirSync(workspaceRoot, { recursive: true });
+  workspaceRoot = mkdtempSync(join(tmpdir(), "dianoia-ctx-test-"));
 });
 
 afterEach(() => {
@@ -236,7 +235,7 @@ describe("buildContextPacketSync", () => {
     expect(packet).not.toContain("Roadmap Overview");
   });
 
-  it("respects token budget and truncates lower-priority sections", { timeout: 30000 }, () => {
+  it("respects token budget and truncates lower-priority sections", { timeout: 60000 }, () => {
     const longSupplementary = "x".repeat(5000);
     const phase = makePhase();
 

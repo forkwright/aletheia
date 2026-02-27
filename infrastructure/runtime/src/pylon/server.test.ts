@@ -49,6 +49,7 @@ function makeManager() {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     }),
+    getPlanningOrchestrator: vi.fn().mockReturnValue(undefined),
   } as never;
 }
 

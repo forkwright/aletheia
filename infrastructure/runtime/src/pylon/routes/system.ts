@@ -44,14 +44,17 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   });
 
   app.post("/api/system/update", async (c) => {
-    const { execSync } = await import("node:child_process");
-    const root = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
+    const { execFileSync } = await import("node:child_process");
+    const { resolve: resolvePath } = await import("node:path");
+    const root = resolvePath(process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia");
     try {
-      const output = execSync(
-        `cd ${root} && git pull origin main && cd infrastructure/runtime && npx tsdown`,
-        { timeout: 120_000, encoding: "utf-8" },
-      );
-      log.info(`System update completed: ${output.slice(-200)}`);
+      const gitOutput = execFileSync("git", ["pull", "origin", "main"], {
+        cwd: root, timeout: 60_000, encoding: "utf-8",
+      });
+      const buildOutput = execFileSync("npx", ["tsdown"], {
+        cwd: join(root, "infrastructure", "runtime"), timeout: 120_000, encoding: "utf-8",
+      });
+      log.info(`System update completed: ${(gitOutput + buildOutput).slice(-200)}`);
       return c.json({ ok: true, message: "Update complete. Restart service to apply." });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

@@ -19,24 +19,26 @@ vi.mock("../../../taxis/paths.js", () => ({
   paths: { root: "/mock/root" },
 }));
 
-vi.mock("../../trace.js", () => ({
-  TraceBuilder: vi.fn().mockImplementation(() => ({
-    finalize: vi.fn(),
-    addToolCall: vi.fn(),
-    setUsage: vi.fn(),
-    setResponseLength: vi.fn(),
-    setToolLoops: vi.fn(),
-    setBootstrap: vi.fn(),
-    setRecall: vi.fn(),
-    setDegradedServices: vi.fn(),
-  })),
-}));
+vi.mock("../../trace.js", () => {
+  class MockTraceBuilder {
+    finalize = vi.fn();
+    addToolCall = vi.fn();
+    setUsage = vi.fn();
+    setResponseLength = vi.fn();
+    setToolLoops = vi.fn();
+    setBootstrap = vi.fn();
+    setRecall = vi.fn();
+    setDegradedServices = vi.fn();
+  }
+  return { TraceBuilder: MockTraceBuilder };
+});
 
-vi.mock("../../loop-detector.js", () => ({
-  LoopDetector: vi.fn().mockImplementation(() => ({
-    record: vi.fn().mockReturnValue({ verdict: "ok" }),
-  })),
-}));
+vi.mock("../../loop-detector.js", () => {
+  class MockLoopDetector {
+    record = vi.fn().mockReturnValue({ verdict: "ok" });
+  }
+  return { LoopDetector: MockLoopDetector };
+});
 
 import { resolveNousId, resolveStage } from "./resolve.js";
 import { resolveNous, resolveModel, resolveWorkspace, resolveDefaultNous } from "../../../taxis/loader.js";

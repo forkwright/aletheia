@@ -2,7 +2,7 @@
 name = "aletheia-tui"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Terminal dashboard for the Aletheia distributed cognition system"
 license = "AGPL-3.0-or-later"
 
@@ -33,7 +33,7 @@ unicode-width = "0.2"
 clap = { version = "4", features = ["derive", "env"] }
 
 # Config
-toml = "0.8"
+toml = "1.0"
 dirs = "6"
 
 # Logging (file-based, not stdout)

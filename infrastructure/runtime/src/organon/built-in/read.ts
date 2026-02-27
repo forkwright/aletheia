@@ -1,7 +1,7 @@
 // File read tool
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
+import { guardPath } from "./path-guard.js";
 
 export const readTool: ToolHandler = {
   definition: {
@@ -33,33 +33,33 @@ export const readTool: ToolHandler = {
       required: ["path"],
     },
   },
-  execute(
+  async execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
     const filePath = input["path"] as string;
     const maxLines = input["maxLines"] as number | undefined;
-    const resolved = resolve(context.workspace, filePath);
+    const resolved = guardPath(filePath, context);
 
     try {
       // Read atomically — no stat-then-read race
       const buf = readFileSync(resolved);
       if (buf.length > 5 * 1024 * 1024) {
-        return Promise.resolve(`Error: File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`);
+        return `Error: File too large (${(buf.length / 1024 / 1024).toFixed(1)}MB). Use exec with head/tail.`;
       }
       // Check for null bytes (binary indicator)
       for (let i = 0; i < Math.min(buf.length, 8192); i++) {
-        if (buf[i] === 0x00) return Promise.resolve("Error: Binary file detected — cannot display");
+        if (buf[i] === 0x00) return "Error: Binary file detected — cannot display";
       }
       let content = buf.toString("utf-8");
       if (maxLines) {
         content = content.split("\n").slice(0, maxLines).join("\n");
       }
-      return Promise.resolve(content);
+      return content;
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : String(error);
-      return Promise.resolve(`Error: ${msg}`);
+      return `Error: ${msg}`;
     }
   },
 };

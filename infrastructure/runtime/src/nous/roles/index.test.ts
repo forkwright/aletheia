@@ -8,11 +8,14 @@ import {
 } from "./index.js";
 
 describe("ROLES", () => {
-  const roleNames: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner"];
+  const roleNames: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner", "planner"];
 
-  it("defines all five roles", () => {
+  it("defines all six roles", () => {
     expect(Object.keys(ROLES)).toEqual(roleNames);
   });
+
+  // Roles that follow the structured result contract (status/summary/role name in prompt)
+  const subAgentRoles: RoleName[] = ["coder", "reviewer", "researcher", "explorer", "runner"];
 
   for (const name of roleNames) {
     describe(name, () => {
@@ -40,15 +43,17 @@ describe("ROLES", () => {
         expect(ROLES[name].description.length).toBeGreaterThan(0);
       });
 
-      it("system prompt mentions structured result contract", () => {
-        expect(ROLES[name].systemPrompt).toContain("```json");
-        expect(ROLES[name].systemPrompt).toContain('"status"');
-        expect(ROLES[name].systemPrompt).toContain('"summary"');
-      });
+      if (subAgentRoles.includes(name)) {
+        it("system prompt mentions structured result contract", () => {
+          expect(ROLES[name].systemPrompt).toContain("```json");
+          expect(ROLES[name].systemPrompt).toContain('"status"');
+          expect(ROLES[name].systemPrompt).toContain('"summary"');
+        });
 
-      it("system prompt mentions the role name", () => {
-        expect(ROLES[name].systemPrompt).toContain(`"role": "${name}"`);
-      });
+        it("system prompt mentions the role name", () => {
+          expect(ROLES[name].systemPrompt).toContain(`"role": "${name}"`);
+        });
+      }
     });
   }
 

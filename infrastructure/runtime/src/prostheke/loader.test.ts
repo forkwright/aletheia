@@ -1,7 +1,8 @@
 // Plugin loader tests
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 vi.mock("../koina/logger.js", () => ({
   createLogger: () => ({
@@ -14,7 +15,7 @@ vi.mock("../koina/logger.js", () => ({
 
 import { discoverPlugins, validatePluginPath } from "./loader.js";
 
-const TEST_ROOT = "/tmp/aletheia-plugin-loader-test";
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "aletheia-plugin-loader-test-"));
 
 function makePlugin(dir: string, id: string, version = "1.0.0") {
   const pluginDir = join(dir, id);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createPipelineConfigTool } from "./pipeline-config.js";
@@ -15,8 +15,7 @@ describe("pipeline_config tool", () => {
   let tool: ReturnType<typeof createPipelineConfigTool>;
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `pipeline-tool-test-${Date.now()}`);
-    mkdirSync(tmpDir, { recursive: true });
+    tmpDir = mkdtempSync(join(tmpdir(), "pipeline-tool-test-"));
     clearPipelineConfigCache();
     tool = createPipelineConfigTool();
   });

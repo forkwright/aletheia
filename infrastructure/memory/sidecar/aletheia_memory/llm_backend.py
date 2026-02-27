@@ -63,7 +63,7 @@ class OAuthAnthropicLLM:
             default_headers={"anthropic-beta": "oauth-2025-04-20"},
         )
 
-        log.info(f"Anthropic OAuth LLM initialized (model={model})")
+        log.info("Anthropic OAuth LLM initialized (model=%s)", model)
         return instance
 
 
@@ -77,7 +77,7 @@ def read_oauth_token() -> str | None:
         if token and len(token) > 20:
             return token
     except (json.JSONDecodeError, KeyError, OSError) as e:
-        log.warning(f"Failed to read OAuth token: {e}")
+        log.warning("Failed to read OAuth token: %s", e)
     return None
 
 
@@ -103,7 +103,7 @@ def _check_ollama() -> str | None:
         # Try preferred models first
         for model in OLLAMA_PREFERRED_MODELS:
             if model in available:
-                log.info(f"Ollama: found preferred model {model}")
+                log.info("Ollama: found preferred model %s", model)
                 return model
 
         # Fall back to any model with reasonable size
@@ -111,7 +111,7 @@ def _check_ollama() -> str | None:
             name = m["name"]
             size_gb = m.get("size", 0) / (1024**3)
             if size_gb >= 1.5:  # At least ~3B params
-                log.info(f"Ollama: using available model {name} ({size_gb:.1f}GB)")
+                log.info("Ollama: using available model %s (%.1fGB)", name, size_gb)
                 return name
 
         log.info("Ollama running but no suitable models found")
@@ -146,7 +146,7 @@ def detect_backend() -> dict[str, Any]:
                 "oauth_token": token,
             }
         except Exception as e:
-            log.warning(f"OAuth token found but LLM init failed: {e}")
+            log.warning("OAuth token found but LLM init failed: %s", e)
 
     # Tier 1b: API key
     api_key = _check_anthropic_api_key()
@@ -172,7 +172,7 @@ def detect_backend() -> dict[str, Any]:
     # Tier 2: Ollama
     ollama_model = _check_ollama()
     if ollama_model:
-        log.info(f"Tier 2: Ollama with {ollama_model}")
+        log.info("Tier 2: Ollama with %s", ollama_model)
         return {
             "tier": 2,
             "provider": "ollama",
@@ -219,7 +219,7 @@ def refresh_oauth_token(current_backend: dict[str, Any]) -> dict[str, Any]:
             current_backend["llm_instance"] = llm
             current_backend["oauth_token"] = new_token
         except Exception as e:
-            log.warning(f"Token refresh failed: {e}, falling back")
+            log.warning("Token refresh failed: %s, falling back", e)
             return detect_backend()
 
     return current_backend

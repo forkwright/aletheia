@@ -1,10 +1,11 @@
 // Tests for agent workspace scaffolding
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { scaffoldAgent, validateAgentId } from "./scaffold.js";
 
-const TEST_ROOT = `/tmp/scaffold-test-${Date.now()}`;
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "scaffold-test-"));
 
 function setupFixture() {
   const nousDir = join(TEST_ROOT, "nous");
