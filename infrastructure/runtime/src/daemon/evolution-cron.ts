@@ -180,7 +180,7 @@ async function mutateVariant(
             `${JSON.stringify(variant.config, null, 2)}\n\n` +
             `Propose ONE small mutation to improve performance. Change only 1-2 parameters. ` +
             `Valid ranges: recall.limit (1-30), recall.minScore (0-1), recall.maxTokens (100-5000), ` +
-            `tools.expiryTurns (1-50), notes.tokenCap (100-10000).\n\n` +
+            `recall.halfLifeDays (1-365), tools.expiryTurns (1-50), notes.tokenCap (100-10000).\n\n` +
             `Respond with ONLY the complete JSON config object, no explanation.`,
         },
       ],
