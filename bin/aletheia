@@ -134,10 +134,23 @@ _stop_memory() {
 }
 
 cmd_start() {
-  local skip_memory=false
+  local skip_memory=false memory_only=false  # three modes: default, --no-memory, --memory-only
   for arg in "$@"; do
     [[ "$arg" == "--no-memory" ]] && skip_memory=true
+    [[ "$arg" == "--memory-only" ]] && memory_only=true
   done
+
+  if [[ "$memory_only" == "true" ]]; then
+    local compose_cmd
+    compose_cmd="$(_compose_cmd)"
+    if [[ -n "$compose_cmd" ]] && \
+       $compose_cmd -f "$MEMORY_COMPOSE" ps -q 2>/dev/null | grep -q .; then
+      echo "Memory already running"
+      exit 0
+    fi
+    _start_memory
+    return
+  fi
 
   if [[ ! -f "$ENTRY" ]]; then
     echo "Error: not built. Run: cd $ALETHEIA_HOME && ./setup.sh"
@@ -254,7 +267,7 @@ cmd_help() {
 aletheia — unified CLI for the Aletheia gateway
 
 Lifecycle:
-  start [--no-memory]    Start memory services + gateway, open browser
+  start [--no-memory|--memory-only]  Start gateway+memory, gateway only, or memory only
   stop [--all]           Stop gateway (--all also stops memory containers)
   restart                Stop then start
   logs [-f]              Show gateway logs (-f to follow)
