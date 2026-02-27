@@ -1,5 +1,6 @@
 /**
- * Observability tests — OBS-03 (decision audit trail) and OBS-05 (turn tracking).
+ * Observability tests — OBS-03 (decision audit trail), OBS-05 (turn tracking),
+ * INTERJ-04/OBS-02 (spawn record visibility).
  * Tests store methods + HTTP route endpoints.
  */
 import Database from "better-sqlite3";
@@ -353,5 +354,105 @@ describe("GET /api/planning/projects/:id/usage", () => {
     const body = await res.json();
     expect(body.turnCounts).toHaveLength(1);
     expect(body.turnCounts[0].phaseId).toBe("p1");
+  });
+});
+
+// ================================================================
+// INTERJ-04 / OBS-02: Spawn Records — Routes
+// ================================================================
+
+describe("GET /api/planning/projects/:id/spawns", () => {
+  let phaseId: string;
+
+  beforeEach(() => {
+    const phase = store.createPhase({
+      projectId,
+      name: "Test Phase",
+      goal: "Test goal",
+      requirements: ["REQ-01"],
+      successCriteria: ["Tests pass"],
+      phaseOrder: 0,
+    });
+    phaseId = phase.id;
+  });
+
+  it("returns empty when no spawns exist", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/spawns`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.spawns).toEqual([]);
+    expect(body.summary.total).toBe(0);
+    expect(body.summary.running).toBe(0);
+  });
+
+  it("returns spawn records with summary counts", async () => {
+    const s1 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:coder:abc", waveNumber: 1 });
+    const s2 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:reviewer:def", waveNumber: 1 });
+
+    // Update one to running
+    store.updateSpawnRecord(s1.id, { status: "running" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/spawns`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.spawns).toHaveLength(2);
+    expect(body.summary.total).toBe(2);
+    expect(body.summary.running).toBe(1);
+    expect(body.summary.pending).toBe(1);
+  });
+
+  it("filters by phaseId query param", async () => {
+    const phase2 = store.createPhase({
+      projectId,
+      name: "Phase 2",
+      goal: "Goal 2",
+      requirements: ["REQ-02"],
+      successCriteria: ["Tests pass"],
+      phaseOrder: 1,
+    });
+
+    store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:coder:p1", waveNumber: 1 });
+    store.createSpawnRecord({ projectId, phaseId: phase2.id, agentSessionId: "spawn:coder:p2", waveNumber: 1 });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/spawns?phaseId=${phaseId}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.spawns).toHaveLength(1);
+    expect(body.spawns[0].phaseId).toBe(phaseId);
+  });
+
+  it("filters by status query param", async () => {
+    const s1 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:coder:a", waveNumber: 1 });
+    store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:coder:b", waveNumber: 1 });
+    store.updateSpawnRecord(s1.id, { status: "complete" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/spawns?status=complete`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.spawns).toHaveLength(1);
+    expect(body.summary.total).toBe(1);
+    expect(body.summary.complete).toBe(1);
+  });
+
+  it("counts all status types correctly", async () => {
+    const s1 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:a:1", waveNumber: 1 });
+    const s2 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:b:2", waveNumber: 1 });
+    const s3 = store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:c:3", waveNumber: 2 });
+    store.createSpawnRecord({ projectId, phaseId, agentSessionId: "spawn:d:4", waveNumber: 2 });
+
+    store.updateSpawnRecord(s1.id, { status: "running" });
+    store.updateSpawnRecord(s2.id, { status: "complete" });
+    store.updateSpawnRecord(s3.id, { status: "failed" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/spawns`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toEqual({
+      total: 4,
+      running: 1,
+      complete: 1,
+      failed: 1,
+      pending: 1,
+    });
   });
 });
