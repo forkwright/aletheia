@@ -1467,9 +1467,9 @@ planCmd
     }
   });
 
-// --- Update ---
+// --- Deploy ---
 program
-  .command("update")
+  .command("deploy")
   .description("Build and deploy Aletheia from current source")
   .option("--dry-run", "Show what would be done without executing")
   .option("--skip-ui", "Skip UI build (runtime-only update)")
