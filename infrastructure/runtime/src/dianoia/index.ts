@@ -6,13 +6,14 @@ export type {
   DianoiaState,
   PlanningCheckpoint,
   PlanningConfig,
+  PlanningMessage,
   PlanningPhase,
   PlanningProject,
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
 } from "./types.js";
-export { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION } from "./schema.js";
+export { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION, PLANNING_V29_MIGRATION } from "./schema.js";
 export type { DiscussionQuestion, DiscussionOption, PlanningDecision, TurnCount } from "./types.js";
 export { ResearchOrchestrator } from "./researcher.js";
 export { createPlanResearchTool } from "./research-tool.js";
@@ -26,7 +27,9 @@ export { createPlanRequirementsTool } from "./requirements-tool.js";
 export { RoadmapOrchestrator } from "./roadmap.js";
 export { createPlanRoadmapTool } from "./roadmap-tool.js";
 export { ExecutionOrchestrator } from "./execution.js";
+export type { MessageDelivery } from "./execution.js";
 export { createPlanExecuteTool } from "./execution-tool.js";
+export { createPlanInterjectTool } from "./interject-tool.js";
 export { GoalBackwardVerifier } from "./verifier.js";
 export { createPlanVerifyTool } from "./verifier-tool.js";
 export { CheckpointSystem } from "./checkpoint.js";

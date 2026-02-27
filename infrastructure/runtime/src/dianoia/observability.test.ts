@@ -19,6 +19,7 @@ import {
   PLANNING_V26_MIGRATION,
   PLANNING_V27_MIGRATION,
   PLANNING_V28_MIGRATION,
+  PLANNING_V29_MIGRATION,
 } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { planningRoutes } from "./routes.js";
@@ -52,6 +53,7 @@ function initDb(): Database.Database {
   d.exec(PLANNING_V26_MIGRATION);
   d.exec(PLANNING_V27_MIGRATION);
   d.exec(PLANNING_V28_MIGRATION);
+  d.exec(PLANNING_V29_MIGRATION);
   return d;
 }
 
@@ -454,5 +456,258 @@ describe("GET /api/planning/projects/:id/spawns", () => {
       failed: 1,
       pending: 1,
     });
+  });
+});
+
+// ================================================================
+// INTERJ-01: Message Injection Queue — Store
+// ================================================================
+
+describe("Message queue (store)", () => {
+  it("enqueues and retrieves a message", () => {
+    const msg = store.enqueueMessage({
+      projectId,
+      source: "user",
+      content: "Please review the auth implementation",
+    });
+
+    expect(msg.id).toBeTruthy();
+    expect(msg.status).toBe("pending");
+    expect(msg.source).toBe("user");
+    expect(msg.priority).toBe("normal");
+    expect(msg.content).toBe("Please review the auth implementation");
+    expect(msg.createdAt).toBeTruthy();
+
+    const retrieved = store.getMessage(msg.id);
+    expect(retrieved).toEqual(msg);
+  });
+
+  it("drains pending messages in priority order", () => {
+    store.enqueueMessage({ projectId, source: "user", content: "Low priority", priority: "low" });
+    store.enqueueMessage({ projectId, source: "agent", content: "Critical alert", priority: "critical" });
+    store.enqueueMessage({ projectId, source: "user", content: "Normal message" });
+    store.enqueueMessage({ projectId, source: "sub-agent", content: "High priority", priority: "high" });
+
+    const drained = store.drainMessages(projectId);
+    expect(drained).toHaveLength(4);
+    // Priority order: critical, high, normal, low
+    expect(drained[0].priority).toBe("critical");
+    expect(drained[1].priority).toBe("high");
+    expect(drained[2].priority).toBe("normal");
+    expect(drained[3].priority).toBe("low");
+
+    // All should now be delivered
+    for (const msg of drained) {
+      const updated = store.getMessage(msg.id);
+      expect(updated?.status).toBe("delivered");
+      expect(updated?.deliveredAt).toBeTruthy();
+    }
+
+    // Draining again returns empty
+    const secondDrain = store.drainMessages(projectId);
+    expect(secondDrain).toHaveLength(0);
+  });
+
+  it("filters drain by phaseId (includes null-phase messages)", () => {
+    store.enqueueMessage({ projectId, source: "user", content: "General msg" });
+    store.enqueueMessage({ projectId, source: "user", content: "Phase 1 msg", phaseId: "phase-1" });
+    store.enqueueMessage({ projectId, source: "user", content: "Phase 2 msg", phaseId: "phase-2" });
+
+    const drained = store.drainMessages(projectId, "phase-1");
+    expect(drained).toHaveLength(2); // General (null phase) + phase-1
+    expect(drained.map(m => m.content).sort()).toEqual(["General msg", "Phase 1 msg"]);
+  });
+
+  it("expires messages past their expiresAt", () => {
+    // Create a message that expired 1 second ago
+    const pastTime = new Date(Date.now() - 1000).toISOString();
+    store.enqueueMessage({
+      projectId,
+      source: "user",
+      content: "This is expired",
+      expiresAt: pastTime,
+    });
+    store.enqueueMessage({
+      projectId,
+      source: "user",
+      content: "This is not expired",
+    });
+
+    const drained = store.drainMessages(projectId);
+    expect(drained).toHaveLength(1);
+    expect(drained[0].content).toBe("This is not expired");
+
+    // Expired message should be marked as expired
+    const all = store.listMessages(projectId);
+    const expired = all.find(m => m.content === "This is expired");
+    expect(expired?.status).toBe("expired");
+  });
+
+  it("counts pending messages", () => {
+    expect(store.countPendingMessages(projectId)).toBe(0);
+
+    store.enqueueMessage({ projectId, source: "user", content: "Msg 1" });
+    store.enqueueMessage({ projectId, source: "user", content: "Msg 2" });
+    expect(store.countPendingMessages(projectId)).toBe(2);
+
+    store.drainMessages(projectId);
+    expect(store.countPendingMessages(projectId)).toBe(0);
+  });
+
+  it("lists messages with status filter", () => {
+    store.enqueueMessage({ projectId, source: "user", content: "Pending" });
+    store.enqueueMessage({ projectId, source: "user", content: "Will be delivered" });
+    store.drainMessages(projectId); // Delivers both
+
+    store.enqueueMessage({ projectId, source: "user", content: "New pending" });
+
+    const pending = store.listMessages(projectId, { status: "pending" });
+    expect(pending).toHaveLength(1);
+    expect(pending[0].content).toBe("New pending");
+
+    const delivered = store.listMessages(projectId, { status: "delivered" });
+    expect(delivered).toHaveLength(2);
+  });
+
+  it("stores sub-agent source with session ID", () => {
+    const msg = store.enqueueMessage({
+      projectId,
+      source: "sub-agent",
+      sourceSessionId: "spawn:coder:abc123",
+      content: "Found a dependency conflict",
+      priority: "high",
+    });
+
+    expect(msg.source).toBe("sub-agent");
+    expect(msg.sourceSessionId).toBe("spawn:coder:abc123");
+  });
+
+  it("cascades on project delete", () => {
+    store.enqueueMessage({ projectId, source: "user", content: "Will be deleted" });
+    expect(store.listMessages(projectId)).toHaveLength(1);
+
+    store.deleteProject(projectId);
+    expect(store.listMessages(projectId)).toHaveLength(0);
+  });
+});
+
+// ================================================================
+// INTERJ-01: Message Injection — Routes
+// ================================================================
+
+describe("POST /api/planning/projects/:id/messages", () => {
+  it("enqueues a message via API", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Please check the tests" }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.message.content).toBe("Please check the tests");
+    expect(body.message.source).toBe("user");
+    expect(body.message.priority).toBe("normal");
+    expect(body.message.status).toBe("pending");
+  });
+
+  it("accepts priority and source params", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "Critical issue found",
+        priority: "critical",
+        source: "sub-agent",
+        sourceSessionId: "spawn:coder:xyz",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.message.priority).toBe("critical");
+    expect(body.message.source).toBe("sub-agent");
+    expect(body.message.sourceSessionId).toBe("spawn:coder:xyz");
+  });
+
+  it("rejects empty content", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid source", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Test", source: "alien" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid priority", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Test", priority: "ultra" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("supports expiresInSeconds", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Temporary message", expiresInSeconds: 60 }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.message.expiresAt).toBeTruthy();
+    // expiresAt should be roughly 60 seconds from now
+    const expiresAt = new Date(body.message.expiresAt).getTime();
+    const now = Date.now();
+    expect(expiresAt - now).toBeGreaterThan(50000);
+    expect(expiresAt - now).toBeLessThan(70000);
+  });
+});
+
+describe("GET /api/planning/projects/:id/messages", () => {
+  it("returns empty list for no messages", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toEqual([]);
+    expect(body.pendingCount).toBe(0);
+  });
+
+  it("returns all messages with pending count", async () => {
+    store.enqueueMessage({ projectId, source: "user", content: "Msg 1" });
+    store.enqueueMessage({ projectId, source: "user", content: "Msg 2" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/messages`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toHaveLength(2);
+    expect(body.pendingCount).toBe(2);
+  });
+
+  it("filters by status query param", async () => {
+    store.enqueueMessage({ projectId, source: "user", content: "Pending" });
+    store.enqueueMessage({ projectId, source: "user", content: "Will deliver" });
+    store.drainMessages(projectId);
+    store.enqueueMessage({ projectId, source: "user", content: "New pending" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/messages?status=pending`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].content).toBe("New pending");
   });
 });

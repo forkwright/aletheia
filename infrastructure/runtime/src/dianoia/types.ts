@@ -176,6 +176,22 @@ export interface RollbackPlan {
 }
 
 
+// ─── Message Injection Queue (INTERJ-01/02) ─────────────────
+
+export interface PlanningMessage {
+  id: string;
+  projectId: string;
+  phaseId: string | null;
+  source: "user" | "agent" | "sub-agent" | "system";
+  sourceSessionId: string | null;
+  content: string;
+  priority: "low" | "normal" | "high" | "critical";
+  status: "pending" | "delivered" | "expired";
+  deliveredAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
 // ─── Decision Audit Trail (OBS-03) ──────────────────────────
 
 export interface PlanningDecision {

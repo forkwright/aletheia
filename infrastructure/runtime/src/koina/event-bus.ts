@@ -33,6 +33,7 @@ export type EventName =
   | "planning:requirement-changed"
   | "planning:phase-changed"
   | "planning:discussion-answered"
+  | "planning:message-enqueued"
   | "task:created"
   | "task:updated"
   | "task:completed"

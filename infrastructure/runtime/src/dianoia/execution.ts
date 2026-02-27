@@ -4,7 +4,7 @@ import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
-import type { PlanningPhase, SpawnRecord } from "./types.js";
+import type { PlanningMessage, PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 import { buildContextPacketSync } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
@@ -111,6 +111,15 @@ export function findResumeWave(records: SpawnRecord[]): number {
     }
   }
   return -1; // All waves complete
+}
+
+export interface MessageDelivery {
+  id: string;
+  source: PlanningMessage["source"];
+  content: string;
+  priority: PlanningMessage["priority"];
+  deliveredAtWave: number;
+  action: "logged" | "paused" | "injected";
 }
 
 export class ExecutionOrchestrator {
@@ -224,10 +233,11 @@ export class ExecutionOrchestrator {
   async executePhase(
     projectId: string,
     toolContext: ToolContext,
-  ): Promise<{ waveCount: number; failed: number; skipped: number }> {
+  ): Promise<{ waveCount: number; failed: number; skipped: number; messages: MessageDelivery[] }> {
     const project = this.store.getProjectOrThrow(projectId);
     const allPhases = this.store.listPhases(projectId);
     const waves = computeWaves(allPhases);
+    const deliveredMessages: MessageDelivery[] = [];
 
     // On resume: check for and clear handoff file (ENG-12)
     const handoff = this.getHandoff(projectId);
@@ -261,6 +271,43 @@ export class ExecutionOrchestrator {
           this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", "Execution paused by user or config");
         }
         break;
+      }
+
+      // INTERJ-01: Drain pending messages at wave boundary (turn boundary)
+      const pendingMessages = this.store.drainMessages(projectId);
+      for (const msg of pendingMessages) {
+        const delivery: MessageDelivery = {
+          id: msg.id,
+          source: msg.source,
+          content: msg.content,
+          priority: msg.priority,
+          deliveredAtWave: waveIndex,
+          action: msg.priority === "critical" ? "paused" : "logged",
+        };
+        deliveredMessages.push(delivery);
+
+        // Record message delivery as a decision for audit trail
+        this.store.logDecision({
+          projectId,
+          phaseId: msg.phaseId,
+          source: msg.source === "sub-agent" ? "agent" : msg.source,
+          type: "message-injection",
+          summary: `[${msg.priority}] ${msg.content.slice(0, 200)}`,
+          rationale: `Injected at wave ${waveIndex + 1} boundary from ${msg.source}${msg.sourceSessionId ? ` (${msg.sourceSessionId})` : ""}`,
+          context: { messageId: msg.id, priority: msg.priority, sourceSessionId: msg.sourceSessionId },
+        });
+
+        log.info(`Message ${msg.id} delivered at wave ${waveIndex + 1}: [${msg.priority}] ${msg.content.slice(0, 80)}`);
+
+        // Critical messages pause execution — human must review
+        if (msg.priority === "critical") {
+          log.warn(`Critical message received — pausing execution: ${msg.content.slice(0, 120)}`);
+          const pausePhase = waves[waveIndex]?.[0];
+          if (pausePhase && this.workspaceRoot) {
+            this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", `Critical message: ${msg.content.slice(0, 200)}`);
+          }
+          return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
+        }
       }
 
       const wave = waves[waveIndex]!;
@@ -508,7 +555,7 @@ export class ExecutionOrchestrator {
       }
     }
 
-    return { waveCount: waves.length, failed, skipped };
+    return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
   }
 
   getExecutionSnapshot(projectId: string): ExecutionSnapshot {

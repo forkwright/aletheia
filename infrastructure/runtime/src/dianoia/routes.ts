@@ -1076,6 +1076,97 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   });
 
+  // ─── Message Injection (INTERJ-01/02) ────────────────────
+
+  /**
+   * POST /api/planning/projects/:id/messages — Inject a message into a running execution
+   *
+   * Body: { content: string, source?: "user"|"agent"|"sub-agent"|"system", phaseId?: string,
+   *         priority?: "low"|"normal"|"high"|"critical", sourceSessionId?: string, expiresInSeconds?: number }
+   *
+   * The message is queued and consumed at the next turn boundary (between waves or between tasks).
+   * Critical-priority messages pause execution immediately.
+   */
+  app.post("/api/planning/projects/:id/messages", async (c) => {
+    const projectId = c.req.param("id");
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      const content = body["content"] as string;
+      if (!content || typeof content !== "string" || content.trim().length === 0) {
+        return c.json({ error: "content is required and must be a non-empty string" }, 400);
+      }
+
+      const source = (body["source"] as string | undefined) ?? "user";
+      const validSources = ["user", "agent", "sub-agent", "system"];
+      if (!validSources.includes(source)) {
+        return c.json({ error: `source must be one of: ${validSources.join(", ")}` }, 400);
+      }
+
+      const priority = (body["priority"] as string | undefined) ?? "normal";
+      const validPriorities = ["low", "normal", "high", "critical"];
+      if (!validPriorities.includes(priority)) {
+        return c.json({ error: `priority must be one of: ${validPriorities.join(", ")}` }, 400);
+      }
+
+      const expiresInSeconds = body["expiresInSeconds"] as number | undefined;
+      let expiresAt: string | undefined;
+      if (expiresInSeconds && expiresInSeconds > 0) {
+        expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+      }
+
+      const enqueueOpts: Parameters<typeof store.enqueueMessage>[0] = {
+        projectId,
+        source: source as "user" | "agent" | "sub-agent" | "system",
+        content: content.trim(),
+        priority: priority as "low" | "normal" | "high" | "critical",
+      };
+      const phaseIdVal = body["phaseId"] as string | undefined;
+      if (phaseIdVal) enqueueOpts.phaseId = phaseIdVal;
+      const sessionIdVal = body["sourceSessionId"] as string | undefined;
+      if (sessionIdVal) enqueueOpts.sourceSessionId = sessionIdVal;
+      if (expiresAt) enqueueOpts.expiresAt = expiresAt;
+
+      const message = store.enqueueMessage(enqueueOpts);
+
+      eventBus.emit("planning:message-enqueued", { projectId, messageId: message.id, priority, source });
+      log.info(`Message ${message.id} enqueued for project ${projectId}: [${priority}] ${content.slice(0, 80)}`);
+
+      return c.json({ message }, 201);
+    } catch (error) {
+      log.error("Failed to enqueue message", { projectId, error });
+      return c.json({ error: "Failed to enqueue message" }, 500);
+    }
+  });
+
+  /**
+   * GET /api/planning/projects/:id/messages — List messages for a project
+   *
+   * Query params: ?status=pending|delivered|expired, ?phaseId=xxx
+   */
+  app.get("/api/planning/projects/:id/messages", (c) => {
+    const projectId = c.req.param("id");
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+
+    try {
+      const listOpts: Parameters<typeof store.listMessages>[1] = {};
+      const statusParam = c.req.query("status") as "pending" | "delivered" | "expired" | undefined;
+      if (statusParam) listOpts.status = statusParam;
+      const phaseIdParam = c.req.query("phaseId");
+      if (phaseIdParam) listOpts.phaseId = phaseIdParam;
+      const messages = store.listMessages(projectId, listOpts);
+      const pendingCount = store.countPendingMessages(projectId);
+
+      return c.json({ projectId, messages, pendingCount });
+    } catch (error) {
+      log.error("Failed to list messages", { projectId, error });
+      return c.json({ error: "Failed to list messages" }, 500);
+    }
+  });
+
   log.debug("planning routes mounted");
   return app;
 }
