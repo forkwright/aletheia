@@ -581,7 +581,7 @@ async def get_discovery_candidates(limit: int = 20) -> dict[str, Any]:
 
         return {"ok": True, "candidates": candidates}
     except Exception as e:
-        logger.warning(f"get_discovery_candidates failed: {e}")
+        logger.warning("get_discovery_candidates failed: %s", e)
         return {"ok": True, "candidates": [], "error": "Internal error"}
 
 

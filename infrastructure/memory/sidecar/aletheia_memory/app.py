@@ -146,7 +146,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     provider: Any = _active_backend["provider"]
     model: Any = _active_backend["model"]
 
-    log.info(f"Starting with Tier {tier}: {provider}" + (f" ({model})" if model else ""))
+    log.info("Starting with Tier %s: %s%s", tier, provider, f" ({model})" if model else "")
 
     if provider in ("anthropic-oauth", "anthropic-apikey"):
         _patch_anthropic_params()

@@ -58,13 +58,13 @@ def reindex_zero_vectors(dry_run: bool = False) -> int:
 
     collections: list[str] = [c.name for c in client.get_collections().collections]
     if COLLECTION not in collections:
-        log.info(f"Collection {COLLECTION} doesn't exist. Nothing to reindex.")
+        log.info("Collection %s doesn't exist. Nothing to reindex.", COLLECTION)
         return 0
 
     info = client.get_collection(COLLECTION)
     total_points: int | None = info.points_count
     total_vectors: int = info.indexed_vectors_count or 0
-    log.info(f"Collection: {total_points} points, {total_vectors} vectors")
+    log.info("Collection: %s points, %d vectors", total_points, total_vectors)
 
     if total_points is not None and total_vectors >= total_points and total_vectors > 0:
         log.info("All points have vectors. Nothing to reindex.")
@@ -75,7 +75,7 @@ def reindex_zero_vectors(dry_run: bool = False) -> int:
         return 0
 
     if total_vectors == 0 and total_points is not None and total_points > 0:
-        log.info(f"Recreating collection with {dims}-dim vectors (preserving points)")
+        log.info("Recreating collection with %d-dim vectors (preserving points)", dims)
 
         all_points: list[Record] = []
         offset: Any = None
@@ -93,10 +93,10 @@ def reindex_zero_vectors(dry_run: bool = False) -> int:
                 break
             offset = next_offset
 
-        log.info(f"Scrolled {len(all_points)} points")
+        log.info("Scrolled %d points", len(all_points))
 
         if dry_run:
-            log.info(f"[DRY RUN] Would re-embed {len(all_points)} points")
+            log.info("[DRY RUN] Would re-embed %d points", len(all_points))
             return len(all_points)
 
         client.recreate_collection(
@@ -110,7 +110,7 @@ def reindex_zero_vectors(dry_run: bool = False) -> int:
             payload: dict[str, Any] = point.payload or {}
             text: str = str(payload.get("memory", payload.get("data", payload.get("text", ""))))
             if not text:
-                log.debug(f"Point {point.id}: no text field, skipping")
+                log.debug("Point %s: no text field, skipping", point.id)
                 continue
 
             try:
@@ -124,15 +124,15 @@ def reindex_zero_vectors(dry_run: bool = False) -> int:
 
                 if len(batch) >= 50:
                     client.upsert(collection_name=COLLECTION, points=batch)
-                    log.info(f"Re-embedded {reindexed}/{len(all_points)} points")
+                    log.info("Re-embedded %d/%d points", reindexed, len(all_points))
                     batch = []
             except Exception as e:
-                log.warning(f"Point {point.id}: embedding failed: {e}")
+                log.warning("Point %s: embedding failed: %s", point.id, e)
 
         if batch:
             client.upsert(collection_name=COLLECTION, points=batch)
 
-        log.info(f"Reindex complete: {reindexed}/{len(all_points)} points re-embedded")
+        log.info("Reindex complete: %d/%d points re-embedded", reindexed, len(all_points))
         return reindexed
 
     return 0
