@@ -171,9 +171,11 @@ Plans:
   5. Single-slash comment typos in pipeline.ts, extract.ts, hooks.ts are fixed
   6. Baseline precision/recall scores recorded against live corpus (not test doubles)
 
+**Plans:** 2 plans
+
 Plans:
-- [ ] 07-01-PLAN.md — Health event subscriber + flush metric visibility + comment typos (code fixes)
-- [ ] 07-02-PLAN.md — Server-side: backfill execution + live baseline recording + /add enforcement decision
+- [ ] 07-01-PLAN.md — Health event subscribers + flush metric tracking/display + comment typo fixes + /add ADR closure (code)
+- [ ] 07-02-PLAN.md — Server-side: RELATES_TO backfill execution + live baseline recording (requires SSH)
 
 ## Progress
 
