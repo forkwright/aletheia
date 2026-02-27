@@ -65,6 +65,7 @@ export async function buildContext(
         log.warn(
           `Emergency distillation: ${nousId} session=${sessionId} at ${lastActual} tokens ` +
           `(${Math.round((lastActual / preflightContextTokens) * 100)}% — above 90% ceiling)`,
+          { emergency: true },
         );
         const compaction = services.config.agents.defaults.compaction;
         const thread = services.store.getThreadForSession(sessionId);
@@ -79,16 +80,17 @@ export async function buildContext(
             ...(workspace ? { workspace } : {}),
             ...(services.plugins ? { plugins: services.plugins } : {}),
             ...(services.memoryTarget ? { memoryTarget: services.memoryTarget } : {}),
+            ...(services.sidecarUrl ? { sidecarUrl: services.sidecarUrl } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary, keyFacts) => {
                 services.store.updateThreadSummary(thread.id, summary, keyFacts);
               },
             } : {}),
           });
-          log.info(`Emergency distillation complete for ${nousId} — context cleared`);
+          log.info(`Emergency distillation complete for ${nousId} — context cleared`, { emergency: true });
           preflightDistilled = true;
         } catch (error) {
-          log.error(`Emergency distillation failed: ${error instanceof Error ? error.message : error}`);
+          log.error(`Emergency distillation failed: ${error instanceof Error ? error.message : error}`, { emergency: true });
         }
       }
     }

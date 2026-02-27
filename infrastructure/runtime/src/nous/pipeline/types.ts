@@ -157,6 +157,7 @@ export interface RuntimeServices {
   approvalGate?: ApprovalGate;
   approvalMode?: ApprovalMode;
   memoryTarget?: MemoryFlushTarget;
+  sidecarUrl?: string;
   planningOrchestrator?: DianoiaOrchestrator;
   executionOrchestrator?: import("../../dianoia/execution.js").ExecutionOrchestrator;
 }

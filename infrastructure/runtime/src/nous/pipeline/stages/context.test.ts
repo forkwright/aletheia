@@ -142,6 +142,8 @@ describe("buildContext", () => {
       tokens: 100,
       count: 3,
       durationMs: 20,
+      memoryIds: [],
+      memoryTexts: new Map(),
     } as never);
 
     const state = makeState();
@@ -258,5 +260,21 @@ describe("buildContext", () => {
     const result = await buildContext(makeState(), services);
     const texts = result.systemPrompt.map((b) => b.text);
     expect(texts.some((t) => t.includes("Agent Notes"))).toBe(true);
+  });
+
+  it("passes sidecarUrl to distillSession during emergency distillation", async () => {
+    const services = makeServices({ sidecarUrl: "http://localhost:8230" });
+    (services.store.findSessionById as ReturnType<typeof vi.fn>).mockReturnValue({
+      messageCount: 50,
+      lastInputTokens: 185000,
+      tokenCountEstimate: 185000,
+      workingState: null,
+    });
+
+    await buildContext(makeState(), services);
+    const calls = vi.mocked(distillSession).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const lastOpts = calls[calls.length - 1]?.[4];
+    expect(lastOpts).toEqual(expect.objectContaining({ sidecarUrl: "http://localhost:8230" }));
   });
 });

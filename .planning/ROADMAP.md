@@ -137,7 +137,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `distillSession()` in context.ts emergency path receives and forwards `sidecarUrl` — sidecar enrichment (dedup, evolution, invalidation) runs on emergency distills
   2. Test confirms emergency distillation path invokes sidecar endpoints
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 05.1-01-PLAN.md — Wire sidecarUrl + emergency flag through emergency distillation path
 
 ### Phase 6: Observability
 **Goal**: Memory system health is visible, alerting, and continuously verifiable — operators can confirm the system stays working
@@ -163,5 +166,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 3. Graph Extraction Overhaul | 2/3 | In Progress|  |
 | 4. Extraction Pipeline Completion | 4/4 | Complete    | 2026-02-26 |
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
-| 5.1 Emergency Distillation Sidecar Wiring | 0/TBD | Not started | - |
+| 5.1 Emergency Distillation Sidecar Wiring | 0/1 | Not started | - |
 | 6. Observability | 0/TBD | Not started | - |
