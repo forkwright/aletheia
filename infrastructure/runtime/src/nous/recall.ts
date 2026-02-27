@@ -11,9 +11,12 @@ export interface RecallResult {
   count: number;
   durationMs: number;
   tokens: number;
+  memoryIds: string[];
+  memoryTexts: Map<string, string>;
 }
 
 interface MemoryHit {
+  id?: string | null;
   memory: string;
   score: number | null;
   agent_id?: string | null;
@@ -113,7 +116,7 @@ export async function recallMemories(
       (error as Error).name === "AbortError" ? "timeout" : String(error);
     log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
     clearTimeout(timer);
-    return { block: null, count: 0, durationMs: ms, tokens: 0 };
+    return { block: null, count: 0, durationMs: ms, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   } finally {
     clearTimeout(timer);
   }
@@ -146,8 +149,14 @@ export async function recallMemories(
   if (deduped.length === 0) {
     const ms = Date.now() - start;
     log.debug(`Recall for ${nousId}: 0 hits above ${minScore} (${ms}ms)`);
-    return { block: null, count: 0, durationMs: ms, tokens: 0 };
+    return { block: null, count: 0, durationMs: ms, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   }
+
+  // Collect IDs and texts from deduped hits for downstream reinforcement
+  const memoryIds = deduped.map((h) => h.id).filter((id): id is string => typeof id === "string" && id.length > 0);
+  const memoryTexts = new Map<string, string>(
+    deduped.filter((h) => typeof h.id === "string" && h.id.length > 0).map((h) => [h.id!, h.memory]),
+  );
 
   const lines: string[] = [];
   let totalTokens = 0;
@@ -164,7 +173,7 @@ export async function recallMemories(
   }
 
   if (lines.length === 0) {
-    return { block: null, count: 0, durationMs: Date.now() - start, tokens: 0 };
+    return { block: null, count: 0, durationMs: Date.now() - start, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   }
 
   const text =
@@ -182,6 +191,8 @@ export async function recallMemories(
     count: lines.length,
     durationMs: ms,
     tokens,
+    memoryIds,
+    memoryTexts,
   };
 }
 

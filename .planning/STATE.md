@@ -2,70 +2,139 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-26)
+See: .planning/PROJECT.md (updated 2026-02-24)
 
-**Core value:** A personal AI runtime you fully control — persistent across sessions, extensible through modules, and powerful enough to handle complex multi-agent work without losing context.
-**Current focus:** Phase 16 — Doctor CLI Wizard and Bug Fix
+**Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
+**Current focus:** Phase 7 — Tech Debt Cleanup
 
 ## Current Position
 
-**Phase:** 16 of 17 (Doctor CLI Wizard and Bug Fix)
-**Plan:** 01 of N
-**Status:** In progress
-**Last Activity:** 2026-02-27
+Phase: 7 of 7 (Tech Debt Cleanup)
+Plan: 2 of 2 complete (07-02 done — RELATES_TO backfill confirmed 0 edges, BASELINE.md written)
+Status: Phase 7 complete — all plans done
+Last activity: 2026-02-27 — Plan 07-02 complete; backfill confirmed 0 RELATES_TO edges, v1.0 baseline recorded
 
-**Progress:** [██████████] 100%
+Progress: [████████████████████████████████] 100% of phase
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed (v1.2): 0
-- v1.0: 29 plans completed
-- v1.1: 24 plans completed
+- Total plans completed: 15
+- Average duration: 9 min
+- Total execution time: ~2.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| v1.2: TBD | - | - | - |
+| 01-test-infrastructure | 3 | 48 min | 16 min |
+| 02-data-integrity | 4 | ~66 min | ~17 min |
+| 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
+| 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
+| 05-recall-quality (partial) | 3 | ~17 min | ~6 min |
+| 05.1-emergency-distillation-sidecar-wiring | 1 | 3 min | 3 min |
+| 06-observability | 2 | ~16 min | ~8 min |
+
+**Recent Trend:**
+- Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
+- Trend: Stable
 
 *Updated after each plan completion*
-| Phase 16-doctor-cli-wizard-and-bug-fix P01 | ~15min | 2 tasks | 3 files |
-| Phase 15-mac-boot-persistence P03 | 1 | 1 task | 1 file |
-| Phase 14-portability-fixes P02 | 54 | 2 tasks | 2 files |
-| Phase 14-portability-fixes P01 | 2 | 2 tasks | 3 files |
-| Phase 15-mac-boot-persistence P01 | 10 | 3 tasks | 3 files |
-| Phase 15-mac-boot-persistence P02 | 2 | 2 tasks | 1 files |
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 06-observability (partial) | 1 | 5 min | 5 min |
 
 ## Accumulated Context
 
 ### Decisions
 
-- v1.2 roadmap: 4 phases derived from natural dependency graph (portability gates launchd; both gate setup.sh/docs; doctor+wizard independent)
-- [Phase 16-01]: SSE heartbeat placed outside withTurnAsync so it fires immediately on stream open; clearInterval in finally ensures cleanup on both success and error paths
-- [Phase 16-01]: All three timeout values aligned at 600s/600_000ms — client read timeout, server dispatch internal timeout, and 30s heartbeat interval keep client alive during long waits
-- [Phase 15-03]: Use compose ps -q | grep -q . for already-running detection — portable across Docker and Podman (--filter status=running has differences)
-- [Phase 15-03]: --memory-only branch placed before build check since gateway binary irrelevant for memory-only mode
-- Docker Desktop 4.40.0 macOS 15.4 regression: env var expansion broken in bind mounts; use `.env` file mechanism as mitigation
-- [Phase 14-portability-fixes]: Service template: preserve %h systemd specifier in EnvironmentFile — not a shell variable, expanded by systemd at runtime
-- [Phase 14-portability-fixes]: Shutdown test replicates aletheia.ts handler inline to avoid full runtime initialization in unit test context
-- [Phase 14-portability-fixes]: Parallel indexed arrays (KEYS/VALS + _get_health_url) replace declare -A for bash 3.2 compat — avoids requiring homebrew bash on macOS
-- [Phase 14-portability-fixes]: Write .env file before docker compose up as Docker Desktop 4.40.0 bind-mount env var expansion regression mitigation
-- [Phase 15-mac-boot-persistence]: KeepAlive.SuccessfulExit:false (dict form) pairs with Phase 14 SIGTERM→exit(0): launchd restarts on crash, not on clean stop
-- [Phase 15-mac-boot-persistence]: Memory plist calls aletheia start --memory-only (not docker-compose directly) — consolidates compose detection and .env writing in bin/aletheia
-- [Phase 15-mac-boot-persistence]: aletheia.service ExecStart uses __NODE_BIN__ __ALETHEIA_HOME__/infrastructure/runtime/dist/entry.mjs — replaces non-portable start.sh reference
-- [Phase 15-mac-boot-persistence]: bootout uses label form gui/UID/com.aletheia.gateway (not file path) — launchctl API requirement
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- [Pre-phase]: Fix Neo4j rather than remove — graph relationships add value for relationship reasoning, concept clustering
+- [Pre-phase]: Evaluate Mem0 sidecar during Phase 2 — direct-to-Qdrant writes already bypass most of Mem0; may be dead weight
+- [Pre-phase]: Production-grade showcase target — memory is Aletheia's core differentiator
+- [Phase 01-test-infrastructure]: Corpus sourced from real server memory files — expected annotations represent pipeline-historically-correct values (acceptable for baseline per plan guidance)
+- [Phase 01-test-infrastructure]: Static wiring verification for finalize.ts instead of dynamic — vi.mock at module level conflicts with real extractTurnFacts tests in same file
+- [Phase 01-test-infrastructure]: Avoid /proc/ in test invalid-path tests — procfs mkdirSync hangs on Linux rather than failing fast
+- [Phase 01-test-infrastructure]: Integration tests mock at HTTP boundary (fetch), not function boundary — exercises full code path including URL construction, response parsing, and error handling
+- [Phase 01-test-infrastructure]: Corpus benchmark runner uses Jaccard token overlap (threshold=0.3) for semantic matching — avoids embedding API calls, tunable via env vars
+- [Phase 01-test-infrastructure]: baseline.json committed as placeholder (API key unavailable at execution time) — user must run test:corpus:save-baseline to record real scores before Phase 2 changes extraction
+- [Phase 02-data-integrity / 02-02]: Enforce validation via explicit 400 in route handlers rather than Pydantic required fields (preserves 422 for schema errors, 400 for business-logic missing fields)
+- [Phase 02-data-integrity / 02-02]: aletheia.ts addMemories caller does not pass session_id to /add_batch — documented in route comment; caller needs update before memory flush path works with enforcement
+- [Phase 02-data-integrity / 02-02]: /add (Mem0) enforcement deferred — traffic trace needed before enforcing session_id/agent_id on that path
+- [Phase 02-data-integrity / 02-01]: SQLite PRIMARY KEY conflict used for lock acquisition — simpler than SELECT+INSERT
+- [Phase 02-data-integrity / 02-01]: Retry wraps full runDistillationMutations call, not individual writes — transaction semantics make partial retry safe
+- [Phase 02-data-integrity / 02-01]: Single-retry on failure does not rethrow on double failure — next scheduled distillation retries naturally
+- [Phase 02-data-integrity / 02-03]: flushToWorkspaceWithRetry is a separate export — keeps flushToWorkspace pure, retry is optional at call site
+- [Phase 02-data-integrity / 02-03]: Module-level Map for per-agent flush failure counter — survives across distillation calls without threading state through opts
+- [Phase 02-data-integrity / 02-03]: Mock workspace-flush in pipeline.test.ts — isolates counter/event logic from filesystem behavior tested separately
+- [Phase 02-data-integrity / 02-03]: /proc/ paths hang on Linux procfs — use file-as-workspace (ENOTDIR) for reliable fast test failures
+- [Phase 02-data-integrity]: shouldDistill async keyword removed — function has no await, return type is boolean not Promise<boolean>
+- [Phase 02-data-integrity]: mneme modules (store.ts, schema.ts) had zero dead code — no changes needed after Plan 02-01 through 02-03
+- [Phase 02.1-fix-addmemories-session-wiring]: sessionId is required (no default) on flushToMemory — empty string is falsy in Python, would trigger 400 from /add_batch enforcement
+- [Phase 02.1-fix-addmemories-session-wiring]: reflect.ts uses "reflection" as synthetic session identifier — satisfies non-empty string check; source field disambiguates path type
+- [Phase 03-graph-extraction-overhaul / 03-01]: normalize_type() returns None for unknown types instead of RELATES_TO — callers skip relationship rather than persist vague edges
+- [Phase 03-graph-extraction-overhaul / 03-01]: Vocab file at ~/.aletheia/graph_vocab.json uses version+relationship_types structure — fails safe to hardcoded defaults on missing/corrupt file
+- [Phase 03-graph-extraction-overhaul / 03-01]: GRAPH_EXTRACTION_PROMPT instructs LLM to skip unmatched relationships — no catch-all fallback type
+- [Phase 03-graph-extraction-overhaul / 03-02]: SimpleKGPipeline cached at module level — reinit on OAuth rotation via refresh_pipeline_on_token_rotate
+- [Phase 03-graph-extraction-overhaul / 03-02]: extract_graph / extract_graph_batch are fire-and-forget — failures log warning but never block memory writes
+- [Phase 03-graph-extraction-overhaul / 03-02]: additional_relationship_types: False enforces vocab at pipeline write time, not post-write
+- [Phase 04-extraction-pipeline-completion / 04-01]: EXTR-06 bypass documented via docstring comment — no dead infer=False parameter added
+- [Phase 04-extraction-pipeline-completion / 04-01]: invalidate_text uses embedding-based Qdrant search (not triple parsing) for free-form contradiction matching; 0.80 similarity threshold
+- [Phase 04-extraction-pipeline-completion / 04-01]: Neo4j invalidation is best-effort — both qdrant_id match and text fragment match attempted; failures are non-fatal
+- [Phase 04-extraction-pipeline-completion / 04-01]: sidecarUrl added as optional DistillationOpts field — no mandatory change at existing call sites; NousManager.setSidecarUrl() wires via getSidecarUrl()
+- [Phase 04-extraction-pipeline-completion / 04-02]: dedup_batch uses greedy first-occurrence clustering — first text in each near-duplicate cluster wins, preserves insertion order
+- [Phase 04-extraction-pipeline-completion / 04-02]: _cosine_similarity implemented in pure Python (math.sqrt) — avoids adding numpy/scipy to sidecar dependencies
+- [Phase 04-extraction-pipeline-completion / 04-02]: Cross-chunk dedup only runs when extraction was chunked (chunks.length > 1) — no-op for single-chunk extractions
+- [Phase 04-extraction-pipeline-completion / 04-02]: deduplicateFactsViaSidecar is fail-open — any sidecar error returns original facts, never blocks distillation
+- [Phase 04-extraction-pipeline-completion / 04-03]: Cross-chunk contradiction pass runs for 2+ fact extractions (option B) — no wasChunked flag needed, avoids extract.ts API change
+- [Phase 04-extraction-pipeline-completion / 04-03]: checkEvolutionBeforeFlush uses Promise.allSettled in batches of 5 — parallel but bounded, fail-open per memory
+- [Phase 04-extraction-pipeline-completion / 04-03]: Response.mockImplementation(async () => new Response(...)) required for multi-call fetch mocks — body streams single-use
+- [Phase 04-extraction-pipeline-completion / 04-03]: FlushOptions.sidecarUrl added; spread conditionally in pipeline.ts to satisfy exactOptionalPropertyTypes
+- [Phase 04-extraction-pipeline-completion / 04-04]: AbortController created per-distillSession call; external opts.signal linked via addEventListener to internal controller
+- [Phase 04-extraction-pipeline-completion / 04-04]: Signal propagated through opts object in summarizeInStages (not positional param) — avoids breaking existing test callers
+- [Phase 04-extraction-pipeline-completion / 04-04]: Cancel returns {ok: true, cancelled: boolean} immediately — does not await distillation; pipeline finally handles cleanup
+- [Phase 05-recall-quality]: Jaccard threshold 0.25 for reinforcement — permissive, false negatives hurt learning more than false positives
+- [Phase 05-recall-quality]: Exponential decay uses days-since-last-access from Neo4j last_accessed timestamp (not tick count)
+- [Phase 05-recall-quality]: New memories without MemoryAccess Neo4j node receive no decay — full salience until first access
+- [Phase 05-recall-quality / 05-02]: Soft boundaries at recall time: 0.3x score penalty instead of removal — noisy results stay ranked lower but remain in output
+- [Phase 05-recall-quality / 05-02]: Module-level compiled regex patterns in Python for performance in hot /search path
+- [Phase 05-recall-quality / 05-02]: Consistent 15-char minimum length at both extraction time and recall time
+- [Phase 05-recall-quality / 05-03]: Direct Qdrant query bypasses Mem0 mem.search() which calls both Qdrant and Neo4j sequentially
+- [Phase 05-recall-quality / 05-03]: 800ms Neo4j timeout via asyncio.wait_for — on timeout recall returns Qdrant-only results
+- [Phase 05-recall-quality / 05-03]: return_exceptions=True in asyncio.gather allows Qdrant and Neo4j failures to be handled independently
+- [Phase 05-recall-quality / 05-03]: Result deduplication by memory ID keeps highest combined_score (respects graph_weight weighting)
+- [Phase 05-recall-quality / 05-04]: Token Jaccard overlap for domain relevance — no API calls in hot path, Thread context: marker provides domain signal
+- [Phase 05-recall-quality / 05-04]: min_factor=0.6 in _domain_relevance_score — cross-domain penalty max 40%, never excluded (soft boundaries)
+- [Phase 05-recall-quality / 05-04]: _apply_domain_reranking skips when no Thread context: in query — avoids spurious penalty on bare queries
+- [Phase 05-recall-quality / 05-04]: Hierarchical sufficiency config confirmed working via Zod .default({}) — partial pipeline.json inherits unset fields from global defaults
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: sidecarUrl added to RuntimeServices (not TurnState) — service-level config belongs on the services layer, matching memoryTarget/plugins/watchdog placement
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: emergency: true is non-conditional at call site in context.ts (that call IS the emergency path) but conditional in pipeline.ts event emits (avoids emitting emergency: undefined on normal distills)
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: Test assertion uses mock.calls[N][4] direct access instead of toHaveBeenCalledWith — services.router is undefined in makeServices, and expect.anything() excludes undefined
+- [Phase 06-observability]: memoryCmd group created in Plan 02 to handle Wave 1 parallel execution — Plan 01 will reuse idempotently
+- [Phase 06-observability]: turn_extraction receipt always logged on ok response (removed conditional if added>0 guard)
+- [Phase 06-observability / 06-01]: _compute_p95 returns None for < 5 samples — insufficient data should not trigger false thresholds
+- [Phase 06-observability / 06-01]: asyncio.gather(return_exceptions=True) for parallel Qdrant+Neo4j collection — each subsystem failure is non-fatal
+- [Phase 06-observability / 06-01]: Threshold query param as JSON string — allows CLI to pass full config without routing through sidecar config
+- [Phase 07-tech-debt-cleanup / 07-01]: memory:health_degraded subscribers added at startRuntime scope — consistent with other event bus wiring in that function
+- [Phase 07-tech-debt-cleanup / 07-01]: _FLUSH_RESULTS deque(maxlen=500) — bounded memory, sufficient for 24h window at typical flush frequency
+- [Phase 07-tech-debt-cleanup / 07-01]: _compute_flush_success_rate returns None (not 0.0) when no data — consistent with other metric helpers; None means no data
+- [Phase 07-tech-debt-cleanup / 07-01]: /add ADR comment is final closure — removes ambiguity from "deferred" framing, formally closes Phase 2 deferred decision
+- [Phase 07-tech-debt-cleanup / 07-02]: aletheia.env NEO4J_PASSWORD is stale (aletheia2024); actual Docker auth is aletheia-memory — backfill required correct password to connect
+- [Phase 07-tech-debt-cleanup / 07-02]: BASELINE.md written from existing baseline.json (2026-02-25) — corpus runner output counts as production baseline; no fresh run needed
 
 ### Pending Todos
 
-None.
+- Correct aletheia.env NEO4J_PASSWORD from aletheia2024 to aletheia-memory (configuration drift discovered during 07-02 backfill)
 
 ### Blockers/Concerns
 
-None.
+- None — Phase 7 complete, all 6 tech debt items from v1.0 audit resolved
 
 ## Session Continuity
 
-**Last session:** 2026-02-27T00:54:19Z
-**Stopped at:** Completed 16-01-PLAN.md (stream timeout bug fix)
+Last session: 2026-02-27
+Stopped at: Completed 07-tech-debt-cleanup 07-02-PLAN.md — RELATES_TO backfill confirmed 0 edges, BASELINE.md written with v1.0 benchmark scores
 Resume file: None

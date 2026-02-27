@@ -1,17 +1,21 @@
 # Temporal memory layer -- Graphiti-inspired episode tracking and bi-temporal queries
 # NOTE: Do NOT add future annotations -- see routes.py comment.
 
+import asyncio
 import contextlib
 import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, LiteralString, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from neo4j import Driver as Neo4jDriver
 from neo4j import Session as Neo4jSession
 from pydantic import BaseModel, Field
+from qdrant_client import QdrantClient
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
+from .config import QDRANT_HOST, QDRANT_PORT
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 
 logger = logging.getLogger("aletheia_memory.temporal")
@@ -94,6 +98,141 @@ class InvalidateRequest(BaseModel):
     predicate: str
     object: str | None = None
     reason: str = ""
+
+
+class InvalidateTextRequest(BaseModel):
+    text: str
+    user_id: str = "default"
+    reason: str = "contradiction_detected"
+
+
+INVALIDATE_TEXT_COLLECTION = "aletheia_memories"
+INVALIDATE_TEXT_SIMILARITY_THRESHOLD = 0.80
+
+
+@temporal_router.post("/facts/invalidate_text")
+async def invalidate_text(req: InvalidateTextRequest, request: Request) -> dict[str, Any]:
+    """Invalidate a temporal fact by semantic matching against free-form text.
+
+    Embeds the contradiction string, searches Qdrant for the most similar
+    active temporal fact (cosine similarity >= 0.80), then marks it invalid
+    in Neo4j (valid_to = now) and flags it in Qdrant payload.
+
+    Anti-pattern: Does NOT parse contradiction strings into triples.
+    Semantic embedding search is used instead.
+    """
+    mem: Any = getattr(request.app.state, "memory", None)
+    if mem is None:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text must not be empty")
+
+    try:
+        embedder: Any = mem.embedding_model
+        vector: list[float] = await asyncio.to_thread(embedder.embed, text)
+    except Exception as e:
+        logger.warning("invalidate_text: embedding failed: %s", e)
+        raise HTTPException(status_code=503, detail="Embedding unavailable") from e
+
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        results = client.query_points(
+            collection_name=INVALIDATE_TEXT_COLLECTION,
+            query=vector,
+            query_filter=Filter(
+                must=[
+                    FieldCondition(key="user_id", match=MatchValue(value=req.user_id)),
+                ],
+                must_not=[
+                    FieldCondition(key="invalidated", match=MatchValue(value=True)),
+                ],
+            ),
+            limit=1,
+            with_payload=True,
+        )
+    except Exception as e:
+        logger.warning("invalidate_text: Qdrant search failed: %s", e)
+        raise HTTPException(status_code=503, detail="Vector search unavailable") from e
+
+    if not results.points or results.points[0].score < INVALIDATE_TEXT_SIMILARITY_THRESHOLD:
+        logger.info(
+            "invalidate_text: no match above threshold %.2f for: %.80s",
+            INVALIDATE_TEXT_SIMILARITY_THRESHOLD,
+            text,
+        )
+        return {"invalidated": False, "reason": "no_match_above_threshold"}
+
+    matched = results.points[0]
+    matched_payload: dict[str, Any] = matched.payload or {}
+    matched_text: str = matched_payload.get("data") or matched_payload.get("memory") or ""
+    similarity: float = matched.score
+    matched_id = matched.id
+
+    now = datetime.now(UTC).isoformat()
+
+    # Mark invalidated in Qdrant payload
+    try:
+        client.set_payload(
+            collection_name=INVALIDATE_TEXT_COLLECTION,
+            payload={
+                "invalidated": True,
+                "invalidated_reason": req.reason,
+                "invalidated_at": now,
+            },
+            points=[matched_id],
+        )
+    except Exception as e:
+        logger.warning("invalidate_text: Qdrant payload update failed: %s", e)
+
+    # Mark invalidated in Neo4j temporal facts (best-effort, non-blocking)
+    if neo4j_available():
+        try:
+            driver = neo4j_driver()
+            with _open_session(driver) as session:
+                session.run(
+                    """
+                    MATCH ()-[r:TEMPORAL_FACT]->()
+                    WHERE r.valid_to IS NULL AND r.qdrant_id = $qdrant_id
+                    SET r.valid_to = $now, r.invalidation_reason = $reason
+                    """,
+                    qdrant_id=str(matched_id),
+                    now=now,
+                    reason=req.reason,
+                )
+                # Also try subject/object match via matched memory text (best-effort)
+                if matched_text:
+                    session.run(
+                        """
+                        MATCH (s)-[r:TEMPORAL_FACT]->(o)
+                        WHERE r.valid_to IS NULL
+                          AND (toLower(s.name + ' ' + r.predicate + ' ' + o.name) CONTAINS toLower($fragment)
+                               OR toLower(o.name) CONTAINS toLower($fragment))
+                        SET r.valid_to = $now, r.invalidation_reason = $reason
+                        """,
+                        fragment=matched_text[:100],
+                        now=now,
+                        reason=req.reason,
+                    )
+            driver.close()
+            mark_neo4j_ok()
+        except Exception as e:
+            mark_neo4j_down()
+            logger.warning("invalidate_text: Neo4j update failed (non-fatal): %s", e)
+
+    logger.info(
+        "invalidate_text: invalidated id=%s similarity=%.3f reason=%s text=%.80s",
+        matched_id,
+        similarity,
+        req.reason,
+        text,
+    )
+    return {
+        "invalidated": True,
+        "matched_text": matched_text,
+        "similarity": similarity,
+    }
 
 
 # --- Episode endpoints ---

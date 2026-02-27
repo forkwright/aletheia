@@ -54,6 +54,13 @@ Detect the conversation type and extract accordingly:
 - Prefix uncertain facts with [UNCERTAIN]
 - For CORRECTIONS: include both the wrong and right versions
 
+## Do NOT Extract
+- Facts about the conversation itself: "The user asked about X", "The agent mentioned Y" — these describe the conversation, not the world
+- Session metadata: session IDs, timestamps, tool calls, command invocations
+- Acknowledgments and filler: "Sure", "OK", "Got it", "Understood", "Sounds good"
+- Vague capability claims: "Uses Python", "Familiar with Git", "Works with APIs" — no actionable knowledge
+- File or path operations: "Checked the config file", "Opened the logs" — ephemeral, not knowledge
+
 ## Real Examples from Corpus Audit
 
 BAD (actual noise that was extracted — don't produce these):
@@ -96,11 +103,30 @@ const MAX_CHUNK_TOKENS = 80000; // Leave room for system prompt + output within 
  * Based on actual noise patterns observed in Qdrant corpus audit (2026-02-21).
  */
 const NOISE_PATTERNS = [
+  // Generic capability/familiarity statements — never actionable
   /^(Uses|Familiar with|Works with|Has experience|Has access|Knows about)\b/i,
+  // Subject-predicate meta-commentary about the user
   /^(The user|User|They|He|She) (is|was|has|had|does|did|can|could|will|would|asked|mentioned|said|wants|wanted|needs|needed)\b/i,
+  // Ephemeral tool/action invocations
   /^(Runs?|Ran|Executed|Checked|Opened|Closed|Searched|Grepped|Found|Looked at)\b/i,
+  // Meta-commentary about the conversation itself
   /^(Asked about|Discussed|Mentioned|Talked about|Referred to|Agreed to|Noted that)\b/i,
+  // Vague participation statements
   /^(Manages|Works on|Involved in|Participates in|Contributes to) (a |an |the |some )/i,
+  // Session/system artifacts
+  /(session|conversation|chat)\s+(id|started|ended|created)/i,
+  // Meta-commentary: facts about the conversation, not the world
+  /(the user|the agent|the assistant|I was)\s+(asked|told|said|mentioned|noted|indicated)/i,
+  // Tool/function invocations recorded as facts
+  /(called|invoked|ran|executed)\s+(tool|function|command|script)\b/i,
+  // Acknowledgment phrases with no content
+  /^(sure|ok|okay|got it|understood|will do|no problem|sounds good)\b/i,
+  // File path operation artifacts
+  /^(reading|writing|checking|opening|saving)\s+(file|path|directory)\b/i,
+  // Pure hedging with no content (assertion then nothing)
+  /^(I think|I believe|I'm not sure|maybe|perhaps|it seems|it appears)\s+(that\s+)?$/i,
+  // Timestamp-only facts (no content, just temporal reference)
+  /^(on|at|around|approximately)\s+\d{1,2}[:/\d-]\d{1,2}/i,
 ];
 
 const MIN_ITEM_LENGTH = 15;
@@ -127,15 +153,16 @@ export async function extractFromMessages(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
+  opts?: { sidecarUrl?: string; signal?: AbortSignal },
 ): Promise<ExtractionResult> {
   const totalTokens = messages.reduce(
     (sum, m) => sum + estimateTokens(m.content),
     0,
   );
 
-  // If small enough, extract in one pass
+  // If small enough, extract in one pass (no cross-chunk duplicates possible)
   if (totalTokens <= MAX_CHUNK_TOKENS) {
-    return extractChunk(router, messages, model);
+    return extractChunk(router, messages, model, opts?.signal);
   }
 
   // Split into chunks and extract each, then merge
@@ -150,17 +177,54 @@ export async function extractFromMessages(
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]!;
     log.info(`Extracting chunk ${i + 1}/${chunks.length} (${chunk.length} messages)`);
-    const partial = await extractChunk(router, chunk, model);
+    const partial = await extractChunk(router, chunk, model, opts?.signal);
     results.push(partial);
   }
 
-  return mergeExtractions(results);
+  const merged = mergeExtractions(results);
+
+  // Cross-chunk dedup: near-duplicates emerge when the same fact appears in multiple chunks
+  if (opts?.sidecarUrl && chunks.length > 1) {
+    merged.facts = await deduplicateFactsViaSidecar(merged.facts, opts.sidecarUrl);
+  }
+
+  return merged;
+}
+
+export async function deduplicateFactsViaSidecar(
+  facts: string[],
+  sidecarUrl: string,
+  threshold = 0.90,
+): Promise<string[]> {
+  if (facts.length < 2) return facts;
+
+  try {
+    const res = await fetch(`${sidecarUrl}/dedup/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts: facts, threshold }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      log.warn(`Dedup sidecar returned ${res.status} — skipping dedup`);
+      return facts;
+    }
+    const data = await res.json() as { deduplicated: string[]; removed: number };
+    if (data.removed > 0) {
+      log.info(`Cross-chunk dedup removed ${data.removed} near-duplicate facts`);
+    }
+    return data.deduplicated;
+  } catch (error) {
+    log.warn(`Dedup sidecar error — skipping: ${error instanceof Error ? error.message : error}`);
+    return facts; // Fail-open: return original facts if dedup unavailable
+  }
 }
 
 async function extractChunk(
   router: ProviderRouter,
   messages: Array<{ role: string; content: string }>,
   model: string,
+  signal?: AbortSignal,
 ): Promise<ExtractionResult> {
   const conversation = messages
     .map((m) => `${m.role}: ${m.content}`)
@@ -171,6 +235,7 @@ async function extractChunk(
     system: EXTRACTION_PROMPT,
     messages: [{ role: "user", content: conversation }],
     maxTokens: 4096,
+    ...(signal ? { signal } : {}),
   });
 
   const text = result.content
@@ -270,13 +335,13 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (balanced) {
     try {
       return JSON.parse(balanced) as Record<string, unknown>;
-    } catch { /* mem0 store failed — non-fatal */
+    } catch { /* balanced JSON parse failed — try repair */
       // Strategy 2: Repair common LLM issues then parse
       const repaired = repairJson(balanced);
       try {
         log.debug("JSON parsed after repair (balanced extraction)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch { /* session notes failed — non-fatal */
+      } catch { /* repaired JSON parse failed — fall through to greedy regex */
         // Fall through
       }
     }
@@ -287,12 +352,12 @@ export function extractJson(raw: string): Record<string, unknown> | null {
   if (match) {
     try {
       return JSON.parse(match[0]) as Record<string, unknown>;
-    } catch { /* fact file write failed — non-fatal */
+    } catch { /* greedy match parse failed — try repair */
       const repaired = repairJson(match[0]);
       try {
         log.debug("JSON parsed after repair (greedy regex)");
         return JSON.parse(repaired) as Record<string, unknown>;
-      } catch { /* fact backup failed — non-fatal */
+      } catch { /* all JSON parse strategies failed */
         log.warn(`All JSON parse strategies failed. Fragment: ${match[0].slice(0, 200)}`);
       }
     }

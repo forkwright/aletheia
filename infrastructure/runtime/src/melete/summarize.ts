@@ -41,6 +41,7 @@ export async function summarizeMessages(
   extraction: ExtractionResult,
   model: string,
   nousId?: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const conversation = messages
     .map((m) => `${m.role}: ${m.content}`)
@@ -72,6 +73,7 @@ export async function summarizeMessages(
     system: buildSummaryPrompt(nousId),
     messages: [{ role: "user", content: userContent }],
     maxTokens: 2048,
+    ...(signal ? { signal } : {}),
   });
 
   return result.content

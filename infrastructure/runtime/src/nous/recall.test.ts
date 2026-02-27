@@ -5,7 +5,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 function makeResponse(
-  results: Array<{ memory: string; score: number | null }>,
+  results: Array<{ memory: string; score: number | null; id?: string }>,
   ok = true,
   status = 200,
 ) {
@@ -230,6 +230,46 @@ describe("recallMemories", () => {
     const result = await recallMemories("test", "chiron");
 
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("includes memoryIds and memoryTexts in result when hits have IDs", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeResponse([
+        { memory: "User prefers dark mode", score: 0.92, id: "mem-001" },
+        { memory: "User uses Fish shell", score: 0.88, id: "mem-002" },
+      ]),
+    );
+
+    const result = await recallMemories("shell preference", "chiron");
+
+    expect(result.memoryIds).toEqual(expect.arrayContaining(["mem-001", "mem-002"]));
+    expect(result.memoryIds).toHaveLength(2);
+    expect(result.memoryTexts.get("mem-001")).toBe("User prefers dark mode");
+    expect(result.memoryTexts.get("mem-002")).toBe("User uses Fish shell");
+  });
+
+  it("returns empty memoryIds and memoryTexts when hits have no IDs", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeResponse([
+        { memory: "No ID memory", score: 0.90 },
+      ]),
+    );
+
+    const result = await recallMemories("test", "chiron");
+
+    expect(result.memoryIds).toHaveLength(0);
+    expect(result.memoryTexts.size).toBe(0);
+  });
+
+  it("returns empty memoryIds and memoryTexts when no results", async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeResponse([]))
+      .mockResolvedValueOnce(makeResponse([]));
+
+    const result = await recallMemories("empty query", "chiron");
+
+    expect(result.memoryIds).toEqual([]);
+    expect(result.memoryTexts.size).toBe(0);
   });
 
   it("uses 5s default timeout", async () => {

@@ -389,6 +389,22 @@
 
   // Planning panel state
   let selectedPlanningProjectId = $state<string | null>(null);
+  type PlanningLayout = "panel" | "half" | "full";
+  const LAYOUT_STORAGE_KEY = "aletheia:planning-layout";
+  let planningLayout = $state<PlanningLayout>(
+    (typeof localStorage !== "undefined" && localStorage.getItem(LAYOUT_STORAGE_KEY) as PlanningLayout) || "half"
+  );
+
+  function cyclePlanningLayout() {
+    const modes: PlanningLayout[] = ["panel", "half", "full"];
+    const idx = modes.indexOf(planningLayout);
+    planningLayout = modes[(idx + 1) % modes.length]!;
+    try { localStorage.setItem(LAYOUT_STORAGE_KEY, planningLayout); } catch {}
+  }
+
+  function closePlanningPanel() {
+    selectedPlanningProjectId = null;
+  }
 
   interface ActiveProject {
     id: string;
@@ -457,65 +473,108 @@
   }
 </script>
 
-<div class="chat-view">
+<div class="chat-view" class:planning-full={selectedPlanningProjectId && planningLayout === "full"} class:planning-half={selectedPlanningProjectId && planningLayout === "half"}>
   {#if currentAgentId && getError(currentAgentId)}
     <ErrorBanner message={getError(currentAgentId)!} onDismiss={() => { if (currentAgentId) clearError(currentAgentId); }} />
   {/if}
-  <div class="chat-area">
-    <MessageList
-      messages={currentAgentId ? getMessages(currentAgentId) : []}
-      streamingText={currentAgentId ? getStreamingText(currentAgentId) : ""}
-      thinkingText={currentAgentId ? getThinkingText(currentAgentId) : ""}
-      activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
-      isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
-      {turnStartedAt}
-      agentName={agent?.name ?? null}
-      agentEmoji={emoji}
-      onToolClick={handleToolClick}
-      onThinkingClick={(thinking) => handleThinkingClick(thinking)}
-    />
-    {#if selectedTools}
-      <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
+  <div class="main-content">
+    <!-- Chat column: hidden in full mode, shown in half/panel/no-planning -->
+    {#if !(selectedPlanningProjectId && planningLayout === "full")}
+      <div class="chat-column">
+        <div class="chat-area">
+          <MessageList
+            messages={currentAgentId ? getMessages(currentAgentId) : []}
+            streamingText={currentAgentId ? getStreamingText(currentAgentId) : ""}
+            thinkingText={currentAgentId ? getThinkingText(currentAgentId) : ""}
+            activeToolCalls={currentAgentId ? getActiveToolCalls(currentAgentId) : []}
+            isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
+            {turnStartedAt}
+            agentName={agent?.name ?? null}
+            agentEmoji={emoji}
+            onToolClick={handleToolClick}
+            onThinkingClick={(thinking) => handleThinkingClick(thinking)}
+          />
+          {#if selectedTools}
+            <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
+          {/if}
+          {#if selectedThinking !== null}
+            <ThinkingPanel
+              thinkingText={thinkingIsLive && currentAgentId ? getThinkingText(currentAgentId) : selectedThinking}
+              isStreaming={thinkingIsLive && (currentAgentId ? getIsStreaming(currentAgentId) : false)}
+              onClose={closeThinkingPanel}
+            />
+          {/if}
+          <!-- Panel mode: planning overlays inside chat area -->
+          {#if selectedPlanningProjectId && planningLayout === "panel"}
+            <PlanningDashboard
+              projectId={selectedPlanningProjectId}
+              onClose={closePlanningPanel}
+              layout={planningLayout}
+              onLayoutChange={cyclePlanningLayout}
+            />
+          {/if}
+        </div>
+        {#if pendingPlan}
+          <PlanCard plan={pendingPlan} onResolved={handlePlanResolved} />
+        {/if}
+        {#if pendingApproval}
+          <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
+        {/if}
+        {#if activeProject}
+          <div class="planning-pill-row">
+            <PlanningStatusLine
+              projectId={activeProject.id}
+              state={activeProject.state}
+              activeWave={activeProject.activeWave}
+              onclick={() => { selectedPlanningProjectId = activeProject!.id; }}
+            />
+          </div>
+        {/if}
+        <DistillationProgress />
+        <InputBar
+          isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
+          onSend={handleSend}
+          onAbort={handleAbort}
+          onQueue={handleQueue}
+          contextPercent={contextPercent()}
+          slashCommands={getSlashCommands()}
+        />
+      </div>
     {/if}
-    {#if selectedThinking !== null}
-      <ThinkingPanel
-        thinkingText={thinkingIsLive && currentAgentId ? getThinkingText(currentAgentId) : selectedThinking}
-        isStreaming={thinkingIsLive && (currentAgentId ? getIsStreaming(currentAgentId) : false)}
-        onClose={closeThinkingPanel}
-      />
-    {/if}
-    {#if selectedPlanningProjectId}
-      <PlanningDashboard
-        projectId={selectedPlanningProjectId}
-        onClose={() => { selectedPlanningProjectId = null; }}
-      />
+
+    <!-- Planning column: shown in half/full mode -->
+    {#if selectedPlanningProjectId && (planningLayout === "half" || planningLayout === "full")}
+      <div class="planning-column">
+        <PlanningDashboard
+          projectId={selectedPlanningProjectId}
+          onClose={closePlanningPanel}
+          layout={planningLayout}
+          onLayoutChange={cyclePlanningLayout}
+        />
+        <!-- In full mode, keep input bar accessible -->
+        {#if planningLayout === "full"}
+          {#if activeProject}
+            <div class="planning-pill-row">
+              <PlanningStatusLine
+                projectId={activeProject.id}
+                state={activeProject.state}
+                activeWave={activeProject.activeWave}
+                onclick={() => {}}
+              />
+            </div>
+          {/if}
+          <InputBar
+            isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
+            onSend={handleSend}
+            onAbort={handleAbort}
+            onQueue={handleQueue}
+            contextPercent={contextPercent()}
+            slashCommands={getSlashCommands()}
+          />
+        {/if}
+      </div>
     {/if}
   </div>
-  {#if pendingPlan}
-    <PlanCard plan={pendingPlan} onResolved={handlePlanResolved} />
-  {/if}
-  {#if pendingApproval}
-    <ToolApproval approval={pendingApproval} onResolved={handleApprovalResolved} />
-  {/if}
-  {#if activeProject}
-    <div class="planning-pill-row">
-      <PlanningStatusLine
-        projectId={activeProject.id}
-        state={activeProject.state}
-        activeWave={activeProject.activeWave}
-        onclick={() => { selectedPlanningProjectId = activeProject!.id; }}
-      />
-    </div>
-  {/if}
-  <DistillationProgress />
-  <InputBar
-    isStreaming={currentAgentId ? getIsStreaming(currentAgentId) : false}
-    onSend={handleSend}
-    onAbort={handleAbort}
-    onQueue={handleQueue}
-    contextPercent={contextPercent()}
-    slashCommands={getSlashCommands()}
-  />
 </div>
 
 <style>
@@ -524,26 +583,72 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    /* On mobile with keyboard open, the view must shrink to fit above the keyboard.
-       The --app-height variable (set by mobile.ts) handles the outer container,
-       and flex layout propagates the constraint inward. */
   }
-  .chat-area {
+
+  .main-content {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
+
+  .chat-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .chat-area {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .planning-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    border-left: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  /* Half mode: planning takes 50% */
+  .planning-half .chat-column {
+    flex: 1;
+  }
+  .planning-half .planning-column {
+    flex: 1;
+  }
+
+  /* Full mode: planning takes 100%, chat hidden */
+  .planning-full .planning-column {
+    flex: 1;
+  }
+
   .planning-pill-row {
     padding: 0 8px;
     display: flex;
     align-items: center;
   }
 
+  /* On narrow screens, force full mode when planning is open */
+  @media (max-width: 900px) {
+    .planning-half .chat-column {
+      display: none;
+    }
+    .planning-half .planning-column {
+      flex: 1;
+      border-left: none;
+    }
+  }
+
   @media (max-width: 768px) {
     .chat-view {
-      /* Ensure the flex column fills available space and doesn't overflow
-         when the virtual keyboard is open */
       overflow: hidden;
     }
   }

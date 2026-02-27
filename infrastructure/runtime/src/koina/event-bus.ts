@@ -24,12 +24,27 @@ export type EventName =
   | "pipeline:error"
   | "history:orphan_repair"
   | "memory:health_degraded"
+  | "memory:health_recovered"
   | "planning:project-created"
   | "planning:project-resumed"
   | "planning:phase-started"
   | "planning:phase-complete"
   | "planning:checkpoint"
-  | "planning:complete";
+  | "planning:complete"
+  | "planning:requirement-changed"
+  | "planning:phase-changed"
+  | "planning:discussion-answered"
+  | "planning:message-enqueued"
+  | "planning:annotation-changed"
+  | "planning:edit-recorded"
+  | "planning:state-transition"
+  | "planning:execution-progress"
+  | "planning:verification-complete"
+  | "task:created"
+  | "task:updated"
+  | "task:completed"
+  | "task:deleted"
+  | "task:bulk-created";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;

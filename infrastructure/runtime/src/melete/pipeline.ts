@@ -7,6 +7,7 @@ import type { SessionStore } from "../mneme/store.js";
 import { extractFromMessages } from "./extract.js";
 import { summarizeMessages } from "./summarize.js";
 import { type FlushOptions, flushToMemory, type MemoryFlushTarget } from "./hooks.js";
+import { detectCrossChunkContradictions } from "./contradiction-detect.js";
 import { sanitizeToolResults, summarizeInStages } from "./chunked-summarize.js";
 import { pruneBySimilarity } from "./similarity-pruning.js";
 import type { PluginRegistry } from "../prostheke/registry.js";
@@ -17,6 +18,38 @@ const log = createLogger("melete");
 
 const workspaceFlushFailures = new Map<string, number>();
 const WORKSPACE_FLUSH_FAILURE_THRESHOLD = 3;
+
+const activeDistillations = new Map<string, AbortController>();
+
+export function cancelDistillation(sessionId: string): boolean {
+  const controller = activeDistillations.get(sessionId);
+  if (!controller) return false;
+  controller.abort();
+  return true;
+}
+
+async function invalidateContradictedFacts(
+  contradictions: string[],
+  sidecarUrl: string,
+  agentId: string,
+): Promise<void> {
+  for (const contradiction of contradictions) {
+    try {
+      const res = await fetch(`${sidecarUrl}/temporal/facts/invalidate_text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: contradiction, user_id: agentId, reason: "contradiction_detected" }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        log.warn(`Contradiction invalidation failed (${res.status}): ${contradiction.slice(0, 80)}`);
+      }
+    } catch (error) {
+      log.warn(`Contradiction invalidation error: ${error instanceof Error ? error.message : error}`);
+      // Non-fatal — contradiction invalidation should never block distillation
+    }
+  }
+}
 
 export interface DistillationOpts {
   triggerThreshold: number;
@@ -34,6 +67,12 @@ export interface DistillationOpts {
   piiConfig?: FlushOptions["piiConfig"];
   /** Called after successful distillation to update the thread-level running summary. */
   onThreadSummaryUpdate?: (summary: string, keyFacts: string[]) => void;
+  /** Sidecar base URL for contradiction invalidation (e.g. http://127.0.0.1:8230). */
+  sidecarUrl?: string;
+  /** True when triggered by context overflow (90% ceiling). */
+  emergency?: boolean;
+  /** AbortSignal to cancel an in-progress distillation. Cancel = full rollback. */
+  signal?: AbortSignal;
 }
 
 export interface DistillationResult {
@@ -68,7 +107,21 @@ export async function distillSession(
   nousId: string,
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
+  // Check if already aborted before doing any work
+  opts.signal?.throwIfAborted();
+
+  const controller = new AbortController();
+  activeDistillations.set(sessionId, controller);
+
+  // Link external signal to internal controller
+  if (opts.signal) {
+    opts.signal.addEventListener("abort", () => controller.abort(opts.signal?.reason), { once: true });
+  }
+
+  const mergedOpts: DistillationOpts = { ...opts, signal: controller.signal };
+
   if (!store.acquireDistillationLock(sessionId, nousId)) {
+    activeDistillations.delete(sessionId);
     log.info(
       `Distillation already in progress for session ${sessionId}, skipping`,
     );
@@ -80,9 +133,10 @@ export async function distillSession(
   }
 
   try {
-    return await runDistillation(store, router, sessionId, nousId, opts);
+    return await runDistillation(store, router, sessionId, nousId, mergedOpts);
   } finally {
     store.releaseDistillationLock(sessionId);
+    activeDistillations.delete(sessionId);
   }
 }
 
@@ -94,7 +148,7 @@ async function runDistillation(
   opts: DistillationOpts,
 ): Promise<DistillationResult> {
   const distillationNumber = store.incrementDistillationCount(sessionId);
-  eventBus.emit("distill:before", { sessionId, nousId, distillationNumber });
+  eventBus.emit("distill:before", { sessionId, nousId, distillationNumber, ...(opts.emergency ? { emergency: true } : {}) });
   log.info(
     `Starting distillation #${distillationNumber} for session ${sessionId}`,
   );
@@ -147,6 +201,9 @@ async function runDistillation(
       context: { sessionId, undistilledCount: undistilled.length, minMessages: opts.minMessages },
     });
   }
+
+  // Check signal before any LLM work begins
+  opts.signal?.throwIfAborted();
 
   // Split into messages to distill vs recent messages to preserve as raw context
   const preserveCount = opts.preserveRecentMessages ?? 0;
@@ -234,6 +291,7 @@ async function runDistillation(
       messages: [{ role: "user", content: condensed }],
       maxTokens: 256,
       temperature: 0,
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
     const textBlock = result.content.find((b) => b.type === "text");
     summary = textBlock && "text" in textBlock ? textBlock.text : "Session distilled (no summary generated).";
@@ -246,6 +304,10 @@ async function runDistillation(
       router,
       simpleMessages,
       opts.extractionModel,
+      {
+        ...(opts.sidecarUrl ? { sidecarUrl: opts.sidecarUrl } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
     );
 
     log.info(
@@ -253,13 +315,31 @@ async function runDistillation(
         `${extraction.openItems.length} open items, ${extraction.contradictions.length} contradictions`,
     );
 
+    // Check signal after extraction — before summarization
+    opts.signal?.throwIfAborted();
+
+    // Cross-chunk contradiction detection — only for extractions with 2+ facts
+    if (extraction.facts.length >= 2) {
+      const crossChunkContradictions = await detectCrossChunkContradictions(
+        router, extraction.facts, opts.extractionModel,
+      );
+      if (crossChunkContradictions.length > 0) {
+        log.info(`Cross-chunk contradictions found: ${crossChunkContradictions.length}`);
+        extraction.contradictions.push(...crossChunkContradictions);
+      }
+    }
+
     // Memory flush with retry — non-blocking, don't fail distillation on flush failure
     if (opts.memoryTarget) {
+      const flushOpts: FlushOptions = {
+        ...(opts.piiConfig ? { piiConfig: opts.piiConfig } : { maxRetries: 3 }),
+        ...(opts.sidecarUrl ? { sidecarUrl: opts.sidecarUrl } : {}),
+      };
       const flushResult = await flushToMemory(
         opts.memoryTarget,
         nousId,
         extraction,
-        opts.piiConfig ? { piiConfig: opts.piiConfig } : 3,
+        flushOpts,
         sessionId,
       );
       if (flushResult.errors > 0) {
@@ -267,6 +347,11 @@ async function runDistillation(
           `Memory flush had ${flushResult.errors} errors — some facts may be lost`,
         );
       }
+    }
+
+    // Wire contradictions to temporal invalidation — non-blocking, fire-and-forget
+    if (extraction.contradictions.length > 0 && opts.sidecarUrl) {
+      void invalidateContradictedFacts(extraction.contradictions, opts.sidecarUrl, nousId);
     }
 
     // Pass 2: Summarization — multi-stage for large conversations, single-pass for small
@@ -278,6 +363,7 @@ async function runDistillation(
       extraction,
       opts.summaryModel,
       nousId,
+      opts.signal ? { signal: opts.signal } : undefined,
     );
 
     summaryTokens = estimateTokens(summary);
@@ -294,9 +380,13 @@ async function runDistillation(
         emptyExtraction,
         opts.summaryModel,
         nousId,
+        opts.signal,
       );
       summaryTokens = estimateTokens(summary);
     }
+
+    // Check signal after summarization — critically before SQLite mutations
+    opts.signal?.throwIfAborted();
   }
 
   // Tag repeated distillations so agents can see compression history
@@ -350,6 +440,9 @@ async function runDistillation(
       workspaceFlushFailures.delete(nousId);
     }
   }
+
+  // Final signal check — immediately before SQLite mutations to ensure clean rollback on cancel
+  opts.signal?.throwIfAborted();
 
   // Bundle all five SQLite writes into a single atomic transaction with single retry.
   // The transaction auto-rolls-back if any write throws, leaving no partial state.
@@ -482,7 +575,7 @@ async function runDistillation(
     }
   }
 
-  eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted });
+  eventBus.emit("distill:after", { sessionId, nousId, distillationNumber, tokensBefore: result.tokensBefore, tokensAfter: result.tokensAfter, factsExtracted: result.factsExtracted, ...(opts.emergency ? { emergency: true } : {}) });
 
   log.info(
     `Distillation #${distillationNumber} complete: ${result.tokensBefore} → ${result.tokensAfter} tokens ` +

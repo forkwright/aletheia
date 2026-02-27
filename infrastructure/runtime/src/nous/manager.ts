@@ -10,7 +10,7 @@ import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
-import { distillSession } from "../melete/pipeline.js";
+import { cancelDistillation as cancelDistillationById, distillSession } from "../melete/pipeline.js";
 import type { MemoryFlushTarget } from "../melete/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
@@ -82,9 +82,12 @@ export class NousManager {
 
   get sessionStore(): SessionStore { return this.store; }
 
+  private sidecarUrl?: string;
+
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
+  setSidecarUrl(url: string): void { this.sidecarUrl = url; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
   setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
@@ -182,6 +185,7 @@ export class NousManager {
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(this.planningOrchestrator ? { planningOrchestrator: this.planningOrchestrator } : {}),
       ...(this.executionOrchestrator ? { executionOrchestrator: this.executionOrchestrator } : {}),
     };
@@ -358,6 +362,7 @@ export class NousManager {
               lightweight: true,
               ...(workspace ? { workspace } : {}),
               ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+              ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
             });
           });
         } catch (error) {
@@ -408,6 +413,7 @@ export class NousManager {
             ...(workspace ? { workspace } : {}),
             ...(this.plugins ? { plugins: this.plugins } : {}),
             ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+            ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
                 this.store.updateThreadSummary(thread.id, summary, keyFacts);
@@ -419,6 +425,10 @@ export class NousManager {
         log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
       }
     })();
+  }
+
+  cancelDistillation(sessionId: string): boolean {
+    return cancelDistillationById(sessionId);
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {
@@ -447,6 +457,7 @@ export class NousManager {
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(thread ? {
         onThreadSummaryUpdate: (summary, keyFacts) => {
           this.store.updateThreadSummary(thread.id, summary, keyFacts);

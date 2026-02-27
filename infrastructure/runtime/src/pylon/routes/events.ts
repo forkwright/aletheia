@@ -40,6 +40,16 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           ["planning:phase-complete", forward("planning:phase-complete")],
           ["planning:checkpoint", forward("planning:checkpoint")],
           ["planning:complete", forward("planning:complete")],
+          ["planning:requirement-changed", forward("planning:requirement-changed")],
+          ["planning:phase-changed", forward("planning:phase-changed")],
+          ["planning:discussion-answered", forward("planning:discussion-answered")],
+          ["planning:annotation-changed", forward("planning:annotation-changed")],
+          ["planning:edit-recorded", forward("planning:edit-recorded")],
+          ["task:created", forward("task:created")],
+          ["task:updated", forward("task:updated")],
+          ["task:completed", forward("task:completed")],
+          ["task:deleted", forward("task:deleted")],
+          ["task:bulk-created", forward("task:bulk-created")],
         ];
 
         for (const [event, handler] of handlers) {

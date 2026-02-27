@@ -38,6 +38,7 @@ export async function buildContext(
     maxTokens: services.config.agents.defaults.bootstrapMaxTokens,
     ...(services.skillsSection ? { skillsSection: services.skillsSection } : {}),
     ...(degradedServices.length > 0 ? { degradedServices } : {}),
+    db: services.store.getDb(),
   });
 
   services.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
@@ -64,6 +65,7 @@ export async function buildContext(
         log.warn(
           `Emergency distillation: ${nousId} session=${sessionId} at ${lastActual} tokens ` +
           `(${Math.round((lastActual / preflightContextTokens) * 100)}% — above 90% ceiling)`,
+          { emergency: true },
         );
         const compaction = services.config.agents.defaults.compaction;
         const thread = services.store.getThreadForSession(sessionId);
@@ -75,19 +77,21 @@ export async function buildContext(
             summaryModel: compaction.distillationModel,
             preserveRecentMessages: compaction.preserveRecentMessages,
             preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+            emergency: true,
             ...(workspace ? { workspace } : {}),
             ...(services.plugins ? { plugins: services.plugins } : {}),
             ...(services.memoryTarget ? { memoryTarget: services.memoryTarget } : {}),
+            ...(services.sidecarUrl ? { sidecarUrl: services.sidecarUrl } : {}),
             ...(thread ? {
               onThreadSummaryUpdate: (summary, keyFacts) => {
                 services.store.updateThreadSummary(thread.id, summary, keyFacts);
               },
             } : {}),
           });
-          log.info(`Emergency distillation complete for ${nousId} — context cleared`);
+          log.info(`Emergency distillation complete for ${nousId} — context cleared`, { emergency: true });
           preflightDistilled = true;
         } catch (error) {
-          log.error(`Emergency distillation failed: ${error instanceof Error ? error.message : error}`);
+          log.error(`Emergency distillation failed: ${error instanceof Error ? error.message : error}`, { emergency: true });
         }
       }
     }
@@ -135,6 +139,11 @@ export async function buildContext(
     if (recall.count > 0) {
       log.info(`Recalled ${recall.count} memories for ${nousId} (${recall.durationMs}ms, ~${recall.tokens} tokens)`);
       state.trace.setRecall(recall.count, recall.durationMs);
+    }
+    // Thread memory IDs and texts into state for downstream reinforcement in finalize
+    if (recall.memoryIds.length > 0) {
+      state.recalledMemoryIds = recall.memoryIds;
+      state.recalledMemoryTexts = recall.memoryTexts;
     }
   }
 

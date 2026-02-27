@@ -4,10 +4,14 @@ import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
-import type { PlanningPhase, SpawnRecord } from "./types.js";
+import type { PlanningMessage, PlanningPhase, SpawnRecord } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 import { buildContextPacketSync } from "./context-packet.js";
 import { parseDispatchResponse, selectRoleForTask } from "./structured-extraction.js";
+import { PhaseExecutor } from "./phase-executor.js";
+import { StateReconciler } from "./state-reconciler.js";
+import { buildHandoffState, writeHandoffFile, readHandoffFile, clearHandoffFile } from "./handoff.js";
+import { buildOrchestratorContext } from "./context-budget.js";
 
 const log = createLogger("dianoia:execution");
 const ZOMBIE_THRESHOLD_SECONDS = 600; // Conservative threshold; execution timeouts are per-task, zombies are per-record
@@ -109,12 +113,23 @@ export function findResumeWave(records: SpawnRecord[]): number {
   return -1; // All waves complete
 }
 
+export interface MessageDelivery {
+  id: string;
+  source: PlanningMessage["source"];
+  content: string;
+  priority: PlanningMessage["priority"];
+  deliveredAtWave: number;
+  action: "logged" | "paused" | "injected";
+}
+
 export class ExecutionOrchestrator {
   private store: PlanningStore;
   private workspaceRoot: string | null = null;
+  private phaseExecutor: PhaseExecutor | null = null;
+  private reconciler: StateReconciler | null = null;
 
   constructor(
-    db: Database.Database,
+    private db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);
@@ -123,15 +138,113 @@ export class ExecutionOrchestrator {
   /** Set workspace root for context packet assembly from file-backed state */
   setWorkspaceRoot(root: string): void {
     this.workspaceRoot = root;
+    // Initialize PhaseExecutor for task-level execution
+    this.phaseExecutor = new PhaseExecutor(this.db, {
+      workspaceRoot: root,
+      maxReviewRounds: 3,
+      enableGitCommits: true,
+      enableReview: true,
+    });
+    // Initialize StateReconciler for co-primary file/DB architecture (ENG-01)
+    this.reconciler = new StateReconciler(this.db, root);
+    // Run reconciliation on startup — ensures files and DB are in sync
+    const reconcileResult = this.reconciler.reconcileAll();
+    if (reconcileResult.totalErrors > 0) {
+      log.warn(`Startup reconciliation had ${reconcileResult.totalErrors} errors across ${reconcileResult.projects.length} projects`);
+    }
+  }
+
+  /** Get the state reconciler for external use (routes, tools) */
+  getReconciler(): StateReconciler | null {
+    return this.reconciler;
+  }
+
+  /**
+   * Build the orchestrator's context — budget-constrained to 40k tokens (ENG-08).
+   * Returns only PROJECT.md + ROADMAP.md + current phase status + handoff context.
+   */
+  getOrchestratorContext(projectId: string): { context: string; withinBudget: boolean } {
+    if (!this.workspaceRoot) {
+      return { context: "", withinBudget: true };
+    }
+    const project = this.store.getProjectOrThrow(projectId);
+    const phases = this.store.listPhases(projectId);
+    const { context, budget } = buildOrchestratorContext({
+      workspaceRoot: this.workspaceRoot,
+      projectId,
+      project,
+      phases,
+    });
+    return { context, withinBudget: budget.withinBudget };
+  }
+
+  /**
+   * Write a handoff file for session survival (ENG-12).
+   * Call before pausing, on distillation, or on error.
+   */
+  writeHandoff(
+    projectId: string,
+    phaseId: string,
+    currentWave: number,
+    totalWaves: number,
+    pauseReason: "manual" | "checkpoint" | "crash" | "distillation" | "timeout" | "error",
+    pauseDetail: string,
+    opts?: {
+      currentTaskId?: string;
+      currentTaskLabel?: string;
+      completedTaskIds?: string[];
+      pendingTaskIds?: string[];
+      lastCommitHash?: string;
+      uncommittedChanges?: string[];
+    },
+  ): void {
+    if (!this.workspaceRoot) return;
+    const project = this.store.getProjectOrThrow(projectId);
+    const phase = this.store.getPhaseOrThrow(phaseId);
+    const state = buildHandoffState({
+      store: this.store,
+      project,
+      phase,
+      currentWave,
+      totalWaves,
+      pauseReason,
+      pauseDetail,
+      ...opts,
+    });
+    writeHandoffFile(this.workspaceRoot, state);
+  }
+
+  /**
+   * Check for and return any pending handoff state for a project (ENG-12).
+   */
+  getHandoff(projectId: string): ReturnType<typeof readHandoffFile> {
+    if (!this.workspaceRoot) return null;
+    return readHandoffFile(this.workspaceRoot, projectId);
+  }
+
+  /**
+   * Clear handoff after successful resume (ENG-12).
+   */
+  clearHandoff(projectId: string): void {
+    if (!this.workspaceRoot) return;
+    clearHandoffFile(this.workspaceRoot, projectId);
   }
 
   async executePhase(
     projectId: string,
     toolContext: ToolContext,
-  ): Promise<{ waveCount: number; failed: number; skipped: number }> {
+  ): Promise<{ waveCount: number; failed: number; skipped: number; messages: MessageDelivery[] }> {
     const project = this.store.getProjectOrThrow(projectId);
     const allPhases = this.store.listPhases(projectId);
     const waves = computeWaves(allPhases);
+    const deliveredMessages: MessageDelivery[] = [];
+
+    // On resume: check for and clear handoff file (ENG-12)
+    const handoff = this.getHandoff(projectId);
+    if (handoff) {
+      log.info(`Resuming from handoff: ${handoff.pauseReason} at wave ${handoff.currentWave + 1}/${handoff.totalWaves}`);
+      this.clearHandoff(projectId);
+    }
 
     // On resume: detect and reap zombies (running records older than threshold)
     this.reapZombies(projectId);
@@ -152,7 +265,49 @@ export class ExecutionOrchestrator {
       // Check pause flag before each wave (reads from project config)
       if (this.isPaused(projectId)) {
         log.info(`Execution paused for project ${projectId} before wave ${waveIndex}`);
+        // Write handoff file for session survival (ENG-12)
+        const pausePhase = waves[waveIndex]?.[0];
+        if (pausePhase && this.workspaceRoot) {
+          this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", "Execution paused by user or config");
+        }
         break;
+      }
+
+      // INTERJ-01: Drain pending messages at wave boundary (turn boundary)
+      const pendingMessages = this.store.drainMessages(projectId);
+      for (const msg of pendingMessages) {
+        const delivery: MessageDelivery = {
+          id: msg.id,
+          source: msg.source,
+          content: msg.content,
+          priority: msg.priority,
+          deliveredAtWave: waveIndex,
+          action: msg.priority === "critical" ? "paused" : "logged",
+        };
+        deliveredMessages.push(delivery);
+
+        // Record message delivery as a decision for audit trail
+        this.store.logDecision({
+          projectId,
+          phaseId: msg.phaseId,
+          source: msg.source === "sub-agent" ? "agent" : msg.source,
+          type: "message-injection",
+          summary: `[${msg.priority}] ${msg.content.slice(0, 200)}`,
+          rationale: `Injected at wave ${waveIndex + 1} boundary from ${msg.source}${msg.sourceSessionId ? ` (${msg.sourceSessionId})` : ""}`,
+          context: { messageId: msg.id, priority: msg.priority, sourceSessionId: msg.sourceSessionId },
+        });
+
+        log.info(`Message ${msg.id} delivered at wave ${waveIndex + 1}: [${msg.priority}] ${msg.content.slice(0, 80)}`);
+
+        // Critical messages pause execution — human must review
+        if (msg.priority === "critical") {
+          log.warn(`Critical message received — pausing execution: ${msg.content.slice(0, 120)}`);
+          const pausePhase = waves[waveIndex]?.[0];
+          if (pausePhase && this.workspaceRoot) {
+            this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", `Critical message: ${msg.content.slice(0, 200)}`);
+          }
+          return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
+        }
       }
 
       const wave = waves[waveIndex]!;
@@ -185,104 +340,200 @@ export class ExecutionOrchestrator {
         spawnIds.push(record.id);
       }
 
-      // Map each plan to appropriate role based on its task content
-      const tasks = activePlans.map((plan) => {
-        // Build scoped context packet from file-backed state
-        const contextPacket = this.workspaceRoot
-          ? buildContextPacketSync({
-              workspaceRoot: this.workspaceRoot,
-              projectId,
-              phaseId: plan.id,
-              role: "executor",
-              phase: plan,
-              projectGoal: project.goal,
-              requirements: this.store
-                .listRequirements(projectId)
-                .filter((r) => r.tier === "v1" && plan.requirements.includes(r.reqId)),
-              maxTokens: 12000,
-            })
-          : buildExecutionPrompt(plan, project.goal); // Fallback if no workspace
+      // ──────────────────────────────────────────────────────────────────
+      // Task-aware execution: if a phase has tasks in TaskStore, execute
+      // them individually with verification + review + git commits.
+      // Otherwise fall back to the bulk dispatch path.
+      // ──────────────────────────────────────────────────────────────────
 
-        // Select role based on task content rather than fixed "executor" role
-        const selectedRole = selectRoleForTask(plan.goal + " " + plan.successCriteria.join(" "));
-
-        return {
-          role: selectedRole,
-          task: contextPacket,
-          timeoutSeconds: 900, // 15 min — matches MAX_TURN_WALL_CLOCK_MS in execute.ts
-        };
-      });
-
-      let dispatchResult: Awaited<ReturnType<typeof parseDispatchResponse>>;
-      
-      try {
-        const raw = await this.dispatchTool.execute({ tasks }, toolContext);
-        
-        // Try structured extraction with one retry using Zod error feedback
-        dispatchResult = await parseDispatchResponse(raw as string, async (errorMessage) => {
-          log.warn(`Dispatch response parsing failed: ${errorMessage}. Re-dispatching with error feedback...`);
-
-          // Build feedback-enriched tasks: same tasks but with error context appended
-          const feedbackTasks = tasks.map(t => ({
-            ...t,
-            task: t.task + `\n\n---\n\n**IMPORTANT: Your previous response failed validation.**\nError: ${errorMessage}\n\nPlease ensure your response ends with a valid JSON block matching the required output format.`,
-          }));
-
-          try {
-            const retryRaw = await this.dispatchTool.execute({ tasks: feedbackTasks }, toolContext);
-            return retryRaw as string;
-          } catch (error) {
-            throw new PlanningError(`Retry dispatch also failed: ${error instanceof Error ? error.message : String(error)}`, { code: "PLANNING_DISPATCH_FAILED", cause: error instanceof Error ? error : undefined });
-          }
-        });
-
-        if (!dispatchResult) {
-          throw new PlanningError("Failed to parse dispatch response after retry", { code: "PLANNING_DISPATCH_PARSE_FAILED" });
-        }
-      } catch (error) {
-        // Dispatch or parsing failed — mark all as failed
-        dispatchResult = {
-          taskCount: activePlans.length,
-          succeeded: 0,
-          failed: activePlans.length,
-          results: activePlans.map((_, index) => ({
-            index,
-            task: activePlans[index]?.goal ?? "unknown",
-            status: "error" as const,
-            error: String(error),
-            durationMs: 0,
-          })),
-          timing: {
-            wallClockMs: 0,
-            sequentialMs: 0,
-            savedMs: 0,
-          },
-          totalTokens: 0,
-        };
-      }
+      // Separate plans into task-based and legacy paths
+      const taskBasedPlans: Array<{ plan: PlanningPhase; spawnId: string }> = [];
+      const legacyPlans: Array<{ plan: PlanningPhase; spawnId: string }> = [];
 
       for (let i = 0; i < activePlans.length; i++) {
         const plan = activePlans[i]!;
         const spawnId = spawnIds[i]!;
-        const result = dispatchResult.results[i];
-
-        if (result?.status === "success") {
-          this.store.updateSpawnRecord(spawnId, {
-            status: "done",
-            completedAt: new Date().toISOString(),
-          });
-          this.store.updatePhaseStatus(plan.id, "complete");
+        if (this.phaseExecutor?.hasTasksForPhase(projectId, plan.id)) {
+          taskBasedPlans.push({ plan, spawnId });
         } else {
-          const errorMessage = result?.error ?? "dispatch failed";
+          legacyPlans.push({ plan, spawnId });
+        }
+      }
+
+      // Execute task-based plans individually (with verification)
+      for (const { plan, spawnId } of taskBasedPlans) {
+        try {
+          this.store.updatePhaseStatus(plan.id, "executing");
+
+          const phaseResult = await this.phaseExecutor!.executePhase(
+            projectId,
+            plan.id,
+            // Dispatch function: wraps sessions_spawn via the dispatch tool
+            async (prompt, role, timeoutSeconds) => {
+              const raw = await this.dispatchTool.execute(
+                { tasks: [{ role, task: prompt, timeoutSeconds }] },
+                toolContext,
+              );
+              // Extract the result text from dispatch response
+              const parsed = await parseDispatchResponse(raw as string);
+              return parsed?.results[0]?.result ?? (raw as string);
+            },
+            // Review function: uses reviewer role
+            async (prompt) => {
+              const raw = await this.dispatchTool.execute(
+                { tasks: [{ role: "reviewer", task: prompt, timeoutSeconds: 120 }] },
+                toolContext,
+              );
+              const parsed = await parseDispatchResponse(raw as string);
+              return parsed?.results[0]?.result ?? (raw as string);
+            },
+          );
+
+          if (phaseResult.failed === 0) {
+            this.store.updateSpawnRecord(spawnId, {
+              status: "done",
+              completedAt: new Date().toISOString(),
+            });
+            this.store.updatePhaseStatus(plan.id, "complete");
+            // Write step-boundary STATE.md (ENG-01)
+            this.reconciler?.writeStepBoundaryState(projectId, plan.id, {
+              step: "complete",
+              label: `Phase "${plan.name}" completed`,
+              completedTasks: phaseResult.taskResults.filter(t => t.status === "success").map(t => t.taskId),
+            });
+            log.info(
+              `Phase "${plan.name}" completed via task executor: ${phaseResult.succeeded} tasks, ${phaseResult.commits.length} commits`,
+            );
+          } else {
+            this.store.updateSpawnRecord(spawnId, {
+              status: "failed",
+              errorMessage: `${phaseResult.failed}/${phaseResult.taskResults.length} tasks failed`,
+              completedAt: new Date().toISOString(),
+            });
+            this.store.updatePhaseStatus(plan.id, "failed");
+            failed++;
+          }
+        } catch (error) {
           this.store.updateSpawnRecord(spawnId, {
             status: "failed",
-            errorMessage,
+            errorMessage: error instanceof Error ? error.message : String(error),
             completedAt: new Date().toISOString(),
           });
           this.store.updatePhaseStatus(plan.id, "failed");
           failed++;
+        }
+      }
 
-          // Cascade-skip direct dependents only (CONTEXT.md: direct-dependents-only rule)
+      // Legacy bulk dispatch for plans without tasks
+      if (legacyPlans.length > 0) {
+        const legacyActivePlans = legacyPlans.map(lp => lp.plan);
+        const legacySpawnIds = legacyPlans.map(lp => lp.spawnId);
+
+        // Map each plan to appropriate role based on its task content
+        const tasks = legacyActivePlans.map((plan) => {
+          const contextPacket = this.workspaceRoot
+            ? buildContextPacketSync({
+                workspaceRoot: this.workspaceRoot,
+                projectId,
+                phaseId: plan.id,
+                role: "executor",
+                phase: plan,
+                projectGoal: project.goal,
+                requirements: this.store
+                  .listRequirements(projectId)
+                  .filter((r) => r.tier === "v1" && plan.requirements.includes(r.reqId)),
+                maxTokens: 12000,
+              })
+            : buildExecutionPrompt(plan, project.goal);
+
+          const selectedRole = selectRoleForTask(plan.goal + " " + plan.successCriteria.join(" "));
+          return { role: selectedRole, task: contextPacket, timeoutSeconds: 900 };
+        });
+
+        let dispatchResult: Awaited<ReturnType<typeof parseDispatchResponse>>;
+        
+        try {
+          const raw = await this.dispatchTool.execute({ tasks }, toolContext);
+          dispatchResult = await parseDispatchResponse(raw as string, async (errorMessage) => {
+            log.warn(`Dispatch response parsing failed: ${errorMessage}. Re-dispatching with error feedback...`);
+            const feedbackTasks = tasks.map(t => ({
+              ...t,
+              task: t.task + `\n\n---\n\n**IMPORTANT: Your previous response failed validation.**\nError: ${errorMessage}\n\nPlease ensure your response ends with a valid JSON block matching the required output format.`,
+            }));
+            try {
+              const retryRaw = await this.dispatchTool.execute({ tasks: feedbackTasks }, toolContext);
+              return retryRaw as string;
+            } catch (error) {
+              throw new PlanningError(`Retry dispatch also failed: ${error instanceof Error ? error.message : String(error)}`, { code: "PLANNING_DISPATCH_FAILED", cause: error instanceof Error ? error : undefined });
+            }
+          });
+          if (!dispatchResult) {
+            throw new PlanningError("Failed to parse dispatch response after retry", { code: "PLANNING_DISPATCH_PARSE_FAILED" });
+          }
+        } catch (error) {
+          dispatchResult = {
+            taskCount: legacyActivePlans.length,
+            succeeded: 0,
+            failed: legacyActivePlans.length,
+            results: legacyActivePlans.map((_, index) => ({
+              index,
+              task: legacyActivePlans[index]?.goal ?? "unknown",
+              status: "error" as const,
+              error: String(error),
+              durationMs: 0,
+            })),
+            timing: { wallClockMs: 0, sequentialMs: 0, savedMs: 0 },
+            totalTokens: 0,
+          };
+        }
+
+        for (let i = 0; i < legacyActivePlans.length; i++) {
+          const plan = legacyActivePlans[i]!;
+          const spawnId = legacySpawnIds[i]!;
+          const result = dispatchResult.results[i];
+
+          if (result?.status === "success") {
+            this.store.updateSpawnRecord(spawnId, {
+              status: "done",
+              completedAt: new Date().toISOString(),
+            });
+            this.store.updatePhaseStatus(plan.id, "complete");
+          } else {
+            const errorMessage = result?.error ?? "dispatch failed";
+            this.store.updateSpawnRecord(spawnId, {
+              status: "failed",
+              errorMessage,
+              completedAt: new Date().toISOString(),
+            });
+            this.store.updatePhaseStatus(plan.id, "failed");
+            failed++;
+
+            // Cascade-skip direct dependents only (CONTEXT.md: direct-dependents-only rule)
+            const dependents = directDependents(plan.id, allPhases);
+            for (const dep of dependents) {
+              if (!skippedIds.has(dep.id)) {
+                const depRecord = this.store.createSpawnRecord({
+                  projectId,
+                  phaseId: dep.id,
+                  waveNumber: waveIndex + 1,
+                });
+                this.store.updateSpawnRecord(depRecord.id, {
+                  status: "skipped",
+                  completedAt: new Date().toISOString(),
+                });
+                this.store.updatePhaseStatus(dep.id, "skipped");
+                skippedIds.add(dep.id);
+                skipped++;
+              }
+            }
+          }
+        }
+      } // end legacyPlans block
+
+      // Cascade-skip for task-based plan failures too
+      for (const { plan } of taskBasedPlans) {
+        const phaseStatus = this.store.getPhaseOrThrow(plan.id).status;
+        if (phaseStatus === "failed") {
           const dependents = directDependents(plan.id, allPhases);
           for (const dep of dependents) {
             if (!skippedIds.has(dep.id)) {
@@ -304,7 +555,7 @@ export class ExecutionOrchestrator {
       }
     }
 
-    return { waveCount: waves.length, failed, skipped };
+    return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
   }
 
   getExecutionSnapshot(projectId: string): ExecutionSnapshot {

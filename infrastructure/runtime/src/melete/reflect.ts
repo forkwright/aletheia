@@ -362,7 +362,17 @@ async function flushReflectionToMemory(
 
   try {
     const result = await target.addMemories(agentId, memories, "reflection");
-    log.info(`Reflection memory flush for ${agentId}: ${result.added} stored, ${result.errors} errors`);
+    const receipt = {
+      origin: "reflection" as const,
+      agentId,
+      sessionId: "reflection",
+      timestamp: new Date().toISOString(),
+      factCount: memories.length,
+      added: result.added,
+      skipped: 0,
+      errors: result.errors,
+    };
+    log.info("Memory write receipt", receipt);
     return result.added;
   } catch (error) {
     log.error(`Reflection memory flush failed for ${agentId}: ${error instanceof Error ? error.message : error}`);

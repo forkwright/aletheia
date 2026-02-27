@@ -294,6 +294,20 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   });
 
+  app.post("/api/sessions/:id/distill/cancel", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    try {
+      const cancelled = manager.cancelDistillation(id);
+      return c.json({ ok: true, cancelled });
+    } catch (error) {
+      log.error(`Failed to cancel distillation for ${id}`, { error });
+      return c.json({ error: "Failed to cancel distillation" }, 500);
+    }
+  });
+
   app.get("/api/sessions/:id/checkpoints", (c) => {
     const id = c.req.param("id");
     const session = store.findSessionById(id);

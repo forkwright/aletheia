@@ -8,9 +8,12 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
+import time
 import uuid
+from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, LiteralString, cast
@@ -29,6 +32,7 @@ from .entity_resolver import (
     merge_duplicate_entities,
     resolve_entity,
 )
+from .evolution import exponential_decay_penalty
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 from .graph_extraction import extract_graph, extract_graph_batch
 
@@ -67,6 +71,42 @@ def _cypher(query: str) -> LiteralString:
 
 
 _background_tasks: set[asyncio.Task[Any]] = set()  # prevent GC of fire-and-forget tasks
+
+# Rolling latency buffer for /search endpoint — captured per request, P95 computed on /health.
+_RECALL_LATENCY_SAMPLES: deque[float] = deque(maxlen=100)
+
+# Rolling flush result buffer — (timestamp, success) pairs, capped at 500 entries.
+# Appended by add_batch after each upsert loop. P24h flush success rate computed on /health.
+_FLUSH_RESULTS: deque[tuple[float, bool]] = deque(maxlen=500)
+
+
+def _compute_flush_success_rate(window_hours: float = 24.0) -> dict[str, Any] | None:
+    """Compute flush success rate from the rolling _FLUSH_RESULTS buffer.
+
+    Returns a dict with success_rate, sample_count, and window_hours, or None
+    if no data exists within the window.
+    """
+    if not _FLUSH_RESULTS:
+        return None
+    cutoff = time.time() - window_hours * 3600
+    window_entries = [(ts, ok) for ts, ok in _FLUSH_RESULTS if ts >= cutoff]
+    if not window_entries:
+        return None
+    success_count = sum(1 for _, ok in window_entries if ok)
+    return {
+        "success_rate": success_count / len(window_entries),
+        "sample_count": len(window_entries),
+        "window_hours": window_hours,
+    }
+
+
+def _compute_p95(samples: deque[float]) -> float | None:
+    """Compute P95 latency from a rolling sample deque. Returns None if < 5 samples."""
+    if len(samples) < 5:
+        return None
+    sorted_samples = sorted(samples)
+    idx = int(0.95 * len(sorted_samples))
+    return sorted_samples[idx]
 
 
 def _get_memory(request: Request) -> Any:
@@ -117,19 +157,86 @@ class AddBatchRequest(BaseModel):
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
 
 
+class DeduplicateRequest(BaseModel):
+    """Deduplicate a batch of texts using in-memory pairwise cosine similarity."""
+    texts: list[str]
+    user_id: str = "default"
+    threshold: float = Field(default=0.90, ge=0.5, le=1.0)
+
+
 DEDUP_THRESHOLD = 0.85
 DIRECT_DEDUP_THRESHOLD = 0.90  # Higher threshold for pre-extracted facts (more specific)
 COLLECTION_NAME = "aletheia_memories"
 
+# Recall-time noise patterns — compiled once at module level for performance.
+# Mirrors the TypeScript NOISE_PATTERNS in melete/extract.ts.
+# Applied as a soft downrank (0.3x score penalty) — noisy results remain in output.
+_RECALL_NOISE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?i)(session|conversation|chat)\s+(id|started|ended|created)"),
+    re.compile(r"(?i)(the user|the agent|the assistant)\s+(asked|told|said|mentioned)"),
+    re.compile(r"(?i)(called|invoked|ran|executed)\s+(tool|function|command|script)\b"),
+    re.compile(r"(?i)^(sure|ok|okay|got it|understood|will do|no problem|sounds good)\b"),
+]
+_RECALL_NOISE_MIN_LENGTH = 15  # Memories shorter than this are considered noise fragments
+
+# Stop words excluded from domain relevance token matching — common words add noise.
+_DOMAIN_STOP_WORDS: frozenset[str] = frozenset({
+    "the", "a", "an", "is", "in", "of", "to", "and", "or", "for",
+    "it", "was", "be", "has", "had", "not", "are", "but", "at", "on",
+    "with", "this", "that", "from", "by",
+})
+
+
+def _domain_relevance_score(memory_text: str, query_context: str, min_factor: float = 0.6) -> float:
+    """Compute token-level Jaccard overlap between memory text and query context.
+
+    Returns a score multiplier in [min_factor, 1.0]. Cross-domain results are
+    penalized by up to (1 - min_factor) but never excluded (soft boundaries).
+
+    Args:
+        memory_text: The memory content to score.
+        query_context: The full query string, typically including "Thread context: ..."
+        min_factor: Minimum multiplier — default 0.6 means worst penalty is 40%.
+    """
+    def tokenize(text: str) -> frozenset[str]:
+        tokens = set(text.lower().split())
+        return frozenset(tokens - _DOMAIN_STOP_WORDS)
+
+    query_tokens = tokenize(query_context)
+    if not query_tokens:
+        return 1.0
+
+    memory_tokens = tokenize(memory_text)
+    overlap = len(query_tokens & memory_tokens) / len(query_tokens)
+    return max(min_factor, min(1.0, 0.6 + overlap * 0.4))
+
+
+def _apply_domain_reranking(results: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    """Re-rank results by domain relevance using token Jaccard overlap against query context.
+
+    Only applies when the query contains context (Thread context: marker present).
+    Skipped for bare queries with no domain signal — avoids spurious penalization.
+    Modifies scores in-place and re-sorts descending.
+    """
+    if "Thread context:" not in query and "thread context:" not in query.lower():
+        return results
+
+    for r in results:
+        memory_text: str = str(r.get("memory") or r.get("data") or "").strip()
+        factor = _domain_relevance_score(memory_text, query)
+        r["score"] = (r.get("score") or 0.0) * factor
+
+    results.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return results
+
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request) -> dict[str, Any]:
-    # NOTE: metadata enforcement (session_id, agent_id) is deferred for this route.
-    # Reason: /add is the Mem0 path. Traffic analysis is needed to confirm whether
-    # this route is still used in production before enforcing required fields.
-    # If /add is still active, it may produce orphans missing required metadata.
-    # See STATE.md blocker: "need traffic trace to confirm /add route usage".
-    # Enforcement is tracked in Phase 2 data integrity work.
+    # ADR: /add route metadata enforcement intentionally not enforced (Phase 7 decision).
+    # Rationale: /add is the Mem0 LLM-extraction path; callers are trusted internal agents.
+    # Metadata is best-effort here — enforcement adds friction without measurable benefit.
+    # /add_batch (the direct-write path) enforces agent_id and session_id (400 on missing).
+    # If cross-agent attribution becomes a requirement, enforce here at that time.
     mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id}
     if req.agent_id:
@@ -240,8 +347,13 @@ def _apply_recency_boost(results: list[dict[str, Any]], max_boost: float = 0.15,
     return results
 
 
-def _apply_confidence_weight(results: list[dict[str, Any]], max_penalty: float = 0.10) -> list[dict[str, Any]]:
-    """Penalize search scores for memories with high decay counts (frequently unreferenced)."""
+def _apply_confidence_weight(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply exponential decay and access boost to search scores.
+
+    Decay is time-based (days since last_accessed) using exponential formula with
+    ~14-day half-life (lambda=0.05). Memories never accessed have full salience.
+    Access boost applies a small bonus for frequently reinforced memories.
+    """
     if not neo4j_available() or not results:
         return results
     memory_ids: list[Any] = [r.get("id") for r in results if r.get("id")]
@@ -253,30 +365,62 @@ def _apply_confidence_weight(results: list[dict[str, Any]], max_penalty: float =
             records: list[dict[str, Any]] = session.run(
                 "UNWIND $ids AS mid "
                 "OPTIONAL MATCH (m:MemoryAccess {memory_id: mid}) "
-                "RETURN mid, m.access_count AS accesses, m.decay_count AS decays",
+                "RETURN mid, m.access_count AS accesses, m.last_accessed AS last_accessed",
                 ids=memory_ids,
             ).data()
         driver.close()
         mark_neo4j_ok()
-        access_map: dict[str, tuple[int, int]] = {}
+        now = datetime.now(UTC)
+        access_map: dict[str, tuple[int, str | None]] = {}
         for rec in records:
-            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("decays") or 0)
+            access_map[rec["mid"]] = (rec.get("accesses") or 0, rec.get("last_accessed"))
         for r in results:
             mid: str | None = r.get("id")
             if mid and mid in access_map:
-                accesses, decays = access_map[mid]
-                # Decay penalty: up to max_penalty for heavily decayed memories
-                if decays > 0 and accesses == 0:
-                    penalty = min(max_penalty, decays * 0.02)
-                    r["score"] = max(0, (r.get("score") or 0.0) - penalty)
-                # Access boost: small boost for frequently accessed memories
-                elif accesses > 2:
+                accesses, last_accessed = access_map[mid]
+                # Exponential decay: penalize based on days since last access
+                # New memories (no last_accessed) receive no penalty — full salience
+                if last_accessed is not None:
+                    try:
+                        last_dt = datetime.fromisoformat(last_accessed)
+                        if last_dt.tzinfo is None:
+                            last_dt = last_dt.replace(tzinfo=UTC)
+                        days_inactive = (now - last_dt).total_seconds() / 86400.0
+                        multiplier = exponential_decay_penalty(days_inactive)
+                        r["score"] = (r.get("score") or 0.0) * multiplier
+                    except (ValueError, TypeError):
+                        pass  # Unparseable timestamp — skip decay for this entry
+                # Access boost: small bonus for frequently reinforced memories
+                if accesses > 2:
                     boost = min(0.05, accesses * 0.01)
                     r["score"] = (r.get("score") or 0.0) + boost
         results.sort(key=lambda r: r.get("score", 0), reverse=True)
     except Exception as e:
         mark_neo4j_down()
         logger.warning("confidence weighting failed: %s", e)
+    return results
+
+
+def _filter_noisy_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply soft noise penalty to low-quality recall results.
+
+    Noisy results receive a 0.3x score multiplier (pushed down in ranking) but
+    are NOT removed — soft boundaries per design. Results are re-sorted after
+    penalty application.
+    """
+    penalized = 0
+    for r in results:
+        memory_text: str = str(r.get("memory") or r.get("data") or "").strip()
+        is_noisy = (
+            len(memory_text) < _RECALL_NOISE_MIN_LENGTH
+            or any(p.search(memory_text) for p in _RECALL_NOISE_PATTERNS)
+        )
+        if is_noisy:
+            r["score"] = (r.get("score") or 0.0) * 0.3
+            penalized += 1
+    if penalized:
+        logger.debug("recall noise filter: penalized %d result(s)", penalized)
+        results.sort(key=lambda r: r.get("score", 0), reverse=True)
     return results
 
 
@@ -324,6 +468,51 @@ async def _semantic_dedup_check(
     return False
 
 
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two equal-length vectors. Returns 0.0 on zero-magnitude input."""
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    mag_a = math.sqrt(sum(x * x for x in a))
+    mag_b = math.sqrt(sum(x * x for x in b))
+    if mag_a == 0.0 or mag_b == 0.0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+@router.post("/dedup/batch")
+async def dedup_batch(req: DeduplicateRequest, request: Request) -> dict[str, Any]:
+    """Deduplicate a batch of texts using in-memory pairwise cosine similarity.
+
+    Embeds all submitted texts and removes near-duplicates using greedy clustering:
+    each text is kept only if it has cosine similarity < threshold against all
+    already-kept texts. Does NOT query Qdrant — purely in-memory comparison of
+    the submitted batch.
+    """
+    mem = _get_memory(request)
+    texts = [t.strip() for t in req.texts if t.strip()]
+    if not texts:
+        return {"deduplicated": [], "removed": 0}
+
+    vectors = await _embed_texts(mem, texts)
+
+    kept_texts: list[str] = []
+    kept_vectors: list[list[float]] = []
+
+    for text, vector in zip(texts, vectors, strict=False):
+        is_duplicate = any(
+            _cosine_similarity(vector, kv) >= req.threshold
+            for kv in kept_vectors
+        )
+        if not is_duplicate:
+            kept_texts.append(text)
+            kept_vectors.append(vector)
+
+    removed = len(texts) - len(kept_texts)
+    if removed > 0:
+        logger.info(f"dedup_batch: removed {removed} near-duplicate(s) from {len(texts)} texts (threshold={req.threshold})")
+
+    return {"deduplicated": kept_texts, "removed": removed}
+
+
 # NOTE: /add_direct is defined below (Phase 5) with contradiction detection + entity resolution
 
 
@@ -340,6 +529,11 @@ async def add_batch(req: AddBatchRequest, request: Request) -> dict[str, Any]:
     NOTE: The aletheia.ts memory flush path (addMemories) does not currently
     pass session_id. That caller must be updated to include session_id before
     this endpoint is safe to call from that path.
+
+    EXTR-06 (infer=False): This path structurally bypasses mem.add() entirely.
+    Facts are written directly to Qdrant via client.upsert() — Mem0's LLM
+    extraction is never invoked. The infer=False requirement is satisfied
+    architecturally, not via a parameter.
     """
     missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
     if missing:
@@ -458,6 +652,9 @@ async def add_batch(req: AddBatchRequest, request: Request) -> dict[str, Any]:
             f"{errors} errors (source={req.source}, agent={req.agent_id})"
         )
 
+        # Record flush outcome for success rate tracking — success when no errors occurred
+        _FLUSH_RESULTS.append((time.time(), errors == 0))
+
         # Graph extraction via SimpleKGPipeline — fire and forget
         if added > 0 and new_texts:
             backend: dict[str, Any] = getattr(request.app.state, "backend", LLM_BACKEND)
@@ -482,6 +679,7 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
     if req.agent_id:
         kwargs["agent_id"] = req.agent_id
 
+    t0 = time.time()
     try:
         raw: Any = await asyncio.to_thread(mem.search, req.query, **kwargs)
         results_list: list[dict[str, Any]] = _as_result_list(raw)
@@ -504,6 +702,9 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
             ]
         results_list = _apply_recency_boost(results_list)
         results_list = _apply_confidence_weight(results_list)
+        results_list = _filter_noisy_results(results_list)
+        results_list = _apply_domain_reranking(results_list, req.query)
+        _RECALL_LATENCY_SAMPLES.append(time.time() - t0)
         return {"ok": True, "results": results_list}
     except Exception:
         logger.exception("search_memory failed")
@@ -595,13 +796,194 @@ async def delete_memory(memory_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
+def _parse_thresholds(thresholds_param: str | None) -> dict[str, float]:
+    """Parse JSON thresholds query param into a dict with defaults."""
+    defaults: dict[str, float] = {
+        "noiseRateMax": 0.05,
+        "orphanCountMax": 50,
+        "relatesToRateMax": 0.30,
+        "recallLatencyP95Ms": 1000,
+        "flushSuccessRateMin": 0.95,
+    }
+    if not thresholds_param:
+        return defaults
+    try:
+        parsed = json.loads(thresholds_param)
+        if isinstance(parsed, dict):
+            defaults.update({k: float(v) for k, v in parsed.items() if isinstance(v, (int, float))})
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return defaults
+
+
+async def _collect_qdrant_metrics(
+    qdrant_ok: bool,
+) -> dict[str, Any]:
+    """Collect Qdrant semantic metrics: orphan count, per-agent counts, total entries."""
+    if not qdrant_ok:
+        return {"orphan_count": None, "entries_by_agent": None, "total_entries": None}
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Orphan count — entries with source == "after_turn"
+        orphan_result = client.count(
+            collection_name=COLLECTION_NAME,
+            count_filter=Filter(
+                must=[FieldCondition(key="source", match=MatchValue(value="after_turn"))]
+            ),
+        )
+        orphan_count = orphan_result.count
+
+        # Sample up to 1000 entries to get distinct agent_ids
+        scroll_result = client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=1000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        points = scroll_result[0]
+
+        # Compute total via count
+        total_result = client.count(collection_name=COLLECTION_NAME)
+        total_entries = total_result.count
+
+        # Per-agent counts from scrolled sample (get unique agent_ids then count)
+        agent_ids: set[str] = set()
+        for point in points:
+            if point.payload:
+                agent_id = point.payload.get("agent_id")
+                if agent_id:
+                    agent_ids.add(str(agent_id))
+
+        entries_by_agent: dict[str, int] = {}
+        for agent_id in agent_ids:
+            agent_count_result = client.count(
+                collection_name=COLLECTION_NAME,
+                count_filter=Filter(
+                    must=[FieldCondition(key="agent_id", match=MatchValue(value=agent_id))]
+                ),
+            )
+            entries_by_agent[agent_id] = agent_count_result.count
+
+        return {
+            "orphan_count": orphan_count,
+            "entries_by_agent": entries_by_agent,
+            "total_entries": total_entries,
+        }
+    except Exception as e:
+        logger.warning("qdrant metric collection failed: %s", e)
+        return {"orphan_count": None, "entries_by_agent": None, "total_entries": None}
+
+
+async def _collect_noise_rate(qdrant_ok: bool) -> float | None:
+    """Compute noise rate from a sample of 500 recent Qdrant entries."""
+    if not qdrant_ok:
+        return None
+    try:
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        scroll_result = client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=500,
+            with_payload=True,
+            with_vectors=False,
+        )
+        points = scroll_result[0]
+        if not points:
+            return None
+        penalized = 0
+        for point in points:
+            if not point.payload:
+                continue
+            memory_text = str(point.payload.get("memory") or point.payload.get("data") or "").strip()
+            is_noisy = (
+                len(memory_text) < _RECALL_NOISE_MIN_LENGTH
+                or any(p.search(memory_text) for p in _RECALL_NOISE_PATTERNS)
+            )
+            if is_noisy:
+                penalized += 1
+        return penalized / len(points)
+    except Exception as e:
+        logger.warning("noise rate collection failed: %s", e)
+        return None
+
+
+async def _collect_neo4j_metrics(neo4j_ok: bool) -> dict[str, Any]:
+    """Collect Neo4j RELATES_TO rate from relationship counts."""
+    if not neo4j_ok:
+        return {"relates_to_rate": None, "total_relationships": 0}
+    try:
+        driver = neo4j_driver()
+        with _neo4j_session(driver) as session:
+            total_single = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()
+            total_rels: int = total_single["c"] if total_single else 0
+            relates_single = session.run("MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS c").single()
+            relates_count: int = relates_single["c"] if relates_single else 0
+        driver.close()
+        mark_neo4j_ok()
+        relates_to_rate = relates_count / total_rels if total_rels > 0 else None
+        return {"relates_to_rate": relates_to_rate, "total_relationships": total_rels}
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("neo4j metric collection failed: %s", e)
+        return {"relates_to_rate": None, "total_relationships": 0}
+
+
+def _evaluate_thresholds(
+    noise_rate: float | None,
+    orphan_count: int | None,
+    relates_to_rate: float | None,
+    latency_p95_ms: float | None,
+    thresholds: dict[str, float],
+    connectivity_failed: bool,
+    flush_success_rate: float | None = None,
+) -> dict[str, Any]:
+    """Evaluate metrics against thresholds and compute status."""
+    exceeded: list[str] = []
+    exceeded_values: dict[str, float] = {}
+
+    if noise_rate is not None and noise_rate > thresholds["noiseRateMax"]:
+        exceeded.append("noise_rate")
+        exceeded_values["noise_rate"] = noise_rate
+
+    if orphan_count is not None and orphan_count > thresholds["orphanCountMax"]:
+        exceeded.append("orphan_count")
+        exceeded_values["orphan_count"] = float(orphan_count)
+
+    if relates_to_rate is not None and relates_to_rate > thresholds["relatesToRateMax"]:
+        exceeded.append("relates_to_rate")
+        exceeded_values["relates_to_rate"] = relates_to_rate
+
+    if latency_p95_ms is not None and latency_p95_ms > thresholds["recallLatencyP95Ms"]:
+        exceeded.append("recall_latency_p95_ms")
+        exceeded_values["recall_latency_p95_ms"] = latency_p95_ms
+
+    if flush_success_rate is not None and flush_success_rate < thresholds.get("flushSuccessRateMin", 0.95):
+        exceeded.append("flush_success_rate")
+        exceeded_values["flush_success_rate"] = flush_success_rate
+
+    if connectivity_failed or len(exceeded) >= 2:
+        status = "critical"
+    elif exceeded:
+        status = "degraded"
+    else:
+        status = "healthy"
+
+    return {
+        "status": status,
+        "thresholds": {
+            "exceeded": exceeded,
+            "values": exceeded_values,
+        },
+    }
+
+
 @router.get("/health")
-async def health_check(request: Request) -> dict[str, Any]:
+async def health_check(request: Request, thresholds: str | None = None) -> dict[str, Any]:
     checks: dict[str, Any] = {}
 
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=5.0) as http_client:
         try:
-            r = await client.get(f"http://{QDRANT_HOST}:{QDRANT_PORT}/healthz")
+            r = await http_client.get(f"http://{QDRANT_HOST}:{QDRANT_PORT}/healthz")
             checks["qdrant"] = "ok" if r.status_code == 200 else f"status {r.status_code}"
         except Exception as e:
             checks["qdrant"] = f"error: {e}"
@@ -630,8 +1012,72 @@ async def health_check(request: Request) -> dict[str, Any]:
         "extraction_enabled": backend.get("tier", 0) < 3,
     }
 
+    # Connectivity state for threshold evaluation
+    qdrant_ok = checks.get("qdrant") == "ok"
+    neo4j_ok = checks.get("neo4j") == "ok"
+    connectivity_failed = not qdrant_ok or not neo4j_ok
+
+    # Collect semantic metrics in parallel
+    qdrant_metrics_coro = _collect_qdrant_metrics(qdrant_ok)
+    noise_rate_coro = _collect_noise_rate(qdrant_ok)
+    neo4j_metrics_coro = _collect_neo4j_metrics(neo4j_ok)
+
+    results = await asyncio.gather(
+        qdrant_metrics_coro,
+        noise_rate_coro,
+        neo4j_metrics_coro,
+        return_exceptions=True,
+    )
+
+    qdrant_data: dict[str, Any] = results[0] if isinstance(results[0], dict) else {"orphan_count": None, "entries_by_agent": None, "total_entries": None}
+    noise_rate: float | None = results[1] if isinstance(results[1], (float, type(None))) else None
+    neo4j_data: dict[str, Any] = results[2] if isinstance(results[2], dict) else {"relates_to_rate": None, "total_relationships": 0}
+
+    # Recall latency from module-level buffer
+    latency_p95_s = _compute_p95(_RECALL_LATENCY_SAMPLES)
+    latency_p95_ms = latency_p95_s * 1000 if latency_p95_s is not None else None
+    sample_count = len(_RECALL_LATENCY_SAMPLES)
+
+    # Flush success rate from module-level buffer
+    flush_data = _compute_flush_success_rate()
+    flush_success_rate = flush_data["success_rate"] if flush_data is not None else None
+
+    # Parse thresholds and evaluate
+    threshold_config = _parse_thresholds(thresholds)
+    evaluation = _evaluate_thresholds(
+        noise_rate=noise_rate,
+        orphan_count=qdrant_data.get("orphan_count"),
+        relates_to_rate=neo4j_data.get("relates_to_rate"),
+        latency_p95_ms=latency_p95_ms,
+        thresholds=threshold_config,
+        connectivity_failed=connectivity_failed,
+        flush_success_rate=flush_success_rate,
+    )
+
     all_ok = all(v == "ok" for v in checks.values())
-    return {"ok": all_ok, "version": "2.0.0", "llm": llm_info, "checks": checks}
+    return {
+        "ok": all_ok,
+        "status": evaluation["status"],
+        "version": "2.0.0",
+        "llm": llm_info,
+        "checks": checks,
+        "qdrant": {
+            "orphan_count": qdrant_data.get("orphan_count"),
+            "entries_by_agent": qdrant_data.get("entries_by_agent") or {},
+            "total_entries": qdrant_data.get("total_entries"),
+        },
+        "neo4j": {
+            "relates_to_rate": neo4j_data.get("relates_to_rate"),
+            "total_relationships": neo4j_data.get("total_relationships", 0),
+        },
+        "recall": {
+            "latency_p95_ms": latency_p95_ms,
+            "noise_rate": noise_rate,
+            "sample_count": sample_count,
+        },
+        "flush": flush_data,
+        "thresholds": evaluation["thresholds"],
+    }
 
 
 @router.get("/graph_stats")
@@ -941,70 +1387,174 @@ def _extract_entities(text: str) -> list[str]:
     return list(set(entities))[:10]
 
 
+def _neo4j_expand_sync(query: str, user_id: str, graph_depth: int = 1) -> list[str]:
+    """Synchronous Neo4j neighborhood expansion — called via asyncio.to_thread."""
+    if not neo4j_available():
+        return []
+    entities = _extract_entities(query)
+    if not entities:
+        return []
+    neighbors: list[str] = []
+    try:
+        driver = neo4j_driver()
+        with _neo4j_session(driver) as session:
+            for entity in entities[:5]:
+                cypher = (
+                    "MATCH (n)-[r*1.." + str(graph_depth) + "]-(neighbor) "
+                    "WHERE toLower(n.name) CONTAINS toLower($name) "
+                    "RETURN DISTINCT neighbor.name AS name, labels(neighbor) AS labels "
+                    "LIMIT 10"
+                )
+                result = session.run(
+                    _neo4j.Query(_cypher(cypher)),
+                    name=entity,
+                )
+                for record in result:
+                    name = record["name"]
+                    if name:
+                        neighbors.append(name)
+        driver.close()
+        mark_neo4j_ok()
+    except Exception as e:
+        mark_neo4j_down()
+        logger.warning("_neo4j_expand_sync failed: %s", e)
+    return neighbors
+
+
+async def _neo4j_expand_with_timeout(
+    query: str,
+    user_id: str,
+    timeout_ms: int = 800,
+    graph_depth: int = 1,
+) -> list[str]:
+    """Neo4j neighborhood expansion wrapped in asyncio.wait_for with timeout.
+
+    Returns empty list on timeout or any error — Neo4j failure is non-fatal.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(_neo4j_expand_sync, query, user_id, graph_depth),
+            timeout=timeout_ms / 1000,
+        )
+    except TimeoutError:
+        logger.warning("Neo4j expansion timed out after %dms", timeout_ms)
+        return []
+    except Exception as e:
+        logger.warning("Neo4j expansion failed: %s", e)
+        return []
+
+
+def _qdrant_search_direct(
+    query: str,
+    user_id: str,
+    limit: int,
+    min_score: float,
+    mem: Any,
+) -> list[dict[str, Any]]:
+    """Direct Qdrant vector search — bypasses Mem0's sequential Qdrant+Neo4j search.
+
+    Embeds query using the Mem0 embedder and queries the Qdrant collection directly.
+    Returns results as dicts with memory, score, and metadata fields.
+    """
+    try:
+        embedder: Any = mem.embedding_model
+        vector: list[float] = embedder.embed(query)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=vector,
+            query_filter=Filter(
+                must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]
+            ),
+            limit=limit,
+            with_payload=True,
+        )
+        output: list[dict[str, Any]] = []
+        for point in results.points:
+            if point.score < min_score:
+                continue
+            payload: dict[str, Any] = dict(point.payload or {})
+            row: dict[str, Any] = {
+                "id": str(point.id),
+                "memory": payload.get("memory") or payload.get("data", ""),
+                "score": point.score,
+                "metadata": payload,
+            }
+            if "created_at" in payload:
+                row["created_at"] = payload["created_at"]
+            output.append(row)
+        return output
+    except Exception as e:
+        logger.warning("_qdrant_search_direct failed: %s", e)
+        return []
+
+
 @router.post("/graph_enhanced_search")
 async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Request) -> dict[str, Any]:
-    """Vector search enhanced with graph neighborhood expansion."""
+    """Vector search enhanced with graph neighborhood expansion.
+
+    Qdrant and Neo4j run in parallel via asyncio.gather. Neo4j is wrapped in
+    an 800ms timeout — if it times out or fails, Qdrant-only results are returned.
+    """
     mem = _get_memory(request)
+    min_score = 0.0  # Return all scored results; post-processing filters by weight
 
-    # Step 1: Standard vector search
-    kwargs: dict[str, Any] = {"user_id": req.user_id, "limit": req.limit * 2}
-    if req.agent_id:
-        kwargs["agent_id"] = req.agent_id
+    # Step 1: Launch Qdrant and Neo4j queries in parallel
+    qdrant_task = asyncio.create_task(
+        asyncio.to_thread(_qdrant_search_direct, req.query, req.user_id, req.limit * 2, min_score, mem)
+    )
+    neo4j_task = asyncio.create_task(
+        _neo4j_expand_with_timeout(req.query, req.user_id, timeout_ms=800, graph_depth=req.graph_depth)
+    )
 
-    vector_results: list[dict[str, Any]]
-    try:
-        raw: Any = await asyncio.to_thread(mem.search, req.query, **kwargs)
-        vector_results = _as_result_list(raw)
-    except Exception:
-        logger.exception("graph_enhanced_search: vector search failed")
-        vector_results = []
+    gather_results = await asyncio.gather(qdrant_task, neo4j_task, return_exceptions=True)
 
-    # Step 2: Extract entities and expand via graph
+    # Handle results — both failures are non-fatal
+    vector_results_raw = gather_results[0]
+    graph_neighbors_raw = gather_results[1]
+
+    if isinstance(vector_results_raw, BaseException):
+        logger.error("graph_enhanced_search: Qdrant query failed: %s", vector_results_raw)
+        vector_results: list[dict[str, Any]] = []
+    else:
+        vector_results = vector_results_raw  # type: ignore[assignment]
+
+    if isinstance(graph_neighbors_raw, BaseException):
+        logger.warning("graph_enhanced_search: Neo4j expansion failed: %s", graph_neighbors_raw)
+        graph_neighbors: list[str] = []
+    else:
+        graph_neighbors = graph_neighbors_raw  # type: ignore[assignment]
+
     entities = _extract_entities(req.query)
-    graph_neighbors: list[str] = []
 
-    if entities and neo4j_available():
-        try:
-            driver = neo4j_driver()
-            with _neo4j_session(driver) as session:
-                for entity in entities[:5]:
-                    cypher = (
-                        "MATCH (n)-[r*1.." + str(req.graph_depth) + "]-(neighbor) "
-                        "WHERE toLower(n.name) CONTAINS toLower($name) "
-                        "RETURN DISTINCT neighbor.name AS name, labels(neighbor) AS labels "
-                        "LIMIT 10"
-                    )
-                    result = session.run(
-                        _neo4j.Query(_cypher(cypher)),
-                        name=entity,
-                    )
-                    for record in result:
-                        name = record["name"]
-                        if name:
-                            graph_neighbors.append(name)
-            driver.close()
-            mark_neo4j_ok()
-        except Exception:
-            mark_neo4j_down()
-            logger.warning("graph_enhanced_search: Neo4j unavailable, falling back to vector-only")
-
-    # Step 3: If graph found neighbors, do a supplementary vector search with expanded terms
+    # Step 2: If Neo4j returned neighbors, run second Qdrant query with expanded terms
+    # This depends on Neo4j results, so it cannot be parallelized with Step 1
     graph_results: list[dict[str, Any]] = []
     if graph_neighbors:
         expanded_query = req.query + " " + " ".join(list(set(graph_neighbors))[:5])
         try:
-            raw2: Any = await asyncio.to_thread(mem.search, expanded_query, **kwargs)
-            graph_results = _as_result_list(raw2)
-        except Exception:
-            logger.warning("graph_enhanced_search: expanded search failed")
+            graph_results = await asyncio.to_thread(
+                _qdrant_search_direct, expanded_query, req.user_id, req.limit * 2, min_score, mem
+            )
+        except Exception as e:
+            logger.warning("graph_enhanced_search: expanded search failed: %s", e)
 
-    # Step 4: Merge and deduplicate results
+    # Step 3: Merge and deduplicate by memory ID, keeping highest score
     seen_ids: set[str] = set()
     merged: list[dict[str, Any]] = []
 
     def add_result(r: dict[str, Any], source: str, weight: float) -> None:
         rid = r.get("id", r.get("hash", str(r.get("memory", ""))))
         if rid in seen_ids:
+            # Already added from another source — keep only if score is higher
+            for existing in merged:
+                existing_rid = existing.get("id", existing.get("hash", str(existing.get("memory", ""))))
+                if existing_rid == rid:
+                    new_combined = r.get("score", 0.5) * weight
+                    if new_combined > existing.get("combined_score", 0):
+                        existing["combined_score"] = new_combined
+                        existing["retrieval_source"] = source
+                    break
             return
         seen_ids.add(rid)
         score = r.get("score", 0.5)
@@ -1018,6 +1568,11 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
     for r in graph_results:
         add_result(r, "graph_expanded", req.graph_weight)
 
+    # Step 4: Apply existing post-processing hooks
+    merged = _apply_confidence_weight(merged)
+    merged = _apply_recency_boost(merged)
+
+    # Sort by combined_score (post-processing adjusts the underlying score field)
     merged.sort(key=lambda r: r.get("combined_score", 0), reverse=True)
 
     return {
@@ -2233,6 +2788,11 @@ async def add_direct_v2(req: AddDirectRequest, request: Request) -> dict[str, An
 
     Requires agent_id and session_id — requests missing either are rejected
     with 400 to prevent creation of orphaned Qdrant entries.
+
+    EXTR-06 (infer=False): This path structurally bypasses mem.add() entirely.
+    Facts are written directly to Qdrant via client.upsert() — Mem0's LLM
+    extraction is never invoked. The infer=False requirement is satisfied
+    architecturally, not via a parameter.
     """
     missing = [f for f in ("agent_id", "session_id") if not getattr(req, f, None)]
     if missing:

@@ -1,6 +1,6 @@
 // Distillation pipeline tests
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { distillSession, shouldDistill } from "./pipeline.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cancelDistillation, distillSession, shouldDistill } from "./pipeline.js";
 
 // Mock extraction
 vi.mock("./extract.js", () => ({
@@ -32,6 +32,11 @@ vi.mock("./hooks.js", () => ({
 // Mock workspace-flush — real write behavior tested in workspace-flush.test.ts
 vi.mock("./workspace-flush.js", () => ({
   flushToWorkspaceWithRetry: vi.fn().mockReturnValue({ written: true, path: "/tmp/mock-memory.md" }),
+}));
+
+// Mock contradiction detection — tested in contradiction-detect.test.ts
+vi.mock("./contradiction-detect.js", () => ({
+  detectCrossChunkContradictions: vi.fn().mockResolvedValue([]),
 }));
 
 function makeStore(overrides: Record<string, unknown> = {}) {
@@ -588,6 +593,410 @@ describe("distillSession", () => {
       expect(store.markMessagesDistilled).not.toHaveBeenCalled();
       expect(store.recordDistillation).not.toHaveBeenCalled();
       expect(store.updateLastDistilledAt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("contradiction invalidation", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("calls fetch with invalidate_text for each contradiction when sidecarUrl is set", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: ["user dislikes coffee", "user prefers tea over water"],
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ invalidated: true }), { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_contra", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      const invalidateCalls = fetchSpy.mock.calls.filter(([url]) =>
+        typeof url === "string" && url.includes("invalidate_text"),
+      );
+      expect(invalidateCalls).toHaveLength(2);
+      for (const [url, opts] of invalidateCalls) {
+        expect(url).toContain("/temporal/facts/invalidate_text");
+        expect(opts?.method).toBe("POST");
+      }
+    });
+
+    it("does not call fetch for contradiction invalidation when no contradictions", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("{}", { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_no_contra", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      const invalidateCalls = fetchSpy.mock.calls.filter(([url]) =>
+        typeof url === "string" && url.includes("invalidate_text"),
+      );
+      expect(invalidateCalls).toHaveLength(0);
+    });
+
+    it("does not call fetch when sidecarUrl is not set", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: ["some contradiction"],
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("{}", { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_no_sidecar", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        // sidecarUrl intentionally omitted
+      });
+
+      const invalidateCalls = fetchSpy.mock.calls.filter(([url]) =>
+        typeof url === "string" && url.includes("invalidate_text"),
+      );
+      expect(invalidateCalls).toHaveLength(0);
+    });
+
+    it("contradiction invalidation failure does not block distillation", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: ["some contradiction"],
+      });
+
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("sidecar down"));
+
+      const store = makeStore();
+      // Should complete without throwing despite fetch failure
+      const result = await distillSession(store, makeRouter(), "ses_contra_fail", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      expect(result.sessionId).toBe("ses_contra_fail");
+      expect(result.distillationNumber).toBe(1);
+    });
+  });
+
+  describe("cross-chunk contradiction detection", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("appends cross-chunk contradictions to extraction.contradictions", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["user prefers coffee", "user dislikes hot beverages"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: ["existing contradiction"],
+      });
+      vi.mocked(detectCrossChunkContradictions).mockResolvedValueOnce([
+        "cross-chunk contradiction found",
+      ]);
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("{}", { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_cross_contra", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      // Verify detectCrossChunkContradictions was called with the facts
+      expect(detectCrossChunkContradictions).toHaveBeenCalledWith(
+        expect.anything(),
+        ["user prefers coffee", "user dislikes hot beverages"],
+        "claude-haiku",
+      );
+
+      // Verify cross-chunk contradictions fed into invalidation path
+      const invalidateCalls = fetchSpy.mock.calls.filter(([url]) =>
+        typeof url === "string" && url.includes("invalidate_text"),
+      );
+      expect(invalidateCalls).toHaveLength(2); // existing + cross-chunk
+      fetchSpy.mockRestore();
+    });
+
+    it("skips cross-chunk detection when fewer than 2 facts extracted", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["single fact"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+      vi.mocked(detectCrossChunkContradictions).mockClear();
+
+      await distillSession(makeStore(), makeRouter(), "ses_single_fact", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+      });
+
+      expect(detectCrossChunkContradictions).not.toHaveBeenCalled();
+    });
+
+    it("skips cross-chunk detection for lightweight distillation", async () => {
+      const { detectCrossChunkContradictions } = await import("./contradiction-detect.js");
+      vi.mocked(detectCrossChunkContradictions).mockClear();
+
+      const router = makeRouter();
+      vi.mocked(router.complete).mockResolvedValue({
+        content: [{ type: "text", text: "Light summary." }],
+        stopReason: "end_turn",
+        usage: { inputTokens: 50, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        model: "claude-haiku",
+      } as never);
+
+      await distillSession(makeStore(), router, "ses_lightweight_cc", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        lightweight: true,
+      });
+
+      expect(detectCrossChunkContradictions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("evolution pre-check in flush", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("filters evolved facts from memory flush when sidecarUrl provided", async () => {
+      const { flushToMemory } = await import("./hooks.js");
+      const { extractFromMessages } = await import("./extract.js");
+
+      vi.mocked(extractFromMessages).mockResolvedValueOnce({
+        facts: ["evolved-fact", "new-fact"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ action: "add_new" }), { status: 200 }),
+      );
+
+      const store = makeStore();
+      await distillSession(store, makeRouter(), "ses_evolution", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+        memoryTarget: { addMemories: vi.fn().mockResolvedValue({ added: 2, errors: 0 }) } as never,
+        sidecarUrl: "http://localhost:8230",
+      });
+
+      expect(flushToMemory).toHaveBeenCalledWith(
+        expect.anything(),
+        "syn",
+        expect.anything(),
+        expect.objectContaining({ sidecarUrl: "http://localhost:8230" }),
+        "ses_evolution",
+      );
+    });
+  });
+
+  describe("AbortSignal cancellation", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("aborts before extraction when signal is already aborted", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      vi.mocked(extractFromMessages).mockClear();
+
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        distillSession(makeStore(), makeRouter(), "ses_abort_pre", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      expect(extractFromMessages).not.toHaveBeenCalled();
+    });
+
+    it("aborts before mutations when signal fires after extraction", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+      const store = makeStore();
+
+      // Create a controller we'll abort after extraction resolves
+      const controller = new AbortController();
+
+      // After extractFromMessages resolves, abort the signal
+      vi.mocked(extractFromMessages).mockImplementationOnce(async () => {
+        controller.abort();
+        return {
+          facts: ["fact1"],
+          decisions: [],
+          openItems: [],
+          keyEntities: [],
+          contradictions: [],
+        };
+      });
+
+      await expect(
+        distillSession(store, makeRouter(), "ses_abort_mid", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      // Mutations must NOT have been called — clean rollback
+      expect(store.runDistillationMutations).not.toHaveBeenCalled();
+    });
+
+    it("releases lock even when aborted mid-distillation", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+
+      const controller = new AbortController();
+
+      // Abort during extraction
+      vi.mocked(extractFromMessages).mockImplementationOnce(async () => {
+        controller.abort();
+        return {
+          facts: ["fact1"],
+          decisions: [],
+          openItems: [],
+          keyEntities: [],
+          contradictions: [],
+        };
+      });
+
+      const store = makeStore();
+      await expect(
+        distillSession(store, makeRouter(), "ses_abort_lock", "syn", {
+          triggerThreshold: 10000,
+          minMessages: 4,
+          extractionModel: "claude-haiku",
+          summaryModel: "claude-haiku",
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+
+      // Lock was acquired so it must be released
+      expect(store.acquireDistillationLock).toHaveBeenCalled();
+      expect(store.releaseDistillationLock).toHaveBeenCalledWith("ses_abort_lock");
+    });
+  });
+
+  describe("cancelDistillation", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("returns false for no active distillation", () => {
+      expect(cancelDistillation("ses_no_active")).toBe(false);
+    });
+
+    it("aborts an active distillation and returns true", async () => {
+      const { extractFromMessages } = await import("./extract.js");
+
+      let resolveExtraction!: (v: Awaited<ReturnType<typeof extractFromMessages>>) => void;
+      const extractionPromise = new Promise<Awaited<ReturnType<typeof extractFromMessages>>>(
+        (resolve) => { resolveExtraction = resolve; },
+      );
+
+      vi.mocked(extractFromMessages).mockImplementationOnce(() => extractionPromise);
+
+      const distillPromise = distillSession(makeStore(), makeRouter(), "ses_cancel_active", "syn", {
+        triggerThreshold: 10000,
+        minMessages: 4,
+        extractionModel: "claude-haiku",
+        summaryModel: "claude-haiku",
+      });
+
+      // Give distillSession time to reach the extractFromMessages await
+      await new Promise((r) => setTimeout(r, 0));
+
+      const wasCancelled = cancelDistillation("ses_cancel_active");
+      expect(wasCancelled).toBe(true);
+
+      // Resolve extraction after cancel — distillation should still abort before mutations
+      resolveExtraction({
+        facts: ["fact1"],
+        decisions: [],
+        openItems: [],
+        keyEntities: [],
+        contradictions: [],
+      });
+
+      await expect(distillPromise).rejects.toThrow();
     });
   });
 

@@ -130,6 +130,13 @@ export const ERROR_CODES = {
   PLANNING_RESEARCH_ALL_FAILED: "All research dimensions failed — cannot proceed without domain research",
   PLANNING_DISPATCH_FAILED: "Plan dispatch failed after retry",
   PLANNING_DISPATCH_PARSE_FAILED: "Failed to parse dispatch response",
+
+  // Task system
+  TASK_NOT_FOUND: "Task ID does not exist",
+  TASK_PARENT_NOT_FOUND: "Parent task ID does not exist",
+  TASK_DEP_NOT_FOUND: "Dependency task ID does not exist",
+  TASK_MAX_DEPTH: "Maximum task hierarchy depth exceeded",
+  TASK_CYCLE: "Dependency cycle detected",
   PLANNING_VERIFICATION_PARSE_FAILED: "Cannot extract verification check result from response",
 } as const;
 
