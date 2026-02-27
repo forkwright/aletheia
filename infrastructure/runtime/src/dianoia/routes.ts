@@ -1039,6 +1039,43 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   });
 
+  // ============================================================
+  // Spawn Records (INTERJ-04 / OBS-02)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/spawns", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+    const status = c.req.query("status");
+
+    try {
+      let records = store.listSpawnRecords(projectId);
+
+      if (phaseId) {
+        records = records.filter((r) => r.phaseId === phaseId);
+      }
+      if (status) {
+        records = records.filter((r) => r.status === status);
+      }
+
+      const summary = {
+        total: records.length,
+        running: records.filter((r) => r.status === "running").length,
+        complete: records.filter((r) => r.status === "complete" || r.status === "done").length,
+        failed: records.filter((r) => r.status === "failed").length,
+        pending: records.filter((r) => r.status === "pending").length,
+      };
+
+      return c.json({ projectId, spawns: records, summary });
+    } catch (error) {
+      log.error("Failed to list spawn records", { projectId, error });
+      return c.json({ error: "Failed to list spawn records" }, 500);
+    }
+  });
+
   log.debug("planning routes mounted");
   return app;
 }

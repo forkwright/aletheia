@@ -3,6 +3,7 @@
   import RequirementsTable from "./RequirementsTable.svelte";
   import RoadmapView from "./RoadmapView.svelte";
   import ExecutionStatus from "./ExecutionStatus.svelte";
+  import SpawnStatus from "./SpawnStatus.svelte";
   import DiscussionPanel from "./DiscussionPanel.svelte";
   import VerificationPanel from "./VerificationPanel.svelte";
   import CheckpointApproval from "./CheckpointApproval.svelte";
@@ -290,6 +291,13 @@
         {#if executionPlans.length > 0}
           <div class="dashboard-section">
             <ExecutionStatus plans={executionPlans} projectState={project.state} />
+          </div>
+        {/if}
+
+        <!-- Sub-Agent Status (INTERJ-04 / OBS-02) -->
+        {#if ["executing", "verifying"].includes(project.state)}
+          <div class="dashboard-section">
+            <SpawnStatus projectId={project.id} />
           </div>
         {/if}
 
