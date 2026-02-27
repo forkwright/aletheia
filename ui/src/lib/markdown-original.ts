@@ -1,98 +1,42 @@
 import { Marked, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 
-// Simple highlighting using CodeMirror's existing CSS classes
-// This provides a lighter alternative to highlight.js while maintaining compatibility
+// Selective highlight.js — only the languages we actually need (~90% smaller)
+import hljs from "highlight.js/lib/core";
+import typescript from "highlight.js/lib/languages/typescript";
+import javascript from "highlight.js/lib/languages/javascript";
+import python from "highlight.js/lib/languages/python";
+import bash from "highlight.js/lib/languages/bash";
+import json from "highlight.js/lib/languages/json";
+import yaml from "highlight.js/lib/languages/yaml";
+import sql from "highlight.js/lib/languages/sql";
+import markdownLang from "highlight.js/lib/languages/markdown";
+import xml from "highlight.js/lib/languages/xml";
+import css from "highlight.js/lib/languages/css";
+
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("shell", bash);
+hljs.registerLanguage("sh", bash);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("yml", yaml);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("markdown", markdownLang);
+hljs.registerLanguage("md", markdownLang);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("html", xml);
+hljs.registerLanguage("css", css);
+hljs.registerLanguage("ts", typescript);
+hljs.registerLanguage("js", javascript);
 
 export function highlightCode(code: string, language?: string): string {
-  // For this Quick Win, we'll use a simple approach that removes highlight.js
-  // while maintaining the existing hljs CSS classes for compatibility
-  
-  if (!language) {
-    return code
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+  if (language && hljs.getLanguage(language)) {
+    return hljs.highlight(code, { language }).value;
   }
-
-  // Simple keyword-based highlighting for the most common languages
-  // This provides basic syntax highlighting while being much lighter than highlight.js
-  let highlighted = code
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  switch (language.toLowerCase()) {
-    case "javascript":
-    case "js":
-    case "typescript":
-    case "ts":
-      highlighted = highlighted
-        .replace(/\b(const|let|var|function|class|import|export|from|if|else|for|while|return|true|false|null|undefined)\b/g, '<span class="hljs-keyword">$1</span>')
-        .replace(/\b(\d+\.?\d*)\b/g, '<span class="hljs-number">$1</span>')
-        .replace(/(["'`])([^"'`]*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/\/\/.*$/gm, '<span class="hljs-comment">$&</span>')
-        .replace(/\/\*[\s\S]*?\*\//g, '<span class="hljs-comment">$&</span>');
-      break;
-
-    case "python":
-    case "py":
-      highlighted = highlighted
-        .replace(/\b(def|class|import|from|if|elif|else|for|while|return|True|False|None|and|or|not|in|is|with|as|try|except|finally)\b/g, '<span class="hljs-keyword">$1</span>')
-        .replace(/\b(\d+\.?\d*)\b/g, '<span class="hljs-number">$1</span>')
-        .replace(/(["'])([^"']*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/#.*$/gm, '<span class="hljs-comment">$&</span>');
-      break;
-
-    case "json":
-      highlighted = highlighted
-        .replace(/(["'])([^"']*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/\b(true|false|null)\b/g, '<span class="hljs-literal">$1</span>')
-        .replace(/\b(\d+\.?\d*)\b/g, '<span class="hljs-number">$1</span>');
-      break;
-
-    case "bash":
-    case "shell":
-    case "sh":
-      highlighted = highlighted
-        .replace(/\b(if|then|else|elif|fi|for|while|do|done|function|case|esac|echo|cd|ls|grep|awk|sed)\b/g, '<span class="hljs-keyword">$1</span>')
-        .replace(/(["'])([^"']*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/#.*$/gm, '<span class="hljs-comment">$&</span>')
-        .replace(/\$\w+/g, '<span class="hljs-variable">$&</span>');
-      break;
-
-    case "css":
-      highlighted = highlighted
-        .replace(/([.#]\w+)/g, '<span class="hljs-selector-class">$1</span>')
-        .replace(/(\w+)\s*:/g, '<span class="hljs-attribute">$1</span>:')
-        .replace(/\/\*[\s\S]*?\*\//g, '<span class="hljs-comment">$&</span>');
-      break;
-
-    case "html":
-    case "xml":
-      highlighted = highlighted
-        .replace(/&lt;(\/?)([\w-]+)/g, '&lt;<span class="hljs-tag">$1$2</span>')
-        .replace(/(\w+)=/g, '<span class="hljs-attr">$1</span>=')
-        .replace(/(["'])([^"']*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/&lt;!--[\s\S]*?--&gt;/g, '<span class="hljs-comment">$&</span>');
-      break;
-
-    case "yaml":
-    case "yml":
-      highlighted = highlighted
-        .replace(/^(\s*)([^:\s]+):/gm, '$1<span class="hljs-attr">$2</span>:')
-        .replace(/(["'])([^"']*?)\1/g, '<span class="hljs-string">$1$2$1</span>')
-        .replace(/\b(true|false|null)\b/g, '<span class="hljs-literal">$1</span>')
-        .replace(/\b(\d+\.?\d*)\b/g, '<span class="hljs-number">$1</span>')
-        .replace(/#.*$/gm, '<span class="hljs-comment">$&</span>');
-      break;
-
-    default:
-      // No highlighting for unknown languages
-      break;
-  }
-
-  return highlighted;
+  return hljs.highlightAuto(code).value;
 }
 
 const marked = new Marked({
@@ -134,7 +78,7 @@ const tableRenderer = {
 
 marked.use(tableRenderer);
 
-// Fast renderer for streaming — skips highlighting to avoid blocking the main thread.
+// Fast renderer for streaming — skips highlight.js to avoid blocking the main thread.
 // Code blocks are HTML-escaped only; syntax highlighting fires once after streaming ends.
 const markedFast = new Marked({
   breaks: false,
@@ -186,7 +130,7 @@ export function renderMarkdown(text: string): string {
   return result;
 }
 
-/** Infer a CodeMirror language from a file path or tool name */
+/** Infer a highlight.js language from a file path or tool name */
 export function inferLanguage(toolName: string, input?: string): string | undefined {
   if (toolName === "exec") return "bash";
   if (toolName === "web_fetch") return "html";
