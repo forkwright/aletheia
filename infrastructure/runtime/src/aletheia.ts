@@ -422,7 +422,6 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Planning roadmap orchestrator — wired after dispatchTool is available
   const roadmapOrchestrator = new RoadmapOrchestrator(plansDb, dispatchTool);
-  roadmapOrchestrator.setWorkspaceRoot(defaultWorkspace);
   const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
   tools.register(planRoadmapTool);
 
@@ -432,10 +431,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // Planning execution orchestrator — wired after dispatchTool is available
   const executionOrchestrator = new ExecutionOrchestrator(plansDb, dispatchTool);
-  executionOrchestrator.setWorkspaceRoot(defaultWorkspace);
   // Planning verifier — must be created before execution tool so it can be injected
   const verifierOrchestrator = new GoalBackwardVerifier(plansDb, dispatchTool);
-  verifierOrchestrator.setWorkspaceRoot(defaultWorkspace);
 
   const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator, verifierOrchestrator);
   tools.register(planExecuteTool);

@@ -124,35 +124,18 @@ export interface MessageDelivery {
 
 export class ExecutionOrchestrator {
   private store: PlanningStore;
-  private workspaceRoot: string | null = null;
   private phaseExecutor: PhaseExecutor | null = null;
   private reconciler: StateReconciler | null = null;
 
   constructor(
-    private db: Database.Database,
+    db: Database.Database,
     private dispatchTool: ToolHandler,
   ) {
     this.store = new PlanningStore(db);
   }
 
-  /** Set workspace root for context packet assembly from file-backed state */
-  setWorkspaceRoot(root: string): void {
-    this.workspaceRoot = root;
-    // Initialize PhaseExecutor for task-level execution
-    this.phaseExecutor = new PhaseExecutor(this.db, {
-      workspaceRoot: root,
-      maxReviewRounds: 3,
-      enableGitCommits: true,
-      enableReview: true,
-    });
-    // Initialize StateReconciler for co-primary file/DB architecture (ENG-01)
-    this.reconciler = new StateReconciler(this.db, root);
-    // Run reconciliation on startup — ensures files and DB are in sync
-    const reconcileResult = this.reconciler.reconcileAll();
-    if (reconcileResult.totalErrors > 0) {
-      log.warn(`Startup reconciliation had ${reconcileResult.totalErrors} errors across ${reconcileResult.projects.length} projects`);
-    }
-  }
+  /** No-op — workspace root now comes from project.projectDir (migration complete in Plan 03) */
+  setWorkspaceRoot(_root: string): void { /* workspace root now comes from project.projectDir */ }
 
   /** Get the state reconciler for external use (routes, tools) */
   getReconciler(): StateReconciler | null {
@@ -197,8 +180,8 @@ export class ExecutionOrchestrator {
       uncommittedChanges?: string[];
     },
   ): void {
-    if (!this.workspaceRoot) return;
     const project = this.store.getProjectOrThrow(projectId);
+    if (!project.projectDir) return;
     const phase = this.store.getPhaseOrThrow(phaseId);
     const state = buildHandoffState({
       store: this.store,
@@ -210,7 +193,7 @@ export class ExecutionOrchestrator {
       pauseDetail,
       ...opts,
     });
-    writeHandoffFile(this.workspaceRoot, state);
+    writeHandoffFile(project.projectDir, state);
   }
 
   /**
@@ -268,7 +251,7 @@ export class ExecutionOrchestrator {
         log.info(`Execution paused for project ${projectId} before wave ${waveIndex}`);
         // Write handoff file for session survival (ENG-12)
         const pausePhase = waves[waveIndex]?.[0];
-        if (pausePhase && this.workspaceRoot) {
+        if (pausePhase) {
           this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", "Execution paused by user or config");
         }
         break;
@@ -304,7 +287,7 @@ export class ExecutionOrchestrator {
         if (msg.priority === "critical") {
           log.warn(`Critical message received — pausing execution: ${msg.content.slice(0, 120)}`);
           const pausePhase = waves[waveIndex]?.[0];
-          if (pausePhase && this.workspaceRoot) {
+          if (pausePhase) {
             this.writeHandoff(projectId, pausePhase.id, waveIndex, waves.length, "manual", `Critical message: ${msg.content.slice(0, 200)}`);
           }
           return { waveCount: waves.length, failed, skipped, messages: deliveredMessages };
