@@ -79,6 +79,18 @@ signals:
     interval_seconds: 1800
     stale_hours: 24
     dormant_hours: 72
+  activity:
+    enabled: true
+    interval_seconds: 5          # poll frequency (fast — just reads window title)
+    ring_buffer_size: 100        # last N focus events
+    duration_threshold_s: 10     # min seconds before recording a focus event
+    summary_hours: 2             # hours of activity in PROSOCHE.md summary
+    deep_work_minutes: 30        # threshold for "deep focus" signal
+    exclude_apps:                # never log these (privacy)
+      - 1Password
+      - KeePassXC
+      - Bitwarden
+      - gnome-keyring
 nous:
   syn:
     role: orchestrator
@@ -91,6 +103,7 @@ nous:
       nas: 0.8
       credentials: 0.9
       sessions: 0.5
+      activity: 0.4
   syl:
     role: general
     weights:
