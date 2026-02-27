@@ -51,6 +51,7 @@ Output format:
 
 Return {"facts": []} if nothing worth extracting."""
 
+# INVARIANT: prompt must NOT mention RELATES_TO — see tests/test_vocab.py
 GRAPH_EXTRACTION_PROMPT = (
     "Use ONLY the following relationship types: "
     "KNOWS, LIVES_IN, WORKS_AT, OWNS, USES, PREFERS, "
@@ -66,6 +67,9 @@ GRAPH_EXTRACTION_PROMPT = (
 # Detect LLM backend at import time
 _backend = detect_backend()
 LLM_BACKEND = _backend
+
+
+ENABLE_GRAPH_STORE = os.environ.get("ENABLE_GRAPH_STORE", "").lower() in ("1", "true", "yes")
 
 
 def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -104,7 +108,13 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
                 "embedding_model_dims": embedding_dims,
             },
         },
-        "graph_store": {
+        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
+        "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
+    }
+
+    # Add graph store only if explicitly enabled (requires working LLM key for entity extraction)
+    if ENABLE_GRAPH_STORE:
+        config["graph_store"] = {
             "provider": "neo4j",
             "config": {
                 "url": NEO4J_URL,
@@ -112,10 +122,7 @@ def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
                 "password": NEO4J_PASSWORD,
                 "base_label": True,
             },
-        },
-        "custom_prompt": GRAPH_EXTRACTION_PROMPT,
-        "custom_fact_extraction_prompt": FACT_EXTRACTION_PROMPT,
-    }
+        }
 
     # Add LLM config
     if backend["config"]:

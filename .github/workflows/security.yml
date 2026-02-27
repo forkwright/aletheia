@@ -3,6 +3,8 @@ name: Security
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   schedule:
     - cron: "0 10 * * 1" # Monday 04:00 CST
   workflow_dispatch:
@@ -36,10 +38,10 @@ jobs:
       - run: pip install pip-audit
       - name: Audit memory sidecar
         working-directory: infrastructure/memory/sidecar
-        run: pip-audit . 2>&1 || true
+        run: pip-audit .
       - name: Audit prosoche
         working-directory: infrastructure/prosoche
-        run: pip-audit . 2>&1 || true
+        run: pip-audit .
 
   secret-scan:
     runs-on: ubuntu-latest

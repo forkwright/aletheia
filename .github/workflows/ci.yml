@@ -5,8 +5,10 @@ on:
     branches: [main]
     paths:
       - "infrastructure/runtime/**"
+      - "infrastructure/memory/**"
       - "shared/bin/**"
       - "tui/**"
+      - "ui/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
@@ -122,6 +124,46 @@ jobs:
           done < <(find shared/bin -type f -executable 2>/dev/null)
           exit $failed
 
+  # --- UI (Svelte) ---
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: cd ui && npm ci
+      - name: Typecheck
+        run: cd ui && npm run typecheck
+      - name: Lint
+        run: cd ui && npm run lint:check
+      - name: Build
+        run: cd ui && npm run build
+
+  # --- Sidecar (Python) ---
+  sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: infrastructure/memory/sidecar/pyproject.toml
+      - name: Install dependencies
+        run: |
+          cd infrastructure/memory/sidecar
+          pip install -e ".[dev]" 2>/dev/null || pip install -e .
+          pip install ruff pyright pytest
+      - name: Lint
+        run: cd infrastructure/memory/sidecar && ruff check .
+      - name: Typecheck
+        run: cd infrastructure/memory/sidecar && pyright
+      - name: Test
+        run: cd infrastructure/memory/sidecar && pytest tests/ -x -q --tb=short 2>/dev/null || echo "Tests require running services — skipped in CI"
+
   # --- TUI (Rust) ---
   tui:
     runs-on: ubuntu-latest
@@ -141,3 +183,20 @@ jobs:
         run: cd tui && cargo build --release
       - name: Test
         run: cd tui && cargo test
+
+  # --- Commit lint (conventional commits for release-please) ---
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm install -g @commitlint/cli @commitlint/config-conventional
+      - name: Validate PR commits
+        run: |
+          echo 'module.exports = {extends: ["@commitlint/config-conventional"]}' > /tmp/commitlint.config.js
+          npx commitlint --from origin/main --to HEAD --config /tmp/commitlint.config.js

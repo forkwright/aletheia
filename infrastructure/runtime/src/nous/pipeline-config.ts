@@ -16,6 +16,8 @@ export const RecallConfigSchema = z.object({
   // Run `npm run test:tune-sufficiency` to determine optimal values from corpus data.
   sufficiencyThreshold: z.number().min(0).max(1).default(0.85),
   sufficiencyMinHits: z.number().int().min(1).max(20).default(3),
+  /** Temporal decay half-life in days. Memory at this age scores 50% of raw similarity. */
+  halfLifeDays: z.number().min(1).max(365).default(30),
 }).default({});
 
 export const ToolsConfigSchema = z.object({

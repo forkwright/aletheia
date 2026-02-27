@@ -26,7 +26,6 @@ jobs:
         run: cd infrastructure/runtime && npm run test:coverage
       - name: Integration tests
         run: cd infrastructure/runtime && npm run test:integration
-        continue-on-error: true
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -34,7 +33,6 @@ jobs:
           path: infrastructure/runtime/coverage/
           retention-days: 30
 
-  # npm audit runs in security.yml (weekly + PRs) — no duplication here
   dead-code:
     runs-on: ubuntu-latest
     steps:
@@ -56,7 +54,14 @@ jobs:
               const files = report.files?.length || 0;
               const exports = report.exports?.length || 0;
               console.log('Dead code — unused files: ' + files + ', exports: ' + exports);
-              if (files > 5) console.warn('::warning::' + files + ' unused files detected');
+              if (files > 10) {
+                console.error('::error::' + files + ' unused files detected — exceeds threshold of 10');
+                process.exit(1);
+              }
+              if (exports > 25) {
+                console.error('::error::' + exports + ' unused exports detected — exceeds threshold of 25');
+                process.exit(1);
+              }
             } catch { console.log('No dead code report generated'); }
           "
       - uses: actions/upload-artifact@v6
