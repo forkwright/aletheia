@@ -43,6 +43,7 @@ that evolve with the system.
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
 | 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Shared task board, overview |
+| 43 | [A2UI Live Canvas](43_a2ui-canvas.md) | Draft | Agent-writable dynamic UI surface (from #319) |
 
 ### Draft — Future
 
@@ -64,7 +65,20 @@ that evolve with the system.
 - Specs describe *intent and design*, not implementation. Code is the source of truth.
 - Implemented specs are absorbed into `archive/DECISIONS.md` — individual spec files are deleted.
 - **Pre-archival:** Run the [Archival Checklist](ARCHIVAL-AUDIT.md) to verify all features were delivered.
-- **Next available number: 43**
+- **Next available number: 44**
+
+## Issue ↔ Spec Cross-Reference
+
+| Issue | Title | Spec | Relationship |
+|-------|-------|------|-------------|
+| #319 | A2UI live canvas | **43** | Promoted to spec |
+| #326 | TUI deferred items | — | Stays as issue (incremental improvements) |
+| #328 | Planning dashboard | **29** Phase 5 | Folded into UI layout spec |
+| #332 | OS-layer integration | **24** | Issue content absorbed into skeleton |
+| #338 | Exec tool quality | **35** + **36** | Split: truncation/caps → 35, cwd/timeout/glob → 36 |
+| #339 | Deploy pipeline | **36** | Absorbed into Config Taxis |
+| #250 | Memory recall (BM25) | — | Stays as issue (single implementation phase) |
+| #313 | Prosoche activity | — | Partially shipped (PR #336); remainder stays as issue |
 
 ## Related
 

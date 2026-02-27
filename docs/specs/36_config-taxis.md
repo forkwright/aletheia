@@ -62,6 +62,38 @@ Credentials referenced by name, resolved at runtime. No plaintext secrets in mai
 - Whether `deploy/` should be a separate repo or directory within monorepo
 - SecretRef resolver implementation (env vars, Vault, file-based)
 
+## Exec Tool Configuration (from #338)
+
+Issue #338 identifies exec tool gaps that are workspace/config concerns (vs. context engineering concerns in Spec 35):
+
+### Working Directory
+- **Per-call `cwd` parameter:** Tools should accept an optional `cwd` that overrides the default. Currently all exec calls run from the nous workspace root.
+- **Per-nous `workingDir` config:** `agents.list[id].workingDir` sets the default working directory for all tool calls. Resolved via 4-layer config. Useful when agents need to operate primarily from a different directory (e.g., the monorepo root).
+
+### Default Timeout
+Current default is 30s, which causes timeouts on builds, test runs, and long commands. Change to 120s default, configurable per-nous via `agents.list[id].pipeline.execTimeout`.
+
+### Glob Tool
+Add a dedicated `glob` tool (or extend `find`) that returns file lists matching glob patterns. Avoids the overhead of shelling out to `fd` or `find` for simple pattern matching.
+
+## Deploy Pipeline (from #339)
+
+Issue #339 identifies gaps in the deploy/build chain:
+
+### npm install in Deploy
+Current deploy script bundles with `tsdown` but doesn't run `npm install` — new dependencies require manual intervention. Deploy should: `git pull` → `npm install --production` → `npm run build` → restart.
+
+### Anchor.json Scaffolding
+`anchor.json` should be created during `bootstrap.sh` if missing. Currently requires manual creation.
+
+### Agent Workspace Scaffolding
+Deploy should verify `nous/{agent}/` directories exist for all configured agents, creating missing ones from `_example/` template.
+
+### Systemd Config Fallback
+If systemd user services aren't configured, deploy should offer to create them (or at least detect and warn).
+
+---
+
 ## Phases
 
 TBD — needs design review.
