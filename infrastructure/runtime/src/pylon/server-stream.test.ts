@@ -61,6 +61,7 @@ function makeManager(streamEvents?: Array<Record<string, unknown>>) {
         yield event;
       }
     }),
+    getPlanningOrchestrator: vi.fn().mockReturnValue(undefined),
   } as never;
 }
 
@@ -197,6 +198,7 @@ describe("POST /api/sessions/stream", () => {
         yield { type: "turn_start", sessionId: "ses_1", nousId: "syn" };
         throw new Error("provider exploded");
       }),
+      getPlanningOrchestrator: vi.fn().mockReturnValue(undefined),
     } as never;
 
     const app = createGateway(makeConfig(), failingManager, makeStore());

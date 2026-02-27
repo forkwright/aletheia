@@ -15,12 +15,10 @@ import { reflectOnAgent, weeklyReflection } from "../melete/reflect.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 
 function makeConfig(agentIds: string[]): AletheiaConfig {
-  const list: Record<string, unknown> = {};
-  for (const id of agentIds) list[id] = { id };
   return {
     agents: {
       defaults: { compaction: { distillationModel: "haiku" } },
-      list,
+      list: agentIds.map((id) => ({ id })),
     },
   } as unknown as AletheiaConfig;
 }
