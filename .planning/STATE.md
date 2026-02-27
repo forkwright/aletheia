@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 6 of 6 (Observability)
-Plan: 2 of 2 in current phase (06-02 complete — memory audit CLI and write receipts on all memory write paths)
-Status: Phase 6 in progress — OBSV-03, OBSV-04 complete; OBSV-01, OBSV-02 pending (Plan 06-01)
-Last activity: 2026-02-27 — Plan 06-02 complete; memory audit CLI subcommand, write receipts on finalize.ts, aletheia.ts, reflect.ts
+Plan: 2 of 2 in current phase (06-01 and 06-02 complete — all observability plans done)
+Status: Phase 6 complete — OBSV-01, OBSV-02, OBSV-03, OBSV-04 all complete
+Last activity: 2026-02-27 — Plan 06-01 complete; /health extended with semantic metrics, threshold evaluation, memory health CLI command
 
-Progress: [████████████████] 95%
+Progress: [████████████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 10 min
-- Total execution time: ~2.1 hours
+- Total plans completed: 15
+- Average duration: 9 min
+- Total execution time: ~2.3 hours
 
 **By Phase:**
 
@@ -33,6 +33,7 @@ Progress: [████████████████] 95%
 | 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
 | 05-recall-quality (partial) | 3 | ~17 min | ~6 min |
 | 05.1-emergency-distillation-sidecar-wiring | 1 | 3 min | 3 min |
+| 06-observability | 2 | ~16 min | ~8 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
@@ -114,6 +115,9 @@ Recent decisions affecting current work:
 - [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: Test assertion uses mock.calls[N][4] direct access instead of toHaveBeenCalledWith — services.router is undefined in makeServices, and expect.anything() excludes undefined
 - [Phase 06-observability]: memoryCmd group created in Plan 02 to handle Wave 1 parallel execution — Plan 01 will reuse idempotently
 - [Phase 06-observability]: turn_extraction receipt always logged on ok response (removed conditional if added>0 guard)
+- [Phase 06-observability / 06-01]: _compute_p95 returns None for < 5 samples — insufficient data should not trigger false thresholds
+- [Phase 06-observability / 06-01]: asyncio.gather(return_exceptions=True) for parallel Qdrant+Neo4j collection — each subsystem failure is non-fatal
+- [Phase 06-observability / 06-01]: Threshold query param as JSON string — allows CLI to pass full config without routing through sidecar config
 
 ### Pending Todos
 
@@ -127,5 +131,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 06-observability 06-02-PLAN.md — memory audit CLI subcommand and write receipts on all 3 memory write paths (finalize.ts, aletheia.ts, reflect.ts)
+Stopped at: Completed 06-observability 06-01-PLAN.md — /health extended with semantic metrics, threshold evaluation, memoryHealth config, memory:health_recovered event, and aletheia memory health CLI command; all plans in Phase 6 complete
 Resume file: None
