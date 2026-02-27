@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 6 — Observability
+**Current focus:** Phase 7 — Tech Debt Cleanup
 
 ## Current Position
 
-Phase: 6 of 6 (Observability)
-Plan: 2 of 2 in current phase (06-01 and 06-02 complete — all observability plans done)
-Status: Phase 6 complete — OBSV-01, OBSV-02, OBSV-03, OBSV-04 all complete
-Last activity: 2026-02-27 — Plan 06-01 complete; /health extended with semantic metrics, threshold evaluation, memory health CLI command
+Phase: 7 of 7 (Tech Debt Cleanup)
+Plan: 1 of 2 complete (07-01 done — health event subscribers, flush tracking, comment fixes, ADR closure)
+Status: Phase 7 in progress — plan 07-01 complete
+Last activity: 2026-02-27 — Plan 07-01 complete; health events wired, flush success rate tracked, catch comments fixed, /add ADR closed
 
-Progress: [████████████████] 100%
+Progress: [████████████████] 50% of phase
 
 ## Performance Metrics
 
@@ -118,6 +118,10 @@ Recent decisions affecting current work:
 - [Phase 06-observability / 06-01]: _compute_p95 returns None for < 5 samples — insufficient data should not trigger false thresholds
 - [Phase 06-observability / 06-01]: asyncio.gather(return_exceptions=True) for parallel Qdrant+Neo4j collection — each subsystem failure is non-fatal
 - [Phase 06-observability / 06-01]: Threshold query param as JSON string — allows CLI to pass full config without routing through sidecar config
+- [Phase 07-tech-debt-cleanup / 07-01]: memory:health_degraded subscribers added at startRuntime scope — consistent with other event bus wiring in that function
+- [Phase 07-tech-debt-cleanup / 07-01]: _FLUSH_RESULTS deque(maxlen=500) — bounded memory, sufficient for 24h window at typical flush frequency
+- [Phase 07-tech-debt-cleanup / 07-01]: _compute_flush_success_rate returns None (not 0.0) when no data — consistent with other metric helpers; None means no data
+- [Phase 07-tech-debt-cleanup / 07-01]: /add ADR comment is final closure — removes ambiguity from "deferred" framing, formally closes Phase 2 deferred decision
 
 ### Pending Todos
 
@@ -131,5 +135,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 06-observability 06-01-PLAN.md — /health extended with semantic metrics, threshold evaluation, memoryHealth config, memory:health_recovered event, and aletheia memory health CLI command; all plans in Phase 6 complete
+Stopped at: Completed 07-tech-debt-cleanup 07-01-PLAN.md — health events wired, flush success rate tracked end-to-end, catch comments fixed, /add ADR closed
 Resume file: None

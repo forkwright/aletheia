@@ -171,7 +171,7 @@ Plans:
   5. Single-slash comment typos in pipeline.ts, extract.ts, hooks.ts are fixed
   6. Baseline precision/recall scores recorded against live corpus (not test doubles)
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 07-01-PLAN.md — Health event subscribers + flush metric tracking/display + comment typo fixes + /add ADR closure (code)
@@ -192,4 +192,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
 | 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
 | 6. Observability | 2/2 | Complete   | 2026-02-27 |
-| 7. Tech Debt Cleanup | 0/2 | Pending    | - |
+| 7. Tech Debt Cleanup | 1/2 | In Progress|  |
