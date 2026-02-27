@@ -6,45 +6,68 @@ These are **internal design documents** — they describe how things should work
 what constraints exist, and what tradeoffs were made. They're living documents
 that evolve with the system.
 
+> **Specs are transitional.** As Dianoia matures, new work should flow through
+> Dianoia projects (propose → approve → execute → verify) rather than spec
+> documents. Specs that remain become architectural constraints and principles
+> ([DECISIONS.md](archive/DECISIONS.md)), not implementation plans.
+
 ## Active Specs
 
-### Draft
+### In Progress
 
-| # | Spec | Status | Scope | Notes |
-|---|------|--------|-------|-------|
-| 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | Draft | Layout overhaul, light theme | Sidebar → tab bar, agent status |
-| 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Shared task board, overview | Cross-agent visibility |
-| 28 | [TUI](28_tui.md) | Draft | Ratatui terminal client | Thin client, SSE streaming, agent switching |
-| 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI | Nice-to-have |
-| 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | Semantic space analysis, concept drift | Research-grade |
-| 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine | A2A premature per Cody |
-| 24 | [Aletheia Linux](24_aletheia-linux.md) | Skeleton | OS + network integration | Long-term vision |
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | In Progress | Light theme + agent activity indicators done; sidebar→tab bar + settings dedup pending |
+| 35 | [Context Engineering](35_context-engineering.md) | In Progress | Cache-group bootstrap + interaction signals wired; skill relevance + turn bypass pending |
 
-### Priority Order
+### Draft — Architecture
 
-1. **29** UI Layout & Theming
-2. **30** Homepage Dashboard
-3. **28** TUI — terminal client
-4. **25** Integrated IDE
-5. **27** Embedding Space Intelligence
-6. **22** Interop & Workflows
-7. **24** Aletheia Linux — long-term
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
+| 36 | [Config Taxis](36_config-taxis.md) | Draft | 4-layer workspace + SecretRef credentials |
+| 37 | [Metadata Architecture](37_metadata-architecture.md) | Draft | Declarative config-first design |
+| 38 | [Provider Adapters](38_provider-adapters.md) | Draft | Multi-provider hermeneus interface |
+| 42 | [Nous Team](42_nous-team.md) | Draft | Closing feedback loops for autonomous operation |
+
+### Draft — Execution & Quality
+
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 39 | [Autonomy Gradient](39_autonomy-gradient.md) | Draft | Confidence-gated dianoia step execution |
+| 40 | [Testing Strategy](40_testing-strategy.md) | Draft | Coverage targets, integration patterns |
+| 41 | [Observability](41_observability.md) | Draft | Logs, metrics, traces, alerts |
+
+### Draft — UI & Platform
+
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Shared task board, overview |
+
+### Draft — Future
+
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 22 | [Interop & Workflows](22_interop-and-workflows.md) | Draft | A2A protocol, workflow engine |
+| 24 | [Aletheia Linux](24_aletheia-linux.md) | Skeleton | OS + network integration |
+| 27 | [Embedding Space Intelligence](27_embedding-space-intelligence.md) | Draft | JEPA principles for agents |
 
 ## Implemented (Archived)
 
-28 implemented specs consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)** (~350 lines). Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility), preserving key decisions, rejected alternatives, and patterns that constrain future work. Code is the source of truth — the archive captures the *why*.
+33 implemented specs (01–25, 26, 28, 31, 32, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
 
 ## Conventions
 
 - **Filename:** `NN_<topic>.md` (numbered by creation order)
-- **Status:** Draft → In Progress → Implemented → Archived
+- **Status:** Draft → In Progress → Implemented → Archived → Absorbed into DECISIONS.md
 - **Format:** Problem statement → Design → Constraints → Open questions
 - Specs describe *intent and design*, not implementation. Code is the source of truth.
-- Implemented specs move to `archive/` with a note on which PR delivered them.
+- Implemented specs are absorbed into `archive/DECISIONS.md` — individual spec files are deleted.
+- **Pre-archival:** Run the [Archival Checklist](ARCHIVAL-AUDIT.md) to verify all features were delivered.
+- **Next available number: 43**
 
-## Adding a Spec
+## Related
 
-1. Create `NN_<topic>.md` in this directory (next available number: 33)
-2. Add it to the index above
-3. Start with Draft status
-4. PR for review when ready
+- **Open issues:** `gh issue list` — scoped implementation tasks, policy/ops docs
+- **Policy/ops issues** are labeled `policy/ops` — not specs, not feature code
+- Spec-worthy issues get promoted to spec files; the issue is closed with a link

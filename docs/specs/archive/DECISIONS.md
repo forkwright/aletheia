@@ -1,6 +1,8 @@
 # Specification Archive — Decisions & Patterns
 
-Consolidated reference for 27 implemented specs. Organized by domain, preserving key decisions, rejected alternatives, and patterns that constrain future work. Code is the source of truth — this document captures the *why*.
+Consolidated reference for 33 implemented specs. Organized by domain, preserving key decisions, rejected alternatives, and patterns that constrain future work. Code is the source of truth — this document captures the *why*.
+
+> **On the future of specs:** Specs are a transitional artifact. They exist because Aletheia's planning system (Dianoia) wasn't mature enough to own the design process when development started. As Dianoia grows — persistent projects, requirements scoping, phase execution, verification — new work should flow through Dianoia projects rather than spec documents. Specs that remain will be architectural constraints and principles (this file), not implementation plans. The goal is: Dianoia proposes → human approves → Dianoia executes → Dianoia verifies. Specs become unnecessary when that loop closes.
 
 ---
 
@@ -326,6 +328,22 @@ Thinking persistence, tool input display, categorization.
 - Thinking panel persistence: `$effect` watching `thinkingIsLive` transition, captures final text before store clears it
 - `tool_start` SSE event includes `input` field. Tool inputs from history parsed from stored `tool_use` content blocks (different code path than live streaming).
 
+### Integrated IDE (Spec 25, PR #307)
+
+Lightweight file editor embedded in the web UI so humans and agents work on the same files without context-switching.
+
+- **Not an IDE replacement** — no LSP, no debugger, no terminal emulator. Goal: "good enough to not tab away" for reviewing agent work and quick edits.
+- **Multi-tab with stale detection** — `EditorTab` state tracks `dirty` (local changes) and `stale` (agent modified externally). Tab switch preserves editor state via `Map<string, string>` cache.
+- **Agent edit notifications via SSE** — `tool_start` events for `write`/`edit` tools captured, matched to `tool_result` by `toolId`, toast shown: "Syn edited `config.ts`" with [Open] action.
+- **Conflict resolution: reload or keep** — when tab is both dirty and stale (human and agent both edited), prompt offers two choices. No CRDT, no OT. Last-write-wins at API level.
+- **CodeMirror 6 with full language support** — js/ts/tsx/jsx/py/json/yaml/md/css/html/svelte. Existing `@codemirror/lang-*` packages.
+- **Path traversal protection** — `safeWorkspacePath()` rejects `..` escapes on all workspace endpoints.
+- **Clickable file paths in chat** — regex post-processing detects paths in agent messages, makes them clickable to open in editor.
+- **Workspace search API** — `GET /api/workspace/search` using ripgrep subprocess, results replace tree temporarily.
+- **Auto-commit on agent writes** — `commitWorkspaceChange()` in `workspace-git.ts` fires on write/edit tool calls.
+- **Deferred:** TreeContextMenu.svelte (right-click create/delete/rename) and inline rename — backend APIs exist (`DELETE /api/workspace/file`, `POST /api/workspace/file/move`) but UI was never built. See #325.
+- 1MB hard file size limit. Files >500KB get a warning banner. Single-server, no collaborative editing.
+
 ### Graph Visualization (PRs #56, #90, #91)
 
 2D/3D graph, node cards, communities, search, memory auditing, drift detection.
@@ -352,3 +370,76 @@ Hooks, custom commands, plugin auto-discovery.
 - **Plugin path safety** requires `realpath()` validation — all paths must resolve within plugin root, no `..` after resolution
 - Hooks: `shared/hooks/*.yaml`. Commands: `shared/commands/*.md`. Plugin layout: `manifest.yaml` + `hooks/` + `commands/` + `tools/`.
 - Loop guard implemented as a built-in hook template, not core logic
+
+
+---
+
+## Platform
+
+### TUI — Terminal Client (Spec 28)
+
+Ratatui-based terminal interface with Elm Architecture (TEA) event loop, SSE streaming, and agent switching.
+
+- **One agent, one conversation** — no multiplexed views. Switch agents like switching tabs, not windows.
+- **Elm Architecture (TEA)** — `Model → Msg → Update → View` cycle. All state transitions through message dispatch, no side effects in view.
+- **SSE for real-time** — `GET /api/events` for system events (health, agent status), `POST /api/sessions/stream` for turn responses. Reconnect with exponential backoff.
+- **Crossterm 0.29** — resolved input handling differences vs 0.28. Custom input widget over `tui-textarea` for Ctrl+Enter multiline and Emacs keybindings.
+- **Custom markdown renderer** — `pulldown-cmark` → ratatui `Line/Span` conversion. Rejected `tui-markdown` (unmaintained, limited formatting).
+- **Auth: prompt + session file** — token stored in `~/.config/aletheia/session.json` after first login. No browser-based OAuth for terminal context.
+- **Dashboard mode default** — system status, agent list, recent activity. `Ctrl+F` toggles focused mode (chat only). `@mention` routing in input.
+- **WebUI replacement, not supplement** — designed as the primary interface for operators who prefer terminal. Same API surface as webchat.
+- Platform support: Linux primary, macOS secondary, Windows via WSL only.
+
+### Agora — Channel Abstraction + Slack Integration (Spec 34, PRs #299–304)
+
+Channel-agnostic messaging layer. Signal becomes a channel provider within agora, not a special case.
+
+- **Agora (ἀγορά) = the gathering place.** Channels are stoa (covered walkways) — each enters through its own protocol but converges into a single discourse (the nous pipeline). No channel gets privileged access.
+- **`ChannelProvider` interface** — `id`, `name`, `capabilities`, `start(ctx)`, `stop()`, `send(envelope)`. New channels implement this and register. Signal refactored to the same interface Slack uses.
+- **`ChannelCapabilities` flags** — `threads`, `reactions`, `attachments`, `richText`, `streaming`, `presence`, `ephemeral`. Each channel declares what it supports; the dispatcher adapts.
+- **Binding resolution by channel** — `channel: "slack"` in binding config, same pattern as existing `channel: "signal"`. Bindings already supported this conceptually.
+- **CLI onboarding** — `aletheia channel add slack` guides token creation, scopes, channel selection. Same pattern for future channels.
+- **Slack-specific:** Bot token + Socket Mode (no public URL needed). Scopes: `chat:write`, `channels:history`, `im:history`, `reactions:write`, `users:read`. App-level token for Socket Mode events.
+- **Thread auto-creation for streaming** — Slack's `ChatStreamer` requires `thread_ts`. Non-threaded channel messages get a "…" anchor, stream within it.
+- **DM access policy: `open | allowlist | pairing | disabled`** — pairing mode sends challenge code via DM, admin approves with `!approve <code>` from any channel.
+- **`!command` interception** — shared `CommandRegistry` routes admin commands (`!approve`, `!deny`, `!contacts`, `!status`) before messages reach nous dispatch. `adminOnly` gating by user ID.
+- **Idempotent reactions** — `addSlackReaction`/`removeSlackReaction` handle `already_reacted`/`no_reaction` errors silently. Processing emoji wraps entire dispatch lifecycle in `finally`.
+- **No runtime entanglement** — unconfigured channels don't load, crashed channels don't take down others or the pipeline. Channel isolation is structural.
+- 142 agora tests across 6 phases. Config hot-reload deferred (cross-cutting concern).
+
+
+### Dianoia — Persistent Multi-Phase Planning Runtime (Spec 31)
+
+Replaced session-scoped planning tools with a persistent SQLite-backed planning runtime driven by an 11-state FSM.
+
+- **SQLite persistence over session memory.** All planning state survives runtime restart, session expiry, and agent swaps. 6 migrations (v20–v25) building incrementally.
+- **Pure FSM as single source of truth.** `transition()` in `machine.ts` is a pure function — no I/O, no side effects. All state changes go through `DianoiaOrchestrator` which delegates to the FSM. No direct state writes bypass it.
+- **Constructor injection everywhere.** Every orchestrator accepts `db` and `dispatchTool` as constructor arguments. Zero global state.
+- **11 states, 15 transitions.** idle → questioning → researching → requirements → roadmap → phase-planning → executing → verifying → complete. Plus `blocked` and `abandoned` terminal/recovery states.
+- **Wave-based parallel execution.** Dependency graph determines which phases can run in parallel. Phases within a wave execute concurrently via `sessions_dispatch`. Failed phases cascade-skip dependents.
+- **Four parallel research dimensions.** Stack, features, architecture, pitfalls — spawned as parallel subagents, synthesized before requirements.
+- **Interactive category-scoped requirements.** Requirements presented by category with table-stakes vs. differentiators. REQ-ID assignment. v1/v2/out-of-scope tiering with rationale.
+- **Goal-backward verification.** `GoalBackwardVerifier` checks completed phases against their stated goals. Gap analysis generates closure plans.
+- **3-tier risk checkpoints.** Low/medium/high risk evaluation. YOLO mode auto-approves low/medium. True-blocker category for high-risk items requiring human decision.
+- **Spawn records survive restart.** v24 migration adds `planning_spawn_records` table. Zombie detection for spawns that started but never completed.
+- **Legacy tools deprecated.** `plan_create` and `plan_propose` still work but emit deprecation warnings. New tool surface: `plan_research`, `plan_requirements`, `plan_roadmap`, `plan_execute`, `plan_verify`, `plan_discuss`.
+- 88 source files, 40 test files. Integration test exercises full idle→complete pipeline with mocked dispatch.
+
+
+### Dianoia v2 — Context-Engineered Planning with Sub-Agent Isolation (Spec 32)
+
+Layered context engineering and file-backed state on top of Dianoia v1, solving orchestrator context saturation and state loss across distillation.
+
+- **Files are source of truth.** `.dianoia/projects/{id}/` directory with PROJECT.md, REQUIREMENTS.md, ROADMAP.md, RESEARCH.md, and per-phase DISCUSS.md/PLAN.md/STATE.md/VERIFY.md. SQLite is the index; markdown files are the record. Projects reconstructable from files alone.
+- **Atomic file writes.** `atomicWriteFile()` writes to `.tmp` then `rename()` — no partial file corruption on crash. Every file generator in `project-files.ts` uses this.
+- **ContextPacketBuilder** assembles role-scoped context packets from project files. Sub-agents start at token 1 with exactly what they need. Budget per task type: research 8k, synthesis 16k, requirements 12k, discussion 16k (Opus), planning 24k, execution 32k, verification 16k.
+- **Priompt-based token counting.** `js-tiktoken` (cl100k_base) for accurate token measurement. No character-based estimation.
+- **Orchestrator stays under 40k tokens.** Reads PROJECT.md + ROADMAP.md + current phase summary. Everything else delegated. `orchestrator-context.ts` produces compact <4k summaries.
+- **Discussion is first-class.** `discussing` FSM state added between roadmap and planning. Gray areas surfaced per-phase via Opus sub-agent. Decisions captured in DISCUSS.md and propagated as hard constraints to planning. `discuss-tool.ts` handles the full flow.
+- **Codebase context mapping.** `codebase-map.ts` (599 lines) builds relevant file sets for execution steps — reads step targets from PLAN.md, includes referenced types/interfaces/tests, hard-caps at budget.
+- **Sub-agent handoff.** `handoff.ts` wires context packets to spawn dispatches. Each execution step is an isolated sub-agent with no inherited chat history.
+- **File-sync bidirectional.** `file-sync.ts` keeps SQLite and disk files consistent. Either can be canonical — import from files to recover from DB loss.
+- **Verifier uses context packets.** `GoalBackwardVerifier.verify()` calls `buildContextPacketSync()` for scoped verification context. No raw execution output in orchestrator.
+- **Planning UI: 19 Svelte components, 7,286 lines.** PlanningDashboard, milestone TimelineView, DiscussionPanel with decision cards, RequirementsTable, ExecutionStatus with wave tracking, SpawnStatus, VerificationPanel, CheckpointApproval, AnnotationPanel, EditHistory, ContextBudget visualization, MessageQueue, RoadmapView, ProjectHeader, RetrospectiveView, CategoryProposal, TaskList.
+- **Learning/retrospective deferred to Spec 42.** Cross-project skill extraction, project retrospective generation, and reusable insights are the core thesis of Spec 42 (Nous Team — closing feedback loops). Verification is complete here; learning belongs in the spec that owns the feedback loop architecture.
+- **Migration was non-breaking.** File generation layered on existing SQLite writes. Tool surface stable throughout. Phase 2 refactored internals only. Phase 3 added new UI + API endpoints.

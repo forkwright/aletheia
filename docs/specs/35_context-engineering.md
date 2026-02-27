@@ -1,6 +1,6 @@
-# Spec 31: Context Engineering
+# Spec 35: Context Engineering
 
-**Status:** Draft
+**Status:** In Progress — cache-group bootstrap + interaction classifier wired; skill relevance filtering + turn bypass pending
 **Author:** Cody
 **Date:** 2026-02-23
 **Spec:** 31
@@ -267,6 +267,36 @@ These surfaced from the research but don't fit the current phase structure. Capt
 **Manus: filesystem offload for tool results.** Rather than truncating large tool results, write them to a temp file and inject the path. Agent re-reads if needed. Complements `truncate.ts` (head/tail compression) — an alternative for results that benefit from full access rather than a compressed view.
 
 **Mini-SWE-agent: protocol-based stage substitution.** Three-layer protocol design (LLM provider, execution environment, agent controller) each independently substitutable via structural typing. Could strengthen aletheia's pipeline stage interfaces from functions to named contracts, making it explicit what each stage can and cannot assume.
+
+---
+
+## Phase: Pre-Distillation Workspace Flush (from #315)
+
+When context pressure triggers distillation, the current flow compresses the conversation directly. The risk: something important gets summarized away before it's durably stored.
+
+**Proposed flow:**
+```
+context utilization hits threshold
+  → PRE-COMPACTION: silent sub-agent turn (haiku)
+      → reads last N messages
+      → writes key facts to MNEME.md (append, never overwrite)
+      → writes open decisions to CONTEXT.md
+      → writes active task state to workingState
+  → melete/pipeline.ts runs (unchanged)
+```
+
+**Trigger point** — in `melete/pipeline.ts`, before `runDistillation()`:
+```typescript
+if (shouldPreFlush(session, options)) {
+  await runPreCompactionFlush(services, session, nousId);
+}
+```
+
+**Extraction targets:** Facts (e.g. "User's Jeep has 187k miles"), open decisions (e.g. "Deciding between OEM and aftermarket diff cover"). NOT conversation summary (melete handles that), NOT working state (already extracted post-turn).
+
+**Guardrails:** Skip if last flush was < 10 turns ago. Uses haiku by default (extraction, not reasoning). Config: `distillation.preFlush: true/false`, `distillation.preFlushModel`. `melete:pre-flush-complete` event emitted.
+
+**Context:** MEMORY.md lesson #17 documents that distillation does NOT write daily memory files — 13 compactions on 2026-02-18 produced zero disk writes. This phase directly addresses that gap.
 
 ---
 
