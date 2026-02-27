@@ -83,6 +83,20 @@ export const webFetchTool: ToolHandler = {
 
 function stripHtml(html: string): string {
   let text = html;
+  // Strip hidden elements that could carry invisible prompt injections.
+  // Matches inline style attrs: display:none, visibility:hidden, font-size:0,
+  // opacity:0, height:0/width:0, position:absolute with overflow:hidden clip patterns.
+  // Also strips aria-hidden="true" and hidden attribute elements.
+  text = text.replace(/<[^>]+\sstyle\s*=\s*"[^"]*display\s*:\s*none[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*'[^']*display\s*:\s*none[^']*'[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*"[^"]*visibility\s*:\s*hidden[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*'[^']*visibility\s*:\s*hidden[^']*'[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*"[^"]*font-size\s*:\s*0[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*'[^']*font-size\s*:\s*0[^']*'[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*"[^"]*opacity\s*:\s*0[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\sstyle\s*=\s*'[^']*opacity\s*:\s*0[^']*'[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]+\saria-hidden\s*=\s*"true"[^>]*>[\s\S]*?<\/[^>]+>/gi, "");
+  text = text.replace(/<[^>]*\shidden(?:\s[^>]*|)>[\s\S]*?<\/[^>]+>/gi, "");
   // Remove block elements with content (handles spaces before closing >)
   text = text.replace(/<script[\s\S]*?<\/script\s*>/gi, "");
   text = text.replace(/<style[\s\S]*?<\/style\s*>/gi, "");
