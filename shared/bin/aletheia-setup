@@ -5,9 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALETHEIA_SRC="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
-# ERGON_ROOT — set this to your private operator fork directory
-# ERGON_ROOT="${ERGON_ROOT:-<your-operator-fork>}"
-ERGON_ROOT="${ERGON_ROOT:-}"
+RUNTIME_DIST="$ALETHEIA_SRC/infrastructure/runtime/dist"
 SERVICES_SRC="$ALETHEIA_SRC/config/services"
 
 log() { printf ':: %s\n' "$*"; }
@@ -18,7 +16,7 @@ die() { err "$@"; exit 1; }
 # --- Pre-flight ---
 
 [[ -d "$ALETHEIA_SRC/.git" ]] || die "Run from within the aletheia repo."
-[[ -f "$ERGON_ROOT/dist/entry.mjs" ]] || die "Ergon build not found at $ERGON_ROOT/dist/entry.mjs — run aletheia-update first."
+[[ -f "$RUNTIME_DIST/entry.mjs" ]] || die "Runtime build not found at $RUNTIME_DIST/entry.mjs — run aletheia-update first."
 [[ -f "$HOME/.aletheia/start.sh" ]] || die "~/.aletheia/start.sh not found — copy shared/bin/start.sh and make it executable."
 command -v node >/dev/null || die "node not found in PATH."
 command -v podman >/dev/null || die "podman not found in PATH."
