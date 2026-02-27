@@ -1,4 +1,6 @@
 // Context stage — bootstrap assembly, recall, broadcasts, working state, notes injection
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createLogger, updateTurnContext } from "../../../koina/logger.js";
 import { estimateTokens, estimateToolDefTokens } from "../../../hermeneus/token-counter.js";
 import { assembleBootstrap } from "../../bootstrap.js";
@@ -8,12 +10,17 @@ import { formatWorkingState } from "../../working-state.js";
 import { distillSession } from "../../../melete/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
-import { indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
+import { getSharedIndex, indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
+import { nousSharedDir } from "../../../taxis/paths.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 import { detectPlanningIntent } from "../../../dianoia/intent.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
+
+const SHARED_INJECTION_SCORE_THRESHOLD = 2; // minimum token matches for _shared/ content to be injected
+const SHARED_TOKEN_BUDGET = 600;
+const SHARED_MAX_RESULTS = 3;
 
 export async function buildContext(
   state: TurnState,
@@ -200,6 +207,63 @@ export async function buildContext(
       }
     } catch (error) {
       log.debug(`Workspace index unavailable: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // _shared/ workspace excerpt injection — surfaces shared workspace content per turn (INDX-04)
+  // Injection is silent when no matches exceed threshold or when index is still building.
+  {
+    const sharedIndex = getSharedIndex();
+    if (sharedIndex && sharedIndex.files.length > 0) {
+      let sharedDir: string | null = null;
+      try {
+        sharedDir = join(nousSharedDir(), "_shared");
+      } catch { /* anchor not initialized — skip injection */ }
+
+      if (sharedDir) {
+        const hits = queryIndex(sharedIndex, msg.text ?? "", SHARED_MAX_RESULTS)
+          .filter((hit) => {
+            // Score is not directly returned by queryIndex — re-compute for threshold check
+            const tokens = (msg.text ?? "")
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, " ")
+              .split(/\s+/)
+              .filter((t) => t.length >= 2);
+            const haystack = `${hit.path.toLowerCase()} ${hit.firstLine.toLowerCase()}`;
+            const score = tokens.reduce((n, tok) => n + (haystack.includes(tok) ? 1 : 0), 0);
+            return score >= SHARED_INJECTION_SCORE_THRESHOLD;
+          });
+
+        if (hits.length > 0) {
+          const excerptBlocks: string[] = [];
+          let tokenBudget = SHARED_TOKEN_BUDGET;
+          // Highest-score hits injected first; lowest-score truncated first when budget is tight
+          for (const hit of hits) {
+            const staleMarker = sharedIndex.staleWarning ? " [stale]" : "";
+            const staleLine = sharedIndex.staleWarning ? "\nContent may not reflect recent changes." : "";
+            const header = `--- workspace: _shared/${hit.path}${staleMarker} ---${staleLine}`;
+            let content = "";
+            try {
+              const absPath = join(sharedDir, hit.path);
+              if (existsSync(absPath)) {
+                const raw = readFileSync(absPath, "utf-8");
+                // Truncate to roughly token budget (4 chars ≈ 1 token)
+                content = raw.slice(0, tokenBudget * 4);
+              }
+            } catch { /* unreadable file — skip */ }
+            if (!content) continue;
+            const block = `${header}\n${content}`;
+            const blockTokens = estimateTokens(block);
+            if (blockTokens > tokenBudget) break; // lowest-score result truncated first (hits are score-sorted by queryIndex)
+            excerptBlocks.push(block);
+            tokenBudget -= blockTokens;
+          }
+          if (excerptBlocks.length > 0) {
+            systemPrompt.push({ type: "text", text: excerptBlocks.join("\n\n") });
+            log.debug(`Shared workspace injection: ${excerptBlocks.length} excerpts for ${nousId}`);
+          }
+        }
+      }
     }
   }
 

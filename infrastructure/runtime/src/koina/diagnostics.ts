@@ -1,6 +1,6 @@
 // Diagnostic checks for `aletheia doctor`
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
@@ -23,6 +23,7 @@ type DiagnosticCheck = (config: AletheiaConfig | null) => DiagnosticResult;
 const checks: DiagnosticCheck[] = [
   checkBootstrapAnchor,
   checkNousScaffoldDirs,
+  checkWorkspaceIndexHealth,
   checkConfigValid,
   checkWorkspacesExist,
   checkSharedDirs,
@@ -100,6 +101,57 @@ function checkNousScaffoldDirs(_config: AletheiaConfig | null): DiagnosticResult
     name: "nous_scaffold",
     status: "warn",
     message: `Missing scaffold dirs: ${missing.map((d) => d.replace(nousDir + "/", "")).join(", ")} — run 'aletheia init' to fix`,
+  };
+}
+
+function checkWorkspaceIndexHealth(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "Skipped (anchor.json not found or nousDir missing)",
+    };
+  }
+  const nousDir = anchorRaw["nousDir"] as string;
+  const sharedDir = join(nousDir, "_shared");
+  if (!existsSync(sharedDir)) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: `_shared/ not found at ${sharedDir} — run 'aletheia init' to scaffold`,
+    };
+  }
+  const indexDir = join(sharedDir, ".aletheia-index");
+  if (!existsSync(indexDir)) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "_shared/ exists but has no index yet — will be built at next daemon startup",
+    };
+  }
+  // Check for any manifest file to confirm index was successfully built
+  let manifests: string[] = [];
+  try {
+    manifests = readdirSync(indexDir).filter((f) => f.startsWith("manifest_"));
+  } catch {
+    return {
+      name: "workspace_index",
+      status: "error",
+      message: `Cannot read index directory ${indexDir} — check permissions`,
+    };
+  }
+  if (manifests.length === 0) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "Index directory exists but no manifests found — index may still be building",
+    };
+  }
+  return {
+    name: "workspace_index",
+    status: "ok",
+    message: `Workspace index present (${manifests.length} manifest(s) in ${indexDir})`,
   };
 }
 
