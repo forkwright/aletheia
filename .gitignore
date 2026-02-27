@@ -116,3 +116,6 @@ shared/traces/
 nous/*/config/
 shared/competence/model.json
 tui/target/
+
+# Deploy backups
+.deploy-backup/
