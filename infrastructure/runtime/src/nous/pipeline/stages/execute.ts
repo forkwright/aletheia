@@ -24,6 +24,20 @@ import type {
 import { truncateToolResult } from "./truncate.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 
+/** Resolve per-agent maxOutputTokens: agent params → global defaults. */
+function resolveMaxTokens(state: TurnState, services: RuntimeServices): number {
+  const agentMax = state.nous.params?.maxTokens;
+  if (typeof agentMax === "number" && agentMax > 0) return agentMax;
+  return services.config.agents.defaults.maxOutputTokens;
+}
+
+/** Resolve per-agent temperature: agent params → route-selected → undefined. */
+function resolveTemperature(state: TurnState): number | undefined {
+  const agentTemp = state.nous.params?.temperature;
+  if (typeof agentTemp === "number") return agentTemp;
+  return state.temperature;
+}
+
 /** Hard ceiling on tool loops per turn. Prevents infinite loops from exhausting tokens/time. */
 const MAX_TOOL_LOOPS = 200;
 
@@ -115,20 +129,26 @@ export async function* executeStreaming(
       : undefined;
     const supportsThinking = /opus|sonnet-4/i.test(model);
     const useThinking = !!(thinkingConfig?.enabled && supportsThinking);
+    // Per-agent thinking budget override
+    const agentThinkingBudget = state.nous.params?.thinkingBudget;
+    const baseThinkingBudget = (typeof agentThinkingBudget === "number" && agentThinkingBudget > 0)
+      ? agentThinkingBudget
+      : thinkingConfig?.budget ?? 10000;
 
     // Build context management — clears old tool results and thinking blocks server-side
     const contextTokens = services.config.agents.defaults.contextTokens;
     const contextManagement = buildContextManagement(contextTokens, useThinking);
 
+    const effectiveTemp = resolveTemperature(state);
     for await (const streamEvent of services.router.completeStreaming({
       model,
       system: systemPrompt,
       messages: currentMessages,
       ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-      maxTokens: services.config.agents.defaults.maxOutputTokens,
-      ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
+      maxTokens: resolveMaxTokens(state, services),
+      ...(effectiveTemp !== undefined ? { temperature: effectiveTemp } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
-      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: computeThinkingBudget(currentMessages, totalToolCalls, thinkingConfig.budget) } } : {}),
+      ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: computeThinkingBudget(currentMessages, totalToolCalls, baseThinkingBudget) } } : {}),
       ...(contextManagement ? { contextManagement } : {}),
     })) {
       switch (streamEvent.type) {
@@ -491,13 +511,14 @@ export async function executeBuffered(
       throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
     }
 
+    const bufferedTemp = resolveTemperature(state);
     const llmResult = await services.router.complete({
       model,
       system: systemPrompt,
       messages: currentMessages,
       ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-      maxTokens: services.config.agents.defaults.maxOutputTokens,
-      ...(state.temperature !== undefined ? { temperature: state.temperature } : {}),
+      maxTokens: resolveMaxTokens(state, services),
+      ...(bufferedTemp !== undefined ? { temperature: bufferedTemp } : {}),
       ...(bufferedContextMgmt ? { contextManagement: bufferedContextMgmt } : {}),
       ...(abortSignal ? { signal: abortSignal } : {}),
     });
