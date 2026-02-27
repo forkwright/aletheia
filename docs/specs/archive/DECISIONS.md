@@ -352,3 +352,39 @@ Hooks, custom commands, plugin auto-discovery.
 - **Plugin path safety** requires `realpath()` validation — all paths must resolve within plugin root, no `..` after resolution
 - Hooks: `shared/hooks/*.yaml`. Commands: `shared/commands/*.md`. Plugin layout: `manifest.yaml` + `hooks/` + `commands/` + `tools/`.
 - Loop guard implemented as a built-in hook template, not core logic
+
+
+---
+
+## Platform
+
+### TUI — Terminal Client (Spec 28)
+
+Ratatui-based terminal interface with Elm Architecture (TEA) event loop, SSE streaming, and agent switching.
+
+- **One agent, one conversation** — no multiplexed views. Switch agents like switching tabs, not windows.
+- **Elm Architecture (TEA)** — `Model → Msg → Update → View` cycle. All state transitions through message dispatch, no side effects in view.
+- **SSE for real-time** — `GET /api/events` for system events (health, agent status), `POST /api/sessions/stream` for turn responses. Reconnect with exponential backoff.
+- **Crossterm 0.29** — resolved input handling differences vs 0.28. Custom input widget over `tui-textarea` for Ctrl+Enter multiline and Emacs keybindings.
+- **Custom markdown renderer** — `pulldown-cmark` → ratatui `Line/Span` conversion. Rejected `tui-markdown` (unmaintained, limited formatting).
+- **Auth: prompt + session file** — token stored in `~/.config/aletheia/session.json` after first login. No browser-based OAuth for terminal context.
+- **Dashboard mode default** — system status, agent list, recent activity. `Ctrl+F` toggles focused mode (chat only). `@mention` routing in input.
+- **WebUI replacement, not supplement** — designed as the primary interface for operators who prefer terminal. Same API surface as webchat.
+- Platform support: Linux primary, macOS secondary, Windows via WSL only.
+
+### Agora — Channel Abstraction + Slack Integration (Spec 34, PRs #299–304)
+
+Channel-agnostic messaging layer. Signal becomes a channel provider within agora, not a special case.
+
+- **Agora (ἀγορά) = the gathering place.** Channels are stoa (covered walkways) — each enters through its own protocol but converges into a single discourse (the nous pipeline). No channel gets privileged access.
+- **`ChannelProvider` interface** — `id`, `name`, `capabilities`, `start(ctx)`, `stop()`, `send(envelope)`. New channels implement this and register. Signal refactored to the same interface Slack uses.
+- **`ChannelCapabilities` flags** — `threads`, `reactions`, `attachments`, `richText`, `streaming`, `presence`, `ephemeral`. Each channel declares what it supports; the dispatcher adapts.
+- **Binding resolution by channel** — `channel: "slack"` in binding config, same pattern as existing `channel: "signal"`. Bindings already supported this conceptually.
+- **CLI onboarding** — `aletheia channel add slack` guides token creation, scopes, channel selection. Same pattern for future channels.
+- **Slack-specific:** Bot token + Socket Mode (no public URL needed). Scopes: `chat:write`, `channels:history`, `im:history`, `reactions:write`, `users:read`. App-level token for Socket Mode events.
+- **Thread auto-creation for streaming** — Slack's `ChatStreamer` requires `thread_ts`. Non-threaded channel messages get a "…" anchor, stream within it.
+- **DM access policy: `open | allowlist | pairing | disabled`** — pairing mode sends challenge code via DM, admin approves with `!approve <code>` from any channel.
+- **`!command` interception** — shared `CommandRegistry` routes admin commands (`!approve`, `!deny`, `!contacts`, `!status`) before messages reach nous dispatch. `adminOnly` gating by user ID.
+- **Idempotent reactions** — `addSlackReaction`/`removeSlackReaction` handle `already_reacted`/`no_reaction` errors silently. Processing emoji wraps entire dispatch lifecycle in `finally`.
+- **No runtime entanglement** — unconfigured channels don't load, crashed channels don't take down others or the pipeline. Channel isolation is structural.
+- 142 agora tests across 6 phases. Config hot-reload deferred (cross-cutting concern).

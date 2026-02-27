@@ -8,13 +8,6 @@ that evolve with the system.
 
 ## Active Specs
 
-### Implemented
-
-| # | Spec | Status | Notes |
-|---|------|--------|-------|
-| 28 | [TUI](28_tui.md) | ✅ Complete | Ratatui terminal client |
-| 34 | [Agora](34_agora.md) | ✅ Phases 1–6 | Channel abstraction + Slack integration |
-
 ### In Progress
 
 | # | Spec | Status | Notes |
@@ -59,7 +52,7 @@ that evolve with the system.
 
 ## Implemented (Archived)
 
-28 implemented specs (01–23, 26) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)** (~350 lines). Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility), preserving key decisions, rejected alternatives, and patterns that constrain future work.
+30 implemented specs (01–23, 26, 28, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
 
 ## Conventions
 
