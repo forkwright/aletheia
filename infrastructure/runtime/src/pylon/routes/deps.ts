@@ -12,6 +12,7 @@ import type { McpClientManager } from "../../organon/mcp-client.js";
 import type { AuthConfig, AuthUser } from "../../symbolon/middleware.js";
 import type { CommandRegistry } from "../../semeion/commands.js";
 import type { DianoiaOrchestrator } from "../../dianoia/index.js";
+import type { DeliveryQueue } from "../delivery-queue.js";
 
 export type { NousManager, SessionStore, AletheiaConfig, AuthSessionStore, AuditLog };
 export type { CronScheduler, Watchdog, SkillRegistry, McpClientManager };
@@ -41,6 +42,7 @@ export interface RouteDeps {
     logout: (sessionId: string) => void;
   };
   planningOrchestrator?: DianoiaOrchestrator;
+  deliveryQueue?: DeliveryQueue;
 }
 
 export interface RouteRefs {
