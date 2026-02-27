@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
+import { assembleOrchestratorContext } from "../dianoia/orchestrator-context.js";
 
 const log = createLogger("nous.bootstrap");
 
@@ -74,6 +75,8 @@ export function assembleBootstrap(
     extraFiles?: string[];
     skillsSection?: string;
     degradedServices?: string[];
+    /** Database handle for planning context injection */
+    db?: import("better-sqlite3").Database;
   },
 ): BootstrapResult {
   const maxTokens = opts?.maxTokens ?? 40000;
@@ -215,6 +218,28 @@ export function assembleBootstrap(
       type: "text",
       text: `## ${file.name}\n\n${file.content}`,
     });
+  }
+
+  // Planning context injection — active Dianoia projects (Spec 32 Phase 1b)
+  if (opts?.db) {
+    try {
+      const planningCtx = assembleOrchestratorContext({
+        workspaceRoot: workspace,
+        db: opts.db,
+        activeOnly: true,
+        maxTokens: 4000,
+      });
+      if (planningCtx.context.length > 0) {
+        dynamicBlocks.push({
+          type: "text",
+          text: planningCtx.context,
+        });
+        totalTokens += planningCtx.estimatedTokens;
+        log.debug(`Planning context injected: ${planningCtx.projectCount} projects, ~${planningCtx.estimatedTokens} tokens`);
+      }
+    } catch (error) {
+      log.warn(`Planning context injection failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   if (droppedFiles.length > 0) {
