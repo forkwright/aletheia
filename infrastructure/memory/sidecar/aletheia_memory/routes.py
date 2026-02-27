@@ -232,12 +232,11 @@ def _apply_domain_reranking(results: list[dict[str, Any]], query: str) -> list[d
 
 @router.post("/add")
 async def add_memory(req: AddRequest, request: Request) -> dict[str, Any]:
-    # NOTE: metadata enforcement (session_id, agent_id) is deferred for this route.
-    # Reason: /add is the Mem0 path. Traffic analysis is needed to confirm whether
-    # this route is still used in production before enforcing required fields.
-    # If /add is still active, it may produce orphans missing required metadata.
-    # See STATE.md blocker: "need traffic trace to confirm /add route usage".
-    # Enforcement is tracked in Phase 2 data integrity work.
+    # ADR: /add route metadata enforcement intentionally not enforced (Phase 7 decision).
+    # Rationale: /add is the Mem0 LLM-extraction path; callers are trusted internal agents.
+    # Metadata is best-effort here — enforcement adds friction without measurable benefit.
+    # /add_batch (the direct-write path) enforces agent_id and session_id (400 on missing).
+    # If cross-agent attribution becomes a requirement, enforce here at that time.
     mem = _get_memory(request)
     kwargs: dict[str, Any] = {"user_id": req.user_id}
     if req.agent_id:
