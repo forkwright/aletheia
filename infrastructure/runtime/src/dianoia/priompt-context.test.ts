@@ -18,6 +18,10 @@ const TEST_PHASE_ID = "phase_priompt_test";
 
 let workspaceRoot: string;
 
+function projectDirValueFor(workspace: string, projectId: string): string {
+  return join(workspace, ".dianoia", "projects", projectId);
+}
+
 function makePhase(overrides?: Partial<PlanningPhase>): PlanningPhase {
   return {
     id: TEST_PHASE_ID,
@@ -57,19 +61,19 @@ afterEach(() => {
 
 describe("buildContextPacketWithPriompt", () => {
   it("generates context packet with accurate token counting", async () => {
-    ensureProjectDir(workspaceRoot, TEST_PROJECT_ID);
-    ensurePhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const projectDirValue = projectDirValueFor(workspaceRoot, TEST_PROJECT_ID);
+    ensureProjectDir(projectDirValue);
+    ensurePhaseDir(projectDirValue, TEST_PHASE_ID);
 
     const phase = makePhase();
-    const projDir = getProjectDir(workspaceRoot, TEST_PROJECT_ID);
-    const phaseDir = getPhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const projDir = getProjectDir(projectDirValue);
+    const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
 
     writeTestFile(projDir, "PROJECT.md", "# Test Project\n\nA test project description.");
     writeTestFile(phaseDir, "DISCUSS.md", "# Decisions\n\nUse OAuth2 standard.");
 
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot,
-      projectId: TEST_PROJECT_ID,
+      projectDirValue,
       phaseId: TEST_PHASE_ID,
       role: "executor",
       maxTokens: 1000,
@@ -85,20 +89,20 @@ describe("buildContextPacketWithPriompt", () => {
   });
 
   it("respects token budget with Priompt prioritization", async () => {
-    ensureProjectDir(workspaceRoot, TEST_PROJECT_ID);
-    ensurePhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const projectDirValue = projectDirValueFor(workspaceRoot, TEST_PROJECT_ID);
+    ensureProjectDir(projectDirValue);
+    ensurePhaseDir(projectDirValue, TEST_PHASE_ID);
 
     const phase = makePhase();
-    const projDir = getProjectDir(workspaceRoot, TEST_PROJECT_ID);
-    const phaseDir = getPhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const projDir = getProjectDir(projectDirValue);
+    const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
     const longContent = "# Very Long Project\n\n" + "Very detailed description. ".repeat(500);
 
     writeTestFile(projDir, "PROJECT.md", longContent);
     writeTestFile(phaseDir, "DISCUSS.md", "# Key Decision\n\nUse standard approach.");
 
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot,
-      projectId: TEST_PROJECT_ID,
+      projectDirValue,
       phaseId: TEST_PHASE_ID,
       role: "executor",
       maxTokens: 200,
@@ -112,18 +116,18 @@ describe("buildContextPacketWithPriompt", () => {
   });
 
   it("includes role-appropriate sections for executor", async () => {
-    ensureProjectDir(workspaceRoot, TEST_PROJECT_ID);
-    ensurePhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const projectDirValue = projectDirValueFor(workspaceRoot, TEST_PROJECT_ID);
+    ensureProjectDir(projectDirValue);
+    ensurePhaseDir(projectDirValue, TEST_PHASE_ID);
 
     const phase = makePhase();
-    const phaseDir = getPhaseDir(workspaceRoot, TEST_PROJECT_ID, TEST_PHASE_ID);
+    const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
 
     writeTestFile(phaseDir, "DISCUSS.md", "# Decisions\n\nUse OAuth2.");
     writeTestFile(phaseDir, "PLAN.md", "# Execution Plan\n\n1. Install deps\n2. Wire routes");
 
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot,
-      projectId: TEST_PROJECT_ID,
+      projectDirValue,
       phaseId: TEST_PHASE_ID,
       role: "executor",
       maxTokens: 2000,
@@ -144,18 +148,18 @@ describe("buildContextPacketWithPriompt", () => {
   });
 
   it("includes role-appropriate sections for planner", async () => {
-    ensureProjectDir(workspaceRoot, TEST_PROJECT_ID);
+    const projectDirValue = projectDirValueFor(workspaceRoot, TEST_PROJECT_ID);
+    ensureProjectDir(projectDirValue);
 
     const phase = makePhase();
-    const projDir = getProjectDir(workspaceRoot, TEST_PROJECT_ID);
+    const projDir = getProjectDir(projectDirValue);
 
     writeTestFile(projDir, "PROJECT.md", "# Full Project\n\nComplete project description");
     writeTestFile(projDir, "REQUIREMENTS.md", "# Requirements\n\n| ID | Description | Tier |\n|---|---|---|\n| AUTH-01 | OAuth login | v1 |");
     writeTestFile(projDir, "ROADMAP.md", "# Roadmap\n\nPhase 1: Auth\nPhase 2: Dashboard");
 
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot,
-      projectId: TEST_PROJECT_ID,
+      projectDirValue,
       phaseId: null,
       role: "planner",
       maxTokens: 3000,
@@ -174,13 +178,13 @@ describe("buildContextPacketWithPriompt", () => {
   });
 
   it("handles missing files gracefully", async () => {
-    ensureProjectDir(workspaceRoot, TEST_PROJECT_ID);
+    const projectDirValue = projectDirValueFor(workspaceRoot, TEST_PROJECT_ID);
+    ensureProjectDir(projectDirValue);
 
     const phase = makePhase();
 
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot,
-      projectId: TEST_PROJECT_ID,
+      projectDirValue,
       phaseId: TEST_PHASE_ID,
       role: "executor",
       maxTokens: 1000,
@@ -197,8 +201,7 @@ describe("buildContextPacketWithPriompt", () => {
   it("falls back gracefully on Priompt errors", async () => {
     // Test with invalid parameters that might cause Priompt to fail
     const result = await buildContextPacketWithPriompt({
-      workspaceRoot: "/nonexistent/path",
-      projectId: "invalid",
+      projectDirValue: "/nonexistent/path/.dianoia/projects/invalid",
       phaseId: "invalid",
       role: "executor",
       maxTokens: -1,

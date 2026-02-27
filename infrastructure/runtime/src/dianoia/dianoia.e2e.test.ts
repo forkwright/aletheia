@@ -228,13 +228,23 @@ describe("S5 End-to-End Integration Test", () => {
     const roadmapOrch = new RoadmapOrchestrator(db, mockDispatch);
     roadmapOrch.setWorkspaceRoot(workspaceRoot);
 
-    // Step 1: Create project via handle() 
-    const handleResult = orchestrator.handle("test-nous", "test-session");
-    expect(handleResult).toContain("what are you building");
-    
+    // Step 1: Create project via orchestrator three-step slug intake
+    const step1 = orchestrator.handle("test-nous", "test-session");
+    expect(step1).toContain("What should we call this project");
+
+    const step2 = orchestrator.receiveProjectName("SaaS Task Manager", "test-nous", "test-session");
+    expect(step2).toContain("slug");
+
+    const step3 = orchestrator.receiveSlugConfirmation("", "test-nous", "test-session");
+    expect(step3).toContain("what are you building");
+
     const project = orchestrator.getActiveProject("test-nous");
     expect(project).toBeDefined();
     expect(project!.state).toBe("questioning");
+
+    // Override projectDir to the test workspace (setWorkspaceRoot is a no-op)
+    const projectDirValue = join(workspaceRoot, ".dianoia", "projects", project!.id);
+    store.updateProjectDir(project!.id, projectDirValue);
 
     // Step 2: Confirm synthesis to advance questioning → researching
     const synthesisResult = orchestrator.confirmSynthesis(project!.id, "test-nous", "test-session", {
@@ -474,8 +484,7 @@ describe("S5 End-to-End Integration Test", () => {
 
     for (const testCase of testCases) {
       const contextPacket = buildContextPacketSync({
-        workspaceRoot,
-        projectId: project!.id,
+        projectDirValue,
         phaseId: phases[0]!.id,
         role: testCase.role,
         maxTokens: testCase.maxTokens,
@@ -535,9 +544,8 @@ describe("S5 End-to-End Integration Test", () => {
 
     // Very small token budget to force truncation
     const contextPacket = buildContextPacketSync({
-      workspaceRoot,
-      projectId: "proj_test",
-      phaseId: "phase_test", 
+      projectDirValue: join(workspaceRoot, ".dianoia", "projects", "proj_test"),
+      phaseId: "phase_test",
       role: "executor",
       maxTokens: 100, // Very small budget
       projectGoal: "Test project with a very long goal that should be truncated when the token budget is exceeded",
@@ -557,10 +565,11 @@ describe("S5 End-to-End Integration Test", () => {
 
     const project = store.createProject({
       nousId: "test-nous",
-      sessionId: "test-session", 
+      sessionId: "test-session",
       goal: "Test coverage validation",
       config: DEFAULT_CONFIG,
     });
+    store.updateProjectDir(project.id, join(workspaceRoot, ".dianoia", "projects", project.id));
 
     // Add single requirement
     const category: CategoryProposal = {

@@ -67,6 +67,8 @@ function seedProject(): string {
     goal: "Test project",
     config: defaultConfig,
   });
+  // Set projectDir so file sync writes to the test tmpDir
+  store.updateProjectDir(project.id, join(tmpDir, ".dianoia", "projects", project.id));
   return project.id;
 }
 

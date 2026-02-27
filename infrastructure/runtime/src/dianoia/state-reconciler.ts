@@ -362,15 +362,18 @@ export class StateReconciler {
    * We parse the markdown files to reconstruct DB records.
    */
   private filesToDb(projectId: string, result: ReconciliationResult): void {
-    // For file-based recovery, projectId is a directory slug or legacy ID
-    const projectDir = getProjectDir(projectId);
+    // For file-based recovery, use workspace-based path when projectId is not an absolute path
+    const projectDirValue = projectId.startsWith("/")
+      ? projectId
+      : join(this.workspaceRoot, ".dianoia", "projects", projectId);
+    const projectDir = getProjectDir(projectDirValue);
     if (!existsSync(projectDir)) {
       result.errors.push(`Project directory not found: ${projectDir}`);
       return;
     }
 
     // Read PROJECT.md to extract goal and state
-    const projectMd = readProjectFile(projectId);
+    const projectMd = readProjectFile(projectDirValue);
     if (!projectMd) {
       result.errors.push("PROJECT.md not found — cannot reconstruct project");
       return;

@@ -65,7 +65,7 @@ describe("ContextBudget", () => {
     try { rmSync(workspace, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  function createProjectWithFiles(): { project: PlanningProject; phases: PlanningPhase[] } {
+  function createProjectWithFiles(): { project: PlanningProject; phases: PlanningPhase[]; projectDirValue: string } {
     const project = store.createProject({
       nousId: "test",
       sessionId: "test",
@@ -91,23 +91,26 @@ describe("ContextBudget", () => {
       phaseOrder: 1,
     });
 
+    // Set projectDir so file functions know where to write
+    const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+    store.updateProjectDir(project.id, projectDirValue);
+
     const projectObj = store.getProjectOrThrow(project.id);
     const phases = store.listPhases(project.id);
 
-    // Write files
-    writeProjectFile(workspace, projectObj, null);
-    writeRoadmapFile(workspace, project.id, phases);
+    // Write files using the new single-arg projectDirValue API
+    writeProjectFile(projectObj, null);
+    writeRoadmapFile(projectDirValue, phases);
 
-    return { project: projectObj, phases };
+    return { project: projectObj, phases, projectDirValue };
   }
 
   describe("calculateBudgetAllocation", () => {
     it("returns budget breakdown for a project", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
       });
@@ -130,11 +133,11 @@ describe("ContextBudget", () => {
         goal: "Empty project",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
       const projectObj = store.getProjectOrThrow(project.id);
 
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project: projectObj,
         phases: [],
       });
@@ -145,11 +148,10 @@ describe("ContextBudget", () => {
     });
 
     it("respects custom ceiling", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
         ceiling: 10_000,
@@ -159,12 +161,11 @@ describe("ContextBudget", () => {
     });
 
     it("warns when budget is over ceiling", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       // Use a ceiling that's too small for the content (under 8000 reserve)
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
         ceiling: 100, // Way too small — exceeds safe ceiling
@@ -176,11 +177,10 @@ describe("ContextBudget", () => {
     });
 
     it("detects over-budget when ceiling is too small", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
         ceiling: 50, // Way too small
@@ -191,11 +191,11 @@ describe("ContextBudget", () => {
     });
 
     it("includes handoff tokens when handoff file exists", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       // Write a handoff file
-      ensureProjectDir(workspace, project.id);
-      writeHandoffFile(workspace, {
+      ensureProjectDir(projectDirValue);
+      writeHandoffFile(projectDirValue, {
         projectId: project.id,
         projectGoal: project.goal,
         phaseId: phases[0]!.id,
@@ -218,8 +218,7 @@ describe("ContextBudget", () => {
       });
 
       const budget = calculateBudgetAllocation({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
       });
@@ -230,11 +229,10 @@ describe("ContextBudget", () => {
 
   describe("buildOrchestratorContext", () => {
     it("builds context string with project and phases", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const { context, budget } = buildOrchestratorContext({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
       });
@@ -266,16 +264,17 @@ describe("ContextBudget", () => {
         });
       }
 
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
       const projectObj = store.getProjectOrThrow(project.id);
       const phases = store.listPhases(project.id);
 
-      writeProjectFile(workspace, projectObj, null);
-      writeRoadmapFile(workspace, project.id, phases);
+      writeProjectFile(projectObj, null);
+      writeRoadmapFile(projectDirValue, phases);
 
       // Use small ceiling to force compact format
       const { context } = buildOrchestratorContext({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project: projectObj,
         phases,
         ceiling: 5000,
@@ -286,15 +285,14 @@ describe("ContextBudget", () => {
     });
 
     it("includes active phase section when phases are executing", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       // Mark first phase as executing
       store.updatePhaseStatus(phases[0]!.id, "executing");
       const updatedPhases = store.listPhases(project.id);
 
       const { context } = buildOrchestratorContext({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases: updatedPhases,
       });
@@ -304,9 +302,9 @@ describe("ContextBudget", () => {
     });
 
     it("includes resume context when handoff exists", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
-      writeHandoffFile(workspace, {
+      writeHandoffFile(projectDirValue, {
         projectId: project.id,
         projectGoal: project.goal,
         phaseId: phases[0]!.id,
@@ -329,8 +327,7 @@ describe("ContextBudget", () => {
       });
 
       const { context } = buildOrchestratorContext({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
       });
@@ -342,11 +339,10 @@ describe("ContextBudget", () => {
 
   describe("checkBudget", () => {
     it("returns true for a normal project", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const result = checkBudget({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
       });
@@ -355,11 +351,10 @@ describe("ContextBudget", () => {
     });
 
     it("returns false when ceiling is impossibly small", () => {
-      const { project, phases } = createProjectWithFiles();
+      const { project, phases, projectDirValue } = createProjectWithFiles();
 
       const result = checkBudget({
-        workspaceRoot: workspace,
-        projectId: project.id,
+        projectDirValue,
         project,
         phases,
         ceiling: 10,

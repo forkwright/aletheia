@@ -130,8 +130,8 @@ describe("Context & State Foundation E2E", () => {
   it("completes full workflow: project creation → research → requirements → file validation", async () => {
     const store = new PlanningStore(db);
     const orchestrator = new DianoiaOrchestrator(db, DEFAULT_CONFIG);
-    orchestrator.setWorkspaceRoot(workspaceRoot);
-    
+    orchestrator.setWorkspaceRoot(workspaceRoot); // no-op, kept for clarity
+
     const mockDispatch = setupMockDispatch();
     const researchOrch = new ResearchOrchestrator(db, mockDispatch, workspaceRoot);
     const requirementsOrch = new RequirementsOrchestrator(db, workspaceRoot);
@@ -143,6 +143,10 @@ describe("Context & State Foundation E2E", () => {
       goal: "Build a task management SaaS application",
       config: DEFAULT_CONFIG,
     });
+
+    // Set projectDir so orchestrators write files to the test workspace
+    const projectDirValue = join(workspaceRoot, ".dianoia", "projects", project.id);
+    store.updateProjectDir(project.id, projectDirValue);
 
     store.updateProjectState(project.id, "questioning");
     store.updateProjectState(project.id, "researching");
@@ -246,8 +250,7 @@ describe("Context & State Foundation E2E", () => {
 
     // Step 4: Context packet assembly with token budgets (CTX-01)
     const contextPacket = buildContextPacketSync({
-      workspaceRoot,
-      projectId: project.id,
+      projectDirValue,
       phaseId: null,
       role: "planner",
       maxTokens: 2000,
@@ -293,6 +296,7 @@ describe("Context & State Foundation E2E", () => {
       goal: "Test project",
       config: DEFAULT_CONFIG,
     });
+    store.updateProjectDir(project.id, join(workspaceRoot, ".dianoia", "projects", project.id));
     store.updateProjectState(project.id, "researching");
     const researchOrch = new ResearchOrchestrator(db, failDispatch, workspaceRoot);
     researchOrch.retryDelayMs = 0; // Skip backoff in tests
@@ -307,11 +311,12 @@ describe("Context & State Foundation E2E", () => {
     const store = new PlanningStore(db);
 
     const project = store.createProject({
-      nousId: "test-nous", 
+      nousId: "test-nous",
       sessionId: "test-session",
       goal: "Test",
       config: DEFAULT_CONFIG,
     });
+    store.updateProjectDir(project.id, join(workspaceRoot, ".dianoia", "projects", project.id));
 
     // Single category should fail default minimum (2)
     const singleCategory: CategoryProposal = {

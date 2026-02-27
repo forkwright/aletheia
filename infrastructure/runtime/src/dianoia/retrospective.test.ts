@@ -229,8 +229,9 @@ describe("RetrospectiveGenerator file output", () => {
     });
 
     const result = retro.generate(project.id);
-    retro.writeRetroFile(workspaceRoot, result);
-    retro.writeRetroJson(workspaceRoot, result);
+    const projectDirValue = join(workspaceRoot, ".dianoia", "projects", project.id);
+    retro.writeRetroFile(projectDirValue, result);
+    retro.writeRetroJson(projectDirValue, result);
 
     const retroMdPath = join(workspaceRoot, ".dianoia", "projects", project.id, "RETRO.md");
     const retroJsonPath = join(workspaceRoot, ".dianoia", "projects", project.id, "retro.json");
