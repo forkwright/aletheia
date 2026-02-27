@@ -219,7 +219,7 @@ const SlackChannelConfig = z.object({
   appToken: z.string().optional(),   // xapp-... (Socket Mode)
   botToken: z.string().optional(),   // xoxb-... (Bot User OAuth)
   signingSecret: z.string().optional(), // for HTTP mode verification
-  dmPolicy: z.enum(["open", "allowlist", "disabled"]).default("open"),
+  dmPolicy: z.enum(["open", "allowlist", "pairing", "disabled"]).default("open"),
   groupPolicy: z.enum(["open", "allowlist", "disabled"]).default("allowlist"),
   allowedChannels: z.array(z.string()).default([]),
   allowedUsers: z.array(z.string()).default([]),
