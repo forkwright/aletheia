@@ -33,6 +33,7 @@ from .entity_resolver import (
     resolve_entity,
 )
 from .evolution import exponential_decay_penalty
+from .fts import index_memory as fts_index, index_batch as fts_index_batch, search_bm25, get_stats as fts_stats, remove_memory as fts_remove
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 from .graph_extraction import extract_graph, extract_graph_batch
 
@@ -146,6 +147,9 @@ class SearchRequest(BaseModel):
     agent_id: str | None = None
     limit: int = Field(default=10, ge=1, le=50)
     domains: list[str] | None = None
+    hybrid: bool = Field(default=True, description="Enable BM25+vector hybrid search")
+    vector_weight: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for vector scores in hybrid merge")
+    keyword_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="Weight for BM25 keyword scores in hybrid merge")
 
 
 class ImportRequest(BaseModel):
@@ -298,6 +302,11 @@ async def add_memory(req: AddRequest, request: Request) -> dict[str, Any]:
                     collection_name="aletheia_memories",
                     points=[PointStruct(id=point_id, vector=vector, payload=payload)],
                 )
+                # Also index in FTS5 for hybrid search
+                try:
+                    await asyncio.to_thread(fts_index, point_id, req.text, req.agent_id or "", req.user_id or "")
+                except Exception:
+                    logger.debug("FTS index failed for tier3 (non-critical)", exc_info=True)
                 return {"ok": True, "result": {"tier3_embed_only": True, "id": point_id}}
             except Exception as e:
                 logger.exception("Tier 3 embedding failed")
@@ -305,6 +314,17 @@ async def add_memory(req: AddRequest, request: Request) -> dict[str, Any]:
 
         result: Any = await asyncio.to_thread(mem.add, req.text, **kwargs)
         graph_degraded = False
+
+        # FTS5 keyword index — index the extracted memory text for BM25 search
+        try:
+            result_list: list[dict[str, Any]] = _as_result_list(result)
+            for r in result_list:
+                rid = r.get("id")
+                rmem = r.get("memory", req.text)
+                if rid:
+                    await asyncio.to_thread(fts_index, rid, rmem, req.agent_id or "", req.user_id or "")
+        except Exception:
+            logger.debug("FTS index failed (non-critical)", exc_info=True)
 
         # Autonomous link generation (A-Mem pattern) — fire and forget
         if LINK_GENERATION_ENABLED:
@@ -693,12 +713,35 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
 
     t0 = time.time()
     try:
-        raw: Any = await asyncio.to_thread(mem.search, req.query, **kwargs)
+        # Launch vector search and (optionally) BM25 in parallel
+        vector_task = asyncio.to_thread(mem.search, req.query, **kwargs)
+
+        bm25_task = None
+        if req.hybrid:
+            bm25_task = asyncio.to_thread(
+                search_bm25, req.query, req.limit * 2,
+                agent_id=req.agent_id, user_id=req.user_id if req.user_id != "default" else None,
+            )
+
+        raw: Any = await vector_task
         results_list: list[dict[str, Any]] = _as_result_list(raw)
         for r in results_list:
             meta: dict[str, Any] = r.get("metadata") or {}
             if "created_at" in meta:
                 r["created_at"] = meta["created_at"]
+
+        # Merge BM25 results if hybrid enabled
+        if bm25_task is not None:
+            try:
+                bm25_hits = await bm25_task
+                results_list = _merge_hybrid_results(
+                    results_list, bm25_hits,
+                    vector_weight=req.vector_weight,
+                    keyword_weight=req.keyword_weight,
+                )
+            except Exception:
+                logger.debug("BM25 search failed, falling back to vector-only", exc_info=True)
+
         # Exclude forgotten and superseded memories
         results_list = [
             r for r in results_list
@@ -721,6 +764,62 @@ async def search_memory(req: SearchRequest, request: Request) -> dict[str, Any]:
     except Exception:
         logger.exception("search_memory failed")
         raise HTTPException(status_code=500, detail="Internal server error") from None
+
+
+def _merge_hybrid_results(
+    vector_results: list[dict[str, Any]],
+    bm25_hits: list,
+    vector_weight: float = 0.7,
+    keyword_weight: float = 0.3,
+) -> list[dict[str, Any]]:
+    """Merge vector and BM25 results using weighted combination.
+
+    Both score spaces are normalized to [0, 1] before combining.
+    Deduplication by memory_id ensures no duplicates.
+    """
+    # Index vector results by ID
+    merged: dict[str, dict[str, Any]] = {}
+
+    # Normalize vector scores to [0, 1]
+    v_scores = [r.get("score", 0) for r in vector_results if r.get("score") is not None]
+    v_max = max(v_scores) if v_scores else 1.0
+    v_min = min(v_scores) if v_scores else 0.0
+    v_range = v_max - v_min if v_max > v_min else 1.0
+
+    for r in vector_results:
+        rid = r.get("id", "")
+        raw_score = r.get("score", 0) or 0
+        norm_v = (raw_score - v_min) / v_range if v_range > 0 else 0.5
+        merged[rid] = {**r, "_v_score": norm_v, "_k_score": 0.0}
+
+    # Normalize BM25 scores to [0, 1]
+    b_scores = [h.bm25_score for h in bm25_hits if h.bm25_score > 0]
+    b_max = max(b_scores) if b_scores else 1.0
+    b_min = min(b_scores) if b_scores else 0.0
+    b_range = b_max - b_min if b_max > b_min else 1.0
+
+    for hit in bm25_hits:
+        norm_k = (hit.bm25_score - b_min) / b_range if b_range > 0 else 0.5
+        if hit.memory_id in merged:
+            # Already have vector result — add keyword score
+            merged[hit.memory_id]["_k_score"] = norm_k
+        else:
+            # BM25-only result — no vector score
+            merged[hit.memory_id] = {
+                "id": hit.memory_id,
+                "memory": hit.content,
+                "score": 0,
+                "agent_id": hit.agent_id,
+                "user_id": hit.user_id,
+                "_v_score": 0.0,
+                "_k_score": norm_k,
+            }
+
+    # Compute combined score and sort
+    for r in merged.values():
+        r["score"] = vector_weight * r.pop("_v_score") + keyword_weight * r.pop("_k_score")
+
+    return sorted(merged.values(), key=lambda x: x.get("score", 0), reverse=True)
 
 
 @router.post("/graph_search")
@@ -802,6 +901,11 @@ async def delete_memory(memory_id: str, request: Request) -> dict[str, Any]:
     mem = _get_memory(request)
     try:
         await asyncio.to_thread(mem.delete, memory_id)
+        # Also remove from FTS index
+        try:
+            await asyncio.to_thread(fts_remove, memory_id)
+        except Exception:
+            logger.debug("FTS remove failed for %s (non-critical)", memory_id)
         return {"ok": True}
     except Exception:
         logger.exception("delete_memory failed")
@@ -1087,8 +1191,59 @@ async def health_check(request: Request, thresholds: str | None = None) -> dict[
             "sample_count": sample_count,
         },
         "flush": flush_data,
+        "fts": fts_stats(),
         "thresholds": evaluation["thresholds"],
     }
+
+
+@router.post("/fts/backfill")
+async def fts_backfill(request: Request) -> dict[str, Any]:
+    """Backfill the FTS5 index from existing Qdrant memories.
+    Safe to call multiple times — skips already-indexed entries."""
+    client = _qdrant()
+    indexed = 0
+    offset = None
+    batch_size = 100
+
+    while True:
+        points, offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=batch_size,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not points:
+            break
+
+        batch = []
+        for p in points:
+            payload: dict[str, Any] = p.payload or {}
+            content = payload.get("memory", "") or payload.get("data", "")
+            if content and p.id:
+                batch.append({
+                    "memory_id": str(p.id),
+                    "content": content,
+                    "agent_id": payload.get("agent_id", ""),
+                    "user_id": payload.get("user_id", ""),
+                })
+
+        if batch:
+            count = await asyncio.to_thread(fts_index_batch, batch)
+            indexed += count
+
+        if offset is None:
+            break
+
+    stats = fts_stats()
+    logger.info("FTS backfill complete: %d new entries indexed (total: %d)", indexed, stats["indexed_count"])
+    return {"ok": True, "newly_indexed": indexed, **stats}
+
+
+@router.get("/fts/stats")
+async def fts_stats_endpoint() -> dict[str, Any]:
+    """Return FTS5 index statistics."""
+    return {"ok": True, **fts_stats()}
 
 
 @router.get("/graph_stats")
@@ -2865,6 +3020,12 @@ async def add_direct_v2(req: AddDirectRequest, request: Request) -> dict[str, An
             collection_name=COLLECTION_NAME,
             points=[PointStruct(id=point_id, vector=vector, payload=payload)],
         )
+
+        # FTS5 keyword index for hybrid search
+        try:
+            await asyncio.to_thread(fts_index, point_id, text, req.agent_id or "", req.user_id or "")
+        except Exception:
+            logger.debug("FTS index failed for add_direct (non-critical)", exc_info=True)
 
         # Graph extraction via SimpleKGPipeline — fire and forget
         backend: dict[str, Any] = getattr(request.app.state, "backend", LLM_BACKEND)

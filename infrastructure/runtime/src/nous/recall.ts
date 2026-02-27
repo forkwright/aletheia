@@ -327,6 +327,7 @@ async function fetchBasicSearch(
   limit: number,
   signal: AbortSignal,
   domains?: string[],
+  hybrid = true,
 ): Promise<MemoryHit[]> {
   const res = await fetch(`${getSidecarUrl()}/search`, {
     method: "POST",
@@ -336,6 +337,7 @@ async function fetchBasicSearch(
       user_id: getUserId(),
       agent_id: nousId,
       limit,
+      hybrid,
       ...(domains && domains.length > 0 ? { domains } : {}),
     }),
     signal,
