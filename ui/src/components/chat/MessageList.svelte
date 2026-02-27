@@ -17,6 +17,7 @@
     agentEmoji,
     onToolClick,
     onThinkingClick,
+    onFileOpen,
   }: {
     messages: ChatMessage[];
     streamingText: string;
@@ -28,6 +29,7 @@
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
     onThinkingClick?: (thinking?: string) => void;
+    onFileOpen?: (path: string) => void;
   } = $props();
 
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
@@ -100,7 +102,7 @@
     </div>
   {:else}
     {#each messages as message (message.id)}
-      <Message {message} agentName={agentName ?? null} agentEmoji={agentEmoji ?? null} {...(onToolClick !== undefined && { onToolClick })} onThinkingClick={(thinking) => onThinkingClick?.(thinking)} />
+      <Message {message} agentName={agentName ?? null} agentEmoji={agentEmoji ?? null} {...(onToolClick !== undefined && { onToolClick })} onThinkingClick={(thinking) => onThinkingClick?.(thinking)} {...(onFileOpen !== undefined && { onFileOpen })} />
     {/each}
 
     {#if isStreaming}

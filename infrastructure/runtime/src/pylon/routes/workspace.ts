@@ -1,7 +1,7 @@
 // Workspace file explorer routes
 import { Hono } from "hono";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, rmdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import { createLogger } from "../../koina/logger.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
@@ -168,6 +168,111 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     } catch (error) {
       log.debug(`git-status failed: ${error instanceof Error ? error.message : error}`);
       return c.json({ files: [] });
+    }
+  });
+
+  // DELETE /api/workspace/file — delete a single file or empty directory
+  app.delete("/api/workspace/file", (c) => {
+    const filePath = c.req.query("path");
+    const agentId = c.req.query("agentId");
+    if (!filePath) return c.json({ error: "path required" }, 400);
+
+    const workspace = resolveAgentWorkspace(config, agentId ?? undefined);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    const resolved = safeWorkspacePath(workspace, filePath);
+    if (!resolved) return c.json({ error: "Invalid path" }, 400);
+
+    try {
+      const stat = statSync(resolved);
+      if (stat.isDirectory()) {
+        // Only allow deleting empty directories
+        const entries = readdirSync(resolved);
+        if (entries.length > 0) return c.json({ error: "Directory not empty" }, 400);
+        rmdirSync(resolved);
+      } else {
+        unlinkSync(resolved);
+      }
+      return c.json({ ok: true, path: filePath });
+    } catch (error) {
+      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
+      return c.json({ error: error instanceof Error ? error.message : "Delete failed" }, 500);
+    }
+  });
+
+  // POST /api/workspace/file/move — rename or move a file/directory
+  app.post("/api/workspace/file/move", async (c) => {
+    let body: Record<string, unknown>;
+    try {
+      body = (await c.req.json()) as Record<string, unknown>;
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    const from = body["from"] as string;
+    const to = body["to"] as string;
+    const agentId = body["agentId"] as string | undefined;
+    if (!from || !to) return c.json({ error: "from and to required" }, 400);
+
+    const workspace = resolveAgentWorkspace(config, agentId);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    const resolvedFrom = safeWorkspacePath(workspace, from);
+    const resolvedTo = safeWorkspacePath(workspace, to);
+    if (!resolvedFrom || !resolvedTo) return c.json({ error: "Invalid path" }, 400);
+
+    if (!existsSync(resolvedFrom)) return c.json({ error: "Source not found" }, 404);
+    if (existsSync(resolvedTo)) return c.json({ error: "Destination already exists" }, 409);
+
+    try {
+      // Create parent directories if needed
+      const parentDir = dirname(resolvedTo);
+      if (!existsSync(parentDir)) mkdirSync(parentDir, { recursive: true });
+      renameSync(resolvedFrom, resolvedTo);
+      return c.json({ ok: true, from, to });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "Move failed" }, 500);
+    }
+  });
+
+  // GET /api/workspace/search — content search across files
+  app.get("/api/workspace/search", (c) => {
+    const query = c.req.query("q");
+    const agentId = c.req.query("agentId");
+    const glob = c.req.query("glob");
+    const maxResults = Math.min(parseInt(c.req.query("maxResults") ?? "50", 10), 200);
+
+    if (!query) return c.json({ error: "q required" }, 400);
+
+    const workspace = resolveAgentWorkspace(config, agentId ?? undefined);
+    if (!workspace) return c.json({ error: "No workspace configured" }, 400);
+
+    try {
+      // Use ripgrep if available, else grep
+      const globArg = glob ? `--glob '${glob}'` : "";
+      const cmd = `rg --no-heading --line-number --max-count ${maxResults} --max-filesize 1M ${globArg} -- ${JSON.stringify(query)} . 2>/dev/null || grep -rn --max-count=${maxResults} --include='${glob || "*"}' -- ${JSON.stringify(query)} . 2>/dev/null || true`;
+      const output = execSync(cmd, {
+        cwd: workspace,
+        encoding: "utf-8",
+        timeout: 10000,
+        maxBuffer: 1024 * 1024,
+      });
+
+      const results: Array<{ path: string; line: string; lineNumber: number }> = [];
+      for (const rawLine of output.split("\n")) {
+        if (!rawLine.trim() || results.length >= maxResults) break;
+        // Format: ./path/to/file:lineNumber:content
+        const match = rawLine.match(/^\.\/(.+?):(\d+):(.*)$/);
+        if (match) {
+          results.push({ path: match[1]!, lineNumber: parseInt(match[2]!, 10), line: match[3]!.slice(0, 200) });
+        }
+      }
+      return c.json({ results });
+    } catch (error) {
+      log.debug(`workspace search failed: ${error instanceof Error ? error.message : error}`);
+      return c.json({ results: [] });
     }
   });
 

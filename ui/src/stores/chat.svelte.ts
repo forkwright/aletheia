@@ -2,7 +2,12 @@ import { SvelteDate } from "svelte/reactivity";
 import { fetchHistory } from "../lib/api";
 import { streamMessage } from "../lib/stream";
 import { setActiveCredentialLabel } from "./credentials.svelte";
+import { notifyFileEdit } from "./files.svelte";
 import type { ChatMessage, ToolCallState, HistoryMessage, MediaItem, PendingApproval, PlanProposal } from "../lib/types";
+
+// Track pending file-modifying tool calls for agent edit notifications
+const FILE_TOOL_NAMES = new Set(["write", "edit"]);
+const pendingFileTools = new Map<string, { path: string; agentId: string }>();
 
 interface AgentChatState {
   messages: ChatMessage[];
@@ -286,6 +291,10 @@ resolvedSessionId = event.sessionId ?? null;
             ...state.activeToolCalls,
             { id: event.toolId, name: event.toolName, status: "running", ...(event.input !== undefined && { input: event.input }) },
           ];
+          // Track file-modifying tool calls for edit notifications
+          if (FILE_TOOL_NAMES.has(event.toolName) && event.input?.path) {
+            pendingFileTools.set(event.toolId, { path: event.input.path as string, agentId });
+          }
           break;
 
         case "tool_result":
@@ -300,6 +309,14 @@ resolvedSessionId = event.sessionId ?? null;
                 }
               : tc,
           );
+          // Notify file edit on successful write/edit completion
+          {
+            const pending = pendingFileTools.get(event.toolId);
+            if (pending && !event.isError) {
+              notifyFileEdit(agentId, pending.path);
+            }
+            pendingFileTools.delete(event.toolId);
+          }
           break;
 
         case "tool_approval_required":

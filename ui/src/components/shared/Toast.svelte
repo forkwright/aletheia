@@ -24,7 +24,12 @@
           >×</button>
         </span>
         <span class="toast-preview">{toast.preview}</span>
-        {#if toast.agentId}
+        {#if toast.action}
+          <button
+            class="toast-action"
+            onclick={() => toast.action!.callback()}
+          >{toast.action.label}</button>
+        {:else if toast.agentId}
           <button
             class="toast-action"
             onclick={() => handleNavigate(toast.agentId!, toast.id)}

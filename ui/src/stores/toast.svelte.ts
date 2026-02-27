@@ -6,6 +6,7 @@ interface ToastItem {
   emoji?: string | null;
   preview: string;
   agentId?: string;
+  action?: { label: string; callback: () => void };
 }
 
 let toasts = $state<ToastItem[]>([]);
@@ -19,6 +20,23 @@ export function showToast(
 ): void {
   const id = `toast-${Date.now()}`;
   toasts = [...toasts, { id, agentName, ...(emoji !== undefined && { emoji }), preview, ...(agentId !== undefined && { agentId }) }];
+  timeouts.set(id, setTimeout(() => {
+    toasts = toasts.filter((t) => t.id !== id);
+    timeouts.delete(id);
+  }, 5000));
+}
+
+/** Toast for agent file edits with an [Open] action button */
+export function showFileToast(agentName: string, filePath: string, onOpen: () => void): void {
+  const fileName = filePath.split("/").pop() ?? filePath;
+  const id = `toast-file-${Date.now()}`;
+  toasts = [...toasts, {
+    id,
+    agentName,
+    emoji: "📝",
+    preview: `edited ${fileName}`,
+    action: { label: "Open", callback: () => { dismissToast(id); onOpen(); } },
+  }];
   timeouts.set(id, setTimeout(() => {
     toasts = toasts.filter((t) => t.id !== id);
     timeouts.delete(id);

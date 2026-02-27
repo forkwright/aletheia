@@ -280,6 +280,32 @@ export async function fetchGitStatus(
   return fetchJson(`/api/workspace/git-status?${sp.toString()}`);
 }
 
+export async function deleteWorkspaceFile(path: string, agentId?: string): Promise<void> {
+  const sp = new URLSearchParams({ path });
+  if (agentId) sp.set("agentId", agentId);
+  await fetchJson(`/api/workspace/file?${sp.toString()}`, { method: "DELETE" });
+}
+
+export async function moveWorkspaceFile(from: string, to: string, agentId?: string): Promise<{ ok: boolean }> {
+  return fetchJson("/api/workspace/file/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, ...(agentId ? { agentId } : {}) }),
+  });
+}
+
+export async function searchWorkspace(
+  query: string,
+  agentId?: string,
+  glob?: string,
+  maxResults = 50,
+): Promise<{ results: Array<{ path: string; line: string; lineNumber: number }> }> {
+  const sp = new URLSearchParams({ q: query, maxResults: String(maxResults) });
+  if (agentId) sp.set("agentId", agentId);
+  if (glob) sp.set("glob", glob);
+  return fetchJson(`/api/workspace/search?${sp.toString()}`);
+}
+
 // --- Graph Entity Management ---
 
 export async function fetchEntityDetail(name: string): Promise<EntityDetail> {
