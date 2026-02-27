@@ -34,6 +34,8 @@ export type EventName =
   | "planning:phase-changed"
   | "planning:discussion-answered"
   | "planning:message-enqueued"
+  | "planning:annotation-changed"
+  | "planning:edit-recorded"
   | "task:created"
   | "task:updated"
   | "task:completed"

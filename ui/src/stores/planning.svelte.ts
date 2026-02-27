@@ -160,10 +160,25 @@ export async function updateRequirement(
   }
 
   try {
+    const headers: Record<string, string> = {};
+    // SYNC-05: Send If-Unmodified-Since for conflict detection
+    if (prev?.updatedAt) {
+      headers["If-Unmodified-Since"] = prev.updatedAt;
+    }
     const res = await authFetch(`/api/planning/projects/${currentProjectId}/requirements/${encodeURIComponent(reqIdentifier)}`, {
       method: "PATCH",
+      headers,
       body: JSON.stringify(updates),
     });
+    if (res.status === 409) {
+      // Conflict: server has newer version — reload from server
+      if (prev && idx >= 0) {
+        requirements = requirements.map((r, i) => i === idx ? prev : r);
+      }
+      error = "Conflict: this item was modified by another session. Refreshing...";
+      scheduleRefresh();
+      return null;
+    }
     if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
     const updated = await res.json() as Requirement;
     // Replace with server response (authoritative)
@@ -237,10 +252,24 @@ export async function updatePhase(
   }
 
   try {
+    const headers: Record<string, string> = {};
+    // SYNC-05: Conflict detection
+    if (prev?.updatedAt) {
+      headers["If-Unmodified-Since"] = prev.updatedAt;
+    }
     const res = await authFetch(`/api/planning/projects/${currentProjectId}/phases/${encodeURIComponent(phaseId)}`, {
       method: "PATCH",
+      headers,
       body: JSON.stringify(updates),
     });
+    if (res.status === 409) {
+      if (prev && idx >= 0) {
+        phases = phases.map((p, i) => i === idx ? prev : p);
+      }
+      error = "Conflict: this phase was modified by another session. Refreshing...";
+      scheduleRefresh();
+      return null;
+    }
     if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
     const updated = await res.json() as Phase;
     phases = phases.map(p => p.id === updated.id ? updated : p);

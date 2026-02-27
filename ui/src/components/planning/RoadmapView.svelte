@@ -1,5 +1,6 @@
 <script lang="ts">
   import { updatePhase, deletePhase, reorderPhase } from "../../stores/planning.svelte";
+  import AnnotationPanel from "./AnnotationPanel.svelte";
 
   interface Phase {
     id: string;
@@ -291,6 +292,18 @@
                         <li>{depId}</li>
                       {/each}
                     </ul>
+                  </div>
+                {/if}
+
+                <!-- EDIT-07: Notes/annotations per phase -->
+                {#if projectId}
+                  <div class="detail-section">
+                    <AnnotationPanel
+                      {projectId}
+                      targetType="phase"
+                      targetId={phase.id}
+                      targetLabel={phase.name}
+                    />
                   </div>
                 {/if}
               </div>

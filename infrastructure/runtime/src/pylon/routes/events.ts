@@ -43,6 +43,8 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
           ["planning:requirement-changed", forward("planning:requirement-changed")],
           ["planning:phase-changed", forward("planning:phase-changed")],
           ["planning:discussion-answered", forward("planning:discussion-answered")],
+          ["planning:annotation-changed", forward("planning:annotation-changed")],
+          ["planning:edit-recorded", forward("planning:edit-recorded")],
           ["task:created", forward("task:created")],
           ["task:updated", forward("task:updated")],
           ["task:completed", forward("task:completed")],

@@ -197,3 +197,33 @@ CREATE TABLE IF NOT EXISTS planning_turn_counts (
   PRIMARY KEY (project_id, phase_id, nous_id)
 );
 `;
+
+// ─── V31: Annotations + Edit History (EDIT-07, SYNC-06) ─────
+
+export const PLANNING_V31_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_annotations (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion')),
+  target_id TEXT NOT NULL,
+  author TEXT NOT NULL,
+  content TEXT NOT NULL,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_target ON planning_annotations(project_id, target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS planning_edit_history (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion', 'checkpoint')),
+  target_id TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  author TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_edit_history_target ON planning_edit_history(project_id, target_type, target_id);
+`;

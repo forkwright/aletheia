@@ -11,6 +11,8 @@
   import RetrospectiveView from "./RetrospectiveView.svelte";
   import TimelineView from "./TimelineView.svelte";
   import TaskList from "./TaskList.svelte";
+  import EditHistory from "./EditHistory.svelte";
+  import ContextBudget from "./ContextBudget.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
@@ -334,6 +336,20 @@
               <DiscussionPanel projectId={project.id} phaseId={activePhase.id} />
             </div>
           {/if}
+        {/if}
+
+        <!-- Context Budget (OBS-04) — visible during execution -->
+        {#if ["executing", "verifying", "phase-planning"].includes(project.state)}
+          <div class="dashboard-section">
+            <ContextBudget projectId={project.id} />
+          </div>
+        {/if}
+
+        <!-- Edit History (SYNC-06) — always visible when project has content -->
+        {#if requirements.length > 0 || phases.length > 0}
+          <div class="dashboard-section full-width">
+            <EditHistory projectId={project.id} />
+          </div>
         {/if}
 
         <!-- Retrospective (visible when project is complete or abandoned) -->
