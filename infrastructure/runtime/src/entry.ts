@@ -318,7 +318,8 @@ program
         try {
           const { loadConfig } = await import("./taxis/loader.js");
           const cfg = loadConfig();
-          token = cfg.auth?.token;
+          const raw = cfg.gateway?.auth?.token;
+          if (typeof raw === "string") token = raw;
         } catch { /* config unavailable */ }
       }
       if (token) headers["Authorization"] = `Bearer ${token}`;
