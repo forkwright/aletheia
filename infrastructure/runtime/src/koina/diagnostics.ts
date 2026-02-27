@@ -22,6 +22,7 @@ type DiagnosticCheck = (config: AletheiaConfig | null) => DiagnosticResult;
 
 const checks: DiagnosticCheck[] = [
   checkBootstrapAnchor,
+  checkNousScaffoldDirs,
   checkConfigValid,
   checkWorkspacesExist,
   checkSharedDirs,
@@ -68,6 +69,37 @@ function checkBootstrapAnchor(_config: AletheiaConfig | null): DiagnosticResult 
     name: "bootstrap_anchor",
     status: nousExists && deployExists ? "ok" : "warn",
     message: lines.join("\n"),
+  };
+}
+
+function checkNousScaffoldDirs(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
+    return {
+      name: "nous_scaffold",
+      status: "warn",
+      message: "Skipped (anchor.json not found or nousDir missing)",
+    };
+  }
+  const nousDir = anchorRaw["nousDir"] as string;
+  const required = [
+    join(nousDir, "_shared", "workspace", "plans"),
+    join(nousDir, "_shared", "workspace", "specs"),
+    join(nousDir, "_shared", "workspace", "standards"),
+    join(nousDir, "_shared", "workspace", "references"),
+  ];
+  const missing = required.filter((d) => !existsSync(d));
+  if (missing.length === 0) {
+    return {
+      name: "nous_scaffold",
+      status: "ok",
+      message: `_shared/ scaffold complete (${required.length} dirs)`,
+    };
+  }
+  return {
+    name: "nous_scaffold",
+    status: "warn",
+    message: `Missing scaffold dirs: ${missing.map((d) => d.replace(nousDir + "/", "")).join(", ")} — run 'aletheia init' to fix`,
   };
 }
 

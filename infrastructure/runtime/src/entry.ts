@@ -161,6 +161,15 @@ program
         mkdirSync(deployDir, { recursive: true });
         writeBootstrapAnchor(nousDir, deployDir);
         console.log(`  Anchor: ${anchorFilePath}`);
+
+        // Scaffold _shared/ workspace dirs — authoritative (throws on failure)
+        const { scaffoldNousShared: doScaffold, mergeGitignore: doMerge } = await import("./taxis/nous-scaffold.js");
+        const sharedCreated = doScaffold(nousDir);
+        doMerge(nousDir);
+        if (sharedCreated.length > 0) {
+          console.log(`  Scaffold: ${sharedCreated.join(", ")}`);
+        }
+        // If sharedCreated.length === 0, all dirs already existed — report nothing (silence = nothing new)
       }
 
       // First agent
