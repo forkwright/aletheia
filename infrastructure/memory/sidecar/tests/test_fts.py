@@ -1,8 +1,7 @@
 """Tests for FTS5 keyword search module."""
+import contextlib
 import os
-import sqlite3
 import tempfile
-import threading
 
 import pytest
 
@@ -10,7 +9,7 @@ import pytest
 _tmpdir = tempfile.mkdtemp()
 os.environ["FTS_DB_PATH"] = os.path.join(_tmpdir, "test_fts.db")
 
-from aletheia_memory.fts import (
+from aletheia_memory.fts import (  # noqa: E402
     _sanitize_fts_query,
     close,
     get_stats,
@@ -28,10 +27,8 @@ def clean_db():
     close()
     db_path = os.environ["FTS_DB_PATH"]
     if os.path.exists(db_path):
-        try:
+        with contextlib.suppress(OSError):
             os.remove(db_path)
-        except OSError:
-            pass
 
 
 class TestIndexAndSearch:
