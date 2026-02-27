@@ -319,17 +319,19 @@ program
     ]);
     const dependencies = runDependencyChecks();
 
-    // Surface bootstrap_anchor check from runDiagnostics (re-reads anchor.json each run)
-    let anchorSection = "";
+    // Surface configuration checks from runDiagnostics (bootstrap_anchor, nous_scaffold, deploy_config, secret_refs)
+    let configSection = "";
     try {
       const { results: diagResults } = runDiagnostics();
-      const anchorResult = diagResults.find((r) => r.name === "bootstrap_anchor");
-      if (anchorResult) {
-        anchorSection = `\n── Configuration ──\n${formatResults([anchorResult])}\n`;
+      const configChecks = diagResults.filter((r) =>
+        ["bootstrap_anchor", "nous_scaffold", "deploy_config", "secret_refs"].includes(r.name)
+      );
+      if (configChecks.length > 0) {
+        configSection = `\n── Configuration ──\n${formatResults(configChecks)}\n`;
       }
     } catch { /* runDiagnostics errors are non-fatal for doctor output */ }
 
-    console.log(anchorSection + formatDoctorOutput(connectivity, dependencies, bootPersistence));
+    console.log(configSection + formatDoctorOutput(connectivity, dependencies, bootPersistence));
     // Exit 0 always — doctor is informational, not assertion-based
   });
 

@@ -1,6 +1,6 @@
 # Fork/Upstream Relationship
 
-**forkwright/aletheia** (public, framework) → **CKickertz/ergon** (private, operator deployment)
+**forkwright/aletheia** (public, framework) → **<your-fork>** (private, operator deployment)
 
 ## Boundary
 
@@ -13,7 +13,7 @@
 - CI/CD workflows (`.github/`)
 - Schema definitions and migrations
 
-### Always downstream (CKickertz/ergon)
+### Always downstream (<your-fork>)
 - Agent workspaces (`nous/*/`) — SOUL.md, MEMORY.md, config overrides
 - Operator config (`aletheia.json` values — credentials, bindings, agent list)
 - Custom commands (`shared/commands/`)

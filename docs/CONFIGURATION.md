@@ -399,7 +399,7 @@ Supports two formats:
 ```json
 "env": {
   "vars": {
-    "PATH": "/mnt/ssd/aletheia/shared/bin"
+    "PATH": "<aletheia-root>/shared/bin"
   }
 }
 ```
