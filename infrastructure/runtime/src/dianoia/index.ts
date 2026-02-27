@@ -77,3 +77,11 @@ export { calculateBudgetAllocation, buildOrchestratorContext, checkBudget, DEFAU
 export type { BudgetAllocation } from "./context-budget.js";
 export { writeStructuredDiscussFile, readStructuredDiscussFile, extractDecisionsFromQuestions, createEmptyArtifact, acquireDiscussionLock, releaseDiscussionLock, isDiscussionLocked } from "./discussion-artifacts.js";
 export type { DiscussionArtifact, BoundaryItem, ImplementationDecision, DiscretionItem, DeferredIdea } from "./discussion-artifacts.js";
+
+// Research & Standards (ENG-10/11/15)
+export { generateCodebaseMap, scanDirectory, writeCodebaseMapFile, detectLanguage, extractImports, extractExports, groupIntoModules, detectLayers, detectConventions } from "./codebase-map.js";
+export type { CodebaseMapResult, ModuleInfo, ArchitecturalLayer, Convention, FileInfo } from "./codebase-map.js";
+export { RESEARCH_LEVELS, extractComplexitySignals, selectResearchLevel, getResearchConfig, determineResearchLevel } from "./research-levels.js";
+export type { ResearchLevel, ResearchLevelConfig } from "./research-levels.js";
+export { getLanguageRules, buildStandards, writeStandardsFile, readStandardsFile, createUserPreferenceRule } from "./coding-standards.js";
+export type { ProjectStandards, CodingRule, StandardsLayer } from "./coding-standards.js";
