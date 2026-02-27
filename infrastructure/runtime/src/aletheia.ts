@@ -57,6 +57,7 @@ import { loadCustomCommands, registerCustomCommands } from "./organon/custom-com
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
 import { FileSyncDaemon } from "./dianoia/file-sync.js";
+import { openPlansDb } from "./dianoia/plans-db.js";
 import { CheckpointSystem, createPlanCreateTool, createPlanDiscussTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
@@ -131,6 +132,9 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     }
     mergeGitignore(nousDir); // idempotent — safe every startup
   }, undefined);
+
+  const plansDb = openPlansDb(paths.sessionsDb());
+  log.info("Plans DB opened", { path: plansDb.name });
 
   eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
@@ -286,13 +290,13 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     verifier: true,
     mode: "interactive" as const,
   };
-  const planningStore = new PlanningStore(store.getDb());
-  const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
+  const planningStore = new PlanningStore(plansDb);
+  const planningOrchestrator = new DianoiaOrchestrator(plansDb, planningConfig);
   planningOrchestrator.setWorkspaceRoot(defaultWorkspace);
   manager.setPlanningOrchestrator(planningOrchestrator);
 
   // File sync daemon — writes markdown files alongside every DB mutation (co-primary)
-  const fileSyncDaemon = new FileSyncDaemon(store.getDb());
+  const fileSyncDaemon = new FileSyncDaemon(plansDb);
   fileSyncDaemon.start(defaultWorkspace);
 
   log.info("Dianoia planning orchestrator initialized", { workspace: defaultWorkspace });
@@ -408,30 +412,30 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(planCreateTool);
 
   // Planning research orchestrator — wired after dispatchTool is available
-  const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool, defaultWorkspace);
+  const researchOrchestrator = new ResearchOrchestrator(plansDb, dispatchTool, defaultWorkspace);
   const planResearchTool = createPlanResearchTool(planningOrchestrator, researchOrchestrator);
   tools.register(planResearchTool);
 
   // Planning requirements orchestrator — wired after research orchestrator
-  const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb(), defaultWorkspace);
+  const requirementsOrchestrator = new RequirementsOrchestrator(plansDb, defaultWorkspace);
   const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
   tools.register(planRequirementsTool);
 
   // Planning roadmap orchestrator — wired after dispatchTool is available
-  const roadmapOrchestrator = new RoadmapOrchestrator(store.getDb(), dispatchTool);
+  const roadmapOrchestrator = new RoadmapOrchestrator(plansDb, dispatchTool);
   roadmapOrchestrator.setWorkspaceRoot(defaultWorkspace);
   const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
   tools.register(planRoadmapTool);
 
   // Planning discussion tool — bridges 'discussing' state between roadmap and phase-planning
-  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, store.getDb(), dispatchTool);
+  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, plansDb, dispatchTool);
   tools.register(planDiscussTool);
 
   // Planning execution orchestrator — wired after dispatchTool is available
-  const executionOrchestrator = new ExecutionOrchestrator(store.getDb(), dispatchTool);
+  const executionOrchestrator = new ExecutionOrchestrator(plansDb, dispatchTool);
   executionOrchestrator.setWorkspaceRoot(defaultWorkspace);
   // Planning verifier — must be created before execution tool so it can be injected
-  const verifierOrchestrator = new GoalBackwardVerifier(store.getDb(), dispatchTool);
+  const verifierOrchestrator = new GoalBackwardVerifier(plansDb, dispatchTool);
   verifierOrchestrator.setWorkspaceRoot(defaultWorkspace);
 
   const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator, verifierOrchestrator);
@@ -457,6 +461,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     memoryTarget,
     shutdown: () => {
       fileSyncDaemon.stop();
+      plansDb.close();
       store.close();
       log.info("Runtime shutdown complete");
     },
