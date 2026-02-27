@@ -144,6 +144,7 @@ export class DianoiaOrchestrator {
     // Generate retrospective even on abandon — failure patterns are valuable
     this.generateRetro(projectId);
 
+    eventBus.emit("planning:state-transition", { projectId, from: project.state, to: "abandoned" });
     log.info(`Abandoned planning project ${projectId}`);
   }
 
@@ -335,9 +336,10 @@ export class DianoiaOrchestrator {
     return "Plan ready. Advancing to execution.";
   }
 
-  advanceToVerification(projectId: string, _nousId: string, _sessionId: string): string {
+  advanceToVerification(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "VERIFY"));
+    eventBus.emit("planning:state-transition", { projectId, nousId, sessionId, from: project.state, to: "verifying" });
     log.info(`Advancing to verification for project ${projectId}`);
     return "Execution complete. Moving to verification.";
   }
@@ -350,9 +352,10 @@ export class DianoiaOrchestrator {
     return "Moving to next phase.";
   }
 
-  blockOnVerificationFailure(projectId: string, _nousId: string, _sessionId: string): string {
+  blockOnVerificationFailure(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "PHASE_FAILED"));
+    eventBus.emit("planning:state-transition", { projectId, nousId, sessionId, from: project.state, to: "blocked" });
     log.info(`Verification failed for project ${projectId} — blocked`);
     return "Verification failed. Project is blocked pending gap closure.";
   }

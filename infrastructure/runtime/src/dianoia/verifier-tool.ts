@@ -88,6 +88,11 @@ async function handleVerifyAction(
 
         const result = await verifierOrchestrator.verify(projectId, phaseId, context);
 
+        // Emit verification-complete for file sync daemon
+        eventBus.emit("planning:verification-complete", {
+          projectId, phaseId, result: result as unknown as Record<string, unknown>,
+        });
+
         if (result.status === "met") {
           const msg = planningOrchestrator.advanceToNextPhase(projectId, nousId, sessionId);
           return `${msg}\n\nVerification summary: ${result.summary}`;

@@ -90,3 +90,4 @@ export { getLanguageRules, buildStandards, writeStandardsFile, readStandardsFile
 export type { ProjectStandards, CodingRule, StandardsLayer } from "./coding-standards.js";
 export { createAdhocWork, ADHOC_TOOL_DEFINITION } from "./adhoc-tool.js";
 export type { AdhocWorkRequest, AdhocWorkResult } from "./adhoc-tool.js";
+export { FileSyncDaemon } from "./file-sync.js";
