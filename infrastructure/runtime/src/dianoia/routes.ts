@@ -994,6 +994,51 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     });
   });
 
+  // ============================================================
+  // Decision Audit Trail (OBS-03)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/decisions", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+
+    try {
+      const decisions = store.listDecisions(projectId, phaseId || undefined);
+      return c.json({ projectId, decisions, count: decisions.length });
+    } catch (error) {
+      log.error("Failed to list decisions", { projectId, error });
+      return c.json({ error: "Failed to list decisions" }, 500);
+    }
+  });
+
+  // ============================================================
+  // Turn Tracking (OBS-05)
+  // ============================================================
+
+  app.get("/api/planning/projects/:id/usage", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Database not available" }, 503);
+
+    const projectId = c.req.param("id");
+    const phaseId = c.req.query("phaseId");
+
+    try {
+      const turnCounts = store.getTurnCounts(projectId, phaseId || undefined);
+      const totals = store.getProjectTurnTotal(projectId);
+      return c.json({
+        projectId,
+        turnCounts,
+        totals,
+      });
+    } catch (error) {
+      log.error("Failed to get usage", { projectId, error });
+      return c.json({ error: "Failed to get usage" }, 500);
+    }
+  });
+
   log.debug("planning routes mounted");
   return app;
 }

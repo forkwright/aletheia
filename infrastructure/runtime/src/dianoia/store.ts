@@ -10,12 +10,14 @@ import type {
   DiscussionQuestion,
   PlanningCheckpoint,
   PlanningConfig,
+  PlanningDecision,
   PlanningPhase,
   PlanningProject,
   PlanningRequirement,
   PlanningResearch,
   ProjectContext,
   SpawnRecord,
+  TurnCount,
   VerificationResult,
 } from "./types.js";
 
@@ -920,6 +922,102 @@ export class PlanningStore {
       completedAt: (row["completed_at"] as string | null) ?? null,
       errorMessage: (row["error_message"] as string | null) ?? null,
       createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Decision Audit Trail (OBS-03) ────────────────────────
+
+  logDecision(opts: {
+    projectId: string;
+    phaseId?: string | null;
+    source: "user" | "agent" | "checkpoint" | "system";
+    type: string;
+    summary: string;
+    rationale?: string | null;
+    context?: Record<string, unknown>;
+  }): PlanningDecision {
+    const id = generateId("dec");
+    this.db.prepare(
+      `INSERT INTO planning_decisions (id, project_id, phase_id, source, type, summary, rationale, context)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      opts.projectId,
+      opts.phaseId ?? null,
+      opts.source,
+      opts.type,
+      opts.summary,
+      opts.rationale ?? null,
+      JSON.stringify(opts.context ?? {}),
+    );
+    return this.getDecision(id)!;
+  }
+
+  getDecision(id: string): PlanningDecision | undefined {
+    const row = this.db.prepare("SELECT * FROM planning_decisions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapDecision(row) : undefined;
+  }
+
+  listDecisions(projectId: string, phaseId?: string): PlanningDecision[] {
+    if (phaseId) {
+      return (this.db.prepare("SELECT * FROM planning_decisions WHERE project_id = ? AND phase_id = ? ORDER BY created_at ASC")
+        .all(projectId, phaseId) as Record<string, unknown>[]).map(r => this.mapDecision(r));
+    }
+    return (this.db.prepare("SELECT * FROM planning_decisions WHERE project_id = ? ORDER BY created_at ASC")
+      .all(projectId) as Record<string, unknown>[]).map(r => this.mapDecision(r));
+  }
+
+  private mapDecision(row: Record<string, unknown>): PlanningDecision {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: (row["phase_id"] as string | null) ?? null,
+      source: row["source"] as PlanningDecision["source"],
+      type: row["type"] as string,
+      summary: row["summary"] as string,
+      rationale: (row["rationale"] as string | null) ?? null,
+      context: JSON.parse((row["context"] as string) || "{}"),
+      createdAt: row["created_at"] as string,
+    };
+  }
+
+  // ─── Turn Tracking (OBS-05) ───────────────────────────────
+
+  recordTurn(projectId: string, phaseId: string, nousId: string, tokenCount = 0): void {
+    this.db.prepare(
+      `INSERT INTO planning_turn_counts (project_id, phase_id, nous_id, turn_count, token_count, updated_at)
+       VALUES (?, ?, ?, 1, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       ON CONFLICT (project_id, phase_id, nous_id) DO UPDATE SET
+         turn_count = turn_count + 1,
+         token_count = token_count + excluded.token_count,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+    ).run(projectId, phaseId, nousId, tokenCount);
+  }
+
+  getTurnCounts(projectId: string, phaseId?: string): TurnCount[] {
+    if (phaseId) {
+      return (this.db.prepare("SELECT * FROM planning_turn_counts WHERE project_id = ? AND phase_id = ? ORDER BY turn_count DESC")
+        .all(projectId, phaseId) as Record<string, unknown>[]).map(r => this.mapTurnCount(r));
+    }
+    return (this.db.prepare("SELECT * FROM planning_turn_counts WHERE project_id = ? ORDER BY phase_id, turn_count DESC")
+      .all(projectId) as Record<string, unknown>[]).map(r => this.mapTurnCount(r));
+  }
+
+  getProjectTurnTotal(projectId: string): { turns: number; tokens: number } {
+    const row = this.db.prepare(
+      "SELECT COALESCE(SUM(turn_count), 0) as turns, COALESCE(SUM(token_count), 0) as tokens FROM planning_turn_counts WHERE project_id = ?"
+    ).get(projectId) as { turns: number; tokens: number };
+    return row;
+  }
+
+  private mapTurnCount(row: Record<string, unknown>): TurnCount {
+    return {
+      projectId: row["project_id"] as string,
+      phaseId: row["phase_id"] as string,
+      nousId: row["nous_id"] as string,
+      turnCount: row["turn_count"] as number,
+      tokenCount: row["token_count"] as number,
       updatedAt: row["updated_at"] as string,
     };
   }
