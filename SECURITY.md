@@ -55,3 +55,28 @@ After a fix is released, we will publish a GitHub Security Advisory with:
 - Affected versions
 - Fixed version
 - Credit to reporter (if desired)
+
+## Credential Audit (2026-02-27)
+
+Credential scan performed before v1.4 public release using:
+
+```
+git log --all --oneline -S "sk-ant"
+git log --all --oneline -S "sk-ant-api"
+git log --all --oneline -S "ghp_"
+git log --all --oneline -S "ANTHROPIC_API_KEY="
+git log --all --oneline -S "password"
+```
+
+**Result: No actual credential values found in tracked git history.**
+
+All matches were:
+- Feature code for credential management (SecretRef spec, credential UI)
+- Config template/example files with placeholder values
+- Git commit metadata (author email in commit records)
+
+The file `shared/config/aletheia.env` contains real credentials but is excluded
+from git tracking via `.gitignore` (`*.env` pattern).
+
+If you discover credentials in git history after forking: use `git filter-repo` or
+BFG Repo-Cleaner to rewrite history and rotate the exposed credentials immediately.

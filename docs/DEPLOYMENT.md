@@ -365,3 +365,18 @@ Set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `~/.aletheia/env`.
 cd infrastructure/prosoche
 cp config.yaml.example config.yaml && python3 prosoche.py
 ```
+
+---
+
+## Design Specifications
+
+Design specifications for Aletheia are in `docs/specs/`. These are living design
+documents describing intent, constraints, and tradeoffs for each module. They are
+intentionally kept in the public framework repo to help contributors understand
+the system.
+
+Implemented and archived specs are consolidated into `docs/specs/archive/DECISIONS.md`.
+
+For operator-specific planning work, use the Dianoia planning system — it stores
+projects under `_shared/workspace/plans/` in your nous workspace, keeping private
+planning artifacts out of the public framework repo.
