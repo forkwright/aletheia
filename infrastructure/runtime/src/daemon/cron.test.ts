@@ -5,6 +5,7 @@ import { CronScheduler } from "./cron.js";
 function makeConfig(jobs: Array<Record<string, unknown>> = []) {
   return {
     cron: { jobs },
+    agents: { defaults: { userTimezone: "UTC" } },
   } as never;
 }
 

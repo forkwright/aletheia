@@ -1,5 +1,6 @@
 // Uncertainty quantification — track calibration of agent confidence estimates
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
@@ -23,6 +24,8 @@ interface CalibrationBin {
 export class UncertaintyTracker {
   private points: CalibrationPoint[] = [];
   private filePath: string;
+  private dirty = false;
+  private flushScheduled = false;
 
   constructor(sharedRoot: string) {
     const dir = join(sharedRoot, "shared", "calibration");
@@ -42,12 +45,34 @@ export class UncertaintyTracker {
     }
   }
 
+  /** Mark data as dirty and schedule an async flush on next microtask. */
   private save(): void {
     // Keep last 1000 points
     if (this.points.length > 1000) {
       this.points = this.points.slice(-1000);
     }
-    writeFileSync(this.filePath, JSON.stringify(this.points, null, 2));
+    this.dirty = true;
+    if (!this.flushScheduled) {
+      this.flushScheduled = true;
+      setImmediate(() => this.flush());
+    }
+  }
+
+  private flush(): void {
+    this.flushScheduled = false;
+    if (!this.dirty) return;
+    this.dirty = false;
+    this.flushPromise = writeFile(this.filePath, JSON.stringify(this.points, null, 2)).catch((err) => {
+      log.warn(`Calibration save failed: ${err instanceof Error ? err.message : err}`);
+    });
+  }
+
+  private flushPromise: Promise<void> = Promise.resolve();
+
+  /** Wait for any pending async writes to complete. Useful for tests. */
+  async waitForFlush(): Promise<void> {
+    if (this.dirty) this.flush();
+    await this.flushPromise;
   }
 
   record(

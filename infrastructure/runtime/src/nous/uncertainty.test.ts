@@ -85,8 +85,9 @@ describe("UncertaintyTracker", () => {
     expect(tracker.getSummary().totalPoints).toBe(2);
   });
 
-  it("persists and reloads data", () => {
+  it("persists and reloads data", async () => {
     tracker.record("syn", "d", 0.7, true);
+    await tracker.waitForFlush();
     const tracker2 = new UncertaintyTracker(tmpDir);
     expect(tracker2.getSummary("syn").totalPoints).toBe(1);
   });

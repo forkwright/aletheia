@@ -86,9 +86,8 @@ import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { getKeySalt, initEncryption } from "./koina/encryption.js";
-import Database from "better-sqlite3";
 import { eventBus } from "./koina/event-bus.js";
 import { type HookRegistry, registerHooks } from "./koina/hooks.js";
 import { getSidecarUrl, getUserId } from "./koina/memory-client.js";
@@ -525,9 +524,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // --- Auth ---
   let gatewayAuth: GatewayAuthDeps | undefined;
   {
-    const authDb = new Database(paths.sessionsDb());
-    authDb.pragma("journal_mode = WAL");
-    authDb.pragma("synchronous = NORMAL");
+    // Reuse the SessionStore's database connection — both operate on disjoint
+    // tables in sessions.db, so sharing avoids a redundant WAL reader (#346).
+    const authDb = runtime.store.getDb();
 
     const auditLog = new AuditLog(authDb);
     let authSessionStore: AuthSessionStore | null = null;
@@ -766,10 +765,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // Backup cron command — exports all agents to JSON files with retention
   cron.registerCommand("backup:all-agents", async () => {
-    const { mkdirSync: mkdirBackup, readdirSync: readdirBackup, unlinkSync: unlinkBackup } = await import("node:fs");
     const { exportAgent, agentFileToJson } = await import("./portability/export.js");
     const dest = config.backup.destination;
-    mkdirBackup(dest, { recursive: true });
+    mkdirSync(dest, { recursive: true });
 
     const date = new Date().toISOString().split("T")[0];
     let count = 0;
@@ -778,9 +776,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
       try {
         const agentFile = await exportAgent(agent.id, agent as unknown as Record<string, unknown>, runtime.store);
         const filename = `${agent.id}-${date}.agent.json`;
-        const { writeFileSync: writeBackup } = await import("node:fs");
-        const { join: joinPath } = await import("node:path");
-        writeBackup(joinPath(dest, filename), agentFileToJson(agentFile, false));
+        writeFileSync(join(dest, filename), agentFileToJson(agentFile, false));
         count++;
       } catch (error) {
         log.warn(`Backup failed for ${agent.id}: ${error instanceof Error ? error.message : error}`);
@@ -790,14 +786,12 @@ export async function startRuntime(configPath?: string): Promise<void> {
     // Retention — delete old .agent.json files
     const cutoff = Date.now() - config.backup.retentionDays * 24 * 60 * 60 * 1000;
     try {
-      const { statSync: statBackup } = await import("node:fs");
-      const { join: joinPath } = await import("node:path");
-      for (const file of readdirBackup(dest)) {
+      for (const file of readdirSync(dest)) {
         if (!file.endsWith(".agent.json")) continue;
-        const filePath = joinPath(dest, file);
-        const stat = statBackup(filePath);
+        const filePath = join(dest, file);
+        const stat = statSync(filePath);
         if (stat.mtimeMs < cutoff) {
-          unlinkBackup(filePath);
+          unlinkSync(filePath);
           log.debug(`Deleted old backup: ${file}`);
         }
       }

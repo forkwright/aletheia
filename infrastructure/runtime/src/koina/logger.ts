@@ -1,7 +1,7 @@
 // Structured logging with request tracing via AsyncLocalStorage
 import { Logger } from "tslog";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { appendFileSync } from "node:fs";
+import { createWriteStream, type WriteStream } from "node:fs";
 
 // --- Turn context (propagated via AsyncLocalStorage) ---
 
@@ -100,7 +100,11 @@ export const log = new Logger({
 
 // Attach JSON transport for structured output to file/pipe
 const jsonLogPath = process.env["ALETHEIA_LOG_JSON"];
+let jsonLogStream: WriteStream | null = null;
 if (jsonLogPath) {
+  jsonLogStream = createWriteStream(jsonLogPath, { flags: "a" });
+  jsonLogStream.on("error", () => { /* log write failed — cannot recurse */ });
+
   log.attachTransport((logObj) => {
     const ctx = turnStore.getStore();
     const entry: Record<string, unknown> = {
@@ -124,11 +128,7 @@ if (jsonLogPath) {
       entry["msg"] = parts[0];
       if (parts.length > 1) entry["data"] = parts.slice(1);
     }
-    try {
-      appendFileSync(jsonLogPath, JSON.stringify(entry) + "\n");
-    } catch { /* log write failed — cannot recurse */
-      // Don't recurse on log failure
-    }
+    jsonLogStream!.write(JSON.stringify(entry) + "\n");
   });
 }
 
