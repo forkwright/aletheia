@@ -27,7 +27,7 @@ See [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
 **Milestone Goal:** Make it trivially easy for a team member to get Aletheia to a working deployment on Linux or Mac — native, no Docker required.
 
 - [x] **Phase 14: Portability Fixes** - Fix three concrete breakage points that prevent Aletheia from running on any machine that is not the original developer's Linux workstation (completed 2026-02-26)
-- [ ] **Phase 15: Mac Boot Persistence** - Add launchd-backed `aletheia enable`/`disable` so Aletheia survives reboots on macOS with the same reliability as systemd on Linux
+- [x] **Phase 15: Mac Boot Persistence** - Add launchd-backed `aletheia enable`/`disable` so Aletheia survives reboots on macOS with the same reliability as systemd on Linux (completed 2026-02-27)
 - [ ] **Phase 16: Doctor, CLI Wizard, and Bug Fix** - Extend `aletheia doctor` with connectivity and dependency checks, bring `aletheia init` to parity with the web wizard, and fix the Dianoia stream timeout bug
 - [ ] **Phase 17: Setup Script Mac Support and Documentation** - Make `setup.sh` run end-to-end on macOS and write accurate deployment docs for both platforms
 
@@ -57,7 +57,12 @@ Plans:
   2. User can run `aletheia disable` on macOS and confirm that Aletheia no longer starts at login (plists unloaded via `launchctl bootout` and removed from `~/Library/LaunchAgents/`)
   3. Launchd plist templates exist in `config/services/` with placeholder tokens that `aletheia enable` substitutes with real paths at install time (gateway plist + memory plist, `KeepAlive.SuccessfulExit: false` not `KeepAlive: true`)
   4. User can start memory services independently with `aletheia start --memory-only` (docker-compose launched without gateway — used by the memory launchd plist)
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Launchd plist templates (gateway + memory) + fix aletheia.service to use token substitution
+- [ ] 15-02-PLAN.md — cmd_enable and cmd_disable in bin/aletheia (macOS launchd + Linux systemd)
+- [ ] 15-03-PLAN.md — --memory-only flag in cmd_start
 
 ### Phase 16: Doctor, CLI Wizard, and Bug Fix
 **Goal**: `aletheia doctor` gives a complete picture of stack health, `aletheia init` matches the web wizard experience, and Dianoia planning sessions complete without stream timeouts
@@ -70,7 +75,12 @@ Plans:
   4. User can complete `aletheia init` without manually locating their API key (auto-detected from `~/.claude.json` — same source as web wizard)
   5. User can set their profile during `aletheia init` (name/role/style step present — matches web wizard, not skipped in CLI path)
   6. User can complete a Dianoia planning session with long sub-agent dispatches without hitting a stream timeout error (root cause of #208 investigated and fixed)
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Stream timeout fix: UI read timeout to 10 min, SSE heartbeat in sessions.ts, dispatch default to 600s
+- [ ] 16-02-PLAN.md — Doctor overhaul: async connectivity + dependency + boot persistence checks in diagnostics.ts + entry.ts
+- [ ] 16-03-PLAN.md — Init wizard parity: API key auto-detection from ~/.claude.json + profile step (name/timezone/role)
 
 ### Phase 17: Setup Script Mac Support and Documentation
 **Goal**: A new user on macOS can run `setup.sh`, follow the terminal output, and arrive at a working Aletheia installation — and then find accurate written documentation for every step
@@ -93,7 +103,7 @@ Plans:
 | 11. Tooling Configuration + Pre-commit Coverage | v1.1 | 5/5 | Complete | 2026-02-25 |
 | 12. Codebase Audit Against New Standards | v1.1 | 3/3 | Complete | 2026-02-25 |
 | 13. Violation Remediation | v1.1 | 14/13 | Complete | 2026-02-26 |
-| 14. Portability Fixes | 2/2 | Complete    | 2026-02-26 | - |
-| 15. Mac Boot Persistence | v1.2 | 0/TBD | Not started | - |
-| 16. Doctor, CLI Wizard, and Bug Fix | v1.2 | 0/TBD | Not started | - |
+| 14. Portability Fixes | v1.2 | 2/2 | Complete | 2026-02-26 |
+| 15. Mac Boot Persistence | 3/3 | Complete    | 2026-02-27 | - |
+| 16. Doctor, CLI Wizard, and Bug Fix | 1/3 | In Progress|  | - |
 | 17. Setup Script Mac Support and Documentation | v1.2 | 0/TBD | Not started | - |
