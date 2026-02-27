@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
-import { applyFixes, formatResults, runDiagnostics } from "./koina/diagnostics.js";
+import { formatDoctorOutput, runBootPersistenceChecks, runConnectivityChecks, runDependencyChecks } from "./koina/diagnostics.js";
 import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
@@ -182,48 +182,16 @@ gateway
 
 program
   .command("doctor")
-  .description("Validate configuration and check system health")
-  .option("-c, --config <path>", "Config file path")
-  .option("--fix", "Apply automatic fixes for fixable issues")
-  .option("--dry-run", "Show what --fix would do without applying")
-  .action((opts: { config?: string; fix?: boolean; dryRun?: boolean }) => {
-    const { results, config } = runDiagnostics();
+  .description("Check system health — connectivity, dependencies, and boot persistence")
+  .action(async () => {
+    const [connectivity, bootPersistence] = await Promise.all([
+      runConnectivityChecks(),
+      Promise.resolve(runBootPersistenceChecks()),
+    ]);
+    const dependencies = runDependencyChecks();
 
-    if (config) {
-      console.log(`Aletheia Doctor — ${config.agents.list.length} agents\n`);
-    } else {
-      console.log("Aletheia Doctor\n");
-    }
-
-    console.log(formatResults(results, opts.dryRun || opts.fix));
-
-    if (opts.dryRun) {
-      const fixable = results.filter((r) => r.fix);
-      if (fixable.length > 0) {
-        console.log(`\nDry run: ${fixable.length} fix(es) would be applied.`);
-      }
-    } else if (opts.fix) {
-      const fixable = results.filter((r) => r.fix);
-      if (fixable.length === 0) {
-        console.log("\nNothing to fix.");
-      } else {
-        console.log(`\nApplying ${fixable.length} fix(es)...`);
-        const { applied, failed } = applyFixes(results);
-        console.log(`  Applied: ${applied}`);
-        if (failed.length > 0) {
-          console.log(`  Failed: ${failed.length}`);
-          for (const f of failed) console.log(`    X ${f}`);
-        }
-
-        // Re-run to verify
-        console.log("\nRe-checking...");
-        const { results: recheck } = runDiagnostics();
-        console.log(formatResults(recheck));
-      }
-    }
-
-    const errors = results.filter((r) => r.status === "error").length;
-    if (errors > 0) process.exit(1);
+    console.log(formatDoctorOutput(connectivity, dependencies, bootPersistence));
+    // Exit 0 always — doctor is informational, not assertion-based
   });
 
 program
