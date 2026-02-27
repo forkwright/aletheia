@@ -1,138 +1,107 @@
-# Requirements: Aletheia Memory System Overhaul
+# Requirements: Aletheia v1.2 Onboarding & Mac Support
 
-**Defined:** 2026-02-24
-**Core Value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
+**Defined:** 2026-02-26
+**Core Value:** A personal AI runtime you fully control — persistent across sessions, extensible through modules, and powerful enough to handle complex multi-agent work without losing context.
 
-## v1 Requirements
+## v1.2 Requirements
 
 Requirements for this milestone. Each maps to roadmap phases.
 
-### Testing
+### Compatibility Fixes
 
-- [x] **TEST-01**: Ground-truth conversation corpus of 20-30 annotated conversations with expected facts, decisions, and contradictions
-- [x] **TEST-02**: End-to-end test coverage for all memory write paths (per-turn extraction, distillation extraction, workspace flush)
-- [x] **TEST-03**: End-to-end test coverage for all memory read paths (vector recall, graph recall, tiered fallback)
-- [x] **TEST-04**: Precision/recall baseline measurement against ground-truth corpus before any quality changes
-- [x] **TEST-05**: Regression test suite that validates extraction quality against corpus after each change
+- [x] **COMPAT-01**: User can run `bin/aletheia` on macOS without errors (bash 3.2 compat — `declare -A` replaced with parallel indexed arrays)
+- [x] **COMPAT-02**: User can run memory services on any machine without data loss (docker-compose volumes use `${ALETHEIA_DATA:-$HOME/.aletheia/data}` instead of `/mnt/ssd/`)
+- [x] **COMPAT-03**: User can install Aletheia on a fresh Linux clone without a broken memory service (`aletheia-memory.service` uses `ALETHEIA_HOME` template, not hardcoded `ergon` path)
+- [x] **COMPAT-04**: User can stop the gateway cleanly under launchd (SIGTERM handler calls `process.exit(0)` so launchd recognizes a clean stop and does not restart)
 
-### Data Integrity
+### Mac Boot Persistence
 
-- [x] **INTG-01**: Distillation locking uses SQLite-backed lock table with crash recovery (startup scan clears locks older than 10 minutes)
-- [x] **INTG-02**: Distillation mutations wrapped in explicit SQLite transaction with rollback on any failure
-- [x] **INTG-03**: Workspace flush has retry queue with configurable attempts and escalation via `memory:health_degraded` event after N consecutive failures
-- [x] **INTG-04**: Workspace flush produces receipts (success/failure logged with agent ID, timestamp, fact count)
-- [x] **INTG-05**: Orphaned Qdrant entries (source:after_turn from dead code paths) cleaned up in bulk
-- [x] **INTG-06**: All Qdrant write paths enforce required metadata (session_id, source, agent_id) — no orphan-producing paths remain
-- [x] **INTG-07**: Dead code audit removes all unused memory-related code paths, imports, and unreachable branches
+- [ ] **LAUNCHD-01**: User can run `aletheia enable` to wire up boot persistence (installs launchd plists on Mac, enables systemd units on Linux)
+- [ ] **LAUNCHD-02**: User can run `aletheia disable` to remove boot persistence (launchd `bootout` on Mac, `systemctl disable` on Linux)
+- [ ] **LAUNCHD-03**: Launchd plist templates exist in `config/services/` for gateway and memory (with placeholder tokens substituted at `aletheia enable` time — captures real `node` path, real `ALETHEIA_HOME`, explicit `PATH` including Homebrew)
+- [ ] **LAUNCHD-04**: User can start memory services independently with `aletheia start --memory-only` (used by launchd memory plist to start docker-compose without the gateway)
 
-### Graph Layer
+### Doctor & CLI Wizard
 
-- [ ] **GRPH-01**: Neo4j RELATES_TO rate below 30% (verified with Cypher count query), down from 81%
-- [ ] **GRPH-02**: `neo4j-graphrag` SimpleKGPipeline integrated with `allowed_types` vocabulary constraint in extraction prompt
-- [ ] **GRPH-03**: Extraction prompt enumerates controlled vocabulary with worked examples — LLM selects from vocabulary, not free-form generation
-- [x] **GRPH-04**: `neo4j-driver` deprecated package replaced with `neo4j` 6.1.0
-- [x] **GRPH-05**: Entity extraction validates against controlled vocabulary before Neo4j write — rejects or normalizes unknown types
-- [x] **GRPH-06**: Relationship vocabulary pruned to actively-used types based on empirical analysis of current graph data
+- [ ] **DOCTOR-01**: User can see HTTP connectivity status for all services in `aletheia doctor` (gateway, Qdrant, Neo4j, mem0 health endpoints — async checks with 3-second timeout)
+- [ ] **DOCTOR-02**: User can see dependency health in `aletheia doctor` (Node 22+, Docker/Podman presence, build artifact existence)
+- [ ] **DOCTOR-03**: User can see boot persistence status in `aletheia doctor` (launchd state on Mac, systemd state on Linux — enabled or not)
+- [ ] **INIT-01**: User can complete `aletheia init` without manually locating their API key (auto-detects from `~/.claude.json` same as web wizard)
+- [ ] **INIT-02**: User can set their profile during `aletheia init` (name/role/style step — matches web wizard, currently missing from CLI path)
 
-### Extraction Pipeline
+### Setup Script Mac Support
 
-- [ ] **EXTR-01**: Contradiction field from extract.ts wired downstream to temporal invalidation endpoint — contradictions trigger automatic fact invalidation
-- [ ] **EXTR-02**: Cross-chunk semantic dedup pass via sidecar after mergeExtractions() — cosine similarity check prevents near-duplicate facts from different chunks
-- [ ] **EXTR-03**: Cross-chunk contradiction detection — second LLM pass on merged facts identifies contradictions spanning chunks
-- [ ] **EXTR-04**: AbortSignal threaded through distillation pipeline — long distillations can be cancelled via API
-- [ ] **EXTR-05**: Evolution endpoint wired into main distillation flow — new facts that supersede old ones produce one coherent fact, not two contradicting entries
-- [ ] **EXTR-06**: Direct-write paths (add_direct, add_batch) enforce `infer=False` on Mem0 to prevent double-extraction
+- [ ] **SETUP-01**: User can run `setup.sh` on macOS without shell errors (portable port conflict detection — not Linux-specific `lsof -iTCP` flags)
+- [ ] **SETUP-02**: User sees Homebrew prerequisite guidance on Mac (check for Homebrew; point to native Qdrant binary and `brew install neo4j` for no-Docker path)
+- [ ] **SETUP-03**: User is offered boot persistence at the end of `setup.sh` (optionally calls `aletheia enable` after first build)
+- [ ] **SETUP-04**: User knows how to start Aletheia next time after `setup.sh` completes (end-banner: "Next time: `aletheia start`")
 
-### Recall Quality
+### Documentation
 
-- [ ] **RECL-01**: Reinforcement loop wired — memory IDs from recall results call reinforce endpoint, boosting frequently-accessed memories
-- [ ] **RECL-02**: Decay applied to memories not accessed within configurable window — rarely-recalled memories lose salience
-- [ ] **RECL-03**: Noise filter strengthened — expanded regex patterns + improved extraction prompt reduce noise rate below 5% (from ~13%)
-- [ ] **RECL-04**: Neo4j query timeout set to 800ms (from unbounded) — recall never blocks on slow graph queries
-- [ ] **RECL-05**: Qdrant and Neo4j queries run in parallel with independent timeouts — total recall latency under 1s P95
-- [ ] **RECL-06**: Semantic domain disambiguation prevents cross-domain bleed within an agent — "tools" in leatherwork context doesn't surface vehicle maintenance memories
-- [ ] **RECL-07**: Sufficiency gate thresholds tuned against ground-truth corpus — configurable confidence threshold for when to invoke graph fallback
+- [ ] **DOCS-01**: User can follow a complete Mac deployment guide in DEPLOYMENT.md (launchd plist content, `bootstrap`/`bootout` commands, log location, Homebrew prerequisites, `aletheia enable`/`disable` reference)
+- [ ] **DOCS-02**: User can trust QUICKSTART.md as accurate (all described features exist and work — no aspirational/non-existent behavior)
 
-### Observability
+### Bug Fixes
 
-- [ ] **OBSV-01**: Unified memory health endpoint returns: noise rate, orphan count, RELATES_TO rate, recall latency P95, Qdrant entry counts per domain, workspace flush success rate
-- [ ] **OBSV-02**: `memory:health_degraded` event emitted when any health metric crosses configured threshold
-- [ ] **OBSV-03**: Corpus audit tooling — CLI command to run ground-truth corpus against current system and report precision/recall delta
-- [ ] **OBSV-04**: Memory write receipts visible in diagnostics — every write path produces a traceable receipt
+- [ ] **BUG-01**: User can complete a Dianoia planning session without stream timeout errors (`sessions_dispatch` long-running sub-agent calls succeed — root cause of #208 investigated and fixed)
 
 ## v2 Requirements
 
-Deferred to future milestone. Tracked but not in current roadmap.
+Deferred to a future release.
 
-### Advanced Self-Healing
+### Enhanced Onboarding
 
-- **HEAL-01**: Autonomous contradiction resolution during sleep-time — not just detection, but LLM-driven merge/invalidation
-- **HEAL-02**: Community clustering health — PageRank/community detection on Neo4j graph with periodic refresh
-- **HEAL-03**: Cross-domain serendipitous discovery — surface unexpected connections between agent domains
+- **ONBOARD-01**: User can use `@clack/prompts` enhanced CLI wizard (richer interactive prompts; polish after daily use patterns emerge)
+- **ONBOARD-02**: User can run `aletheia init --reset` for a full guided re-setup
+- **ONBOARD-03**: User gets auto-remediation from `aletheia doctor --fix` (beyond hint-only: fix build artifacts, restart services)
 
-### Advanced Recall
+### Windows/WSL2
 
-- **ADVR-01**: BM25 as third recall tier (behind vector + graph) via Qdrant sparse vectors
-- **ADVR-02**: Embedding model migration tooling — planned reindex with zero-downtime switchover
+- **WIN-01**: User can run Aletheia on Windows via WSL2 (when user demand confirmed)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Real-time graph writes on every message | Latency killer — async after-turn is correct pattern |
-| LLM-generated Cypher queries | Hallucination and schema drift risk — use predefined parameterized Cypher |
-| Embedding model hot-swapping | Requires full reindex — plan as explicit migration |
-| Cross-agent memory sharing | Privacy boundary collapse risk — defer to explicit export with approval gates |
-| Autonomous memory deletion | Irreversible data loss risk — soft decay + cold archive, no hard delete |
-| Distributed multi-instance deployment | Single-server is the target for this milestone |
-| UI changes beyond health visibility | Memory audit scope, not UI scope |
-| Replacing Qdrant or Neo4j engines | Fix the implementation, not the stack |
+| Docker Desktop requirement for Mac | Native Qdrant binary + Homebrew Neo4j are available; no Docker required on Mac is the milestone goal |
+| pm2 / process manager | launchd and systemd are native OS solutions; avoid npm global dependencies in the operational layer |
+| Auto-install of dependencies | Detect and tell the user what to run; never install unbidden software |
+| Slack integration (#210) | Different domain — deferred to integrations milestone |
+| Dianoia bugs #233 (full list) | Bug fixes tracked on GitHub; not onboarding-blocking |
+| Rename issues (#226, #227, #228, #229) | Breaking changes requiring a dedicated milestone |
 
 ## Traceability
 
+Which phases cover which requirements. Updated during roadmap creation.
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Complete |
-| TEST-02 | Phase 1 | Complete |
-| TEST-03 | Phase 1 | Complete |
-| TEST-04 | Phase 1 | Complete |
-| TEST-05 | Phase 1 | Complete |
-| INTG-01 | Phase 2 | Complete |
-| INTG-02 | Phase 2 | Complete |
-| INTG-03 | Phase 2 | Complete |
-| INTG-04 | Phase 2 | Complete |
-| INTG-05 | Phase 2 | Complete |
-| INTG-06 | Phase 2 | Complete |
-| INTG-07 | Phase 2 | Complete |
-| GRPH-01 | Phase 3 | Pending |
-| GRPH-02 | Phase 3 | Pending |
-| GRPH-03 | Phase 3 | Pending |
-| GRPH-04 | Phase 3 | Complete |
-| GRPH-05 | Phase 3 | Complete |
-| GRPH-06 | Phase 3 | Complete |
-| EXTR-01 | Phase 4 | Pending |
-| EXTR-02 | Phase 4 | Pending |
-| EXTR-03 | Phase 4 | Pending |
-| EXTR-04 | Phase 4 | Pending |
-| EXTR-05 | Phase 4 | Pending |
-| EXTR-06 | Phase 4 | Pending |
-| RECL-01 | Phase 5 | Pending |
-| RECL-02 | Phase 5 | Pending |
-| RECL-03 | Phase 5 | Pending |
-| RECL-04 | Phase 5 | Pending |
-| RECL-05 | Phase 5 | Pending |
-| RECL-06 | Phase 5 | Pending |
-| RECL-07 | Phase 5 | Pending |
-| OBSV-01 | Phase 6 | Pending |
-| OBSV-02 | Phase 6 | Pending |
-| OBSV-03 | Phase 6 | Pending |
-| OBSV-04 | Phase 6 | Pending |
+| COMPAT-01 | Phase 14 | Complete |
+| COMPAT-02 | Phase 14 | Complete |
+| COMPAT-03 | Phase 14 | Complete |
+| COMPAT-04 | Phase 14 | Complete |
+| LAUNCHD-01 | Phase 15 | Pending |
+| LAUNCHD-02 | Phase 15 | Pending |
+| LAUNCHD-03 | Phase 15 | Pending |
+| LAUNCHD-04 | Phase 15 | Pending |
+| DOCTOR-01 | Phase 16 | Pending |
+| DOCTOR-02 | Phase 16 | Pending |
+| DOCTOR-03 | Phase 16 | Pending |
+| INIT-01 | Phase 16 | Pending |
+| INIT-02 | Phase 16 | Pending |
+| BUG-01 | Phase 16 | Pending |
+| SETUP-01 | Phase 17 | Pending |
+| SETUP-02 | Phase 17 | Pending |
+| SETUP-03 | Phase 17 | Pending |
+| SETUP-04 | Phase 17 | Pending |
+| DOCS-01 | Phase 17 | Pending |
+| DOCS-02 | Phase 17 | Pending |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 35
-- Unmapped: 0 ✓
+- v1.2 requirements: 20 total
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
-*Requirements defined: 2026-02-24*
-*Last updated: 2026-02-24 after initial definition*
+*Requirements defined: 2026-02-26*
+*Last updated: 2026-02-26 — traceability completed after roadmap creation*
