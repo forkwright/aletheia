@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 5 — Recall Quality
+**Current focus:** Phase 5.1 — Emergency Distillation Sidecar Wiring
 
 ## Current Position
 
-Phase: 5 of 6 (Recall Quality)
-Plan: 4 of 4 in current phase (05-04 complete — domain re-ranking via token Jaccard overlap, hierarchical sufficiency config, tune-sufficiency.ts)
-Status: Phase 5 complete — ready for Phase 6
-Last activity: 2026-02-26 — Plan 05-04 complete; domain relevance re-ranking in /search, sufficiency config hierarchy verified, tuning script created
+Phase: 5.1 of 6 (Emergency Distillation Sidecar Wiring — gap closure)
+Plan: 1 of 1 in current phase (05.1-01 complete — sidecarUrl wired through RuntimeServices to emergency distillation path, emergency flag in DistillationOpts and distill:before/distill:after events)
+Status: Phase 5.1 complete — EXTR-01, EXTR-02, EXTR-05 complete for emergency path
+Last activity: 2026-02-27 — Plan 05.1-01 complete; sidecarUrl in RuntimeServices, emergency: true in opts and events, 13 tests passing
 
-Progress: [██████████████] 87%
+Progress: [███████████████] 91%
 
 ## Performance Metrics
 
@@ -32,6 +32,7 @@ Progress: [██████████████] 87%
 | 03-graph-extraction-overhaul | 2 | ~9 min | ~5 min |
 | 04-extraction-pipeline-completion | 4 | 30 min | 7.5 min |
 | 05-recall-quality (partial) | 3 | ~17 min | ~6 min |
+| 05.1-emergency-distillation-sidecar-wiring | 1 | 3 min | 3 min |
 
 **Recent Trend:**
 - Last 5 plans: 3 min, 4 min, 3 min, 7 min, 2 min
@@ -104,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 05-recall-quality / 05-04]: min_factor=0.6 in _domain_relevance_score — cross-domain penalty max 40%, never excluded (soft boundaries)
 - [Phase 05-recall-quality / 05-04]: _apply_domain_reranking skips when no Thread context: in query — avoids spurious penalty on bare queries
 - [Phase 05-recall-quality / 05-04]: Hierarchical sufficiency config confirmed working via Zod .default({}) — partial pipeline.json inherits unset fields from global defaults
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: sidecarUrl added to RuntimeServices (not TurnState) — service-level config belongs on the services layer, matching memoryTarget/plugins/watchdog placement
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: emergency: true is non-conditional at call site in context.ts (that call IS the emergency path) but conditional in pipeline.ts event emits (avoids emitting emergency: undefined on normal distills)
+- [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: Test assertion uses mock.calls[N][4] direct access instead of toHaveBeenCalledWith — services.router is undefined in makeServices, and expect.anything() excludes undefined
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-26
-Stopped at: Completed 05-recall-quality 05-04-PLAN.md — domain re-ranking, hierarchical sufficiency config, tune-sufficiency.ts
+Last session: 2026-02-27
+Stopped at: Completed 05.1-emergency-distillation-sidecar-wiring 05.1-01-PLAN.md — sidecarUrl in RuntimeServices, emergency flag in DistillationOpts and distill:before/distill:after events, 13 tests passing
 Resume file: None

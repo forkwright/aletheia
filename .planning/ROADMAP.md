@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Graph Extraction Overhaul** - Neo4j RELATES_TO below 30%, typed relationships via neo4j-graphrag
 - [x] **Phase 4: Extraction Pipeline Completion** - Contradiction wiring, cross-chunk dedup, AbortSignal, Mem0 infer=False (3/4 plans complete) (completed 2026-02-26)
 - [x] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements (completed 2026-02-26)
-- [ ] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
+- [x] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
 - [ ] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling (gap closure — Phase 6 never started)
 
 ## Phase Details
@@ -140,7 +140,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 05.1-01-PLAN.md — Wire sidecarUrl + emergency flag through emergency distillation path
+- [x] 05.1-01-PLAN.md — Wire sidecarUrl + emergency flag through emergency distillation path
 
 ### Phase 6: Observability
 **Goal**: Memory system health is visible, alerting, and continuously verifiable — operators can confirm the system stays working
@@ -166,5 +166,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 3. Graph Extraction Overhaul | 2/3 | In Progress|  |
 | 4. Extraction Pipeline Completion | 4/4 | Complete    | 2026-02-26 |
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
-| 5.1 Emergency Distillation Sidecar Wiring | 0/1 | Not started | - |
+| 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
 | 6. Observability | 0/TBD | Not started | - |
