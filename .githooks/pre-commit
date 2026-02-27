@@ -11,10 +11,15 @@ runtime_changed() { echo "$STAGED" | grep -q "^infrastructure/runtime/"; }
 ui_changed() { echo "$STAGED" | grep -q "^ui/"; }
 sidecar_changed() { echo "$STAGED" | grep -q "^infrastructure/memory/sidecar/"; }
 
-# Runtime: typecheck + lint (unchanged from original hook, now conditional)
+# Runtime: typecheck + lint + invariant tests
 if runtime_changed; then
   cd "$ROOT/infrastructure/runtime"
   npm run typecheck && npm run lint:check
+  # Run invariant tests (fast design-decision tests, ~100ms)
+  npx vitest run src/invariants.test.ts --reporter=dot 2>/dev/null || {
+    echo "Runtime invariant tests failed — fix before committing"
+    exit 1
+  }
 fi
 
 # UI: oxlint + eslint-plugin-svelte + svelte-check

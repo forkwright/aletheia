@@ -1,6 +1,7 @@
 // Canonical error code registry — every error code in the system is defined here
-// Format: MODULE_CONDITION
+// Format: MODULE_CONDITION (UPPER_SNAKE_CASE)
 // AI agents: search this file to understand what errors a module can produce.
+// INVARIANT: all codes UPPER_SNAKE_CASE, unique descriptions, module prefix coverage — see invariants.test.ts
 
 export const ERROR_CODES = {
   // hermeneus (provider routing)

@@ -1,4 +1,5 @@
 // Structured error hierarchy for machine-readable error handling
+// INVARIANT: all error subclasses extend AletheiaError, carry code+module+timestamp — see invariants.test.ts
 import type { ErrorCode } from "./error-codes.js";
 
 export interface AletheiaErrorOpts {
