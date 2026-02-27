@@ -91,9 +91,10 @@ describe("CompetenceModel", () => {
     expect(agent.overallScore).toBeCloseTo((0.52 + 0.45) / 2);
   });
 
-  it("persists and reloads from file", () => {
+  it("persists and reloads from file", async () => {
     model.recordSuccess("syn", "health");
     model.recordSuccess("syn", "health");
+    await model.waitForFlush();
 
     const model2 = new CompetenceModel(tmpDir);
     expect(model2.getScore("syn", "health")).toBeCloseTo(0.54);

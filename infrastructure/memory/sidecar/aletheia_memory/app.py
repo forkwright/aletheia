@@ -12,12 +12,16 @@ from fastapi.responses import JSONResponse
 from mem0 import Memory
 from starlette.responses import Response
 
-from .config import LLM_BACKEND, build_mem0_config
+from neo4j import GraphDatabase
+from qdrant_client import QdrantClient
+
+from .config import LLM_BACKEND, NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT, build_mem0_config
 from .discovery import discovery_router
 from .evolution import evolution_router
+from .graph import set_shared_driver
 from .graph_extraction import init_pipeline
 from .llm_backend import refresh_oauth_token
-from .routes import foresight_router, router
+from .routes import foresight_router, router, set_shared_qdrant
 from .temporal import ensure_temporal_schema, temporal_router
 
 log = logging.getLogger("aletheia.memory")
@@ -172,14 +176,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if provider == "anthropic-oauth":
             _inject_oauth_llm(memory, _active_backend)
 
+    # Create shared database clients — reused across all requests (#341)
+    neo4j_drv = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD)) if NEO4J_PASSWORD else None
+    set_shared_driver(neo4j_drv)
+    qdrant_cl = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    set_shared_qdrant(qdrant_cl)
+
     app.state.memory = memory
     app.state.backend = _active_backend
     app.state.graph_pipeline = init_pipeline(_active_backend)
+    app.state.neo4j_driver = neo4j_drv
+    app.state.qdrant_client = qdrant_cl
     await ensure_temporal_schema()
 
     log.info("Memory sidecar ready")
     yield
 
+    # Cleanup
+    if neo4j_drv:
+        neo4j_drv.close()
+    qdrant_cl.close()
     memory = None
 
 

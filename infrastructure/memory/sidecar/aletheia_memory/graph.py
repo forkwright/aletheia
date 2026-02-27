@@ -1,4 +1,4 @@
-# Neo4j driver factory and cached availability check
+# Neo4j driver management and cached availability check
 import logging
 import threading
 import time
@@ -15,11 +15,22 @@ _neo4j_checked_at: float = 0.0
 _check_lock = threading.Lock()
 _CHECK_INTERVAL = 30.0  # seconds
 
+# Shared driver instance, set from app lifespan
+_shared_driver: neo4j.Driver | None = None
+
+
+def set_shared_driver(driver: neo4j.Driver | None) -> None:
+    """Set the shared Neo4j driver (called from app lifespan)."""
+    global _shared_driver
+    _shared_driver = driver
+
 
 def neo4j_driver() -> neo4j.Driver:
-    """Create a fresh Neo4j driver instance."""
+    """Return the shared Neo4j driver, or create a fresh one if not set."""
+    if _shared_driver is not None:
+        return _shared_driver
     from neo4j import GraphDatabase
-    driver: neo4j.Driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))  # pyright: ignore[reportUnknownMemberType] — neo4j stubs use **config: Unknown
+    driver: neo4j.Driver = GraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))  # pyright: ignore[reportUnknownMemberType]
     return driver
 
 
@@ -41,8 +52,7 @@ def neo4j_available() -> bool:
 
         try:
             driver = neo4j_driver()
-            driver.verify_connectivity()  # pyright: ignore[reportUnknownMemberType] — neo4j stubs use **config: Unknown
-            driver.close()
+            driver.verify_connectivity()  # pyright: ignore[reportUnknownMemberType]
             _neo4j_ok = True
         except Exception:
             _neo4j_ok = False

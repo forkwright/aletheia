@@ -1,5 +1,6 @@
 // Competence model — per-agent per-domain confidence tracking
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 
@@ -27,6 +28,8 @@ const DISAGREEMENT_PENALTY = 0.01;
 export class CompetenceModel {
   private data: Record<string, AgentCompetence> = {};
   private filePath: string;
+  private dirty = false;
+  private flushScheduled = false;
 
   constructor(sharedRoot: string) {
     const dir = join(sharedRoot, "shared", "competence");
@@ -46,8 +49,30 @@ export class CompetenceModel {
     }
   }
 
+  /** Mark data as dirty and schedule an async flush on next microtask. */
   private save(): void {
-    writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
+    this.dirty = true;
+    if (!this.flushScheduled) {
+      this.flushScheduled = true;
+      setImmediate(() => this.flush());
+    }
+  }
+
+  private flush(): void {
+    this.flushScheduled = false;
+    if (!this.dirty) return;
+    this.dirty = false;
+    this.flushPromise = writeFile(this.filePath, JSON.stringify(this.data, null, 2)).catch((err) => {
+      log.warn(`Competence save failed: ${err instanceof Error ? err.message : err}`);
+    });
+  }
+
+  private flushPromise: Promise<void> = Promise.resolve();
+
+  /** Wait for any pending async writes to complete. Useful for tests. */
+  async waitForFlush(): Promise<void> {
+    if (this.dirty) this.flush();
+    await this.flushPromise;
   }
 
   private ensureAgent(nousId: string): AgentCompetence {

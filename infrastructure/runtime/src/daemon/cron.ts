@@ -1,5 +1,8 @@
 // Cron scheduler — dispatch timed messages to agents or run shell commands
-import { execSync } from "node:child_process";
+import { exec as execCb } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(execCb);
 import { createLogger } from "../koina/logger.js";
 import type { NousManager } from "../nous/manager.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
@@ -25,11 +28,14 @@ export class CronScheduler {
   private running = false;
   private ticking = false;
   private builtInCommands = new Map<string, () => Promise<string>>();
+  private timezone: string;
 
   constructor(
     private config: AletheiaConfig,
     private manager: NousManager,
-  ) {}
+  ) {
+    this.timezone = config.agents.defaults.userTimezone ?? "UTC";
+  }
 
   /**
    * Register a built-in command that can be referenced from cron jobs.
@@ -55,7 +61,7 @@ export class CronScheduler {
         command: j.command,
         schedule: j.schedule,
         timeoutSeconds: j.timeoutSeconds,
-        nextRun: computeNextRun(j.schedule),
+        nextRun: computeNextRun(j.schedule, undefined, this.timezone),
       }));
 
     if (this.entries.length === 0) {
@@ -119,7 +125,7 @@ export class CronScheduler {
 
     for (const entry of dueEntries) {
       entry.lastRun = now;
-      entry.nextRun = computeNextRun(entry.schedule, now);
+      entry.nextRun = computeNextRun(entry.schedule, now, this.timezone);
     }
 
     const results = await Promise.allSettled(
@@ -142,18 +148,13 @@ export class CronScheduler {
             ]);
           }
 
-          return new Promise<{ type: "command"; stdout: string }>((resolve, reject) => {
-            try {
-              const stdout = execSync(entry.command!, {
-                timeout: timeoutMs,
-                encoding: "utf-8",
-                stdio: ["ignore", "pipe", "pipe"],
-              });
-              log.info(`Cron command ${entry.id} completed: ${stdout.slice(0, 200)}`);
-              resolve({ type: "command", stdout: stdout.slice(0, 2000) });
-            } catch (error) {
-              reject(error instanceof Error ? error : new Error(String(error)));
-            }
+          return execAsync(entry.command!, {
+            timeout: timeoutMs,
+            encoding: "utf-8",
+          }).then(({ stdout }) => {
+            const out = String(stdout);
+            log.info(`Cron command ${entry.id} completed: ${out.slice(0, 200)}`);
+            return { type: "command" as const, stdout: out.slice(0, 2000) };
           });
         }
 
@@ -190,7 +191,30 @@ export class CronScheduler {
   }
 }
 
-function computeNextRun(schedule: string, from?: number): number {
+/** Get date/time components in the specified timezone using Intl API. */
+function tzParts(epochMs: number, tz: string): { year: number; month: number; day: number; dow: number; hour: number; minute: number } {
+  const d = new Date(epochMs);
+  // Intl.DateTimeFormat with hourCycle: "h23" gives 0-23 hours
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "numeric",
+    weekday: "short",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]));
+  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: parseInt(parts["year"]!, 10),
+    month: parseInt(parts["month"]!, 10),
+    day: parseInt(parts["day"]!, 10),
+    dow: dowMap[parts["weekday"]!] ?? 0,
+    hour: parseInt(parts["hour"]!, 10),
+    minute: parseInt(parts["minute"]!, 10),
+  };
+}
+
+function computeNextRun(schedule: string, from?: number, tz = "UTC"): number {
   const now = from ?? Date.now();
 
   const intervalMatch = schedule.match(/^every\s+(\d+)\s*(m|h|min|hour|s|sec)/i);
@@ -208,19 +232,15 @@ function computeNextRun(schedule: string, from?: number): number {
 
   const timeMatch = schedule.match(/^at\s+(\d{1,2}):(\d{2})/i);
   if (timeMatch) {
-    const hour = parseInt(timeMatch[1]!, 10);
-    const minute = parseInt(timeMatch[2]!, 10);
-    const date = new Date(now);
-    date.setHours(hour, minute, 0, 0);
-    if (date.getTime() <= now) {
-      date.setDate(date.getDate() + 1);
-    }
-    return date.getTime();
+    const targetHour = parseInt(timeMatch[1]!, 10);
+    const targetMinute = parseInt(timeMatch[2]!, 10);
+    // Delegate to cron expression parser which handles timezone correctly
+    return computeFromCronExpr([String(targetMinute), String(targetHour), "*", "*", "*"], now, tz);
   }
 
   const cronParts = schedule.split(/\s+/);
   if (cronParts.length === 5) {
-    return computeFromCronExpr(cronParts, now);
+    return computeFromCronExpr(cronParts, now, tz);
   }
 
   log.warn(`Unknown cron schedule format: ${schedule}, defaulting to 1h`);
@@ -254,7 +274,7 @@ function fieldMatches(field: Set<number> | null, value: number): boolean {
   return field === null || field.has(value);
 }
 
-function computeFromCronExpr(parts: string[], from: number): number {
+function computeFromCronExpr(parts: string[], from: number, tz = "UTC"): number {
   const [minStr, hourStr, domStr, monStr, dowStr] = parts;
   const minutes = parseCronField(minStr!, 0, 59);
   const hours = parseCronField(hourStr!, 0, 23);
@@ -262,26 +282,22 @@ function computeFromCronExpr(parts: string[], from: number): number {
   const months = parseCronField(monStr!, 1, 12);
   const dows = parseCronField(dowStr!, 0, 7); // 0=Sun, 7=Sun
 
-  const candidate = new Date(from);
-  candidate.setSeconds(0, 0);
-  candidate.setMilliseconds(0);
-
-  // Scan forward up to 400 days to find next matching time
+  // Scan forward in 1-minute increments using timezone-aware field extraction.
+  // Start from next minute boundary.
+  let candidate = from - (from % 60000) + 60000; // next minute boundary
   const limit = from + 400 * 24 * 60 * 60 * 1000;
-  // Start from next minute
-  candidate.setMinutes(candidate.getMinutes() + 1);
 
-  while (candidate.getTime() < limit) {
-    const mo = candidate.getMonth() + 1;
-    const dom = candidate.getDate();
-    const dow = candidate.getDay(); // 0=Sun
-    const hr = candidate.getHours();
-    const mn = candidate.getMinutes();
+  while (candidate < limit) {
+    const p = tzParts(candidate, tz);
+    const mo = p.month;
+    const dom = p.day;
+    const dow = p.dow;
+    const hr = p.hour;
+    const mn = p.minute;
 
     if (!fieldMatches(months, mo)) {
-      // Jump to first day of next month
-      candidate.setMonth(candidate.getMonth() + 1, 1);
-      candidate.setHours(0, 0, 0, 0);
+      // Skip forward ~1 day at a time to avoid minute-by-minute scan through wrong months
+      candidate += 24 * 60 * 60 * 1000;
       continue;
     }
 
@@ -293,22 +309,25 @@ function computeFromCronExpr(parts: string[], from: number): number {
       : domMatch && dowMatch;
 
     if (!dayOk) {
-      candidate.setDate(candidate.getDate() + 1);
-      candidate.setHours(0, 0, 0, 0);
+      // Skip to next day: advance by enough minutes to reach next midnight in tz
+      // Approximate: skip forward by (24 - hr) hours - mn minutes
+      const minutesToMidnight = (24 - hr) * 60 - mn;
+      candidate += minutesToMidnight * 60000;
       continue;
     }
 
     if (!fieldMatches(hours, hr)) {
-      candidate.setHours(candidate.getHours() + 1, 0, 0, 0);
+      // Skip to next hour
+      candidate += (60 - mn) * 60000;
       continue;
     }
 
     if (!fieldMatches(minutes, mn)) {
-      candidate.setMinutes(candidate.getMinutes() + 1, 0, 0);
+      candidate += 60000; // next minute
       continue;
     }
 
-    return candidate.getTime();
+    return candidate;
   }
 
   // Fallback if no match found within scan window
