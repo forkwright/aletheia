@@ -1,10 +1,12 @@
 // Diagnostic checks for `aletheia doctor`
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
 import { loadConfig } from "../taxis/loader.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { readJson } from "./fs.js";
 
 export interface DiagnosticResult {
   name: string;
@@ -19,6 +21,7 @@ export interface DiagnosticResult {
 type DiagnosticCheck = (config: AletheiaConfig | null) => DiagnosticResult;
 
 const checks: DiagnosticCheck[] = [
+  checkBootstrapAnchor,
   checkConfigValid,
   checkWorkspacesExist,
   checkSharedDirs,
@@ -29,6 +32,44 @@ const checks: DiagnosticCheck[] = [
   checkSignalConfig,
   checkCredentialsDir,
 ];
+
+function checkBootstrapAnchor(_config: AletheiaConfig | null): DiagnosticResult {
+  const path = join(homedir(), ".aletheia", "anchor.json");
+  const raw = readJson<Record<string, unknown>>(path);
+
+  if (raw === null) {
+    return {
+      name: "bootstrap_anchor",
+      status: "warn",
+      message: `anchor.json not found at ${path} — run 'aletheia init' to configure your deployment`,
+    };
+  }
+
+  if (typeof raw["nousDir"] !== "string" || typeof raw["deployDir"] !== "string") {
+    return {
+      name: "bootstrap_anchor",
+      status: "error",
+      message: `anchor.json at ${path} is missing nousDir or deployDir`,
+    };
+  }
+
+  const nousDir = raw["nousDir"] as string;
+  const deployDirVal = raw["deployDir"] as string;
+  const nousExists = existsSync(nousDir);
+  const deployExists = existsSync(deployDirVal);
+
+  const lines = [
+    `anchor.json: ${path}`,
+    `  nousDir:   ${nousDir}${nousExists ? "" : "  (directory does not exist)"}`,
+    `  deployDir: ${deployDirVal}${deployExists ? "" : "  (directory does not exist)"}`,
+  ];
+
+  return {
+    name: "bootstrap_anchor",
+    status: nousExists && deployExists ? "ok" : "warn",
+    message: lines.join("\n"),
+  };
+}
 
 function checkConfigValid(_config: AletheiaConfig | null): DiagnosticResult {
   try {
