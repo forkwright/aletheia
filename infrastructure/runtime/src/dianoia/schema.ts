@@ -150,6 +150,26 @@ CREATE INDEX IF NOT EXISTS idx_planning_discussions_project ON planning_discussi
 CREATE INDEX IF NOT EXISTS idx_planning_discussions_phase ON planning_discussions(phase_id);
 `;
 
+// Phase 6: Interjection — Message injection queue (INTERJ-01) + Sub-agent interjection (INTERJ-02)
+export const PLANNING_V29_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_messages (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT,
+  source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'sub-agent', 'system')),
+  source_session_id TEXT,
+  content TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low', 'normal', 'high', 'critical')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'expired')),
+  delivered_at TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_messages_project ON planning_messages(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_planning_messages_phase ON planning_messages(phase_id, status);
+`;
+
 // Phase 6: Observability — Decision audit trail (OBS-03) + Turn tracking (OBS-05)
 export const PLANNING_V28_MIGRATION = `
 CREATE TABLE IF NOT EXISTS planning_decisions (

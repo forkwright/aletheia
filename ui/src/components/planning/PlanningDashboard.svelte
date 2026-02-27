@@ -4,6 +4,7 @@
   import RoadmapView from "./RoadmapView.svelte";
   import ExecutionStatus from "./ExecutionStatus.svelte";
   import SpawnStatus from "./SpawnStatus.svelte";
+  import MessageQueue from "./MessageQueue.svelte";
   import DiscussionPanel from "./DiscussionPanel.svelte";
   import VerificationPanel from "./VerificationPanel.svelte";
   import CheckpointApproval from "./CheckpointApproval.svelte";
@@ -298,6 +299,13 @@
         {#if ["executing", "verifying"].includes(project.state)}
           <div class="dashboard-section">
             <SpawnStatus projectId={project.id} />
+          </div>
+        {/if}
+
+        <!-- Message Injection (INTERJ-01 / INTERJ-02) -->
+        {#if ["executing", "verifying"].includes(project.state)}
+          <div class="dashboard-section">
+            <MessageQueue projectId={project.id} />
           </div>
         {/if}
 

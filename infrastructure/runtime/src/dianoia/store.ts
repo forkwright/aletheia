@@ -11,6 +11,7 @@ import type {
   PlanningCheckpoint,
   PlanningConfig,
   PlanningDecision,
+  PlanningMessage,
   PlanningPhase,
   PlanningProject,
   PlanningRequirement,
@@ -1019,6 +1020,133 @@ export class PlanningStore {
       turnCount: row["turn_count"] as number,
       tokenCount: row["token_count"] as number,
       updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Message Queue (INTERJ-01/02) ─────────────────────────
+
+  /**
+   * Enqueue a message for injection into a running execution.
+   * Messages are consumed at turn boundaries (between waves or between tasks).
+   */
+  enqueueMessage(opts: {
+    projectId: string;
+    phaseId?: string;
+    source: PlanningMessage["source"];
+    sourceSessionId?: string;
+    content: string;
+    priority?: PlanningMessage["priority"];
+    expiresAt?: string;
+  }): PlanningMessage {
+    const id = generateId("msg");
+    this.db.prepare(
+      `INSERT INTO planning_messages (id, project_id, phase_id, source, source_session_id, content, priority, status, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+    ).run(
+      id,
+      opts.projectId,
+      opts.phaseId ?? null,
+      opts.source,
+      opts.sourceSessionId ?? null,
+      opts.content,
+      opts.priority ?? "normal",
+      opts.expiresAt ?? null,
+    );
+    return this.getMessage(id)!;
+  }
+
+  getMessage(id: string): PlanningMessage | undefined {
+    const row = this.db.prepare("SELECT * FROM planning_messages WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapMessage(row) : undefined;
+  }
+
+  /**
+   * Drain all pending messages for a project, optionally filtered by phase.
+   * Marks consumed messages as 'delivered'. Respects priority ordering (critical first).
+   * Automatically expires messages past their expiresAt timestamp.
+   */
+  drainMessages(projectId: string, phaseId?: string): PlanningMessage[] {
+    const now = new Date().toISOString();
+
+    // Expire old messages first
+    this.db.prepare(
+      `UPDATE planning_messages SET status = 'expired'
+       WHERE project_id = ? AND status = 'pending' AND expires_at IS NOT NULL AND expires_at < ?`
+    ).run(projectId, now);
+
+    // Fetch pending messages (priority: critical > high > normal > low)
+    const priorityOrder = "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 END";
+    let rows: Record<string, unknown>[];
+    if (phaseId) {
+      rows = this.db.prepare(
+        `SELECT * FROM planning_messages
+         WHERE project_id = ? AND (phase_id = ? OR phase_id IS NULL) AND status = 'pending'
+         ORDER BY ${priorityOrder}, created_at ASC`
+      ).all(projectId, phaseId) as Record<string, unknown>[];
+    } else {
+      rows = this.db.prepare(
+        `SELECT * FROM planning_messages
+         WHERE project_id = ? AND status = 'pending'
+         ORDER BY ${priorityOrder}, created_at ASC`
+      ).all(projectId) as Record<string, unknown>[];
+    }
+
+    const messages = rows.map(r => this.mapMessage(r));
+
+    // Mark all drained messages as delivered
+    if (messages.length > 0) {
+      const ids = messages.map(m => m.id);
+      const placeholders = ids.map(() => "?").join(", ");
+      this.db.prepare(
+        `UPDATE planning_messages SET status = 'delivered', delivered_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id IN (${placeholders})`
+      ).run(...ids);
+    }
+
+    return messages;
+  }
+
+  /**
+   * List all messages for a project (all statuses), optionally filtered by phase.
+   */
+  listMessages(projectId: string, opts?: { phaseId?: string; status?: PlanningMessage["status"] }): PlanningMessage[] {
+    let sql = "SELECT * FROM planning_messages WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.phaseId) {
+      sql += " AND (phase_id = ? OR phase_id IS NULL)";
+      params.push(opts.phaseId);
+    }
+    if (opts?.status) {
+      sql += " AND status = ?";
+      params.push(opts.status);
+    }
+    sql += " ORDER BY created_at DESC";
+    return (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(r => this.mapMessage(r));
+  }
+
+  /**
+   * Count pending messages for a project — lightweight check for the execution loop.
+   */
+  countPendingMessages(projectId: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) as count FROM planning_messages WHERE project_id = ? AND status = 'pending'"
+    ).get(projectId) as { count: number };
+    return row.count;
+  }
+
+  private mapMessage(row: Record<string, unknown>): PlanningMessage {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      phaseId: (row["phase_id"] as string | null) ?? null,
+      source: row["source"] as PlanningMessage["source"],
+      sourceSessionId: (row["source_session_id"] as string | null) ?? null,
+      content: row["content"] as string,
+      priority: row["priority"] as PlanningMessage["priority"],
+      status: row["status"] as PlanningMessage["status"],
+      deliveredAt: (row["delivered_at"] as string | null) ?? null,
+      expiresAt: (row["expires_at"] as string | null) ?? null,
+      createdAt: row["created_at"] as string,
     };
   }
 }

@@ -10,6 +10,8 @@ import {
   PLANNING_V25_MIGRATION,
   PLANNING_V26_MIGRATION,
   PLANNING_V27_MIGRATION,
+  PLANNING_V28_MIGRATION,
+  PLANNING_V29_MIGRATION,
 } from "./schema.js";
 import { DianoiaOrchestrator } from "./orchestrator.js";
 import { ExecutionOrchestrator } from "./execution.js";
@@ -48,6 +50,8 @@ function makeDb(): Database.Database {
   db.exec(PLANNING_V25_MIGRATION);
   db.exec(PLANNING_V26_MIGRATION);
   db.exec(PLANNING_V27_MIGRATION);
+  db.exec(PLANNING_V28_MIGRATION);
+  db.exec(PLANNING_V29_MIGRATION);
   return db;
 }
 
