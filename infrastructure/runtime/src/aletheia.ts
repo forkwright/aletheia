@@ -4,6 +4,7 @@ import { createLogger } from "./koina/logger.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
 import { loadBootstrapAnchor } from "./taxis/bootstrap-loader.js";
 import { initPaths, paths } from "./taxis/paths.js";
+import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
 import { ToolRegistry } from "./organon/registry.js";
@@ -125,6 +126,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const config = loadConfig(configPath);
 
   applyEnv(config);
+  resolveSecretRefs(config); // must run after applyEnv — env vars from config.env.vars must be set first
 
   // Initialize encryption before store (store uses encryptIfEnabled/decryptIfNeeded)
   if (config.encryption.enabled) {
@@ -831,6 +833,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Config hot-reload ---
   const configWatcher = watchConfig(configPath, (newConfig) => {
+    applyEnv(newConfig);
+    resolveSecretRefs(newConfig); // resolve refs on hot-reload too
     const diff = runtime.manager.reloadConfig(newConfig);
 
     // Rebuild routing cache with new bindings
