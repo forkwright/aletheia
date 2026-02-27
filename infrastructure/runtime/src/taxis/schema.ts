@@ -227,6 +227,11 @@ const SlackChannelConfig = z.object({
   identity: z.object({
     useAgentIdentity: z.boolean().default(true),
   }).default({}),
+  streaming: z.boolean().default(true),
+  reactions: z.object({
+    enabled: z.boolean().default(true),
+    processingEmoji: z.string().default("hourglass_flowing_sand"),
+  }).default({}),
 });
 
 const ChannelsConfig = z

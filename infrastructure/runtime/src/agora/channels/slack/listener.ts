@@ -1,7 +1,8 @@
-// Slack inbound message listener (Spec 34, Phase 3)
+// Slack inbound message listener (Spec 34, Phase 3+5)
 //
 // Handles: message events, app_mention events, DM detection, thread tracking,
-// mention gating, inbound debouncing, message dedup.
+// mention gating, inbound debouncing, message dedup, streaming dispatch,
+// processing reactions.
 //
 // Reference: OpenClaw src/slack/monitor/message-handler.ts, events/messages.ts
 
@@ -10,7 +11,9 @@ import type { WebClient } from "@slack/web-api";
 import { createLogger } from "../../../koina/logger.js";
 import type { InboundMessage } from "../../../nous/pipeline/types.js";
 import type { ChannelContext } from "../../types.js";
-import { mrkdwnToMarkdown, stripBotMention } from "./format.js";
+import { mrkdwnToMarkdown, markdownToMrkdwn, stripBotMention } from "./format.js";
+import { startSlackStream, appendSlackStream, stopSlackStream, type SlackStreamSession } from "./streaming.js";
+import { addSlackReaction, removeSlackReaction } from "./reactions.js";
 
 const log = createLogger("agora:slack:listener");
 
@@ -137,6 +140,8 @@ export interface SlackListenerConfig {
   webClient: WebClient;
   /** Bot's own user ID (from auth.test) — for self-filtering and mention stripping */
   botUserId: string;
+  /** Team ID from auth.test — needed for streaming */
+  teamId: string;
   /** Agora channel context — for dispatching to nous */
   ctx: ChannelContext;
   /** Require @mention in group channels (default: true) */
@@ -151,6 +156,13 @@ export interface SlackListenerConfig {
   groupPolicy: "open" | "allowlist" | "disabled";
   /** Debounce window in ms (default: 1500) */
   debounceMs?: number;
+  /** Enable native Slack text streaming (Phase 5) */
+  streaming: boolean;
+  /** Reaction config (Phase 5) */
+  reactions: {
+    enabled: boolean;
+    processingEmoji: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +239,173 @@ function isAllowedChannel(channelId: string, config: SlackListenerConfig): boole
 }
 
 // ---------------------------------------------------------------------------
+// Streaming dispatch — consume TurnStreamEvents and pipe to Slack ChatStreamer
+// ---------------------------------------------------------------------------
+
+interface StreamDispatchParams {
+  ctx: ChannelContext;
+  inbound: InboundMessage;
+  webClient: WebClient;
+  channelId: string;
+  threadTs?: string | undefined;
+  userId: string;
+  channelType: string;
+  teamId: string;
+}
+
+/**
+ * Dispatch an inbound message using streaming. Consumes TurnStreamEvent async
+ * iterable and pipes text_delta events to Slack's ChatStreamer.
+ *
+ * For channel messages without a thread, we first post a placeholder to create
+ * a thread_ts, then stream within that thread. For DMs and existing threads,
+ * we stream directly.
+ *
+ * Falls back to non-streaming dispatch on any stream error.
+ */
+async function dispatchWithStreaming(params: StreamDispatchParams): Promise<void> {
+  const { ctx, inbound, webClient, channelId, threadTs, userId, channelType, teamId } = params;
+
+  // Streaming requires thread_ts. For DMs, every message is implicitly threaded.
+  // For channels without an existing thread, we need to create one first.
+  let streamThreadTs = threadTs;
+  if (!streamThreadTs && channelType !== "im") {
+    // Post an initial message to start a thread — the response ts becomes our thread
+    try {
+      const initial = await webClient.chat.postMessage({
+        channel: channelId,
+        text: "…", // Placeholder — will be replaced by streaming content
+      });
+      streamThreadTs = initial.ts;
+    } catch (err) {
+      log.warn(`Failed to create thread for streaming, falling back to normal dispatch: ${err instanceof Error ? err.message : err}`);
+      await ctx.dispatch(inbound);
+      return;
+    }
+  }
+
+  // For DMs, use the message's own ts as the thread anchor
+  if (!streamThreadTs && channelType === "im") {
+    // In DMs, we stream as a reply — we need a thread_ts
+    // Post a placeholder that becomes the thread root
+    try {
+      const initial = await webClient.chat.postMessage({
+        channel: channelId,
+        text: "…",
+      });
+      streamThreadTs = initial.ts;
+    } catch (err) {
+      log.warn(`Failed to create DM thread for streaming, falling back: ${err instanceof Error ? err.message : err}`);
+      await ctx.dispatch(inbound);
+      return;
+    }
+  }
+
+  if (!streamThreadTs) {
+    log.warn("No thread_ts available for streaming — falling back to normal dispatch");
+    await ctx.dispatch(inbound);
+    return;
+  }
+
+  let session: SlackStreamSession | null = null;
+  let hasContent = false;
+
+  try {
+    // Start consuming the stream
+    const stream = ctx.dispatchStream!(inbound);
+
+    for await (const event of stream) {
+      switch (event.type) {
+        case "text_delta": {
+          // Lazy-start the stream on first text
+          if (!session) {
+            const streamParams: Parameters<typeof startSlackStream>[0] = {
+              client: webClient,
+              channel: channelId,
+              threadTs: streamThreadTs!,
+              text: markdownToMrkdwn(event.text),
+              teamId,
+            };
+            if (channelType === "im") streamParams.userId = userId;
+            session = await startSlackStream(streamParams);
+            hasContent = true;
+          } else {
+            await appendSlackStream({
+              session,
+              text: markdownToMrkdwn(event.text),
+            });
+            hasContent = true;
+          }
+          break;
+        }
+
+        case "turn_complete": {
+          // Finalize the stream
+          if (session && !session.stopped) {
+            await stopSlackStream({ session });
+          } else if (!hasContent && event.outcome?.text) {
+            // Turn completed with text but no text_delta events were emitted
+            // (e.g., cached response). Post as normal message.
+            await webClient.chat.postMessage({
+              channel: channelId,
+              thread_ts: streamThreadTs!,
+              text: markdownToMrkdwn(event.outcome.text),
+            });
+          }
+          break;
+        }
+
+        case "turn_abort":
+        case "error": {
+          // Clean up the stream on error
+          if (session && !session.stopped) {
+            const errText = event.type === "error" ? event.message : event.reason;
+            await stopSlackStream({
+              session,
+              text: `⚠️ ${errText ?? "Processing interrupted"}`,
+            });
+          }
+          break;
+        }
+
+        // Silently consume other events (tool_start, tool_result, thinking_delta, etc.)
+        default:
+          break;
+      }
+    }
+
+    // Safety: ensure stream is stopped if turn_complete never fired
+    if (session && !session.stopped) {
+      await stopSlackStream({ session });
+    }
+
+    // Clean up the placeholder if we never streamed any content
+    if (!hasContent && streamThreadTs && !threadTs) {
+      // Delete the "…" placeholder we created
+      await webClient.chat.delete({
+        channel: channelId,
+        ts: streamThreadTs,
+      }).catch(() => {}); // Best-effort
+    }
+  } catch (err) {
+    log.error(`Streaming dispatch failed: ${err instanceof Error ? err.message : err}`);
+
+    // Try to stop any active stream
+    if (session && !session.stopped) {
+      await stopSlackStream({ session }).catch(() => {});
+    }
+
+    // Fall back to non-streaming dispatch
+    log.info("Falling back to non-streaming dispatch after stream failure");
+    try {
+      await ctx.dispatch(inbound);
+    } catch (fallbackErr) {
+      log.error(`Fallback dispatch also failed: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public: register event handlers
 // ---------------------------------------------------------------------------
 
@@ -279,10 +458,47 @@ export function registerSlackListeners(config: SlackListenerConfig): InboundDebo
     if (threadTs) buildParams.threadTs = threadTs;
     const inbound = buildInboundMessage(buildParams);
 
+    // Resolve message timestamp for reactions (use the last message's ts)
+    const messageTs = last.message.ts ?? "";
+
     try {
-      await ctx.dispatch(inbound);
+      // Add processing reaction if enabled
+      if (config.reactions.enabled && messageTs) {
+        await addSlackReaction({
+          client: config.webClient,
+          channel: channelId,
+          timestamp: messageTs,
+          emoji: config.reactions.processingEmoji,
+        });
+      }
+
+      // Use streaming dispatch if enabled and available
+      if (config.streaming && ctx.dispatchStream) {
+        await dispatchWithStreaming({
+          ctx,
+          inbound,
+          webClient: config.webClient,
+          channelId,
+          threadTs,
+          userId,
+          channelType,
+          teamId: config.teamId,
+        });
+      } else {
+        await ctx.dispatch(inbound);
+      }
     } catch (err) {
       log.error(`Failed to dispatch Slack message: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      // Remove processing reaction
+      if (config.reactions.enabled && messageTs) {
+        await removeSlackReaction({
+          client: config.webClient,
+          channel: channelId,
+          timestamp: messageTs,
+          emoji: config.reactions.processingEmoji,
+        }).catch(() => {}); // Best-effort removal
+      }
     }
   });
 
