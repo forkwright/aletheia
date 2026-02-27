@@ -84,12 +84,19 @@ const SubagentConfig = z
   })
   .default({});
 
+const NousParams = z.object({
+  maxTokens: z.number().optional(),
+  temperature: z.number().optional(),
+  thinkingBudget: z.number().optional(),
+}).passthrough();  // forward-compat: unknown keys pass through to provider
+
 const NousDefinition = z.object({
   id: z.string(),
   default: z.boolean().default(false),
   name: z.string().optional(),
   workspace: z.string(),
   model: ModelSpec.optional(),
+  params: NousParams.optional(),
   subagents: SubagentConfig.default({}),
   tools: ToolsConfig.default({}),
   heartbeat: HeartbeatConfig.optional(),

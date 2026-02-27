@@ -109,7 +109,7 @@ const KNOWN_TOP_KEYS = new Set([
 ]);
 
 const KNOWN_NOUS_KEYS = new Set([
-  "id", "default", "name", "workspace", "model", "subagents",
+  "id", "default", "name", "workspace", "model", "params", "subagents",
   "tools", "heartbeat", "identity",
 ]);
 
