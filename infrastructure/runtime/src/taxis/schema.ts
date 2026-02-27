@@ -504,6 +504,18 @@ const PlanningConfig = z
   })
   .default({});
 
+const MemoryHealthThresholdsConfig = z
+  .object({
+    noiseRateMax: z.number().default(0.05),
+    orphanCountMax: z.number().default(50),
+    relatesToRateMax: z.number().default(0.30),
+    recallLatencyP95Ms: z.number().default(1000),
+    flushSuccessRateMin: z.number().default(0.95),
+  })
+  .default({});
+
+export type MemoryHealthThresholds = z.infer<typeof MemoryHealthThresholdsConfig>;
+
 // passthrough() preserves unknown top-level fields (meta, wizard, browser, tools, etc.)
 // so they survive round-tripping without silent data loss
 export const AletheiaConfigSchema = z.object({
@@ -525,6 +537,7 @@ export const AletheiaConfigSchema = z.object({
   updates: UpdatesConfig,
   backup: BackupConfig,
   planning: PlanningConfig,
+  memoryHealth: MemoryHealthThresholdsConfig,
 }).passthrough();
 
 export type AletheiaConfig = z.infer<typeof AletheiaConfigSchema>;

@@ -1038,6 +1038,99 @@ memoryCmd
     }
   });
 
+memoryCmd
+  .command("health")
+  .description("Check memory system health against configured thresholds")
+  .option("-u, --url <url>", "Sidecar URL", "http://localhost:8230")
+  .option("-c, --config <path>", "Config file path")
+  .action(async (opts: { url: string; config?: string }) => {
+    const { paths } = await import("./taxis/paths.js");
+    const { AletheiaConfigSchema } = await import("./taxis/schema.js");
+    const { eventBus } = await import("./koina/event-bus.js");
+
+    const configPath = opts.config ?? paths.configFile();
+    let thresholds = {
+      noiseRateMax: 0.05,
+      orphanCountMax: 50,
+      relatesToRateMax: 0.30,
+      recallLatencyP95Ms: 1000,
+      flushSuccessRateMin: 0.95,
+    };
+
+    try {
+      const raw = await readJson(configPath);
+      const config = AletheiaConfigSchema.safeParse(raw);
+      if (config.success) {
+        thresholds = { ...thresholds, ...config.data.memoryHealth };
+      }
+    } catch { /* config unreadable — use defaults */ }
+
+    let healthData: Record<string, unknown>;
+    try {
+      const thresholdsParam = encodeURIComponent(JSON.stringify(thresholds));
+      const res = await fetch(`${opts.url}/health?thresholds=${thresholdsParam}`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        console.error(`Sidecar returned ${res.status}: ${res.statusText}`);
+        process.exit(1);
+      }
+      healthData = await res.json() as Record<string, unknown>;
+    } catch (error) {
+      console.error(`Cannot reach sidecar at ${opts.url}: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
+    }
+
+    const status = String(healthData["status"] ?? "unknown").toUpperCase();
+    const qdrant = (healthData["qdrant"] ?? {}) as Record<string, unknown>;
+    const neo4j = (healthData["neo4j"] ?? {}) as Record<string, unknown>;
+    const recall = (healthData["recall"] ?? {}) as Record<string, unknown>;
+    const thresholdInfo = (healthData["thresholds"] ?? {}) as Record<string, unknown>;
+    const exceeded = (thresholdInfo["exceeded"] ?? []) as string[];
+
+    const colW = 22;
+
+    console.log(`\nMemory Health: ${status}\n`);
+    console.log(`  ${padEnd("Metric", colW)}  ${padEnd("Value", 10)}  ${padEnd("Threshold", 10)}  Status`);
+    console.log(`  ${padEnd("──────", colW)}  ${padEnd("─────", 10)}  ${padEnd("─────────", 10)}  ──────`);
+
+    const noiseRate = recall["noise_rate"] !== null && recall["noise_rate"] !== undefined ? `${(Number(recall["noise_rate"]) * 100).toFixed(1)}%` : "N/A";
+    const noiseStatus = exceeded.includes("noise_rate") ? "EXCEEDED" : (recall["noise_rate"] !== null && recall["noise_rate"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Noise rate", colW)}  ${padEnd(noiseRate, 10)}  ${padEnd(`< ${(thresholds.noiseRateMax * 100).toFixed(1)}%`, 10)}  ${noiseStatus}`);
+
+    const orphanCount = qdrant["orphan_count"] !== null && qdrant["orphan_count"] !== undefined ? String(qdrant["orphan_count"]) : "N/A";
+    const orphanStatus = exceeded.includes("orphan_count") ? "EXCEEDED" : (qdrant["orphan_count"] !== null && qdrant["orphan_count"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Orphan count", colW)}  ${padEnd(orphanCount, 10)}  ${padEnd(`< ${thresholds.orphanCountMax}`, 10)}  ${orphanStatus}`);
+
+    const relatesToRate = neo4j["relates_to_rate"] !== null && neo4j["relates_to_rate"] !== undefined ? `${(Number(neo4j["relates_to_rate"]) * 100).toFixed(1)}%` : "N/A";
+    const relatesToStatus = exceeded.includes("relates_to_rate") ? "EXCEEDED" : (neo4j["relates_to_rate"] !== null && neo4j["relates_to_rate"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("RELATES_TO rate", colW)}  ${padEnd(relatesToRate, 10)}  ${padEnd(`< ${(thresholds.relatesToRateMax * 100).toFixed(1)}%`, 10)}  ${relatesToStatus}`);
+
+    const latencyP95 = recall["latency_p95_ms"] !== null && recall["latency_p95_ms"] !== undefined ? `${Math.round(Number(recall["latency_p95_ms"]))}ms` : "N/A";
+    const latencyStatus = exceeded.includes("recall_latency_p95_ms") ? "EXCEEDED" : (recall["latency_p95_ms"] !== null && recall["latency_p95_ms"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd("Recall P95", colW)}  ${padEnd(latencyP95, 10)}  ${padEnd(`< ${thresholds.recallLatencyP95Ms}ms`, 10)}  ${latencyStatus}`);
+
+    console.log(`  ${padEnd("Flush success rate", colW)}  ${padEnd("N/A", 10)}  ${padEnd(`> ${(thresholds.flushSuccessRateMin * 100).toFixed(1)}%`, 10)}  N/A (CLI-side metric)`);
+
+    if (exceeded.length > 0) {
+      const values = (thresholdInfo["values"] ?? {}) as Record<string, number>;
+      eventBus.emit("memory:health_degraded", {
+        metrics: exceeded,
+        values: values as Record<string, unknown>,
+        status: healthData["status"] as string,
+      });
+    } else {
+      eventBus.emit("memory:health_recovered", {
+        metrics: [],
+        status: healthData["status"] as string,
+      });
+    }
+
+    if (status === "DEGRADED" || status === "CRITICAL") {
+      process.exit(1);
+    }
+  });
+
 // --- Auth Migration ---
 
 program

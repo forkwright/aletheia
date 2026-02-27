@@ -24,6 +24,7 @@ export type EventName =
   | "pipeline:error"
   | "history:orphan_repair"
   | "memory:health_degraded"
+  | "memory:health_recovered"
   | "planning:project-created"
   | "planning:project-resumed"
   | "planning:phase-started"
