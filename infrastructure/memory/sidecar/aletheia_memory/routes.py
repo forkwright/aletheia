@@ -508,7 +508,7 @@ async def dedup_batch(req: DeduplicateRequest, request: Request) -> dict[str, An
 
     removed = len(texts) - len(kept_texts)
     if removed > 0:
-        logger.info(f"dedup_batch: removed {removed} near-duplicate(s) from {len(texts)} texts (threshold={req.threshold})")
+        logger.info("dedup_batch: removed %d near-duplicate(s) from %d texts (threshold=%s)", removed, len(texts), req.threshold)
 
     return {"deduplicated": kept_texts, "removed": removed}
 
@@ -642,7 +642,7 @@ async def add_batch(req: AddBatchRequest, request: Request) -> dict[str, Any]:
                 client.upsert(collection_name=COLLECTION_NAME, points=batch)
                 added += len(batch)
             except Exception as e:
-                logger.error(f"add_batch upsert failed for batch {i}: {e}")
+                logger.error("add_batch upsert failed for batch %d: %s", i, e)
                 errors += len(batch)
 
         total_skipped = len(existing_hashes) + skipped_semantic
@@ -1656,9 +1656,9 @@ async def consolidate_memories(req: ConsolidateRequest, request: Request) -> dic
                 # Keep the source, delete the duplicate
                 await asyncio.to_thread(mem.delete, pair["duplicate"]["id"])
                 merged_count += 1
-                logger.info(f"Consolidated: deleted {pair['duplicate']['id']} (score={pair['score']})")
+                logger.info("Consolidated: deleted %s (score=%s)", pair['duplicate']['id'], pair['score'])
             except Exception as e:
-                logger.warning(f"Failed to delete duplicate {pair['duplicate']['id']}: {e}")
+                logger.warning("Failed to delete duplicate %s: %s", pair['duplicate']['id'], e)
 
     return {
         "ok": True,
@@ -1773,7 +1773,7 @@ async def retract_memory(req: RetractRequest, request: Request) -> dict[str, Any
                         record = result.single()
                         if record and record["deleted"] > 0:
                             neo4j_removed.extend(record["affected"])
-                            logger.info(f"Retract cascade: removed {record['deleted']} rels for entity '{entity}'")
+                            logger.info("Retract cascade: removed %d rels for entity '%s'", record['deleted'], entity)
             driver.close()
             mark_neo4j_ok()
         except Exception:
@@ -1794,7 +1794,7 @@ async def retract_memory(req: RetractRequest, request: Request) -> dict[str, Any
                     "score": item.get("score", 0),
                 })
             except Exception as e:
-                logger.warning(f"Failed to retract {memory_id}: {e}")
+                logger.warning("Failed to retract %s: %s", memory_id, e)
 
         # Audit log
         _log_retraction(req, retracted, neo4j_removed)
@@ -1872,7 +1872,7 @@ async def _record_episode(text: str, agent_id: str, metadata: dict[str, Any] | N
                 )
         driver.close()
         mark_neo4j_ok()
-        logger.debug(f"Episode {episode_id}: {len(entities)} entities linked")
+        logger.debug("Episode %s: %d entities linked", episode_id, len(entities))
     except Exception:
         mark_neo4j_down()
         logger.warning("Episode recording failed (non-fatal)", exc_info=True)
@@ -2112,7 +2112,7 @@ async def _generate_links(mem: Any, new_text: str, user_id: str) -> list[dict[st
                     )
             driver.close()
             mark_neo4j_ok()
-            logger.info(f"Generated {len(links)} memory links for new memory")
+            logger.info("Generated %d memory links for new memory", len(links))
         except Exception:
             mark_neo4j_down()
             logger.warning("Failed to store memory links in Neo4j")
@@ -2567,7 +2567,7 @@ async def delete_entity(name: str) -> dict[str, Any]:
         if result is None:
             raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
 
-        logger.info(f"Deleted entity '{name}' ({result['rels']} relationships removed)")
+        logger.info("Deleted entity '%s' (%d relationships removed)", name, result['rels'])
         return {"ok": True, "deleted": name, "relationships_removed": result["rels"]}
     except HTTPException:
         raise
@@ -2605,7 +2605,7 @@ async def flag_entity(name: str, request: Request) -> dict[str, Any]:
         if result is None:
             raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
 
-        logger.info(f"{'Flagged' if flagged else 'Unflagged'} entity '{name}'")
+        logger.info("%s entity '%s'", "Flagged" if flagged else "Unflagged", name)
         return {"ok": True, "entity": result["name"], "flagged": result["flagged"]}
     except HTTPException:
         raise
@@ -2664,7 +2664,7 @@ async def merge_entities(req: EntityMergeRequest) -> dict[str, Any]:
 
         driver.close()
         mark_neo4j_ok()
-        logger.info(f"Merged entity '{req.source}' → '{req.target}' ({redirected} relationships redirected)")
+        logger.info("Merged entity '%s' → '%s' (%d relationships redirected)", req.source, req.target, redirected)
         return {"ok": True, "source": req.source, "target": req.target, "relationships_redirected": redirected}
     except HTTPException:
         raise
@@ -2678,7 +2678,7 @@ async def merge_entities(req: EntityMergeRequest) -> dict[str, Any]:
                     session.run("MATCH (n {name: $name}) DETACH DELETE n", name=req.source)
                 driver.close()
                 mark_neo4j_ok()
-                logger.info(f"Merged (fallback, rels lost) entity '{req.source}' → '{req.target}'")
+                logger.info("Merged (fallback, rels lost) entity '%s' → '%s'", req.source, req.target)
                 return {"ok": True, "source": req.source, "target": req.target,
                         "relationships_redirected": 0, "warning": "APOC not available, relationships not redirected"}
             except Exception as e2:
@@ -2774,7 +2774,7 @@ async def _check_contradictions(
         return contradictions
 
     except Exception as e:
-        logger.warning(f"Contradiction check failed: {e}")
+        logger.warning("Contradiction check failed: %s", e)
         return []
 
 
@@ -2882,9 +2882,9 @@ async def add_direct_v2(req: AddDirectRequest, request: Request) -> dict[str, An
         result: dict[str, Any] = {"ok": True, "result": "added", "id": point_id}
         if contradictions:
             result["contradictions"] = contradictions
-            logger.info(f"add_direct: stored '{text[:80]}' with {len(contradictions)} contradiction(s)")
+            logger.info("add_direct: stored '%.80s' with %d contradiction(s)", text, len(contradictions))
         else:
-            logger.info(f"add_direct: stored '{text[:80]}' (source={req.source}, agent={req.agent_id})")
+            logger.info("add_direct: stored '%.80s' (source=%s, agent=%s)", text, req.source, req.agent_id)
 
         return result
 
@@ -2964,7 +2964,7 @@ async def correct_memory(req: CorrectMemoryRequest, request: Request) -> dict[st
             ],
         )
 
-        logger.info(f"memory/correct: '{old_text[:60]}' → '{corrected_text[:60]}' (reason: {req.reason})")
+        logger.info("memory/correct: '%.60s' → '%.60s' (reason: %s)", old_text, corrected_text, req.reason)
 
         return {
             "ok": True,
@@ -3034,7 +3034,7 @@ async def forget_memory(req: ForgetMemoryRequest, request: Request) -> dict[str,
 
         client.upsert(collection_name=COLLECTION_NAME, points=points_to_update)
 
-        logger.info(f"memory/forget: {len(matches)} memories forgotten (reason: {req.reason})")
+        logger.info("memory/forget: %d memories forgotten (reason: %s)", len(matches), req.reason)
 
         return {
             "ok": True,

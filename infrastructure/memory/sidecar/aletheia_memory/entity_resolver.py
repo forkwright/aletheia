@@ -339,7 +339,7 @@ def merge_duplicate_entities() -> dict[str, Any]:
             "invalid_deleted": deleted_count,
             "canonical_groups": len(canonical_map),
         }
-        logger.info(f"Entity merge: {result}")
+        logger.info("Entity merge: %s", result)
         return result
 
     except Exception as e:

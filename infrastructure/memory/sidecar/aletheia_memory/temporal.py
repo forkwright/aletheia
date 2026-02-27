@@ -61,7 +61,7 @@ async def ensure_temporal_schema() -> None:
         logger.info("Temporal schema constraints ensured")
     except Exception as e:
         mark_neo4j_down()
-        logger.warning(f"Temporal schema setup failed (non-fatal): {e}")
+        logger.warning("Temporal schema setup failed (non-fatal): %s", e)
 
 
 # --- Models ---
