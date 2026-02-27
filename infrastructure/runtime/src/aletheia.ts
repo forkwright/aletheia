@@ -292,12 +292,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
   const planningStore = new PlanningStore(plansDb);
   const planningOrchestrator = new DianoiaOrchestrator(plansDb, planningConfig);
-  planningOrchestrator.setWorkspaceRoot(defaultWorkspace);
   manager.setPlanningOrchestrator(planningOrchestrator);
 
   // File sync daemon — writes markdown files alongside every DB mutation (co-primary)
   const fileSyncDaemon = new FileSyncDaemon(plansDb);
-  fileSyncDaemon.start(defaultWorkspace);
+  fileSyncDaemon.start();
 
   log.info("Dianoia planning orchestrator initialized", { workspace: defaultWorkspace });
 
@@ -636,16 +635,26 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
   setCommandsRef(commandRegistry);
 
-  // /plan and !plan — route to DianoiaOrchestrator.handle()
+  // /plan and !plan — route to DianoiaOrchestrator with slug intake routing
   const planOrch = runtime.manager.getPlanningOrchestrator();
   if (planOrch) {
     commandRegistry.register({
       name: "plan",
       description: "Start or resume a Dianoia planning project",
-      execute(_args, ctx) {
+      execute(args, ctx) {
         const session = ctx.sessionId ? ctx.store.findSessionById(ctx.sessionId) : undefined;
         const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
         const sessionId = ctx.sessionId ?? "";
+        const userInput = args.trim();
+        // Route to slug confirmation if confirmation is pending
+        if (planOrch.hasPendingSlugConfirmation()) {
+          return Promise.resolve(planOrch.receiveSlugConfirmation(userInput, nousId, sessionId));
+        }
+        // Route to name intake if we're waiting for a project name
+        if (planOrch.hasPendingNameIntake()) {
+          return Promise.resolve(planOrch.receiveProjectName(userInput, nousId, sessionId));
+        }
+        // Default: start or resume flow
         return Promise.resolve(planOrch.handle(nousId, sessionId));
       },
     });

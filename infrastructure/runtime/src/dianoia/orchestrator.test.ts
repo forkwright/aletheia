@@ -31,10 +31,36 @@ function makeOrchestrator(): DianoiaOrchestrator {
   return new DianoiaOrchestrator(makeDb(), DEFAULT_CONFIG);
 }
 
+/**
+ * Helper: go through the three-phase slug intake to create a project.
+ * Returns the orchestrator with an active project in "questioning" state.
+ */
+function createProjectViaIntake(
+  orch: DianoiaOrchestrator,
+  nousId: string,
+  sessionId: string,
+  displayName = "Test Project",
+): void {
+  orch.handle(nousId, sessionId); // Returns name prompt
+  orch.receiveProjectName(displayName, nousId, sessionId); // Returns slug confirmation prompt
+  orch.receiveSlugConfirmation("", nousId, sessionId); // Confirms slug, creates project
+}
+
 describe("DianoiaOrchestrator.handle()", () => {
-  it("creates a new project and returns first question when no active project exists", () => {
+  it("returns name intake prompt when no active project and no pending intake", () => {
     const orch = makeOrchestrator();
     const result = orch.handle("nous-1", "session-1");
+    expect(result.toLowerCase()).toContain("what should we call this project");
+    // No project yet — intake not complete
+    const project = orch.getActiveProject("nous-1");
+    expect(project).toBeUndefined();
+  });
+
+  it("creates a new project after three-phase intake and first question is returned", () => {
+    const orch = makeOrchestrator();
+    orch.handle("nous-1", "session-1");
+    orch.receiveProjectName("Test Project", "nous-1", "session-1");
+    const result = orch.receiveSlugConfirmation("", "nous-1", "session-1");
     expect(result.toLowerCase()).toContain("what are you building");
     const project = orch.getActiveProject("nous-1");
     expect(project).toBeDefined();
@@ -43,7 +69,7 @@ describe("DianoiaOrchestrator.handle()", () => {
 
   it("returns resume confirmation when active project exists", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const result = orch.handle("nous-1", "session-1");
     expect(result.toLowerCase()).toContain("still working on");
     const project = orch.getActiveProject("nous-1");
@@ -52,7 +78,7 @@ describe("DianoiaOrchestrator.handle()", () => {
 
   it("associates project with nousId for later resume", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-a", "session-a");
+    createProjectViaIntake(orch, "nous-a", "session-a");
     expect(orch.getActiveProject("nous-a")).toBeDefined();
     expect(orch.getActiveProject("nous-b")).toBeUndefined();
   });
@@ -64,7 +90,8 @@ describe("DianoiaOrchestrator.confirmResume()", () => {
 
   beforeEach(() => {
     orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
+    // Trigger resume confirmation prompt
     orch.handle("nous-1", "session-1");
     projectId = orch.getActiveProject("nous-1")!.id;
   });
@@ -76,19 +103,23 @@ describe("DianoiaOrchestrator.confirmResume()", () => {
     expect((project!.config as Record<string, unknown>)["pendingConfirmation"]).toBe(false);
   });
 
-  it("confirmResume with 'no' abandons old project and creates fresh one", () => {
-    orch.confirmResume(projectId, "nous-1", "session-1", "no");
-    const newProject = orch.getActiveProject("nous-1");
-    expect(newProject).toBeDefined();
-    expect(newProject!.id).not.toBe(projectId);
-    expect(newProject!.state).toBe("questioning");
+  it("confirmResume with 'no' abandons old project and resets intake", () => {
+    const result = orch.confirmResume(projectId, "nous-1", "session-1", "no");
+    // After "no", intake is reset and returns the name prompt
+    expect(result.toLowerCase()).toContain("what should we call this project");
+    // The original project is abandoned
+    const originalProject = orch.getProject(projectId);
+    expect(originalProject?.state).toBe("abandoned");
+    // No active project yet — intake pending
+    expect(orch.getActiveProject("nous-1")).toBeUndefined();
+    expect(orch.hasPendingNameIntake()).toBe(false); // pendingProjectName was reset to null
   });
 });
 
 describe("DianoiaOrchestrator.abandon()", () => {
   it("does not find completed or abandoned projects as active", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
     orch.abandon(project.id);
     expect(orch.getActiveProject("nous-1")).toBeUndefined();
@@ -98,7 +129,7 @@ describe("DianoiaOrchestrator.abandon()", () => {
 describe("DianoiaOrchestrator.processAnswer()", () => {
   it("records answer to rawTranscript in project_context", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     orch.processAnswer(project.id, "I'm building a CLI planning tool");
@@ -110,7 +141,7 @@ describe("DianoiaOrchestrator.processAnswer()", () => {
 
   it("appends multiple answers incrementing turn numbers", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     orch.processAnswer(project.id, "Answer one");
@@ -124,7 +155,7 @@ describe("DianoiaOrchestrator.processAnswer()", () => {
 describe("DianoiaOrchestrator.getNextQuestion()", () => {
   it("returns first question when rawTranscript is empty", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
     const q = orch.getNextQuestion(project.id);
     expect(q).not.toBeNull();
@@ -134,7 +165,7 @@ describe("DianoiaOrchestrator.getNextQuestion()", () => {
 
   it("returns null after all QUESTIONS answered", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     // Answer all 5 questions
@@ -147,7 +178,7 @@ describe("DianoiaOrchestrator.getNextQuestion()", () => {
 
   it("returns null when project not in questioning state", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
     orch.abandon(project.id);
     const q = orch.getNextQuestion(project.id);
@@ -158,7 +189,7 @@ describe("DianoiaOrchestrator.getNextQuestion()", () => {
 describe("DianoiaOrchestrator.synthesizeContext()", () => {
   it("returns a non-empty summary string containing transcript entries", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     orch.processAnswer(project.id, "Building a planning tool");
@@ -173,7 +204,7 @@ describe("DianoiaOrchestrator.synthesizeContext()", () => {
 describe("DianoiaOrchestrator.confirmSynthesis()", () => {
   it("persists goal and structured context, transitions state to researching", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     orch.processAnswer(project.id, "Building a CLI planning assistant");
@@ -191,7 +222,7 @@ describe("DianoiaOrchestrator.confirmSynthesis()", () => {
 
   it("project state after confirmSynthesis is researching, not questioning", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
     expect(project.state).toBe("questioning");
 
@@ -202,7 +233,7 @@ describe("DianoiaOrchestrator.confirmSynthesis()", () => {
 
   it("preserves rawTranscript in the merged context", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     orch.processAnswer(project.id, "First answer");
@@ -222,7 +253,7 @@ describe("DianoiaOrchestrator.completePhase()", () => {
     const orch = makeOrchestrator();
     const spy = vi.spyOn(eventBus, "emit");
 
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
     orch.completePhase(project.id, "nous-1", "session-1", "questioning");
 
@@ -239,7 +270,7 @@ describe("DianoiaOrchestrator.completeProject()", () => {
     const orch = makeOrchestrator();
     const spy = vi.spyOn(eventBus, "emit");
 
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     // Must be in verifying state to use ALL_PHASES_COMPLETE — drive it there
@@ -261,7 +292,7 @@ describe("DianoiaOrchestrator.completeProject()", () => {
     const orch = new DianoiaOrchestrator(db, DEFAULT_CONFIG);
     const spy = vi.spyOn(eventBus, "emit");
 
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     // Drive state manually to verifying so completeProject can use ALL_PHASES_COMPLETE
@@ -282,7 +313,7 @@ describe("DianoiaOrchestrator.completeProject()", () => {
 describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-04]", () => {
   it("skips direct dependent phases when verification fails", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     // Create test phases with dependencies
@@ -339,7 +370,7 @@ describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-
 
   it("generates rollback plan with correct priority levels", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     const gaps = [
@@ -370,7 +401,7 @@ describe("DianoiaOrchestrator.skipDownstreamPhasesOnVerificationFailure() [ORCH-
 
   it("estimates effort correctly based on gap severity", () => {
     const orch = makeOrchestrator();
-    orch.handle("nous-1", "session-1");
+    createProjectViaIntake(orch, "nous-1", "session-1");
     const project = orch.getActiveProject("nous-1")!;
 
     // High effort: 3 critical gaps

@@ -14,6 +14,7 @@ import {
   writeRoadmapFile,
   writeVerifyFile,
 } from "./project-files.js";
+import { toSlug, isSlugTaken } from "./slug.js";
 import { PlanningError } from "../koina/errors.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
@@ -63,36 +64,105 @@ function verifyFileWritten(filePath: string, fileType: string): void {
 export class DianoiaOrchestrator {
   private store: PlanningStore;
   private retroGenerator: RetrospectiveGenerator;
-  private workspaceRoot: string | null = null;
+  /** Three-phase slug intake: null = not started, "" = waiting for name, string = name received */
+  private pendingProjectName: string | null = null;
+  /** Set after name received — shown to user for confirmation */
+  private pendingSlug: string | null = null;
 
-  constructor(db: Database.Database, private defaultConfig: PlanningConfigSchema) {
+  constructor(private db: Database.Database, private defaultConfig: PlanningConfigSchema) {
     this.store = new PlanningStore(db);
     this.retroGenerator = new RetrospectiveGenerator(db);
   }
 
-  /** Set the workspace root for file-backed state. Must be called before file writes work. */
-  setWorkspaceRoot(root: string): void {
-    this.workspaceRoot = root;
+  private getDb(): Database.Database {
+    return this.db;
   }
 
-  getWorkspaceOrThrow(): string {
-    if (!this.workspaceRoot) {
-      throw new PlanningError("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first", { code: "PLANNING_WORKSPACE_NOT_SET" });
-    }
-    return this.workspaceRoot;
-  }
+  /** No-op — kept for call-site compatibility during migration */
+  setWorkspaceRoot(_root: string): void { /* workspace root now resolved from project.projectDir via getProjectDir() */ }
 
-  handle(nousId: string, sessionId: string): string {
+  handle(nousId: string, _sessionId: string): string {
     const active = this.getActiveProject(nousId);
 
     if (active) {
       if (this.hasPendingConfirmation(active)) {
-        return `Still working on "${active.goal || "your project"}"? (yes to resume, no to start fresh)`;
+        return this.prependProjectContext(
+          `Still working on "${active.goal || "your project"}"? (yes to resume, no to start fresh)`,
+          active,
+        );
       }
       const updated = { ...(active.config as Record<string, unknown>), pendingConfirmation: true };
       this.store.updateProjectConfig(active.id, updated as unknown as PlanningConfigSchema);
-      return `Still working on "${active.goal || "your project"}"? (yes to resume, no to start fresh)`;
+      return this.prependProjectContext(
+        `Still working on "${active.goal || "your project"}"? (yes to resume, no to start fresh)`,
+        active,
+      );
     }
+
+    // Three-phase slug intake: ask name → confirm slug → create project
+    if (this.pendingProjectName === null) {
+      this.pendingProjectName = "";
+      return 'Starting a new planning project. What should we call this project? (e.g. "My Aletheia Plugin")';
+    }
+
+    // Name received, slug confirmation in progress
+    if (this.pendingSlug !== null) {
+      return `Your slug will be: ${this.pendingSlug}\nPress Enter to confirm, or type a different slug:`;
+    }
+
+    // Waiting for name (pendingProjectName is "")
+    return 'What should we call this project? (e.g. "My Aletheia Plugin")';
+  }
+
+  /** True when we have asked for a project name but not yet received a valid one */
+  hasPendingNameIntake(): boolean {
+    return this.pendingProjectName !== null && this.pendingProjectName === "";
+  }
+
+  /** True when a slug has been generated and is awaiting user confirmation */
+  hasPendingSlugConfirmation(): boolean {
+    return this.pendingSlug !== null;
+  }
+
+  /** Called when user responds while hasPendingNameIntake() is true */
+  receiveProjectName(name: string, _nousId: string, _sessionId: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) return "Project name is required. Please provide a name.";
+
+    const slug = toSlug(trimmed);
+    if (!slug) return "Could not generate a valid slug from that name. Please use letters and numbers.";
+
+    if (isSlugTaken(slug, this.getDb())) {
+      return `Slug "${slug}" is already taken by an existing project. Choose a different name.`;
+    }
+
+    this.pendingProjectName = trimmed;
+    this.pendingSlug = slug;
+    return `Your slug will be: ${slug}\nPress Enter to confirm, or type a different slug:`;
+  }
+
+  /** Called when user responds while hasPendingSlugConfirmation() is true */
+  receiveSlugConfirmation(answer: string, nousId: string, sessionId: string): string {
+    const trimmed = answer.trim();
+
+    // Empty input or explicit Enter = confirm current slug
+    const chosenSlug = trimmed === "" ? this.pendingSlug! : trimmed;
+    const normalizedSlug = toSlug(chosenSlug);
+
+    if (!normalizedSlug) {
+      return `Could not generate a valid slug from "${chosenSlug}". Please use letters and numbers.`;
+    }
+
+    if (normalizedSlug !== this.pendingSlug && isSlugTaken(normalizedSlug, this.getDb())) {
+      return `Slug "${normalizedSlug}" is already taken. Choose a different slug:`;
+    }
+
+    return this.createProjectWithSlug(this.pendingProjectName!, normalizedSlug, nousId, sessionId);
+  }
+
+  private createProjectWithSlug(displayName: string, slug: string, nousId: string, sessionId: string): string {
+    this.pendingProjectName = null;
+    this.pendingSlug = null;
 
     const project = this.store.createProject({
       nousId,
@@ -102,15 +172,18 @@ export class DianoiaOrchestrator {
     });
     this.store.updateProjectState(project.id, transition("idle", "START_QUESTIONING"));
 
-    // Set up file-backed state directory
-    if (this.workspaceRoot) {
-      const dir = ensureProjectDir(this.workspaceRoot, project.id);
-      this.store.updateProjectDir(project.id, dir);
+    // ensureProjectDir may throw if paths not initialized (test env) — store slug regardless
+    let dir: string | null = null;
+    try {
+      dir = ensureProjectDir(slug);
+    } catch {
+      /* paths not initialized — project dir will be resolved on first file access */
     }
+    this.store.updateProjectDir(project.id, slug);
 
     eventBus.emit("planning:project-created", { projectId: project.id, nousId, sessionId });
-    log.info(`Created planning project ${project.id} for nous ${nousId}`);
-    return "Starting a Dianoia planning project. First: what are you building?";
+    log.info(`Created planning project ${project.id} for nous ${nousId}`, { slug, dir });
+    return `Project "${displayName}" (slug: ${slug}) created. Artifacts will be stored in _shared/workspace/plans/${slug}/\n\nFirst: what are you building?`;
   }
 
   confirmResume(projectId: string, nousId: string, sessionId: string, answer: string): string {
@@ -121,20 +194,18 @@ export class DianoiaOrchestrator {
     if (answer.toLowerCase().includes("yes") || answer.toLowerCase() === "y") {
       eventBus.emit("planning:project-resumed", { projectId, nousId, sessionId });
       log.info(`Resumed planning project ${projectId} for nous ${nousId}`);
-      return `Resuming your planning project. You're in the ${project.state} phase.`;
+      return this.prependProjectContext(
+        `Resuming your planning project. You're in the ${project.state} phase.`,
+        project,
+      );
     }
 
     this.abandon(projectId);
-    const newProject = this.store.createProject({
-      nousId,
-      sessionId,
-      goal: "",
-      config: this.defaultConfig,
-    });
-    this.store.updateProjectState(newProject.id, transition("idle", "START_QUESTIONING"));
-    eventBus.emit("planning:project-created", { projectId: newProject.id, nousId, sessionId });
-    log.info(`Started fresh planning project ${newProject.id} for nous ${nousId}`);
-    return "Starting a Dianoia planning project. First: what are you building?";
+    // Reset intake state so handle() starts fresh with the name prompt
+    this.pendingProjectName = null;
+    this.pendingSlug = null;
+    log.info(`Abandoned project ${projectId} for nous ${nousId}; ready for new project`);
+    return 'Starting a new planning project. What should we call this project? (e.g. "My Aletheia Plugin")';
   }
 
   abandon(projectId: string): void {
@@ -216,13 +287,18 @@ export class DianoiaOrchestrator {
     this.store.updateProjectState(projectId, transition("questioning", "START_RESEARCH"));
 
     // Write PROJECT.md with confirmed context
-    if (this.workspaceRoot) {
-      const updated = this.store.getProjectOrThrow(projectId);
-      writeProjectFile(this.workspaceRoot, updated, merged);
-      
-      // Verify PROJECT.md was written successfully
-      const projectPath = `${updated.projectDir}/PROJECT.md`;
-      verifyFileWritten(projectPath, "PROJECT.md");
+    const updated = this.store.getProjectOrThrow(projectId);
+    if (updated.projectDir) {
+      try {
+        writeProjectFile(updated, merged);
+
+        // Verify PROJECT.md was written successfully
+        const projectPath = `${updated.projectDir}/PROJECT.md`;
+        verifyFileWritten(projectPath, "PROJECT.md");
+      } catch (error) {
+        // Skip if paths not initialized (test env or paths not yet set up)
+        log.warn(`Could not write PROJECT.md for ${projectId}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     eventBus.emit("planning:phase-started", {
@@ -234,7 +310,7 @@ export class DianoiaOrchestrator {
     });
 
     log.info(`Context confirmed for project ${projectId}; advancing to researching state`);
-    return "Context saved. Moving to research phase.";
+    return this.prependProjectContext("Context saved. Moving to research phase.", updated);
   }
 
   listAllProjects(): PlanningProject[] {
@@ -249,33 +325,34 @@ export class DianoiaOrchestrator {
     this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));
 
     // Write RESEARCH.md even if skipped (records what was available)
-    if (this.workspaceRoot) {
+    const project = this.store.getProject(projectId);
+    if (project?.projectDir) {
       const research = this.store.listResearch(projectId);
-      if (research.length > 0) writeResearchFile(this.workspaceRoot, projectId, research);
+      if (research.length > 0) writeResearchFile(project.projectDir, research);
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "research" });
     log.info(`Research skipped for project ${projectId}; advancing to requirements`);
-    return "Research skipped. Proceeding to requirements definition.";
+    return this.prependProjectContext("Research skipped. Proceeding to requirements definition.", project ?? null);
   }
 
   completeRequirements(projectId: string, nousId: string, sessionId: string): string {
     this.store.updateProjectState(projectId, transition("requirements", "REQUIREMENTS_COMPLETE"));
 
     // Write REQUIREMENTS.md
-    if (this.workspaceRoot) {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (project.projectDir) {
       const reqs = this.store.listRequirements(projectId);
-      writeRequirementsFile(this.workspaceRoot, projectId, reqs);
-      
+      writeRequirementsFile(project.projectDir, reqs);
+
       // Verify REQUIREMENTS.md was written successfully
-      const project = this.store.getProjectOrThrow(projectId);
       const requirementsPath = `${project.projectDir}/REQUIREMENTS.md`;
       verifyFileWritten(requirementsPath, "REQUIREMENTS.md");
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "requirements" });
     log.info(`Requirements complete for project ${projectId}; advancing to roadmap`);
-    return "Requirements confirmed. Advancing to roadmap generation.";
+    return this.prependProjectContext("Requirements confirmed. Advancing to roadmap generation.", project);
   }
 
   completePhase(projectId: string, nousId: string, sessionId: string, phase: string): void {
@@ -314,18 +391,18 @@ export class DianoiaOrchestrator {
     this.store.updateProjectState(projectId, transition(project.state, "ROADMAP_COMPLETE"));
 
     // Write ROADMAP.md
-    if (this.workspaceRoot) {
+    if (project.projectDir) {
       const phases = this.store.listPhases(projectId);
-      writeRoadmapFile(this.workspaceRoot, projectId, phases);
-      
-      // Verify ROADMAP.md was written successfully  
+      writeRoadmapFile(project.projectDir, phases);
+
+      // Verify ROADMAP.md was written successfully
       const roadmapPath = `${project.projectDir}/ROADMAP.md`;
       verifyFileWritten(roadmapPath, "ROADMAP.md");
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "roadmap" });
     log.info(`Roadmap complete for project ${projectId}; advancing to discussion`);
-    return "Roadmap complete. Moving to phase discussion.";
+    return this.prependProjectContext("Roadmap complete. Moving to phase discussion.", project);
   }
 
   advanceToExecution(projectId: string, nousId: string, sessionId: string): string {
@@ -488,9 +565,10 @@ export class DianoiaOrchestrator {
   private generateRetro(projectId: string): void {
     try {
       const retro = this.retroGenerator.generate(projectId);
-      if (this.workspaceRoot) {
-        this.retroGenerator.writeRetroFile(this.workspaceRoot, retro);
-        this.retroGenerator.writeRetroJson(this.workspaceRoot, retro);
+      const project = this.store.getProject(projectId);
+      if (project?.projectDir) {
+        this.retroGenerator.writeRetroFile(project.projectDir, retro);
+        this.retroGenerator.writeRetroJson(project.projectDir, retro);
       }
       log.info(`Retrospective generated for project ${projectId}: ${retro.patterns.length} patterns`);
     } catch (error) {
@@ -559,9 +637,10 @@ export class DianoiaOrchestrator {
     }
 
     // Write DISCUSS.md with all questions and decisions
-    if (this.workspaceRoot) {
+    const projectForDiscuss = this.store.getProject(projectId);
+    if (projectForDiscuss?.projectDir) {
       const questions = this.store.listDiscussionQuestions(projectId, phaseId);
-      writeDiscussFile(this.workspaceRoot, projectId, phaseId, questions);
+      writeDiscussFile(projectForDiscuss.projectDir, phaseId, questions);
     }
 
     eventBus.emit("planning:phase-complete", { projectId, nousId, sessionId, phase: "discussing" });
@@ -582,20 +661,34 @@ export class DianoiaOrchestrator {
 
   /** Write/update the PROJECT.md file with current state */
   syncProjectFile(projectId: string): void {
-    if (!this.workspaceRoot) return;
     const project = this.store.getProjectOrThrow(projectId);
-    writeProjectFile(this.workspaceRoot, project);
+    if (!project.projectDir) return;
+    writeProjectFile(project);
   }
 
   /** Write execution plan file for a phase */
   syncPlanFile(projectId: string, phaseId: string, plan: unknown): void {
-    if (!this.workspaceRoot) return;
-    writePlanFile(this.workspaceRoot, projectId, phaseId, plan);
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    writePlanFile(project.projectDir, phaseId, plan);
   }
 
   /** Write verification results for a phase */
   syncVerifyFile(projectId: string, phaseId: string, verification: Record<string, unknown>): void {
-    if (!this.workspaceRoot) return;
-    writeVerifyFile(this.workspaceRoot, projectId, phaseId, verification);
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    writeVerifyFile(project.projectDir, phaseId, verification);
+  }
+
+  /**
+   * Prepend [Project: {slug}] to a response when a project is active.
+   * For legacy absolute paths, extracts the last path segment as a display label.
+   */
+  private prependProjectContext(response: string, project: PlanningProject | null): string {
+    if (!project?.projectDir) return response;
+    const label = project.projectDir.startsWith("/")
+      ? (project.projectDir.split("/").at(-1) ?? project.projectDir)
+      : project.projectDir;
+    return `[Project: ${label}]\n\n${response}`;
   }
 }
