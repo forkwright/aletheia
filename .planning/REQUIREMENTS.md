@@ -57,8 +57,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **OBSV-01**: Unified memory health endpoint returns: noise rate, orphan count, RELATES_TO rate, recall latency P95, Qdrant entry counts per domain, workspace flush success rate
 - [ ] **OBSV-02**: `memory:health_degraded` event emitted when any health metric crosses configured threshold
-- [ ] **OBSV-03**: Corpus audit tooling — CLI command to run ground-truth corpus against current system and report precision/recall delta
-- [ ] **OBSV-04**: Memory write receipts visible in diagnostics — every write path produces a traceable receipt
+- [x] **OBSV-03**: Corpus audit tooling — CLI command to run ground-truth corpus against current system and report precision/recall delta
+- [x] **OBSV-04**: Memory write receipts visible in diagnostics — every write path produces a traceable receipt
 
 ## v2 Requirements
 
@@ -125,8 +125,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | RECL-07 | Phase 5 | Complete |
 | OBSV-01 | Phase 6 | Pending |
 | OBSV-02 | Phase 6 | Pending |
-| OBSV-03 | Phase 6 | Pending |
-| OBSV-04 | Phase 6 | Pending |
+| OBSV-03 | Phase 6 | Complete |
+| OBSV-04 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 35 total

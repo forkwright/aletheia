@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 5.1 — Emergency Distillation Sidecar Wiring
+**Current focus:** Phase 6 — Observability
 
 ## Current Position
 
-Phase: 5.1 of 6 (Emergency Distillation Sidecar Wiring — gap closure)
-Plan: 1 of 1 in current phase (05.1-01 complete — sidecarUrl wired through RuntimeServices to emergency distillation path, emergency flag in DistillationOpts and distill:before/distill:after events)
-Status: Phase 5.1 complete — EXTR-01, EXTR-02, EXTR-05 complete for emergency path
-Last activity: 2026-02-27 — Plan 05.1-01 complete; sidecarUrl in RuntimeServices, emergency: true in opts and events, 13 tests passing
+Phase: 6 of 6 (Observability)
+Plan: 2 of 2 in current phase (06-02 complete — memory audit CLI and write receipts on all memory write paths)
+Status: Phase 6 in progress — OBSV-03, OBSV-04 complete; OBSV-01, OBSV-02 pending (Plan 06-01)
+Last activity: 2026-02-27 — Plan 06-02 complete; memory audit CLI subcommand, write receipts on finalize.ts, aletheia.ts, reflect.ts
 
-Progress: [███████████████] 91%
+Progress: [████████████████] 95%
 
 ## Performance Metrics
 
@@ -39,6 +39,10 @@ Progress: [███████████████] 91%
 - Trend: Stable
 
 *Updated after each plan completion*
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 06-observability (partial) | 1 | 5 min | 5 min |
 
 ## Accumulated Context
 
@@ -108,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: sidecarUrl added to RuntimeServices (not TurnState) — service-level config belongs on the services layer, matching memoryTarget/plugins/watchdog placement
 - [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: emergency: true is non-conditional at call site in context.ts (that call IS the emergency path) but conditional in pipeline.ts event emits (avoids emitting emergency: undefined on normal distills)
 - [Phase 05.1-emergency-distillation-sidecar-wiring / 05.1-01]: Test assertion uses mock.calls[N][4] direct access instead of toHaveBeenCalledWith — services.router is undefined in makeServices, and expect.anything() excludes undefined
+- [Phase 06-observability]: memoryCmd group created in Plan 02 to handle Wave 1 parallel execution — Plan 01 will reuse idempotently
+- [Phase 06-observability]: turn_extraction receipt always logged on ok response (removed conditional if added>0 guard)
 
 ### Pending Todos
 
@@ -121,5 +127,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 05.1-emergency-distillation-sidecar-wiring 05.1-01-PLAN.md — sidecarUrl in RuntimeServices, emergency flag in DistillationOpts and distill:before/distill:after events, 13 tests passing
+Stopped at: Completed 06-observability 06-02-PLAN.md — memory audit CLI subcommand and write receipts on all 3 memory write paths (finalize.ts, aletheia.ts, reflect.ts)
 Resume file: None
