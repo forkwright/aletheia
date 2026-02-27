@@ -305,7 +305,17 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
           return { added: 0, errors: memories.length };
         }
         const data = await res.json() as { added?: number; errors?: number; skipped?: number };
-        log.info(`Memory flush: ${data.added ?? 0} added, ${data.skipped ?? 0} deduped, ${data.errors ?? 0} errors (agent=${agentId})`);
+        const receipt = {
+          origin: "distillation" as const,
+          agentId,
+          sessionId,
+          timestamp: new Date().toISOString(),
+          factCount: memories.length,
+          added: data.added ?? 0,
+          skipped: data.skipped ?? 0,
+          errors: data.errors ?? 0,
+        };
+        log.info("Memory write receipt", receipt);
         return { added: data.added ?? 0, errors: data.errors ?? 0 };
       } catch (error) {
         log.warn(`Memory flush failed: ${error instanceof Error ? error.message : error}`);
