@@ -5,8 +5,9 @@ Wants=network-online.target aletheia-memory.service
 
 [Service]
 Type=simple
+Environment=ALETHEIA_HOME=__ALETHEIA_HOME__
 EnvironmentFile=-%h/.aletheia/env
-ExecStart=%h/.aletheia/start.sh
+ExecStart=__NODE_BIN__ __ALETHEIA_HOME__/infrastructure/runtime/dist/entry.mjs gateway start
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -16,7 +17,8 @@ StandardError=journal
 WantedBy=default.target
 
 # Usage:
-#   aletheia-setup         # recommended — one command installs + starts everything
+#   aletheia enable            # recommended — registers for boot persistence
+#   aletheia start             # start services now
 #
 #   Manual install:
 #   mkdir -p ~/.config/systemd/user
@@ -24,30 +26,3 @@ WantedBy=default.target
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now aletheia-memory aletheia
 #   loginctl enable-linger
-#
-# macOS launchd equivalent (~/.config/aletheia/com.aletheia.plist):
-#
-# <?xml version="1.0" encoding="UTF-8"?>
-# <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-#   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-# <plist version="1.0">
-# <dict>
-#   <key>Label</key>
-#   <string>com.aletheia</string>
-#   <key>ProgramArguments</key>
-#   <array>
-#     <string>/bin/bash</string>
-#     <string>/Users/<user>/.aletheia/start.sh</string>
-#   </array>
-#   <key>RunAtLoad</key>
-#   <true/>
-#   <key>KeepAlive</key>
-#   <true/>
-#   <key>StandardOutPath</key>
-#   <string>/tmp/aletheia.log</string>
-#   <key>StandardErrorPath</key>
-#   <string>/tmp/aletheia.log</string>
-# </dict>
-# </plist>
-#
-# launchctl load ~/Library/LaunchAgents/com.aletheia.plist
