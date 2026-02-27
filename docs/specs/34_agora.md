@@ -1,6 +1,6 @@
 # Spec 34: Agora — Channel Abstraction and Slack Integration
 
-**Status:** In Progress (Phase 3)
+**Status:** In Progress (Phase 4)
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 34
@@ -502,7 +502,7 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 
 ---
 
-### Phase 3: Slack Channel Provider — Core Messaging 🔨
+### Phase 3: Slack Channel Provider — Core Messaging ✅
 
 **Scope:** Implement `SlackChannelProvider` with Socket Mode inbound and WebClient outbound. This is the first real Slack integration — messages flow both directions.
 
@@ -548,23 +548,22 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 - Wire into `aletheia.ts` — register Slack provider with agora when configured
 
 **Acceptance criteria:**
-- [ ] Slack bot receives DMs and responds through the nous pipeline
-- [ ] Slack bot receives @mentions in channels and responds in-thread
-- [ ] Bindings route Slack channels/DMs to correct agents
-- [ ] Outbound messages use Slack mrkdwn formatting
-- [ ] Messages >4000 chars are chunked properly
-- [ ] Thread context is maintained (replies stay in thread)
-- [ ] Agent identity appears in Slack (name + emoji) when scope permits
-- [ ] Graceful reconnection on WebSocket drop
-- [ ] Probe endpoint reports Slack health
-- [ ] No impact on Signal functionality
+- [x] Slack bot receives DMs and responds through the nous pipeline
+- [x] Slack bot receives @mentions in channels and responds in-thread
+- [x] Bindings route Slack channels/DMs to correct agents
+- [x] Outbound messages use Slack mrkdwn formatting
+- [x] Messages >4000 chars are chunked properly
+- [x] Thread context is maintained (replies stay in thread)
+- [x] Agent identity appears in Slack (name + emoji) when scope permits
+- [x] Graceful reconnection on WebSocket drop (handled by @slack/bolt Socket Mode)
+- [x] Probe endpoint reports Slack health (auth.test() with latency)
+- [x] No impact on Signal functionality (semeion tests unchanged)
 
-**Tests:**
-- `agora/channels/slack/provider.test.ts` — provider lifecycle, contract compliance
-- `agora/channels/slack/listener.test.ts` — event parsing, mention extraction, normalization
-- `agora/channels/slack/sender.test.ts` — formatting, chunking, identity resolution
-- `agora/channels/slack/format.test.ts` — markdown ↔ mrkdwn conversion
-- `agora/channels/slack/client.test.ts` — connection management, retry behavior
+**Tests:** 50 tests across 4 files (PR #294, merged):
+- `agora/channels/slack/format.test.ts` — 26 tests: markdown ↔ mrkdwn conversion, chunking, mention stripping
+- `agora/channels/slack/sender.test.ts` — 8 tests: delivery, identity fallback, threading, error handling
+- `agora/channels/slack/listener.test.ts` — 8 tests: debouncing, coalescing, flush, key separation
+- `agora/channels/slack/provider.test.ts` — 8 tests: capabilities, config gating, lifecycle safety
 
 ---
 
