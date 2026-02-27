@@ -1110,7 +1110,17 @@ memoryCmd
     const latencyStatus = exceeded.includes("recall_latency_p95_ms") ? "EXCEEDED" : (recall["latency_p95_ms"] !== null && recall["latency_p95_ms"] !== undefined ? "OK" : "N/A");
     console.log(`  ${padEnd("Recall P95", colW)}  ${padEnd(latencyP95, 10)}  ${padEnd(`< ${thresholds.recallLatencyP95Ms}ms`, 10)}  ${latencyStatus}`);
 
-    console.log(`  ${padEnd("Flush success rate", colW)}  ${padEnd("N/A", 10)}  ${padEnd(`> ${(thresholds.flushSuccessRateMin * 100).toFixed(1)}%`, 10)}  N/A (CLI-side metric)`);
+    const flushData = (healthData["flush"] ?? null) as Record<string, unknown> | null;
+    const flushRate = flushData !== null && flushData["success_rate"] !== undefined
+      ? `${(Number(flushData["success_rate"]) * 100).toFixed(1)}%`
+      : "N/A";
+    const flushLabel = flushData !== null && flushData["sample_count"] !== undefined
+      ? `Flush success (24h, n=${flushData["sample_count"]})`
+      : "Flush success rate";
+    const flushStatus = exceeded.includes("flush_success_rate")
+      ? "EXCEEDED"
+      : (flushData !== null && flushData["success_rate"] !== undefined ? "OK" : "N/A");
+    console.log(`  ${padEnd(flushLabel, colW)}  ${padEnd(flushRate, 10)}  ${padEnd(`> ${(thresholds.flushSuccessRateMin * 100).toFixed(1)}%`, 10)}  ${flushStatus}`);
 
     if (exceeded.length > 0) {
       const values = (thresholdInfo["values"] ?? {}) as Record<string, number>;

@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Agents remember everything important, surface nothing irrelevant, and maintain their own memory health without intervention.
-**Current focus:** Phase 6 — Observability
+**Current focus:** Phase 7 — Tech Debt Cleanup
 
 ## Current Position
 
-Phase: 6 of 6 (Observability)
-Plan: 2 of 2 in current phase (06-01 and 06-02 complete — all observability plans done)
-Status: Phase 6 complete — OBSV-01, OBSV-02, OBSV-03, OBSV-04 all complete
-Last activity: 2026-02-27 — Plan 06-01 complete; /health extended with semantic metrics, threshold evaluation, memory health CLI command
+Phase: 7 of 7 (Tech Debt Cleanup)
+Plan: 2 of 2 complete (07-02 done — RELATES_TO backfill confirmed 0 edges, BASELINE.md written)
+Status: Phase 7 complete — all plans done
+Last activity: 2026-02-27 — Plan 07-02 complete; backfill confirmed 0 RELATES_TO edges, v1.0 baseline recorded
 
-Progress: [████████████████] 100%
+Progress: [████████████████████████████████] 100% of phase
 
 ## Performance Metrics
 
@@ -118,18 +118,23 @@ Recent decisions affecting current work:
 - [Phase 06-observability / 06-01]: _compute_p95 returns None for < 5 samples — insufficient data should not trigger false thresholds
 - [Phase 06-observability / 06-01]: asyncio.gather(return_exceptions=True) for parallel Qdrant+Neo4j collection — each subsystem failure is non-fatal
 - [Phase 06-observability / 06-01]: Threshold query param as JSON string — allows CLI to pass full config without routing through sidecar config
+- [Phase 07-tech-debt-cleanup / 07-01]: memory:health_degraded subscribers added at startRuntime scope — consistent with other event bus wiring in that function
+- [Phase 07-tech-debt-cleanup / 07-01]: _FLUSH_RESULTS deque(maxlen=500) — bounded memory, sufficient for 24h window at typical flush frequency
+- [Phase 07-tech-debt-cleanup / 07-01]: _compute_flush_success_rate returns None (not 0.0) when no data — consistent with other metric helpers; None means no data
+- [Phase 07-tech-debt-cleanup / 07-01]: /add ADR comment is final closure — removes ambiguity from "deferred" framing, formally closes Phase 2 deferred decision
+- [Phase 07-tech-debt-cleanup / 07-02]: aletheia.env NEO4J_PASSWORD is stale (aletheia2024); actual Docker auth is aletheia-memory — backfill required correct password to connect
+- [Phase 07-tech-debt-cleanup / 07-02]: BASELINE.md written from existing baseline.json (2026-02-25) — corpus runner output counts as production baseline; no fresh run needed
 
 ### Pending Todos
 
-- Run `cd infrastructure/runtime && ANTHROPIC_API_KEY=<key> npm run test:corpus:save-baseline` to record real baseline scores before Phase 2 extraction changes
+- Correct aletheia.env NEO4J_PASSWORD from aletheia2024 to aletheia-memory (configuration drift discovered during 07-02 backfill)
 
 ### Blockers/Concerns
 
-- Phase 4 can begin in parallel with Phase 3 once Phase 2 is complete (no graph dependency)
-- Mem0 evaluation deferred — need traffic trace to confirm `/add` route is truly unused in production
+- None — Phase 7 complete, all 6 tech debt items from v1.0 audit resolved
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 06-observability 06-01-PLAN.md — /health extended with semantic metrics, threshold evaluation, memoryHealth config, memory:health_recovered event, and aletheia memory health CLI command; all plans in Phase 6 complete
+Stopped at: Completed 07-tech-debt-cleanup 07-02-PLAN.md — RELATES_TO backfill confirmed 0 edges, BASELINE.md written with v1.0 benchmark scores
 Resume file: None

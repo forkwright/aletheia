@@ -93,6 +93,9 @@ import { getSidecarUrl, getUserId } from "./koina/memory-client.js";
 
 const log = createLogger("aletheia");
 
+let _memoryHealthDegraded = false;
+let _memoryDegradedMetrics: string[] = [];
+
 type RoutingEntry = { channel: string; peerKind?: string; peerId?: string; accountId?: string; nousId: string };
 
 function extractBindings(config: AletheiaConfig): RoutingEntry[] {
@@ -562,6 +565,22 @@ export async function startRuntime(configPath?: string): Promise<void> {
       } catch { /* non-fatal */ }
     });
   }
+
+  // Memory health event subscribers — track degraded state and log structured warnings
+  eventBus.on("memory:health_degraded", (payload: Record<string, unknown>) => {
+    const metrics = (payload["metrics"] as string[] | undefined) ?? [];
+    _memoryHealthDegraded = true;
+    _memoryDegradedMetrics = metrics;
+    log.warn("Memory health degraded", { metrics, reason: payload["status"] });
+  });
+
+  eventBus.on("memory:health_recovered", (_payload: Record<string, unknown>) => {
+    if (_memoryHealthDegraded) {
+      log.info("Memory health recovered", { previousMetrics: _memoryDegradedMetrics });
+      _memoryHealthDegraded = false;
+      _memoryDegradedMetrics = [];
+    }
+  });
 
   startGateway(app, port);
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });

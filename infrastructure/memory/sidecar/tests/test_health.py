@@ -1,12 +1,15 @@
 # Tests for /health endpoint semantic metrics and threshold evaluation
 import asyncio
+import time
 from collections import deque
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import aletheia_memory.routes as _routes_mod
 from aletheia_memory.routes import (
     _collect_neo4j_metrics,  # pyright: ignore[reportPrivateUsage]
+    _compute_flush_success_rate,  # pyright: ignore[reportPrivateUsage]
     _compute_p95,  # pyright: ignore[reportPrivateUsage]
     _evaluate_thresholds,  # pyright: ignore[reportPrivateUsage]
     _parse_thresholds,  # pyright: ignore[reportPrivateUsage]
@@ -207,6 +210,76 @@ def test_collect_neo4j_metrics_exception_returns_none() -> None:
         result = asyncio.run(_collect_neo4j_metrics(neo4j_ok=True))
         assert result["relates_to_rate"] is None
         mock_down.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _compute_flush_success_rate
+# ---------------------------------------------------------------------------
+
+
+def test_compute_flush_success_rate_empty() -> None:
+    empty: deque[tuple[float, bool]] = deque()
+    with patch.object(_routes_mod, "_FLUSH_RESULTS", empty):
+        assert _compute_flush_success_rate() is None
+
+
+def test_compute_flush_success_rate_mixed() -> None:
+    now = time.time()
+    data: deque[tuple[float, bool]] = deque([
+        (now - 10, True),
+        (now - 20, True),
+        (now - 30, False),
+        (now - 40, True),
+    ])
+    with patch.object(_routes_mod, "_FLUSH_RESULTS", data):
+        result = _compute_flush_success_rate()
+        assert result is not None
+        assert result["sample_count"] == 4
+        assert result["success_rate"] == pytest.approx(0.75)
+        assert result["window_hours"] == 24.0
+
+
+def test_compute_flush_success_rate_window() -> None:
+    now = time.time()
+    # Entry from 30 hours ago — outside the default 24h window
+    data: deque[tuple[float, bool]] = deque([
+        (now - 108000, True),   # 30 hours ago — excluded
+        (now - 3600, True),     # 1 hour ago — included
+        (now - 7200, False),    # 2 hours ago — included
+    ])
+    with patch.object(_routes_mod, "_FLUSH_RESULTS", data):
+        result = _compute_flush_success_rate(window_hours=24.0)
+        assert result is not None
+        assert result["sample_count"] == 2
+        assert result["success_rate"] == pytest.approx(0.5)
+
+
+def test_evaluate_thresholds_flush_below_min() -> None:
+    result = _evaluate_thresholds(
+        noise_rate=None,
+        orphan_count=None,
+        relates_to_rate=None,
+        latency_p95_ms=None,
+        thresholds=_DEFAULT_THRESHOLDS,
+        connectivity_failed=False,
+        flush_success_rate=0.85,  # below flushSuccessRateMin=0.95
+    )
+    assert "flush_success_rate" in result["thresholds"]["exceeded"]
+    assert result["status"] == "degraded"
+
+
+def test_evaluate_thresholds_flush_none() -> None:
+    result = _evaluate_thresholds(
+        noise_rate=None,
+        orphan_count=None,
+        relates_to_rate=None,
+        latency_p95_ms=None,
+        thresholds=_DEFAULT_THRESHOLDS,
+        connectivity_failed=False,
+        flush_success_rate=None,  # no data — should not trigger
+    )
+    assert "flush_success_rate" not in result["thresholds"]["exceeded"]
+    assert result["status"] == "healthy"
 
 
 def test_collect_neo4j_metrics_zero_total_returns_none_rate() -> None:

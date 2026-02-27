@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Recall Quality** - Reinforcement loop, evolution wiring, noise filtering, latency improvements (completed 2026-02-26)
 - [x] **Phase 5.1: Emergency Distillation Sidecar Wiring** - INSERTED: Gap closure — wire sidecarUrl through emergency distillation path in context.ts
 - [x] **Phase 6: Observability** - Unified health endpoint, degraded event emission, corpus audit tooling (gap closure — Phase 6 never started) (completed 2026-02-27)
+- [x] **Phase 7: Tech Debt Cleanup** - Resolve 6 accumulated tech debt items from milestone audit before archiving v1.0 (completed 2026-02-27)
 
 ## Phase Details
 
@@ -157,6 +158,25 @@ Plans:
 - [ ] 06-01-PLAN.md — Unified health endpoint with semantic metrics + threshold config + CLI command
 - [ ] 06-02-PLAN.md — Recall corpus audit CLI + write receipts on all memory paths
 
+### Phase 7: Tech Debt Cleanup
+**Goal**: All accumulated tech debt from v1.0 audit resolved — health events are actionable, metrics are observable, historical data is migrated, and cosmetic issues are fixed
+**Depends on**: Phase 6
+**Requirements**: (no new requirements — closes tech debt from v1.0-MILESTONE-AUDIT.md)
+**Tech Debt Closure:** Resolves 6 items across 5 phases before milestone archival
+**Success Criteria** (what must be TRUE):
+  1. `memory:health_degraded` and `memory:health_recovered` events have a runtime subscriber in the daemon — health events trigger automated action, not dead letters
+  2. Workspace flush success rate is visible in CLI health output — sidecar can access or derive the metric
+  3. `backfill_relates_to.py` has been executed on server — historical RELATES_TO edges reclassified
+  4. `/add` route metadata enforcement is implemented or formally closed with documented rationale
+  5. Single-slash comment typos in pipeline.ts, extract.ts, hooks.ts are fixed
+  6. Baseline precision/recall scores recorded against live corpus (not test doubles)
+
+**Plans:** 2/2 plans complete
+
+Plans:
+- [x] 07-01-PLAN.md — Health event subscribers + flush metric tracking/display + comment typo fixes + /add ADR closure (code)
+- [x] 07-02-PLAN.md — Server-side: RELATES_TO backfill execution + live baseline recording (requires SSH)
+
 ## Progress
 
 **Execution Order:**
@@ -172,3 +192,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 (can overlap with 3) → 5 
 | 5. Recall Quality | 4/4 | Complete   | 2026-02-26 |
 | 5.1 Emergency Distillation Sidecar Wiring | 1/1 | Complete    | 2026-02-27 |
 | 6. Observability | 2/2 | Complete   | 2026-02-27 |
+| 7. Tech Debt Cleanup | 2/2 | Complete   | 2026-02-27 |
