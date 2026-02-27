@@ -1,6 +1,6 @@
 # Spec 25: Integrated IDE
 
-**Status:** ✅ Complete — Archived  
+**Status:** ✅ Complete — Archived (Phase 3 UI missing TreeContextMenu — see #325)  
 **Completed:** 2026-02-25  
 **PR:** #307 (squash-merged)
 

@@ -1,6 +1,6 @@
 # Spec 28 — Aletheia TUI
 
-**Status:** Phase 2 — Complete ✅ (Phase 3 substantially complete)  
+**Status:** Phase 2 — Complete ✅ (Phase 3 substantially complete). Deferred items tracked in #326.  
 **Component:** `tui/` — Rust terminal client (4,853 LOC as of 2026-02-23)  
 **Interface:** Primary working interface alongside Signal (mobile)  
 **Gateway dependency:** Hono REST API + SSE on `:18789` — zero gateway changes  

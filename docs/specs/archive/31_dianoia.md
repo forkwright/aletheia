@@ -2,7 +2,7 @@
 
 | Field   | Value                                      |
 |---------|--------------------------------------------|
-| Status  | Implemented                                |
+| Status  | Implemented (Phase 2 entry points missing — see gaps below) |
 | Author  | Demiurge                                   |
 | Created | 2026-02-24                                 |
 | Scope   | `infrastructure/runtime/src/dianoia/`      |
@@ -572,9 +572,9 @@ The module was built in 8 phases, each delivering a testable capability that unb
 
 1. **Foundation** — SQLite schema (v20), `PlanningStore` CRUD with transactions, pure FSM with all 11 states and 15 transitions, `PlanningConfig` Zod schema in `taxis/schema.ts`.
 
-2. **Orchestrator & Entry** — `DianoiaOrchestrator` core (handle, abandon, confirmResume), `/plan` slash command, `aletheia plan` CLI subcommand, `detectPlanningIntent()` for natural-language planning detection via `turn:before` hook.
+2. **Orchestrator & Entry** — `DianoiaOrchestrator` core (handle, abandon, confirmResume), ~~`/plan` slash command~~ (**not built** → #323), ~~`aletheia plan` CLI subcommand~~ (**not built** → #324), `detectPlanningIntent()` for natural-language planning detection (**partial** — exists in `intent.ts`, wired in `context.ts:289`, but only injects soft prompt suggestion, not full orchestrator activation).
 
-3. **Project Context & API** — Conversational questioning loop (`processAnswer`, `getNextQuestion`, `confirmSynthesis`), v21 migration for `project_context`, Pylon API routes for listing and inspecting projects, legacy tool deprecation (`plan_create`, `plan_propose` marked `@deprecated` with JSON warning keys).
+3. **Project Context & API** — Conversational questioning loop (`processAnswer`, `getNextQuestion`, `confirmSynthesis`), v21 migration for `project_context`, Pylon API routes for listing and inspecting projects. ~~Legacy tool deprecation~~ (**not done** — `plan_create` still active and is currently the only entry point for planning).
 
 4. **Research Pipeline** — `ResearchOrchestrator` spawning four parallel dimension agents (stack, features, architecture, pitfalls) via `sessions_dispatch`, v22 migration for research status, synthesis agent, timeout surfacing, FSM advance to requirements.
 
