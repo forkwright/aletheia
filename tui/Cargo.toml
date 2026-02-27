@@ -33,7 +33,7 @@ unicode-width = "0.2"
 clap = { version = "4", features = ["derive", "env"] }
 
 # Config
-toml = "0.8"
+toml = "1.0"
 dirs = "6"
 
 # Logging (file-based, not stdout)
