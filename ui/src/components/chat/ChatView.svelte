@@ -390,12 +390,16 @@
   // Planning panel state
   let selectedPlanningProjectId = $state<string | null>(null);
   type PlanningLayout = "panel" | "half" | "full";
-  let planningLayout = $state<PlanningLayout>("half");
+  const LAYOUT_STORAGE_KEY = "aletheia:planning-layout";
+  let planningLayout = $state<PlanningLayout>(
+    (typeof localStorage !== "undefined" && localStorage.getItem(LAYOUT_STORAGE_KEY) as PlanningLayout) || "half"
+  );
 
   function cyclePlanningLayout() {
     const modes: PlanningLayout[] = ["panel", "half", "full"];
     const idx = modes.indexOf(planningLayout);
     planningLayout = modes[(idx + 1) % modes.length]!;
+    try { localStorage.setItem(LAYOUT_STORAGE_KEY, planningLayout); } catch {}
   }
 
   function closePlanningPanel() {
