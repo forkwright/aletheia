@@ -9,6 +9,7 @@ nousFilter: [demiurge]
 handler:
   type: shell
   command: /bin/sh
-  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> /mnt/ssd/aletheia/nous/demiurge/craft-journal.log"]
+  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/demiurge/craft-journal.log"]
+  # Replace <nous-dir> with your agent's workspace directory
   timeout: 5s
   failAction: silent

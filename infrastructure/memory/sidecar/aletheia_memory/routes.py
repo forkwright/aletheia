@@ -1880,7 +1880,7 @@ async def fact_stats(request: Request, user_id: str = "default") -> dict[str, An
 # --- Phase 2.6: Forgetting Protocol ---
 
 
-RETRACTION_LOG = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia")) / "shared" / "memory" / "retractions.jsonl"
+RETRACTION_LOG = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia"))) / "shared" / "memory" / "retractions.jsonl"
 
 
 class RetractRequest(BaseModel):

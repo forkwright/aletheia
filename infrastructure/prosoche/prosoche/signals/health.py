@@ -102,7 +102,7 @@ async def _check_disk() -> dict[str, int]:
             if len(parts) >= 2:
                 mount = parts[0]
                 pct = int(parts[1].rstrip("%"))
-                if mount in ("/", "/mnt/ssd", "/mnt/nas"):
+                if mount in ("/",):
                     usage[mount] = pct
         return usage
     except Exception as e:

@@ -10,7 +10,7 @@ When an expected command-line tool is not found in the standard PATH and you nee
 3. Use `which` command to search PATH for the tool
 4. List environment-specific binary directories (e.g., $ALETHEIA_SHARED/bin) to see available tools
 5. Use `find` to search the filesystem for the missing tool by name
-6. Check domain-specific tool directories (e.g., /mnt/ssd/aletheia/shared/bin/) that may contain project-specific binaries
+6. Check domain-specific tool directories (e.g., <aletheia-root>/shared/bin/) that may contain project-specific binaries
 7. Compare available tools in relevant directories against the requested tool to determine if it exists elsewhere
 
 ## Tools Used

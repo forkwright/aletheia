@@ -5,12 +5,13 @@ import asyncio
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from loguru import logger
 
 from .signals import ContextBlock, Signal
 
-GCAL_BIN = "/mnt/ssd/aletheia/shared/bin/gcal"
+GCAL_BIN = str(Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "shared" / "bin" / "gcal")
 
 
 async def build_morning_digest(config: dict) -> Signal | None:
@@ -144,7 +145,7 @@ async def _quick_health_check() -> list[str]:
     # Disk usage
     try:
         proc = await asyncio.create_subprocess_exec(
-            "df", "-h", "--output=target,pcent,avail", "/", "/mnt/ssd",
+            "df", "-h", "--output=target,pcent,avail", "/", os.environ.get("ALETHEIA_MOUNT_CHECK", "/"),  # Set ALETHEIA_MOUNT_CHECK to monitor a specific mount point
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

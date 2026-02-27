@@ -13,8 +13,9 @@ Usage:
 import subprocess
 import sys
 import os
+from pathlib import Path
 
-ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))
 VENV_PYTHON = os.path.join(ALETHEIA_ROOT, "infrastructure/docling/.venv/bin/python3")
 
 def main():

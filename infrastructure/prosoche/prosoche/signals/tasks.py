@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from loguru import logger
 
 from . import ContextBlock, Signal
 
-TW_BIN = "/mnt/ssd/aletheia/shared/bin/tw"
+TW_BIN = os.environ.get("TW_BIN", "task")
 
 
 async def collect(config: dict) -> list[Signal]:

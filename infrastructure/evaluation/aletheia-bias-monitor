@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia")))
 SHARED = ROOT / "shared"
 FACTS_FILE = SHARED / "memory" / "facts.jsonl"
 EVAL_DIR = ROOT / "infrastructure" / "evaluation"

@@ -12,7 +12,7 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}", level="INFO")
 
-ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia"))
+ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia")))
 NOUS_DIR = ALETHEIA_HOME / "nous"
 SHARED_DIR = ALETHEIA_HOME / "shared"
 COMPETENCE_FILE = SHARED_DIR / "competence" / "model.json"

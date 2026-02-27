@@ -6,7 +6,7 @@ with voyage-4-large, and upserts in-place. Payloads preserved exactly.
 
 Usage:
     # From sidecar venv (has qdrant-client + openai):
-    cd /mnt/ssd/aletheia/infrastructure/memory/sidecar
+    cd ~/.aletheia/infrastructure/memory/sidecar
     .venv/bin/python ../scripts/migrate-voyage4.py --dry-run
     .venv/bin/python ../scripts/migrate-voyage4.py
 
