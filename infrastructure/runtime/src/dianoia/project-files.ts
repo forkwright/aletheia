@@ -17,7 +17,7 @@ const log = createLogger("dianoia:files");
 // --- Atomic file writing utility ---
 
 function atomicWriteFile(filePath: string, content: string, encoding: BufferEncoding = "utf-8"): void {
-  const tmpPath = `${filePath}.tmp`;
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   try {
     writeFileSync(tmpPath, content, encoding);
     renameSync(tmpPath, filePath);
