@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
 CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
 BACKUP_DIR="${ALETHEIA_BACKUP_DIR:-$ALETHEIA_ROOT/backups}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -142,6 +142,6 @@ fi
 
 echo ""
 echo "Restore with:"
-echo "  tar xzf $BACKUP_FILE -C /mnt/ssd/aletheia"
-echo "  cp /mnt/ssd/aletheia/config/sessions.db ~/.aletheia/"
-echo "  cp /mnt/ssd/aletheia/config/aletheia.json ~/.aletheia/"
+echo "  tar xzf $BACKUP_FILE -C $ALETHEIA_ROOT"
+echo "  cp $ALETHEIA_ROOT/config/sessions.db ~/.aletheia/"
+echo "  cp $ALETHEIA_ROOT/config/aletheia.json ~/.aletheia/"

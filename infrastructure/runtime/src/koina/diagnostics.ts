@@ -1,10 +1,12 @@
 // Diagnostic checks for `aletheia doctor`
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
 import { loadConfig } from "../taxis/loader.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
+import { readJson } from "./fs.js";
 
 export interface DiagnosticResult {
   name: string;
@@ -19,6 +21,11 @@ export interface DiagnosticResult {
 type DiagnosticCheck = (config: AletheiaConfig | null) => DiagnosticResult;
 
 const checks: DiagnosticCheck[] = [
+  checkBootstrapAnchor,
+  checkNousScaffoldDirs,
+  checkWorkspaceIndexHealth,
+  checkDeployConfig,
+  checkSecretRefs,
   checkConfigValid,
   checkWorkspacesExist,
   checkSharedDirs,
@@ -29,6 +36,240 @@ const checks: DiagnosticCheck[] = [
   checkSignalConfig,
   checkCredentialsDir,
 ];
+
+function checkBootstrapAnchor(_config: AletheiaConfig | null): DiagnosticResult {
+  const path = join(homedir(), ".aletheia", "anchor.json");
+  const raw = readJson<Record<string, unknown>>(path);
+
+  if (raw === null) {
+    return {
+      name: "bootstrap_anchor",
+      status: "warn",
+      message: `anchor.json not found at ${path} — run 'aletheia init' to configure your deployment`,
+    };
+  }
+
+  if (typeof raw["nousDir"] !== "string" || typeof raw["deployDir"] !== "string") {
+    return {
+      name: "bootstrap_anchor",
+      status: "error",
+      message: `anchor.json at ${path} is missing nousDir or deployDir`,
+    };
+  }
+
+  const nousDir = raw["nousDir"] as string;
+  const deployDirVal = raw["deployDir"] as string;
+  const nousExists = existsSync(nousDir);
+  const deployExists = existsSync(deployDirVal);
+
+  const lines = [
+    `anchor.json: ${path}`,
+    `  nousDir:   ${nousDir}${nousExists ? "" : "  (directory does not exist)"}`,
+    `  deployDir: ${deployDirVal}${deployExists ? "" : "  (directory does not exist)"}`,
+  ];
+
+  return {
+    name: "bootstrap_anchor",
+    status: nousExists && deployExists ? "ok" : "warn",
+    message: lines.join("\n"),
+  };
+}
+
+function checkNousScaffoldDirs(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
+    return {
+      name: "nous_scaffold",
+      status: "warn",
+      message: "Skipped (anchor.json not found or nousDir missing)",
+    };
+  }
+  const nousDir = anchorRaw["nousDir"] as string;
+  const required = [
+    join(nousDir, "_shared", "workspace", "plans"),
+    join(nousDir, "_shared", "workspace", "specs"),
+    join(nousDir, "_shared", "workspace", "standards"),
+    join(nousDir, "_shared", "workspace", "references"),
+  ];
+  const missing = required.filter((d) => !existsSync(d));
+  if (missing.length === 0) {
+    return {
+      name: "nous_scaffold",
+      status: "ok",
+      message: `_shared/ scaffold complete (${required.length} dirs)`,
+    };
+  }
+  return {
+    name: "nous_scaffold",
+    status: "warn",
+    message: `Missing scaffold dirs: ${missing.map((d) => d.replace(nousDir + "/", "")).join(", ")} — run 'aletheia init' to fix`,
+  };
+}
+
+function checkWorkspaceIndexHealth(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "Skipped (anchor.json not found or nousDir missing)",
+    };
+  }
+  const nousDir = anchorRaw["nousDir"] as string;
+  const sharedDir = join(nousDir, "_shared");
+  if (!existsSync(sharedDir)) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: `_shared/ not found at ${sharedDir} — run 'aletheia init' to scaffold`,
+    };
+  }
+  const indexDir = join(sharedDir, ".aletheia-index");
+  if (!existsSync(indexDir)) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "_shared/ exists but has no index yet — will be built at next daemon startup",
+    };
+  }
+  // Check for any manifest file to confirm index was successfully built
+  let manifests: string[] = [];
+  try {
+    manifests = readdirSync(indexDir).filter((f) => f.startsWith("manifest_"));
+  } catch {
+    return {
+      name: "workspace_index",
+      status: "error",
+      message: `Cannot read index directory ${indexDir} — check permissions`,
+    };
+  }
+  if (manifests.length === 0) {
+    return {
+      name: "workspace_index",
+      status: "warn",
+      message: "Index directory exists but no manifests found — index may still be building",
+    };
+  }
+  return {
+    name: "workspace_index",
+    status: "ok",
+    message: `Workspace index present (${manifests.length} manifest(s) in ${indexDir})`,
+  };
+}
+
+function checkDeployConfig(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["deployDir"] !== "string") {
+    return {
+      name: "deploy_config",
+      status: "warn",
+      message: "Skipped (anchor.json not found or deployDir missing)",
+    };
+  }
+  const deployDirPath = anchorRaw["deployDir"] as string;
+  const configPath = join(deployDirPath, "aletheia.json");
+  try {
+    loadConfig(configPath);
+    return {
+      name: "deploy_config",
+      status: "ok",
+      message: `aletheia.json valid (${configPath})`,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      name: "deploy_config",
+      status: "error",
+      message: `Deploy config invalid: ${msg}`,
+    };
+  }
+}
+
+function isSecretRefShape(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "source" in (value as object)
+  );
+}
+
+function checkSecretRefs(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["deployDir"] !== "string") {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: "Skipped (anchor.json not found or deployDir missing)",
+    };
+  }
+  const deployDirPath = anchorRaw["deployDir"] as string;
+  const configPath = join(deployDirPath, "aletheia.json");
+
+  const raw = readJson<Record<string, unknown>>(configPath);
+  if (raw === null) {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: "Skipped (deploy config not found)",
+    };
+  }
+
+  const refs: string[] = [];
+  const badRefs: string[] = [];
+
+  const providers = (raw["models"] as Record<string, unknown> | undefined)?.["providers"] as Record<string, unknown> | undefined;
+  if (providers) {
+    for (const [name, provider] of Object.entries(providers)) {
+      const p = provider as Record<string, unknown>;
+      for (const field of ["apiKey", "baseUrl"]) {
+        const val = p[field];
+        if (isSecretRefShape(val)) {
+          const ref = val as Record<string, unknown>;
+          if (typeof ref["source"] === "string" && typeof ref["id"] === "string") {
+            refs.push(`models.providers.${name}.${field} (source: ${ref["source"]})`);
+          } else {
+            badRefs.push(`models.providers.${name}.${field} (missing source or id)`);
+          }
+        }
+      }
+    }
+  }
+
+  const gateway = raw["gateway"] as Record<string, unknown> | undefined;
+  const gatewayAuth = gateway?.["auth"] as Record<string, unknown> | undefined;
+  if (gatewayAuth !== undefined && isSecretRefShape(gatewayAuth["token"])) {
+    const ref = gatewayAuth["token"] as Record<string, unknown>;
+    if (typeof ref["source"] === "string" && typeof ref["id"] === "string") {
+      refs.push(`gateway.auth.token (source: ${ref["source"]})`);
+    } else {
+      badRefs.push("gateway.auth.token (missing source or id)");
+    }
+  }
+
+  const restartNote = "SecretRef credentials are resolved at daemon startup — rotation requires a daemon restart";
+
+  if (badRefs.length > 0) {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: `Invalid SecretRef structure in: ${badRefs.join(", ")}. ${restartNote}`,
+    };
+  }
+
+  if (refs.length > 0) {
+    return {
+      name: "secret_refs",
+      status: "ok",
+      message: `${refs.length} SecretRef field(s) configured: ${refs.join(", ")}. ${restartNote}`,
+    };
+  }
+
+  return {
+    name: "secret_refs",
+    status: "ok",
+    message: "No SecretRef fields detected (inline credentials or no credential fields)",
+  };
+}
 
 function checkConfigValid(_config: AletheiaConfig | null): DiagnosticResult {
   try {
@@ -469,6 +710,9 @@ function isSystemdEnabled(unit: string): boolean {
   }
   return false;
 }
+
+// Exported for unit testing only
+export { checkDeployConfig, checkSecretRefs };
 
 export function formatDoctorOutput(
   connectivity: CheckResult[],

@@ -116,12 +116,13 @@ describe("CodingStandards", () => {
   describe("writeStandardsFile / readStandardsFile", () => {
     it("writes and reads STANDARDS.md", () => {
       const projectId = "proj_test123";
-      ensureProjectDir(workspace, projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", projectId);
+      ensureProjectDir(projectDirValue);
 
       const standards = buildStandards({ primaryLanguage: "typescript", projectId });
-      writeStandardsFile(workspace, projectId, standards);
+      writeStandardsFile(projectDirValue, standards);
 
-      const filePath = join(getProjectDir(workspace, projectId), "STANDARDS.md");
+      const filePath = join(getProjectDir(projectDirValue), "STANDARDS.md");
       expect(existsSync(filePath)).toBe(true);
 
       const content = readFileSync(filePath, "utf-8");
@@ -132,19 +133,21 @@ describe("CodingStandards", () => {
 
     it("round-trips effective rules through JSON trailer", () => {
       const projectId = "proj_roundtrip";
-      ensureProjectDir(workspace, projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", projectId);
+      ensureProjectDir(projectDirValue);
 
       const standards = buildStandards({ primaryLanguage: "python", projectId });
-      writeStandardsFile(workspace, projectId, standards);
+      writeStandardsFile(projectDirValue, standards);
 
-      const result = readStandardsFile(workspace, projectId);
+      const result = readStandardsFile(projectDirValue);
       expect(result).not.toBeNull();
       expect(result!.effectiveRules.length).toBe(standards.effectiveRules.length);
       expect(result!.effectiveRules[0]!.id).toBeTruthy();
     });
 
     it("returns null when file doesn't exist", () => {
-      const result = readStandardsFile(workspace, "proj_nonexistent");
+      const projectDirValue = join(workspace, ".dianoia", "projects", "proj_nonexistent");
+      const result = readStandardsFile(projectDirValue);
       expect(result).toBeNull();
     });
   });

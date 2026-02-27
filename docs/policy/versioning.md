@@ -43,7 +43,7 @@ Every breaking change includes:
 2. Update `CHANGELOG.md` with categorized changes
 3. Tag: `git tag v0.MINOR.PATCH`
 4. GitHub Release with migration notes if breaking
-5. Notify downstream operators (ergon fork) if breaking
+5. Notify downstream operators (your fork) if breaking
 
 ## Changelog Format
 

@@ -2,7 +2,7 @@
 # Self-update script — pulls, builds, restarts, health-checks with auto-rollback
 set -euo pipefail
 
-ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
 RUNTIME_DIR="$ALETHEIA_ROOT/infrastructure/runtime"
 UI_DIR="$ALETHEIA_ROOT/ui"
 SERVICE_NAME="aletheia"

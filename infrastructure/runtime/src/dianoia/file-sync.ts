@@ -36,7 +36,6 @@ const log = createLogger("dianoia:file-sync");
  */
 export class FileSyncDaemon {
   private store: PlanningStore;
-  private workspaceRoot: string | null = null;
   private listeners: Array<() => void> = [];
   private writeCount = 0;
   private errorCount = 0;
@@ -45,11 +44,10 @@ export class FileSyncDaemon {
     this.store = new PlanningStore(db);
   }
 
-  /** Set workspace root and start listening for events */
-  start(workspaceRoot: string): void {
-    this.workspaceRoot = workspaceRoot;
+  /** Start listening for events. No workspaceRoot needed — path resolved from project.projectDir. */
+  start(): void {
     this.subscribe();
-    log.info("FileSyncDaemon started", { workspaceRoot });
+    log.info("FileSyncDaemon started");
   }
 
   /** Stop listening */
@@ -109,9 +107,12 @@ export class FileSyncDaemon {
     this.on("planning:verification-complete", (data) => {
       this.syncProject(data.projectId);
       if (data.phaseId && data.result) {
-        this.safeWrite("VERIFY.md", () => {
-          writeVerifyFile(this.workspaceRoot!, data.projectId, data.phaseId, data.result);
-        });
+        const project = this.store.getProject(data.projectId);
+        if (project?.projectDir) {
+          this.safeWrite("VERIFY.md", () => {
+            writeVerifyFile(project.projectDir!, data.phaseId, data.result);
+          });
+        }
       }
     });
 
@@ -124,20 +125,24 @@ export class FileSyncDaemon {
 
     // Requirement changes (from routes.ts PATCH/batch operations)
     this.on("planning:requirement-changed", (data) => {
+      const project = this.store.getProject(data.projectId);
+      if (!project?.projectDir) return;
       const reqs = this.store.listRequirements(data.projectId);
       if (reqs.length > 0) {
         this.safeWrite("REQUIREMENTS.md", () => {
-          writeRequirementsFile(this.workspaceRoot!, data.projectId, reqs);
+          writeRequirementsFile(project.projectDir!, reqs);
         });
       }
     });
 
     // Phase changes (from routes.ts PATCH operations)
     this.on("planning:phase-changed", (data) => {
+      const project = this.store.getProject(data.projectId);
+      if (!project?.projectDir) return;
       const phases = this.store.listPhases(data.projectId);
       if (phases.length > 0) {
         this.safeWrite("ROADMAP.md", () => {
-          writeRoadmapFile(this.workspaceRoot!, data.projectId, phases);
+          writeRoadmapFile(project.projectDir!, phases);
         });
       }
     });
@@ -145,10 +150,12 @@ export class FileSyncDaemon {
     // Discussion answers
     this.on("planning:discussion-answered", (data) => {
       if (data.phaseId) {
+        const project = this.store.getProject(data.projectId);
+        if (!project?.projectDir) return;
         const questions = this.store.listDiscussionQuestions(data.projectId, data.phaseId);
         if (questions.length > 0) {
           this.safeWrite(`DISCUSS.md(${data.phaseId})`, () => {
-            writeDiscussFile(this.workspaceRoot!, data.projectId, data.phaseId, questions);
+            writeDiscussFile(project.projectDir!, data.phaseId, questions);
           });
         }
       }
@@ -171,26 +178,27 @@ export class FileSyncDaemon {
 
   /** Write PROJECT.md with current state */
   private syncProject(projectId: string): void {
-    if (!this.workspaceRoot) return;
     const project = this.store.getProject(projectId);
-    if (!project) return;
+    if (!project?.projectDir) return;
 
-    ensureProjectDir(this.workspaceRoot, projectId);
+    ensureProjectDir(project.projectDir);
     this.safeWrite("PROJECT.md", () => {
-      writeProjectFile(this.workspaceRoot!, project, project.projectContext);
+      writeProjectFile(project, project.projectContext);
     });
   }
 
   /** Write phase-specific artifacts based on what just completed */
   private syncPhaseArtifacts(projectId: string, phase: string): void {
-    if (!this.workspaceRoot) return;
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    const projectDirValue = project.projectDir;
 
     switch (phase) {
       case "research": {
         const research = this.store.listResearch(projectId);
         if (research.length > 0) {
           this.safeWrite("RESEARCH.md", () => {
-            writeResearchFile(this.workspaceRoot!, projectId, research);
+            writeResearchFile(projectDirValue, research);
           });
         }
         break;
@@ -199,7 +207,7 @@ export class FileSyncDaemon {
         const reqs = this.store.listRequirements(projectId);
         if (reqs.length > 0) {
           this.safeWrite("REQUIREMENTS.md", () => {
-            writeRequirementsFile(this.workspaceRoot!, projectId, reqs);
+            writeRequirementsFile(projectDirValue, reqs);
           });
         }
         break;
@@ -208,7 +216,7 @@ export class FileSyncDaemon {
         const phases = this.store.listPhases(projectId);
         if (phases.length > 0) {
           this.safeWrite("ROADMAP.md", () => {
-            writeRoadmapFile(this.workspaceRoot!, projectId, phases);
+            writeRoadmapFile(projectDirValue, phases);
           });
         }
         break;
@@ -220,7 +228,7 @@ export class FileSyncDaemon {
           const questions = this.store.listDiscussionQuestions(projectId, p.id);
           if (questions.length > 0) {
             this.safeWrite(`DISCUSS.md(${p.id})`, () => {
-              writeDiscussFile(this.workspaceRoot!, projectId, p.id, questions);
+              writeDiscussFile(projectDirValue, p.id, questions);
             });
           }
         }
@@ -231,37 +239,41 @@ export class FileSyncDaemon {
 
   /** Write phase STATE.md with execution progress */
   private syncPhaseState(projectId: string, phaseId: string, state: Record<string, unknown>): void {
-    if (!this.workspaceRoot) return;
-    ensurePhaseDir(this.workspaceRoot, projectId, phaseId);
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    const projectDirValue = project.projectDir;
+    ensurePhaseDir(projectDirValue, phaseId);
     this.safeWrite(`STATE.md(${phaseId})`, () => {
-      writeStateFile(this.workspaceRoot!, projectId, phaseId, state);
+      writeStateFile(projectDirValue, phaseId, state);
     });
   }
 
   /** Full sync of all artifacts — used on project completion */
   private fullSync(projectId: string): void {
-    if (!this.workspaceRoot) return;
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    const projectDirValue = project.projectDir;
 
     this.syncProject(projectId);
 
     const research = this.store.listResearch(projectId);
     if (research.length > 0) {
       this.safeWrite("RESEARCH.md", () => {
-        writeResearchFile(this.workspaceRoot!, projectId, research);
+        writeResearchFile(projectDirValue, research);
       });
     }
 
     const reqs = this.store.listRequirements(projectId);
     if (reqs.length > 0) {
       this.safeWrite("REQUIREMENTS.md", () => {
-        writeRequirementsFile(this.workspaceRoot!, projectId, reqs);
+        writeRequirementsFile(projectDirValue, reqs);
       });
     }
 
     const phases = this.store.listPhases(projectId);
     if (phases.length > 0) {
       this.safeWrite("ROADMAP.md", () => {
-        writeRoadmapFile(this.workspaceRoot!, projectId, phases);
+        writeRoadmapFile(projectDirValue, phases);
       });
     }
 
@@ -269,17 +281,17 @@ export class FileSyncDaemon {
       const questions = this.store.listDiscussionQuestions(projectId, phase.id);
       if (questions.length > 0) {
         this.safeWrite(`DISCUSS.md(${phase.id})`, () => {
-          writeDiscussFile(this.workspaceRoot!, projectId, phase.id, questions);
+          writeDiscussFile(projectDirValue, phase.id, questions);
         });
       }
       if (phase.plan) {
         this.safeWrite(`PLAN.md(${phase.id})`, () => {
-          writePlanFile(this.workspaceRoot!, projectId, phase.id, phase.plan);
+          writePlanFile(projectDirValue, phase.id, phase.plan);
         });
       }
       if (phase.verificationResult) {
         this.safeWrite(`VERIFY.md(${phase.id})`, () => {
-          writeVerifyFile(this.workspaceRoot!, projectId, phase.id, phase.verificationResult as unknown as Record<string, unknown>);
+          writeVerifyFile(projectDirValue, phase.id, phase.verificationResult as unknown as Record<string, unknown>);
         });
       }
     }

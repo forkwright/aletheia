@@ -3,15 +3,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from . import ContextBlock, Signal
 
-GCAL_BIN = "/mnt/ssd/aletheia/shared/bin/gcal"
+GCAL_BIN = str(Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "shared" / "bin" / "gcal")
 
 
 async def collect(config: dict) -> list[Signal]:

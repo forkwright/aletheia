@@ -32,7 +32,7 @@ export interface ScopingDecision {
 export class RequirementsOrchestrator {
   private store: PlanningStore;
 
-  constructor(db: Database.Database, private workspaceRoot?: string) {
+  constructor(db: Database.Database, _workspaceRoot?: string) {
     this.store = new PlanningStore(db);
   }
 
@@ -133,9 +133,10 @@ export class RequirementsOrchestrator {
     }
 
     // Write REQUIREMENTS.md after each category persist
-    if (this.workspaceRoot) {
+    const project = this.store.getProject(projectId);
+    if (project?.projectDir) {
       const allRequirements = this.store.listRequirements(projectId);
-      writeRequirementsFile(this.workspaceRoot, projectId, allRequirements);
+      writeRequirementsFile(project.projectDir, allRequirements);
     }
 
     log.info(`Persisted ${decisions.length} requirements for category ${category.category}`);

@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
-NOUS_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia") + "/nous"
+NOUS_ROOT = str(Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "nous")
 DATE_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 
 

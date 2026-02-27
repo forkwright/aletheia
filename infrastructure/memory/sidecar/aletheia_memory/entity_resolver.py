@@ -29,8 +29,6 @@ KNOWN_ALIASES: dict[str, str] = {
     "ut_mccombs": "ut mccombs",
     "ut austin": "ut mccombs",
     "mccombs": "ut mccombs",
-    "summus_global": "summus",
-    "summus global": "summus",
     "ardent_llc": "ardent",
     "ardent llc": "ardent",
 }

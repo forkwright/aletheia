@@ -99,9 +99,11 @@ function createFullArtifact(): DiscussionArtifact {
 
 describe("DiscussionArtifacts", () => {
   let workspace: string;
+  let projectDirValue: string;
 
   beforeEach(() => {
     workspace = createTempWorkspace();
+    projectDirValue = join(workspace, ".dianoia", "projects", TEST_PROJECT_ID);
   });
 
   afterEach(() => {
@@ -111,9 +113,9 @@ describe("DiscussionArtifacts", () => {
   describe("writeStructuredDiscussFile", () => {
     it("creates DISCUSS.md with all four sections", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const filePath = join(phaseDir, "DISCUSS.md");
       expect(existsSync(filePath)).toBe(true);
 
@@ -127,9 +129,9 @@ describe("DiscussionArtifacts", () => {
 
     it("includes boundary items in table format", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("OAuth integration");
@@ -142,9 +144,9 @@ describe("DiscussionArtifacts", () => {
 
     it("includes implementation decisions with alternatives", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("Use JWT for session tokens");
@@ -156,9 +158,9 @@ describe("DiscussionArtifacts", () => {
 
     it("includes discretion items with constraints", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("Token expiry duration");
@@ -168,9 +170,9 @@ describe("DiscussionArtifacts", () => {
 
     it("includes deferred ideas with priority", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("Magic link authentication");
@@ -180,9 +182,9 @@ describe("DiscussionArtifacts", () => {
 
     it("preserves raw discussion questions", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("Which token format?");
@@ -192,9 +194,9 @@ describe("DiscussionArtifacts", () => {
 
     it("embeds JSON trailer for machine parsing", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       const jsonMatch = content.match(/```json\n([\s\S]+?)\n```/);
@@ -209,9 +211,9 @@ describe("DiscussionArtifacts", () => {
 
     it("handles empty artifact gracefully", () => {
       const artifact = createEmptyArtifact(TEST_PROJECT_ID, TEST_PHASE_ID);
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const content = readFileSync(join(phaseDir, "DISCUSS.md"), "utf-8");
 
       expect(content).toContain("No explicit boundaries");
@@ -224,9 +226,9 @@ describe("DiscussionArtifacts", () => {
   describe("readStructuredDiscussFile", () => {
     it("round-trips structured data through write/read", () => {
       const artifact = createFullArtifact();
-      writeStructuredDiscussFile(workspace, artifact);
+      writeStructuredDiscussFile(projectDirValue, artifact);
 
-      const result = readStructuredDiscussFile(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const result = readStructuredDiscussFile(projectDirValue, TEST_PHASE_ID);
 
       expect(result).not.toBeNull();
       expect(result!.boundaries).toHaveLength(3);
@@ -238,7 +240,7 @@ describe("DiscussionArtifacts", () => {
     });
 
     it("returns null when file doesn't exist", () => {
-      const result = readStructuredDiscussFile(workspace, TEST_PROJECT_ID, "nonexistent");
+      const result = readStructuredDiscussFile(projectDirValue, "nonexistent");
       expect(result).toBeNull();
     });
   });
@@ -334,69 +336,69 @@ describe("DiscussionArtifacts", () => {
 
   describe("lock semantics", () => {
     it("reports unlocked when no lock exists", () => {
-      ensurePhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
-      const status = isDiscussionLocked(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      ensurePhaseDir(projectDirValue, TEST_PHASE_ID);
+      const status = isDiscussionLocked(projectDirValue, TEST_PHASE_ID);
       expect(status.locked).toBe(false);
     });
 
     it("acquires lock successfully", () => {
-      const acquired = acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      const acquired = acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
       expect(acquired).toBe(true);
 
-      const status = isDiscussionLocked(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const status = isDiscussionLocked(projectDirValue, TEST_PHASE_ID);
       expect(status.locked).toBe(true);
       expect(status.lockedBy).toBe("session-1");
     });
 
     it("prevents other sessions from acquiring lock", () => {
-      acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
 
-      const acquired = acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-2");
+      const acquired = acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-2");
       expect(acquired).toBe(false);
     });
 
     it("allows same session to re-acquire lock", () => {
-      acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
 
-      const acquired = acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      const acquired = acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
       expect(acquired).toBe(true);
     });
 
     it("releases lock successfully", () => {
-      acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
 
-      const released = releaseDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      const released = releaseDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
       expect(released).toBe(true);
 
-      const status = isDiscussionLocked(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const status = isDiscussionLocked(projectDirValue, TEST_PHASE_ID);
       expect(status.locked).toBe(false);
     });
 
     it("prevents other sessions from releasing lock", () => {
-      acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-1");
+      acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-1");
 
-      const released = releaseDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "session-2");
+      const released = releaseDiscussionLock(projectDirValue, TEST_PHASE_ID, "session-2");
       expect(released).toBe(false);
 
       // Lock still held
-      const status = isDiscussionLocked(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const status = isDiscussionLocked(projectDirValue, TEST_PHASE_ID);
       expect(status.locked).toBe(true);
     });
 
     it("treats stale locks as unlocked (5 min expiry)", () => {
       // Manually write a stale lock
-      ensurePhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
-      const phaseDir = getPhaseDir(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      ensurePhaseDir(projectDirValue, TEST_PHASE_ID);
+      const phaseDir = getPhaseDir(projectDirValue, TEST_PHASE_ID);
       const lockPath = join(phaseDir, ".discuss.lock");
       const staleTime = new Date(Date.now() - 6 * 60 * 1000).toISOString(); // 6 minutes ago
       const { writeFileSync } = require("node:fs");
       writeFileSync(lockPath, JSON.stringify({ lockedBy: "stale-session", lockedAt: staleTime }));
 
-      const status = isDiscussionLocked(workspace, TEST_PROJECT_ID, TEST_PHASE_ID);
+      const status = isDiscussionLocked(projectDirValue, TEST_PHASE_ID);
       expect(status.locked).toBe(false);
 
       // Can acquire over stale lock
-      const acquired = acquireDiscussionLock(workspace, TEST_PROJECT_ID, TEST_PHASE_ID, "new-session");
+      const acquired = acquireDiscussionLock(projectDirValue, TEST_PHASE_ID, "new-session");
       expect(acquired).toBe(true);
     });
   });

@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
-import { formatDoctorOutput, runBootPersistenceChecks, runConnectivityChecks, runDependencyChecks } from "./koina/diagnostics.js";
+import { formatDoctorOutput, formatResults, runBootPersistenceChecks, runConnectivityChecks, runDependencyChecks, runDiagnostics } from "./koina/diagnostics.js";
 import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
@@ -36,8 +36,7 @@ program
   .description("First-run setup wizard — configure credentials, create first agent")
   .action(async () => {
     const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
-    const { join, dirname } = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
+    const { join } = await import("node:path");
     const { randomBytes } = await import("node:crypto");
     const { paths } = await import("./taxis/paths.js");
     const { writeJson } = await import("./koina/fs.js");
@@ -69,7 +68,8 @@ program
       let port = 18789;
       let authMode: "none" | "token" | "session" = "none";
       let authBlock: Record<string, unknown> = { mode: "none" };
-      let aletheiaRoot = "";
+      let nousDir = "";
+      let deployDir = "";
 
       if (!profileOnlyMode) {
         // API key — auto-detect from ~/.claude.json (same source as web wizard)
@@ -114,11 +114,62 @@ program
           console.log(`  Save this — you'll need it to access the UI and API.\n`);
         }
 
-        // Aletheia root detection
-        const scriptDir = dirname(fileURLToPath(import.meta.url));
-        const detectedRoot = join(scriptDir, "..", "..");
-        const rootInput = (await ask(`Aletheia root [${detectedRoot}]: `)).trim();
-        aletheiaRoot = rootInput || detectedRoot;
+        // Anchor.json — bootstrap path configuration
+        const { homedir: homedirFn } = await import("node:os");
+        const { writeBootstrapAnchor, anchorPath } = await import("./taxis/bootstrap-loader.js");
+        const anchorFilePath = anchorPath();
+        const defaultNousDir = join(homedirFn(), ".aletheia", "nous");
+        const defaultDeployDir = join(homedirFn(), ".aletheia", "deploy");
+        nousDir = defaultNousDir;
+        deployDir = defaultDeployDir;
+
+        const existingAnchor = readJson(anchorFilePath);
+        if (existingAnchor && typeof existingAnchor === "object") {
+          const a = existingAnchor as { nousDir?: string; deployDir?: string };
+          if (a.nousDir) {
+            const keepNous = (await ask(`nous.dir is currently ${a.nousDir}. Keep it? [Y/n] `)).trim().toLowerCase();
+            if (keepNous === "" || keepNous === "y") {
+              nousDir = a.nousDir;
+            } else {
+              const input = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
+              if (input) nousDir = input;
+            }
+          } else {
+            const input = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
+            if (input) nousDir = input;
+          }
+          if (a.deployDir) {
+            const keepDeploy = (await ask(`deploy.dir is currently ${a.deployDir}. Keep it? [Y/n] `)).trim().toLowerCase();
+            if (keepDeploy === "" || keepDeploy === "y") {
+              deployDir = a.deployDir;
+            } else {
+              const input = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
+              if (input) deployDir = input;
+            }
+          } else {
+            const input = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
+            if (input) deployDir = input;
+          }
+        } else {
+          const nousInput = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
+          if (nousInput) nousDir = nousInput;
+          const deployInput = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
+          if (deployInput) deployDir = deployInput;
+        }
+
+        mkdirSync(nousDir, { recursive: true });
+        mkdirSync(deployDir, { recursive: true });
+        writeBootstrapAnchor(nousDir, deployDir);
+        console.log(`  Anchor: ${anchorFilePath}`);
+
+        // Scaffold _shared/ workspace dirs — authoritative (throws on failure)
+        const { scaffoldNousShared: doScaffold, mergeGitignore: doMerge } = await import("./taxis/nous-scaffold.js");
+        const sharedCreated = doScaffold(nousDir);
+        doMerge(nousDir);
+        if (sharedCreated.length > 0) {
+          console.log(`  Scaffold: ${sharedCreated.join(", ")}`);
+        }
+        // If sharedCreated.length === 0, all dirs already existed — report nothing (silence = nothing new)
       }
 
       // First agent
@@ -158,20 +209,21 @@ program
           agents: { defaults: {}, list: [] },
           bindings: [],
           gateway: { port, auth: authBlock },
-          env: { ALETHEIA_ROOT: aletheiaRoot },
         });
-
-        // Write env file for systemd compatibility
-        const envPath = join(paths.configDir(), "aletheia.env");
-        writeFileSync(envPath, `ALETHEIA_ROOT=${aletheiaRoot}\n`, "utf-8");
       }
 
-      // Scaffold agent using detected root
-      const nousDir = profileOnlyMode
-        ? join(paths.configDir(), "..", "nous")
-        : join(aletheiaRoot, "nous");
-      mkdirSync(nousDir, { recursive: true });
-      const templateDir = join(nousDir, "_example");
+      // Scaffold agent — resolve nousDir from anchor.json or use value set in anchor step above
+      let scaffoldNousDir: string;
+      if (profileOnlyMode) {
+        const { anchorPath: getAnchorPath } = await import("./taxis/bootstrap-loader.js");
+        const { homedir: homedirFn2 } = await import("node:os");
+        const existingAnchorForProfile = readJson(getAnchorPath()) as { nousDir?: string } | null;
+        scaffoldNousDir = existingAnchorForProfile?.nousDir ?? join(homedirFn2(), ".aletheia", "nous");
+      } else {
+        scaffoldNousDir = nousDir;
+      }
+      mkdirSync(scaffoldNousDir, { recursive: true });
+      const templateDir = join(scaffoldNousDir, "_example");
       if (!existsSync(templateDir)) {
         mkdirSync(templateDir, { recursive: true });
       }
@@ -180,7 +232,7 @@ program
         id: agentId,
         name: agentName,
         emoji: agentEmoji,
-        nousDir,
+        nousDir: scaffoldNousDir,
         configPath,
         templateDir,
         userProfile,
@@ -195,7 +247,6 @@ program
             : "session (configure users with migrate-auth)";
         console.log(`  Config:  ${configPath}`);
         console.log(`  Auth:    ${authLabel}`);
-        console.log(`  Root:    ${aletheiaRoot}`);
       }
       console.log(`  Agent:   ${agentName} (${agentId}) → ${result.workspace}`);
       if (userName) console.log(`  Profile: ${userName}${userRole ? ` — ${userRole}` : ""} (${userTimezone})`);
@@ -239,7 +290,19 @@ program
     ]);
     const dependencies = runDependencyChecks();
 
-    console.log(formatDoctorOutput(connectivity, dependencies, bootPersistence));
+    // Surface configuration checks from runDiagnostics (bootstrap_anchor, nous_scaffold, deploy_config, secret_refs)
+    let configSection = "";
+    try {
+      const { results: diagResults } = runDiagnostics();
+      const configChecks = diagResults.filter((r) =>
+        ["bootstrap_anchor", "nous_scaffold", "deploy_config", "secret_refs"].includes(r.name)
+      );
+      if (configChecks.length > 0) {
+        configSection = `\n── Configuration ──\n${formatResults(configChecks)}\n`;
+      }
+    } catch { /* runDiagnostics errors are non-fatal for doctor output */ }
+
+    console.log(configSection + formatDoctorOutput(connectivity, dependencies, bootPersistence));
     // Exit 0 always — doctor is informational, not assertion-based
   });
 
@@ -257,7 +320,8 @@ program
         try {
           const { loadConfig } = await import("./taxis/loader.js");
           const cfg = loadConfig();
-          token = cfg.auth?.token;
+          const raw = cfg.gateway?.auth?.token;
+          if (typeof raw === "string") token = raw;
         } catch { /* config unavailable */ }
       }
       if (token) headers["Authorization"] = `Bearer ${token}`;

@@ -91,7 +91,7 @@ const CONSOLIDATION_TRIGGERS = {
 
 **Checks:**
 - **TELOS staleness:** Completed goals not archived, goals with no activity in 30+ days, contradictory goals
-- **MNEME bloat:** Token count > 2k threshold, domain knowledge that belongs in ergon_tools, duplicates/contradictions
+- **MNEME bloat:** Token count > 2k threshold, domain knowledge that belongs in your team data repo, duplicates/contradictions
 - **Orphaned files:** Workspace files not referenced by any standard file list, old drafts, stale exports
 - **Skill freshness:** Nous-generated skills unused in 60+ days, skills referencing nonexistent resources
 
@@ -99,7 +99,7 @@ const CONSOLIDATION_TRIGGERS = {
 ```
 ─── workspace health ───────────────────────────────
 ⚠ TELOS.md: 3 completed goals not yet archived
-⚠ MNEME.md: 4.2k tokens — consider pruning domain knowledge to ergon_tools
+⚠ MNEME.md: 4.2k tokens — consider pruning domain knowledge to your team data repo
 ℹ 2 orphaned files in workspace (old-analysis.md, draft-query.sql)
 ────────────────────────────────────────────────────
 ```

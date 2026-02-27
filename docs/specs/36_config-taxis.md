@@ -18,9 +18,9 @@ Clean separation into four layers:
 
 | Layer | Location | Contains |
 |-------|----------|----------|
-| Framework | `ergon/` | Runtime, shared tools, `_example/` template |
+| Framework | `<operator-fork>/` | Runtime, shared tools, `_example/` template |
 | Identity + workspace | `nous/` | Agent files, memory, scratch space |
-| Team work | `ergon_tools/` | DDLs, dashboards, knowledge, standards |
+| Team work | `<team-data-repo>/` | DDLs, dashboards, knowledge, standards |
 | Deployment config | `deploy/` | Credentials, tool config, prosoche, bootstrap |
 
 ### Agent Scratch Space
@@ -29,7 +29,7 @@ Clean separation into four layers:
 nous/{agent}/workspace/
 ├── scripts/     # Investigation SQL, one-off queries (tracked)
 ├── data/        # Sample exports, debug output (.gitignored)
-└── drafts/      # WIP before promotion to ergon_tools (tracked)
+└── drafts/      # WIP before promotion to <team-data-repo> (tracked)
 ```
 
 ### Deploy Consolidation

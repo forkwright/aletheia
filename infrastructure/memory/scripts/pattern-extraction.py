@@ -14,7 +14,7 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}", level="INFO")
 
-ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia"))
+ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia")))
 SESSIONS_DB = Path(os.environ.get("SESSIONS_DB", ""))
 SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
 PATTERNS_FILE = ALETHEIA_HOME / "shared" / "memory" / "patterns.json"

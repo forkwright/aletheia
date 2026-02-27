@@ -1,5 +1,17 @@
 // Zod schemas — single source of truth for config types
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { z } from "zod";
+
+export const SecretRefSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("env"), id: z.string() }),
+  z.object({ source: z.literal("file"), id: z.string() }),
+  z.object({ source: z.literal("vault"), id: z.string().optional() }),
+]);
+export type SecretRef = z.infer<typeof SecretRefSchema>;
+
+// Shared union for all credential fields — reused across ProviderConfig and GatewayConfig
+const CredentialField = z.union([z.string(), SecretRefSchema]);
 
 const ModelSpec = z.union([
   z.string(),
@@ -257,7 +269,7 @@ const GatewayConfig = z
     auth: z
       .object({
         mode: z.enum(["none", "token", "password", "session"]).default("token"),
-        token: z.string().optional(),
+        token: CredentialField.optional(),
         users: z
           .array(
             z.object({
@@ -367,8 +379,8 @@ const ProviderModel = z.object({
 });
 
 const ProviderConfig = z.object({
-  baseUrl: z.string(),
-  apiKey: z.string().optional(),
+  baseUrl: CredentialField,
+  apiKey: CredentialField.optional(),
   auth: z
     .enum(["api-key", "oauth", "token"])
     .default("api-key"),
@@ -517,7 +529,7 @@ const EncryptionConfig = z
 const BackupConfig = z
   .object({
     enabled: z.boolean().default(false),
-    destination: z.string().default("/mnt/ssd/aletheia/backups"),
+    destination: z.string().default(join(homedir(), ".aletheia", "backups")),
     retentionDays: z.number().int().min(1).default(30),
   })
   .default({});
@@ -581,3 +593,4 @@ export type UpdatesSettings = z.infer<typeof UpdatesConfig>;
 export type EncryptionSettings = z.infer<typeof EncryptionConfig>;
 export type BackupSettings = z.infer<typeof BackupConfig>;
 export type PlanningConfigSchema = z.infer<typeof PlanningConfig>;
+export type CredentialFieldType = z.infer<typeof CredentialField>;

@@ -231,10 +231,11 @@ describe("CodebaseMap", () => {
       const map = generateCodebaseMap(workspace);
 
       const projectId = "proj_test123";
-      ensureProjectDir(workspace, projectId);
-      writeCodebaseMapFile(workspace, projectId, map);
+      const projectDirValue = join(workspace, ".dianoia", "projects", projectId);
+      ensureProjectDir(projectDirValue);
+      writeCodebaseMapFile(projectDirValue, map);
 
-      const filePath = join(getProjectDir(workspace, projectId), "CODEBASE.md");
+      const filePath = join(getProjectDir(projectDirValue), "CODEBASE.md");
       expect(existsSync(filePath)).toBe(true);
 
       const content = readFileSync(filePath, "utf-8");

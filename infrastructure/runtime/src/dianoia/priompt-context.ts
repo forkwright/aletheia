@@ -17,10 +17,8 @@ import type { SubAgentRole } from "./context-packet.js";
 const log = createLogger("dianoia:priompt-context");
 
 export interface PriomptContextOptions {
-  /** Workspace root for file reads */
-  workspaceRoot: string;
-  /** Project ID */
-  projectId: string;
+  /** Project directory value (slug for new projects, absolute path for legacy) */
+  projectDirValue: string;
   /** Phase ID (null for project-level dispatches) */
   phaseId: string | null;
   /** Role determines which sections are included and prioritized */
@@ -182,7 +180,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
 
     // Priority 2: Execution plan
     if (config.includePlan && opts.phaseId) {
-      const plan = readPlanFile(opts.workspaceRoot, opts.projectId, opts.phaseId);
+      const plan = readPlanFile(opts.projectDirValue, opts.phaseId);
       let planContent: string | null = null;
       
       if (plan) {
@@ -206,7 +204,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
 
     // Priority 3: Design decisions
     if (config.includeDiscussion && opts.phaseId) {
-      const discuss = readDiscussFile(opts.workspaceRoot, opts.projectId, opts.phaseId);
+      const discuss = readDiscussFile(opts.projectDirValue, opts.phaseId);
       if (discuss) {
         const sectionText = `## Design Decisions\n\n${discuss}\n\n`;
         sections.push({
@@ -225,7 +223,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
       if (opts.requirements && opts.requirements.length > 0) {
         content = formatRequirements(opts.requirements);
       } else {
-        const reqFile = readRequirementsFile(opts.workspaceRoot, opts.projectId);
+        const reqFile = readRequirementsFile(opts.projectDirValue);
         if (reqFile) {
           content = opts.phase
             ? filterRequirementsToPhase(reqFile, opts.phase.requirements)
@@ -262,7 +260,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
       if (opts.allPhases && opts.allPhases.length > 0) {
         content = formatRoadmapSummary(opts.allPhases);
       } else {
-        const roadmap = readRoadmapFile(opts.workspaceRoot, opts.projectId);
+        const roadmap = readRoadmapFile(opts.projectDirValue);
         if (roadmap) {
           content = roadmap;
         }
@@ -281,7 +279,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
 
     // Priority 7: Research findings
     if (config.includeResearch) {
-      const research = readResearchFile(opts.workspaceRoot, opts.projectId);
+      const research = readResearchFile(opts.projectDirValue);
       if (research) {
         const sectionText = `## Research Findings\n\n${research}\n\n`;
         sections.push({
@@ -295,7 +293,7 @@ function buildContextPacketWithPriomptImpl(opts: PriomptContextOptions): string 
 
     // Priority 8: Project context (lowest priority)
     if (config.includeProject) {
-      const projectMd = readProjectFile(opts.workspaceRoot, opts.projectId);
+      const projectMd = readProjectFile(opts.projectDirValue);
       if (projectMd) {
         const sectionText = `## Project Context\n\n${projectMd}\n\n`;
         sections.push({

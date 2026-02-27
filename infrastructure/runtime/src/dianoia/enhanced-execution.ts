@@ -55,7 +55,6 @@ export interface EnhancedExecutionResult {
 export class EnhancedExecutionOrchestrator {
   private store: PlanningStore;
   private options: ExecutionOptions;
-  private workspaceRoot: string | null = null;
 
   constructor(
     db: Database.Database,
@@ -66,9 +65,8 @@ export class EnhancedExecutionOrchestrator {
     this.options = { ...DEFAULT_EXECUTION_OPTIONS, ...options };
   }
 
-  setWorkspaceRoot(root: string): void {
-    this.workspaceRoot = root;
-  }
+  /** No-op — kept for call-site compatibility during migration */
+  setWorkspaceRoot(_root: string): void { /* workspace root now comes from project.projectDir */ }
 
   async executePhase(
     projectId: string,
@@ -335,11 +333,11 @@ export class EnhancedExecutionOrchestrator {
   }
 
   private buildExecutionPrompt(phase: PlanningPhase, projectGoal: string): string {
+    const project = this.store.getProject(phase.projectId);
     const contextPacket =
-      this.workspaceRoot
+      project?.projectDir
         ? buildContextPacketSync({
-            workspaceRoot: this.workspaceRoot,
-            projectId: phase.projectId,
+            projectDirValue: project.projectDir,
             phaseId: phase.id,
             role: "executor",
             phase,

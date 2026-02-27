@@ -1,8 +1,9 @@
 // Config path resolution
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { ConfigError } from "../koina/errors.js";
 
-const ALETHEIA_ROOT = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
+const ALETHEIA_ROOT = process.env["ALETHEIA_ROOT"] ?? join(homedir(), ".aletheia");
 
 export const paths = {
   root: ALETHEIA_ROOT,
@@ -45,3 +46,34 @@ export const paths = {
     return join(this.configDir(), "agents", nousId, "sessions");
   },
 } as const;
+
+// Anchor-based path resolution — set once by initPaths() at startup
+let _nousDir: string | null = null;
+let _deployDir: string | null = null;
+
+export function initPaths(anchor: { nousDir: string; deployDir: string }): void {
+  _nousDir = anchor.nousDir;
+  _deployDir = anchor.deployDir;
+}
+
+export function nousSharedDir(): string {
+  if (_nousDir === null) {
+    throw new ConfigError("nousSharedDir() called before initPaths()", {
+      code: "CONFIG_ANCHOR_NOT_FOUND",
+    });
+  }
+  return _nousDir;
+}
+
+export function deployDir(): string {
+  if (_deployDir === null) {
+    throw new ConfigError("deployDir() called before initPaths()", {
+      code: "CONFIG_ANCHOR_NOT_FOUND",
+    });
+  }
+  return _deployDir;
+}
+
+export function nousAgentDir(nousId: string): string {
+  return join(nousSharedDir(), nousId);
+}

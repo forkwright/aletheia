@@ -15,7 +15,7 @@ logger = logging.getLogger("consolidation")
 
 SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
 AUTH_TOKEN = os.environ.get("ALETHEIA_MEMORY_TOKEN", "")
-STATS_DIR = Path(os.environ.get("ALETHEIA_HOME", "/mnt/ssd/aletheia")) / "shared" / "memory"
+STATS_DIR = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia"))) / "shared" / "memory"
 
 
 def headers() -> dict[str, str]:

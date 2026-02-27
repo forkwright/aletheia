@@ -2,6 +2,7 @@
 # Import facts.jsonl into Mem0 with batching and rate limit handling
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
 USER_ID = "default"
-FACTS_FILE = Path("/mnt/ssd/aletheia/shared/memory/facts.jsonl")
+FACTS_FILE = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "shared" / "memory" / "facts.jsonl"
 TIMEOUT = 300.0
 DELAY = 3.0
 MAX_RETRIES = 3

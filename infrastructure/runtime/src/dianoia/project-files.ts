@@ -1,6 +1,7 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { nousSharedDir } from "../taxis/paths.js";
 import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import type {
@@ -51,23 +52,33 @@ function validateFileWritten(filePath: string, operation: string): void {
 
 // --- Directory management ---
 
-export function getProjectDir(workspaceRoot: string, projectId: string): string {
-  return join(workspaceRoot, ".dianoia", "projects", projectId);
+/**
+ * Resolve the absolute path for a project directory.
+ * Backward compatible: absolute paths (pre-migration) are returned as-is.
+ * New-style: slug resolves relative to nousSharedDir()/_shared/workspace/plans/{slug}.
+ *
+ * IMPORTANT: nousSharedDir() is called inside this function — never at module scope.
+ */
+export function getProjectDir(projectDirValue: string): string {
+  // Backward compat: absolute paths from pre-migration projects resolve as-is
+  if (projectDirValue.startsWith("/")) return projectDirValue;
+  // New-style slug: resolve from nous shared workspace at call time
+  return join(nousSharedDir(), "_shared", "workspace", "plans", projectDirValue);
 }
 
-export function getPhaseDir(workspaceRoot: string, projectId: string, phaseId: string): string {
-  return join(getProjectDir(workspaceRoot, projectId), "phases", phaseId);
+export function getPhaseDir(projectDirValue: string, phaseId: string): string {
+  return join(getProjectDir(projectDirValue), "phases", phaseId);
 }
 
-export function ensureProjectDir(workspaceRoot: string, projectId: string): string {
-  const dir = getProjectDir(workspaceRoot, projectId);
+export function ensureProjectDir(projectDirValue: string): string {
+  const dir = getProjectDir(projectDirValue);
   mkdirSync(dir, { recursive: true });
   mkdirSync(join(dir, "phases"), { recursive: true });
   return dir;
 }
 
-export function ensurePhaseDir(workspaceRoot: string, projectId: string, phaseId: string): string {
-  const dir = getPhaseDir(workspaceRoot, projectId, phaseId);
+export function ensurePhaseDir(projectDirValue: string, phaseId: string): string {
+  const dir = getPhaseDir(projectDirValue, phaseId);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -75,11 +86,10 @@ export function ensurePhaseDir(workspaceRoot: string, projectId: string, phaseId
 // --- File writers ---
 
 export function writeProjectFile(
-  workspaceRoot: string,
   project: PlanningProject,
   context?: ProjectContext | null,
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, project.id);
+  const dir = ensureProjectDir(project.projectDir!);
   const ctx = context ?? project.projectContext;
 
   const lines = [
@@ -123,11 +133,10 @@ export function writeProjectFile(
 }
 
 export function writeRequirementsFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   requirements: PlanningRequirement[],
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, projectId);
+  const dir = ensureProjectDir(projectDirValue);
   const lines = ["# Requirements", ""];
 
   // Group by category
@@ -154,15 +163,14 @@ export function writeRequirementsFile(
   const filePath = join(dir, "REQUIREMENTS.md");
   atomicWriteFile(filePath, lines.join("\n"), "utf-8");
   validateFileWritten(filePath, "writeRequirementsFile");
-  log.debug(`Wrote REQUIREMENTS.md for ${projectId}`);
+  log.debug(`Wrote REQUIREMENTS.md for ${projectDirValue}`);
 }
 
 export function writeResearchFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   research: PlanningResearch[],
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, projectId);
+  const dir = ensureProjectDir(projectDirValue);
   const lines = ["# Research", ""];
 
   for (const r of research) {
@@ -173,15 +181,14 @@ export function writeResearchFile(
   const filePath = join(dir, "RESEARCH.md");
   atomicWriteFile(filePath, lines.join("\n"), "utf-8");
   validateFileWritten(filePath, "writeResearchFile");
-  log.debug(`Wrote RESEARCH.md for ${projectId}`);
+  log.debug(`Wrote RESEARCH.md for ${projectDirValue}`);
 }
 
 export function writeRoadmapFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phases: PlanningPhase[],
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, projectId);
+  const dir = ensureProjectDir(projectDirValue);
   const lines = ["# Roadmap", ""];
 
   for (const phase of phases) {
@@ -206,16 +213,15 @@ export function writeRoadmapFile(
   const filePath = join(dir, "ROADMAP.md");
   atomicWriteFile(filePath, lines.join("\n"), "utf-8");
   validateFileWritten(filePath, "writeRoadmapFile");
-  log.debug(`Wrote ROADMAP.md for ${projectId}`);
+  log.debug(`Wrote ROADMAP.md for ${projectDirValue}`);
 }
 
 export function writeDiscussFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   questions: DiscussionQuestion[],
 ): void {
-  const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = ensurePhaseDir(projectDirValue, phaseId);
   const lines = ["# Phase Discussion", ""];
 
   for (const q of questions) {
@@ -252,12 +258,11 @@ export function writeDiscussFile(
 }
 
 export function writePlanFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   plan: unknown,
 ): void {
-  const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = ensurePhaseDir(projectDirValue, phaseId);
   const content = typeof plan === "string" ? plan : JSON.stringify(plan, null, 2);
   const filePath = join(dir, "PLAN.md");
   atomicWriteFile(filePath, `# Execution Plan\n\n\`\`\`json\n${content}\n\`\`\`\n`, "utf-8");
@@ -266,12 +271,11 @@ export function writePlanFile(
 }
 
 export function writeStateFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   state: Record<string, unknown>,
 ): void {
-  const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = ensurePhaseDir(projectDirValue, phaseId);
   const filePath = join(dir, "STATE.md");
   atomicWriteFile(
     filePath,
@@ -283,12 +287,11 @@ export function writeStateFile(
 }
 
 export function writeVerifyFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   verification: Record<string, unknown>,
 ): void {
-  const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = ensurePhaseDir(projectDirValue, phaseId);
   const v = verification;
   const lines = [
     "# Verification Results",
@@ -320,32 +323,32 @@ export function writeVerifyFile(
 
 // --- File readers (for context packets) ---
 
-export function readProjectFile(workspaceRoot: string, projectId: string): string | null {
-  const path = join(getProjectDir(workspaceRoot, projectId), "PROJECT.md");
+export function readProjectFile(projectDirValue: string): string | null {
+  const path = join(getProjectDir(projectDirValue), "PROJECT.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }
 
-export function readRequirementsFile(workspaceRoot: string, projectId: string): string | null {
-  const path = join(getProjectDir(workspaceRoot, projectId), "REQUIREMENTS.md");
+export function readRequirementsFile(projectDirValue: string): string | null {
+  const path = join(getProjectDir(projectDirValue), "REQUIREMENTS.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }
 
-export function readRoadmapFile(workspaceRoot: string, projectId: string): string | null {
-  const path = join(getProjectDir(workspaceRoot, projectId), "ROADMAP.md");
+export function readRoadmapFile(projectDirValue: string): string | null {
+  const path = join(getProjectDir(projectDirValue), "ROADMAP.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }
 
-export function readResearchFile(workspaceRoot: string, projectId: string): string | null {
-  const path = join(getProjectDir(workspaceRoot, projectId), "RESEARCH.md");
+export function readResearchFile(projectDirValue: string): string | null {
+  const path = join(getProjectDir(projectDirValue), "RESEARCH.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }
 
-export function readDiscussFile(workspaceRoot: string, projectId: string, phaseId: string): string | null {
-  const path = join(getPhaseDir(workspaceRoot, projectId, phaseId), "DISCUSS.md");
+export function readDiscussFile(projectDirValue: string, phaseId: string): string | null {
+  const path = join(getPhaseDir(projectDirValue, phaseId), "DISCUSS.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }
 
-export function readPlanFile(workspaceRoot: string, projectId: string, phaseId: string): string | null {
-  const path = join(getPhaseDir(workspaceRoot, projectId, phaseId), "PLAN.md");
+export function readPlanFile(projectDirValue: string, phaseId: string): string | null {
+  const path = join(getPhaseDir(projectDirValue, phaseId), "PLAN.md");
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
 }

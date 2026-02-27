@@ -1,6 +1,6 @@
 # Git History Cleanup
 
-**Status:** Plan — execute before forking to CKickertz/ergon
+**Status:** Plan — execute before forking to <your-fork>
 
 ## Problem
 

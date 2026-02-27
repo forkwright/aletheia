@@ -64,7 +64,7 @@ export class ResearchOrchestrator {
   constructor(
     db: Database.Database,
     private dispatchTool: ToolHandler,
-    private workspaceRoot?: string,
+    _workspaceRoot?: string,
   ) {
     this.store = new PlanningStore(db);
   }
@@ -113,11 +113,11 @@ export class ResearchOrchestrator {
   ): { role: string; task: string; timeoutSeconds: number } {
     // Build context packet from file-backed state if workspace is available
     let contextSection = "";
-    if (this.workspaceRoot) {
+    const project = this.store.getProject(projectId);
+    if (project?.projectDir) {
       try {
         contextSection = buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId,
+          projectDirValue: project.projectDir,
           phaseId: null,
           role: "researcher",
           projectGoal,
@@ -341,11 +341,11 @@ export class ResearchOrchestrator {
 
     // Build context packet for synthesis — gives the synthesizer project awareness
     let contextSection = "";
-    if (this.workspaceRoot) {
+    const projectForContext = this.store.getProject(projectId);
+    if (projectForContext?.projectDir) {
       try {
         contextSection = buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId,
+          projectDirValue: projectForContext.projectDir,
           phaseId: null,
           role: "researcher",
           projectGoal,
@@ -413,9 +413,10 @@ export class ResearchOrchestrator {
 
   transitionToRequirements(projectId: string): void {
     // Write RESEARCH.md to disk
-    if (this.workspaceRoot) {
+    const projectForWrite = this.store.getProject(projectId);
+    if (projectForWrite?.projectDir) {
       const research = this.store.listResearch(projectId);
-      writeResearchFile(this.workspaceRoot, projectId, research);
+      writeResearchFile(projectForWrite.projectDir, research);
     }
 
     this.store.updateProjectState(projectId, transition("researching", "RESEARCH_COMPLETE"));

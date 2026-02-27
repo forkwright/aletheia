@@ -138,7 +138,7 @@ export function createGateway(
   // Auth middleware — multi-mode (none, token, password, session)
   const authConfig: AuthConfig = {
     mode: config.gateway.auth.mode as AuthConfig["mode"],
-    ...(config.gateway.auth.token ? { token: config.gateway.auth.token } : {}),
+    ...(config.gateway.auth.token ? { token: config.gateway.auth.token as string } : {}),
     users: config.gateway.auth.users,
     ...(authDeps?.secret ? {
       session: {

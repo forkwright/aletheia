@@ -2,6 +2,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { ToolError } from "../../koina/errors.js";
 import { createLogger } from "../../koina/logger.js";
 import type { ToolHandler } from "../registry.js";
@@ -190,7 +191,7 @@ export const browserTool: ToolHandler = {
 };
 
 const BROWSER_USE_SCRIPT = join(
-  process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia",
+  process.env["ALETHEIA_ROOT"] ?? join(homedir(), ".aletheia"),
   "infrastructure/browser-use/run_task.py",
 );
 

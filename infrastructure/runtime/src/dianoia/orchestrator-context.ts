@@ -20,8 +20,6 @@ import type { PlanningPhase, PlanningProject } from "./types.js";
 const log = createLogger("dianoia:orchestrator-context");
 
 export interface OrchestratorContextOptions {
-  /** Workspace root for file reads */
-  workspaceRoot: string;
   /** Database for structured queries */
   db: Database.Database;
   /** Only include active projects (default: true) */
@@ -58,7 +56,7 @@ const ACTIVE_STATES = new Set([
  * This is the function called after distillation to restore planning awareness.
  */
 export function assembleOrchestratorContext(opts: OrchestratorContextOptions): OrchestratorContextResult {
-  const { workspaceRoot, db, activeOnly = true, maxTokens = 4000, includePhaseDetail = true } = opts;
+  const { db, activeOnly = true, maxTokens = 4000, includePhaseDetail = true } = opts;
   const store = new PlanningStore(db);
 
   const allProjects = store.listProjects();
@@ -79,7 +77,7 @@ export function assembleOrchestratorContext(opts: OrchestratorContextOptions): O
   sections.push("# Active Planning Projects\n");
 
   for (const project of projects) {
-    const projectContext = buildProjectSummary(workspaceRoot, store, project, includePhaseDetail);
+    const projectContext = buildProjectSummary(store, project, includePhaseDetail);
     sections.push(projectContext);
   }
 
@@ -92,7 +90,7 @@ export function assembleOrchestratorContext(opts: OrchestratorContextOptions): O
     const trimmed: string[] = [];
     trimmed.push("# Active Planning Projects\n");
     for (const project of projects) {
-      trimmed.push(buildProjectSummary(workspaceRoot, store, project, false));
+      trimmed.push(buildProjectSummary(store, project, false));
     }
     context = trimmed.join("\n");
   }
@@ -113,7 +111,6 @@ export function assembleOrchestratorContext(opts: OrchestratorContextOptions): O
  * Build a compact summary for a single project.
  */
 function buildProjectSummary(
-  workspaceRoot: string,
   store: PlanningStore,
   project: PlanningProject,
   includePhaseDetail: boolean,
@@ -149,8 +146,8 @@ function buildProjectSummary(
       lines.push(`${icon} ${phase.name}${current}`);
 
       // Phase detail for current/active phases only
-      if (includePhaseDetail && isCurrentPhase(project.state, phase)) {
-        const stateFile = readPhaseState(workspaceRoot, project.id, phase.id);
+      if (includePhaseDetail && isCurrentPhase(project.state, phase) && project.projectDir) {
+        const stateFile = readPhaseState(project.projectDir, phase.id);
         if (stateFile) {
           lines.push(`  ${stateFile}`);
         }
@@ -180,8 +177,8 @@ function buildProjectSummary(
 /**
  * Read the most recent STATE.md for a phase and return a one-line summary.
  */
-function readPhaseState(workspaceRoot: string, projectId: string, phaseId: string): string | null {
-  const stateFile = join(getPhaseDir(workspaceRoot, projectId, phaseId), "STATE.md");
+function readPhaseState(projectDirValue: string, phaseId: string): string | null {
+  const stateFile = join(getPhaseDir(projectDirValue, phaseId), "STATE.md");
   if (!existsSync(stateFile)) return null;
 
   try {

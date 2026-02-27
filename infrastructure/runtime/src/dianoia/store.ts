@@ -34,6 +34,11 @@ const log = createLogger("dianoia");
 export class PlanningStore {
   constructor(private db: Database.Database) {}
 
+  /** Expose the underlying db handle — used for slug collision detection */
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   // --- Projects ---
 
   createProject(opts: {

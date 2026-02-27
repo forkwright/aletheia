@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 
-ROOT = Path(os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia"))
+ROOT = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia")))
 SHARED = ROOT / "shared"
 FACTS_FILE = SHARED / "memory" / "facts.jsonl"
 NOUS = ROOT / "nous"

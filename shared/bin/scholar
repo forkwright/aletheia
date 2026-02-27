@@ -56,7 +56,7 @@ ARXIV_BASE = "http://export.arxiv.org/api/query"
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 CROSSREF_BASE = "https://api.crossref.org"
 S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
-ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", "/mnt/ssd/aletheia")
+ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))
 NOUS_DIR = os.environ.get("ALETHEIA_NOUS", os.path.join(ALETHEIA_ROOT, "nous"))
 RESEARCH_EMAIL = os.environ.get("RESEARCH_EMAIL", "research@example.org")
 

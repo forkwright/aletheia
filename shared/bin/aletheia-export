@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-ALETHEIA_ROOT="${ALETHEIA_ROOT:-/mnt/ssd/aletheia}"
+ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
 RUNTIME="$ALETHEIA_ROOT/infrastructure/runtime"
 
 cd "$RUNTIME"

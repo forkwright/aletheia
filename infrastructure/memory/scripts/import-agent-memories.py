@@ -2,6 +2,7 @@
 # Import agent workspace memory files into Mem0
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ import httpx
 
 SIDECAR_URL = "http://127.0.0.1:8230"
 USER_ID = "default"
-NOUS_DIR = Path("/mnt/ssd/aletheia/nous")
+NOUS_DIR = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "nous"
 AGENTS = ["syn", "chiron", "eiron", "demiurge", "syl", "arbor", "akron"]
 TIMEOUT = 120.0
 
@@ -44,7 +45,7 @@ def import_file(agent_id: str, file_path: Path) -> bool:
 
 
 def import_mcp_memory() -> int:
-    mcp_path = Path("/mnt/ssd/aletheia/shared/memory/mcp-memory.json")
+    mcp_path = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia"))) / "shared" / "memory" / "mcp-memory.json"
     if not mcp_path.exists():
         print("mcp-memory.json not found, skipping")
         return 0

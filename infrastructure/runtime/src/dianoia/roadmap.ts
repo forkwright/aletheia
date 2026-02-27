@@ -49,7 +49,6 @@ interface DispatchOutput {
 
 export class RoadmapOrchestrator {
   private store: PlanningStore;
-  private workspaceRoot: string | null = null;
 
   constructor(
     private db: Database.Database,
@@ -58,10 +57,8 @@ export class RoadmapOrchestrator {
     this.store = new PlanningStore(db);
   }
 
-  /** Set workspace root for context packet assembly from file-backed state */
-  setWorkspaceRoot(root: string): void {
-    this.workspaceRoot = root;
-  }
+  /** No-op — kept for call-site compatibility during migration */
+  setWorkspaceRoot(_root: string): void { /* workspace root now comes from project.projectDir */ }
 
   async generateRoadmap(
     projectId: string,
@@ -74,11 +71,11 @@ export class RoadmapOrchestrator {
 
     // Build context packet from file-backed state for planner awareness
     let contextSection = "";
-    if (this.workspaceRoot) {
+    const projectForCtx = this.store.getProject(projectId);
+    if (projectForCtx?.projectDir) {
       try {
         contextSection = buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId,
+          projectDirValue: projectForCtx.projectDir,
           phaseId: null,
           role: "planner",
           projectGoal,
@@ -352,18 +349,18 @@ export class RoadmapOrchestrator {
   ): Promise<PhasePlan> {
     // Build context packet from file-backed state if available
     let contextSection = "";
-    if (this.workspaceRoot && projectId) {
-      const allPhases = this.store.listPhases(projectId);
+    const projectForPlan = projectId ? this.store.getProject(projectId) : null;
+    if (projectForPlan?.projectDir) {
+      const allPhases = this.store.listPhases(projectId!);
       contextSection = buildContextPacketSync({
-        workspaceRoot: this.workspaceRoot,
-        projectId,
+        projectDirValue: projectForPlan.projectDir,
         phaseId: phase.id,
         role: "planner",
         phase,
         allPhases,
         projectGoal: projectGoal ?? "",
         requirements: this.store
-          .listRequirements(projectId)
+          .listRequirements(projectId!)
           .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
         maxTokens: 10000,
       });
@@ -402,17 +399,17 @@ export class RoadmapOrchestrator {
   ): Promise<{ pass: boolean; issues: string[] }> {
     // Build context packet for reviewer — gives plan checker awareness of project context
     let contextSection = "";
-    if (this.workspaceRoot && projectId) {
+    const projectForCheck = projectId ? this.store.getProject(projectId) : null;
+    if (projectForCheck?.projectDir) {
       try {
         contextSection = buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId,
+          projectDirValue: projectForCheck.projectDir,
           phaseId: phase.id,
           role: "reviewer",
           phase,
           projectGoal: projectGoal ?? "",
           requirements: this.store
-            .listRequirements(projectId)
+            .listRequirements(projectId!)
             .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
           maxTokens: 6000,
         });
@@ -480,19 +477,19 @@ export class RoadmapOrchestrator {
   ): Promise<PhasePlan> {
     // Build context packet for revision — planner needs full project awareness to fix issues
     let contextSection = "";
-    if (this.workspaceRoot && projectId) {
+    const projectForRevise = projectId ? this.store.getProject(projectId) : null;
+    if (projectForRevise?.projectDir) {
       try {
-        const allPhases = this.store.listPhases(projectId);
+        const allPhases = this.store.listPhases(projectId!);
         contextSection = buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId,
+          projectDirValue: projectForRevise.projectDir,
           phaseId: phase.id,
           role: "planner",
           phase,
           allPhases,
           projectGoal: projectGoal ?? "",
           requirements: this.store
-            .listRequirements(projectId)
+            .listRequirements(projectId!)
             .filter((r) => r.tier === "v1" && phase.requirements.includes(r.reqId)),
           maxTokens: 8000,
         });

@@ -100,10 +100,10 @@ export interface DiscussionArtifact {
  * Write a structured DISCUSS.md with all four artifact sections.
  */
 export function writeStructuredDiscussFile(
-  workspaceRoot: string,
+  projectDirValue: string,
   artifact: DiscussionArtifact,
 ): void {
-  const dir = ensurePhaseDir(workspaceRoot, artifact.projectId, artifact.phaseId);
+  const dir = ensurePhaseDir(projectDirValue, artifact.phaseId);
   const lines: string[] = [];
 
   lines.push("# Phase Discussion Artifacts", "");
@@ -227,11 +227,10 @@ export function writeStructuredDiscussFile(
  * Returns the structured artifact sections from the JSON trailer.
  */
 export function readStructuredDiscussFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
 ): { boundaries: BoundaryItem[]; decisions: ImplementationDecision[]; discretion: DiscretionItem[]; deferred: DeferredIdea[] } | null {
-  const dir = getPhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = getPhaseDir(projectDirValue, phaseId);
   const filePath = join(dir, "DISCUSS.md");
 
   if (!existsSync(filePath)) return null;
@@ -288,11 +287,10 @@ export function createEmptyArtifact(projectId: string, phaseId: string): Discuss
  * Lock is a .discuss.lock file with session ID and timestamp.
  */
 export function isDiscussionLocked(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
 ): { locked: boolean; lockedBy?: string; lockedAt?: string } {
-  const dir = getPhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = getPhaseDir(projectDirValue, phaseId);
   const lockPath = join(dir, ".discuss.lock");
 
   if (!existsSync(lockPath)) return { locked: false };
@@ -318,17 +316,16 @@ export function isDiscussionLocked(
  * Acquire a discussion lock.
  */
 export function acquireDiscussionLock(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   sessionId: string,
 ): boolean {
-  const status = isDiscussionLocked(workspaceRoot, projectId, phaseId);
+  const status = isDiscussionLocked(projectDirValue, phaseId);
   if (status.locked && status.lockedBy !== sessionId) {
     return false;
   }
 
-  const dir = ensurePhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = ensurePhaseDir(projectDirValue, phaseId);
   const lockPath = join(dir, ".discuss.lock");
 
   try {
@@ -346,16 +343,15 @@ export function acquireDiscussionLock(
  * Release a discussion lock.
  */
 export function releaseDiscussionLock(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   phaseId: string,
   sessionId: string,
 ): boolean {
-  const status = isDiscussionLocked(workspaceRoot, projectId, phaseId);
+  const status = isDiscussionLocked(projectDirValue, phaseId);
   if (!status.locked) return true;
   if (status.lockedBy !== sessionId) return false;
 
-  const dir = getPhaseDir(workspaceRoot, projectId, phaseId);
+  const dir = getPhaseDir(projectDirValue, phaseId);
   const lockPath = join(dir, ".discuss.lock");
 
   try {

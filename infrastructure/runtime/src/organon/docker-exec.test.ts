@@ -65,7 +65,7 @@ describe("execInDocker", () => {
 
     const result = await execInDocker({
       command: "ls -la",
-      workspace: "/mnt/ssd/aletheia/nous/syn",
+      workspace: "~/.aletheia/nous/syn",
       nousId: "syn",
       timeout: 30000,
       config: defaultConfig,

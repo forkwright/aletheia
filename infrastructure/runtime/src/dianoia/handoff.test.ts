@@ -84,9 +84,10 @@ describe("Handoff", () => {
   describe("writeHandoffFile", () => {
     it("creates .continue-here.md in project directory", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      const filePath = writeHandoffFile(workspace, state);
+      const filePath = writeHandoffFile(projectDirValue, state);
 
       expect(existsSync(filePath)).toBe(true);
       expect(filePath).toContain(".continue-here.md");
@@ -94,11 +95,12 @@ describe("Handoff", () => {
 
     it("includes project and phase info in markdown", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       expect(content).toContain("# Continue Here");
@@ -109,11 +111,12 @@ describe("Handoff", () => {
 
     it("includes task progress", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       expect(content).toContain("task-1");
@@ -127,11 +130,12 @@ describe("Handoff", () => {
         pauseReason: "checkpoint",
         pauseDetail: "Security review required",
       });
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       expect(content).toContain("checkpoint");
@@ -140,11 +144,12 @@ describe("Handoff", () => {
 
     it("includes git state", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       expect(content).toContain("abc123def");
@@ -155,11 +160,12 @@ describe("Handoff", () => {
       const state = createTestHandoffState({
         blockers: ["Checkpoint requires human resolution", "API key expired"],
       });
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       expect(content).toContain("Blockers");
@@ -169,11 +175,12 @@ describe("Handoff", () => {
 
     it("embeds full JSON state at end of file", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
+      writeHandoffFile(projectDirValue, state);
 
-      const projectDir = getProjectDir(workspace, state.projectId);
+      const projectDir = getProjectDir(projectDirValue);
       const content = readFileSync(join(projectDir, ".continue-here.md"), "utf-8");
 
       // Extract JSON block
@@ -190,10 +197,11 @@ describe("Handoff", () => {
   describe("readHandoffFile", () => {
     it("reads and parses a written handoff file", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
-      writeHandoffFile(workspace, state);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
+      writeHandoffFile(projectDirValue, state);
 
-      const read = readHandoffFile(workspace, state.projectId);
+      const read = readHandoffFile(projectDirValue);
 
       expect(read).not.toBeNull();
       expect(read!.projectId).toBe(state.projectId);
@@ -205,31 +213,34 @@ describe("Handoff", () => {
     });
 
     it("returns null when no handoff file exists", () => {
-      const result = readHandoffFile(workspace, "proj_nonexistent");
+      const projectDirValue = join(workspace, ".dianoia", "projects", "proj_nonexistent");
+      const result = readHandoffFile(projectDirValue);
       expect(result).toBeNull();
     });
 
     it("returns null for corrupt handoff file", () => {
       const projectId = "proj_corrupt";
-      const projectDir = getProjectDir(workspace, projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", projectId);
+      const projectDir = getProjectDir(projectDirValue);
       mkdirSync(projectDir, { recursive: true });
 
       const { writeFileSync: writeFs } = require("node:fs");
       writeFs(join(projectDir, ".continue-here.md"), "# Continue Here\n\nNo JSON block here.");
 
-      const result = readHandoffFile(workspace, projectId);
+      const result = readHandoffFile(projectDirValue);
       expect(result).toBeNull();
     });
 
     it("returns null for handoff file with invalid JSON", () => {
       const projectId = "proj_badjson";
-      const projectDir = getProjectDir(workspace, projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", projectId);
+      const projectDir = getProjectDir(projectDirValue);
       mkdirSync(projectDir, { recursive: true });
 
       const { writeFileSync: writeFs } = require("node:fs");
       writeFs(join(projectDir, ".continue-here.md"), "# Continue Here\n\n```json\n{invalid json}\n```");
 
-      const result = readHandoffFile(workspace, projectId);
+      const result = readHandoffFile(projectDirValue);
       expect(result).toBeNull();
     });
   });
@@ -237,17 +248,19 @@ describe("Handoff", () => {
   describe("clearHandoffFile", () => {
     it("removes handoff file and returns true", () => {
       const state = createTestHandoffState();
-      ensureProjectDir(workspace, state.projectId);
-      writeHandoffFile(workspace, state);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
+      writeHandoffFile(projectDirValue, state);
 
-      const cleared = clearHandoffFile(workspace, state.projectId);
+      const cleared = clearHandoffFile(projectDirValue);
 
       expect(cleared).toBe(true);
-      expect(readHandoffFile(workspace, state.projectId)).toBeNull();
+      expect(readHandoffFile(projectDirValue)).toBeNull();
     });
 
     it("returns false when no handoff file exists", () => {
-      const cleared = clearHandoffFile(workspace, "proj_nothing");
+      const projectDirValue = join(workspace, ".dianoia", "projects", "proj_nothing");
+      const cleared = clearHandoffFile(projectDirValue);
       expect(cleared).toBe(false);
     });
   });
@@ -257,14 +270,18 @@ describe("Handoff", () => {
       const state1 = createTestHandoffState({ projectId: "proj_one" });
       const state2 = createTestHandoffState({ projectId: "proj_two", pauseReason: "checkpoint" });
 
-      ensureProjectDir(workspace, state1.projectId);
-      ensureProjectDir(workspace, state2.projectId);
+      const dir1 = join(workspace, ".dianoia", "projects", state1.projectId);
+      const dir2 = join(workspace, ".dianoia", "projects", state2.projectId);
+      const dir3 = join(workspace, ".dianoia", "projects", "proj_three");
 
-      writeHandoffFile(workspace, state1);
-      writeHandoffFile(workspace, state2);
+      ensureProjectDir(dir1);
+      ensureProjectDir(dir2);
+
+      writeHandoffFile(dir1, state1);
+      writeHandoffFile(dir2, state2);
 
       // Also create a project WITHOUT a handoff file
-      ensureProjectDir(workspace, "proj_three");
+      ensureProjectDir(dir3);
 
       const handoffs = discoverHandoffs(workspace);
 
@@ -477,10 +494,11 @@ describe("Handoff", () => {
         blockers: ["Need API key"],
         uncommittedChanges: ["a.ts", "b.ts", "c.ts"],
       });
-      ensureProjectDir(workspace, state.projectId);
+      const projectDirValue = join(workspace, ".dianoia", "projects", state.projectId);
+      ensureProjectDir(projectDirValue);
 
-      writeHandoffFile(workspace, state);
-      const read = readHandoffFile(workspace, state.projectId);
+      writeHandoffFile(projectDirValue, state);
+      const read = readHandoffFile(projectDirValue);
 
       expect(read).not.toBeNull();
       expect(read!.projectId).toBe(state.projectId);
@@ -503,9 +521,9 @@ describe("Handoff", () => {
       expect(read!.blockers).toEqual(state.blockers);
 
       // Clear and verify gone
-      const cleared = clearHandoffFile(workspace, state.projectId);
+      const cleared = clearHandoffFile(projectDirValue);
       expect(cleared).toBe(true);
-      expect(readHandoffFile(workspace, state.projectId)).toBeNull();
+      expect(readHandoffFile(projectDirValue)).toBeNull();
     });
   });
 });

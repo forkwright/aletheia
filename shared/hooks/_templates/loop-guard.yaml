@@ -9,6 +9,6 @@ description: External loop guard — writes sentinel file on high tool call coun
 
 handler:
   type: shell
-  command: /mnt/ssd/aletheia/shared/hooks/_templates/loop-guard.sh
+  command: <aletheia-root>/shared/hooks/_templates/loop-guard.sh
   timeout: 5s
   failAction: silent
