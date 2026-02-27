@@ -20,6 +20,7 @@ import {
   PLANNING_V27_MIGRATION,
   PLANNING_V28_MIGRATION,
   PLANNING_V29_MIGRATION,
+  PLANNING_V31_MIGRATION,
 } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { planningRoutes } from "./routes.js";
@@ -54,6 +55,7 @@ function initDb(): Database.Database {
   d.exec(PLANNING_V27_MIGRATION);
   d.exec(PLANNING_V28_MIGRATION);
   d.exec(PLANNING_V29_MIGRATION);
+  d.exec(PLANNING_V31_MIGRATION);
   return d;
 }
 
@@ -709,5 +711,262 @@ describe("GET /api/planning/projects/:id/messages", () => {
     const body = await res.json();
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].content).toBe("New pending");
+  });
+});
+
+// ─── Annotations (EDIT-07) ──────────────────────────────────
+
+describe("Annotations — Store", () => {
+  it("creates and lists annotations", () => {
+    const ann = store.createAnnotation({
+      projectId,
+      targetType: "requirement",
+      targetId: "req_test",
+      author: "user",
+      content: "This needs clarification",
+    });
+    expect(ann.id).toMatch(/^ann_/);
+    expect(ann.content).toBe("This needs clarification");
+    expect(ann.resolved).toBe(false);
+
+    const list = store.listAnnotations(projectId, { targetType: "requirement", targetId: "req_test" });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe(ann.id);
+  });
+
+  it("filters by target type", () => {
+    store.createAnnotation({ projectId, targetType: "requirement", targetId: "r1", author: "user", content: "req note" });
+    store.createAnnotation({ projectId, targetType: "phase", targetId: "p1", author: "agent", content: "phase note" });
+
+    const reqs = store.listAnnotations(projectId, { targetType: "requirement" });
+    expect(reqs.length).toBeGreaterThanOrEqual(1);
+    expect(reqs.every(a => a.targetType === "requirement")).toBe(true);
+  });
+
+  it("resolves and unresolves annotations", () => {
+    const ann = store.createAnnotation({ projectId, targetType: "project", targetId: projectId, author: "user", content: "todo" });
+    const updated = store.updateAnnotation(ann.id, { resolved: true });
+    expect(updated!.resolved).toBe(true);
+
+    // Resolved annotations hidden by default
+    const hidden = store.listAnnotations(projectId, { targetType: "project", targetId: projectId });
+    expect(hidden.find(a => a.id === ann.id)).toBeUndefined();
+
+    // Visible when includeResolved
+    const shown = store.listAnnotations(projectId, { targetType: "project", targetId: projectId, includeResolved: true });
+    expect(shown.find(a => a.id === ann.id)).toBeDefined();
+  });
+
+  it("deletes annotations", () => {
+    const ann = store.createAnnotation({ projectId, targetType: "requirement", targetId: "r2", author: "user", content: "temp" });
+    expect(store.deleteAnnotation(ann.id)).toBe(true);
+    expect(store.deleteAnnotation(ann.id)).toBe(false); // already deleted
+  });
+
+  it("counts unresolved annotations", () => {
+    store.createAnnotation({ projectId, targetType: "requirement", targetId: "r3", author: "user", content: "a" });
+    store.createAnnotation({ projectId, targetType: "requirement", targetId: "r3", author: "user", content: "b" });
+    const resolved = store.createAnnotation({ projectId, targetType: "requirement", targetId: "r3", author: "user", content: "c" });
+    store.updateAnnotation(resolved.id, { resolved: true });
+
+    expect(store.countAnnotations(projectId, "requirement", "r3")).toBe(2);
+  });
+});
+
+// ─── Edit History (SYNC-06) ─────────────────────────────────
+
+describe("Edit History — Store", () => {
+  it("records and lists edits", () => {
+    const edit = store.recordEdit({
+      projectId,
+      targetType: "requirement",
+      targetId: "req_test",
+      field: "tier",
+      oldValue: "v2",
+      newValue: "v1",
+      author: "user",
+    });
+    expect(edit.id).toMatch(/^edit_/);
+    expect(edit.field).toBe("tier");
+    expect(edit.oldValue).toBe("v2");
+    expect(edit.newValue).toBe("v1");
+
+    const list = store.listEdits(projectId, { targetType: "requirement", targetId: "req_test" });
+    expect(list).toHaveLength(1);
+  });
+
+  it("orders edits newest first", () => {
+    store.recordEdit({ projectId, targetType: "phase", targetId: "p1", field: "name", oldValue: "A", newValue: "B", author: "user" });
+    store.recordEdit({ projectId, targetType: "phase", targetId: "p1", field: "goal", oldValue: "X", newValue: "Y", author: "agent" });
+
+    const list = store.listEdits(projectId, { targetType: "phase", targetId: "p1" });
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    // Newest first
+    expect(new Date(list[0]!.createdAt).getTime()).toBeGreaterThanOrEqual(new Date(list[1]!.createdAt).getTime());
+  });
+
+  it("respects limit parameter", () => {
+    for (let i = 0; i < 5; i++) {
+      store.recordEdit({ projectId, targetType: "discussion", targetId: "d1", field: `f${i}`, oldValue: null, newValue: String(i), author: "user" });
+    }
+    const limited = store.listEdits(projectId, { targetType: "discussion", targetId: "d1", limit: 2 });
+    expect(limited).toHaveLength(2);
+  });
+});
+
+// ─── Annotation Routes ──────────────────────────────────────
+
+describe("Annotations — Routes", () => {
+  it("POST creates annotation, returns 201", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetType: "requirement", targetId: "r1", content: "route test" }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.content).toBe("route test");
+    expect(body.author).toBe("user");
+  });
+
+  it("POST rejects missing content", async () => {
+    const res = await app.request(`/api/planning/projects/${projectId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetType: "requirement", targetId: "r1" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("GET lists annotations with filters", async () => {
+    store.createAnnotation({ projectId, targetType: "phase", targetId: "p_test", author: "user", content: "filtered" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/annotations?targetType=phase&targetId=p_test`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.annotations.some((a: { content: string }) => a.content === "filtered")).toBe(true);
+  });
+
+  it("PATCH updates annotation", async () => {
+    const ann = store.createAnnotation({ projectId, targetType: "project", targetId: projectId, author: "user", content: "edit me" });
+    const res = await app.request(`/api/planning/projects/${projectId}/annotations/${ann.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "edited", resolved: true }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.content).toBe("edited");
+    expect(body.resolved).toBe(true);
+  });
+
+  it("DELETE removes annotation", async () => {
+    const ann = store.createAnnotation({ projectId, targetType: "project", targetId: projectId, author: "user", content: "delete me" });
+    const res = await app.request(`/api/planning/projects/${projectId}/annotations/${ann.id}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(200);
+
+    const res2 = await app.request(`/api/planning/projects/${projectId}/annotations/${ann.id}`, {
+      method: "DELETE",
+    });
+    expect(res2.status).toBe(404);
+  });
+});
+
+// ─── Edit History Routes ────────────────────────────────────
+
+describe("Edit History — Routes", () => {
+  it("GET returns edit history", async () => {
+    store.recordEdit({ projectId, targetType: "requirement", targetId: "r_route", field: "tier", oldValue: "v1", newValue: "v2", author: "agent" });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/history?targetType=requirement&targetId=r_route`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.edits.length).toBeGreaterThanOrEqual(1);
+    expect(body.edits[0].field).toBe("tier");
+  });
+
+  it("GET respects limit", async () => {
+    for (let i = 0; i < 5; i++) {
+      store.recordEdit({ projectId, targetType: "phase", targetId: "p_limit", field: `f${i}`, oldValue: null, newValue: String(i), author: "user" });
+    }
+    const res = await app.request(`/api/planning/projects/${projectId}/history?targetType=phase&targetId=p_limit&limit=2`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.edits).toHaveLength(2);
+  });
+});
+
+// ─── Conflict Detection (SYNC-05) ──────────────────────────
+
+describe("Conflict Detection — Requirements", () => {
+  it("returns 409 when If-Unmodified-Since is stale", async () => {
+    // Create a requirement
+    const req = store.createRequirement({
+      projectId,
+      phaseId: null,
+      reqId: "CONFLICT-01",
+      description: "Test conflict",
+      category: "TEST",
+      tier: "v1",
+    });
+
+    // Simulate a stale timestamp (1 second before the requirement was created)
+    const staleTime = new Date(new Date(req.createdAt).getTime() - 1000).toISOString();
+
+    const res = await app.request(`/api/planning/projects/${projectId}/requirements/${req.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Unmodified-Since": staleTime,
+      },
+      body: JSON.stringify({ tier: "v2" }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain("Conflict");
+  });
+
+  it("succeeds when If-Unmodified-Since is current", async () => {
+    const req = store.createRequirement({
+      projectId,
+      phaseId: null,
+      reqId: "CONFLICT-02",
+      description: "Test no conflict",
+      category: "TEST",
+      tier: "v1",
+    });
+
+    // Use a timestamp slightly after creation
+    const futureTime = new Date(new Date(req.updatedAt).getTime() + 1000).toISOString();
+
+    const res = await app.request(`/api/planning/projects/${projectId}/requirements/${req.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Unmodified-Since": futureTime,
+      },
+      body: JSON.stringify({ tier: "v2" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("passes without If-Unmodified-Since header (backward compatible)", async () => {
+    const req = store.createRequirement({
+      projectId,
+      phaseId: null,
+      reqId: "CONFLICT-03",
+      description: "No header",
+      category: "TEST",
+      tier: "v1",
+    });
+
+    const res = await app.request(`/api/planning/projects/${projectId}/requirements/${req.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tier: "v2" }),
+    });
+    expect(res.status).toBe(200);
   });
 });

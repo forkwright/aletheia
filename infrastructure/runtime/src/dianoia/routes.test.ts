@@ -20,7 +20,7 @@ import {
   PLANNING_V26_MIGRATION,
   PLANNING_V27_MIGRATION,
   PLANNING_V28_MIGRATION,
-  PLANNING_V29_MIGRATION,
+  PLANNING_V29_MIGRATION, PLANNING_V31_MIGRATION
 } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import { planningRoutes } from "./routes.js";
@@ -56,6 +56,7 @@ function initDb(): Database.Database {
   d.exec(PLANNING_V27_MIGRATION);
   d.exec(PLANNING_V28_MIGRATION);
   d.exec(PLANNING_V29_MIGRATION);
+  d.exec(PLANNING_V31_MIGRATION);
   return d;
 }
 

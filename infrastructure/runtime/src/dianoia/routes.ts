@@ -12,6 +12,7 @@ import { PlanningStore } from "./store.js";
 import { RequirementsOrchestrator } from "./requirements.js";
 import type { CategoryProposal, ScopingDecision } from "./requirements.js";
 import { writeRequirementsFile, writeRoadmapFile } from "./project-files.js";
+import { calculateBudgetAllocation } from "./context-budget.js";
 
 const log = createLogger("pylon:planning");
 
@@ -558,6 +559,30 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         return c.json({ error: "Requirement not found" }, 404);
       }
 
+      // SYNC-05: Conflict detection via If-Unmodified-Since header
+      const ifUnmodified = c.req.header("if-unmodified-since");
+      if (ifUnmodified && req.updatedAt) {
+        const clientTime = new Date(ifUnmodified).getTime();
+        const serverTime = new Date(req.updatedAt).getTime();
+        if (serverTime > clientTime) {
+          return c.json({
+            error: "Conflict: requirement was modified since your last fetch",
+            serverUpdatedAt: req.updatedAt,
+            currentValue: req,
+          }, 409);
+        }
+      }
+
+      // Record edit history (SYNC-06) — capture old values before mutation
+      const author = (c.req.header("x-author") as string) ?? "user";
+      for (const field of Object.keys(body) as Array<keyof typeof body>) {
+        const oldVal = String(req[field] ?? "");
+        const newVal = String(body[field] ?? "");
+        if (oldVal !== newVal) {
+          store.recordEdit({ projectId, targetType: "requirement", targetId: req.id, field, oldValue: oldVal, newValue: newVal, author });
+        }
+      }
+
       const updated = store.updateRequirement(req.id, body);
       syncRequirementsFile(store, projectId, getWorkspaceRoot());
       eventBus.emit("planning:requirement-changed", {
@@ -621,6 +646,29 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       const phase = store.getPhase(phaseId);
       if (!phase || phase.projectId !== projectId) {
         return c.json({ error: "Phase not found" }, 404);
+      }
+
+      // SYNC-05: Conflict detection
+      const ifUnmodified = c.req.header("if-unmodified-since");
+      if (ifUnmodified && phase.updatedAt) {
+        const clientTime = new Date(ifUnmodified).getTime();
+        const serverTime = new Date(phase.updatedAt).getTime();
+        if (serverTime > clientTime) {
+          return c.json({
+            error: "Conflict: phase was modified since your last fetch",
+            serverUpdatedAt: phase.updatedAt,
+          }, 409);
+        }
+      }
+
+      // Record edit history (SYNC-06)
+      const author = (c.req.header("x-author") as string) ?? "user";
+      for (const field of Object.keys(body) as Array<keyof typeof body>) {
+        const oldVal = JSON.stringify((phase as unknown as Record<string, unknown>)[field] ?? null);
+        const newVal = JSON.stringify(body[field] ?? null);
+        if (oldVal !== newVal) {
+          store.recordEdit({ projectId, targetType: "phase", targetId: phaseId, field, oldValue: oldVal, newValue: newVal, author });
+        }
       }
 
       const updated = store.updatePhase(phaseId, body);
@@ -1164,6 +1212,128 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     } catch (error) {
       log.error("Failed to list messages", { projectId, error });
       return c.json({ error: "Failed to list messages" }, 500);
+    }
+  });
+
+  // ─── Annotations (EDIT-07) ──────────────────────────────────
+
+  app.get("/api/planning/projects/:id/annotations", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const targetType = c.req.query("targetType") as "requirement" | "phase" | "project" | "discussion" | undefined;
+    const targetId = c.req.query("targetId");
+    const includeResolved = c.req.query("includeResolved") === "true";
+    try {
+      const annotations = store.listAnnotations(projectId, {
+        ...(targetType ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
+        includeResolved,
+      });
+      return c.json({ projectId, annotations });
+    } catch (error) {
+      log.error("Failed to list annotations", { projectId, error });
+      return c.json({ error: "Failed to list annotations" }, 500);
+    }
+  });
+
+  app.post("/api/planning/projects/:id/annotations", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const body = await c.req.json() as {
+      targetType: "requirement" | "phase" | "project" | "discussion";
+      targetId: string;
+      author?: string;
+      content: string;
+    };
+    if (!body.targetType || !body.targetId || !body.content?.trim()) {
+      return c.json({ error: "targetType, targetId, and content are required" }, 400);
+    }
+    try {
+      const annotation = store.createAnnotation({
+        projectId,
+        targetType: body.targetType,
+        targetId: body.targetId,
+        author: body.author ?? "user",
+        content: body.content.trim(),
+      });
+      eventBus.emit("planning:requirement-changed", { projectId, action: "annotated", targetType: body.targetType, targetId: body.targetId });
+      return c.json(annotation, 201);
+    } catch (error) {
+      log.error("Failed to create annotation", { projectId, error });
+      return c.json({ error: "Failed to create annotation" }, 500);
+    }
+  });
+
+  app.patch("/api/planning/projects/:id/annotations/:annotationId", async (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const annotationId = c.req.param("annotationId");
+    const body = await c.req.json() as { content?: string; resolved?: boolean };
+    try {
+      const updated = store.updateAnnotation(annotationId, body);
+      if (!updated) return c.json({ error: "Annotation not found" }, 404);
+      return c.json(updated);
+    } catch (error) {
+      log.error("Failed to update annotation", { annotationId, error });
+      return c.json({ error: "Failed to update annotation" }, 500);
+    }
+  });
+
+  app.delete("/api/planning/projects/:id/annotations/:annotationId", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const annotationId = c.req.param("annotationId");
+    try {
+      if (!store.deleteAnnotation(annotationId)) return c.json({ error: "Annotation not found" }, 404);
+      return c.json({ deleted: true });
+    } catch (error) {
+      log.error("Failed to delete annotation", { annotationId, error });
+      return c.json({ error: "Failed to delete annotation" }, 500);
+    }
+  });
+
+  // ─── Edit History (SYNC-06) ─────────────────────────────────
+
+  app.get("/api/planning/projects/:id/history", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const targetType = c.req.query("targetType") as "requirement" | "phase" | "project" | "discussion" | "checkpoint" | undefined;
+    const targetId = c.req.query("targetId");
+    const limit = parseInt(c.req.query("limit") ?? "50", 10);
+    try {
+      const edits = store.listEdits(projectId, {
+        ...(targetType ? { targetType } : {}),
+        ...(targetId ? { targetId } : {}),
+        limit,
+      });
+      return c.json({ projectId, edits });
+    } catch (error) {
+      log.error("Failed to list edit history", { projectId, error });
+      return c.json({ error: "Failed to list edit history" }, 500);
+    }
+  });
+
+  // ─── Context Budget (OBS-04) ─────────────────────────────────
+
+  app.get("/api/planning/projects/:id/budget", (c) => {
+    const store = getStore();
+    if (!store) return c.json({ error: "Store not available" }, 503);
+    const projectId = c.req.param("id");
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return c.json({ error: "Workspace not available" }, 503);
+
+    try {
+      const project = store.getProject(projectId);
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      const phases = store.listPhases(projectId);
+      const allocation = calculateBudgetAllocation({ workspaceRoot, projectId, project, phases });
+      return c.json(allocation);
+    } catch (error) {
+      log.error("Failed to calculate budget", { projectId, error });
+      return c.json({ error: "Failed to calculate budget" }, 500);
     }
   });
 

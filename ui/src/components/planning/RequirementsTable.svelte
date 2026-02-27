@@ -1,5 +1,6 @@
 <script lang="ts">
   import { updateRequirement, createRequirement, deleteRequirement } from "../../stores/planning.svelte";
+  import AnnotationPanel from "./AnnotationPanel.svelte";
 
   interface Requirement {
     id: string;
@@ -315,6 +316,17 @@
                     >{req.rationale || "No rationale provided"}</p>
                   {/if}
                 </div>
+                <!-- EDIT-07: Notes/annotations per requirement -->
+                {#if projectId}
+                  <div class="annotation-section">
+                    <AnnotationPanel
+                      {projectId}
+                      targetType="requirement"
+                      targetId={req.id}
+                      targetLabel={req.name}
+                    />
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
@@ -721,6 +733,10 @@
     margin: var(--space-1) 0 0 0;
     color: var(--text-secondary);
     line-height: 1.4;
+  }
+
+  .annotation-section {
+    margin-top: var(--space-2, 8px);
   }
 
   @media (max-width: 768px) {

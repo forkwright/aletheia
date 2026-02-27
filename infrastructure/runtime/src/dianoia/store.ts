@@ -5,12 +5,16 @@ import { generateId } from "../koina/crypto.js";
 import { PlanningError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import type {
+  AnnotationTargetType,
   DianoiaState,
   DiscussionOption,
   DiscussionQuestion,
+  EditHistoryTargetType,
+  PlanningAnnotation,
   PlanningCheckpoint,
   PlanningConfig,
   PlanningDecision,
+  PlanningEditHistory,
   PlanningMessage,
   PlanningPhase,
   PlanningProject,
@@ -1146,6 +1150,114 @@ export class PlanningStore {
       status: row["status"] as PlanningMessage["status"],
       deliveredAt: (row["delivered_at"] as string | null) ?? null,
       expiresAt: (row["expires_at"] as string | null) ?? null,
+      createdAt: row["created_at"] as string,
+    };
+  }
+
+  // ─── Annotations (EDIT-07) ──────────────────────────────────
+
+  createAnnotation(opts: {
+    projectId: string;
+    targetType: AnnotationTargetType;
+    targetId: string;
+    author: string;
+    content: string;
+  }): PlanningAnnotation {
+    const id = generateId("ann");
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO planning_annotations (id, project_id, target_type, target_id, author, content, resolved, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(id, opts.projectId, opts.targetType, opts.targetId, opts.author, opts.content, now, now);
+    return { id, projectId: opts.projectId, targetType: opts.targetType, targetId: opts.targetId, author: opts.author, content: opts.content, resolved: false, createdAt: now, updatedAt: now };
+  }
+
+  listAnnotations(projectId: string, opts?: { targetType?: AnnotationTargetType; targetId?: string; includeResolved?: boolean }): PlanningAnnotation[] {
+    let sql = "SELECT * FROM planning_annotations WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.targetType) { sql += " AND target_type = ?"; params.push(opts.targetType); }
+    if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+    if (!opts?.includeResolved) { sql += " AND resolved = 0"; }
+    sql += " ORDER BY created_at DESC";
+    return this.db.prepare(sql).all(...params).map((r) => this.mapAnnotation(r as Record<string, unknown>));
+  }
+
+  updateAnnotation(id: string, updates: { content?: string; resolved?: boolean }): PlanningAnnotation | null {
+    const now = new Date().toISOString();
+    const sets: string[] = ["updated_at = ?"];
+    const params: unknown[] = [now];
+    if (updates.content !== undefined) { sets.push("content = ?"); params.push(updates.content); }
+    if (updates.resolved !== undefined) { sets.push("resolved = ?"); params.push(updates.resolved ? 1 : 0); }
+    params.push(id);
+    const result = this.db.prepare(`UPDATE planning_annotations SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    if (result.changes === 0) return null;
+    const row = this.db.prepare("SELECT * FROM planning_annotations WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapAnnotation(row) : null;
+  }
+
+  deleteAnnotation(id: string): boolean {
+    return this.db.prepare("DELETE FROM planning_annotations WHERE id = ?").run(id).changes > 0;
+  }
+
+  countAnnotations(projectId: string, targetType: AnnotationTargetType, targetId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM planning_annotations WHERE project_id = ? AND target_type = ? AND target_id = ? AND resolved = 0").get(projectId, targetType, targetId) as { count: number };
+    return row.count;
+  }
+
+  private mapAnnotation(row: Record<string, unknown>): PlanningAnnotation {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      targetType: row["target_type"] as AnnotationTargetType,
+      targetId: row["target_id"] as string,
+      author: row["author"] as string,
+      content: row["content"] as string,
+      resolved: (row["resolved"] as number) === 1,
+      createdAt: row["created_at"] as string,
+      updatedAt: row["updated_at"] as string,
+    };
+  }
+
+  // ─── Edit History (SYNC-06) ─────────────────────────────────
+
+  recordEdit(opts: {
+    projectId: string;
+    targetType: EditHistoryTargetType;
+    targetId: string;
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+    author: string;
+  }): PlanningEditHistory {
+    const id = generateId("edit");
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO planning_edit_history (id, project_id, target_type, target_id, field, old_value, new_value, author, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, opts.projectId, opts.targetType, opts.targetId, opts.field, opts.oldValue, opts.newValue, opts.author, now);
+    return { id, projectId: opts.projectId, targetType: opts.targetType, targetId: opts.targetId, field: opts.field, oldValue: opts.oldValue, newValue: opts.newValue, author: opts.author, createdAt: now };
+  }
+
+  listEdits(projectId: string, opts?: { targetType?: EditHistoryTargetType; targetId?: string; limit?: number }): PlanningEditHistory[] {
+    let sql = "SELECT * FROM planning_edit_history WHERE project_id = ?";
+    const params: unknown[] = [projectId];
+    if (opts?.targetType) { sql += " AND target_type = ?"; params.push(opts.targetType); }
+    if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+    sql += " ORDER BY created_at DESC";
+    if (opts?.limit) { sql += " LIMIT ?"; params.push(opts.limit); }
+    return this.db.prepare(sql).all(...params).map((r) => this.mapEditHistory(r as Record<string, unknown>));
+  }
+
+  private mapEditHistory(row: Record<string, unknown>): PlanningEditHistory {
+    return {
+      id: row["id"] as string,
+      projectId: row["project_id"] as string,
+      targetType: row["target_type"] as EditHistoryTargetType,
+      targetId: row["target_id"] as string,
+      field: row["field"] as string,
+      oldValue: (row["old_value"] as string | null) ?? null,
+      newValue: (row["new_value"] as string | null) ?? null,
+      author: row["author"] as string,
       createdAt: row["created_at"] as string,
     };
   }

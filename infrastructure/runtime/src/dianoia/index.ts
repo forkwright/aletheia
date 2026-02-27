@@ -88,3 +88,5 @@ export { RESEARCH_LEVELS, extractComplexitySignals, selectResearchLevel, getRese
 export type { ResearchLevel, ResearchLevelConfig } from "./research-levels.js";
 export { getLanguageRules, buildStandards, writeStandardsFile, readStandardsFile, createUserPreferenceRule } from "./coding-standards.js";
 export type { ProjectStandards, CodingRule, StandardsLayer } from "./coding-standards.js";
+export { createAdhocWork, ADHOC_TOOL_DEFINITION } from "./adhoc-tool.js";
+export type { AdhocWorkRequest, AdhocWorkResult } from "./adhoc-tool.js";

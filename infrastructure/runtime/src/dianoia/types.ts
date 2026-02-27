@@ -216,3 +216,35 @@ export interface TurnCount {
   tokenCount: number;
   updatedAt: string;
 }
+
+// ─── Annotations (EDIT-07) ──────────────────────────────────
+
+export type AnnotationTargetType = "requirement" | "phase" | "project" | "discussion";
+
+export interface PlanningAnnotation {
+  id: string;
+  projectId: string;
+  targetType: AnnotationTargetType;
+  targetId: string;
+  author: string;
+  content: string;
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Edit History (SYNC-06) ─────────────────────────────────
+
+export type EditHistoryTargetType = "requirement" | "phase" | "project" | "discussion" | "checkpoint";
+
+export interface PlanningEditHistory {
+  id: string;
+  projectId: string;
+  targetType: EditHistoryTargetType;
+  targetId: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  author: string;
+  createdAt: string;
+}
