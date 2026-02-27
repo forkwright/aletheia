@@ -2,7 +2,7 @@
 
 | Field   | Value                                                  |
 |---------|--------------------------------------------------------|
-| Status  | Draft                                                  |
+| Status  | Implemented (Phases 1–3 complete, Phase 4 verification complete; learning/retrospective deferred to Spec 42) |
 | Author  | Syn                                                    |
 | Created | 2026-02-24                                             |
 | Scope   | `infrastructure/runtime/src/dianoia/`, `ui/src/`, agent workflows |
@@ -397,16 +397,19 @@ WS   /api/planning/projects/:id/stream      — Real-time execution updates
 
 **Goal:** Phases are verified against goals. Projects teach future projects.
 
-- Goal-backward verification sub-agent with scoped context
-- VERIFY.md generation with per-criterion gap analysis
-- Gap remediation flow (remediation wave or human escalation)
-- Cross-project skill extraction (successful patterns → skill library)
-- Project retrospective generation (what worked, what didn't, key decisions)
+- ✅ Goal-backward verification sub-agent with scoped context (`verifier.ts`, uses `buildContextPacketSync`)
+- ✅ VERIFY.md generation with per-criterion gap analysis (`project-files.ts`)
+- ✅ Gap remediation flow (remediation wave or human escalation)
+- ❌ Cross-project skill extraction — **deferred to Spec 42 (Nous Team, Gap 1: closed feedback loops)**
+- ❌ Project retrospective generation — **deferred to Spec 42 (Nous Team, reflection→action gap)**
+- ❌ Completed projects → reusable insights — **deferred to Spec 42 (Nous Team, competence model)**
 
 **Success criteria:**
-- Verification catches genuine gaps (not just rubber-stamp approval)
-- Gap remediation produces targeted fixes
-- Completed projects generate reusable insights
+- ✅ Verification catches genuine gaps (not just rubber-stamp approval)
+- ✅ Gap remediation produces targeted fixes
+- ❌ Completed projects generate reusable insights — deferred to Spec 42
+
+**Rationale for deferral:** The learning items (skill extraction, retrospectives, reusable insights) are the core thesis of Spec 42 — connecting existing primitives (competence model, reflection, dianoia) into closed feedback loops. Implementing them here would split the concern. Verification is complete; learning belongs in the spec that owns the feedback loop architecture.
 
 ---
 

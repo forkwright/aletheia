@@ -12,7 +12,6 @@ that evolve with the system.
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 32 | [Dianoia v2](32_dianoia-v2.md) | In Progress | Context-engineered planning, sub-agent isolation |
 | 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
 
 ### Draft — Architecture
@@ -51,7 +50,7 @@ that evolve with the system.
 
 ## Implemented (Archived)
 
-31 implemented specs (01–23, 26, 28, 31, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
+32 implemented specs (01–23, 26, 28, 31, 32, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
 
 ## Conventions
 

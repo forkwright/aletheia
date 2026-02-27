@@ -406,3 +406,22 @@ Replaced session-scoped planning tools with a persistent SQLite-backed planning 
 - **Spawn records survive restart.** v24 migration adds `planning_spawn_records` table. Zombie detection for spawns that started but never completed.
 - **Legacy tools deprecated.** `plan_create` and `plan_propose` still work but emit deprecation warnings. New tool surface: `plan_research`, `plan_requirements`, `plan_roadmap`, `plan_execute`, `plan_verify`, `plan_discuss`.
 - 88 source files, 40 test files. Integration test exercises full idle→complete pipeline with mocked dispatch.
+
+
+### Dianoia v2 — Context-Engineered Planning with Sub-Agent Isolation (Spec 32)
+
+Layered context engineering and file-backed state on top of Dianoia v1, solving orchestrator context saturation and state loss across distillation.
+
+- **Files are source of truth.** `.dianoia/projects/{id}/` directory with PROJECT.md, REQUIREMENTS.md, ROADMAP.md, RESEARCH.md, and per-phase DISCUSS.md/PLAN.md/STATE.md/VERIFY.md. SQLite is the index; markdown files are the record. Projects reconstructable from files alone.
+- **Atomic file writes.** `atomicWriteFile()` writes to `.tmp` then `rename()` — no partial file corruption on crash. Every file generator in `project-files.ts` uses this.
+- **ContextPacketBuilder** assembles role-scoped context packets from project files. Sub-agents start at token 1 with exactly what they need. Budget per task type: research 8k, synthesis 16k, requirements 12k, discussion 16k (Opus), planning 24k, execution 32k, verification 16k.
+- **Priompt-based token counting.** `js-tiktoken` (cl100k_base) for accurate token measurement. No character-based estimation.
+- **Orchestrator stays under 40k tokens.** Reads PROJECT.md + ROADMAP.md + current phase summary. Everything else delegated. `orchestrator-context.ts` produces compact <4k summaries.
+- **Discussion is first-class.** `discussing` FSM state added between roadmap and planning. Gray areas surfaced per-phase via Opus sub-agent. Decisions captured in DISCUSS.md and propagated as hard constraints to planning. `discuss-tool.ts` handles the full flow.
+- **Codebase context mapping.** `codebase-map.ts` (599 lines) builds relevant file sets for execution steps — reads step targets from PLAN.md, includes referenced types/interfaces/tests, hard-caps at budget.
+- **Sub-agent handoff.** `handoff.ts` wires context packets to spawn dispatches. Each execution step is an isolated sub-agent with no inherited chat history.
+- **File-sync bidirectional.** `file-sync.ts` keeps SQLite and disk files consistent. Either can be canonical — import from files to recover from DB loss.
+- **Verifier uses context packets.** `GoalBackwardVerifier.verify()` calls `buildContextPacketSync()` for scoped verification context. No raw execution output in orchestrator.
+- **Planning UI: 19 Svelte components, 7,286 lines.** PlanningDashboard, milestone TimelineView, DiscussionPanel with decision cards, RequirementsTable, ExecutionStatus with wave tracking, SpawnStatus, VerificationPanel, CheckpointApproval, AnnotationPanel, EditHistory, ContextBudget visualization, MessageQueue, RoadmapView, ProjectHeader, RetrospectiveView, CategoryProposal, TaskList.
+- **Learning/retrospective deferred to Spec 42.** Cross-project skill extraction, project retrospective generation, and reusable insights are the core thesis of Spec 42 (Nous Team — closing feedback loops). Verification is complete here; learning belongs in the spec that owns the feedback loop architecture.
+- **Migration was non-breaking.** File generation layered on existing SQLite writes. Tool surface stable throughout. Phase 2 refactored internals only. Phase 3 added new UI + API endpoints.
