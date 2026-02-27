@@ -643,6 +643,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
         const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
         const sessionId = ctx.sessionId ?? "";
         const userInput = args.trim();
+        // Migration response routing — highest priority (before slug intake)
+        if (planOrch.hasPendingMigration()) {
+          return Promise.resolve(planOrch.handleMigrationResponse(userInput, nousId, sessionId));
+        }
         // Route to slug confirmation if confirmation is pending
         if (planOrch.hasPendingSlugConfirmation()) {
           return Promise.resolve(planOrch.receiveSlugConfirmation(userInput, nousId, sessionId));

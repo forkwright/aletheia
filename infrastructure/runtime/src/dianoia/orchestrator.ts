@@ -15,6 +15,13 @@ import {
   writeVerifyFile,
 } from "./project-files.js";
 import { toSlug, isSlugTaken } from "./slug.js";
+import {
+  deriveMigrationSlug,
+  detectLegacyProjectPaths,
+  generateMigrationPrompt,
+  migrateProjectToSlug,
+} from "./migration.js";
+import type { LegacyProject } from "./migration.js";
 import { PlanningError } from "../koina/errors.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
@@ -68,6 +75,13 @@ export class DianoiaOrchestrator {
   private pendingProjectName: string | null = null;
   /** Set after name received — shown to user for confirmation */
   private pendingSlug: string | null = null;
+  /**
+   * Migration sentinel:
+   *   null     = not yet checked this process lifetime (initial value, resets on restart)
+   *   []       = checked this session — declined or no legacy paths found; prevents re-prompt within session
+   *   [...arr] = legacy paths detected, awaiting user response
+   */
+  private pendingMigration: LegacyProject[] | null = null;
 
   constructor(private db: Database.Database, private defaultConfig: PlanningConfigSchema) {
     this.store = new PlanningStore(db);
@@ -82,6 +96,21 @@ export class DianoiaOrchestrator {
   setWorkspaceRoot(_root: string): void { /* workspace root now resolved from project.projectDir via getProjectDir() */ }
 
   handle(nousId: string, _sessionId: string): string {
+    // Check for legacy migration (only once per process lifetime, before anything else)
+    if (this.pendingMigration === null) {
+      const legacy = detectLegacyProjectPaths(this.getDb());
+      if (legacy.length > 0) {
+        this.pendingMigration = legacy;
+        return generateMigrationPrompt(legacy);
+      }
+      this.pendingMigration = []; // empty array = checked, none found
+    }
+
+    // If migration is pending (user hasn't responded yet), re-surface the prompt
+    if (this.pendingMigration.length > 0) {
+      return generateMigrationPrompt(this.pendingMigration);
+    }
+
     const active = this.getActiveProject(nousId);
 
     if (active) {
@@ -122,6 +151,65 @@ export class DianoiaOrchestrator {
   /** True when a slug has been generated and is awaiting user confirmation */
   hasPendingSlugConfirmation(): boolean {
     return this.pendingSlug !== null;
+  }
+
+  /** True when legacy paths were detected and the user has not yet responded this session */
+  hasPendingMigration(): boolean {
+    return this.pendingMigration !== null && this.pendingMigration.length > 0;
+  }
+
+  /**
+   * Handle a migration confirmation response ("yes" / "not now").
+   *
+   * On "yes": migrates all legacy projects to slug paths, sets pendingMigration = [].
+   * On "not now": sets pendingMigration = [] (empty array — NOT null).
+   *   - Empty array prevents re-prompting within the same session.
+   *   - null would re-trigger detectLegacyProjectPaths() on the next handle() call.
+   *   - Prompt re-appears on next startup because the constructor always initializes to null.
+   */
+  handleMigrationResponse(answer: string, nousId: string, sessionId: string): string {
+    if (!this.pendingMigration || this.pendingMigration.length === 0) {
+      return this.handle(nousId, sessionId); // no pending migration — proceed normally
+    }
+
+    const normalizedAnswer = answer.trim().toLowerCase();
+
+    if (normalizedAnswer === "yes" || normalizedAnswer === "y") {
+      const results: string[] = [];
+      for (const project of this.pendingMigration) {
+        const slug = deriveMigrationSlug(project, this.getDb());
+        try {
+          migrateProjectToSlug(project, slug, this.getDb());
+          results.push(`  - "${project.goal || project.id}" migrated to ${slug}`);
+        } catch (err) {
+          results.push(
+            `  - "${project.goal || project.id}" — migration failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      this.pendingMigration = []; // empty array = done for this session
+      return [
+        "Migration complete:",
+        ...results,
+        "",
+        "Projects now stored at _shared/workspace/plans/{slug}/.",
+      ].join("\n");
+    }
+
+    if (
+      normalizedAnswer === "not now" ||
+      normalizedAnswer === "no" ||
+      normalizedAnswer === "n"
+    ) {
+      // User declined — set to EMPTY ARRAY (not null) so same-session handle() calls skip detection.
+      // null would re-trigger detectLegacyProjectPaths() on the very next handle() call.
+      // Re-prompting on next startup works because the constructor always initializes to null.
+      this.pendingMigration = [];
+      return "Migration skipped. Projects continue working at their current paths. You'll be prompted again on next startup.";
+    }
+
+    // Unrecognized response — re-surface the prompt
+    return `Please respond with "yes" to migrate or "not now" to skip.\n\n${generateMigrationPrompt(this.pendingMigration)}`;
   }
 
   /** Called when user responds while hasPendingNameIntake() is true */
