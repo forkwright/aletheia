@@ -126,3 +126,39 @@ elif command -v open &>/dev/null; then
 else
   echo "   (Could not auto-open browser — visit $URL manually)"
 fi
+
+if [[ "$OS" == "Darwin" ]]; then
+  echo ""
+  echo "Memory services (optional, for persistent memory across sessions):"
+  echo "  brew install qdrant neo4j"
+  echo "  (Or use Docker/Podman if already installed)"
+else
+  echo ""
+  echo "Memory services (optional, for persistent memory across sessions):"
+  echo "  Ensure Docker or Podman is running — aletheia start handles the rest"
+fi
+
+if [ -t 0 ]; then
+  echo ""
+  printf "Enable Aletheia at login? [y/N]: "
+  read -n 1 -r ENABLE_REPLY
+  echo ""
+  if [[ "$ENABLE_REPLY" =~ ^[Yy]$ ]]; then
+    if "$INSTALL_DIR/aletheia" enable 2>/dev/null; then
+      echo "   Boot persistence enabled — Aletheia will start at login."
+    else
+      echo "   Warning: could not run aletheia enable."
+      echo "   Run manually after adding ~/.local/bin to PATH: aletheia enable"
+    fi
+  fi
+fi
+
+echo ""
+echo "=================================="
+echo "  Aletheia is running at $URL"
+echo ""
+echo "  Next time:  aletheia start"
+echo "  Stop:       aletheia stop"
+echo "  Health:     aletheia doctor"
+echo "  Logs:       aletheia logs -f"
+echo "=================================="
