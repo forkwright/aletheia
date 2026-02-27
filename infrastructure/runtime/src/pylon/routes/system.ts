@@ -45,8 +45,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   app.post("/api/system/update", async (c) => {
     const { execFileSync } = await import("node:child_process");
-    const { resolve: resolvePath } = await import("node:path");
-    const root = resolvePath(process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia");
+    const root = process.env["ALETHEIA_ROOT"] ?? join(homedir(), ".aletheia");
     try {
       const gitOutput = execFileSync("git", ["pull", "origin", "main"], {
         cwd: root, timeout: 60_000, encoding: "utf-8",
