@@ -4,14 +4,29 @@
   import Markdown from "./Markdown.svelte";
   import ToolStatusLine from "./ToolStatusLine.svelte";
   import ThinkingStatusLine from "./ThinkingStatusLine.svelte";
-
-  let { message, agentName, agentEmoji, onToolClick, onThinkingClick }: {
+  let { message, agentName, agentEmoji, onToolClick, onThinkingClick, onFileOpen }: {
     message: ChatMessage;
     agentName?: string | null;
     agentEmoji?: string | null;
     onToolClick?: (tools: ToolCallState[]) => void;
     onThinkingClick?: (thinking: string) => void;
+    onFileOpen?: (path: string) => void;
   } = $props();
+
+  // File path pattern: backtick-wrapped paths with known extensions or known directory prefixes
+  const FILE_PATH_RE = /^(?:src|docs|infrastructure|ui|shared|tests|config|memory|mba)\/[a-zA-Z0-9_\-./]+\.[a-z]{1,8}$/;
+
+  function handleContentClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    // Detect clicks on inline <code> elements containing file paths
+    if (target.tagName === "CODE" && target.parentElement?.tagName !== "PRE") {
+      const text = target.textContent?.trim();
+      if (text && FILE_PATH_RE.test(text)) {
+        e.preventDefault();
+        onFileOpen?.(text);
+      }
+    }
+  }
 
   let isUser = $derived(message.role === "user");
   let initials = $derived(agentName ? agentName.slice(0, 2).toUpperCase() : "AI");
@@ -122,7 +137,8 @@
       />
     {/if}
     {#if message.content}
-      <div class="chat-content">
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="chat-content" onclick={isUser ? undefined : handleContentClick}>
         {#if isUser}
           <div class="user-text">{message.content}</div>
         {:else}
@@ -373,5 +389,14 @@
     .segment-summary {
       padding: 8px 12px;
     }
+  }
+
+  /* Clickable file paths in inline code */
+  .chat-content :global(code:not(pre code)) {
+    cursor: default;
+  }
+  .chat-content :global(code:not(pre code):hover) {
+    /* Subtle underline hint for paths that match the pattern */
+    text-decoration-color: var(--accent);
   }
 </style>

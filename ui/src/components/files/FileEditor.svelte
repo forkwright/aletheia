@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
   import type { FileTreeEntry } from "../../lib/types";
-  import { saveWorkspaceFile, fetchWorkspaceFile } from "../../lib/api";
+  import { saveWorkspaceFile } from "../../lib/api";
   import {
     getTreeEntries,
     isLoading,
@@ -10,9 +10,19 @@
     loadTree,
     loadGitStatus,
     getGitStatus,
+    getOpenTabs,
+    getActiveTabPath,
+    openFile,
+    markTabDirty,
+    reloadFile,
+    getTabContent,
+    setTabContent,
+    hasAnyDirtyTab,
+    isFileLoading,
   } from "../../stores/files.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
   import Spinner from "../shared/Spinner.svelte";
+  import EditorTabs from "./EditorTabs.svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, type Extension } from "@codemirror/state";
   import { keymap } from "@codemirror/view";
@@ -27,10 +37,7 @@
 
   let { onClose }: { onClose: () => void } = $props();
 
-  let currentPath = $state<string | null>(null);
-  let isDirty = $state(false);
   let saving = $state(false);
-  let fileLoading = $state(false);
   let saveError = $state<string | null>(null);
   let treeVisible = $state(true);
   let filterText = $state("");
@@ -39,6 +46,8 @@
 
   let editorContainer = $state<HTMLDivElement | undefined>(undefined);
   let editorView: EditorView | null = null;
+  // Cache editor doc content per tab to restore on switch
+  let editorDocCache = new Map<string, string>();
 
   onMount(() => {
     const agentId = getActiveAgentId();
@@ -46,7 +55,7 @@
     loadGitStatus(agentId ?? undefined);
 
     const handler = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
+      if (hasAnyDirtyTab()) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -56,8 +65,17 @@
   });
 
   onDestroy(() => {
+    // Save current editor content to cache before destroy
+    saveEditorStateToCache();
     editorView?.destroy();
   });
+
+  function saveEditorStateToCache() {
+    const activePath = getActiveTabPath();
+    if (editorView && activePath) {
+      editorDocCache.set(activePath, editorView.state.doc.toString());
+    }
+  }
 
   function resolveLanguage(path: string): Extension {
     const ext = path.split(".").pop()?.toLowerCase();
@@ -76,7 +94,6 @@
 
   function initEditor(content: string, path: string) {
     editorView?.destroy();
-    isDirty = false;
     saveError = null;
 
     const lang = resolveLanguage(path);
@@ -86,7 +103,11 @@
       oneDark,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          isDirty = true;
+          const activePath = getActiveTabPath();
+          if (activePath) {
+            markTabDirty(activePath, true);
+            editorDocCache.set(activePath, update.state.doc.toString());
+          }
           if (showPreview && isMarkdown(path)) {
             updatePreview();
           }
@@ -104,7 +125,6 @@
     ];
 
     const state = EditorState.create({ doc: content, extensions });
-    // editorContainer is guaranteed non-null — initEditor is only called after guard in loadFile
     editorView = new EditorView({ state, parent: editorContainer! });
   }
 
@@ -115,7 +135,6 @@
   function updatePreview() {
     if (!editorView) return;
     const text = editorView.state.doc.toString();
-    // Simple markdown → HTML (basic rendering for preview)
     previewHtml = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -131,37 +150,64 @@
       .replace(/\n/g, "<br>");
   }
 
-  async function openFile(path: string) {
-    if (isDirty && !confirm("Discard unsaved changes?")) return;
-
-    fileLoading = true;
-    currentPath = path;
+  async function handleOpenFile(path: string) {
+    // Save current editor content before switching
+    saveEditorStateToCache();
     showPreview = false;
-    try {
-      const agentId = getActiveAgentId();
-      const data = await fetchWorkspaceFile(path, agentId ?? undefined);
-      // Setting fileLoading=false re-mounts the cm-wrapper div.
-      // tick() waits for Svelte to flush DOM updates so editorContainer is bound.
-      fileLoading = false;
+
+    const agentId = getActiveAgentId();
+    const content = await openFile(path, agentId ?? undefined);
+    await tick();
+    if (editorContainer) {
+      initEditor(content, path);
+    }
+  }
+
+  async function handleTabSelect(path: string) {
+    // Save current editor state before switching
+    saveEditorStateToCache();
+    showPreview = false;
+
+    // Try cached editor content first, otherwise reload from store/API
+    const cached = editorDocCache.get(path) ?? getTabContent(path);
+    if (cached !== undefined) {
       await tick();
       if (editorContainer) {
-        initEditor(data.content, path);
+        initEditor(cached, path);
       }
-    } catch (err) {
-      saveError = `Failed to load: ${err instanceof Error ? err.message : String(err)}`;
-      fileLoading = false;
+    } else {
+      const agentId = getActiveAgentId();
+      const content = await openFile(path, agentId ?? undefined);
+      await tick();
+      if (editorContainer) {
+        initEditor(content, path);
+      }
+    }
+  }
+
+  async function handleReload() {
+    const activePath = getActiveTabPath();
+    if (!activePath) return;
+    const agentId = getActiveAgentId();
+    const content = await reloadFile(activePath, agentId ?? undefined);
+    editorDocCache.set(activePath, content);
+    await tick();
+    if (editorContainer) {
+      initEditor(content, activePath);
     }
   }
 
   async function save() {
-    if (!currentPath || !editorView || saving) return;
+    const activePath = getActiveTabPath();
+    if (!activePath || !editorView || saving) return;
     saving = true;
     saveError = null;
     try {
       const content = editorView.state.doc.toString();
       const agentId = getActiveAgentId();
-      await saveWorkspaceFile(currentPath, content, agentId ?? undefined);
-      isDirty = false;
+      await saveWorkspaceFile(activePath, content, agentId ?? undefined);
+      markTabDirty(activePath, false);
+      setTabContent(activePath, content);
     } catch (err) {
       saveError = err instanceof Error ? err.message : String(err);
     } finally {
@@ -198,6 +244,10 @@
     if (status.includes("D")) return "deleted";
     return "";
   }
+
+  // Derive current tab state for toolbar
+  let currentTab = $derived(getOpenTabs().find((t) => t.path === getActiveTabPath()));
+  let activePath = $derived(getActiveTabPath());
 </script>
 
 <div class="file-editor">
@@ -231,23 +281,29 @@
     </div>
   {/if}
   <div class="editor-main">
+    <EditorTabs onTabSelect={handleTabSelect} />
     <div class="editor-toolbar">
       {#if !treeVisible}
         <button class="icon-btn" onclick={() => treeVisible = true} title="Show tree">▶</button>
       {/if}
-      {#if currentPath}
-        <span class="file-path">{currentPath}</span>
-        {#if isDirty}
+      {#if activePath}
+        <span class="file-path">{activePath}</span>
+        {#if currentTab?.dirty}
           <span class="dirty-dot" title="Unsaved changes"></span>
         {/if}
-        {#if isMarkdown(currentPath)}
+        {#if currentTab?.stale}
+          <button class="toolbar-btn stale-btn" onclick={handleReload} title="Agent modified this file — click to reload">
+            ⟳ Reload
+          </button>
+        {/if}
+        {#if isMarkdown(activePath)}
           <button
             class="toolbar-btn"
             class:active={showPreview}
             onclick={() => { showPreview = !showPreview; if (showPreview) updatePreview(); }}
           >Preview</button>
         {/if}
-        <button class="toolbar-btn save-btn" onclick={save} disabled={!isDirty || saving}>
+        <button class="toolbar-btn save-btn" onclick={save} disabled={!currentTab?.dirty || saving}>
           {saving ? "Saving..." : "Save"}
         </button>
       {:else}
@@ -259,12 +315,12 @@
       <div class="save-error">{saveError}</div>
     {/if}
     <div class="editor-content">
-      {#if fileLoading}
+      {#if isFileLoading()}
         <div class="editor-loading"><Spinner size={16} /> Loading...</div>
-      {:else if showPreview && currentPath && isMarkdown(currentPath)}
+      {:else if showPreview && activePath && isMarkdown(activePath)}
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- HTML-escaped via updatePreview() which applies &amp;/&lt;/&gt; escaping before markup injection -->
         <div class="preview-pane">{@html previewHtml}</div>
-      {:else if currentPath}
+      {:else if activePath}
         <div class="cm-wrapper" bind:this={editorContainer}></div>
       {:else}
         <div class="editor-empty">Select a file from the tree to edit</div>
@@ -294,11 +350,11 @@
     {@const gs = getGitStatus(path)}
     <button
       class="tree-item file"
-      class:active={currentPath === path}
+      class:active={activePath === path}
       class:modified={gs ? gitStatusClass(gs) === "modified" : false}
       class:added={gs ? gitStatusClass(gs) === "added" : false}
       style="padding-left: {8 + depth * 14}px"
-      onclick={() => openFile(path)}
+      onclick={() => handleOpenFile(path)}
     >
       <span class="tree-ficon">{fileIcon(entry.name)}</span>
       <span class="tree-name">{entry.name}</span>
@@ -463,6 +519,15 @@
   .toolbar-btn:hover { color: var(--text); background: var(--surface); }
   .toolbar-btn.active { color: var(--accent); border-color: var(--accent); }
   .toolbar-btn:disabled { opacity: 0.4; cursor: default; }
+  .stale-btn {
+    border-color: var(--status-info);
+    color: var(--status-info);
+    animation: pulse-stale 2s ease-in-out infinite;
+  }
+  .stale-btn:hover {
+    background: var(--status-info);
+    color: var(--bg);
+  }
   .save-btn:not(:disabled) {
     border-color: var(--accent);
     color: var(--accent);
@@ -524,5 +589,9 @@
   .preview-pane :global(li) {
     margin-left: 20px;
     list-style: disc;
+  }
+  @keyframes pulse-stale {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
 </style>

@@ -12,6 +12,8 @@
   import Welcome from "../onboarding/Welcome.svelte";
   import SetupWizard from "../onboarding/SetupWizard.svelte";
   import Toast from "../shared/Toast.svelte";
+  import { showFileToast } from "../../stores/toast.svelte";
+  import { openFile } from "../../stores/files.svelte";
 
   type ViewId = "chat" | "metrics" | "graph" | "planning" | "settings";
   type AuthState = "loading" | "needs-setup" | "login" | "authenticated";
@@ -103,6 +105,29 @@
   function toggleFilePanel() {
     filePanelOpen = !filePanelOpen;
   }
+
+  // Listen for agent file edits and show toast with [Open] action
+  $effect(() => {
+    const editHandler = (e: Event) => {
+      const detail = (e as CustomEvent<{ agentName: string; filePath: string }>).detail;
+      showFileToast(detail.agentName, detail.filePath, () => {
+        filePanelOpen = true;
+        openFile(detail.filePath);
+      });
+    };
+    // Listen for clickable file paths in chat messages
+    const openHandler = (e: Event) => {
+      const detail = (e as CustomEvent<{ path: string }>).detail;
+      filePanelOpen = true;
+      openFile(detail.path);
+    };
+    window.addEventListener("aletheia:file-edit", editHandler);
+    window.addEventListener("aletheia:open-file", openHandler);
+    return () => {
+      window.removeEventListener("aletheia:file-edit", editHandler);
+      window.removeEventListener("aletheia:open-file", openHandler);
+    };
+  });
 
   function handleSetView(v: string) {
     if (v === "files") {

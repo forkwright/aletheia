@@ -493,6 +493,7 @@
             agentEmoji={emoji}
             onToolClick={handleToolClick}
             onThinkingClick={(thinking) => handleThinkingClick(thinking)}
+            onFileOpen={(path) => window.dispatchEvent(new CustomEvent("aletheia:open-file", { detail: { path } }))}
           />
           {#if selectedTools}
             <ToolPanel tools={selectedTools} onClose={closeToolPanel} />
