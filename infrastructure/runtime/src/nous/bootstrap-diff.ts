@@ -16,7 +16,7 @@ export interface BootstrapDiff {
 const hashCache = new Map<string, Record<string, string>>();
 
 function resolveSharedStatusDir(workspace: string): string {
-  // workspace = /mnt/ssd/aletheia/nous/syn → shared/status = /mnt/ssd/aletheia/shared/status
+  // workspace = ~/.aletheia/nous/syn → shared/status = ~/.aletheia/shared/status
   return join(dirname(workspace), "..", "shared", "status");
 }
 

@@ -1,4 +1,6 @@
 // Zod schemas — single source of truth for config types
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { z } from "zod";
 
 export const SecretRefSchema = z.discriminatedUnion("source", [
@@ -527,7 +529,7 @@ const EncryptionConfig = z
 const BackupConfig = z
   .object({
     enabled: z.boolean().default(false),
-    destination: z.string().default("/mnt/ssd/aletheia/backups"),
+    destination: z.string().default(join(homedir(), ".aletheia", "backups")),
     retentionDays: z.number().int().min(1).default(30),
   })
   .default({});

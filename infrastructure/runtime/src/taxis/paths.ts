@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { ConfigError } from "../koina/errors.js";
 
-const ALETHEIA_ROOT = process.env["ALETHEIA_ROOT"] ?? "/mnt/ssd/aletheia";
+const ALETHEIA_ROOT = process.env["ALETHEIA_ROOT"] ?? join(homedir(), ".aletheia");
 
 export const paths = {
   root: ALETHEIA_ROOT,

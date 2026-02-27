@@ -1,4 +1,6 @@
 // Paths module tests
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigError } from "../koina/errors.js";
 
@@ -21,10 +23,10 @@ describe("paths", () => {
     expect(paths.shared).toBe("/custom/root/shared");
   });
 
-  it("defaults ALETHEIA_ROOT to /mnt/ssd/aletheia", async () => {
+  it("defaults ALETHEIA_ROOT to home directory path", async () => {
     delete process.env["ALETHEIA_ROOT"];
     const { paths } = await import("./paths.js");
-    expect(paths.root).toBe("/mnt/ssd/aletheia");
+    expect(paths.root).toBe(join(homedir(), ".aletheia"));
   });
 
   it("configDir uses ALETHEIA_CONFIG_DIR env", async () => {
@@ -42,13 +44,13 @@ describe("paths", () => {
   it("nousDir constructs agent workspace path", async () => {
     delete process.env["ALETHEIA_ROOT"];
     const { paths } = await import("./paths.js");
-    expect(paths.nousDir("syn")).toBe("/mnt/ssd/aletheia/nous/syn");
+    expect(paths.nousDir("syn")).toBe(join(homedir(), ".aletheia", "nous", "syn"));
   });
 
   it("nousFile constructs file path in agent workspace", async () => {
     delete process.env["ALETHEIA_ROOT"];
     const { paths } = await import("./paths.js");
-    expect(paths.nousFile("syn", "SOUL.md")).toBe("/mnt/ssd/aletheia/nous/syn/SOUL.md");
+    expect(paths.nousFile("syn", "SOUL.md")).toBe(join(homedir(), ".aletheia", "nous", "syn", "SOUL.md"));
   });
 
   it("sessionsDb joins configDir with sessions.db", async () => {
@@ -60,10 +62,10 @@ describe("paths", () => {
   it("static paths are consistent", async () => {
     delete process.env["ALETHEIA_ROOT"];
     const { paths } = await import("./paths.js");
-    expect(paths.sharedBin).toBe("/mnt/ssd/aletheia/shared/bin");
-    expect(paths.sharedConfig).toBe("/mnt/ssd/aletheia/shared/config");
-    expect(paths.sharedMemory).toBe("/mnt/ssd/aletheia/shared/memory");
-    expect(paths.infrastructure).toBe("/mnt/ssd/aletheia/infrastructure");
+    expect(paths.sharedBin).toBe(join(homedir(), ".aletheia", "shared", "bin"));
+    expect(paths.sharedConfig).toBe(join(homedir(), ".aletheia", "shared", "config"));
+    expect(paths.sharedMemory).toBe(join(homedir(), ".aletheia", "shared", "memory"));
+    expect(paths.infrastructure).toBe(join(homedir(), ".aletheia", "infrastructure"));
   });
 });
 
