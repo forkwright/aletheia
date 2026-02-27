@@ -61,15 +61,10 @@ import { AuditLog } from "./symbolon/audit.js";
 import { generateSecret } from "./symbolon/tokens.js";
 import { createMcpRoutes } from "./pylon/mcp.js";
 import { broadcastEvent, createUiRoutes } from "./pylon/ui.js";
-import { SignalClient } from "./semeion/client.js";
-import {
-  type DaemonHandle,
-  daemonOptsFromConfig,
-  spawnDaemon,
-  waitForReady,
-} from "./semeion/daemon.js";
-import { startListener } from "./semeion/listener.js";
-import { initSenderPii, parseTarget, sendMessage } from "./semeion/sender.js";
+import { AgoraRegistry } from "./agora/registry.js";
+import { SignalChannelProvider } from "./semeion/provider.js";
+import { SlackChannelProvider } from "./agora/channels/slack/provider.js";
+import { sendMessage } from "./semeion/sender.js";
 import { createDefaultRegistry } from "./semeion/commands.js";
 import { SkillRegistry } from "./organon/skills.js";
 import { discoverPlugins, loadPlugins } from "./prostheke/loader.js";
@@ -634,103 +629,59 @@ export async function startRuntime(configPath?: string): Promise<void> {
     log.debug("Registered /plan command");
   }
 
-  // --- Signal ---
+  // --- Channels (Agora) ---
   let watchdog: Watchdog | null = null;
   const abortController = new AbortController();
-  const daemons: DaemonHandle[] = [];
-  const clients = new Map<string, SignalClient>();
+  const agora = new AgoraRegistry();
 
-  // Collect bound group IDs from bindings so the listener can allow them
-  const boundGroupIds = new Set<string>();
-  for (const binding of config.bindings) {
-    if (binding.match.peer?.kind === "group" && binding.match.peer.id) {
-      boundGroupIds.add(binding.match.peer.id);
-    }
+  // Signal channel provider
+  const signalProvider = new SignalChannelProvider({
+    config,
+    commands: commandRegistry,
+    skills,
+    onStatusRequest: async (client, target) => {
+      const status = formatStatusMessage(runtime.store, config, watchdog);
+      await sendMessage(client, target, status, { markdown: false });
+    },
+  });
+  agora.register(signalProvider);
+
+  // Slack channel provider (if configured)
+  if (config.channels.slack?.enabled) {
+    const slackProvider = new SlackChannelProvider(config);
+    agora.register(slackProvider);
   }
 
-  initSenderPii(config.privacy?.pii);
+  // Start all registered channels
+  await agora.startAll({
+    dispatch: (msg) => runtime.manager.handleMessage(msg),
+    config,
+    store: runtime.store,
+    manager: runtime.manager,
+    abortSignal: abortController.signal,
+    commands: commandRegistry,
+    get watchdog() { return watchdog; },
+  });
 
-  if (config.channels.signal.enabled) {
-    for (const [accountId, account] of Object.entries(
-      config.channels.signal.accounts,
-    )) {
-      if (!account.enabled) continue;
-
-      const httpUrl =
-        account.httpUrl ??
-        `http://${account.httpHost}:${account.httpPort}`;
-
-      if (account.autoStart) {
-        const daemonOpts = daemonOptsFromConfig(accountId, account);
-        const handle = spawnDaemon(daemonOpts);
-        daemons.push(handle);
-
-        try {
-          await waitForReady(handle.baseUrl);
-        } catch (error) {
-          log.error(
-            `Signal daemon for ${accountId} failed to start: ${error instanceof Error ? error.message : error}`,
-          );
-          continue;
-        }
-      }
-
-      const client = new SignalClient(httpUrl);
-      clients.set(accountId, client);
-
-      startListener({
-        accountId,
-        account,
-        manager: runtime.manager,
-        client,
-        baseUrl: httpUrl,
-        abortSignal: abortController.signal,
-        boundGroupIds,
-        commands: commandRegistry,
-        store: runtime.store,
-        config,
-        get watchdog() { return watchdog; },
-        skills,
-        onStatusRequest: async (target) => {
-          const status = formatStatusMessage(runtime.store, config, watchdog);
-          await sendMessage(client, target, status, { markdown: false });
-        },
-      });
-
-      log.info(`Signal account ${accountId} active at ${httpUrl}`);
-    }
-
-    if (clients.size > 0) {
-      const firstClient = clients.values().next().value!;
-      const firstAccountId = clients.keys().next().value!;
-      const firstAccount =
-        config.channels.signal.accounts[firstAccountId];
-      const defaultAccount = firstAccount?.account ?? firstAccountId;
-
-      const messageTool = createMessageTool({
-        sender: {
-          send: async (to: string, text: string) => {
-            const target = parseTarget(to, defaultAccount);
-            await sendMessage(firstClient, target, text);
-          },
-        },
-      });
-      runtime.tools.register(messageTool);
-      log.info("Message tool registered with Signal sender");
-
-      const voiceTool = createVoiceReplyTool({
-        send: async (to: string, text: string, attachments: string[]) => {
-          const target = parseTarget(to, defaultAccount);
-          await sendMessage(firstClient, target, text, { attachments });
-        },
-      });
-      runtime.tools.register(voiceTool);
-      log.info("Voice reply tool registered");
-    } else {
-      runtime.tools.register(createMessageTool());
-    }
+  // Wire message tool to agora registry for multi-channel routing (Spec 34, Phase 4)
+  if (agora.size > 0) {
+    const messageTool = createMessageTool({ registry: agora });
+    runtime.tools.register(messageTool);
+    log.info(`Message tool registered via agora (channels: ${agora.list().join(", ")})`);
   } else {
     runtime.tools.register(createMessageTool());
+    log.warn("Message tool registered without channels — sends will fail");
+  }
+
+  // Voice reply tool — Signal-only (requires TTS + audio file delivery)
+  if (signalProvider.hasClients) {
+    const voiceTool = createVoiceReplyTool({
+      send: async (to: string, text: string, attachments: string[]) => {
+        await agora.send("signal", { to, text, attachments });
+      },
+    });
+    runtime.tools.register(voiceTool);
+    log.info("Voice reply tool registered (Signal only)");
   }
 
   // --- Cron ---
@@ -812,14 +763,10 @@ export async function startRuntime(configPath?: string): Promise<void> {
   // Evolutionary config search — mutate pipeline configs, benchmark, promote winners
   cron.registerCommand("evolution:nightly", async () => {
     const opts: Parameters<typeof runEvolutionCycle>[3] = {};
-    if (clients.size > 0 && config.watchdog?.alertRecipient) {
+    if (signalProvider.hasClients && config.watchdog?.alertRecipient) {
       const alertRecipient = config.watchdog.alertRecipient;
-      const client = clients.values().next().value!;
-      const accountId = clients.keys().next().value!;
-      const account = config.channels.signal.accounts[accountId]!;
-      const accountPhone = account.account ?? accountId;
       opts.sendNotification = async (_nousId, message) => {
-        await sendMessage(client, { account: accountPhone, recipient: alertRecipient }, message, { markdown: false });
+        await agora.send("signal", { to: alertRecipient, text: message, markdown: false });
       };
     }
     const result = await runEvolutionCycle(runtime.store, runtime.router, config, opts);
@@ -846,16 +793,9 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
     // Wire alert function only when Signal + alertRecipient are configured
     let alertFn: ((message: string) => Promise<void>) | undefined;
-    if (wdConfig.alertRecipient && clients.size > 0) {
-      const alertClient = clients.values().next().value!;
-      const alertAccountId = clients.keys().next().value!;
-      const alertAccount = config.channels.signal.accounts[alertAccountId]!;
-      const alertAccountPhone = alertAccount.account ?? alertAccountId;
+    if (wdConfig.alertRecipient && signalProvider.hasClients) {
       alertFn = async (message) => {
-        await sendMessage(alertClient, {
-          account: alertAccountPhone,
-          recipient: wdConfig.alertRecipient!,
-        }, message, { markdown: false });
+        await agora.send("signal", { to: wdConfig.alertRecipient!, text: message, markdown: false });
       };
     }
 
@@ -863,7 +803,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     watchdog.start();
     setWatchdogRef(watchdog);
     runtime.manager.setWatchdog(watchdog);
-    log.info(`Watchdog started: ${services.length} services${alertFn ? ", alerts → Signal" : ", no alert channel"}`);
+    log.info(`Watchdog started: ${services.length} services${alertFn ? ", alerts via agora" : ", no alert channel"}`);
   }
 
   // Spawn session cleanup — archive stale spawn sessions every hour
@@ -923,9 +863,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
     if (mcpManager) await mcpManager.disconnectAll().catch(() => { /* disconnect errors suppressed on shutdown */ });
     abortController.abort();
-    for (const daemon of daemons) {
-      daemon.stop();
-    }
+    await agora.stopAll().catch(() => { /* channel stop errors suppressed on shutdown */ });
     await closeBrowser().catch(() => { /* browser close errors suppressed on shutdown */ });
     await runtime.plugins.dispatchShutdown();
     hookRegistry.teardown();
