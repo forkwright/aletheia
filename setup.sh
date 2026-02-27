@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${ALETHEIA_PORT:-18789}"
+OS="$(uname)"
 
 echo "[1/6] Checking prerequisites..."
 if ! command -v node &>/dev/null; then
@@ -18,6 +19,17 @@ fi
 if ! command -v npm &>/dev/null; then
   echo "Error: npm not found."
   exit 1
+fi
+
+if [[ "$OS" == "Darwin" ]]; then
+  if ! command -v brew &>/dev/null; then
+    echo ""
+    echo "Note: Homebrew not found. To use native memory services (Qdrant, Neo4j) on macOS:"
+    echo "  Install Homebrew: https://brew.sh"
+    echo "  Then: brew install qdrant neo4j"
+    echo "  (Continuing setup — you can install memory services later)"
+    echo ""
+  fi
 fi
 
 echo "[2/6] Building runtime..."
@@ -66,9 +78,8 @@ if [ ! -f "$ENTRY" ]; then
 fi
 
 # Check port availability
-if lsof -iTCP:"$PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
-  OCCUPANT=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
-  echo "Error: Port $PORT is already in use (PID $OCCUPANT). Stop that process or set ALETHEIA_PORT to a different port."
+if nc -z localhost "$PORT" 2>/dev/null; then
+  echo "Error: Port $PORT is already in use. Stop that process or set ALETHEIA_PORT to a different port."
   exit 1
 fi
 
