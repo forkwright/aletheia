@@ -1,9 +1,11 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
+import { trySafe } from "./koina/safe.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
 import { loadBootstrapAnchor } from "./taxis/bootstrap-loader.js";
-import { initPaths, paths } from "./taxis/paths.js";
+import { mergeGitignore, scaffoldNousShared } from "./taxis/nous-scaffold.js";
+import { initPaths, nousSharedDir, paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -119,6 +121,16 @@ export interface AletheiaRuntime {
 export function createRuntime(configPath?: string): AletheiaRuntime {
   const { anchor } = loadBootstrapAnchor();
   initPaths(anchor);
+
+  // Best-effort gap-fill — non-blocking, warns on newly created dirs
+  trySafe("nous:scaffold", () => {
+    const nousDir = nousSharedDir(); // called inside callback — MUST be after initPaths()
+    const created = scaffoldNousShared(nousDir);
+    if (created.length > 0) {
+      log.warn("nous scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
+    }
+    mergeGitignore(nousDir); // idempotent — safe every startup
+  }, undefined);
 
   eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
