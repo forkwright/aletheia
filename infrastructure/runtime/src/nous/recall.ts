@@ -23,6 +23,32 @@ interface MemoryHit {
   created_at?: string | null;
 }
 
+/**
+ * Exponential temporal decay: older memories score lower.
+ *
+ * decayedScore = rawScore × e^(−λ × ageInDays)
+ * where λ = ln(2) / halfLifeDays
+ *
+ * Returns a multiplier in (0, 1] — caller applies it to the raw score.
+ * Default half-life: 30 days (30-day-old memory → 50%, 90-day → 12.5%).
+ */
+export function temporalDecay(
+  createdAt: string | null | undefined,
+  now: number,
+  halfLifeDays = 30,
+): number {
+  if (!createdAt) return 1; // No timestamp → no penalty (preserve backwards compat)
+  const ageMs = now - new Date(createdAt).getTime();
+  if (ageMs < 0) return 1; // Future timestamp → no penalty
+  const ageDays = ageMs / (24 * 3600 * 1000);
+  const lambda = Math.LN2 / halfLifeDays;
+  return Math.exp(-lambda * ageDays);
+}
+
+/**
+ * @deprecated Use temporalDecay() instead. Kept for backwards compatibility.
+ * Linear 24-hour recency boost (0 to +0.15).
+ */
 export function computeRecencyBoost(createdAt: string | null | undefined, now: number): number {
   if (!createdAt) return 0;
   const age = now - new Date(createdAt).getTime();
@@ -41,6 +67,8 @@ export interface RecallOpts {
   sufficiencyMinHits?: number;
   domains?: string[];
   threadSummary?: string;
+  /** Half-life in days for temporal decay. Default 30 (30-day-old → 50% score). */
+  halfLifeDays?: number;
 }
 
 export async function recallMemories(
@@ -122,13 +150,14 @@ export async function recallMemories(
   }
 
   const now = Date.now();
+  const halfLifeDays = opts?.halfLifeDays ?? 30;
   const filtered = hits
     .filter(
       (h) => h.score !== null && h.score !== undefined && h.score >= minScore,
     )
     .map((h) => ({
       ...h,
-      score: (h.score ?? 0) + computeRecencyBoost(h.created_at, now),
+      score: (h.score ?? 0) * temporalDecay(h.created_at, now, halfLifeDays),
     }))
     .toSorted((a, b) => (b.score ?? 0) - (a.score ?? 0));
 

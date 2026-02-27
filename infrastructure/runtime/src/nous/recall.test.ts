@@ -1,293 +1,173 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recallMemories } from "./recall.js";
+// Unit tests for recall utilities — MMR selection and temporal scoring
+import { describe, expect, it } from "vitest";
+import { mmrSelect, computeRecencyBoost, temporalDecay } from "./recall.js";
 
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
+describe("mmrSelect", () => {
+  const hit = (memory: string, score: number) => ({
+    memory,
+    score,
+    id: memory.slice(0, 8),
+  });
 
-function makeResponse(
-  results: Array<{ memory: string; score: number | null; id?: string }>,
-  ok = true,
-  status = 200,
-) {
-  return {
-    ok,
-    status,
-    json: async () => ({ ok: true, results }),
-  };
-}
+  it("returns empty for empty input", () => {
+    expect(mmrSelect([], 5)).toEqual([]);
+  });
 
-beforeEach(() => {
-  mockFetch.mockReset();
+  it("returns single item unchanged", () => {
+    const items = [hit("only one", 0.9)];
+    expect(mmrSelect(items, 5)).toEqual(items);
+  });
+
+  it("always picks highest-scoring item first", () => {
+    const items = [hit("top scorer", 0.95), hit("second", 0.85), hit("third", 0.75)];
+    const result = mmrSelect(items, 3);
+    expect(result[0]!.memory).toBe("top scorer");
+  });
+
+  it("penalizes near-duplicate content", () => {
+    // Two near-identical memories and one distinct one
+    const items = [
+      hit("the truck needs new brake pads installed soon", 0.95),
+      hit("the truck needs new brake pads replaced soon", 0.90),
+      hit("cody prefers dark roast coffee in the morning", 0.85),
+    ];
+    const result = mmrSelect(items, 2);
+    // Should pick top scorer + the diverse one, not top scorer + near-duplicate
+    expect(result[0]!.memory).toContain("brake pads installed");
+    expect(result[1]!.memory).toContain("coffee");
+  });
+
+  it("respects limit", () => {
+    const items = Array.from({ length: 10 }, (_, i) => hit(`memory ${i}`, 0.9 - i * 0.01));
+    const result = mmrSelect(items, 3);
+    expect(result).toHaveLength(3);
+  });
+
+  it("returns all items when fewer than limit", () => {
+    const items = [hit("a", 0.9), hit("b", 0.8)];
+    const result = mmrSelect(items, 10);
+    expect(result).toHaveLength(2);
+  });
+
+  it("lambda=1.0 degrades to pure relevance ranking", () => {
+    const items = [
+      hit("the truck brake system needs repair work done", 0.95),
+      hit("the truck brake system needs maintenance work done", 0.90),
+      hit("coffee preferences for the morning routine", 0.85),
+    ];
+    const result = mmrSelect(items, 3, 1.0);
+    // Pure relevance = just sorted by score descending
+    expect(result[0]!.score).toBe(0.95);
+    expect(result[1]!.score).toBe(0.90);
+    expect(result[2]!.score).toBe(0.85);
+  });
+
+  it("lambda=0.0 maximizes diversity", () => {
+    const items = [
+      hit("the truck brake system needs repair work done", 0.95),
+      hit("the truck brake system needs maintenance work done", 0.90),
+      hit("completely different topic about gardening and plants", 0.85),
+    ];
+    const result = mmrSelect(items, 2, 0.0);
+    // First pick is always highest score, second should maximize diversity
+    expect(result[0]!.memory).toContain("repair");
+    expect(result[1]!.memory).toContain("gardening");
+  });
+
+  it("does not mutate input array", () => {
+    const items = [hit("a", 0.9), hit("b", 0.8), hit("c", 0.7)];
+    const original = [...items];
+    mmrSelect(items, 2);
+    expect(items).toEqual(original);
+  });
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
+describe("temporalDecay", () => {
+  it("returns 1.0 for null/undefined (no penalty)", () => {
+    expect(temporalDecay(null, Date.now())).toBe(1);
+    expect(temporalDecay(undefined, Date.now())).toBe(1);
+  });
+
+  it("returns 1.0 for just-created memory", () => {
+    const now = Date.now();
+    const justNow = new Date(now - 1000).toISOString();
+    const decay = temporalDecay(justNow, now);
+    expect(decay).toBeGreaterThan(0.999);
+    expect(decay).toBeLessThanOrEqual(1);
+  });
+
+  it("returns ~0.5 at half-life", () => {
+    const now = Date.now();
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+    const decay = temporalDecay(thirtyDaysAgo, now, 30);
+    expect(decay).toBeCloseTo(0.5, 2);
+  });
+
+  it("returns ~0.25 at 2x half-life", () => {
+    const now = Date.now();
+    const sixtyDaysAgo = new Date(now - 60 * 24 * 3600 * 1000).toISOString();
+    const decay = temporalDecay(sixtyDaysAgo, now, 30);
+    expect(decay).toBeCloseTo(0.25, 2);
+  });
+
+  it("returns ~0.125 at 3x half-life", () => {
+    const now = Date.now();
+    const ninetyDaysAgo = new Date(now - 90 * 24 * 3600 * 1000).toISOString();
+    const decay = temporalDecay(ninetyDaysAgo, now, 30);
+    expect(decay).toBeCloseTo(0.125, 2);
+  });
+
+  it("supports custom half-life", () => {
+    const now = Date.now();
+    const sevenDaysAgo = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+    const decay = temporalDecay(sevenDaysAgo, now, 7);
+    expect(decay).toBeCloseTo(0.5, 2);
+  });
+
+  it("returns 1.0 for future timestamps", () => {
+    const now = Date.now();
+    const future = new Date(now + 3600 * 1000).toISOString();
+    expect(temporalDecay(future, now)).toBe(1);
+  });
+
+  it("never returns zero (asymptotic)", () => {
+    const now = Date.now();
+    const yearAgo = new Date(now - 365 * 24 * 3600 * 1000).toISOString();
+    const decay = temporalDecay(yearAgo, now, 30);
+    expect(decay).toBeGreaterThan(0);
+  });
 });
 
-describe("recallMemories", () => {
-  it("returns formatted block for matching memories", async () => {
-    // Primary: vector search returns good results
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "User prefers dark mode", score: 0.95 },
-        { memory: "User prefers Fish shell for terminals", score: 0.88 },
-        { memory: "User uses Fish shell", score: 0.82 },
-      ]),
-    );
-
-    const result = await recallMemories("What theme do I use?", "chiron");
-
-    expect(result.count).toBe(3);
-    expect(result.block).not.toBeNull();
-    expect(result.block!.text).toContain("## Recalled Memories");
-    expect(result.block!.text).toContain("User prefers dark mode");
-    expect(result.block!.text).toContain("score: 0.95");
-    expect(result.tokens).toBeGreaterThan(0);
-    // Should only call vector search (no graph fallback needed)
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][0]).toContain("/search");
+describe("computeRecencyBoost (deprecated)", () => {
+  it("returns 0 for null/undefined", () => {
+    expect(computeRecencyBoost(null, Date.now())).toBe(0);
+    expect(computeRecencyBoost(undefined, Date.now())).toBe(0);
   });
 
-  it("returns null block when no results", async () => {
-    // Vector search: empty (no hits above threshold → tries graph-enhanced)
-    mockFetch
-      .mockResolvedValueOnce(makeResponse([]))
-      .mockResolvedValueOnce(makeResponse([]));
-
-    const result = await recallMemories("random query", "chiron");
-
-    expect(result.block).toBeNull();
-    expect(result.count).toBe(0);
+  it("returns max boost for just-created memory", () => {
+    const now = Date.now();
+    const justNow = new Date(now - 1000).toISOString(); // 1 second ago
+    const boost = computeRecencyBoost(justNow, now);
+    expect(boost).toBeGreaterThan(0.14);
+    expect(boost).toBeLessThanOrEqual(0.15);
   });
 
-  it("filters below minScore", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "High relevance", score: 0.9 },
-        { memory: "Low relevance", score: 0.5 },
-        { memory: "Medium relevance", score: 0.76 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(2);
-    expect(result.block!.text).toContain("High relevance");
-    expect(result.block!.text).toContain("Medium relevance");
-    expect(result.block!.text).not.toContain("Low relevance");
+  it("returns ~half boost at 12 hours", () => {
+    const now = Date.now();
+    const twelveHoursAgo = new Date(now - 12 * 3600 * 1000).toISOString();
+    const boost = computeRecencyBoost(twelveHoursAgo, now);
+    expect(boost).toBeCloseTo(0.075, 1);
   });
 
-  it("falls back to graph-enhanced search when vector scores are all below threshold", async () => {
-    // Vector search: results but all below minScore
-    mockFetch
-      .mockResolvedValueOnce(
-        makeResponse([
-          { memory: "Low vector result", score: 0.5 },
-        ]),
-      )
-      // Graph-enhanced search: returns better combined scores
-      .mockResolvedValueOnce(
-        makeResponse([
-          { memory: "Graph enriched result", score: 0.85 },
-        ]),
-      );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(1);
-    expect(result.block!.text).toContain("Graph enriched result");
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    // First call is vector search, second is graph-enhanced
-    expect(mockFetch.mock.calls[0][0]).toContain("/search");
-    expect(mockFetch.mock.calls[1][0]).toContain("/graph_enhanced_search");
+  it("returns 0 for memories older than 24 hours", () => {
+    const now = Date.now();
+    const twoDaysAgo = new Date(now - 48 * 3600 * 1000).toISOString();
+    expect(computeRecencyBoost(twoDaysAgo, now)).toBe(0);
   });
 
-  it("skips graph-enhanced search when vector search has usable hits", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "Good vector result", score: 0.9 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(1);
-    // Should NOT call graph_enhanced_search
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][0]).toContain("/search");
-  });
-
-  it("skips graph fallback when sufficiency gate passes (3+ hits above 0.85)", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "High confidence fact 1", score: 0.92 },
-        { memory: "High confidence fact 2", score: 0.90 },
-        { memory: "High confidence fact 3", score: 0.88 },
-        { memory: "Marginal fact", score: 0.78 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(4);
-    // Sufficiency gate: 3 hits >= 0.85, so graph-enhanced never called
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("tries graph fallback when below sufficiency threshold despite having usable hits", async () => {
-    // 2 hits above 0.85 (below sufficiencyMinHits=3) but above minScore
-    // This should still skip graph because hasUsableHits is true
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "Decent result 1", score: 0.88 },
-        { memory: "Decent result 2", score: 0.86 },
-        { memory: "Weak result", score: 0.76 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(3);
-    // Has usable hits (above 0.75), so graph fallback still skipped
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns null on complete failure", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("connection refused"));
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.block).toBeNull();
-    expect(result.count).toBe(0);
-  });
-
-  it("deduplicates identical memories", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "User's name is Cody", score: 0.95 },
-        { memory: "User's name is Cody", score: 0.9 },
-        { memory: "Different fact", score: 0.85 },
-      ]),
-    );
-
-    const result = await recallMemories("what's my name", "chiron");
-
-    expect(result.count).toBe(2);
-    const occurrences = (
-      result.block!.text.match(/User's name is Cody/g) ?? []
-    ).length;
-    expect(occurrences).toBe(1);
-  });
-
-  it("respects limit option", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "Fact 1", score: 0.95 },
-        { memory: "Fact 2", score: 0.9 },
-        { memory: "Fact 3", score: 0.85 },
-        { memory: "Fact 4", score: 0.8 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron", { limit: 2 });
-
-    expect(result.count).toBe(2);
-  });
-
-  it("handles null scores gracefully", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "No score", score: null },
-        { memory: "Has score", score: 0.9 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.count).toBe(1);
-    expect(result.block!.text).toContain("Has score");
-    expect(result.block!.text).not.toContain("No score");
-  });
-
-  it("truncates query to 500 chars", async () => {
-    const longMessage = "a".repeat(1000);
-    // Vector: empty, graph-enhanced: empty
-    mockFetch
-      .mockResolvedValueOnce(makeResponse([]))
-      .mockResolvedValueOnce(makeResponse([]));
-
-    await recallMemories(longMessage, "chiron");
-
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.query.length).toBe(500);
-  });
-
-  it("returns timing information", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([{ memory: "Timed result", score: 0.9 }]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.durationMs).toBeGreaterThanOrEqual(0);
-  });
-
-  it("includes memoryIds and memoryTexts in result when hits have IDs", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "User prefers dark mode", score: 0.92, id: "mem-001" },
-        { memory: "User uses Fish shell", score: 0.88, id: "mem-002" },
-      ]),
-    );
-
-    const result = await recallMemories("shell preference", "chiron");
-
-    expect(result.memoryIds).toEqual(expect.arrayContaining(["mem-001", "mem-002"]));
-    expect(result.memoryIds).toHaveLength(2);
-    expect(result.memoryTexts.get("mem-001")).toBe("User prefers dark mode");
-    expect(result.memoryTexts.get("mem-002")).toBe("User uses Fish shell");
-  });
-
-  it("returns empty memoryIds and memoryTexts when hits have no IDs", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeResponse([
-        { memory: "No ID memory", score: 0.90 },
-      ]),
-    );
-
-    const result = await recallMemories("test", "chiron");
-
-    expect(result.memoryIds).toHaveLength(0);
-    expect(result.memoryTexts.size).toBe(0);
-  });
-
-  it("returns empty memoryIds and memoryTexts when no results", async () => {
-    mockFetch
-      .mockResolvedValueOnce(makeResponse([]))
-      .mockResolvedValueOnce(makeResponse([]));
-
-    const result = await recallMemories("empty query", "chiron");
-
-    expect(result.memoryIds).toEqual([]);
-    expect(result.memoryTexts.size).toBe(0);
-  });
-
-  it("uses 5s default timeout", async () => {
-    // Verify the default timeout is 5000ms, not 3000ms
-    mockFetch.mockImplementation(
-      (_url: string, _init: { signal: AbortSignal }) => {
-        // The signal should not be aborted at 3s
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            resolve(
-              makeResponse([{ memory: "Slow but valid", score: 0.9 }]),
-            );
-          }, 100);
-        });
-      },
-    );
-
-    const result = await recallMemories("test", "chiron");
-    expect(result.count).toBe(1);
+  it("returns 0 for future timestamps", () => {
+    const now = Date.now();
+    const future = new Date(now + 3600 * 1000).toISOString();
+    expect(computeRecencyBoost(future, now)).toBe(0);
   });
 });

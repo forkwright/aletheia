@@ -131,6 +131,7 @@ export async function buildContext(
       minScore: pipelineConfig.recall.minScore,
       sufficiencyThreshold: pipelineConfig.recall.sufficiencyThreshold,
       sufficiencyMinHits: pipelineConfig.recall.sufficiencyMinHits,
+      halfLifeDays: pipelineConfig.recall.halfLifeDays,
       ...(state.nous.domains ? { domains: state.nous.domains } : {}),
       ...(threadSummaryText ? { threadSummary: threadSummaryText } : {}),
     });
