@@ -663,27 +663,25 @@ export async function startRuntime(configPath?: string): Promise<void> {
     get watchdog() { return watchdog; },
   });
 
-  // Wire message + voice tools to agora
-  if (signalProvider.hasClients) {
-    const messageTool = createMessageTool({
-      sender: {
-        send: async (to: string, text: string) => {
-          await agora.send("signal", { to, text });
-        },
-      },
-    });
+  // Wire message tool to agora registry for multi-channel routing (Spec 34, Phase 4)
+  if (agora.size > 0) {
+    const messageTool = createMessageTool({ registry: agora });
     runtime.tools.register(messageTool);
-    log.info("Message tool registered via agora");
+    log.info(`Message tool registered via agora (channels: ${agora.list().join(", ")})`);
+  } else {
+    runtime.tools.register(createMessageTool());
+    log.warn("Message tool registered without channels — sends will fail");
+  }
 
+  // Voice reply tool — Signal-only (requires TTS + audio file delivery)
+  if (signalProvider.hasClients) {
     const voiceTool = createVoiceReplyTool({
       send: async (to: string, text: string, attachments: string[]) => {
         await agora.send("signal", { to, text, attachments });
       },
     });
     runtime.tools.register(voiceTool);
-    log.info("Voice reply tool registered via agora");
-  } else {
-    runtime.tools.register(createMessageTool());
+    log.info("Voice reply tool registered (Signal only)");
   }
 
   // --- Cron ---
