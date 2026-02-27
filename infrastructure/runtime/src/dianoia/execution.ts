@@ -164,14 +164,13 @@ export class ExecutionOrchestrator {
    * Returns only PROJECT.md + ROADMAP.md + current phase status + handoff context.
    */
   getOrchestratorContext(projectId: string): { context: string; withinBudget: boolean } {
-    if (!this.workspaceRoot) {
+    const project = this.store.getProjectOrThrow(projectId);
+    if (!project.projectDir) {
       return { context: "", withinBudget: true };
     }
-    const project = this.store.getProjectOrThrow(projectId);
     const phases = this.store.listPhases(projectId);
     const { context, budget } = buildOrchestratorContext({
-      workspaceRoot: this.workspaceRoot,
-      projectId,
+      projectDirValue: project.projectDir,
       project,
       phases,
     });
@@ -218,16 +217,18 @@ export class ExecutionOrchestrator {
    * Check for and return any pending handoff state for a project (ENG-12).
    */
   getHandoff(projectId: string): ReturnType<typeof readHandoffFile> {
-    if (!this.workspaceRoot) return null;
-    return readHandoffFile(this.workspaceRoot, projectId);
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return null;
+    return readHandoffFile(project.projectDir);
   }
 
   /**
    * Clear handoff after successful resume (ENG-12).
    */
   clearHandoff(projectId: string): void {
-    if (!this.workspaceRoot) return;
-    clearHandoffFile(this.workspaceRoot, projectId);
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) return;
+    clearHandoffFile(project.projectDir);
   }
 
   async executePhase(
@@ -431,10 +432,9 @@ export class ExecutionOrchestrator {
 
         // Map each plan to appropriate role based on its task content
         const tasks = legacyActivePlans.map((plan) => {
-          const contextPacket = this.workspaceRoot
+          const contextPacket = project.projectDir
             ? buildContextPacketSync({
-                workspaceRoot: this.workspaceRoot,
-                projectId,
+                projectDirValue: project.projectDir,
                 phaseId: plan.id,
                 role: "executor",
                 phase: plan,

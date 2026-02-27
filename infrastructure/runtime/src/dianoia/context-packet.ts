@@ -43,10 +43,8 @@ export type SubAgentRole =
   | "verifier";    // Goal-backward verification
 
 export interface ContextPacketOptions {
-  /** Workspace root for file reads */
-  workspaceRoot: string;
-  /** Project ID */
-  projectId: string;
+  /** Project directory value (slug for new projects, absolute path for legacy pre-migration projects) */
+  projectDirValue: string;
   /** Phase ID (null for project-level dispatches like roadmap generation) */
   phaseId: string | null;
   /** Role determines which sections are included and prioritized */
@@ -220,7 +218,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
 
   // Priority 2: Plan (for executor/reviewer/verifier)
   if (config.includePlan && opts.phaseId) {
-    const plan = readPlanFile(opts.workspaceRoot, opts.projectId, opts.phaseId);
+    const plan = readPlanFile(opts.projectDirValue, opts.phaseId);
     if (plan) {
       sections.push({ header: "Execution Plan", content: plan, priority: 2 });
     } else if (opts.phase?.plan) {
@@ -234,7 +232,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
 
   // Priority 3: Discussion decisions (constrain what's acceptable)
   if (config.includeDiscussion && opts.phaseId) {
-    const discuss = readDiscussFile(opts.workspaceRoot, opts.projectId, opts.phaseId);
+    const discuss = readDiscussFile(opts.projectDirValue, opts.phaseId);
     if (discuss) {
       sections.push({ header: "Design Decisions", content: discuss, priority: 3 });
     }
@@ -246,7 +244,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
       const lines = formatRequirements(opts.requirements);
       sections.push({ header: "Requirements", content: lines, priority: 4 });
     } else {
-      const reqFile = readRequirementsFile(opts.workspaceRoot, opts.projectId);
+      const reqFile = readRequirementsFile(opts.projectDirValue);
       if (reqFile) {
         // If we have a phase, filter to relevant requirements
         const filtered = opts.phase
@@ -268,7 +266,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
       const lines = formatRoadmapSummary(opts.allPhases);
       sections.push({ header: "Roadmap Overview", content: lines, priority: 6 });
     } else {
-      const roadmap = readRoadmapFile(opts.workspaceRoot, opts.projectId);
+      const roadmap = readRoadmapFile(opts.projectDirValue);
       if (roadmap) {
         sections.push({ header: "Roadmap Overview", content: roadmap, priority: 6 });
       }
@@ -277,7 +275,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
 
   // Priority 7: Research findings
   if (config.includeResearch) {
-    const research = readResearchFile(opts.workspaceRoot, opts.projectId);
+    const research = readResearchFile(opts.projectDirValue);
     if (research) {
       sections.push({ header: "Research Findings", content: research, priority: 7 });
     }
@@ -285,7 +283,7 @@ function buildContextPacketLegacy(opts: ContextPacketOptions): string {
 
   // Priority 8: Full project context (lowest priority — only if budget allows)
   if (config.includeProject) {
-    const projectMd = readProjectFile(opts.workspaceRoot, opts.projectId);
+    const projectMd = readProjectFile(opts.projectDirValue);
     if (projectMd) {
       sections.push({ header: "Project Context", content: projectMd, priority: 8 });
     }

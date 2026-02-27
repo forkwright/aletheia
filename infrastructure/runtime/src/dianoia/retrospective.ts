@@ -109,9 +109,10 @@ export class RetrospectiveGenerator {
 
   /**
    * Write RETRO.md to the project directory.
+   * @param projectDirValue — project.projectDir from DB (slug for new projects, absolute path for legacy)
    */
-  writeRetroFile(workspaceRoot: string, retro: RetrospectiveEntry): void {
-    const dir = ensureProjectDir(workspaceRoot, retro.projectId);
+  writeRetroFile(projectDirValue: string, retro: RetrospectiveEntry): void {
+    const dir = ensureProjectDir(projectDirValue);
     const lines = [
       `# Retrospective: ${retro.goal}`,
       "",
@@ -192,9 +193,10 @@ export class RetrospectiveGenerator {
 
   /**
    * Write structured JSON alongside RETRO.md for programmatic access.
+   * @param projectDirValue — project.projectDir from DB (slug for new projects, absolute path for legacy)
    */
-  writeRetroJson(workspaceRoot: string, retro: RetrospectiveEntry): void {
-    const dir = getProjectDir(workspaceRoot, retro.projectId);
+  writeRetroJson(projectDirValue: string, retro: RetrospectiveEntry): void {
+    const dir = getProjectDir(projectDirValue);
     writeFileSync(join(dir, "retro.json"), JSON.stringify(retro, null, 2), "utf-8");
   }
 

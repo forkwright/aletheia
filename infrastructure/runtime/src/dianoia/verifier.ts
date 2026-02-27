@@ -28,7 +28,6 @@ interface DispatchOutput {
 
 export class GoalBackwardVerifier {
   private store: PlanningStore;
-  private workspaceRoot: string | null = null;
 
   constructor(
     db: Database.Database,
@@ -37,10 +36,8 @@ export class GoalBackwardVerifier {
     this.store = new PlanningStore(db);
   }
 
-  /** Set workspace root for context packet assembly from file-backed state */
-  setWorkspaceRoot(root: string): void {
-    this.workspaceRoot = root;
-  }
+  /** No-op — kept for call-site compatibility during migration */
+  setWorkspaceRoot(_root: string): void { /* workspace root now comes from project.projectDir */ }
 
   async verify(
     projectId: string,
@@ -98,10 +95,9 @@ export class GoalBackwardVerifier {
     const allPhases = this.store.listPhases(project.id);
 
     // Build rich context packet from file-backed state
-    const contextPacket = this.workspaceRoot
+    const contextPacket = project.projectDir
       ? buildContextPacketSync({
-          workspaceRoot: this.workspaceRoot,
-          projectId: project.id,
+          projectDirValue: project.projectDir,
           phaseId,
           role: "verifier",
           phase,

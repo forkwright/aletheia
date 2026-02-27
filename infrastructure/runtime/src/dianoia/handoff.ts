@@ -66,10 +66,10 @@ export interface HandoffState {
  * Written to the project root directory for easy discovery.
  */
 export function writeHandoffFile(
-  workspaceRoot: string,
+  projectDirValue: string,
   state: HandoffState,
 ): string {
-  const projectDir = getProjectDir(workspaceRoot, state.projectId);
+  const projectDir = getProjectDir(projectDirValue);
   const filePath = join(projectDir, ".continue-here.md");
 
   const lines = [
@@ -174,10 +174,9 @@ export function writeHandoffFile(
  * Returns null if no handoff file exists or it's unparseable.
  */
 export function readHandoffFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
 ): HandoffState | null {
-  const projectDir = getProjectDir(workspaceRoot, projectId);
+  const projectDir = getProjectDir(projectDirValue);
   const filePath = join(projectDir, ".continue-here.md");
 
   if (!existsSync(filePath)) return null;
@@ -188,7 +187,7 @@ export function readHandoffFile(
     // Extract the JSON block at the end of the file
     const jsonMatch = content.match(/```json\n([\s\S]+?)\n```/);
     if (!jsonMatch?.[1]) {
-      log.warn(`Handoff file for ${projectId} missing JSON block — cannot parse`);
+      log.warn(`Handoff file for ${projectDirValue} missing JSON block — cannot parse`);
       return null;
     }
 
@@ -196,13 +195,13 @@ export function readHandoffFile(
 
     // Validate required fields
     if (!state.projectId || !state.phaseId || !state.pauseReason) {
-      log.warn(`Handoff file for ${projectId} missing required fields`);
+      log.warn(`Handoff file for ${projectDirValue} missing required fields`);
       return null;
     }
 
     return state;
   } catch (error) {
-    log.warn(`Failed to read handoff file for ${projectId}: ${error instanceof Error ? error.message : String(error)}`);
+    log.warn(`Failed to read handoff file for ${projectDirValue}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -211,17 +210,16 @@ export function readHandoffFile(
  * Remove the handoff file after successful resume.
  */
 export function clearHandoffFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
 ): boolean {
-  const projectDir = getProjectDir(workspaceRoot, projectId);
+  const projectDir = getProjectDir(projectDirValue);
   const filePath = join(projectDir, ".continue-here.md");
 
   if (!existsSync(filePath)) return false;
 
   try {
     unlinkSync(filePath);
-    log.info(`Cleared handoff file for project ${projectId}`);
+    log.info(`Cleared handoff file for ${projectDirValue}`);
     return true;
   } catch (error) {
     log.warn(`Failed to clear handoff file: ${error instanceof Error ? error.message : String(error)}`);
@@ -245,7 +243,8 @@ export function discoverHandoffs(workspaceRoot: string): HandoffState[] {
     for (const entry of entries) {
       if (!entry.startsWith("proj_")) continue;
 
-      const handoff = readHandoffFile(workspaceRoot, entry);
+      // Legacy: entry is a project ID in old-style directory; pass absolute path for backward compat
+      const handoff = readHandoffFile(join(workspaceRoot, ".dianoia", "projects", entry));
       if (handoff) {
         handoffs.push(handoff);
       }

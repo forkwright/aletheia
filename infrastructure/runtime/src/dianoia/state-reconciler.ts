@@ -94,6 +94,7 @@ export class StateReconciler {
 
   constructor(
     db: Database.Database,
+    /** Legacy workspaceRoot — kept for discoverFileProjects() backward compat with old .dianoia/projects/ paths */
     private workspaceRoot: string,
   ) {
     this.store = new PlanningStore(db);
@@ -101,7 +102,7 @@ export class StateReconciler {
 
   /**
    * Reconcile all projects — compare DB and file state, repair whichever is stale.
-   * Called on startup (setWorkspaceRoot) or manually via API.
+   * Called on startup or manually via API.
    */
   reconcileAll(): ReconciliationSummary {
     const start = Date.now();
@@ -175,7 +176,9 @@ export class StateReconciler {
     if (inDb && inFiles) {
       // Both exist — compare timestamps
       const dbTime = latestDbTimestamp(this.store, projectId);
-      const projectDir = getProjectDir(this.workspaceRoot, projectId);
+      const project = this.store.getProject(projectId);
+      const projectDirValue = project?.projectDir ?? projectId;
+      const projectDir = getProjectDir(projectDirValue);
       const fileTime = latestFileTimestamp(projectDir);
 
       // Also check phase directories
@@ -247,7 +250,8 @@ export class StateReconciler {
       resumeInstructions: stepInfo.resumeInstructions ?? null,
     };
 
-    writeStateFile(this.workspaceRoot, projectId, phaseId, state);
+    const projectDirValue = project.projectDir ?? projectId;
+    writeStateFile(projectDirValue, phaseId, state);
   }
 
   /**
@@ -260,9 +264,12 @@ export class StateReconciler {
       return;
     }
 
+    // Resolve projectDirValue: use project.projectDir if set, else fall back to projectId for legacy
+    const projectDirValue = project.projectDir ?? projectId;
+
     // PROJECT.md
     try {
-      writeProjectFile(this.workspaceRoot, project, project.projectContext);
+      writeProjectFile(project, project.projectContext);
       result.filesRegenerated.push("PROJECT.md");
     } catch (error) {
       result.errors.push(`PROJECT.md: ${error instanceof Error ? error.message : String(error)}`);
@@ -272,7 +279,7 @@ export class StateReconciler {
     try {
       const reqs = this.store.listRequirements(projectId);
       if (reqs.length > 0) {
-        writeRequirementsFile(this.workspaceRoot, projectId, reqs);
+        writeRequirementsFile(projectDirValue, reqs);
         result.filesRegenerated.push("REQUIREMENTS.md");
       }
     } catch (error) {
@@ -283,7 +290,7 @@ export class StateReconciler {
     try {
       const phases = this.store.listPhases(projectId);
       if (phases.length > 0) {
-        writeRoadmapFile(this.workspaceRoot, projectId, phases);
+        writeRoadmapFile(projectDirValue, phases);
         result.filesRegenerated.push("ROADMAP.md");
       }
     } catch (error) {
@@ -294,7 +301,7 @@ export class StateReconciler {
     try {
       const research = this.store.listResearch(projectId);
       if (research.length > 0) {
-        writeResearchFile(this.workspaceRoot, projectId, research);
+        writeResearchFile(projectDirValue, research);
         result.filesRegenerated.push("RESEARCH.md");
       }
     } catch (error) {
@@ -308,7 +315,7 @@ export class StateReconciler {
       try {
         const questions = this.store.listDiscussionQuestions(projectId, phase.id);
         if (questions.length > 0) {
-          writeDiscussFile(this.workspaceRoot, projectId, phase.id, questions);
+          writeDiscussFile(projectDirValue, phase.id, questions);
           result.filesRegenerated.push(`phases/${phase.id}/DISCUSS.md`);
         }
       } catch (error) {
@@ -318,7 +325,7 @@ export class StateReconciler {
       // PLAN.md
       try {
         if (phase.plan) {
-          writePlanFile(this.workspaceRoot, projectId, phase.id, phase.plan);
+          writePlanFile(projectDirValue, phase.id, phase.plan);
           result.filesRegenerated.push(`phases/${phase.id}/PLAN.md`);
         }
       } catch (error) {
@@ -328,7 +335,7 @@ export class StateReconciler {
       // VERIFY.md
       try {
         if (phase.verificationResult) {
-          writeVerifyFile(this.workspaceRoot, projectId, phase.id, phase.verificationResult as unknown as Record<string, unknown>);
+          writeVerifyFile(projectDirValue, phase.id, phase.verificationResult as unknown as Record<string, unknown>);
           result.filesRegenerated.push(`phases/${phase.id}/VERIFY.md`);
         }
       } catch (error) {
@@ -337,7 +344,7 @@ export class StateReconciler {
 
       // STATE.md — write current phase status as state
       try {
-        writeStateFile(this.workspaceRoot, projectId, phase.id, {
+        writeStateFile(projectDirValue, phase.id, {
           phaseStatus: phase.status,
           phaseGoal: phase.goal,
           lastReconciled: new Date().toISOString(),
@@ -355,14 +362,15 @@ export class StateReconciler {
    * We parse the markdown files to reconstruct DB records.
    */
   private filesToDb(projectId: string, result: ReconciliationResult): void {
-    const projectDir = getProjectDir(this.workspaceRoot, projectId);
+    // For file-based recovery, projectId is a directory slug or legacy ID
+    const projectDir = getProjectDir(projectId);
     if (!existsSync(projectDir)) {
       result.errors.push(`Project directory not found: ${projectDir}`);
       return;
     }
 
     // Read PROJECT.md to extract goal and state
-    const projectMd = readProjectFile(this.workspaceRoot, projectId);
+    const projectMd = readProjectFile(projectId);
     if (!projectMd) {
       result.errors.push("PROJECT.md not found — cannot reconstruct project");
       return;
