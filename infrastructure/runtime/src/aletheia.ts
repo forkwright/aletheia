@@ -9,6 +9,7 @@ import { initPaths, nousSharedDir, paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
+import { proactiveRefresh } from "./hermeneus/oauth-refresh.js";
 import { ToolRegistry } from "./organon/registry.js";
 import { execTool } from "./organon/built-in/exec.js";
 import { readTool } from "./organon/built-in/read.js";
@@ -178,6 +179,13 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
       }
     }
   }
+
+  // Proactive OAuth refresh — check token expiry on startup, refresh if needed.
+  // Fire-and-forget: runs async while the rest of startup continues.
+  // If refresh succeeds, the credential file is updated before the first API call.
+  proactiveRefresh().catch((err) =>
+    log.warn(`Proactive OAuth refresh failed (non-fatal): ${err instanceof Error ? err.message : err}`),
+  );
 
   const router = createDefaultRouter(config.models);
 

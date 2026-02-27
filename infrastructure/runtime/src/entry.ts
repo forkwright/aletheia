@@ -281,6 +281,35 @@ gateway
   });
 
 program
+  .command("refresh-token")
+  .description("Check OAuth token expiry and refresh if needed")
+  .action(async () => {
+    const { readCredentials, isTokenExpired, refreshOAuthToken } = await import("./hermeneus/oauth-refresh.js");
+    const creds = readCredentials();
+    if (!creds) {
+      console.log("❌ No OAuth credentials found (not using OAuth authentication)");
+      process.exit(0);
+    }
+
+    const remaining = creds.expiresAt - Date.now();
+    const hoursLeft = (remaining / 3_600_000).toFixed(1);
+
+    if (!isTokenExpired(creds.expiresAt)) {
+      console.log(`✅ Token valid — ${hoursLeft}h remaining (expires ${new Date(creds.expiresAt).toISOString()})`);
+      process.exit(0);
+    }
+
+    console.log(`⚠️  Token expired or expiring soon (${hoursLeft}h) — attempting refresh...`);
+    const result = await refreshOAuthToken();
+    if (result.success) {
+      console.log(`✅ Token refreshed — new expiry: ${new Date(result.newExpiresAt!).toISOString()}`);
+    } else {
+      console.log(`❌ Refresh failed: ${result.error}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command("doctor")
   .description("Check system health — connectivity, dependencies, and boot persistence")
   .action(async () => {
