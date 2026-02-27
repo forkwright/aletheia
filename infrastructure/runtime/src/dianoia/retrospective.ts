@@ -12,6 +12,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { nousSharedDir } from "../taxis/paths.js";
 import { PlanningStore } from "./store.js";
 import { ensureProjectDir, getProjectDir } from "./project-files.js";
 import type Database from "better-sqlite3";
@@ -160,20 +161,28 @@ export class RetrospectiveGenerator {
 
   /**
    * Read all retrospectives from past projects (for feeding into new project context).
+   * Scans nousSharedDir()/_shared/workspace/plans/ for retro.json files.
    */
-  readPastRetros(workspaceRoot: string): RetrospectiveEntry[] {
-    const projectsDir = join(workspaceRoot, ".dianoia", "projects");
-    if (!existsSync(projectsDir)) return [];
+  readPastRetros(): RetrospectiveEntry[] {
+    let plansDir: string;
+    try {
+      plansDir = join(nousSharedDir(), "_shared", "workspace", "plans");
+    } catch {
+      // nousSharedDir() throws if anchor not initialized — return empty in that case
+      return [];
+    }
+
+    if (!existsSync(plansDir)) return [];
 
     const retros: RetrospectiveEntry[] = [];
     const { readdirSync } = require("node:fs") as typeof import("node:fs");
     try {
-      const dirs = readdirSync(projectsDir);
+      const dirs = readdirSync(plansDir);
       for (const dir of dirs) {
-        const retroPath = join(projectsDir, dir, "RETRO.md");
+        const retroPath = join(plansDir, dir, "RETRO.md");
         if (existsSync(retroPath)) {
           // We store structured data too for quick access
-          const jsonPath = join(projectsDir, dir, "retro.json");
+          const jsonPath = join(plansDir, dir, "retro.json");
           if (existsSync(jsonPath)) {
             try {
               const data = JSON.parse(readFileSync(jsonPath, "utf-8")) as RetrospectiveEntry;
@@ -185,7 +194,7 @@ export class RetrospectiveGenerator {
         }
       }
     } catch {
-      // Projects dir not readable
+      // Plans dir not readable
     }
 
     return retros;
