@@ -24,6 +24,8 @@ const checks: DiagnosticCheck[] = [
   checkBootstrapAnchor,
   checkNousScaffoldDirs,
   checkWorkspaceIndexHealth,
+  checkDeployConfig,
+  checkSecretRefs,
   checkConfigValid,
   checkWorkspacesExist,
   checkSharedDirs,
@@ -152,6 +154,120 @@ function checkWorkspaceIndexHealth(_config: AletheiaConfig | null): DiagnosticRe
     name: "workspace_index",
     status: "ok",
     message: `Workspace index present (${manifests.length} manifest(s) in ${indexDir})`,
+  };
+}
+
+function checkDeployConfig(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["deployDir"] !== "string") {
+    return {
+      name: "deploy_config",
+      status: "warn",
+      message: "Skipped (anchor.json not found or deployDir missing)",
+    };
+  }
+  const deployDirPath = anchorRaw["deployDir"] as string;
+  const configPath = join(deployDirPath, "aletheia.json");
+  try {
+    loadConfig(configPath);
+    return {
+      name: "deploy_config",
+      status: "ok",
+      message: `aletheia.json valid (${configPath})`,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      name: "deploy_config",
+      status: "error",
+      message: `Deploy config invalid: ${msg}`,
+    };
+  }
+}
+
+function isSecretRefShape(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "source" in (value as object)
+  );
+}
+
+function checkSecretRefs(_config: AletheiaConfig | null): DiagnosticResult {
+  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
+  if (anchorRaw === null || typeof anchorRaw["deployDir"] !== "string") {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: "Skipped (anchor.json not found or deployDir missing)",
+    };
+  }
+  const deployDirPath = anchorRaw["deployDir"] as string;
+  const configPath = join(deployDirPath, "aletheia.json");
+
+  const raw = readJson<Record<string, unknown>>(configPath);
+  if (raw === null) {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: "Skipped (deploy config not found)",
+    };
+  }
+
+  const refs: string[] = [];
+  const badRefs: string[] = [];
+
+  const providers = (raw["models"] as Record<string, unknown> | undefined)?.["providers"] as Record<string, unknown> | undefined;
+  if (providers) {
+    for (const [name, provider] of Object.entries(providers)) {
+      const p = provider as Record<string, unknown>;
+      for (const field of ["apiKey", "baseUrl"]) {
+        const val = p[field];
+        if (isSecretRefShape(val)) {
+          const ref = val as Record<string, unknown>;
+          if (typeof ref["source"] === "string" && typeof ref["id"] === "string") {
+            refs.push(`models.providers.${name}.${field} (source: ${ref["source"]})`);
+          } else {
+            badRefs.push(`models.providers.${name}.${field} (missing source or id)`);
+          }
+        }
+      }
+    }
+  }
+
+  const gateway = raw["gateway"] as Record<string, unknown> | undefined;
+  const gatewayAuth = gateway?.["auth"] as Record<string, unknown> | undefined;
+  if (gatewayAuth !== undefined && isSecretRefShape(gatewayAuth["token"])) {
+    const ref = gatewayAuth["token"] as Record<string, unknown>;
+    if (typeof ref["source"] === "string" && typeof ref["id"] === "string") {
+      refs.push(`gateway.auth.token (source: ${ref["source"]})`);
+    } else {
+      badRefs.push("gateway.auth.token (missing source or id)");
+    }
+  }
+
+  const restartNote = "SecretRef credentials are resolved at daemon startup — rotation requires a daemon restart";
+
+  if (badRefs.length > 0) {
+    return {
+      name: "secret_refs",
+      status: "warn",
+      message: `Invalid SecretRef structure in: ${badRefs.join(", ")}. ${restartNote}`,
+    };
+  }
+
+  if (refs.length > 0) {
+    return {
+      name: "secret_refs",
+      status: "ok",
+      message: `${refs.length} SecretRef field(s) configured: ${refs.join(", ")}. ${restartNote}`,
+    };
+  }
+
+  return {
+    name: "secret_refs",
+    status: "ok",
+    message: "No SecretRef fields detected (inline credentials or no credential fields)",
   };
 }
 
@@ -594,6 +710,9 @@ function isSystemdEnabled(unit: string): boolean {
   }
   return false;
 }
+
+// Exported for unit testing only
+export { checkDeployConfig, checkSecretRefs };
 
 export function formatDoctorOutput(
   connectivity: CheckResult[],
