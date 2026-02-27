@@ -1,11 +1,13 @@
 // DianoiaOrchestrator — single state driver for all planning entry points
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { eventBus } from "../koina/event-bus.js";
 import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import {
   ensureProjectDir,
+  getProjectDir,
   writeDiscussFile,
   writePlanFile,
   writeProjectFile,
@@ -381,7 +383,7 @@ export class DianoiaOrchestrator {
         writeProjectFile(updated, merged);
 
         // Verify PROJECT.md was written successfully
-        const projectPath = `${updated.projectDir}/PROJECT.md`;
+        const projectPath = join(getProjectDir(updated.projectDir), "PROJECT.md");
         verifyFileWritten(projectPath, "PROJECT.md");
       } catch (error) {
         // Skip if paths not initialized (test env or paths not yet set up)
@@ -434,7 +436,7 @@ export class DianoiaOrchestrator {
       writeRequirementsFile(project.projectDir, reqs);
 
       // Verify REQUIREMENTS.md was written successfully
-      const requirementsPath = `${project.projectDir}/REQUIREMENTS.md`;
+      const requirementsPath = join(getProjectDir(project.projectDir), "REQUIREMENTS.md");
       verifyFileWritten(requirementsPath, "REQUIREMENTS.md");
     }
 
@@ -484,7 +486,7 @@ export class DianoiaOrchestrator {
       writeRoadmapFile(project.projectDir, phases);
 
       // Verify ROADMAP.md was written successfully
-      const roadmapPath = `${project.projectDir}/ROADMAP.md`;
+      const roadmapPath = join(getProjectDir(project.projectDir), "ROADMAP.md");
       verifyFileWritten(roadmapPath, "ROADMAP.md");
     }
 
