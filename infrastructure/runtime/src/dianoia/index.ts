@@ -91,3 +91,5 @@ export type { ProjectStandards, CodingRule, StandardsLayer } from "./coding-stan
 export { createAdhocWork, ADHOC_TOOL_DEFINITION } from "./adhoc-tool.js";
 export type { AdhocWorkRequest, AdhocWorkResult } from "./adhoc-tool.js";
 export { FileSyncDaemon } from "./file-sync.js";
+export { assembleOrchestratorContext, discoverProjectDirs } from "./orchestrator-context.js";
+export type { OrchestratorContextOptions, OrchestratorContextResult } from "./orchestrator-context.js";

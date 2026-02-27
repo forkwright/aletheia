@@ -38,6 +38,7 @@ export async function buildContext(
     maxTokens: services.config.agents.defaults.bootstrapMaxTokens,
     ...(services.skillsSection ? { skillsSection: services.skillsSection } : {}),
     ...(degradedServices.length > 0 ? { degradedServices } : {}),
+    db: services.store.getDb(),
   });
 
   services.store.updateBootstrapHash(sessionId, bootstrap.contentHash);
