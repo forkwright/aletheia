@@ -1,6 +1,8 @@
 # Specification Archive — Decisions & Patterns
 
-Consolidated reference for 27 implemented specs. Organized by domain, preserving key decisions, rejected alternatives, and patterns that constrain future work. Code is the source of truth — this document captures the *why*.
+Consolidated reference for 33 implemented specs. Organized by domain, preserving key decisions, rejected alternatives, and patterns that constrain future work. Code is the source of truth — this document captures the *why*.
+
+> **On the future of specs:** Specs are a transitional artifact. They exist because Aletheia's planning system (Dianoia) wasn't mature enough to own the design process when development started. As Dianoia grows — persistent projects, requirements scoping, phase execution, verification — new work should flow through Dianoia projects rather than spec documents. Specs that remain will be architectural constraints and principles (this file), not implementation plans. The goal is: Dianoia proposes → human approves → Dianoia executes → Dianoia verifies. Specs become unnecessary when that loop closes.
 
 ---
 
@@ -325,6 +327,22 @@ Thinking persistence, tool input display, categorization.
 - **6 tool categories:** filesystem, search, execute, memory, communication, system
 - Thinking panel persistence: `$effect` watching `thinkingIsLive` transition, captures final text before store clears it
 - `tool_start` SSE event includes `input` field. Tool inputs from history parsed from stored `tool_use` content blocks (different code path than live streaming).
+
+### Integrated IDE (Spec 25, PR #307)
+
+Lightweight file editor embedded in the web UI so humans and agents work on the same files without context-switching.
+
+- **Not an IDE replacement** — no LSP, no debugger, no terminal emulator. Goal: "good enough to not tab away" for reviewing agent work and quick edits.
+- **Multi-tab with stale detection** — `EditorTab` state tracks `dirty` (local changes) and `stale` (agent modified externally). Tab switch preserves editor state via `Map<string, string>` cache.
+- **Agent edit notifications via SSE** — `tool_start` events for `write`/`edit` tools captured, matched to `tool_result` by `toolId`, toast shown: "Syn edited `config.ts`" with [Open] action.
+- **Conflict resolution: reload or keep** — when tab is both dirty and stale (human and agent both edited), prompt offers two choices. No CRDT, no OT. Last-write-wins at API level.
+- **CodeMirror 6 with full language support** — js/ts/tsx/jsx/py/json/yaml/md/css/html/svelte. Existing `@codemirror/lang-*` packages.
+- **Path traversal protection** — `safeWorkspacePath()` rejects `..` escapes on all workspace endpoints.
+- **Clickable file paths in chat** — regex post-processing detects paths in agent messages, makes them clickable to open in editor.
+- **Workspace search API** — `GET /api/workspace/search` using ripgrep subprocess, results replace tree temporarily.
+- **Auto-commit on agent writes** — `commitWorkspaceChange()` in `workspace-git.ts` fires on write/edit tool calls.
+- **Deferred:** TreeContextMenu.svelte (right-click create/delete/rename) and inline rename — backend APIs exist (`DELETE /api/workspace/file`, `POST /api/workspace/file/move`) but UI was never built. See #325.
+- 1MB hard file size limit. Files >500KB get a warning banner. Single-server, no collaborative editing.
 
 ### Graph Visualization (PRs #56, #90, #91)
 

@@ -6,21 +6,25 @@ These are **internal design documents** — they describe how things should work
 what constraints exist, and what tradeoffs were made. They're living documents
 that evolve with the system.
 
+> **Specs are transitional.** As Dianoia matures, new work should flow through
+> Dianoia projects (propose → approve → execute → verify) rather than spec
+> documents. Specs that remain become architectural constraints and principles
+> ([DECISIONS.md](archive/DECISIONS.md)), not implementation plans.
+
 ## Active Specs
 
 ### In Progress
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 25 | [Integrated IDE](archive/25_integrated-ide.md) | ✅ Complete | Multi-tab editor, agent edit notifications, file ops, clickable paths, workspace search — PR #307 |
 | 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | In Progress | Light theme + agent activity indicators done; sidebar→tab bar + settings dedup pending |
-| 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
 | 35 | [Context Engineering](35_context-engineering.md) | In Progress | Cache-group bootstrap + interaction signals wired; skill relevance + turn bypass pending |
 
 ### Draft — Architecture
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
+| 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
 | 36 | [Config Taxis](36_config-taxis.md) | Draft | 4-layer workspace + SecretRef credentials |
 | 37 | [Metadata Architecture](37_metadata-architecture.md) | Draft | Declarative config-first design |
 | 38 | [Provider Adapters](38_provider-adapters.md) | Draft | Multi-provider hermeneus interface |
@@ -50,15 +54,16 @@ that evolve with the system.
 
 ## Implemented (Archived)
 
-32 implemented specs (01–23, 26, 28, 31, 32, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
+33 implemented specs (01–25, 26, 28, 31, 32, 34) consolidated into **[archive/DECISIONS.md](archive/DECISIONS.md)**. Organized by domain (Foundation, Turn Pipeline, Memory, Agents, Security, UI, Extensibility, Platform), preserving key decisions, rejected alternatives, and patterns that constrain future work.
 
 ## Conventions
 
 - **Filename:** `NN_<topic>.md` (numbered by creation order)
-- **Status:** Draft → In Progress → Implemented → Archived
+- **Status:** Draft → In Progress → Implemented → Archived → Absorbed into DECISIONS.md
 - **Format:** Problem statement → Design → Constraints → Open questions
 - Specs describe *intent and design*, not implementation. Code is the source of truth.
-- Implemented specs move to `archive/` with a note on which PR delivered them.
+- Implemented specs are absorbed into `archive/DECISIONS.md` — individual spec files are deleted.
+- **Pre-archival:** Run the [Archival Checklist](ARCHIVAL-AUDIT.md) to verify all features were delivered.
 - **Next available number: 43**
 
 ## Related

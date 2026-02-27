@@ -172,9 +172,9 @@ The archival process has no verification step. A spec gets marked "Implemented",
 
 ---
 
-## Proposed: Spec Archival Checklist
+## Spec Archival Checklist
 
-Before any spec moves to `archive/`:
+Before any spec is absorbed into `DECISIONS.md`:
 
 ### 1. Feature Verification
 For each phase and each feature listed:
@@ -184,13 +184,14 @@ For each phase and each feature listed:
 
 ### 2. Gap Documentation
 For each feature NOT delivered:
-- [ ] **Explicitly marked** in the spec with ❌ or "deferred"
-- [ ] **Forwarding reference** to the spec, issue, or backlog item that tracks it
+- [ ] **Explicitly marked** in the decisions entry with "Deferred:" prefix
+- [ ] **Forwarding reference** to the issue or backlog item that tracks it
 - [ ] **GitHub issue created** if the feature has standalone value
 
-### 3. Status Accuracy
-- [ ] Spec `Status` field reflects reality (not aspirational)
-- [ ] If partially implemented, status says so: "Implemented (Phases 1-3; Phase 4 items X, Y deferred to #NNN)"
+### 3. Absorption
+- [ ] Key decisions, rejected alternatives, and constraints extracted into `archive/DECISIONS.md`
+- [ ] Individual spec file deleted (DECISIONS.md is the single source)
+- [ ] README.md updated (removed from active, count updated in archive section)
 
 ### 4. Sign-off
 - [ ] Auditor (not the spec author) has verified the above
@@ -198,4 +199,18 @@ For each feature NOT delivered:
 
 ---
 
-*This audit revealed 10 dropped features across 4 archived specs and 60 closed issues. The systemic fix is the checklist above. The immediate fix is creating issues for the 10 items.*
+## Resolution (2026-02-27)
+
+All 5 standalone archived spec files (25, 28, 31, 32, 34) have been absorbed into `DECISIONS.md` and deleted. Spec 25 was missing from DECISIONS.md and has been added under UI & Interaction. Issues #323–#327 track the 10 dropped features.
+
+---
+
+## On the Future of Specs
+
+Specs are a transitional artifact. They exist because Dianoia wasn't mature enough to own the design process when development started. As Dianoia grows — persistent projects, requirements scoping, phase execution, verification — new work should flow through Dianoia projects rather than spec documents. Specs that remain will be architectural constraints and principles (DECISIONS.md), not implementation plans.
+
+The goal: **Dianoia proposes → human approves → Dianoia executes → Dianoia verifies.** When that loop closes, specs become unnecessary. DECISIONS.md persists as the record of *why* things are the way they are.
+
+---
+
+*This audit revealed 10 dropped features across 5 archived specs and 60 closed issues. The systemic fix is the checklist above. The immediate fix was creating issues (#323–#327) for the gaps and absorbing all specs into DECISIONS.md.*
