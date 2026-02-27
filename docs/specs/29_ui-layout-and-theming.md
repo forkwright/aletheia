@@ -2,7 +2,7 @@
 
 | Field       | Value                          |
 |-------------|--------------------------------|
-| Status      | Draft                          |
+| Status      | In Progress — light theme + agent activity done; layout overhaul pending |
 | Author      | Demiurge                       |
 | Created     | 2026-02-22                     |
 | Scope       | `ui/`                          |

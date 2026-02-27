@@ -12,13 +12,15 @@ that evolve with the system.
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
+| 25 | [Integrated IDE](25_integrated-ide.md) | In Progress | CodeMirror editor + file tree + workspace API done; live streaming + diff view pending |
+| 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | In Progress | Light theme + agent activity indicators done; sidebar→tab bar + settings dedup pending |
 | 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
+| 35 | [Context Engineering](35_context-engineering.md) | In Progress | Cache-group bootstrap + interaction signals wired; skill relevance + turn bypass pending |
 
 ### Draft — Architecture
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 35 | [Context Engineering](35_context-engineering.md) | Draft | Context window optimization |
 | 36 | [Config Taxis](36_config-taxis.md) | Draft | 4-layer workspace + SecretRef credentials |
 | 37 | [Metadata Architecture](37_metadata-architecture.md) | Draft | Declarative config-first design |
 | 38 | [Provider Adapters](38_provider-adapters.md) | Draft | Multi-provider hermeneus interface |
@@ -36,9 +38,7 @@ that evolve with the system.
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | Draft | Layout overhaul, light theme |
 | 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Shared task board, overview |
-| 25 | [Integrated IDE](25_integrated-ide.md) | Draft | File editor in web UI |
 
 ### Draft — Future
 

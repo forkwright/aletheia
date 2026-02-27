@@ -1,5 +1,7 @@
 # Spec 25: Integrated IDE
 
+**Status:** In Progress — CodeMirror editor, file tree, workspace API (tree/read/write) implemented; live agent file streaming and diff view pending
+
 Lightweight file editor embedded in the Aletheia web UI, enabling humans and agents to work on the same files without context-switching to an external IDE.
 
 ## Motivation
