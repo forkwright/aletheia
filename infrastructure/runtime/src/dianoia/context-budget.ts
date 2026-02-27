@@ -71,8 +71,7 @@ export interface BudgetAllocation {
  * Returns a breakdown of where tokens are being spent.
  */
 export function calculateBudgetAllocation(opts: {
-  workspaceRoot: string;
-  projectId: string;
+  projectDirValue: string;
   project: PlanningProject;
   phases: PlanningPhase[];
   ceiling?: number;
@@ -81,14 +80,14 @@ export function calculateBudgetAllocation(opts: {
 
   // PROJECT.md — goal, state, context
   let projectTokens = 0;
-  const projectMd = readProjectFile(opts.workspaceRoot, opts.projectId);
+  const projectMd = readProjectFile(opts.projectDirValue);
   if (projectMd) {
     projectTokens = countTokens(projectMd);
   }
 
   // ROADMAP.md — phase overview
   let roadmapTokens = 0;
-  const roadmapMd = readRoadmapFile(opts.workspaceRoot, opts.projectId);
+  const roadmapMd = readRoadmapFile(opts.projectDirValue);
   if (roadmapMd) {
     roadmapTokens = countTokens(roadmapMd);
   }
@@ -99,7 +98,7 @@ export function calculateBudgetAllocation(opts: {
 
   // Handoff context — if resuming from a paused session
   let handoffTokens = 0;
-  const handoff = readHandoffFile(opts.workspaceRoot, opts.projectId);
+  const handoff = readHandoffFile(opts.projectDirValue);
   if (handoff) {
     // Only include the resume-relevant parts, not the full JSON
     const handoffText = [
@@ -146,8 +145,7 @@ export function calculateBudgetAllocation(opts: {
  * This is what the orchestrator loads — nothing more.
  */
 export function buildOrchestratorContext(opts: {
-  workspaceRoot: string;
-  projectId: string;
+  projectDirValue: string;
   project: PlanningProject;
   phases: PlanningPhase[];
   ceiling?: number;
@@ -170,7 +168,7 @@ export function buildOrchestratorContext(opts: {
     }
   } else {
     // Roadmap fits comfortably — use full file
-    const roadmapMd = readRoadmapFile(opts.workspaceRoot, opts.projectId);
+    const roadmapMd = readRoadmapFile(opts.projectDirValue);
     if (roadmapMd) {
       parts.push(roadmapMd);
     }
@@ -193,7 +191,7 @@ export function buildOrchestratorContext(opts: {
   }
 
   // Handoff context if resuming
-  const handoff = readHandoffFile(opts.workspaceRoot, opts.projectId);
+  const handoff = readHandoffFile(opts.projectDirValue);
   if (handoff) {
     parts.push("## Resume Context");
     parts.push(`Paused: ${handoff.pauseReason} — ${handoff.pauseDetail}`);
@@ -234,8 +232,7 @@ function phaseIcon(status: string): string {
  * Returns true if within budget, false if exceeds.
  */
 export function checkBudget(opts: {
-  workspaceRoot: string;
-  projectId: string;
+  projectDirValue: string;
   project: PlanningProject;
   phases: PlanningPhase[];
   ceiling?: number;

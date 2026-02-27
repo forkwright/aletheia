@@ -8,6 +8,10 @@ import type { PlanningPhase, PlanningProject, PlanningRequirement, PlanningResea
 
 let workspaceRoot: string;
 
+function makeProjectDir(): string {
+  return join(workspaceRoot, ".dianoia", "projects", "proj_test123");
+}
+
 function makeProject(): PlanningProject {
   return {
     id: "proj_test123",
@@ -24,7 +28,7 @@ function makeProject(): PlanningProject {
       mode: "interactive",
     },
     contextHash: "hash123",
-    projectDir: null,
+    projectDir: makeProjectDir(),
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     projectContext: null,
@@ -71,12 +75,12 @@ afterEach(() => {
 describe("Atomic writes", () => {
   it("should create PROJECT.md and validate existence", () => {
     const project = makeProject();
-    
-    writeProjectFile(workspaceRoot, project);
-    
-    const filePath = join(workspaceRoot, ".dianoia", "projects", project.id, "PROJECT.md");
+
+    writeProjectFile(project);
+
+    const filePath = join(makeProjectDir(), "PROJECT.md");
     expect(existsSync(filePath)).toBe(true);
-    
+
     // Verify content is not empty
     const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
@@ -85,14 +89,14 @@ describe("Atomic writes", () => {
   });
 
   it("should create REQUIREMENTS.md and validate existence", () => {
-    const projectId = "proj_test123";
+    const projectDir = makeProjectDir();
     const requirements = [makeRequirement()];
-    
-    writeRequirementsFile(workspaceRoot, projectId, requirements);
-    
-    const filePath = join(workspaceRoot, ".dianoia", "projects", projectId, "REQUIREMENTS.md");
+
+    writeRequirementsFile(projectDir, requirements);
+
+    const filePath = join(projectDir, "REQUIREMENTS.md");
     expect(existsSync(filePath)).toBe(true);
-    
+
     const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
     expect(content.trim().length).toBeGreaterThan(0);
@@ -100,14 +104,14 @@ describe("Atomic writes", () => {
   });
 
   it("should create RESEARCH.md and validate existence", () => {
-    const projectId = "proj_test123";
+    const projectDir = makeProjectDir();
     const research = [makeResearch()];
-    
-    writeResearchFile(workspaceRoot, projectId, research);
-    
-    const filePath = join(workspaceRoot, ".dianoia", "projects", projectId, "RESEARCH.md");
+
+    writeResearchFile(projectDir, research);
+
+    const filePath = join(projectDir, "RESEARCH.md");
     expect(existsSync(filePath)).toBe(true);
-    
+
     const fs = require("node:fs");
     const content = fs.readFileSync(filePath, "utf-8");
     expect(content.trim().length).toBeGreaterThan(0);
@@ -116,7 +120,7 @@ describe("Atomic writes", () => {
 
   it("should handle atomic write failure gracefully", () => {
     const project = makeProject();
-    
+
     // Write to a read-only directory to trigger a real write failure
     const readOnlyDir = join(tmpdir(), `dianoia-readonly-${Date.now()}`);
     mkdirSync(readOnlyDir, { recursive: true });
@@ -126,9 +130,10 @@ describe("Atomic writes", () => {
     // Make the directory read-only to prevent writes
     const { chmodSync } = require("node:fs");
     chmodSync(projectDir, 0o444);
-    
+
     try {
-      expect(() => writeProjectFile(readOnlyDir, project)).toThrow();
+      const projectWithDir = { ...project, projectDir };
+      expect(() => writeProjectFile(projectWithDir)).toThrow();
     } finally {
       chmodSync(projectDir, 0o755);
       rmSync(readOnlyDir, { recursive: true });
@@ -137,14 +142,14 @@ describe("Atomic writes", () => {
 
   it("should write with atomic rename pattern (tmp file then rename)", () => {
     const project = makeProject();
-    
-    writeProjectFile(workspaceRoot, project);
-    
+
+    writeProjectFile(project);
+
     // After successful write, there should be no .tmp file lingering
-    const projectDir = join(workspaceRoot, ".dianoia", "projects", project.id);
+    const projectDir = makeProjectDir();
     const tmpFile = join(projectDir, "PROJECT.md.tmp");
     expect(existsSync(tmpFile)).toBe(false);
-    
+
     // The final file should exist
     const finalFile = join(projectDir, "PROJECT.md");
     expect(existsSync(finalFile)).toBe(true);
@@ -154,18 +159,17 @@ describe("Atomic writes", () => {
 describe("Integration - file round-trip", () => {
   it("should write and read all project files successfully", () => {
     const project = makeProject();
+    const projectDir = makeProjectDir();
     const requirements = [makeRequirement()];
     const research = [makeResearch()];
     const phases: PlanningPhase[] = [];
-    
-    writeProjectFile(workspaceRoot, project);
-    writeRequirementsFile(workspaceRoot, project.id, requirements);
-    writeResearchFile(workspaceRoot, project.id, research);
-    writeRoadmapFile(workspaceRoot, project.id, phases);
-    
+
+    writeProjectFile(project);
+    writeRequirementsFile(projectDir, requirements);
+    writeResearchFile(projectDir, research);
+    writeRoadmapFile(projectDir, phases);
+
     // Verify all files exist and contain expected content
-    const projectDir = join(workspaceRoot, ".dianoia", "projects", project.id);
-    
     expect(existsSync(join(projectDir, "PROJECT.md"))).toBe(true);
     expect(existsSync(join(projectDir, "REQUIREMENTS.md"))).toBe(true);
     expect(existsSync(join(projectDir, "RESEARCH.md"))).toBe(true);

@@ -224,7 +224,6 @@ export function assembleBootstrap(
   if (opts?.db) {
     try {
       const planningCtx = assembleOrchestratorContext({
-        workspaceRoot: workspace,
         db: opts.db,
         activeOnly: true,
         maxTokens: 4000,

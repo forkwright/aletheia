@@ -272,11 +272,10 @@ export function buildStandards(opts: {
  * Write STANDARDS.md file for a project.
  */
 export function writeStandardsFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   standards: ProjectStandards,
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, projectId);
+  const dir = ensureProjectDir(projectDirValue);
   const lines: string[] = [];
 
   lines.push("# Coding Standards", "");
@@ -320,17 +319,16 @@ export function writeStandardsFile(
 
   const filePath = join(dir, "STANDARDS.md");
   atomicWriteFile(filePath, lines.join("\n"));
-  log.debug(`Wrote STANDARDS.md for ${projectId}`);
+  log.debug(`Wrote STANDARDS.md for ${projectDirValue}`);
 }
 
 /**
  * Read standards from a STANDARDS.md file.
  */
 export function readStandardsFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
 ): { effectiveRules: Array<{ id: string; level: number; name: string; check: string; severity: string; enabled: boolean }> } | null {
-  const dir = getProjectDir(workspaceRoot, projectId);
+  const dir = getProjectDir(projectDirValue);
   const filePath = join(dir, "STANDARDS.md");
 
   if (!existsSync(filePath)) return null;

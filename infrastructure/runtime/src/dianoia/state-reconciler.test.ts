@@ -77,6 +77,9 @@ describe("StateReconciler", () => {
         goal: "Test project",
         config: {},
       });
+      // Set projectDir so reconciler can write files
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
 
       const result = reconciler.reconcileAll();
       expect(result.projects).toHaveLength(1);
@@ -84,7 +87,7 @@ describe("StateReconciler", () => {
       expect(result.projects[0]!.filesRegenerated).toContain("PROJECT.md");
 
       // Verify file was written
-      const projectDir = getProjectDir(workspace, project.id);
+      const projectDir = getProjectDir(projectDirValue);
       expect(existsSync(join(projectDir, "PROJECT.md"))).toBe(true);
     });
 
@@ -95,6 +98,8 @@ describe("StateReconciler", () => {
         goal: "Full project",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
 
       store.updateProjectState(project.id, "requirements");
 
@@ -126,8 +131,10 @@ describe("StateReconciler", () => {
     });
 
     it("handles multiple projects independently", () => {
-      store.createProject({ nousId: "test", sessionId: "test", goal: "Project A", config: {} });
-      store.createProject({ nousId: "test", sessionId: "test", goal: "Project B", config: {} });
+      const pA = store.createProject({ nousId: "test", sessionId: "test", goal: "Project A", config: {} });
+      const pB = store.createProject({ nousId: "test", sessionId: "test", goal: "Project B", config: {} });
+      store.updateProjectDir(pA.id, join(workspace, ".dianoia", "projects", pA.id));
+      store.updateProjectDir(pB.id, join(workspace, ".dianoia", "projects", pB.id));
 
       const result = reconciler.reconcileAll();
       expect(result.projects).toHaveLength(2);
@@ -141,9 +148,12 @@ describe("StateReconciler", () => {
         goal: "Synced project",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
 
       // Write files to match DB
-      writeProjectFile(workspace, project, null);
+      const updatedProject = store.getProjectOrThrow(project.id);
+      writeProjectFile(updatedProject, null);
 
       const result = reconciler.reconcileAll();
       expect(result.projects).toHaveLength(1);
@@ -160,6 +170,8 @@ describe("StateReconciler", () => {
         goal: "DB only",
         config: {},
       });
+      // Set projectDir so dbToFiles can write files
+      store.updateProjectDir(project.id, join(workspace, ".dianoia", "projects", project.id));
 
       const result = reconciler.reconcileProject(project.id, true, false);
       expect(result.direction).toBe("db-only");
@@ -168,7 +180,7 @@ describe("StateReconciler", () => {
 
     it("returns files-only direction when project only in files", () => {
       const fakeId = "proj_fake123";
-      const projectDir = getProjectDir(workspace, fakeId);
+      const projectDir = join(workspace, ".dianoia", "projects", fakeId);
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(projectDir, "PROJECT.md"), "# Test Project\n\n| Field | Value |\n|---|---|\n| State | idle |");
 
@@ -178,7 +190,7 @@ describe("StateReconciler", () => {
 
     it("handles file-only projects with missing PROJECT.md gracefully", () => {
       const fakeId = "proj_empty";
-      const projectDir = getProjectDir(workspace, fakeId);
+      const projectDir = join(workspace, ".dianoia", "projects", fakeId);
       mkdirSync(projectDir, { recursive: true });
       // No PROJECT.md — just empty dir
 
@@ -201,6 +213,8 @@ describe("StateReconciler", () => {
         goal: "Step test",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
       store.updateProjectState(project.id, "roadmap");
       const phase = store.createPhase({
         projectId: project.id,
@@ -220,7 +234,7 @@ describe("StateReconciler", () => {
         resumeInstructions: "Continue from task 3",
       });
 
-      const phaseDir = getPhaseDir(workspace, project.id, phase.id);
+      const phaseDir = getPhaseDir(projectDirValue, phase.id);
       const stateFile = join(phaseDir, "STATE.md");
       expect(existsSync(stateFile)).toBe(true);
 
@@ -236,6 +250,8 @@ describe("StateReconciler", () => {
         goal: "Metadata test",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
       store.updateProjectState(project.id, "roadmap");
       const phase = store.createPhase({
         projectId: project.id,
@@ -251,7 +267,7 @@ describe("StateReconciler", () => {
         label: "Starting",
       });
 
-      const phaseDir = getPhaseDir(workspace, project.id, phase.id);
+      const phaseDir = getPhaseDir(projectDirValue, phase.id);
       const content = readFileSync(join(phaseDir, "STATE.md"), "utf-8");
       expect(content).toContain("Metadata test");
       expect(content).toContain("Build Phase");
@@ -275,6 +291,8 @@ describe("StateReconciler", () => {
         goal: "Req test",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
       store.updateProjectState(project.id, "requirements");
 
       store.createRequirement({
@@ -296,7 +314,7 @@ describe("StateReconciler", () => {
 
       reconciler.reconcileAll();
 
-      const reqFile = join(getProjectDir(workspace, project.id), "REQUIREMENTS.md");
+      const reqFile = join(getProjectDir(projectDirValue), "REQUIREMENTS.md");
       expect(existsSync(reqFile)).toBe(true);
 
       const content = readFileSync(reqFile, "utf-8");
@@ -313,6 +331,8 @@ describe("StateReconciler", () => {
         goal: "Phase files test",
         config: {},
       });
+      const projectDirValue = join(workspace, ".dianoia", "projects", project.id);
+      store.updateProjectDir(project.id, projectDirValue);
       store.updateProjectState(project.id, "roadmap");
 
       const phase = store.createPhase({
@@ -333,7 +353,7 @@ describe("StateReconciler", () => {
 
       reconciler.reconcileAll();
 
-      const phaseDir = getPhaseDir(workspace, project.id, phase.id);
+      const phaseDir = getPhaseDir(projectDirValue, phase.id);
       expect(existsSync(join(phaseDir, "PLAN.md"))).toBe(true);
       expect(existsSync(join(phaseDir, "STATE.md"))).toBe(true);
     });
@@ -341,7 +361,8 @@ describe("StateReconciler", () => {
 
   describe("error handling", () => {
     it("captures errors per-project without failing other projects", () => {
-      store.createProject({ nousId: "test", sessionId: "test", goal: "Good project", config: {} });
+      const p = store.createProject({ nousId: "test", sessionId: "test", goal: "Good project", config: {} });
+      store.updateProjectDir(p.id, join(workspace, ".dianoia", "projects", p.id));
 
       // Create a second project directory with bad permissions wouldn't work in tests,
       // so just verify the error array mechanism works

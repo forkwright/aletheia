@@ -1,5 +1,6 @@
 // Paths module tests
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConfigError } from "../koina/errors.js";
 
 describe("paths", () => {
   const originalEnv = { ...process.env };
@@ -63,5 +64,48 @@ describe("paths", () => {
     expect(paths.sharedConfig).toBe("/mnt/ssd/aletheia/shared/config");
     expect(paths.sharedMemory).toBe("/mnt/ssd/aletheia/shared/memory");
     expect(paths.infrastructure).toBe("/mnt/ssd/aletheia/infrastructure");
+  });
+});
+
+describe("anchor-based paths", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("nousSharedDir() and deployDir() return values set by initPaths()", async () => {
+    const { initPaths, nousSharedDir, deployDir } = await import("./paths.js");
+    initPaths({ nousDir: "/custom/nous", deployDir: "/custom/deploy" });
+    expect(nousSharedDir()).toBe("/custom/nous");
+    expect(deployDir()).toBe("/custom/deploy");
+  });
+
+  it("nousAgentDir() returns join of nousSharedDir and nousId", async () => {
+    const { initPaths, nousAgentDir } = await import("./paths.js");
+    initPaths({ nousDir: "/custom/nous", deployDir: "/custom/deploy" });
+    expect(nousAgentDir("syn")).toBe("/custom/nous/syn");
+  });
+
+  it("nousSharedDir() throws ConfigError with CONFIG_ANCHOR_NOT_FOUND before initPaths()", async () => {
+    const { nousSharedDir } = await import("./paths.js");
+    let caught: ConfigError | undefined;
+    try {
+      nousSharedDir();
+    } catch (e) {
+      caught = e as ConfigError;
+    }
+    expect(caught).toBeDefined();
+    expect(caught?.code).toBe("CONFIG_ANCHOR_NOT_FOUND");
+  });
+
+  it("deployDir() throws ConfigError with CONFIG_ANCHOR_NOT_FOUND before initPaths()", async () => {
+    const { deployDir } = await import("./paths.js");
+    let caught: ConfigError | undefined;
+    try {
+      deployDir();
+    } catch (e) {
+      caught = e as ConfigError;
+    }
+    expect(caught).toBeDefined();
+    expect(caught?.code).toBe("CONFIG_ANCHOR_NOT_FOUND");
   });
 });

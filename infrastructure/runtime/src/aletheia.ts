@@ -1,8 +1,12 @@
 // Main orchestration — wire all modules
 import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
+import { trySafe } from "./koina/safe.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
-import { paths } from "./taxis/paths.js";
+import { loadBootstrapAnchor } from "./taxis/bootstrap-loader.js";
+import { mergeGitignore, scaffoldNousShared } from "./taxis/nous-scaffold.js";
+import { initPaths, nousSharedDir, paths } from "./taxis/paths.js";
+import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
 import { ToolRegistry } from "./organon/registry.js";
@@ -53,6 +57,7 @@ import { loadCustomCommands, registerCustomCommands } from "./organon/custom-com
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
 import { FileSyncDaemon } from "./dianoia/file-sync.js";
+import { openPlansDb } from "./dianoia/plans-db.js";
 import { CheckpointSystem, createPlanCreateTool, createPlanDiscussTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
@@ -115,12 +120,29 @@ export interface AletheiaRuntime {
 }
 
 export function createRuntime(configPath?: string): AletheiaRuntime {
+  const { anchor } = loadBootstrapAnchor();
+  initPaths(anchor);
+
+  // Best-effort gap-fill — non-blocking, warns on newly created dirs
+  trySafe("nous:scaffold", () => {
+    const nousDir = nousSharedDir(); // called inside callback — MUST be after initPaths()
+    const created = scaffoldNousShared(nousDir);
+    if (created.length > 0) {
+      log.warn("nous scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
+    }
+    mergeGitignore(nousDir); // idempotent — safe every startup
+  }, undefined);
+
+  const plansDb = openPlansDb(paths.sessionsDb());
+  log.info("Plans DB opened", { path: plansDb.name });
+
   eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
 
   const config = loadConfig(configPath);
 
   applyEnv(config);
+  resolveSecretRefs(config); // must run after applyEnv — env vars from config.env.vars must be set first
 
   // Initialize encryption before store (store uses encryptIfEnabled/decryptIfNeeded)
   if (config.encryption.enabled) {
@@ -268,14 +290,13 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     verifier: true,
     mode: "interactive" as const,
   };
-  const planningStore = new PlanningStore(store.getDb());
-  const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
-  planningOrchestrator.setWorkspaceRoot(defaultWorkspace);
+  const planningStore = new PlanningStore(plansDb);
+  const planningOrchestrator = new DianoiaOrchestrator(plansDb, planningConfig);
   manager.setPlanningOrchestrator(planningOrchestrator);
 
   // File sync daemon — writes markdown files alongside every DB mutation (co-primary)
-  const fileSyncDaemon = new FileSyncDaemon(store.getDb());
-  fileSyncDaemon.start(defaultWorkspace);
+  const fileSyncDaemon = new FileSyncDaemon(plansDb);
+  fileSyncDaemon.start();
 
   log.info("Dianoia planning orchestrator initialized", { workspace: defaultWorkspace });
 
@@ -390,31 +411,28 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   tools.register(planCreateTool);
 
   // Planning research orchestrator — wired after dispatchTool is available
-  const researchOrchestrator = new ResearchOrchestrator(store.getDb(), dispatchTool, defaultWorkspace);
+  const researchOrchestrator = new ResearchOrchestrator(plansDb, dispatchTool, defaultWorkspace);
   const planResearchTool = createPlanResearchTool(planningOrchestrator, researchOrchestrator);
   tools.register(planResearchTool);
 
   // Planning requirements orchestrator — wired after research orchestrator
-  const requirementsOrchestrator = new RequirementsOrchestrator(store.getDb(), defaultWorkspace);
+  const requirementsOrchestrator = new RequirementsOrchestrator(plansDb, defaultWorkspace);
   const planRequirementsTool = createPlanRequirementsTool(planningOrchestrator, requirementsOrchestrator);
   tools.register(planRequirementsTool);
 
   // Planning roadmap orchestrator — wired after dispatchTool is available
-  const roadmapOrchestrator = new RoadmapOrchestrator(store.getDb(), dispatchTool);
-  roadmapOrchestrator.setWorkspaceRoot(defaultWorkspace);
+  const roadmapOrchestrator = new RoadmapOrchestrator(plansDb, dispatchTool);
   const planRoadmapTool = createPlanRoadmapTool(planningOrchestrator, roadmapOrchestrator);
   tools.register(planRoadmapTool);
 
   // Planning discussion tool — bridges 'discussing' state between roadmap and phase-planning
-  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, store.getDb(), dispatchTool);
+  const planDiscussTool = createPlanDiscussTool(planningOrchestrator, plansDb, dispatchTool);
   tools.register(planDiscussTool);
 
   // Planning execution orchestrator — wired after dispatchTool is available
-  const executionOrchestrator = new ExecutionOrchestrator(store.getDb(), dispatchTool);
-  executionOrchestrator.setWorkspaceRoot(defaultWorkspace);
+  const executionOrchestrator = new ExecutionOrchestrator(plansDb, dispatchTool);
   // Planning verifier — must be created before execution tool so it can be injected
-  const verifierOrchestrator = new GoalBackwardVerifier(store.getDb(), dispatchTool);
-  verifierOrchestrator.setWorkspaceRoot(defaultWorkspace);
+  const verifierOrchestrator = new GoalBackwardVerifier(plansDb, dispatchTool);
 
   const planExecuteTool = createPlanExecuteTool(planningOrchestrator, executionOrchestrator, verifierOrchestrator);
   tools.register(planExecuteTool);
@@ -439,6 +457,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     memoryTarget,
     shutdown: () => {
       fileSyncDaemon.stop();
+      plansDb.close();
       store.close();
       log.info("Runtime shutdown complete");
     },
@@ -613,16 +632,34 @@ export async function startRuntime(configPath?: string): Promise<void> {
   }
   setCommandsRef(commandRegistry);
 
-  // /plan and !plan — route to DianoiaOrchestrator.handle()
+  // /plan and !plan — route to DianoiaOrchestrator with slug intake routing
   const planOrch = runtime.manager.getPlanningOrchestrator();
   if (planOrch) {
     commandRegistry.register({
       name: "plan",
       description: "Start or resume a Dianoia planning project",
-      execute(_args, ctx) {
+      execute(args, ctx) {
         const session = ctx.sessionId ? ctx.store.findSessionById(ctx.sessionId) : undefined;
         const nousId = session?.nousId ?? ctx.config.agents.list[0]?.id ?? "syn";
         const sessionId = ctx.sessionId ?? "";
+        const userInput = args.trim();
+        // Routing note: DianoiaOrchestrator intake state is checked here in the /plan command
+        // handler, not in nous/manager.ts. The /plan command is the exclusive entry point to
+        // planOrch — no pipeline stage or tool invokes planOrch.handle() directly — so the
+        // consumer boundary (here) is the correct and complete routing location.
+        // Migration response routing — highest priority (before slug intake)
+        if (planOrch.hasPendingMigration()) {
+          return Promise.resolve(planOrch.handleMigrationResponse(userInput, nousId, sessionId));
+        }
+        // Route to slug confirmation if confirmation is pending
+        if (planOrch.hasPendingSlugConfirmation()) {
+          return Promise.resolve(planOrch.receiveSlugConfirmation(userInput, nousId, sessionId));
+        }
+        // Route to name intake if we're waiting for a project name
+        if (planOrch.hasPendingNameIntake()) {
+          return Promise.resolve(planOrch.receiveProjectName(userInput, nousId, sessionId));
+        }
+        // Default: start or resume flow
         return Promise.resolve(planOrch.handle(nousId, sessionId));
       },
     });
@@ -827,6 +864,8 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Config hot-reload ---
   const configWatcher = watchConfig(configPath, (newConfig) => {
+    applyEnv(newConfig);
+    resolveSecretRefs(newConfig); // resolve refs on hot-reload too
     const diff = runtime.manager.reloadConfig(newConfig);
 
     // Rebuild routing cache with new bindings

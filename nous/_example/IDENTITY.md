@@ -4,5 +4,5 @@
 # 'name' appears in the UI sidebar, message headers, and cross-agent routing.
 # 'emoji' appears as the chat avatar when no custom image is set.
 
-name: Atlas
-emoji: 🗺️
+name: MyAgent
+emoji: 🤖

@@ -20,11 +20,12 @@ const log = createLogger("pylon:planning");
  * Sync requirements from SQLite to REQUIREMENTS.md.
  * Called after every requirement mutation so file stays co-primary with DB.
  */
-function syncRequirementsFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
-  if (!workspaceRoot) return;
+function syncRequirementsFile(store: PlanningStore, projectId: string, _workspaceRoot?: string | null): void {
+  const project = store.getProject(projectId);
+  if (!project?.projectDir) return;
   try {
     const reqs = store.listRequirements(projectId);
-    writeRequirementsFile(workspaceRoot, projectId, reqs);
+    writeRequirementsFile(project.projectDir, reqs);
   } catch (err) {
     log.warn(`Failed to sync REQUIREMENTS.md for ${projectId}`, { error: err });
   }
@@ -34,11 +35,12 @@ function syncRequirementsFile(store: PlanningStore, projectId: string, workspace
  * Sync phases from SQLite to ROADMAP.md.
  * Called after every phase mutation.
  */
-function syncRoadmapFile(store: PlanningStore, projectId: string, workspaceRoot: string | null): void {
-  if (!workspaceRoot) return;
+function syncRoadmapFile(store: PlanningStore, projectId: string, _workspaceRoot?: string | null): void {
+  const project = store.getProject(projectId);
+  if (!project?.projectDir) return;
   try {
     const phases = store.listPhases(projectId);
-    writeRoadmapFile(workspaceRoot, projectId, phases);
+    writeRoadmapFile(project.projectDir, phases);
   } catch (err) {
     log.warn(`Failed to sync ROADMAP.md for ${projectId}`, { error: err });
   }
@@ -57,14 +59,8 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
   };
 
-  // Get workspace root from orchestrator for file sync
-  const getWorkspaceRoot = (): string | null => {
-    try {
-      return orch?.getWorkspaceOrThrow() ?? null;
-    } catch {
-      return null;
-    }
-  };
+  // Workspace root is no longer needed — path resolution is slug-based via project.projectDir
+  const getWorkspaceRoot = (): string | null => null;
 
   app.get("/api/planning/projects", (c) => {
     if (!orch) return c.json({ error: "Planning not enabled" }, 503);
@@ -1322,14 +1318,13 @@ export function planningRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     const store = getStore();
     if (!store) return c.json({ error: "Store not available" }, 503);
     const projectId = c.req.param("id");
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return c.json({ error: "Workspace not available" }, 503);
 
     try {
       const project = store.getProject(projectId);
       if (!project) return c.json({ error: "Project not found" }, 404);
+      if (!project.projectDir) return c.json({ error: "Project has no directory set" }, 503);
       const phases = store.listPhases(projectId);
-      const allocation = calculateBudgetAllocation({ workspaceRoot, projectId, project, phases });
+      const allocation = calculateBudgetAllocation({ projectDirValue: project.projectDir, project, phases });
       return c.json(allocation);
     } catch (error) {
       log.error("Failed to calculate budget", { projectId, error });

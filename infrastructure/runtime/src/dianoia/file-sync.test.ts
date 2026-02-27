@@ -51,6 +51,11 @@ const DEFAULT_CONFIG = {
   pause_between_phases: false,
 };
 
+/** Compute the absolute projectDirValue for a project in the test workspace */
+function projectDirFor(workspaceRoot: string, projectId: string): string {
+  return join(workspaceRoot, ".dianoia", "projects", projectId);
+}
+
 describe("FileSyncDaemon", () => {
   let db: Database.Database;
   let store: PlanningStore;
@@ -62,7 +67,7 @@ describe("FileSyncDaemon", () => {
     store = new PlanningStore(db);
     daemon = new FileSyncDaemon(db);
     workspaceRoot = mkdtempSync(join(tmpdir(), "dianoia-sync-"));
-    daemon.start(workspaceRoot);
+    daemon.start();
   });
 
   afterEach(() => {
@@ -81,10 +86,13 @@ describe("FileSyncDaemon", () => {
       config: DEFAULT_CONFIG,
     });
 
+    // Set projectDir so the daemon can write files
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
+
     eventBus.emit("planning:project-created", { projectId: project.id, nousId: "syn", sessionId: "test" });
 
-    const projectDir = getProjectDir(workspaceRoot, project.id);
-    const projectFile = join(projectDir, "PROJECT.md");
+    const projectFile = join(getProjectDir(projectDir), "PROJECT.md");
     expect(existsSync(projectFile)).toBe(true);
 
     const content = readFileSync(projectFile, "utf-8");
@@ -100,6 +108,9 @@ describe("FileSyncDaemon", () => {
       config: DEFAULT_CONFIG,
     });
 
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
+
     store.createRequirement({
       projectId: project.id,
       reqId: "AUTH-01",
@@ -114,8 +125,7 @@ describe("FileSyncDaemon", () => {
       action: "persisted",
     });
 
-    const projectDir = getProjectDir(workspaceRoot, project.id);
-    const reqFile = join(projectDir, "REQUIREMENTS.md");
+    const reqFile = join(getProjectDir(projectDir), "REQUIREMENTS.md");
     expect(existsSync(reqFile)).toBe(true);
 
     const content = readFileSync(reqFile, "utf-8");
@@ -131,6 +141,9 @@ describe("FileSyncDaemon", () => {
       config: DEFAULT_CONFIG,
     });
 
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
+
     store.createPhase({
       projectId: project.id,
       name: "Foundation",
@@ -145,8 +158,7 @@ describe("FileSyncDaemon", () => {
       action: "created",
     });
 
-    const projectDir = getProjectDir(workspaceRoot, project.id);
-    const roadmapFile = join(projectDir, "ROADMAP.md");
+    const roadmapFile = join(getProjectDir(projectDir), "ROADMAP.md");
     expect(existsSync(roadmapFile)).toBe(true);
 
     const content = readFileSync(roadmapFile, "utf-8");
@@ -161,6 +173,9 @@ describe("FileSyncDaemon", () => {
       goal: "Test discussion sync",
       config: DEFAULT_CONFIG,
     });
+
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
 
     const phase = store.createPhase({
       projectId: project.id,
@@ -190,7 +205,7 @@ describe("FileSyncDaemon", () => {
       questionId: question.id,
     });
 
-    const phaseDir = getPhaseDir(workspaceRoot, project.id, phase.id);
+    const phaseDir = getPhaseDir(projectDir, phase.id);
     const discussFile = join(phaseDir, "DISCUSS.md");
     expect(existsSync(discussFile)).toBe(true);
 
@@ -207,6 +222,9 @@ describe("FileSyncDaemon", () => {
       goal: "Full sync test",
       config: DEFAULT_CONFIG,
     });
+
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
 
     store.createRequirement({
       projectId: project.id,
@@ -232,10 +250,10 @@ describe("FileSyncDaemon", () => {
       sessionId: "test",
     });
 
-    const projectDir = getProjectDir(workspaceRoot, project.id);
-    expect(existsSync(join(projectDir, "PROJECT.md"))).toBe(true);
-    expect(existsSync(join(projectDir, "REQUIREMENTS.md"))).toBe(true);
-    expect(existsSync(join(projectDir, "ROADMAP.md"))).toBe(true);
+    const projDir = getProjectDir(projectDir);
+    expect(existsSync(join(projDir, "PROJECT.md"))).toBe(true);
+    expect(existsSync(join(projDir, "REQUIREMENTS.md"))).toBe(true);
+    expect(existsSync(join(projDir, "ROADMAP.md"))).toBe(true);
   });
 
   it("syncs PROJECT.md on state transitions", () => {
@@ -246,6 +264,9 @@ describe("FileSyncDaemon", () => {
       config: DEFAULT_CONFIG,
     });
 
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
+
     store.updateProjectState(project.id, "researching");
 
     eventBus.emit("planning:state-transition", {
@@ -254,8 +275,7 @@ describe("FileSyncDaemon", () => {
       to: "researching",
     });
 
-    const projectDir = getProjectDir(workspaceRoot, project.id);
-    const content = readFileSync(join(projectDir, "PROJECT.md"), "utf-8");
+    const content = readFileSync(join(getProjectDir(projectDir), "PROJECT.md"), "utf-8");
     expect(content).toContain("researching");
   });
 
@@ -266,6 +286,9 @@ describe("FileSyncDaemon", () => {
       goal: "Stats test",
       config: DEFAULT_CONFIG,
     });
+
+    const projectDir = projectDirFor(workspaceRoot, project.id);
+    store.updateProjectDir(project.id, projectDir);
 
     eventBus.emit("planning:project-created", { projectId: project.id });
 

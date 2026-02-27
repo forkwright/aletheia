@@ -522,11 +522,10 @@ export function generateCodebaseMap(
  * Write a CODEBASE.md file for a project from a codebase map.
  */
 export function writeCodebaseMapFile(
-  workspaceRoot: string,
-  projectId: string,
+  projectDirValue: string,
   map: CodebaseMapResult,
 ): void {
-  const dir = ensureProjectDir(workspaceRoot, projectId);
+  const dir = ensureProjectDir(projectDirValue);
   const lines: string[] = [];
 
   lines.push("# Codebase Map", "");
@@ -595,5 +594,5 @@ export function writeCodebaseMapFile(
 
   const filePath = join(dir, "CODEBASE.md");
   atomicWriteFile(filePath, lines.join("\n"));
-  log.debug(`Wrote CODEBASE.md for ${projectId}`);
+  log.debug(`Wrote CODEBASE.md for ${projectDirValue}`);
 }
