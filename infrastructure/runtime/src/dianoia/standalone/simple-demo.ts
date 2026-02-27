@@ -2,7 +2,7 @@
 // This script demonstrates all ORCH requirements working together
 
 import Database from "better-sqlite3";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
 import type { VerificationResult } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
@@ -21,6 +21,7 @@ function createDemoDatabase(): Database.Database {
   db.exec(PLANNING_V25_MIGRATION);
   db.exec(PLANNING_V26_MIGRATION);
   db.exec(PLANNING_V27_MIGRATION);
+  db.exec(PLANNING_V28_MIGRATION);
   
   return db;
 }

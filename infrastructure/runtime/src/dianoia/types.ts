@@ -174,3 +174,29 @@ export interface RollbackPlan {
   estimatedEffort: "low" | "medium" | "high";
   createdAt: string;
 }
+
+
+// ─── Decision Audit Trail (OBS-03) ──────────────────────────
+
+export interface PlanningDecision {
+  id: string;
+  projectId: string;
+  phaseId: string | null;
+  source: "user" | "agent" | "checkpoint" | "system";
+  type: string;
+  summary: string;
+  rationale: string | null;
+  context: Record<string, unknown>;
+  createdAt: string;
+}
+
+// ─── Turn Tracking (OBS-05) ─────────────────────────────────
+
+export interface TurnCount {
+  projectId: string;
+  phaseId: string;
+  nousId: string;
+  turnCount: number;
+  tokenCount: number;
+  updatedAt: string;
+}

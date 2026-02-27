@@ -149,3 +149,31 @@ CREATE TABLE IF NOT EXISTS planning_discussions (
 CREATE INDEX IF NOT EXISTS idx_planning_discussions_project ON planning_discussions(project_id);
 CREATE INDEX IF NOT EXISTS idx_planning_discussions_phase ON planning_discussions(phase_id);
 `;
+
+// Phase 6: Observability — Decision audit trail (OBS-03) + Turn tracking (OBS-05)
+export const PLANNING_V28_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_decisions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT,
+  source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'checkpoint', 'system')),
+  type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  rationale TEXT,
+  context TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_project ON planning_decisions(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_phase ON planning_decisions(phase_id);
+
+CREATE TABLE IF NOT EXISTS planning_turn_counts (
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT NOT NULL,
+  nous_id TEXT NOT NULL,
+  turn_count INTEGER NOT NULL DEFAULT 0,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (project_id, phase_id, nous_id)
+);
+`;

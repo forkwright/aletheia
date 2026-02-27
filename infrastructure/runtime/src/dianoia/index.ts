@@ -12,8 +12,8 @@ export type {
   PlanningResearch,
   ProjectContext,
 } from "./types.js";
-export { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
-export type { DiscussionQuestion, DiscussionOption } from "./types.js";
+export { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION } from "./schema.js";
+export type { DiscussionQuestion, DiscussionOption, PlanningDecision, TurnCount } from "./types.js";
 export { ResearchOrchestrator } from "./researcher.js";
 export { createPlanResearchTool } from "./research-tool.js";
 export { transition, VALID_TRANSITIONS } from "./machine.js";

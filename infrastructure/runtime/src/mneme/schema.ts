@@ -1,5 +1,5 @@
 // SQLite DDL — embedded as string constants for migrations
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "../dianoia/schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION } from "../dianoia/schema.js";
 
 export const SCHEMA_VERSION = 1;
 
@@ -460,5 +460,9 @@ export const MIGRATIONS: Array<{ version: number; sql: string }> = [
         locked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       );
     `,
+  },
+  {
+    version: 29,
+    sql: PLANNING_V28_MIGRATION,
   },
 ];
