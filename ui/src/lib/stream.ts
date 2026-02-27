@@ -1,7 +1,7 @@
 import { getEffectiveToken } from "./api";
 import type { TurnStreamEvent, MediaItem } from "./types";
 
-const READ_TIMEOUT_MS = 120_000; // 2 min — abort if no data for this long
+const READ_TIMEOUT_MS = 600_000; // 10 min — matches max sub-agent dispatch timeout
 
 function readWithTimeout<T>(reader: ReadableStreamDefaultReader<T>, timeoutMs: number): Promise<ReadableStreamReadResult<T>> {
   return new Promise((resolve, reject) => {

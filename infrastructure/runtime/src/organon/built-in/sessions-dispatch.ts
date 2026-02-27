@@ -85,7 +85,7 @@ export function createSessionsDispatchTool(
                 },
                 timeoutSeconds: {
                   type: "number",
-                  description: "Per-task timeout in seconds (default: 180)",
+                  description: "Per-task timeout in seconds (default: 600)",
                 },
               },
               required: ["task"],
@@ -145,7 +145,7 @@ export function createSessionsDispatchTool(
         const role = roleName ? resolveRole(roleName) : null;
         const modelOverride = taskDef.model ?? role?.model;
         const agentId = taskDef.agentId ?? context.nousId;
-        const timeoutSeconds = taskDef.timeoutSeconds ?? 180;
+        const timeoutSeconds = taskDef.timeoutSeconds ?? 600;
         const sessionKey = `dispatch:${context.nousId}:${Date.now().toString(36)}:${index}`;
 
         // Build the full message with optional context

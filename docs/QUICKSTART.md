@@ -14,7 +14,8 @@ cd aletheia
 ```
 
 `setup.sh` builds the runtime and UI, installs the `aletheia` CLI to `~/.local/bin`, starts
-the gateway, and opens your browser. Follow the setup wizard (~2 minutes).
+the gateway, and opens your browser. Follow the setup wizard (~2 minutes). For headless or
+CLI-only setups, run `aletheia init` instead of following the browser wizard.
 
 ## Daily use
 
@@ -23,7 +24,7 @@ aletheia start      # start memory services + gateway, open browser
 aletheia stop       # stop gateway
 aletheia restart    # stop then start
 aletheia logs -f    # follow gateway logs
-aletheia status     # health check
+aletheia status     # live metrics (requires running gateway)
 aletheia doctor     # validate config and connectivity
 ```
 
@@ -40,6 +41,12 @@ Memory services:
   neo4j       ✓ running
   mem0        - not running (optional)
 ```
+
+**macOS (native, no Docker required):** Install with `brew install qdrant neo4j` — then
+`aletheia start` detects and uses the native services.
+
+**Linux / Docker / Podman:** Ensure Docker or Podman is running — `aletheia start` handles
+the rest.
 
 Skip with `aletheia start --no-memory`. See [DEPLOYMENT.md](DEPLOYMENT.md#memory-sidecar)
 for Mem0 sidecar setup.

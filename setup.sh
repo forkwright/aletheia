@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${ALETHEIA_PORT:-18789}"
+OS="$(uname)"
 
 echo "[1/6] Checking prerequisites..."
 if ! command -v node &>/dev/null; then
@@ -18,6 +19,17 @@ fi
 if ! command -v npm &>/dev/null; then
   echo "Error: npm not found."
   exit 1
+fi
+
+if [[ "$OS" == "Darwin" ]]; then
+  if ! command -v brew &>/dev/null; then
+    echo ""
+    echo "Note: Homebrew not found. To use native memory services (Qdrant, Neo4j) on macOS:"
+    echo "  Install Homebrew: https://brew.sh"
+    echo "  Then: brew install qdrant neo4j"
+    echo "  (Continuing setup — you can install memory services later)"
+    echo ""
+  fi
 fi
 
 echo "[2/6] Building runtime..."
@@ -66,9 +78,8 @@ if [ ! -f "$ENTRY" ]; then
 fi
 
 # Check port availability
-if lsof -iTCP:"$PORT" -sTCP:LISTEN &>/dev/null 2>&1; then
-  OCCUPANT=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
-  echo "Error: Port $PORT is already in use (PID $OCCUPANT). Stop that process or set ALETHEIA_PORT to a different port."
+if nc -z localhost "$PORT" 2>/dev/null; then
+  echo "Error: Port $PORT is already in use. Stop that process or set ALETHEIA_PORT to a different port."
   exit 1
 fi
 
@@ -115,3 +126,39 @@ elif command -v open &>/dev/null; then
 else
   echo "   (Could not auto-open browser — visit $URL manually)"
 fi
+
+if [[ "$OS" == "Darwin" ]]; then
+  echo ""
+  echo "Memory services (optional, for persistent memory across sessions):"
+  echo "  brew install qdrant neo4j"
+  echo "  (Or use Docker/Podman if already installed)"
+else
+  echo ""
+  echo "Memory services (optional, for persistent memory across sessions):"
+  echo "  Ensure Docker or Podman is running — aletheia start handles the rest"
+fi
+
+if [ -t 0 ]; then
+  echo ""
+  printf "Enable Aletheia at login? [y/N]: "
+  read -n 1 -r ENABLE_REPLY
+  echo ""
+  if [[ "$ENABLE_REPLY" =~ ^[Yy]$ ]]; then
+    if "$INSTALL_DIR/aletheia" enable 2>/dev/null; then
+      echo "   Boot persistence enabled — Aletheia will start at login."
+    else
+      echo "   Warning: could not run aletheia enable."
+      echo "   Run manually after adding ~/.local/bin to PATH: aletheia enable"
+    fi
+  fi
+fi
+
+echo ""
+echo "=================================="
+echo "  Aletheia is running at $URL"
+echo ""
+echo "  Next time:  aletheia start"
+echo "  Stop:       aletheia stop"
+echo "  Health:     aletheia doctor"
+echo "  Logs:       aletheia logs -f"
+echo "=================================="

@@ -3,6 +3,16 @@
 
 set -euo pipefail
 
+# Require bash 3.2+ — macOS ships 3.2; associative arrays need 4.0+ (removed below)
+_bash_major="${BASH_VERSION%%.*}"
+_bash_minor="${BASH_VERSION#*.}"
+_bash_minor="${_bash_minor%%.*}"
+if [[ "$_bash_major" -lt 3 ]] || { [[ "$_bash_major" -eq 3 ]] && [[ "$_bash_minor" -lt 2 ]]; }; then
+  echo "Error: Aletheia requires bash 3.2+. You have $BASH_VERSION." >&2
+  exit 1
+fi
+unset _bash_major _bash_minor
+
 # Resolve ALETHEIA_HOME by following this script's symlink back to the repo root
 _realpath() {
   if command -v realpath &>/dev/null; then
@@ -19,12 +29,28 @@ ALETHEIA_CONFIG_DIR="${ALETHEIA_CONFIG_DIR:-$HOME/.aletheia}"
 PID_FILE="$ALETHEIA_CONFIG_DIR/gateway.pid"
 LOG_FILE="$ALETHEIA_CONFIG_DIR/gateway.log"
 MEMORY_COMPOSE="$ALETHEIA_HOME/infrastructure/memory/docker-compose.yml"
+LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
+GATEWAY_LABEL="com.aletheia.gateway"
+MEMORY_LABEL="com.aletheia.memory"
 
-declare -A MEMORY_HEALTH=(
-  [qdrant]="http://localhost:6333/healthz"
-  [neo4j]="http://localhost:7474"
-  [mem0]="http://localhost:8230/health"
+# Parallel indexed arrays — bash 3.2 compatible (associative arrays require bash 4.0+)
+MEMORY_HEALTH_KEYS=(qdrant neo4j mem0)
+MEMORY_HEALTH_VALS=(
+  "http://localhost:6333/healthz"
+  "http://localhost:7474"
+  "http://localhost:8230/health"
 )
+
+_get_health_url() {
+  local key="$1" i
+  for i in "${!MEMORY_HEALTH_KEYS[@]}"; do
+    if [[ "${MEMORY_HEALTH_KEYS[$i]}" == "$key" ]]; then
+      printf '%s' "${MEMORY_HEALTH_VALS[$i]}"
+      return 0
+    fi
+  done
+  return 1
+}
 
 _read_port() {
   python3 -c "
@@ -51,7 +77,20 @@ _gateway_running() {
   [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
+_write_compose_env() {
+  local data_dir="${ALETHEIA_DATA:-$HOME/.aletheia/data}"
+  mkdir -p "$data_dir/qdrant" "$data_dir/neo4j"
+  # Write .env for Docker Desktop macOS compat (env var expansion regression in 4.40.0)
+  printf 'ALETHEIA_DATA=%s\n' "$data_dir" > "$(dirname "$MEMORY_COMPOSE")/.env"
+  # Warn if the user might have data at the old /mnt/ssd/ location
+  if [[ -z "${ALETHEIA_DATA:-}" ]] && [[ -d "/mnt/ssd/" ]]; then
+    echo "Warning: Found /mnt/ssd/ — this was the old data location." >&2
+    echo "  Set ALETHEIA_DATA=/mnt/ssd/aletheia/data if your data is there." >&2
+  fi
+}
+
 _start_memory() {
+  _write_compose_env    # resolve path, write .env, warn if old location exists
   local compose_cmd
   compose_cmd="$(_compose_cmd)"
 
@@ -65,7 +104,7 @@ _start_memory() {
 
   local all_ok=true
   for svc in qdrant neo4j; do
-    local url="${MEMORY_HEALTH[$svc]}"
+    local url; url="$(_get_health_url "$svc")"
     if curl -sf "$url" >/dev/null 2>&1; then
       printf "  %-10s ✓ running\n" "$svc"
     else
@@ -74,7 +113,7 @@ _start_memory() {
     fi
   done
 
-  if curl -sf "${MEMORY_HEALTH[mem0]}" >/dev/null 2>&1; then
+  if curl -sf "$(_get_health_url mem0)" >/dev/null 2>&1; then
     printf "  %-10s ✓ running\n" "mem0"
   else
     printf "  %-10s - not running (optional)\n" "mem0"
@@ -98,10 +137,23 @@ _stop_memory() {
 }
 
 cmd_start() {
-  local skip_memory=false
+  local skip_memory=false memory_only=false  # three modes: default, --no-memory, --memory-only
   for arg in "$@"; do
     [[ "$arg" == "--no-memory" ]] && skip_memory=true
+    [[ "$arg" == "--memory-only" ]] && memory_only=true
   done
+
+  if [[ "$memory_only" == "true" ]]; then
+    local compose_cmd
+    compose_cmd="$(_compose_cmd)"
+    if [[ -n "$compose_cmd" ]] && \
+       $compose_cmd -f "$MEMORY_COMPOSE" ps -q 2>/dev/null | grep -q .; then
+      echo "Memory already running"
+      exit 0
+    fi
+    _start_memory
+    return
+  fi
 
   if [[ ! -f "$ENTRY" ]]; then
     echo "Error: not built. Run: cd $ALETHEIA_HOME && ./setup.sh"
@@ -213,16 +265,155 @@ cmd_install() {
   fi
 }
 
+_launchd_loaded() {
+  launchctl print "gui/$(id -u)/$1" >/dev/null 2>&1
+}
+
+_install_plist() {
+  local label="$1"
+  local node_bin
+  node_bin="$(command -v node 2>/dev/null)"
+  if [[ -z "$node_bin" ]]; then
+    echo "✗ node not found in PATH — install Node.js first" >&2
+    exit 1
+  fi
+  local aletheia_path config_dir plist_path template dest err
+  aletheia_path="$(_realpath "$ALETHEIA_HOME")"
+  config_dir="$(_realpath "$ALETHEIA_CONFIG_DIR")"
+  plist_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  template="$aletheia_path/config/services/${label}.plist"
+  dest="$LAUNCH_AGENTS_DIR/${label}.plist"
+  mkdir -p "$LAUNCH_AGENTS_DIR"
+  mkdir -p "$config_dir/logs"
+  if ! sed \
+    -e "s|__NODE_BIN__|${node_bin}|g" \
+    -e "s|__ALETHEIA_HOME__|${aletheia_path}|g" \
+    -e "s|__ALETHEIA_CONFIG_DIR__|${config_dir}|g" \
+    -e "s|__PATH__|${plist_path}|g" \
+    "$template" > "$dest"; then
+    echo "✗ Failed to install ${label}.plist — check template at $template" >&2
+    exit 1
+  fi
+  chmod 644 "$dest"
+}
+
+_cmd_enable_mac() {
+  if _launchd_loaded "$GATEWAY_LABEL" && _launchd_loaded "$MEMORY_LABEL"; then
+    echo "Already enabled"
+    exit 0
+  fi
+  _install_plist "$GATEWAY_LABEL"
+  _install_plist "$MEMORY_LABEL"
+  local err
+  if ! err="$(launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/${GATEWAY_LABEL}.plist" 2>&1)"; then
+    echo "✗ Failed to register gateway: ${err}" >&2
+    echo "  Try: launchctl bootstrap gui/$(id -u) $LAUNCH_AGENTS_DIR/${GATEWAY_LABEL}.plist" >&2
+    exit 1
+  fi
+  if ! err="$(launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/${MEMORY_LABEL}.plist" 2>&1)"; then
+    echo "✗ Failed to register memory: ${err}" >&2
+    echo "  Try: launchctl bootstrap gui/$(id -u) $LAUNCH_AGENTS_DIR/${MEMORY_LABEL}.plist" >&2
+    exit 1
+  fi
+  echo "✓ Aletheia enabled — starts at login"
+}
+
+_cmd_enable_linux() {
+  local systemd_dir="$HOME/.config/systemd/user"
+  mkdir -p "$systemd_dir"
+  local compose_cmd aletheia_path node_bin
+  compose_cmd="$(_compose_cmd)"
+  aletheia_path="$(_realpath "$ALETHEIA_HOME")"
+  node_bin="$(command -v node 2>/dev/null)"
+  if [[ -z "$node_bin" ]]; then
+    echo "✗ node not found in PATH — install Node.js first" >&2
+    exit 1
+  fi
+  sed \
+    -e "s|__ALETHEIA_HOME__|${aletheia_path}|g" \
+    -e "s|__COMPOSE_CMD__|${compose_cmd}|g" \
+    "$aletheia_path/config/services/aletheia-memory.service" \
+    > "$systemd_dir/aletheia-memory.service"
+  sed \
+    -e "s|__NODE_BIN__|${node_bin}|g" \
+    -e "s|__ALETHEIA_HOME__|${aletheia_path}|g" \
+    "$aletheia_path/config/services/aletheia.service" \
+    > "$systemd_dir/aletheia.service"
+  systemctl --user daemon-reload
+  if systemctl --user is-enabled aletheia-memory 2>/dev/null | grep -q "^enabled$"; then
+    echo "Already enabled"
+    exit 0
+  fi
+  systemctl --user enable aletheia-memory aletheia
+  echo "✓ Aletheia enabled — starts at login"
+}
+
+cmd_enable() {
+  local os; os="$(uname)"
+  case "$os" in
+    Darwin) _cmd_enable_mac ;;
+    Linux)  _cmd_enable_linux ;;
+    *) echo "✗ Boot persistence not supported on $os" >&2; exit 1 ;;
+  esac
+}
+
+_cmd_disable_mac() {
+  if ! _launchd_loaded "$GATEWAY_LABEL" && ! _launchd_loaded "$MEMORY_LABEL"; then
+    echo "Already disabled"
+    exit 0
+  fi
+  if _gateway_running; then
+    printf "Gateway is running. Stop it now? [y/N] "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      cmd_stop
+    fi
+  fi
+  launchctl bootout "gui/$(id -u)/${GATEWAY_LABEL}" 2>/dev/null || true
+  launchctl bootout "gui/$(id -u)/${MEMORY_LABEL}" 2>/dev/null || true
+  rm -f "$LAUNCH_AGENTS_DIR/${GATEWAY_LABEL}.plist"
+  rm -f "$LAUNCH_AGENTS_DIR/${MEMORY_LABEL}.plist"
+  echo "✓ Aletheia disabled — will not start at login"
+}
+
+_cmd_disable_linux() {
+  if ! systemctl --user is-enabled aletheia-memory 2>/dev/null | grep -q "^enabled$"; then
+    echo "Already disabled"
+    exit 0
+  fi
+  if _gateway_running; then
+    printf "Gateway is running. Stop it now? [y/N] "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      cmd_stop
+    fi
+  fi
+  systemctl --user disable aletheia-memory aletheia 2>/dev/null || true
+  systemctl --user daemon-reload
+  echo "✓ Aletheia disabled — will not start at login"
+}
+
+cmd_disable() {
+  local os; os="$(uname)"
+  case "$os" in
+    Darwin) _cmd_disable_mac ;;
+    Linux)  _cmd_disable_linux ;;
+    *) echo "✗ Boot persistence not supported on $os" >&2; exit 1 ;;
+  esac
+}
+
 cmd_help() {
   cat <<EOF
 aletheia — unified CLI for the Aletheia gateway
 
 Lifecycle:
-  start [--no-memory]    Start memory services + gateway, open browser
+  start [--no-memory|--memory-only]  Start gateway+memory, gateway only, or memory only
   stop [--all]           Stop gateway (--all also stops memory containers)
   restart                Stop then start
   logs [-f]              Show gateway logs (-f to follow)
   tui                    Launch terminal UI
+  enable                 Register boot persistence (launchd on Mac, systemd on Linux)
+  disable                Remove boot persistence
 
 Admin (requires running gateway):
   status                 System health and agent list
@@ -254,6 +445,8 @@ case "$COMMAND" in
   logs)     cmd_logs "$@" ;;
   tui)      exec node "$ENTRY" tui "$@" ;;
   install)  cmd_install ;;
+  enable)   cmd_enable "$@" ;;
+  disable)  cmd_disable "$@" ;;
   ""|-h|--help|help) cmd_help ;;
   *)        exec node "$ENTRY" "$COMMAND" "$@" ;;
 esac

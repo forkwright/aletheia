@@ -220,6 +220,12 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
     const stream = new ReadableStream({
       async start(controller) {
+        const heartbeat = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(":heartbeat\n\n"));
+          } catch { /* stream already closed */ }
+        }, 30_000);
+
         await withTurnAsync(
           { channel: "webchat", nousId: agentId, sessionKey: resolvedSessionKey },
           async () => {
@@ -248,6 +254,7 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
                 controller.enqueue(encoder.encode(payload));
               } catch { /* client already disconnected */ }
             } finally {
+              clearInterval(heartbeat);
               controller.close();
             }
           },

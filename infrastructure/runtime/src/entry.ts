@@ -5,7 +5,7 @@ import { Command } from "commander";
 import { startRuntime } from "./aletheia.js";
 import { createLogger } from "./koina/logger.js";
 import { getVersion } from "./version.js";
-import { applyFixes, formatResults, runDiagnostics } from "./koina/diagnostics.js";
+import { formatDoctorOutput, runBootPersistenceChecks, runConnectivityChecks, runDependencyChecks } from "./koina/diagnostics.js";
 import { readJson } from "./koina/fs.js";
 
 const log = createLogger("entry");
@@ -35,7 +35,7 @@ program
   .command("init")
   .description("First-run setup wizard — configure credentials, create first agent")
   .action(async () => {
-    const { existsSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { existsSync, mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
     const { join, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const { randomBytes } = await import("node:crypto");
@@ -51,45 +51,75 @@ program
     try {
       const configPath = paths.configFile();
 
+      let profileOnlyMode = false;
       if (existsSync(configPath)) {
-        const answer = await ask(`Config exists at ${configPath}. Overwrite? (y/N) `);
-        if (answer.trim().toLowerCase() !== "y") {
+        console.log(`\nConfig exists at ${configPath}.`);
+        const answer = (await ask("  [A]ll fields, [P]rofile only, [C]ancel? ")).trim().toLowerCase();
+        if (answer === "c" || answer === "") {
           console.log("Aborted.");
           return;
         }
+        if (answer === "p") {
+          profileOnlyMode = true;
+        }
+        // "a" or anything else = full re-run (fall through)
       }
 
-      // API key
-      const apiKey = (await ask("Anthropic API key (sk-ant-...): ")).trim();
-      if (!apiKey) {
-        console.error("API key is required.");
-        return;
-      }
+      let apiKey = "";
+      let port = 18789;
+      let authMode: "none" | "token" | "session" = "none";
+      let authBlock: Record<string, unknown> = { mode: "none" };
+      let aletheiaRoot = "";
 
-      // Gateway port
-      const portStr = (await ask("Gateway port [18789]: ")).trim();
-      const port = portStr ? parseInt(portStr, 10) : 18789;
-      if (isNaN(port) || port < 1 || port > 65535) {
-        console.error("Invalid port number.");
-        return;
-      }
+      if (!profileOnlyMode) {
+        // API key — auto-detect from ~/.claude.json (same source as web wizard)
+        const { homedir } = await import("node:os");
+        const claudeJsonPath = join(homedir(), ".claude.json");
+        let detectedKey = "";
+        try {
+          const raw = JSON.parse(readFileSync(claudeJsonPath, "utf-8")) as Record<string, unknown>;
+          const pk = raw["primaryApiKey"];
+          if (typeof pk === "string" && pk.length > 0) detectedKey = pk;
+        } catch { /* not found or unreadable — proceed to manual entry */ }
 
-      // Auth mode
-      const authInput = (await ask("Auth mode — none (local only), token (API key), session (multi-user) [none]: ")).trim().toLowerCase();
-      const authMode = (authInput === "token" || authInput === "session") ? authInput : "none";
-      const authBlock: Record<string, unknown> = { mode: authMode };
-      if (authMode === "token") {
-        const token = randomBytes(24).toString("hex");
-        authBlock["token"] = token;
-        console.log(`\n  Auth token: ${token}`);
-        console.log(`  Save this — you'll need it to access the UI and API.\n`);
-      }
+        if (detectedKey) {
+          const masked = `${detectedKey.slice(0, 12)}...`;
+          const answer = (await ask(`Found API key in ~/.claude.json (${masked}) — use it? [Y/n] `)).trim().toLowerCase();
+          apiKey = (answer === "" || answer === "y") ? detectedKey : (await ask("Anthropic API key (sk-ant-...): ")).trim();
+        } else {
+          apiKey = (await ask("Anthropic API key (sk-ant-...): ")).trim();
+        }
 
-      // Aletheia root detection
-      const scriptDir = dirname(fileURLToPath(import.meta.url));
-      const detectedRoot = join(scriptDir, "..", "..");
-      const rootInput = (await ask(`Aletheia root [${detectedRoot}]: `)).trim();
-      const aletheiaRoot = rootInput || detectedRoot;
+        if (!apiKey) {
+          console.error("API key is required.");
+          return;
+        }
+
+        // Gateway port
+        const portStr = (await ask("Gateway port [18789]: ")).trim();
+        port = portStr ? parseInt(portStr, 10) : 18789;
+        if (isNaN(port) || port < 1 || port > 65535) {
+          console.error("Invalid port number.");
+          return;
+        }
+
+        // Auth mode
+        const authInput = (await ask("Auth mode — none (local only), token (API key), session (multi-user) [none]: ")).trim().toLowerCase();
+        authMode = (authInput === "token" || authInput === "session") ? authInput : "none";
+        authBlock = { mode: authMode };
+        if (authMode === "token") {
+          const token = randomBytes(24).toString("hex");
+          authBlock["token"] = token;
+          console.log(`\n  Auth token: ${token}`);
+          console.log(`  Save this — you'll need it to access the UI and API.\n`);
+        }
+
+        // Aletheia root detection
+        const scriptDir = dirname(fileURLToPath(import.meta.url));
+        const detectedRoot = join(scriptDir, "..", "..");
+        const rootInput = (await ask(`Aletheia root [${detectedRoot}]: `)).trim();
+        aletheiaRoot = rootInput || detectedRoot;
+      }
 
       // First agent
       const agentName = (await ask("First agent name (e.g. Atlas): ")).trim();
@@ -100,27 +130,46 @@ program
       const agentId = agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const agentEmoji = (await ask("Agent emoji [🤖]: ")).trim() || "🤖";
 
-      // Write credentials
-      const credDir = join(paths.configDir(), "credentials");
-      mkdirSync(credDir, { recursive: true });
-      const credPath = join(credDir, "anthropic.json");
-      writeFileSync(credPath, JSON.stringify({ apiKey }, null, 2) + "\n", { mode: 0o600 });
+      // Profile step — collect name, timezone, optional role
+      console.log("\nTell your agent about you (this personalizes how it works with you):");
+      const userName = (await ask("  Your name: ")).trim();
+      const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tzInput = (await ask(`  Timezone [${detectedTz}]: `)).trim();
+      const userTimezone = tzInput || detectedTz;
+      const userRole = (await ask("  Role/title (optional, press Enter to skip): ")).trim();
 
-      // Write base config (scaffoldAgent will append agent + binding)
-      mkdirSync(paths.configDir(), { recursive: true });
-      writeJson(configPath, {
-        agents: { defaults: {}, list: [] },
-        bindings: [],
-        gateway: { port, auth: authBlock },
-        env: { ALETHEIA_ROOT: aletheiaRoot },
-      });
+      const userProfile: import("./taxis/scaffold.js").UserProfile = {
+        name: userName || agentName, // fallback to agent name if user skips
+        role: userRole || "user",
+        style: "balanced", // communication style not asked upfront — emerges through use
+        timezone: userTimezone,
+      };
 
-      // Write env file for systemd compatibility
-      const envPath = join(paths.configDir(), "aletheia.env");
-      writeFileSync(envPath, `ALETHEIA_ROOT=${aletheiaRoot}\n`, "utf-8");
+      if (!profileOnlyMode) {
+        // Write credentials
+        const credDir = join(paths.configDir(), "credentials");
+        mkdirSync(credDir, { recursive: true });
+        const credPath = join(credDir, "anthropic.json");
+        writeFileSync(credPath, JSON.stringify({ apiKey }, null, 2) + "\n", { mode: 0o600 });
+
+        // Write base config (scaffoldAgent will append agent + binding)
+        mkdirSync(paths.configDir(), { recursive: true });
+        writeJson(configPath, {
+          agents: { defaults: {}, list: [] },
+          bindings: [],
+          gateway: { port, auth: authBlock },
+          env: { ALETHEIA_ROOT: aletheiaRoot },
+        });
+
+        // Write env file for systemd compatibility
+        const envPath = join(paths.configDir(), "aletheia.env");
+        writeFileSync(envPath, `ALETHEIA_ROOT=${aletheiaRoot}\n`, "utf-8");
+      }
 
       // Scaffold agent using detected root
-      const nousDir = join(aletheiaRoot, "nous");
+      const nousDir = profileOnlyMode
+        ? join(paths.configDir(), "..", "nous")
+        : join(aletheiaRoot, "nous");
       mkdirSync(nousDir, { recursive: true });
       const templateDir = join(nousDir, "_example");
       if (!existsSync(templateDir)) {
@@ -134,28 +183,24 @@ program
         nousDir,
         configPath,
         templateDir,
+        userProfile,
       });
 
-      const authLabel = authMode === "none"
-        ? "none (no token required)"
-        : authMode === "token"
-          ? "token (saved to config)"
-          : "session (configure users with migrate-auth)";
-
       console.log(`\nSetup complete.`);
-      console.log(`  Config:  ${configPath}`);
+      if (!profileOnlyMode) {
+        const authLabel = authMode === "none"
+          ? "none (no token required)"
+          : authMode === "token"
+            ? "token (saved to config)"
+            : "session (configure users with migrate-auth)";
+        console.log(`  Config:  ${configPath}`);
+        console.log(`  Auth:    ${authLabel}`);
+        console.log(`  Root:    ${aletheiaRoot}`);
+      }
       console.log(`  Agent:   ${agentName} (${agentId}) → ${result.workspace}`);
-      console.log(`  Auth:    ${authLabel}`);
-      console.log(`  Root:    ${aletheiaRoot}`);
-      console.log(`\nStart the gateway:`);
-      console.log(`  aletheia gateway start`);
-      console.log(`\nThen open:`);
-      console.log(`  http://localhost:${port}/ui`);
-      console.log(`\nYour agent has onboarding instructions — it will learn your`);
-      console.log(`preferences through conversation.`);
-      console.log(`\nUseful commands:`);
-      console.log(`  aletheia doctor        Validate setup`);
-      console.log(`  aletheia agent create  Add another agent`);
+      if (userName) console.log(`  Profile: ${userName}${userRole ? ` — ${userRole}` : ""} (${userTimezone})`);
+      console.log(`\nNext step:`);
+      console.log(`  aletheia start`);
     } finally {
       rl.close();
     }
@@ -186,48 +231,16 @@ gateway
 
 program
   .command("doctor")
-  .description("Validate configuration and check system health")
-  .option("-c, --config <path>", "Config file path")
-  .option("--fix", "Apply automatic fixes for fixable issues")
-  .option("--dry-run", "Show what --fix would do without applying")
-  .action((opts: { config?: string; fix?: boolean; dryRun?: boolean }) => {
-    const { results, config } = runDiagnostics();
+  .description("Check system health — connectivity, dependencies, and boot persistence")
+  .action(async () => {
+    const [connectivity, bootPersistence] = await Promise.all([
+      runConnectivityChecks(),
+      Promise.resolve(runBootPersistenceChecks()),
+    ]);
+    const dependencies = runDependencyChecks();
 
-    if (config) {
-      console.log(`Aletheia Doctor — ${config.agents.list.length} agents\n`);
-    } else {
-      console.log("Aletheia Doctor\n");
-    }
-
-    console.log(formatResults(results, opts.dryRun || opts.fix));
-
-    if (opts.dryRun) {
-      const fixable = results.filter((r) => r.fix);
-      if (fixable.length > 0) {
-        console.log(`\nDry run: ${fixable.length} fix(es) would be applied.`);
-      }
-    } else if (opts.fix) {
-      const fixable = results.filter((r) => r.fix);
-      if (fixable.length === 0) {
-        console.log("\nNothing to fix.");
-      } else {
-        console.log(`\nApplying ${fixable.length} fix(es)...`);
-        const { applied, failed } = applyFixes(results);
-        console.log(`  Applied: ${applied}`);
-        if (failed.length > 0) {
-          console.log(`  Failed: ${failed.length}`);
-          for (const f of failed) console.log(`    X ${f}`);
-        }
-
-        // Re-run to verify
-        console.log("\nRe-checking...");
-        const { results: recheck } = runDiagnostics();
-        console.log(formatResults(recheck));
-      }
-    }
-
-    const errors = results.filter((r) => r.status === "error").length;
-    if (errors > 0) process.exit(1);
+    console.log(formatDoctorOutput(connectivity, dependencies, bootPersistence));
+    // Exit 0 always — doctor is informational, not assertion-based
   });
 
 program
