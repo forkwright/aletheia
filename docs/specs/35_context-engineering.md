@@ -300,6 +300,29 @@ if (shouldPreFlush(session, options)) {
 
 ---
 
+## Exec Tool Quality (from #338)
+
+Issue #338 identifies gaps in the `exec` tool vs. production agent runtimes like Claude Code. Two items belong in this spec (context engineering concerns); the rest are config/workspace concerns in Spec 36.
+
+### Tool Result Truncation Strategy
+
+Current: head/tail truncation at 50KB, then token cap at 8K per tool result. Problem: middle content is lost, and for build output the important errors are often in the middle. Stderr frequently contains the signal, stdout the noise.
+
+**Proposed:** Priority-based truncation:
+1. Stderr gets priority — always included in full (up to cap)
+2. Stdout truncated with head+tail, but stderr preserved intact
+3. Configurable per-tool token cap (default 8K, overridable per-nous)
+
+### Token Cap Configuration
+
+Per-nous configurable tool result token cap. Some agents (Syn doing architecture) benefit from larger results; others (Syl doing family logistics) never need more than 4K.
+
+Config path: `agents.list[id].pipeline.toolResultTokenCap` (resolved via 4-layer config).
+
+**Related but in Spec 36:** Working directory (`cwd` per-call and `workingDir` per-nous config), default timeout (30s → 120s), glob tool addition.
+
+---
+
 ## Open Questions
 
 - **Cache TTL strategy:** 5-minute ephemeral vs. 1-hour persistent? Per-agent config based on session frequency, or automatic based on observed session gaps?

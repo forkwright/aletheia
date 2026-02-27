@@ -1,9 +1,12 @@
 # Spec 24: Aletheia Linux — OS and Network Integration
 
-**Status:** Skeleton  
-**Author:** Cody  
-**Date:** 2026-02-21  
-**Spec:** 24  
+**Status:** Skeleton
+**Origin:** Issue #332
+**Author:** Cody
+**Date:** 2026-02-21
+**Spec:** 24
+
+---
 
 ## Problem
 
@@ -17,7 +20,9 @@ Bridge Aletheia to the OS and network layers. Not a custom distro — a capabili
 - **Security posture:** Intrusion detection, firewall management, fail2ban-style response
 - **OS awareness:** Process monitoring, resource utilization, disk/service health
 - **Kernel-level signals:** eBPF or audit subsystem integration for real-time event streams
+- **DBus sensing:** Desktop environment events, session state, hardware changes
 - **Automated response:** Agent-driven remediation within defined policy boundaries
+- **NixOS module:** Declarative deployment as a system service with proper dependency management
 
 ## Open Questions
 
@@ -27,15 +32,31 @@ Bridge Aletheia to the OS and network layers. Not a custom distro — a capabili
 - Tailscale integration — can Aletheia manage the mesh directly?
 - Multi-host: worker-node + metis + NAS as a unified security domain?
 - Container awareness — should agents see inside Docker too?
+- DBus vs. eBPF vs. both? DBus for desktop events, eBPF for network/kernel?
+- NixOS packaging: flake, module, or both?
 
-## Possible Phases
+## Phases
 
-1. **Observation layer** — structured feeds from journald, ss, netstat, proc, systemd
-2. **Anomaly detection** — baseline normal, flag deviations, surface to agents
-3. **Network security** — connection monitoring, port scanning detection, DNS anomaly flagging
-4. **Controlled response** — firewall rule injection, service restart, IP blocking within policy
-5. **eBPF integration** — kernel-level event streams for real-time visibility
-6. **Multi-host mesh** — unified view across all Aletheia-managed machines
+### Phase 1 — Observation Layer
+Structured feeds from journald, ss, netstat, proc, systemd. DBus session monitoring for desktop events (window focus, hardware changes, power state). This is the foundation — read-only visibility.
+
+### Phase 2 — Anomaly Detection
+Baseline normal system behavior, flag deviations, surface to agents. CPU/memory/disk spikes, unusual network connections, failed auth attempts, service crashes.
+
+### Phase 3 — Network Security
+Connection monitoring, port scanning detection, DNS anomaly flagging. Integration with existing fail2ban or firewall tooling.
+
+### Phase 4 — Controlled Response
+Firewall rule injection, service restart, IP blocking within policy. Requires explicit authority model — what can an agent do without human approval?
+
+### Phase 5 — eBPF Integration
+Kernel-level event streams for real-time visibility. Network packet inspection, syscall tracing, file access monitoring. High-fidelity but complex.
+
+### Phase 6 — Multi-Host Mesh
+Unified view across all Aletheia-managed machines. Aggregated health, cross-host anomaly correlation, coordinated response.
+
+### Phase 7 — NixOS Module
+Declarative system service configuration. Proper dependency management, rollback support, reproducible deployment.
 
 ## Dependencies
 
