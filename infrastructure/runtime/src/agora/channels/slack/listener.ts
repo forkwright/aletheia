@@ -1,8 +1,8 @@
-// Slack inbound message listener (Spec 34, Phase 3+5)
+// Slack inbound message listener (Spec 34, Phase 3+5+6)
 //
 // Handles: message events, app_mention events, DM detection, thread tracking,
 // mention gating, inbound debouncing, message dedup, streaming dispatch,
-// processing reactions.
+// processing reactions, DM pairing flow.
 //
 // Reference: OpenClaw src/slack/monitor/message-handler.ts, events/messages.ts
 
@@ -147,7 +147,7 @@ export interface SlackListenerConfig {
   /** Require @mention in group channels (default: true) */
   requireMention: boolean;
   /** DM policy */
-  dmPolicy: "open" | "allowlist" | "disabled";
+  dmPolicy: "open" | "allowlist" | "pairing" | "disabled";
   /** Allowed user IDs for allowlist policy */
   allowedUsers: string[];
   /** Allowed channel IDs for allowlist policy */
@@ -212,16 +212,57 @@ function isDirectMessage(channelType?: string): boolean {
   return channelType === "im";
 }
 
-function isAllowedDm(userId: string, config: SlackListenerConfig): boolean {
+/**
+ * Check if a DM is allowed by policy. Returns:
+ * - "allowed" — dispatch the message
+ * - "blocked" — silently drop it
+ * - "pairing" — initiate pairing flow (caller should send challenge)
+ */
+function checkDmAccess(userId: string, config: SlackListenerConfig): "allowed" | "blocked" | "pairing" {
   switch (config.dmPolicy) {
     case "open":
-      return true;
+      return "allowed";
     case "allowlist":
-      return config.allowedUsers.includes(userId);
+      return config.allowedUsers.includes(userId) ? "allowed" : "blocked";
+    case "pairing": {
+      // Static allowlist first
+      if (config.allowedUsers.includes(userId)) return "allowed";
+      // Dynamic approved contacts via store
+      if (config.ctx.store.isApprovedContact(userId, "slack")) return "allowed";
+      return "pairing";
+    }
     case "disabled":
-      return false;
+      return "blocked";
     default:
-      return false;
+      return "blocked";
+  }
+}
+
+/**
+ * Initiate a pairing flow for an unknown Slack DM sender.
+ * Creates a contact request in the store and sends a challenge message.
+ */
+async function initiatePairing(
+  userId: string,
+  channelId: string,
+  config: SlackListenerConfig,
+): Promise<void> {
+  const { store } = config.ctx;
+  const { id, challengeCode } = store.createContactRequest(
+    userId,
+    userId, // senderName — Slack user ID; could resolve display name later
+    "slack",
+    undefined, // accountId — single Slack workspace for now
+  );
+  log.info(`Pairing request #${id} from Slack user ${userId} (code: ${challengeCode})`);
+
+  try {
+    await config.webClient.chat.postMessage({
+      channel: channelId,
+      text: `I don't recognize you yet. Ask an admin to approve your access with code: \`${challengeCode}\`\n\nThey can use \`!approve ${challengeCode}\` in chat or the web UI.`,
+    });
+  } catch (err) {
+    log.warn(`Failed to send pairing message to ${userId}: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -448,6 +489,58 @@ export function registerSlackListeners(config: SlackListenerConfig): InboundDebo
 
     if (!cleanText.trim()) return;
 
+    // Check for !command prefix — handle via shared CommandRegistry
+    if ((cleanText.startsWith("!") || cleanText.startsWith("/")) && ctx.commands) {
+      const match = ctx.commands.match(cleanText);
+      if (match) {
+        const { handler, args: cmdArgs } = match;
+
+        // Admin check — only allowedUsers can run admin commands
+        if (handler.adminOnly && !config.allowedUsers.includes(userId)) {
+          const deny: { channel: string; text: string; thread_ts?: string } = {
+            channel: channelId,
+            text: "⛔ This command requires admin access.",
+          };
+          const denyThread = last.message.thread_ts ?? last.message.ts;
+          if (denyThread) deny.thread_ts = denyThread;
+          await config.webClient.chat.postMessage(deny);
+          return;
+        }
+
+        try {
+          // Build a CommandContext with Slack-appropriate values.
+          // Signal-specific fields (client, target) are stubbed — commands that
+          // need them will fail gracefully; pairing commands only need store.
+          const cmdCtx = {
+            sender: userId,
+            senderName: userId,
+            isGroup: channelType !== "im",
+            accountId: "slack",
+            target: {} as never,   // Not used — Slack replies via webClient
+            client: {} as never,   // Not used — Slack replies via webClient
+            store: ctx.store,
+            config: ctx.config,
+            manager: ctx.manager,
+            watchdog: ctx.watchdog ?? null,
+            skills: null,
+          };
+          const result = await handler.execute(cmdArgs, cmdCtx);
+          if (result) {
+            const threadTarget = last.message.thread_ts ?? last.message.ts;
+            const postArgs: { channel: string; text: string; thread_ts?: string } = {
+              channel: channelId,
+              text: markdownToMrkdwn(result),
+            };
+            if (threadTarget) postArgs.thread_ts = threadTarget;
+            await config.webClient.chat.postMessage(postArgs);
+          }
+        } catch (err) {
+          log.error(`Slack command !${handler.name} failed: ${err instanceof Error ? err.message : err}`);
+        }
+        return; // Commands don't dispatch to nous
+      }
+    }
+
     // Only include threadTs when defined (exactOptionalPropertyTypes)
     const buildParams: Parameters<typeof buildInboundMessage>[0] = {
       text: cleanText,
@@ -527,8 +620,13 @@ export function registerSlackListeners(config: SlackListenerConfig): InboundDebo
 
     // Authorization check
     if (isDirectMessage(channelType)) {
-      if (!isAllowedDm(senderId, config)) {
+      const access = checkDmAccess(senderId, config);
+      if (access === "blocked") {
         log.debug(`Slack DM from ${senderId} blocked by policy`);
+        return;
+      }
+      if (access === "pairing") {
+        await initiatePairing(senderId, channelId, config);
         return;
       }
     } else {

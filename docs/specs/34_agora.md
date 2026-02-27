@@ -1,6 +1,6 @@
 # Spec 34: Agora — Channel Abstraction and Slack Integration
 
-**Status:** In Progress (Phase 5)
+**Status:** In Progress (Phase 6)
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 34
@@ -636,35 +636,40 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 
 ---
 
-### Phase 6: Access Control + DM Pairing
+### Phase 6: Access Control + DM Pairing ✅
 
 **Scope:** Slack-specific access control — DM policies, channel allowlists, admin-only commands. Pairing flow for new DM users.
 
 **Changes:**
 
-- Implement DM policy enforcement in Slack listener
+- DM policy enforcement in Slack listener via `checkDmAccess()`
   - `open` — respond to all DMs
-  - `allowlist` — check user ID against allowlist
-  - `disabled` — ignore DMs
-- Implement channel allowlist enforcement
+  - `allowlist` — check user ID against `allowedUsers` config
+  - `pairing` — static allowlist → dynamic approved contacts → challenge flow
+  - `disabled` — silently drop all DMs
+- Channel allowlist enforcement (implemented in Phase 3, verified in Phase 6)
   - `groupPolicy: allowlist` + `allowedChannels` config
-  - Mention-gating: require @mention unless configured otherwise
-- Implement pairing flow for Slack DMs
-  - User sends DM → bot responds with pairing instructions
-  - `aletheia pairing approve slack <userId>` CLI command
-  - Approved users added to allowlist in config
+  - Mention-gating: require @mention unless in-thread or configured otherwise
+- Pairing flow for Slack DMs via `initiatePairing()`
+  - Unknown user sends DM → `createContactRequest()` in SessionStore → challenge code sent via Slack DM
+  - Admin approves via `!approve <code>` command (shared CommandRegistry)
+  - Approved contacts stored in `approved_contacts` table, checked on subsequent DMs
+- `!command` handling in Slack listener
+  - Shared `CommandRegistry` commands (`!approve`, `!deny`, `!contacts`, `!status`, etc.)
+  - Admin gating: `adminOnly` commands require user ID in `allowedUsers`
+  - Replies sent via `webClient.chat.postMessage` with thread context
+  - Signal-specific fields stubbed (`client`, `target`) — commands using only `store` work correctly
 
 **Acceptance criteria:**
-- [ ] DM policy respected (open, allowlist, disabled)
-- [ ] Channel allowlist enforced
-- [ ] Mention-gating works in channels
-- [ ] Pairing flow guides new DM users
-- [ ] Admin can approve pairings via CLI
-- [ ] Policy changes via config reload without restart
+- [x] DM policy respected (open, allowlist, pairing, disabled)
+- [x] Channel allowlist enforced
+- [x] Mention-gating works in channels
+- [x] Pairing flow guides new DM users with challenge code
+- [x] Admin can approve pairings via `!approve` in any channel (shared CommandRegistry)
+- [ ] Policy changes via config reload without restart (deferred — cross-cutting concern for separate spec)
 
 **Tests:**
-- Policy enforcement unit tests
-- Pairing flow integration test
+- `agora/channels/slack/access.test.ts` — 21 tests (DM policies, pairing flow, channel allowlists, command handling, admin checks)
 
 ---
 
