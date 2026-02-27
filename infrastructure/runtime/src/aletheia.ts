@@ -52,6 +52,7 @@ import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js"
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
+import { FileSyncDaemon } from "./dianoia/file-sync.js";
 import { CheckpointSystem, createPlanCreateTool, createPlanDiscussTool, createPlanExecuteTool, createPlanRequirementsTool, createPlanResearchTool, createPlanRoadmapTool, createPlanVerifyTool, ExecutionOrchestrator, GoalBackwardVerifier, PlanningStore, RequirementsOrchestrator, ResearchOrchestrator, RoadmapOrchestrator } from "./dianoia/index.js";
 import { McpClientManager } from "./organon/mcp-client.js";
 import { createGateway, type GatewayAuthDeps, setCommandsRef, setCronRef, setMcpRef, setSkillsRef, setWatchdogRef, startGateway } from "./pylon/server.js";
@@ -273,6 +274,11 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   const planningOrchestrator = new DianoiaOrchestrator(store.getDb(), planningConfig);
   planningOrchestrator.setWorkspaceRoot(defaultWorkspace);
   manager.setPlanningOrchestrator(planningOrchestrator);
+
+  // File sync daemon — writes markdown files alongside every DB mutation (co-primary)
+  const fileSyncDaemon = new FileSyncDaemon(store.getDb());
+  fileSyncDaemon.start(defaultWorkspace);
+
   log.info("Dianoia planning orchestrator initialized", { workspace: defaultWorkspace });
 
   const plugins = new PluginRegistry(config);
@@ -423,6 +429,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     plugins,
     memoryTarget,
     shutdown: () => {
+      fileSyncDaemon.stop();
       store.close();
       log.info("Runtime shutdown complete");
     },
