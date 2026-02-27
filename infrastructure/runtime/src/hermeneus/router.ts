@@ -10,6 +10,7 @@ import {
   type StreamingEvent,
   type TurnResult,
 } from "./anthropic.js";
+import { refreshOAuthToken } from "./oauth-refresh.js";
 
 const log = createLogger("hermeneus.router");
 
@@ -141,6 +142,27 @@ export class ProviderRouter {
     throw lastError;
   }
 
+  /**
+   * Attempt to refresh the primary OAuth token and reinitialize the provider.
+   * Returns true if refresh succeeded and provider was updated.
+   */
+  private async attemptOAuthRefresh(entry: ProviderEntry): Promise<boolean> {
+    const result = await refreshOAuthToken();
+    if (!result.success || !result.newToken) {
+      log.warn(`OAuth refresh failed: ${result.error}`);
+      return false;
+    }
+
+    // Reinitialize the primary provider with the new token
+    const refreshedProvider = new AnthropicProvider({
+      authToken: result.newToken,
+      label: entry.provider.label,
+    });
+    entry.provider = refreshedProvider;
+    log.info("Primary provider reinitialized with refreshed OAuth token");
+    return true;
+  }
+
   async complete(request: CompletionRequest): Promise<TurnResult> {
     const entry = this.resolve(request.model);
     const model = request.model.includes("/") ? request.model.split("/").pop()! : request.model;
@@ -151,9 +173,26 @@ export class ProviderRouter {
         () => entry.provider.complete({ ...request, model }),
       );
     } catch (error) {
-      if (!(error instanceof ProviderError) || !error.recoverable || this.backupProviders.length === 0) {
+      if (!(error instanceof ProviderError) || !error.recoverable) {
         throw error;
       }
+
+      // On token expiry, attempt refresh before falling to backup
+      if (error.code === "PROVIDER_TOKEN_EXPIRED") {
+        log.info("Token expired — attempting OAuth refresh before failover");
+        const refreshed = await this.attemptOAuthRefresh(entry);
+        if (refreshed) {
+          try {
+            return await entry.provider.complete({ ...request, model });
+          } catch (retryErr) {
+            log.warn(`Request failed after token refresh: ${retryErr instanceof Error ? retryErr.message : retryErr}`);
+            // Fall through to backup credentials
+          }
+        }
+      }
+
+      if (this.backupProviders.length === 0) throw error;
+
       for (let i = 0; i < this.backupProviders.length; i++) {
         log.warn(`Primary credential exhausted retries (${error.code}), trying backup ${i + 1}/${this.backupProviders.length}`);
         try {
@@ -199,8 +238,25 @@ export class ProviderRouter {
       }
     }
 
+    // On token expiry, attempt refresh before falling to backup
+    if (lastError instanceof ProviderError && lastError.code === "PROVIDER_TOKEN_EXPIRED") {
+      log.info("Token expired during streaming — attempting OAuth refresh before failover");
+      const entry = this.resolve(request.model);
+      const refreshed = await this.attemptOAuthRefresh(entry);
+      if (refreshed) {
+        try {
+          yield* entry.provider.completeStreaming({ ...request, model });
+          return;
+        } catch (retryErr) {
+          log.warn(`Streaming failed after token refresh: ${retryErr instanceof Error ? retryErr.message : retryErr}`);
+          lastError = retryErr;
+          // Fall through to backup credentials
+        }
+      }
+    }
+
     // Primary exhausted — try backups
-    if (lastError instanceof ProviderError && lastError.recoverable && this.backupProviders.length > 0) {
+    if (lastError instanceof ProviderError && (lastError as ProviderError).recoverable && this.backupProviders.length > 0) {
       for (let i = 0; i < this.backupProviders.length; i++) {
         log.warn(`Primary credential exhausted retries (${(lastError as ProviderError).code}), trying backup ${i + 1}/${this.backupProviders.length}`);
         try {
