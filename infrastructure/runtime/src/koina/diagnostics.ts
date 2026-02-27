@@ -1,4 +1,5 @@
 // Diagnostic checks for `aletheia doctor`
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
@@ -329,6 +330,176 @@ export function formatResults(results: DiagnosticResult[], showFixes = false): s
     if (fixable > 0) parts.push(`${fixable} fixable (run with --fix)`);
     lines.push(parts.join(", "));
   }
+
+  return lines.join("\n");
+}
+
+// ── New async doctor checks ─────────────────────────────────────────────────
+
+export interface CheckResult {
+  name: string;
+  pass: boolean;
+  hint?: string;
+}
+
+const isTTY = Boolean(process.stdout.isTTY);
+const SYM_PASS = isTTY ? "\x1b[32m✓\x1b[0m" : "PASS";
+const SYM_FAIL = isTTY ? "\x1b[31m✗\x1b[0m" : "FAIL";
+
+function sectionHeader(label: string): string {
+  return `\n── ${label} ──\n`;
+}
+
+function formatCheckLine(label: string, pass: boolean, hint?: string): string {
+  const sym = pass ? SYM_PASS : SYM_FAIL;
+  const paddedLabel = label.padEnd(18);
+  const hintStr = (!pass && hint) ? `  — ${hint}` : "";
+  return `  ${sym}  ${paddedLabel}${hintStr}`;
+}
+
+export async function runConnectivityChecks(): Promise<CheckResult[]> {
+  let port = 18789;
+  try {
+    const config = loadConfig();
+    port = config.gateway?.port ?? 18789;
+  } catch { /* config unavailable — use default port */ }
+
+  const endpoints: Array<{ name: string; url: string }> = [
+    { name: "gateway", url: `http://localhost:${port}/health` },
+    { name: "qdrant", url: "http://localhost:6333/healthz" },
+    { name: "neo4j", url: "http://localhost:7474/" },
+    { name: "mem0", url: "http://localhost:8000/health" },
+  ];
+
+  return Promise.all(
+    endpoints.map(async ({ name, url }): Promise<CheckResult> => {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+        if (res.ok) return { name, pass: true };
+        return { name, pass: false, hint: `HTTP ${res.status} — check service logs` };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const hint = msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")
+          ? "run: aletheia start"
+          : msg.includes("TimeoutError") || msg.includes("timed out")
+            ? "service unreachable within 3s — check if running"
+            : "check service logs";
+        return { name, pass: false, hint };
+      }
+    }),
+  );
+}
+
+export function runDependencyChecks(): CheckResult[] {
+  const results: CheckResult[] = [];
+
+  const nodeVersion = process.version;
+  const majorStr = nodeVersion.slice(1).split(".").at(0) ?? "0";
+  const major = parseInt(majorStr, 10);
+  results.push(major >= 22
+    ? { name: "node", pass: true }
+    : { name: "node", pass: false, hint: `v${major} found — Node 22+ required` });
+
+  let hasContainer = false;
+  for (const cmd of ["docker", "podman"]) {
+    try {
+      execSync(`command -v ${cmd}`, { stdio: "ignore" });
+      hasContainer = true;
+      break;
+    } catch { /* not found */ }
+  }
+  results.push(hasContainer
+    ? { name: "docker/podman", pass: true }
+    : { name: "docker/podman", pass: false, hint: "install Docker or Podman" });
+
+  const artifactPath = join(paths.root, "infrastructure", "runtime", "dist", "entry.mjs");
+  const artifactExists = existsSync(artifactPath);
+  results.push(artifactExists
+    ? { name: "build artifact", pass: true }
+    : { name: "build artifact", pass: false, hint: "run: cd infrastructure/runtime && npx tsdown" });
+
+  return results;
+}
+
+export function runBootPersistenceChecks(): CheckResult[] {
+  const platform = process.platform;
+  const results: CheckResult[] = [];
+
+  if (platform === "darwin") {
+    const uid = (process.getuid?.() ?? 501).toString();
+    const gatewayEnabled = isLaunchdLoaded("com.aletheia.gateway", uid);
+    const memoryEnabled = isLaunchdLoaded("com.aletheia.memory", uid);
+    results.push(gatewayEnabled
+      ? { name: "boot:gateway", pass: true }
+      : { name: "boot:gateway", pass: false, hint: "run: aletheia enable" });
+    results.push(memoryEnabled
+      ? { name: "boot:memory", pass: true }
+      : { name: "boot:memory", pass: false, hint: "run: aletheia enable" });
+  } else {
+    const gatewayEnabled = isSystemdEnabled("aletheia.service");
+    const memoryEnabled = isSystemdEnabled("aletheia-memory.service");
+    results.push(gatewayEnabled
+      ? { name: "boot:gateway", pass: true }
+      : { name: "boot:gateway", pass: false, hint: "run: aletheia enable" });
+    results.push(memoryEnabled
+      ? { name: "boot:memory", pass: true }
+      : { name: "boot:memory", pass: false, hint: "run: aletheia enable" });
+  }
+
+  return results;
+}
+
+function isLaunchdLoaded(label: string, uid: string): boolean {
+  try {
+    execSync(`launchctl print gui/${uid}/${label}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSystemdEnabled(unit: string): boolean {
+  try {
+    const out = execSync(`systemctl --user is-enabled ${unit} 2>/dev/null`, { encoding: "utf-8" }).trim();
+    return out === "enabled";
+  } catch {
+    return false;
+  }
+}
+
+export function formatDoctorOutput(
+  connectivity: CheckResult[],
+  dependencies: CheckResult[],
+  bootPersistence: CheckResult[],
+): string {
+  const lines: string[] = [];
+  const allChecks = [...connectivity, ...dependencies, ...bootPersistence];
+  const passed = allChecks.filter((c) => c.pass).length;
+  const failed = allChecks.filter((c) => !c.pass).length;
+
+  const allConnDown = connectivity.length > 0 && connectivity.every((c) => !c.pass);
+  if (allConnDown) {
+    lines.push(isTTY
+      ? "\x1b[33m  Aletheia is not running — try: aletheia start\x1b[0m"
+      : "  Aletheia is not running — try: aletheia start");
+  }
+
+  lines.push(sectionHeader("Connectivity"));
+  for (const c of connectivity) {
+    lines.push(formatCheckLine(c.name, c.pass, c.hint));
+  }
+
+  lines.push(sectionHeader("Dependencies"));
+  for (const c of dependencies) {
+    lines.push(formatCheckLine(c.name, c.pass, c.hint));
+  }
+
+  lines.push(sectionHeader("Boot Persistence"));
+  for (const c of bootPersistence) {
+    lines.push(formatCheckLine(c.name, c.pass, c.hint));
+  }
+
+  lines.push(`\n  ${passed} checks passed, ${failed} failed`);
 
   return lines.join("\n");
 }
