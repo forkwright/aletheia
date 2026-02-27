@@ -23,7 +23,7 @@ import neo4j as _neo4j
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from qdrant_client.models import FieldCondition, Filter, IsNullCondition, MatchValue, PayloadField, PointStruct
 
 from .config import LLM_BACKEND, QDRANT_HOST, QDRANT_PORT
 from .entity_resolver import (
@@ -825,11 +825,11 @@ async def _collect_qdrant_metrics(
     try:
         client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-        # Orphan count — entries with source == "after_turn"
+        # Orphan count — entries missing agent_id (unattributed memories)
         orphan_result = client.count(
             collection_name=COLLECTION_NAME,
             count_filter=Filter(
-                must=[FieldCondition(key="source", match=MatchValue(value="after_turn"))]
+                must=[IsNullCondition(is_null=PayloadField(key="agent_id"))]
             ),
         )
         orphan_count = orphan_result.count
