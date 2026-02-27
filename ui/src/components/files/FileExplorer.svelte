@@ -3,6 +3,7 @@
   import { highlightCode, inferLanguageFromPath } from "../../lib/markdown";
   import DOMPurify from "dompurify";
   import Spinner from "../shared/Spinner.svelte";
+  import TreeContextMenu from "./TreeContextMenu.svelte";
   import {
     getTreeEntries,
     getSelectedPath,
@@ -21,6 +22,14 @@
   import { onMount } from "svelte";
 
   let filterText = $state("");
+  
+  // Context menu state
+  let contextMenu = $state<{
+    x: number;
+    y: number;
+    path: string;
+    isDirectory: boolean;
+  } | null>(null);
 
   onMount(() => {
     const agentId = getActiveAgentId();
@@ -81,6 +90,47 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
   }
+
+  function handleContextMenu(event: MouseEvent, path: string, isDirectory: boolean) {
+    event.preventDefault();
+    contextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      path,
+      isDirectory,
+    };
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
+  function handleKeyDown(event: KeyboardEvent, path: string) {
+    if (event.key === "F2") {
+      event.preventDefault();
+      const isDirectory = getTreeEntries().some(entry => 
+        entry.name === path.split('/').pop() && entry.type === "directory"
+      );
+      contextMenu = {
+        x: 100, // Fallback position
+        y: 100,
+        path,
+        isDirectory,
+      };
+    } else if (event.key === "Delete") {
+      event.preventDefault();
+      const isDirectory = getTreeEntries().some(entry => 
+        entry.name === path.split('/').pop() && entry.type === "directory"
+      );
+      if (confirm(`Are you sure you want to delete this ${isDirectory ? "folder" : "file"}?`)) {
+        // Handle delete via context menu
+        handleContextMenu(new MouseEvent("contextmenu", { 
+          clientX: 100, 
+          clientY: 100 
+        }), path, isDirectory);
+      }
+    }
+  }
 </script>
 
 <div class="file-explorer">
@@ -131,12 +181,26 @@
   </div>
 </div>
 
+<!-- Context Menu -->
+{#if contextMenu}
+  <TreeContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    path={contextMenu.path}
+    isDirectory={contextMenu.isDirectory}
+    onClose={closeContextMenu}
+  />
+{/if}
+
 {#snippet treeNode(entry: FileTreeEntry, path: string, depth: number)}
   {#if entry.type === "directory"}
     <button
       class="tree-item dir"
       style="padding-left: {12 + depth * 16}px"
       onclick={() => toggleDir(path)}
+      oncontextmenu={(e) => handleContextMenu(e, path, true)}
+      onkeydown={(e) => handleKeyDown(e, path)}
+      tabindex="0"
     >
       <span class="tree-icon">{isExpanded(path) ? "▾" : "▸"}</span>
       <span class="tree-name">{entry.name}</span>
@@ -158,6 +222,9 @@
       class:deleted={gitStatus ? gitStatusClass(gitStatus) === "deleted" : false}
       style="padding-left: {12 + depth * 16}px"
       onclick={() => handleFileClick(path)}
+      oncontextmenu={(e) => handleContextMenu(e, path, false)}
+      onkeydown={(e) => handleKeyDown(e, path)}
+      tabindex="0"
     >
       <span class="tree-file-icon">{fileIcon(entry.name)}</span>
       <span class="tree-name">{entry.name}</span>

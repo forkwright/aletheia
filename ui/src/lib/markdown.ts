@@ -1,43 +1,118 @@
 import { Marked, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 
-// Selective highlight.js — only the languages we actually need (~90% smaller)
-import hljs from "highlight.js/lib/core";
-import typescript from "highlight.js/lib/languages/typescript";
-import javascript from "highlight.js/lib/languages/javascript";
-import python from "highlight.js/lib/languages/python";
-import bash from "highlight.js/lib/languages/bash";
-import json from "highlight.js/lib/languages/json";
-import yaml from "highlight.js/lib/languages/yaml";
-import sql from "highlight.js/lib/languages/sql";
-import markdownLang from "highlight.js/lib/languages/markdown";
-import xml from "highlight.js/lib/languages/xml";
-import css from "highlight.js/lib/languages/css";
+// CodeMirror-based syntax highlighting — replaces highlight.js with Lezer parsers
+// that are already bundled for the file editor. Zero additional dependencies.
+import { highlightCode } from "@lezer/highlight";
+import { tagHighlighter, tags } from "@lezer/highlight";
+import { javascriptLanguage, typescriptLanguage } from "@codemirror/lang-javascript";
+import { pythonLanguage } from "@codemirror/lang-python";
+import { jsonLanguage } from "@codemirror/lang-json";
+import { yamlLanguage } from "@codemirror/lang-yaml";
+import { cssLanguage } from "@codemirror/lang-css";
+import { htmlLanguage } from "@codemirror/lang-html";
+import { markdownLanguage } from "@codemirror/lang-markdown";
+import type { Language } from "@codemirror/language";
 
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("shell", bash);
-hljs.registerLanguage("sh", bash);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("yml", yaml);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("markdown", markdownLang);
-hljs.registerLanguage("md", markdownLang);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("html", xml);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("js", javascript);
+// Map hljs-compatible CSS classes to Lezer tags — keeps existing theme CSS working
+const hljsHighlighter = tagHighlighter([
+  { tag: tags.keyword, class: "hljs-keyword" },
+  { tag: tags.controlKeyword, class: "hljs-keyword" },
+  { tag: tags.operatorKeyword, class: "hljs-keyword" },
+  { tag: tags.definitionKeyword, class: "hljs-keyword" },
+  { tag: tags.moduleKeyword, class: "hljs-keyword" },
+  { tag: tags.string, class: "hljs-string" },
+  { tag: tags.special(tags.string), class: "hljs-string" },
+  { tag: tags.regexp, class: "hljs-regexp" },
+  { tag: tags.number, class: "hljs-number" },
+  { tag: tags.integer, class: "hljs-number" },
+  { tag: tags.float, class: "hljs-number" },
+  { tag: tags.bool, class: "hljs-literal" },
+  { tag: tags.null, class: "hljs-literal" },
+  { tag: tags.comment, class: "hljs-comment" },
+  { tag: tags.lineComment, class: "hljs-comment" },
+  { tag: tags.blockComment, class: "hljs-comment" },
+  { tag: tags.docComment, class: "hljs-comment" },
+  { tag: tags.variableName, class: "hljs-variable" },
+  { tag: tags.definition(tags.variableName), class: "hljs-variable" },
+  { tag: tags.function(tags.variableName), class: "hljs-title" },
+  { tag: tags.definition(tags.function(tags.variableName)), class: "hljs-title" },
+  { tag: tags.propertyName, class: "hljs-property" },
+  { tag: tags.function(tags.propertyName), class: "hljs-title" },
+  { tag: tags.definition(tags.propertyName), class: "hljs-property" },
+  { tag: tags.typeName, class: "hljs-type" },
+  { tag: tags.className, class: "hljs-title" },
+  { tag: tags.tagName, class: "hljs-tag" },
+  { tag: tags.attributeName, class: "hljs-attr" },
+  { tag: tags.attributeValue, class: "hljs-string" },
+  { tag: tags.operator, class: "hljs-operator" },
+  { tag: tags.punctuation, class: "hljs-punctuation" },
+  { tag: tags.meta, class: "hljs-meta" },
+  { tag: tags.processingInstruction, class: "hljs-meta" },
+  { tag: tags.self, class: "hljs-built_in" },
+  { tag: tags.atom, class: "hljs-literal" },
+]);
 
-export function highlightCode(code: string, language?: string): string {
-  if (language && hljs.getLanguage(language)) {
-    return hljs.highlight(code, { language }).value;
-  }
-  return hljs.highlightAuto(code).value;
+// Language registry — maps language identifiers to Lezer parsers
+const languageMap: Record<string, Language> = {
+  typescript: typescriptLanguage,
+  ts: typescriptLanguage,
+  javascript: javascriptLanguage,
+  js: javascriptLanguage,
+  python: pythonLanguage,
+  py: pythonLanguage,
+  json: jsonLanguage,
+  yaml: yamlLanguage,
+  yml: yamlLanguage,
+  css: cssLanguage,
+  html: htmlLanguage,
+  xml: htmlLanguage,
+  svelte: htmlLanguage,
+  markdown: markdownLanguage,
+  md: markdownLanguage,
+};
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+/**
+ * Highlight code using CodeMirror's Lezer parsers.
+ * Falls back to HTML-escaped plain text for unsupported languages.
+ */
+export function cmHighlightCode(code: string, language?: string): string {
+  const lang = language ? languageMap[language.toLowerCase()] : undefined;
+  if (!lang) return escapeHtml(code);
+
+  const tree = lang.parser.parse(code);
+  let result = "";
+  let pos = 0;
+
+  highlightCode(
+    code,
+    tree,
+    hljsHighlighter,
+    (text, classes) => {
+      const escaped = escapeHtml(text);
+      result += classes ? `<span class="${classes}">${escaped}</span>` : escaped;
+      pos += text.length;
+    },
+    () => {
+      result += "\n";
+      pos++;
+    },
+  );
+
+  // Append any remaining unhighlighted text
+  if (pos < code.length) {
+    result += escapeHtml(code.slice(pos));
+  }
+
+  return result;
+}
+
+// Re-export for backward compat — ToolPanel imports this name
+export { cmHighlightCode as highlightCode };
 
 const marked = new Marked({
   breaks: false,
@@ -45,19 +120,16 @@ const marked = new Marked({
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {
       const language = lang?.split(/\s/)[0] ?? "";
-      const highlighted = highlightCode(text, language || undefined);
+      const highlighted = cmHighlightCode(text, language || undefined);
       const label = language ? `<span class="code-lang">${language}</span>` : "";
       return `<pre class="code-block">${label}<code class="hljs">${highlighted}</code></pre>`;
     },
     table(_token: Tokens.Table) {
-      // Overridden by tableRenderer below — this branch never executes
       return `<div class="table-wrapper"><table></table></div>`;
     },
   },
 });
 
-// Explicit table renderer — bypasses potential internal state issues with
-// marked's default table rendering in browser bundles
 const tableRenderer = {
   renderer: {
     table({ header, rows }: Tokens.Table): string {
@@ -78,8 +150,7 @@ const tableRenderer = {
 
 marked.use(tableRenderer);
 
-// Fast renderer for streaming — skips highlight.js to avoid blocking the main thread.
-// Code blocks are HTML-escaped only; syntax highlighting fires once after streaming ends.
+// Fast renderer for streaming — no highlighting, just HTML escaping
 const markedFast = new Marked({
   breaks: false,
   gfm: true,
@@ -87,14 +158,9 @@ const markedFast = new Marked({
     code({ text, lang }: { text: string; lang?: string }) {
       const language = lang?.split(/\s/)[0] ?? "";
       const label = language ? `<span class="code-lang">${language}</span>` : "";
-      const escaped = text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      return `<pre class="code-block">${label}<code>${escaped}</code></pre>`;
+      return `<pre class="code-block">${label}<code>${escapeHtml(text)}</code></pre>`;
     },
     table(_token: Tokens.Table) {
-      // Overridden by tableRenderer below — this branch never executes
       return `<div class="table-wrapper"><table></table></div>`;
     },
   },
@@ -130,13 +196,12 @@ export function renderMarkdown(text: string): string {
   return result;
 }
 
-/** Infer a highlight.js language from a file path or tool name */
+/** Infer a language from a file path or tool name */
 export function inferLanguage(toolName: string, input?: string): string | undefined {
   if (toolName === "exec") return "bash";
   if (toolName === "web_fetch") return "html";
   if (toolName === "web_search" || toolName === "ls") return undefined;
 
-  // For file tools, try to infer from the file path in the input
   const path = typeof input === "string" ? input : "";
   const ext = path.match(/\.(\w+)$/)?.[1]?.toLowerCase();
   if (!ext) return undefined;

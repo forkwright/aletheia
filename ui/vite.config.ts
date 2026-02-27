@@ -15,7 +15,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          markdown: ["marked", "dompurify", "highlight.js/lib/core"],
+          markdown: ["marked", "dompurify"],
           graph3d: ["three", "3d-force-graph"],
         },
       },
