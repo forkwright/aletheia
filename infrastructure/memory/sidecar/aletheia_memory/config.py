@@ -51,6 +51,7 @@ Output format:
 
 Return {"facts": []} if nothing worth extracting."""
 
+# INVARIANT: prompt must NOT mention RELATES_TO — see tests/test_vocab.py
 GRAPH_EXTRACTION_PROMPT = (
     "Use ONLY the following relationship types: "
     "KNOWS, LIVES_IN, WORKS_AT, OWNS, USES, PREFERS, "

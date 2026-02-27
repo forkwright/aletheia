@@ -1,4 +1,5 @@
 // Safe execution wrappers — explicit error boundaries for non-critical operations
+// INVARIANT: trySafe/trySafeAsync never propagate exceptions, always return fallback — see invariants.test.ts
 import { createLogger } from "./logger.js";
 
 const log = createLogger("safe");

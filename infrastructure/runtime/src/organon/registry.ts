@@ -1,4 +1,5 @@
 // Tool registry — register, resolve, filter by policy, dynamic loading with expiry
+// INVARIANT: register() makes tools immediately resolvable via get() — see invariants.test.ts
 import { createLogger } from "../koina/logger.js";
 import { truncateToolResult } from "./truncate.js";
 import type { ToolDefinition } from "../hermeneus/anthropic.js";

@@ -1,4 +1,6 @@
 # Controlled relationship type vocabulary for Neo4j graph store
+# INVARIANT: RELATES_TO must never appear in CONTROLLED_VOCAB — see tests/test_vocab.py
+# INVARIANT: normalize_type() returns None for unknown types, never a fallback — see tests/test_vocab.py
 
 from __future__ import annotations
 
