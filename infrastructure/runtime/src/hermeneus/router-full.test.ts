@@ -3,15 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultRouter } from "./router.js";
 
 // Mock the AnthropicProvider constructor to avoid real SDK usage
-vi.mock("./anthropic.js", () => ({
-  AnthropicProvider: vi.fn().mockImplementation(() => ({
-    complete: vi.fn().mockResolvedValue({
+vi.mock("./anthropic.js", () => {
+  const AnthropicProvider = vi.fn(function (this: Record<string, unknown>) {
+    this.complete = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "ok" }],
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
       model: "claude-sonnet",
-    }),
-  })),
-}));
+    });
+  });
+  return { AnthropicProvider };
+});
 
 describe("createDefaultRouter", () => {
   const origEnv = { ...process.env };

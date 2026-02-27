@@ -350,8 +350,8 @@ describe("write path: workspace flush (flushToWorkspace)", () => {
 
 describe("write path: finalize stage wiring verification (extractTurnFacts)", () => {
   const finalizePath = join(
-    process.cwd(),
-    "src/nous/pipeline/stages/finalize.ts",
+    import.meta.dirname,
+    "../nous/pipeline/stages/finalize.ts",
   );
 
   it("finalize.ts source imports extractTurnFacts (static wiring verification)", () => {

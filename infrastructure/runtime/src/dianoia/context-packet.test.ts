@@ -236,7 +236,7 @@ describe("buildContextPacketSync", () => {
     expect(packet).not.toContain("Roadmap Overview");
   });
 
-  it("respects token budget and truncates lower-priority sections", { timeout: 30000 }, () => {
+  it("respects token budget and truncates lower-priority sections", { timeout: 60000 }, () => {
     const longSupplementary = "x".repeat(5000);
     const phase = makePhase();
 

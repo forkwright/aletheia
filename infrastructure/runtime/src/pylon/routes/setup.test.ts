@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("node:fs");
 vi.mock("node:os", () => ({ homedir: () => "/home/testuser" }));
 
+// Mock global fetch to prevent real Anthropic API calls during tests
+const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+vi.stubGlobal("fetch", mockFetch);
+
 import * as fs from "node:fs";
 import { setupRoutes } from "./setup.js";
 

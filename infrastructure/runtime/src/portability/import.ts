@@ -23,7 +23,7 @@ export interface ImportResult {
   notesImported: number;
 }
 
-export function importAgent(
+export async function importAgent(
   agentFile: AgentFile,
   store: SessionStore,
   opts?: ImportOptions,

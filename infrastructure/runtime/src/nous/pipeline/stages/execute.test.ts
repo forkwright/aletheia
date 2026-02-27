@@ -29,12 +29,13 @@ vi.mock("../../circuit-breaker.js", () => ({
   checkResponseQuality: vi.fn().mockReturnValue({ triggered: false }),
 }));
 
-vi.mock("../../narration-filter.js", () => ({
-  NarrationFilter: vi.fn().mockImplementation(() => ({
-    feed: vi.fn().mockImplementation((text: string) => [{ type: "text_delta", text }]),
-    flush: vi.fn().mockReturnValue([]),
-  })),
-}));
+vi.mock("../../narration-filter.js", () => {
+  class MockNarrationFilter {
+    feed = vi.fn().mockImplementation((text: string) => [{ type: "text_delta", text }]);
+    flush = vi.fn().mockReturnValue([]);
+  }
+  return { NarrationFilter: MockNarrationFilter };
+});
 
 vi.mock("../../../organon/parallel.js", () => ({
   groupForParallelExecution: vi.fn().mockImplementation((tools: unknown[]) =>

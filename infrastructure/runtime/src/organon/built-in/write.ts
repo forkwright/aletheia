@@ -1,7 +1,8 @@
 // File write tool
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import type { ToolContext, ToolHandler } from "../registry.js";
+import { guardPath } from "./path-guard.js";
 import { trySafe } from "../../koina/safe.js";
 import { commitWorkspaceChange } from "../workspace-git.js";
 
@@ -40,27 +41,27 @@ export const writeTool: ToolHandler = {
       required: ["path", "content"],
     },
   },
-  execute(
+  async execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
     const filePath = input["path"] as string;
-    const content = input["content"] as string;
+    const fileContent = input["content"] as string;
     const append = (input["append"] as boolean) ?? false;
-    const resolved = resolve(context.workspace, filePath);
+    const resolved = guardPath(filePath, context);
 
     try {
       mkdirSync(dirname(resolved), { recursive: true });
-      writeFileSync(resolved, content, {
+      writeFileSync(resolved, fileContent, {
         flag: append ? "a" : "w",
         encoding: "utf-8",
       });
       trySafe("workspace git commit", () => commitWorkspaceChange(context.workspace, resolved, append ? "append" : "write"), undefined);
-      return Promise.resolve(`Written to ${filePath}`);
+      return `Written to ${filePath}`;
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : String(error);
-      return Promise.resolve(`Error: ${msg}`);
+      return `Error: ${msg}`;
     }
   },
 };

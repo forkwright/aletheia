@@ -92,6 +92,7 @@ function makeServices(overrides?: Record<string, unknown>): RuntimeServices {
       },
     },
     store: {
+      getDb: vi.fn().mockReturnValue({}),
       updateBootstrapHash: vi.fn(),
       findSessionById: vi.fn().mockReturnValue({
         messageCount: 5,
