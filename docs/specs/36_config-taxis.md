@@ -94,6 +94,44 @@ If systemd user services aren't configured, deploy should offer to create them (
 
 ---
 
+## Memory Sidecar Security (from #340)
+
+The memory sidecar binds to `0.0.0.0` with auth that's never enforced — any LAN device can read/write/delete memories.
+
+### Bind Address
+Change from `0.0.0.0` to `127.0.0.1`. The sidecar serves only the local runtime.
+
+### Token Generation at Init
+`aletheia init` generates `ALETHEIA_MEMORY_TOKEN` and stores it alongside the session key in `deploy/credentials/` (or `~/.aletheia/`). The systemd service file passes it as an environment variable.
+
+### Client Auth Wiring
+`memory-client.ts` reads the token and sends `Authorization: Bearer <token>` on all requests. Affects: `recall.ts`, `finalize.ts`, `mem0-*.ts` tools.
+
+### Doctor Validation
+`aletheia doctor` checks: token exists, sidecar responds to authenticated request, bind address is localhost.
+
+**Files:** `infrastructure/memory/sidecar/aletheia_memory/app.py`, `infrastructure/runtime/src/nous/recall.ts`, `infrastructure/runtime/src/nous/pipeline/stages/finalize.ts`, `infrastructure/runtime/src/organon/built-in/mem0-*.ts`
+
+## Shell Injection in start.sh (from #342)
+
+`start.sh` interpolates API key directly into a `python3 -c` string — shell metacharacters in the key value break the literal or enable injection. Fix: pass via environment variable instead of string interpolation.
+
+**Files:** `shared/bin/start.sh`
+
+## Systemd Unit Installation (from #343)
+
+`deploy.sh` calls `systemctl restart aletheia` but no unit file exists. The script hard-fails and triggers rollback on every deployment. Two aspects:
+
+### Unit File
+Install a systemd user service file for the main runtime (prosoche already has a template). `aletheia init` should install it. Include: `WorkingDirectory`, `ExecStart`, `Restart=on-failure`, `StandardOutput=journal`.
+
+### deploy.sh Update
+Reference the installed unit. Health check via `curl -sf http://localhost:18789/health` after restart. Rollback on health check failure, not on systemctl exit code.
+
+**Files:** `scripts/deploy.sh`, `scripts/rollback.sh`
+
+---
+
 ## Phases
 
 TBD — needs design review.

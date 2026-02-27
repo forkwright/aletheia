@@ -79,6 +79,13 @@ that evolve with the system.
 | #339 | Deploy pipeline | **36** | Absorbed into Config Taxis |
 | #250 | Memory recall (BM25) | — | Stays as issue (single implementation phase) |
 | #313 | Prosoche activity | — | Partially shipped (PR #336); remainder stays as issue |
+| #340 | Sidecar security (bind + auth) | **36** | Deploy/credential wiring in Config Taxis |
+| #341 | Sidecar per-request clients | — | Stays as issue (straightforward perf fix) |
+| #342 | Shell injection in start.sh | **36** | Deploy script in Config Taxis |
+| #343 | deploy.sh broken systemd ref | **36** | Systemd unit + deploy pipeline in Config Taxis |
+| #344 | Cron ignores timezone | — | Stays as issue (bug fix, no design) |
+| #345 | Sync I/O on event loop | — | Stays as issue (three independent fixes) |
+| #346 | SQLite double conn + dynamic imports | — | Stays as issue (low-friction cleanup) |
 
 ## Related
 
