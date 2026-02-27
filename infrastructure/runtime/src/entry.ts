@@ -1254,4 +1254,37 @@ program
     console.log(`\nRestart the gateway to apply: systemctl restart aletheia`);
   });
 
+// --- Channel management (Agora) ---
+const channelCmd = program.command("channel").description("Channel management (Agora)");
+
+channelCmd
+  .command("list")
+  .description("Show configured channels and their status")
+  .action(async () => {
+    const { channelList } = await import("./agora/cli.js");
+    channelList();
+  });
+
+channelCmd
+  .command("add <channel>")
+  .description("Add and configure a channel (e.g., slack)")
+  .action(async (channel: string) => {
+    const { isSupportedChannel, channelAddSlack, listSupportedChannels } = await import("./agora/cli.js");
+    if (!isSupportedChannel(channel)) {
+      console.error(`Unknown channel: "${channel}". Supported: ${listSupportedChannels().join(", ")}`);
+      process.exit(1);
+    }
+    if (channel === "slack") {
+      await channelAddSlack();
+    }
+  });
+
+channelCmd
+  .command("remove <channel>")
+  .description("Remove a channel configuration")
+  .action(async (channel: string) => {
+    const { channelRemove } = await import("./agora/cli.js");
+    channelRemove(channel);
+  });
+
 program.parse();
