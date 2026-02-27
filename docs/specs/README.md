@@ -12,7 +12,7 @@ that evolve with the system.
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 25 | [Integrated IDE](25_integrated-ide.md) | In Progress | CodeMirror editor + file tree + workspace API done; live streaming + diff view pending |
+| 25 | [Integrated IDE](archive/25_integrated-ide.md) | ✅ Complete | Multi-tab editor, agent edit notifications, file ops, clickable paths, workspace search — PR #307 |
 | 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | In Progress | Light theme + agent activity indicators done; sidebar→tab bar + settings dedup pending |
 | 33 | [Gnomon Alignment](33_gnomon-alignment.md) | Draft | Module identity and naming infrastructure |
 | 35 | [Context Engineering](35_context-engineering.md) | In Progress | Cache-group bootstrap + interaction signals wired; skill relevance + turn bypass pending |
