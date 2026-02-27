@@ -54,6 +54,7 @@ import { createSelfAuthorTools, loadAuthoredTools } from "./organon/self-author.
 import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
 import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js";
+import { rebuildWorkspaceIndex, setSharedIndex } from "./organon/workspace-indexer.js";
 import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
@@ -86,7 +87,7 @@ import { getVersion } from "./version.js";
 import { CompetenceModel } from "./nous/competence.js";
 import { UncertaintyTracker } from "./nous/uncertainty.js";
 import type { AletheiaConfig } from "./taxis/schema.js";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, type FSWatcher, unlinkSync, watch, writeFileSync } from "node:fs";
 import { getKeySalt, initEncryption } from "./koina/encryption.js";
 import { eventBus } from "./koina/event-bus.js";
 import { type HookRegistry, registerHooks } from "./koina/hooks.js";
@@ -132,6 +133,23 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
       log.warn("nous scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
     }
     mergeGitignore(nousDir); // idempotent — safe every startup
+  }, undefined);
+
+  // INDX-01/INDX-05: Wire _shared/ as default indexed path — background build at startup
+  trySafe("workspace-index:startup", () => {
+    const nousDir = nousSharedDir(); // called inside callback — requires initPaths() to have run
+    const sharedDir = join(nousDir, "_shared");
+    if (existsSync(sharedDir)) {
+      void (async () => {
+        try {
+          const index = await rebuildWorkspaceIndex(sharedDir);
+          setSharedIndex(index);
+          log.debug("Workspace index background build complete", { fileCount: index.files.length });
+        } catch (error: unknown) {
+          log.warn("Workspace index startup build failed", { err: error instanceof Error ? error.message : error });
+        }
+      })();
+    }
   }, undefined);
 
   const plansDb = openPlansDb(paths.sessionsDb());
@@ -472,6 +490,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   };
 }
 
+let _sharedIndexWatcher: FSWatcher | null = null;
+
 export async function startRuntime(configPath?: string): Promise<void> {
   const runtime = createRuntime(configPath);
   const config = runtime.config;
@@ -607,6 +627,35 @@ export async function startRuntime(configPath?: string): Promise<void> {
   startGateway(app, port);
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);
+
+  // INDX-01: Live file watcher — rebuilds shared index when _shared/ files change
+  {
+    let sharedDir: string | null = null;
+    try {
+      sharedDir = join(nousSharedDir(), "_shared");
+    } catch { /* anchor not set — skip watcher */ }
+
+    if (sharedDir && existsSync(sharedDir)) {
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+      const capturedSharedDir = sharedDir;
+      _sharedIndexWatcher = watch(capturedSharedDir, { recursive: true }, (_event, filename) => {
+        if (!filename || filename.includes(".aletheia-index")) return; // avoid recursive trigger on index writes
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          void (async () => {
+            try {
+              const index = await rebuildWorkspaceIndex(capturedSharedDir);
+              setSharedIndex(index);
+              log.debug("Workspace index rebuilt after file change", { filename });
+            } catch (error: unknown) {
+              log.warn("Workspace index rebuild after file change failed", { err: error instanceof Error ? error.message : error });
+            }
+          })();
+        }, 300); // 300ms debounce — avoids burst rebuilds on bulk saves (inotify on Linux)
+      });
+      log.debug("Workspace index file watcher started", { dir: capturedSharedDir });
+    }
+  }
 
   // --- Skills ---
   const skills = new SkillRegistry();
@@ -906,6 +955,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
     clearInterval(retentionTimer);
     clearInterval(updateCheckTimer);
     configWatcher?.close();
+    _sharedIndexWatcher?.close();
     watchdog?.stop();
     cron.stop();
 

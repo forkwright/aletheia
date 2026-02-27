@@ -62,6 +62,7 @@ export function createWorkspaceIndexTool(): ToolHandler {
           workspace,
           fileCount: index.files.length,
           builtAt,
+          staleWarning: index.staleWarning, // INDX-06: expose staleness to callers
           extraPaths: cfg.extraPaths,
         }, null, 2);
       }
@@ -96,6 +97,7 @@ export function createWorkspaceIndexTool(): ToolHandler {
         const result: Record<string, unknown> = {
           rebuilt: true,
           fileCount: index.files.length,
+          staleWarning: index.staleWarning,
           extraPaths: cfg.extraPaths,
         };
         const query = input["query"] as string | undefined;
