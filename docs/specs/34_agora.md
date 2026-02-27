@@ -1,6 +1,6 @@
 # Spec 34: Agora — Channel Abstraction and Slack Integration
 
-**Status:** In Progress (Phase 4)
+**Status:** In Progress (Phase 5)
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 34
@@ -415,7 +415,8 @@ infrastructure/runtime/src/
 │           ├── format.ts         # Markdown → Slack mrkdwn conversion
 │           ├── client.ts         # @slack/bolt App wrapper and WebClient factory
 │           ├── types.ts          # Slack-specific types
-│           └── streaming.ts      # Native Slack text streaming (Phase 4)
+│           ├── streaming.ts      # Native Slack text streaming (Phase 5)
+│           └── reactions.ts      # Emoji reaction helpers (Phase 5)
 ├── semeion/                      # REFACTORED — becomes Signal channel provider
 │   ├── provider.ts               # NEW — SignalChannelProvider implements ChannelProvider
 │   ├── client.ts                 # Unchanged — signal-cli HTTP client
@@ -567,7 +568,7 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 
 ---
 
-### Phase 4: Message Tool + Outbound Routing
+### Phase 4: Message Tool + Outbound Routing ✅
 
 **Scope:** The `message` tool currently hardcodes Signal. After this phase, it routes to the correct channel based on target format, and agents can send to Slack channels/users.
 
@@ -584,43 +585,54 @@ Semeion's dependency rules remain unchanged. Agora imports semeion for the Signa
 - Update `voice_reply` tool to note Signal-only constraint
 
 **Acceptance criteria:**
-- [ ] `message` tool sends to Slack when target starts with `slack:`
-- [ ] `message` tool sends to Signal for existing target formats (backward compat)
-- [ ] Error handling for invalid targets, unconfigured channels
-- [ ] Agents can proactively message Slack channels and users
+- [x] `message` tool sends to Slack when target starts with `slack:`
+- [x] `message` tool sends to Signal for existing target formats (backward compat)
+- [x] Error handling for invalid targets, unconfigured channels
+- [x] Agents can proactively message Slack channels and users
 
 **Tests:**
-- `agora/routing.test.ts` — target parsing, channel resolution
-- `organon/built-in/message.test.ts` — multi-channel routing
+- `agora/routing.test.ts` — target parsing, channel resolution (24 tests)
+- `organon/built-in/message.test.ts` — multi-channel routing (18 tests)
 
 ---
 
-### Phase 5: Streaming + Reactions
+### Phase 5: Streaming + Reactions ✅
 
 **Scope:** Native Slack text streaming (progressive message updates while the agent thinks) and reaction support (ack emoji while processing).
 
 **Changes:**
 
-- Implement `src/agora/channels/slack/streaming.ts` — native Slack streaming
-  - `chat.startStream` / `chat.appendStream` / `chat.stopStream`
-  - Integrates with `dispatchStream` from `ChannelContext`
-  - Fallback to normal send when streaming unavailable
-- Implement reaction support in `SlackChannelProvider`
-  - Processing ack: add ⏳ reaction on message receive, remove on complete
-  - Inbound reaction events → forward to nous if configured
-  - Outbound reactions via `sendReaction()`
-- Add `streaming` and `reactions` config toggles
+- `src/agora/channels/slack/streaming.ts` — native Slack streaming via ChatStreamer
+  - `startSlackStream()` / `appendSlackStream()` / `stopSlackStream()`
+  - Uses `@slack/web-api` ChatStreamer (chat.startStream / appendStream / stopStream)
+  - Lazy-started on first `text_delta` event
+  - Automatic thread creation for channel messages (streaming requires thread_ts)
+  - Falls back to normal send on stream error
+- `src/agora/channels/slack/reactions.ts` — idempotent reaction add/remove
+  - `addSlackReaction()` / `removeSlackReaction()`
+  - Handles `already_reacted` and `no_reaction` gracefully
+- Streaming dispatch in `listener.ts`
+  - Consumes `TurnStreamEvent` async iterable from `dispatchStream`
+  - Pipes `text_delta` → `appendSlackStream()` with markdown→mrkdwn conversion
+  - Handles `turn_complete`, `turn_abort`, `error` events
+  - Cleans up placeholder messages when no content was streamed
+- Processing reaction lifecycle in `listener.ts`
+  - ⏳ added on message receive, removed on turn complete (finally block)
+- Config toggles in `SlackChannelConfig` schema:
+  - `streaming: boolean` (default: true)
+  - `reactions.enabled: boolean` (default: true)
+  - `reactions.processingEmoji: string` (default: "hourglass_flowing_sand")
 
 **Acceptance criteria:**
-- [ ] Agent responses stream progressively in Slack
-- [ ] Streaming gracefully falls back on error or unsupported workspace
-- [ ] ⏳ reaction appears while agent is processing
-- [ ] Reaction removed on completion
-- [ ] Streaming and reactions independently toggleable
+- [x] Agent responses stream progressively in Slack via ChatStreamer
+- [x] Streaming gracefully falls back on error or unsupported workspace
+- [x] ⏳ reaction appears while agent is processing
+- [x] Reaction removed on completion (via finally block)
+- [x] Streaming and reactions independently toggleable via config
 
 **Tests:**
-- `agora/channels/slack/streaming.test.ts` — stream lifecycle, fallback
-- Reaction lifecycle tests in provider test
+- `agora/channels/slack/streaming.test.ts` — 11 tests (lifecycle, append guards, stop idempotency)
+- `agora/channels/slack/reactions.test.ts` — 7 tests (add/remove, idempotency, error handling)
 
 ---
 

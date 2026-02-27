@@ -38,7 +38,7 @@ export class SlackChannelProvider implements ChannelProvider {
     reactions: true,
     typing: false,  // Slack bots can't send typing indicators
     media: true,
-    streaming: false,  // v2: native text streaming
+    streaming: true,  // Phase 5: native text streaming via ChatStreamer
     richFormatting: true,  // Block Kit (future)
     maxTextLength: 4000,
   };
@@ -73,17 +73,23 @@ export class SlackChannelProvider implements ChannelProvider {
       mode: slackConfig.mode ?? "socket",
     });
 
-    // Register inbound event handlers
+    // Register inbound event handlers (Phase 3 core + Phase 5 streaming/reactions)
     this.debouncer = registerSlackListeners({
       app: this.handle.app as never,
       webClient: this.handle.webClient,
       botUserId: this.handle.botUserId,
+      teamId: this.handle.teamId,
       ctx,
       requireMention: slackConfig.requireMention ?? true,
       dmPolicy: slackConfig.dmPolicy ?? "open",
       allowedUsers: slackConfig.allowedUsers ?? [],
       allowedChannels: slackConfig.allowedChannels ?? [],
       groupPolicy: slackConfig.groupPolicy ?? "allowlist",
+      streaming: slackConfig.streaming ?? true,
+      reactions: {
+        enabled: slackConfig.reactions?.enabled ?? true,
+        processingEmoji: slackConfig.reactions?.processingEmoji ?? "hourglass_flowing_sand",
+      },
     });
 
     // Start the Socket Mode connection
