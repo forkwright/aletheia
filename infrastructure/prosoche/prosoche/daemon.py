@@ -42,6 +42,7 @@ _OPTIONAL_COLLECTORS: dict[str, str] = {
     "nas": ".signals.nas",
     "credentials": ".signals.credentials",
     "sessions": ".signals.sessions",
+    "activity": ".signals.activity",
 }
 
 
