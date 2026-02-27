@@ -208,7 +208,7 @@ names, same-directory `*.test.ts` files.
 
 ## Dianoia Module
 
-Dianoia is the persistent multi-phase planning module at `infrastructure/runtime/src/dianoia/`. It adds planning project state to SQLite, drives a state machine (`DianoiaOrchestrator`), and coordinates wave-based parallel execution of planning subagents. See `docs/specs/31_dianoia.md` for the full design.
+Dianoia is the persistent multi-phase planning module at `infrastructure/runtime/src/dianoia/`. It adds planning project state to SQLite, drives a state machine (`DianoiaOrchestrator`), and coordinates wave-based parallel execution of planning subagents. See `docs/specs/archive/DECISIONS.md` (Dianoia section) for the full design.
 
 ### Key Patterns
 
@@ -244,7 +244,7 @@ const deps: RouteDeps = {
 };
 ```
 
-For full design detail, see `docs/specs/31_dianoia.md`.
+For full design detail, see `docs/specs/archive/DECISIONS.md` (Dianoia — Persistent Multi-Phase Planning Runtime section).
 
 ## Reporting Issues
 
