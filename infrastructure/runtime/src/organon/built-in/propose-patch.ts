@@ -1,7 +1,7 @@
 // Runtime code patching — agents propose changes to their own source, gated by tsc + vitest
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
@@ -108,8 +108,8 @@ function runTsc(runtimeDir: string): { ok: boolean; output: string } {
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
     });
     return { ok: true, output: "TypeScript compilation passed" };
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; stdout?: Buffer };
+  } catch (error: unknown) {
+    const e = error as { stderr?: Buffer; stdout?: Buffer };
     const output = ((e.stdout?.toString() ?? "") + "\n" + (e.stderr?.toString() ?? "")).trim();
     return { ok: false, output: output.slice(0, 2000) };
   }
@@ -124,8 +124,8 @@ function runTests(runtimeDir: string, testFile: string): { ok: boolean; output: 
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
     }).toString();
     return { ok: true, output: output.slice(0, 2000) };
-  } catch (err: unknown) {
-    const e = err as { stderr?: Buffer; stdout?: Buffer };
+  } catch (error: unknown) {
+    const e = error as { stderr?: Buffer; stdout?: Buffer };
     const output = ((e.stdout?.toString() ?? "") + "\n" + (e.stderr?.toString() ?? "")).trim();
     return { ok: false, output: output.slice(0, 2000) };
   }
@@ -165,7 +165,7 @@ export function createPatchTools(): ToolHandler[] {
         required: ["file", "description", "old_text", "new_text"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const filePath = input["file"] as string;
       const description = input["description"] as string;
       const oldText = input["old_text"] as string;
@@ -174,14 +174,14 @@ export function createPatchTools(): ToolHandler[] {
       // Validate path
       const pathCheck = isPathAllowed(filePath);
       if (!pathCheck.allowed) {
-        return JSON.stringify({ error: pathCheck.reason });
+        return Promise.resolve(JSON.stringify({ error: pathCheck.reason }));
       }
 
       // Check rate limit
       const history = loadHistory(context.workspace);
       const rateCheck = checkRateLimit(history, context.nousId);
       if (!rateCheck.allowed) {
-        return JSON.stringify({ error: rateCheck.reason });
+        return Promise.resolve(JSON.stringify({ error: rateCheck.reason }));
       }
 
       const runtimeDir = getRuntimeDir();
@@ -189,12 +189,12 @@ export function createPatchTools(): ToolHandler[] {
       const absPath = join(srcDir, filePath);
 
       if (!existsSync(absPath)) {
-        return JSON.stringify({ error: `File not found: ${filePath}` });
+        return Promise.resolve(JSON.stringify({ error: `File not found: ${filePath}` }));
       }
 
       const originalContent = readFileSync(absPath, "utf-8");
       if (!originalContent.includes(oldText)) {
-        return JSON.stringify({ error: "old_text not found in file" });
+        return Promise.resolve(JSON.stringify({ error: "old_text not found in file" }));
       }
 
       const patchedContent = originalContent.replace(oldText, newText);
@@ -216,7 +216,7 @@ export function createPatchTools(): ToolHandler[] {
         history.patches.push(record);
         saveHistory(context.workspace, history);
         log.warn(`Patch ${patchId} rejected: tsc failed`);
-        return JSON.stringify({ error: "TypeScript compilation failed", output: tscResult.output });
+        return Promise.resolve(JSON.stringify({ error: "TypeScript compilation failed", output: tscResult.output }));
       }
 
       // Run colocated tests if they exist
@@ -236,7 +236,7 @@ export function createPatchTools(): ToolHandler[] {
           history.patches.push(record);
           saveHistory(context.workspace, history);
           log.warn(`Patch ${patchId} rejected: tests failed`);
-          return JSON.stringify({ error: "Tests failed after patch", output: testResult.output });
+          return Promise.resolve(JSON.stringify({ error: "Tests failed after patch", output: testResult.output }));
         }
       }
 
@@ -247,11 +247,11 @@ export function createPatchTools(): ToolHandler[] {
           timeout: BUILD_TIMEOUT,
           stdio: "pipe",
         });
-      } catch (err) {
+      } catch (error) {
         writeFileSync(absPath, originalContent, "utf-8");
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = error instanceof Error ? error.message : String(error);
         log.warn(`Patch ${patchId} rejected: build failed — ${msg}`);
-        return JSON.stringify({ error: "Build failed after patch", output: msg.slice(0, 1000) });
+        return Promise.resolve(JSON.stringify({ error: "Build failed after patch", output: msg.slice(0, 1000) }));
       }
 
       // Record success
@@ -272,7 +272,7 @@ export function createPatchTools(): ToolHandler[] {
         process.kill(process.pid, "SIGTERM");
       }, 2000);
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         applied: true,
         patchId,
         file: filePath,
@@ -280,7 +280,7 @@ export function createPatchTools(): ToolHandler[] {
         tsc: "passed",
         tests: testResult.output.slice(0, 200),
         note: "Process will restart in ~2s to apply changes",
-      });
+      }));
     },
   };
 
@@ -300,16 +300,16 @@ export function createPatchTools(): ToolHandler[] {
         required: ["patch_id"],
       },
     },
-    async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
       const patchId = input["patch_id"] as string;
       const history = loadHistory(context.workspace);
       const patch = history.patches.find((p) => p.id === patchId);
 
       if (!patch) {
-        return JSON.stringify({ error: "Patch not found" });
+        return Promise.resolve(JSON.stringify({ error: "Patch not found" }));
       }
       if (patch.status !== "applied") {
-        return JSON.stringify({ error: `Cannot rollback patch with status: ${patch.status}` });
+        return Promise.resolve(JSON.stringify({ error: `Cannot rollback patch with status: ${patch.status}` }));
       }
 
       const srcDir = getSrcDir();
@@ -325,10 +325,10 @@ export function createPatchTools(): ToolHandler[] {
           timeout: BUILD_TIMEOUT,
           stdio: "pipe",
         });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         log.warn(`Rollback rebuild failed: ${msg}`);
-        return JSON.stringify({ error: "Rollback applied but rebuild failed", output: msg.slice(0, 1000) });
+        return Promise.resolve(JSON.stringify({ error: "Rollback applied but rebuild failed", output: msg.slice(0, 1000) }));
       }
 
       patch.status = "rolled_back";
@@ -340,12 +340,12 @@ export function createPatchTools(): ToolHandler[] {
         process.kill(process.pid, "SIGTERM");
       }, 2000);
 
-      return JSON.stringify({
+      return Promise.resolve(JSON.stringify({
         rolledBack: true,
         patchId,
         file: patch.filePath,
         note: "Process will restart in ~2s to apply rollback",
-      });
+      }));
     },
   };
 

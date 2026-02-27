@@ -41,7 +41,7 @@ export const editTool: ToolHandler = {
       required: ["path", "old_text", "new_text"],
     },
   },
-  async execute(
+  execute(
     input: Record<string, unknown>,
     context: ToolContext,
   ): Promise<string> {
@@ -51,7 +51,7 @@ export const editTool: ToolHandler = {
     const resolved = resolve(context.workspace, filePath);
 
     if (oldText === "") {
-      return "Error: old_text cannot be empty — it would match everywhere";
+      return Promise.resolve("Error: old_text cannot be empty — it would match everywhere");
     }
 
     try {
@@ -59,21 +59,21 @@ export const editTool: ToolHandler = {
       const idx = content.indexOf(oldText);
 
       if (idx === -1) {
-        return "Error: old_text not found in file";
+        return Promise.resolve("Error: old_text not found in file");
       }
 
       if (content.indexOf(oldText, idx + 1) !== -1) {
-        return "Error: old_text matches multiple locations. Provide more context to make it unique.";
+        return Promise.resolve("Error: old_text matches multiple locations. Provide more context to make it unique.");
       }
 
       const updated = content.slice(0, idx) + newText + content.slice(idx + oldText.length);
       writeFileSync(resolved, updated, "utf-8");
 
       trySafe("workspace git commit", () => commitWorkspaceChange(context.workspace, resolved, "edit"), undefined);
-      return `Edited ${filePath}: replaced ${oldText.length} chars with ${newText.length} chars`;
+      return Promise.resolve(`Edited ${filePath}: replaced ${oldText.length} chars with ${newText.length} chars`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      return `Error: ${msg}`;
+      return Promise.resolve(`Error: ${msg}`);
     }
   },
 };

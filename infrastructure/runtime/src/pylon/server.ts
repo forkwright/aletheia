@@ -36,6 +36,7 @@ import { blackboardRoutes } from "./routes/blackboard.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { setupRoutes } from "./routes/setup.js";
 import { planningRoutes } from "../dianoia/routes.js";
+import { taskRoutes } from "../dianoia/task-routes.js";
 
 const log = createLogger("pylon");
 
@@ -76,7 +77,7 @@ export function createGateway(
   const app = new Hono();
 
   // Security headers
-  app.use("*", async (c, next) => {
+  app.use("*", (c, next) => {
     c.header("X-Content-Type-Options", "nosniff");
     c.header("X-Frame-Options", "DENY");
     c.header("Referrer-Policy", "no-referrer");
@@ -87,6 +88,7 @@ export function createGateway(
   // CORS
   const allowedOrigins = config.gateway.cors?.allowOrigins ?? [];
   if (allowedOrigins.length > 0) {
+    // oxlint-disable-next-line require-await -- async required for Hono middleware overload resolution
     app.use("*", async (c, next) => {
       const origin = c.req.header("Origin");
       if (origin && allowedOrigins.includes(origin)) {
@@ -104,6 +106,7 @@ export function createGateway(
   const rateLimit = config.gateway.rateLimit?.requestsPerMinute ?? 60;
   const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
+  // oxlint-disable-next-line require-await -- async required for Hono middleware overload resolution
   app.use("/mcp/*", async (c, next) => {
     const ip = c.req.header("X-Forwarded-For")?.split(",")[0]?.trim()
       ?? c.req.header("X-Real-IP")
@@ -205,6 +208,7 @@ export function createGateway(
     blackboardRoutes,
     workspaceRoutes,
     planningRoutes,
+    taskRoutes,
   ];
 
   for (const factory of modules) {

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { updatePhase, deletePhase, reorderPhase } from "../../stores/planning.svelte";
+  import AnnotationPanel from "./AnnotationPanel.svelte";
+
   interface Phase {
     id: string;
     name: string;
@@ -9,28 +12,49 @@
     order: number;
   }
 
-  let { phases, currentState }: { 
+  let { phases, currentState, projectId }: { 
     phases: Phase[];
     currentState: string;
+    projectId?: string;
   } = $props();
 
   let sortedPhases = $derived.by(() => {
-    return [...phases].sort((a, b) => a.order - b.order);
+    return [...visiblePhases].sort((a, b) => a.order - b.order);
   });
 
-  let expandedPhase = $state<string | null>(null);
 
-  function getPhaseStatus(phase: Phase, index: number): "current" | "completed" | "pending" | "blocked" {
+
+  let expandedPhase = $state<string | null>(null);
+  let collapseCompleted = $state(true);
+
+  // ENG-14: Phase grouping — collapse completed phases
+  let visiblePhases = $derived.by(() => {
+    if (!collapseCompleted) return phases;
+    const completedPhases = phases.filter(p => p.state === "complete");
+    const activePhases = phases.filter(p => p.state !== "complete");
+    // Show last completed phase as context, plus all active/pending
+    const lastCompleted = completedPhases[completedPhases.length - 1];
+    return lastCompleted ? [lastCompleted, ...activePhases] : activePhases;
+  });
+
+  let hiddenCount = $derived(phases.length - visiblePhases.length);
+
+  // Inline editing state
+  let editingField = $state<{ phaseId: string; field: "name" | "goal" } | null>(null);
+  let editValue = $state("");
+  let saving = $state(false);
+
+  // Drag reorder state
+  let dragPhaseId = $state<string | null>(null);
+  let dragOverPhaseId = $state<string | null>(null);
+
+  function getPhaseStatus(phase: Phase, _index: number): "current" | "completed" | "pending" | "blocked" {
     if (phase.state === "blocked") return "blocked";
     if (phase.state === "complete") return "completed";
     if (phase.state === "active") return "current";
-    
-    // If we're in a phase state, determine if this phase is the current one
     if (currentState === "discussing" || currentState === "planning" || currentState === "executing" || currentState === "verifying") {
-      // This is a simplified heuristic - in reality you'd need to track which phase is active
-      if (index === 0) return "current"; // Assume first incomplete phase is current
+      if (_index === 0) return "current";
     }
-    
     return "pending";
   }
 
@@ -57,6 +81,89 @@
   function toggleExpanded(phaseId: string) {
     expandedPhase = expandedPhase === phaseId ? null : phaseId;
   }
+
+  // --- Inline editing (EDIT-06) ---
+
+  function startEdit(phaseId: string, field: "name" | "goal", currentValue: string) {
+    editingField = { phaseId, field };
+    editValue = currentValue;
+  }
+
+  function cancelEdit() {
+    editingField = null;
+    editValue = "";
+  }
+
+  async function saveEdit() {
+    if (!editingField || !projectId || saving) return;
+    saving = true;
+    try {
+      await updatePhase(editingField.phaseId, { [editingField.field]: editValue });
+      editingField = null;
+      editValue = "";
+    } finally {
+      saving = false;
+    }
+  }
+
+  function handleEditKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      cancelEdit();
+    }
+  }
+
+  async function handleDelete(phaseId: string, phaseName: string) {
+    if (!projectId) return;
+    if (!confirm(`Delete phase "${phaseName}"? Requirements will be unassigned.`)) return;
+    await deletePhase(phaseId);
+    if (expandedPhase === phaseId) expandedPhase = null;
+  }
+
+  // --- Drag reorder (EDIT-03) ---
+
+  function handleDragStart(e: DragEvent, phaseId: string) {
+    if (!projectId) return;
+    dragPhaseId = phaseId;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", phaseId);
+    }
+  }
+
+  function handleDragOver(e: DragEvent, phaseId: string) {
+    if (!projectId || !dragPhaseId || dragPhaseId === phaseId) return;
+    e.preventDefault();
+    dragOverPhaseId = phaseId;
+  }
+
+  function handleDragLeave() {
+    dragOverPhaseId = null;
+  }
+
+  async function handleDrop(e: DragEvent, targetPhaseId: string) {
+    e.preventDefault();
+    if (!projectId || !dragPhaseId || dragPhaseId === targetPhaseId) {
+      dragPhaseId = null;
+      dragOverPhaseId = null;
+      return;
+    }
+
+    const target = sortedPhases.find(p => p.id === targetPhaseId);
+    if (target) {
+      await reorderPhase(dragPhaseId, target.order);
+    }
+
+    dragPhaseId = null;
+    dragOverPhaseId = null;
+  }
+
+  function handleDragEnd() {
+    dragPhaseId = null;
+    dragOverPhaseId = null;
+  }
 </script>
 
 <div class="roadmap-section">
@@ -64,8 +171,13 @@
     <h2 class="section-title">
       <span class="title-icon">🗺️</span>
       Roadmap
-      <span class="phase-count">({sortedPhases.length} phases)</span>
+      <span class="phase-count">({phases.length} phases)</span>
     </h2>
+    {#if hiddenCount > 0}
+      <button class="collapse-toggle" onclick={() => { collapseCompleted = !collapseCompleted; }}>
+        {collapseCompleted ? `Show ${hiddenCount} completed` : "Collapse completed"}
+      </button>
+    {/if}
   </div>
 
   <div class="roadmap-container">
@@ -80,21 +192,70 @@
           {@const status = getPhaseStatus(phase, index)}
           {@const statusColor = getStatusColor(status)}
           
-          <div class="phase-item" class:expanded={expandedPhase === phase.id}>
-            <!-- Connection Line (not for first item) -->
+          <div
+            class="phase-item"
+            class:expanded={expandedPhase === phase.id}
+            class:dragging={dragPhaseId === phase.id}
+            class:drag-over={dragOverPhaseId === phase.id}
+            draggable={!!projectId}
+            ondragstart={(e) => handleDragStart(e, phase.id)}
+            ondragover={(e) => handleDragOver(e, phase.id)}
+            ondragleave={handleDragLeave}
+            ondrop={(e) => handleDrop(e, phase.id)}
+            ondragend={handleDragEnd}
+          >
             {#if index > 0}
               <div class="phase-connector" style="--connector-color: {getStatusColor(getPhaseStatus(sortedPhases[index - 1], index - 1))}"></div>
             {/if}
             
-            <!-- Phase Node -->
-            <div class="phase-node" style="--status-color: {statusColor}" onclick={() => toggleExpanded(phase.id)}>
+            <div
+              class="phase-node"
+              style="--status-color: {statusColor}"
+              role="button"
+              tabindex="0"
+              onclick={() => toggleExpanded(phase.id)}
+              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(phase.id); } }}
+            >
               <div class="phase-icon">{getStatusIcon(status)}</div>
               <div class="phase-info">
                 <div class="phase-header">
-                  <span class="phase-name">{phase.name}</span>
+                  <!-- EDIT-06: Phase name inline edit -->
+                  {#if editingField?.phaseId === phase.id && editingField.field === "name"}
+                    <input
+                      class="inline-edit-input"
+                      bind:value={editValue}
+                      onkeydown={handleEditKeydown}
+                      onblur={saveEdit}
+                      onclick={(e) => e.stopPropagation()}
+                    />
+                  {:else}
+                    <span
+                      class="phase-name"
+                      class:editable={!!projectId}
+                      ondblclick={(e) => { if (projectId) { e.stopPropagation(); startEdit(phase.id, "name", phase.name); } }}
+                      title={projectId ? "Double-click to edit" : ""}
+                    >{phase.name}</span>
+                  {/if}
                   <span class="phase-number">#{phase.order}</span>
                 </div>
-                <div class="phase-goal">{phase.goal}</div>
+                <!-- EDIT-06: Phase goal inline edit -->
+                {#if editingField?.phaseId === phase.id && editingField.field === "goal"}
+                  <textarea
+                    class="inline-edit"
+                    bind:value={editValue}
+                    onkeydown={handleEditKeydown}
+                    onblur={saveEdit}
+                    onclick={(e) => e.stopPropagation()}
+                    rows="2"
+                  ></textarea>
+                {:else}
+                  <div
+                    class="phase-goal"
+                    class:editable={!!projectId}
+                    ondblclick={(e) => { if (projectId) { e.stopPropagation(); startEdit(phase.id, "goal", phase.goal); } }}
+                    title={projectId ? "Double-click to edit" : ""}
+                  >{phase.goal}</div>
+                {/if}
                 <div class="phase-meta">
                   {#if phase.requirements.length > 0}
                     <span class="meta-item">
@@ -111,27 +272,32 @@
                 </div>
               </div>
               
-              <div class="expand-arrow" class:rotated={expandedPhase === phase.id}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path 
-                    d="M6 12l4-4-4-4" 
-                    stroke="currentColor" 
-                    stroke-width="1.5" 
-                    stroke-linecap="round" 
-                    stroke-linejoin="round"
-                  />
-                </svg>
+              <div class="phase-actions">
+                {#if projectId}
+                  {#if projectId}
+                    <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                  {/if}
+                  <button
+                    class="phase-delete-btn"
+                    onclick={(e) => { e.stopPropagation(); handleDelete(phase.id, phase.name); }}
+                    title="Delete phase"
+                  >🗑</button>
+                {/if}
+                <div class="expand-arrow" class:rotated={expandedPhase === phase.id}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M6 12l4-4-4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
               </div>
             </div>
             
-            <!-- Expanded Details -->
             {#if expandedPhase === phase.id}
               <div class="phase-details">
                 {#if phase.requirements.length > 0}
                   <div class="detail-section">
                     <h4>Requirements</h4>
                     <ul class="requirement-list">
-                      {#each phase.requirements as reqId}
+                      {#each phase.requirements as reqId (reqId)}
                         <li>{reqId}</li>
                       {/each}
                     </ul>
@@ -142,10 +308,22 @@
                   <div class="detail-section">
                     <h4>Dependencies</h4>
                     <ul class="dependency-list">
-                      {#each phase.dependencies as depId}
+                      {#each phase.dependencies as depId (depId)}
                         <li>{depId}</li>
                       {/each}
                     </ul>
+                  </div>
+                {/if}
+
+                <!-- EDIT-07: Notes/annotations per phase -->
+                {#if projectId}
+                  <div class="detail-section">
+                    <AnnotationPanel
+                      {projectId}
+                      targetType="phase"
+                      targetId={phase.id}
+                      targetLabel={phase.name}
+                    />
                   </div>
                 {/if}
               </div>
@@ -188,6 +366,21 @@
     font-weight: 400;
   }
 
+  .collapse-toggle {
+    background: none;
+    border: 1px solid var(--border, #333);
+    border-radius: 4px;
+    color: var(--text-secondary, #999);
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    cursor: pointer;
+  }
+
+  .collapse-toggle:hover {
+    color: var(--text-primary, #e0e0e0);
+    border-color: var(--accent, #6c63ff);
+  }
+
   .roadmap-container {
     flex: 1;
     overflow-y: auto;
@@ -215,6 +408,16 @@
   .phase-item {
     position: relative;
     margin-bottom: var(--space-4);
+    transition: opacity var(--transition-quick);
+  }
+
+  .phase-item.dragging {
+    opacity: 0.4;
+  }
+
+  .phase-item.drag-over {
+    border-top: 2px solid var(--accent);
+    padding-top: 2px;
   }
 
   .phase-connector {
@@ -324,6 +527,59 @@
     font-family: var(--font-mono);
   }
 
+  .phase-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
+  .drag-handle {
+    color: var(--text-muted);
+    cursor: grab;
+    font-size: var(--text-sm);
+    padding: 2px;
+    opacity: 0;
+    transition: opacity var(--transition-quick);
+    user-select: none;
+  }
+
+  .phase-item:hover .drag-handle {
+    opacity: 0.5;
+  }
+
+  .drag-handle:hover {
+    opacity: 1 !important;
+    color: var(--text);
+  }
+
+  .phase-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    opacity: 0;
+    transition: all var(--transition-quick);
+  }
+
+  .phase-item:hover .phase-delete-btn {
+    opacity: 0.6;
+  }
+
+  .phase-delete-btn:hover {
+    opacity: 1 !important;
+    background: color-mix(in srgb, var(--status-error) 10%, transparent);
+    border-color: var(--status-error);
+    color: var(--status-error);
+  }
+
   .expand-arrow {
     color: var(--text-muted);
     transition: transform var(--transition-quick), color var(--transition-quick);
@@ -333,6 +589,54 @@
   .expand-arrow.rotated {
     transform: rotate(90deg);
     color: var(--accent);
+  }
+
+  /* Inline editing (EDIT-06) */
+  .inline-edit-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text);
+    font-size: inherit;
+    font-weight: 600;
+    font-family: inherit;
+  }
+
+  .inline-edit-input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .inline-edit {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    line-height: 1.4;
+    resize: vertical;
+  }
+
+  .inline-edit:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .editable {
+    cursor: text;
+    border-radius: var(--radius-sm);
+    padding: 1px 2px;
+    margin: -1px -2px;
+    transition: background var(--transition-quick);
+  }
+
+  .editable:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
   .phase-details {

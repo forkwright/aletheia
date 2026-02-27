@@ -1,0 +1,54 @@
+{
+  "id": "akron-session-04",
+  "agent": "akron",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I want to think through a second vehicle. Ramcharger with a 12v Cummins swap. How would that fit alongside the Ram 2500 and the Enfield?"
+    },
+    {
+      "role": "assistant",
+      "content": "The Ramcharger makes strategic sense as a protection vehicle for the Ram — not a redundant truck, a complementary one. The Ram is a mission platform: towing, hauling, technical off-road. The Ramcharger absorbs city and errand miles. At 106 inches of wheelbase versus the Ram's 155, it's 49 inches shorter and a fundamentally different driving experience in urban environments. Estimated 16-18+ mpg city versus 12-14 for the Ram.\n\nThe 12v Cummins with P7100 injection is the right engine choice because you already know that system completely. Shared knowledge and shared parts bin between two vehicles is fleet efficiency that's worth significant money over time.\n\nFor the chassis, the hard requirement is W250 — the 3/4-ton variant. The reason: 8×165.1mm bolt pattern, identical to the Ram 2500. Your Vision 85 wheels and KO3 315 tires swap between both vehicles. Wheel and tire interchangeability justifies the spec constraint. W150 and W350 are eliminated on that basis.\n\nGeneration: 2nd gen W250, 1981-1993. Better parts availability than 1st gen, architecture closer to the Ram, less fabrication required despite the 1st gen looking cooler. That's a pragmatic call.\n\nTransmission: NV4500 5-speed manual. Factory pairing for the 12v Cummins in the 1994-1998 era trucks. 150 lbs versus 265 lbs for the NV5600 — the weight savings matters more in a lighter platform like the Ramcharger. 0.73:1 overdrive is adequate at 4.56 gearing with 34.4-inch tires.\n\nI've built out the full project folder: README, wheel-tire-compatibility, BUILD-PLAN with 5 phases, SPECS with technical reference, RESEARCH template, and BUDGET estimating $16k-33k depending on donor condition. Wheels and tires are free — shared from the fleet."
+    },
+    {
+      "role": "user",
+      "content": "No purchases until the Ram is done, right?"
+    },
+    {
+      "role": "assistant",
+      "content": "Correct. Ram 2500 build is the prerequisite. Every lesson from that rebuild feeds forward: ABYC electrical standards, mechanical specification verification, build sequencing. The Ramcharger folder is ready to collect research, market listings, and build inspiration as you go. No action items until the Ram is running reliably.\n\nOpen questions I've flagged for when you're ready to research: verify actual donor W250 axle specs (Dana 44 or 60 front, and width), confirm NP241 vs NP208 transfer case availability for 2nd gen, evaluate if 2nd gen W250 diesels had factory hydroboost, research engine mount kits for Cummins-to-W250, and document known builds from forum and YouTube once you start looking."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "A future Ramcharger build is planned with a 12-valve Cummins and P7100 injection system",
+      "The Ramcharger is planned as a 2nd generation W250 sourced from 1981-1993",
+      "The W250 has an 8×165.1mm bolt pattern identical to the Ram 2500 allowing wheel and tire interchangeability",
+      "The Ramcharger's wheelbase is 106 inches versus the Ram 2500's 155 inches (49 inches shorter)",
+      "The Ramcharger is estimated to achieve 16-18+ mpg city versus 12-14 for the Ram",
+      "The target transmission for the Ramcharger is the NV4500 5-speed manual at 150 lbs versus NV5600 at 265 lbs",
+      "Budget estimate is $16k-33k depending on donor condition",
+      "Wheels and tires are free because they are shared with the Ram 2500",
+      "The Ram 2500 build is the prerequisite before any Ramcharger purchases"
+    ],
+    "decisions": [
+      "Source the Ramcharger as a 2nd generation W250 rather than 1st generation for better parts compatibility",
+      "Spec the Ramcharger with an NV4500 5-speed manual transmission instead of the heavier NV5600",
+      "Design the Ramcharger system to share wheels, tires, and bolt patterns with the Ram 2500 for fleet efficiency",
+      "No Ramcharger purchases until the Ram 2500 build is complete"
+    ],
+    "contradictions": [],
+    "entities": [
+      "W250",
+      "NV4500",
+      "P7100",
+      "Vision 85"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-21",
+    "domain": "vehicle",
+    "notes": "Sourced from akron/memory/2026-02-21.md — Ramcharger second vehicle concept and planning"
+  }
+}

@@ -111,9 +111,9 @@ export class PluginRegistry {
         } else {
           await (hook as (api: PluginApi) => Promise<void>)(this.api);
         }
-      } catch (err) {
+      } catch (error) {
         log.error(
-          `Plugin ${id} hook ${hookName} failed: ${err instanceof Error ? err.message : err}`,
+          `Plugin ${id} hook ${hookName} failed: ${error instanceof Error ? error.message : error}`,
         );
       }
     }

@@ -81,4 +81,24 @@ describe("loadPipelineConfig", () => {
     const b = loadPipelineConfig(tmpDir);
     expect(a).toBe(b);
   });
+
+  it("partial sufficiency override inherits unset fields from defaults", () => {
+    // Per-agent pipeline.json sets only sufficiencyThreshold; sufficiencyMinHits inherits default
+    writeFileSync(join(tmpDir, "pipeline.json"), JSON.stringify({
+      recall: { sufficiencyThreshold: 0.70 },
+    }));
+    const config = loadPipelineConfig(tmpDir);
+    expect(config.recall.sufficiencyThreshold).toBe(0.70);
+    expect(config.recall.sufficiencyMinHits).toBe(3); // inherits global default
+    expect(config.recall.limit).toBe(8);              // other fields also inherit
+  });
+
+  it("per-agent pipeline.json overrides both sufficiency values", () => {
+    writeFileSync(join(tmpDir, "pipeline.json"), JSON.stringify({
+      recall: { sufficiencyThreshold: 0.60, sufficiencyMinHits: 5 },
+    }));
+    const config = loadPipelineConfig(tmpDir);
+    expect(config.recall.sufficiencyThreshold).toBe(0.60);
+    expect(config.recall.sufficiencyMinHits).toBe(5);
+  });
 });

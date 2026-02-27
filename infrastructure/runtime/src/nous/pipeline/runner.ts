@@ -70,11 +70,11 @@ export async function* runStreamingPipeline(
     }
 
     return finalState.outcome;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     const stage = identifyFailedStage(state);
     log.error(`Pipeline failed at ${stage}: ${message}`, { nousId: state.nousId, sessionId: state.sessionId, stage });
-    if (err instanceof Error && err.stack) log.error(err.stack);
+    if (error instanceof Error && error.stack) log.error(error.stack);
     eventBus.emit("pipeline:error", { nousId: state.nousId, sessionId: state.sessionId, stage, error: message });
 
     yield { type: "error", message: `Turn failed at ${stage}: ${message}` };
@@ -133,11 +133,11 @@ export async function runBufferedPipeline(
     }
 
     return finalState.outcome;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     const stage = identifyFailedStage(state);
     log.error(`Pipeline failed at ${stage}: ${message}`, { nousId: state.nousId, sessionId: state.sessionId, stage });
-    if (err instanceof Error && err.stack) log.error(err.stack);
+    if (error instanceof Error && error.stack) log.error(error.stack);
     eventBus.emit("pipeline:error", { nousId: state.nousId, sessionId: state.sessionId, stage, error: message });
 
     return {

@@ -1,6 +1,7 @@
 // Agent import — restore an agent from an AgentFile export
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { AletheiaError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
 import type { AgentNote, DistillationPriming, SessionStore, WorkingState } from "../mneme/store.js";
 import { paths } from "../taxis/paths.js";
@@ -22,13 +23,13 @@ export interface ImportResult {
   notesImported: number;
 }
 
-export async function importAgent(
+export function importAgent(
   agentFile: AgentFile,
   store: SessionStore,
   opts?: ImportOptions,
 ): Promise<ImportResult> {
   if (agentFile.version !== 1) {
-    throw new Error(`Unsupported agent file version: ${agentFile.version}`);
+    throw new AletheiaError({ code: "PORTABILITY_IMPORT_FAILED", module: "portability", message: `Unsupported agent file version: ${agentFile.version}`, context: { version: agentFile.version } });
   }
 
   const nousId = opts?.targetNousId ?? agentFile.nous.id;
@@ -65,8 +66,8 @@ export async function importAgent(
         result.sessionsImported++;
         result.messagesImported += imported.messages;
         result.notesImported += imported.notes;
-      } catch (err) {
-        log.warn(`Failed to import session ${exportedSession.id}: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Failed to import session ${exportedSession.id}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -76,7 +77,7 @@ export async function importAgent(
   }
 
   log.info(`Import complete for ${nousId}: ${result.filesRestored} files, ${result.sessionsImported} sessions, ${result.messagesImported} messages, ${result.notesImported} notes`);
-  return result;
+  return Promise.resolve(result);
 }
 
 function importSession(
@@ -89,7 +90,7 @@ function importSession(
   let notes = 0;
 
   // Import messages in sequence order
-  const sortedMessages = [...exported.messages].sort((a, b) => a.seq - b.seq);
+  const sortedMessages = [...exported.messages].toSorted((a, b) => a.seq - b.seq);
 
   for (const msg of sortedMessages) {
     store.appendMessage(session.id, msg.role as "user" | "assistant" | "tool_result", msg.content, {

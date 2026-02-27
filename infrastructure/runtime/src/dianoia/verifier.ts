@@ -138,8 +138,8 @@ export class GoalBackwardVerifier {
     let raw: string;
     try {
       raw = await this.dispatchTool.execute({ tasks: [task] }, toolContext);
-    } catch (err) {
-      log.warn("Verifier dispatch failed — falling back to partially-met", { err, phaseId });
+    } catch (error) {
+      log.warn("Verifier dispatch failed — falling back to partially-met", { error, phaseId });
       return this.fallbackResult();
     }
 
@@ -158,8 +158,8 @@ export class GoalBackwardVerifier {
         gaps: parsed.gaps ?? [],
         verifiedAt: new Date().toISOString(),
       };
-    } catch (err) {
-      log.warn("Verifier result parse error — falling back to partially-met", { err, phaseId });
+    } catch (error) {
+      log.warn("Verifier result parse error — falling back to partially-met", { error, phaseId });
       return this.fallbackResult();
     }
   }

@@ -23,12 +23,28 @@ export type EventName =
   | "exec:denied"
   | "pipeline:error"
   | "history:orphan_repair"
+  | "memory:health_degraded"
+  | "memory:health_recovered"
   | "planning:project-created"
   | "planning:project-resumed"
   | "planning:phase-started"
   | "planning:phase-complete"
   | "planning:checkpoint"
-  | "planning:complete";
+  | "planning:complete"
+  | "planning:requirement-changed"
+  | "planning:phase-changed"
+  | "planning:discussion-answered"
+  | "planning:message-enqueued"
+  | "planning:annotation-changed"
+  | "planning:edit-recorded"
+  | "planning:state-transition"
+  | "planning:execution-progress"
+  | "planning:verification-complete"
+  | "task:created"
+  | "task:updated"
+  | "task:completed"
+  | "task:deleted"
+  | "task:bulk-created";
 
 export type EventPayload = Record<string, unknown>;
 export type EventHandler = (payload: EventPayload) => void | Promise<void>;
@@ -60,14 +76,18 @@ class EventBus {
     for (const handler of set) {
       try {
         const result = handler(payload);
-        // Catch async errors without blocking
-        if (result && typeof (result as Promise<void>).catch === "function") {
-          (result as Promise<void>).catch((err) => {
-            log.warn(`Event handler error [${event}]: ${err instanceof Error ? err.message : err}`);
-          });
+        // Catch async errors without blocking — emit() is synchronous, await not possible here
+        if (result && typeof (result as Promise<void>).then === "function") {
+          // eslint-disable-next-line promise/prefer-await-to-then -- sync emit() cannot await
+          void (result as Promise<void>).then(
+            undefined,
+            (error: unknown) => {
+              log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
+            },
+          );
         }
-      } catch (err) {
-        log.warn(`Event handler error [${event}]: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Event handler error [${event}]: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

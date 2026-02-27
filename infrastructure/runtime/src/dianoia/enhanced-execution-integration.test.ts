@@ -1,18 +1,17 @@
 // Integration test demonstrating Enhanced Execution Engine features
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { 
-  EnhancedExecutionOrchestrator,
-  DEFAULT_EXECUTION_OPTIONS
+import {
+  EnhancedExecutionOrchestrator
 } from "./enhanced-execution.js";
 import {
   mapTaskToRole,
   schemas,
   StructuredExtractor,
 } from "./structured-extraction.js";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION, PLANNING_V29_MIGRATION, PLANNING_V31_MIGRATION } from "./schema.js";
 import { PlanningStore } from "./store.js";
-import type { ToolHandler, ToolContext } from "../organon/registry.js";
+import type { ToolContext, ToolHandler } from "../organon/registry.js";
 
 const SubAgentResultSchema = schemas.SubAgentResult;
 
@@ -28,6 +27,9 @@ function makeDb(): Database.Database {
   d.exec(PLANNING_V25_MIGRATION);
   d.exec(PLANNING_V26_MIGRATION);
   d.exec(PLANNING_V27_MIGRATION);
+  d.exec(PLANNING_V28_MIGRATION);
+  d.exec(PLANNING_V29_MIGRATION);
+  d.exec(PLANNING_V31_MIGRATION);
   return d;
 }
 
@@ -45,12 +47,13 @@ describe("Enhanced Execution Engine Integration", () => {
   let db: Database.Database;
   let store: PlanningStore;
   let mockDispatchTool: ToolHandler;
-  let mockToolContext: ToolContext;
+  let _mockToolContext: ToolContext;
 
   beforeEach(() => {
     db = makeDb();
     store = new PlanningStore(db);
 
+    // oxlint-disable-next-line typescript/no-explicit-any -- vi.fn() return type not assignable without cast
     mockDispatchTool = {
       definition: {
         name: "mock_enhanced_dispatch",
@@ -58,9 +61,9 @@ describe("Enhanced Execution Engine Integration", () => {
         input_schema: { type: "object", properties: {}, required: [] }
       },
       execute: vi.fn()
-    } as any;
+    } as unknown as ToolHandler;
 
-    mockToolContext = {
+    _mockToolContext = {
       nousId: "test-nous",
       sessionId: "test-session",
       depth: 0

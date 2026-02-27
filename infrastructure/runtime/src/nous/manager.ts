@@ -10,7 +10,7 @@ import type { PluginRegistry } from "../prostheke/registry.js";
 import type { Watchdog } from "../daemon/watchdog.js";
 import type { CompetenceModel } from "./competence.js";
 import type { UncertaintyTracker } from "./uncertainty.js";
-import { distillSession } from "../melete/pipeline.js";
+import { cancelDistillation as cancelDistillationById, distillSession } from "../melete/pipeline.js";
 import type { MemoryFlushTarget } from "../melete/hooks.js";
 import { ApprovalGate } from "../organon/approval.js";
 import type { ApprovalMode } from "../organon/approval.js";
@@ -29,18 +29,21 @@ const log = createLogger("nous");
 const sessionLocks = new Map<string, Promise<unknown>>();
 
 function withSessionLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  // eslint-disable-next-line promise/prefer-await-to-then -- intentional Promise queue; cannot be rewritten as async/await
   const previous = sessionLocks.get(key) ?? Promise.resolve();
+  // eslint-disable-next-line promise/prefer-await-to-then -- lock queue requires Promise chaining
   const current = previous.then(
     () => fn(),
-    (prevErr) => {
-      log.warn(`Previous turn on lock "${key}" failed: ${prevErr instanceof Error ? prevErr.message : prevErr}`);
+    (error) => {
+      log.warn(`Previous turn on lock "${key}" failed: ${error instanceof Error ? error.message : error}`);
       return fn();
     },
   );
+  // eslint-disable-next-line promise/prefer-await-to-then, no-empty-function -- Promise queue: swallow rejection without propagating
   const settled = current.catch(() => {});
   sessionLocks.set(key, settled);
-  // eslint-disable-next-line promise/catch-or-return -- fire-and-forget cleanup; lock chain already catches above
-  settled.then(() => {
+  // eslint-disable-next-line promise/prefer-await-to-then, promise/always-return -- fire-and-forget cleanup after lock chain settles
+  void settled.then(() => {
     if (sessionLocks.get(key) === settled) sessionLocks.delete(key);
   });
   return current;
@@ -79,9 +82,12 @@ export class NousManager {
 
   get sessionStore(): SessionStore { return this.store; }
 
+  private sidecarUrl?: string;
+
   setPlugins(plugins: PluginRegistry): void { this.plugins = plugins; }
   setWatchdog(watchdog: Watchdog): void { this.watchdog = watchdog; }
   setMemoryTarget(target: MemoryFlushTarget): void { this.memoryTarget = target; }
+  setSidecarUrl(url: string): void { this.sidecarUrl = url; }
   setSkillsSection(section: string | undefined): void { this.skillsSection = section; }
   setSkills(registry: SkillRegistry): void { this.skills = registry; }
   setCompetence(model: CompetenceModel): void { this.competence = model; }
@@ -179,6 +185,7 @@ export class NousManager {
       approvalGate: this.approvalGate,
       approvalMode,
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(this.planningOrchestrator ? { planningOrchestrator: this.planningOrchestrator } : {}),
       ...(this.executionOrchestrator ? { executionOrchestrator: this.executionOrchestrator } : {}),
     };
@@ -232,8 +239,8 @@ export class NousManager {
           }
           channel.push(event);
         }
-      } catch (err) {
-        channel.push({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      } catch (error) {
+        channel.push({ type: "error", message: error instanceof Error ? error.message : String(error) });
       } finally {
         channel.close();
       }
@@ -249,8 +256,8 @@ export class NousManager {
       if (resolvedSessionId) {
         this.maybeScheduleDistillation(resolvedSessionId, nousId, lockKey);
       }
-    } catch (err) {
-      yield { type: "error", message: err instanceof Error ? err.message : String(err) };
+    } catch (error) {
+      yield { type: "error", message: error instanceof Error ? error.message : String(error) };
     } finally {
       this.trackTurnEnd(nousId);
       this.turnAbortControllers.delete(turnId);
@@ -343,20 +350,25 @@ export class NousManager {
     if (session.sessionType === "background") {
       if (session.messageCount < 50 && session.tokenCountEstimate < 10000) return;
       log.info(`Scheduling lightweight distillation for background session ${sessionId} (${session.messageCount} msgs, ${session.tokenCountEstimate} tokens)`);
-      withSessionLock(lockKey, async () => {
-        await distillSession(this.store, this.router, sessionId, nousId, {
-          triggerThreshold: 10000,
-          minMessages: 20,
-          extractionModel: distillModel,
-          summaryModel: distillModel,
-          preserveRecentMessages: 20,
-          lightweight: true,
-          ...(workspace ? { workspace } : {}),
-          ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
-        });
-      }).catch((err) => {
-        log.warn(`Background distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
-      });
+      void (async () => {
+        try {
+          await withSessionLock(lockKey, async () => {
+            await distillSession(this.store, this.router, sessionId, nousId, {
+              triggerThreshold: 10000,
+              minMessages: 20,
+              extractionModel: distillModel,
+              summaryModel: distillModel,
+              preserveRecentMessages: 20,
+              lightweight: true,
+              ...(workspace ? { workspace } : {}),
+              ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+              ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
+            });
+          });
+        } catch (error) {
+          log.warn(`Background distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
+        }
+      })();
       return;
     }
 
@@ -388,26 +400,35 @@ export class NousManager {
 
     const thread = this.store.getThreadForSession(sessionId);
 
-    withSessionLock(lockKey, async () => {
-      await distillSession(this.store, this.router, sessionId, nousId, {
-        triggerThreshold: distillThreshold,
-        minMessages: 10,
-        extractionModel: distillModel,
-        summaryModel: distillModel,
-        preserveRecentMessages: compaction.preserveRecentMessages,
-        preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
-        ...(workspace ? { workspace } : {}),
-        ...(this.plugins ? { plugins: this.plugins } : {}),
-        ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
-        ...(thread ? {
-          onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
-            this.store.updateThreadSummary(thread.id, summary, keyFacts);
-          },
-        } : {}),
-      });
-    }).catch((err) => {
-      log.warn(`Deferred distillation failed for ${sessionId}: ${err instanceof Error ? err.message : err}`);
-    });
+    void (async () => {
+      try {
+        await withSessionLock(lockKey, async () => {
+          await distillSession(this.store, this.router, sessionId, nousId, {
+            triggerThreshold: distillThreshold,
+            minMessages: 10,
+            extractionModel: distillModel,
+            summaryModel: distillModel,
+            preserveRecentMessages: compaction.preserveRecentMessages,
+            preserveRecentMaxTokens: compaction.preserveRecentMaxTokens,
+            ...(workspace ? { workspace } : {}),
+            ...(this.plugins ? { plugins: this.plugins } : {}),
+            ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+            ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
+            ...(thread ? {
+              onThreadSummaryUpdate: (summary: string, keyFacts: string[]) => {
+                this.store.updateThreadSummary(thread.id, summary, keyFacts);
+              },
+            } : {}),
+          });
+        });
+      } catch (error) {
+        log.warn(`Deferred distillation failed for ${sessionId}: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
+  }
+
+  cancelDistillation(sessionId: string): boolean {
+    return cancelDistillationById(sessionId);
   }
 
   async triggerDistillation(sessionId: string): Promise<void> {
@@ -436,6 +457,7 @@ export class NousManager {
       ...(workspace ? { workspace } : {}),
       ...(this.plugins ? { plugins: this.plugins } : {}),
       ...(this.memoryTarget ? { memoryTarget: this.memoryTarget } : {}),
+      ...(this.sidecarUrl ? { sidecarUrl: this.sidecarUrl } : {}),
       ...(thread ? {
         onThreadSummaryUpdate: (summary, keyFacts) => {
           this.store.updateThreadSummary(thread.id, summary, keyFacts);

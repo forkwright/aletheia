@@ -36,7 +36,7 @@ describe("formatResults", () => {
         name: "fixable",
         status: "warn",
         message: "Can fix",
-        fix: { description: "Do the thing", action: () => {} },
+        fix: { description: "Do the thing", action: () => { /* no-op test stub */ } },
       },
     ];
     const output = formatResults(results, true);

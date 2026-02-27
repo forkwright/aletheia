@@ -100,8 +100,8 @@ export async function extractTurnFacts(
       log.debug(`Extracted ${filtered.length} turn facts (${ms}ms): ${filtered[0]?.slice(0, 60)}...`);
     }
     return { facts: filtered, model, durationMs: ms };
-  } catch (err) {
-    log.debug(`Turn fact extraction failed: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`);
     return { facts: [], model, durationMs: Date.now() - start };
   }
 }
@@ -127,8 +127,8 @@ function parseFactsArray(raw: string): string[] {
         if (Array.isArray(arr)) {
           return arr.filter((item): item is string => typeof item === "string");
         }
-      } catch (err) {
-        log.debug(`Turn facts JSON parse failed: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.debug(`Turn facts JSON parse failed: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

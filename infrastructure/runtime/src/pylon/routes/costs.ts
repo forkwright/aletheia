@@ -37,7 +37,7 @@ export function costRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       model: t.model,
       timestamp: t.createdAt,
     }));
-    const totalCost = costs.reduce((sum, c) => sum + c.totalCost, 0);
+    const totalCost = costs.reduce((sum, cost) => sum + cost.totalCost, 0);
     return c.json({
       sessionId: id,
       nousId: session.nousId,

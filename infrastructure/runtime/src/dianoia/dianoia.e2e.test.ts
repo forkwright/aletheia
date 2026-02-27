@@ -1,8 +1,8 @@
 // End-to-end integration test for S5 Context & State Foundation
 // Tests the full pipeline: project creation → questioning → research → requirements → roadmap
 // Validates all .md files are written with expected content, context packet assembly, and token counting
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
@@ -33,7 +33,7 @@ const encoder = getEncoding("cl100k_base");
 function countTokens(text: string): number {
   try {
     return encoder.encode(text).length;
-  } catch (err) {
+  } catch {
     // Fallback to character estimation
     return Math.ceil(text.length / 4);
   }
@@ -187,18 +187,18 @@ function setupMockDispatch(): ToolHandler {
 }
 
 function makeDb(): Database.Database {
-  const db = new Database(":memory:");
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.exec(PLANNING_V20_DDL);
-  db.exec(PLANNING_V21_MIGRATION);
-  db.exec(PLANNING_V22_MIGRATION);
-  db.exec(PLANNING_V23_MIGRATION);
-  db.exec(PLANNING_V24_MIGRATION);
-  db.exec(PLANNING_V25_MIGRATION);
-  db.exec(PLANNING_V26_MIGRATION);
-  db.exec(PLANNING_V27_MIGRATION);
-  return db;
+  const database = new Database(":memory:");
+  database.pragma("journal_mode = WAL");
+  database.pragma("foreign_keys = ON");
+  database.exec(PLANNING_V20_DDL);
+  database.exec(PLANNING_V21_MIGRATION);
+  database.exec(PLANNING_V22_MIGRATION);
+  database.exec(PLANNING_V23_MIGRATION);
+  database.exec(PLANNING_V24_MIGRATION);
+  database.exec(PLANNING_V25_MIGRATION);
+  database.exec(PLANNING_V26_MIGRATION);
+  database.exec(PLANNING_V27_MIGRATION);
+  return database;
 }
 
 beforeEach(() => {

@@ -6,18 +6,18 @@ import { PlanningStore } from "./store.js";
 import { transition } from "./machine.js";
 import {
   ensureProjectDir,
+  writeDiscussFile,
+  writePlanFile,
   writeProjectFile,
   writeRequirementsFile,
   writeResearchFile,
   writeRoadmapFile,
-  writeDiscussFile,
-  writePlanFile,
   writeVerifyFile,
 } from "./project-files.js";
 import { PlanningError } from "../koina/errors.js";
 import type Database from "better-sqlite3";
 import type { PlanningConfigSchema } from "../taxis/schema.js";
-import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext, VerificationGap, RollbackPlan, RollbackAction } from "./types.js";
+import type { DiscussionOption, DiscussionQuestion, PlanningProject, ProjectContext, RollbackAction, RollbackPlan, VerificationGap } from "./types.js";
 import type { PhasePlan } from "./roadmap.js";
 import { RetrospectiveGenerator } from "./retrospective.js";
 
@@ -44,11 +44,11 @@ function verifyFileWritten(filePath: string, fileType: string): void {
   let content: string;
   try {
     content = readFileSync(filePath, "utf-8");
-  } catch (err) {
+  } catch (error) {
     throw new PlanningError(`Failed to read ${fileType} file: ${filePath}`, {
       code: "FILE_PERMISSION_DENIED",
       context: { filePath, fileType },
-      cause: err
+      cause: error
     });
   }
 
@@ -77,7 +77,7 @@ export class DianoiaOrchestrator {
 
   getWorkspaceOrThrow(): string {
     if (!this.workspaceRoot) {
-      throw new Error("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first");
+      throw new PlanningError("DianoiaOrchestrator: workspaceRoot not set — call setWorkspaceRoot() first", { code: "PLANNING_WORKSPACE_NOT_SET" });
     }
     return this.workspaceRoot;
   }
@@ -144,6 +144,7 @@ export class DianoiaOrchestrator {
     // Generate retrospective even on abandon — failure patterns are valuable
     this.generateRetro(projectId);
 
+    eventBus.emit("planning:state-transition", { projectId, from: project.state, to: "abandoned" });
     log.info(`Abandoned planning project ${projectId}`);
   }
 
@@ -335,9 +336,10 @@ export class DianoiaOrchestrator {
     return "Plan ready. Advancing to execution.";
   }
 
-  advanceToVerification(projectId: string, _nousId: string, _sessionId: string): string {
+  advanceToVerification(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "VERIFY"));
+    eventBus.emit("planning:state-transition", { projectId, nousId, sessionId, from: project.state, to: "verifying" });
     log.info(`Advancing to verification for project ${projectId}`);
     return "Execution complete. Moving to verification.";
   }
@@ -350,9 +352,10 @@ export class DianoiaOrchestrator {
     return "Moving to next phase.";
   }
 
-  blockOnVerificationFailure(projectId: string, _nousId: string, _sessionId: string): string {
+  blockOnVerificationFailure(projectId: string, nousId: string, sessionId: string): string {
     const project = this.store.getProjectOrThrow(projectId);
     this.store.updateProjectState(projectId, transition(project.state, "PHASE_FAILED"));
+    eventBus.emit("planning:state-transition", { projectId, nousId, sessionId, from: project.state, to: "blocked" });
     log.info(`Verification failed for project ${projectId} — blocked`);
     return "Verification failed. Project is blocked pending gap closure.";
   }
@@ -490,9 +493,9 @@ export class DianoiaOrchestrator {
         this.retroGenerator.writeRetroJson(this.workspaceRoot, retro);
       }
       log.info(`Retrospective generated for project ${projectId}: ${retro.patterns.length} patterns`);
-    } catch (err) {
+    } catch (error) {
       // Don't let retro failure block project state transitions
-      log.warn(`Failed to generate retrospective for ${projectId}`, { err });
+      log.warn(`Failed to generate retrospective for ${projectId}`, { error });
     }
   }
 

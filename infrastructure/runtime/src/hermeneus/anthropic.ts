@@ -1,5 +1,5 @@
 // Anthropic provider — direct @anthropic-ai/sdk integration
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { APIError } from "@anthropic-ai/sdk";
 import { createLogger } from "../koina/logger.js";
 import { ProviderError } from "../koina/errors.js";
 
@@ -227,7 +227,7 @@ export class AnthropicProvider {
         credentialLabel: this.label,
       };
     } catch (error) {
-      if (error instanceof Anthropic.APIError) {
+      if (error instanceof APIError) {
         const status = error.status;
         log.error(`Anthropic API ${status}: ${error.message}`);
 
@@ -287,7 +287,7 @@ export class AnthropicProvider {
         ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
       });
     } catch (error) {
-      if (error instanceof Anthropic.APIError) {
+      if (error instanceof APIError) {
         const status = error.status;
         log.error(`Anthropic API ${status}: ${error.message}`);
         const isExpiredToken = status === 401

@@ -1,17 +1,16 @@
 // Tests for enhanced execution orchestrator with wave concurrency and intelligent dispatch
-import { describe, expect, it, beforeEach, vi, type MockedFunction } from "vitest";
+import { beforeEach, describe, expect, it, type MockedFunction, vi } from "vitest";
 import Database from "better-sqlite3";
-import { 
-  EnhancedExecutionOrchestrator,
-  DEFAULT_EXECUTION_OPTIONS,
+import {
   computeWaves,
-  findResumeWave,
-  directDependents
+  directDependents,
+  EnhancedExecutionOrchestrator,
+  findResumeWave
 } from "./enhanced-execution.js";
 import { PlanningStore } from "./store.js";
-import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION } from "./schema.js";
-import type { ToolHandler, ToolContext } from "../organon/registry.js";
-import type { PlanningPhase } from "./types.js";
+import { PLANNING_V20_DDL, PLANNING_V21_MIGRATION, PLANNING_V22_MIGRATION, PLANNING_V23_MIGRATION, PLANNING_V24_MIGRATION, PLANNING_V25_MIGRATION, PLANNING_V26_MIGRATION, PLANNING_V27_MIGRATION, PLANNING_V28_MIGRATION, PLANNING_V29_MIGRATION, PLANNING_V31_MIGRATION } from "./schema.js";
+import type { ToolContext, ToolHandler } from "../organon/registry.js";
+import type { PlanningPhase, SpawnRecord } from "./types.js";
 
 const defaultConfig = {
   depth: "standard" as const,
@@ -35,6 +34,9 @@ function makeDb(): Database.Database {
   d.exec(PLANNING_V25_MIGRATION);
   d.exec(PLANNING_V26_MIGRATION);
   d.exec(PLANNING_V27_MIGRATION);
+  d.exec(PLANNING_V28_MIGRATION);
+  d.exec(PLANNING_V29_MIGRATION);
+  d.exec(PLANNING_V31_MIGRATION);
   return d;
 }
 
@@ -74,7 +76,7 @@ describe("EnhancedExecutionOrchestrator", () => {
         input_schema: { type: "object", properties: {}, required: [] }
       },
       execute: vi.fn()
-    } as any;
+    } as unknown as ToolHandler;
 
     mockToolContext = {
       nousId: "test-nous",
@@ -173,7 +175,7 @@ describe("EnhancedExecutionOrchestrator", () => {
     });
 
     it("should use intelligent dispatch when enabled", async () => {
-      const mockExecute = mockDispatchTool.execute as MockedFunction<any>;
+      const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
       mockExecute.mockResolvedValue(mockDispatchResult());
 
       orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
@@ -181,7 +183,7 @@ describe("EnhancedExecutionOrchestrator", () => {
         enableWaveConcurrency: false
       });
 
-      const result = await orchestrator.executePhase(testProjectId, mockToolContext);
+      const _result = await orchestrator.executePhase(testProjectId, mockToolContext);
 
       expect(mockExecute).toHaveBeenCalled();
       const dispatchCall = mockExecute.mock.calls[0][0];
@@ -223,7 +225,7 @@ describe("EnhancedExecutionOrchestrator", () => {
     });
 
     it("should execute tasks concurrently when enabled", async () => {
-      const mockExecute = mockDispatchTool.execute as MockedFunction<any>;
+      const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
       mockExecute.mockResolvedValue(mockDispatchResult(3));
 
       orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
@@ -246,7 +248,7 @@ describe("EnhancedExecutionOrchestrator", () => {
     });
 
     it("should fall back to sequential execution when concurrency disabled", async () => {
-      const mockExecute = mockDispatchTool.execute as MockedFunction<any>;
+      const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
       mockExecute.mockResolvedValue(mockDispatchResult());
 
       orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
@@ -283,7 +285,7 @@ describe("EnhancedExecutionOrchestrator", () => {
     });
 
     it("should use structured extraction when enabled", async () => {
-      const mockExecute = mockDispatchTool.execute as MockedFunction<any>;
+      const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
       mockExecute.mockResolvedValue(mockDispatchResult());
 
       orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
@@ -296,7 +298,7 @@ describe("EnhancedExecutionOrchestrator", () => {
     });
 
     it("should handle dispatch parse failures gracefully", async () => {
-      const mockExecute = mockDispatchTool.execute as MockedFunction<any>;
+      const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
       // Return unparseable garbage — should trigger parse failure path
       mockExecute.mockResolvedValue("this is not json at all");
 
@@ -321,7 +323,7 @@ describe("utility functions", () => {
         { id: "2", phaseId: "p2", waveNumber: 0, status: "done" },
         { id: "3", phaseId: "p3", waveNumber: 1, status: "running" },
         { id: "4", phaseId: "p4", waveNumber: 1, status: "pending" }
-      ] as any;
+      ] as unknown as SpawnRecord[];
 
       const resumeWave = findResumeWave(records);
 
@@ -332,7 +334,7 @@ describe("utility functions", () => {
       const records = [
         { id: "1", phaseId: "p1", waveNumber: 0, status: "done" },
         { id: "2", phaseId: "p2", waveNumber: 1, status: "done" }
-      ] as any;
+      ] as unknown as SpawnRecord[];
 
       const resumeWave = findResumeWave(records);
 
@@ -352,7 +354,7 @@ describe("utility functions", () => {
         { id: "p2", plan: { dependencies: ["p1"] } },
         { id: "p3", plan: { dependencies: ["p1", "p2"] } },
         { id: "p4", plan: { dependencies: ["p2"] } }
-      ] as any;
+      ] as unknown as PlanningPhase[];
 
       const dependents = directDependents("p1", phases);
 
@@ -365,7 +367,7 @@ describe("utility functions", () => {
       const phases = [
         { id: "p1", plan: { dependencies: [] } },
         { id: "p2", plan: { dependencies: [] } }
-      ] as any;
+      ] as unknown as PlanningPhase[];
 
       const dependents = directDependents("p1", phases);
 
@@ -374,20 +376,3 @@ describe("utility functions", () => {
   });
 });
 
-// Helper function to create mock sub-agent results
-function createMockSubAgentResult(role: string, status: string, confidence: number = 0.8): string {
-  return `
-Response text here.
-
-\`\`\`json
-{
-  "role": "${role}",
-  "task": "mock task",
-  "status": "${status}",
-  "summary": "Mock summary that is long enough to pass validation",
-  "details": {},
-  "confidence": ${confidence}
-}
-\`\`\`
-`;
-}

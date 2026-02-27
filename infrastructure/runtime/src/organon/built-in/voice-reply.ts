@@ -74,9 +74,9 @@ export function createVoiceReplyTool(sender?: VoiceReplySender): ToolHandler {
       let result;
       try {
         result = await synthesize(text, ttsOpts);
-      } catch (err) {
+      } catch (error) {
         return JSON.stringify({
-          error: `TTS synthesis failed: ${err instanceof Error ? err.message : err}`,
+          error: `TTS synthesis failed: ${error instanceof Error ? error.message : error}`,
         });
       }
 
@@ -90,9 +90,9 @@ export function createVoiceReplyTool(sender?: VoiceReplySender): ToolHandler {
           engine: result.engine,
           textLength: text.length,
         });
-      } catch (err) {
+      } catch (error) {
         return JSON.stringify({
-          error: `Send failed: ${err instanceof Error ? err.message : err}`,
+          error: `Send failed: ${error instanceof Error ? error.message : error}`,
         });
       } finally {
         result.cleanup();

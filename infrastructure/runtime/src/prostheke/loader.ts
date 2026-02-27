@@ -26,9 +26,9 @@ export async function loadPlugins(
         plugins.push(plugin);
         log.info(`Loaded plugin: ${plugin.manifest.id} v${plugin.manifest.version}`);
       }
-    } catch (err) {
+    } catch (error) {
       log.error(
-        `Failed to load plugin from ${resolved}: ${err instanceof Error ? err.message : err}`,
+        `Failed to load plugin from ${resolved}: ${error instanceof Error ? error.message : error}`,
       );
     }
   }
@@ -140,8 +140,8 @@ export async function discoverPlugins(rootDir: string): Promise<PluginDefinition
 
   try {
     entries = readdirSync(rootDir, { withFileTypes: true });
-  } catch (err) {
-    log.warn(`Cannot read plugin root ${rootDir}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.warn(`Cannot read plugin root ${rootDir}: ${error instanceof Error ? error.message : error}`);
     return [];
   }
 
@@ -162,8 +162,8 @@ export async function discoverPlugins(rootDir: string): Promise<PluginDefinition
         plugins.push(plugin);
         log.info(`Discovered plugin: ${plugin.manifest.id} v${plugin.manifest.version}`);
       }
-    } catch (err) {
-      log.warn(`Failed to load discovered plugin ${entry.name}: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Failed to load discovered plugin ${entry.name}: ${error instanceof Error ? error.message : error}`);
     }
   }
 

@@ -174,3 +174,77 @@ export interface RollbackPlan {
   estimatedEffort: "low" | "medium" | "high";
   createdAt: string;
 }
+
+
+// ─── Message Injection Queue (INTERJ-01/02) ─────────────────
+
+export interface PlanningMessage {
+  id: string;
+  projectId: string;
+  phaseId: string | null;
+  source: "user" | "agent" | "sub-agent" | "system";
+  sourceSessionId: string | null;
+  content: string;
+  priority: "low" | "normal" | "high" | "critical";
+  status: "pending" | "delivered" | "expired";
+  deliveredAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+// ─── Decision Audit Trail (OBS-03) ──────────────────────────
+
+export interface PlanningDecision {
+  id: string;
+  projectId: string;
+  phaseId: string | null;
+  source: "user" | "agent" | "checkpoint" | "system";
+  type: string;
+  summary: string;
+  rationale: string | null;
+  context: Record<string, unknown>;
+  createdAt: string;
+}
+
+// ─── Turn Tracking (OBS-05) ─────────────────────────────────
+
+export interface TurnCount {
+  projectId: string;
+  phaseId: string;
+  nousId: string;
+  turnCount: number;
+  tokenCount: number;
+  updatedAt: string;
+}
+
+// ─── Annotations (EDIT-07) ──────────────────────────────────
+
+export type AnnotationTargetType = "requirement" | "phase" | "project" | "discussion";
+
+export interface PlanningAnnotation {
+  id: string;
+  projectId: string;
+  targetType: AnnotationTargetType;
+  targetId: string;
+  author: string;
+  content: string;
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Edit History (SYNC-06) ─────────────────────────────────
+
+export type EditHistoryTargetType = "requirement" | "phase" | "project" | "discussion" | "checkpoint";
+
+export interface PlanningEditHistory {
+  id: string;
+  projectId: string;
+  targetType: EditHistoryTargetType;
+  targetId: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  author: string;
+  createdAt: string;
+}

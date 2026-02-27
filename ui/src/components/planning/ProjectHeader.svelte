@@ -14,13 +14,23 @@
     updatedAt: string;
   }
 
-  let { project, stateLabel, stateColor, onRefresh, onClose }: {
+  type PlanningLayout = "panel" | "half" | "full";
+
+  let { project, stateLabel, stateColor, onRefresh, onClose, layout = "panel", onLayoutChange }: {
     project: Project;
     stateLabel: string;
     stateColor: string;
     onRefresh: () => void;
     onClose?: () => void;
+    layout?: PlanningLayout;
+    onLayoutChange?: () => void;
   } = $props();
+
+  const layoutIcons: Record<PlanningLayout, { label: string; icon: string }> = {
+    panel: { label: "Panel", icon: "⊞" },
+    half: { label: "Split", icon: "⊟" },
+    full: { label: "Full", icon: "⊠" },
+  };
 
   let refreshing = $state(false);
 
@@ -51,6 +61,16 @@
         <span class="status-label">{stateLabel}</span>
       </div>
       <div class="header-actions">
+        {#if onLayoutChange}
+          <button
+            class="layout-btn"
+            onclick={onLayoutChange}
+            title="Layout: {layoutIcons[layout].label} (click to cycle)"
+          >
+            <span class="layout-icon">{layoutIcons[layout].icon}</span>
+            <span class="layout-label">{layoutIcons[layout].label}</span>
+          </button>
+        {/if}
         <button 
           class="refresh-btn" 
           class:refreshing 
@@ -273,6 +293,37 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  .layout-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: 32px;
+    padding: 0 var(--space-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-quick);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+
+  .layout-btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .layout-icon {
+    font-size: var(--text-base);
+    line-height: 1;
+  }
+
+  .layout-label {
+    font-weight: 500;
   }
 
   .refresh-btn,

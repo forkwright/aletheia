@@ -235,7 +235,7 @@ export function scanText(text: string, config: PiiScanConfig): ScanResult {
 
   // Apply redactions right-to-left to preserve offsets
   let redacted = text;
-  for (const match of [...deduped].reverse()) {
+  for (const match of [...deduped].toReversed()) {
     const replacement =
       config.mode === "hash"
         ? `[${match.type.toUpperCase()}:${deterministicHash(match.value)}]`

@@ -36,5 +36,13 @@
     "unicorn/catch-error-name": "warn"
   },
   "settings": {},
-  "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/", "src/dianoia/standalone/"]
+  "ignorePatterns": ["dist/", "coverage/", "test-results/", "node_modules/", "src/dianoia/standalone/"],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts"],
+      "rules": {
+        "require-await": "off"
+      }
+    }
+  ]
 }

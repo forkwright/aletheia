@@ -1,7 +1,8 @@
 // Pre-turn memory recall — surfaces relevant memories before LLM reasoning
+import { PipelineError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
-import { estimateTokens } from "../hermeneus/token-counter.js";
 import { getSidecarUrl, getUserId } from "../koina/memory-client.js";
+import { estimateTokens } from "../hermeneus/token-counter.js";
 
 const log = createLogger("recall");
 
@@ -10,9 +11,12 @@ export interface RecallResult {
   count: number;
   durationMs: number;
   tokens: number;
+  memoryIds: string[];
+  memoryTexts: Map<string, string>;
 }
 
 interface MemoryHit {
+  id?: string | null;
   memory: string;
   score: number | null;
   agent_id?: string | null;
@@ -106,13 +110,13 @@ export async function recallMemories(
         }
       }
     }
-  } catch (err) {
+  } catch (error) {
     const ms = Date.now() - start;
     const reason =
-      (err as Error).name === "AbortError" ? "timeout" : String(err);
+      (error as Error).name === "AbortError" ? "timeout" : String(error);
     log.warn(`Recall failed for ${nousId} (${ms}ms): ${reason}`);
     clearTimeout(timer);
-    return { block: null, count: 0, durationMs: ms, tokens: 0 };
+    return { block: null, count: 0, durationMs: ms, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   } finally {
     clearTimeout(timer);
   }
@@ -126,7 +130,7 @@ export async function recallMemories(
       ...h,
       score: (h.score ?? 0) + computeRecencyBoost(h.created_at, now),
     }))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    .toSorted((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   // Exact-text dedup first, then MMR diversity selection
   const seen = new Set<string>();
@@ -145,8 +149,14 @@ export async function recallMemories(
   if (deduped.length === 0) {
     const ms = Date.now() - start;
     log.debug(`Recall for ${nousId}: 0 hits above ${minScore} (${ms}ms)`);
-    return { block: null, count: 0, durationMs: ms, tokens: 0 };
+    return { block: null, count: 0, durationMs: ms, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   }
+
+  // Collect IDs and texts from deduped hits for downstream reinforcement
+  const memoryIds = deduped.map((h) => h.id).filter((id): id is string => typeof id === "string" && id.length > 0);
+  const memoryTexts = new Map<string, string>(
+    deduped.filter((h) => typeof h.id === "string" && h.id.length > 0).map((h) => [h.id!, h.memory]),
+  );
 
   const lines: string[] = [];
   let totalTokens = 0;
@@ -163,7 +173,7 @@ export async function recallMemories(
   }
 
   if (lines.length === 0) {
-    return { block: null, count: 0, durationMs: Date.now() - start, tokens: 0 };
+    return { block: null, count: 0, durationMs: Date.now() - start, tokens: 0, memoryIds: [], memoryTexts: new Map() };
   }
 
   const text =
@@ -181,6 +191,8 @@ export async function recallMemories(
     count: lines.length,
     durationMs: ms,
     tokens,
+    memoryIds,
+    memoryTexts,
   };
 }
 
@@ -275,7 +287,7 @@ async function fetchGraphEnhanced(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`graph_enhanced_search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`graph_enhanced_search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "graph_enhanced_search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }
@@ -299,7 +311,7 @@ async function fetchBasicSearch(
     }),
     signal,
   });
-  if (!res.ok) throw new Error(`search: HTTP ${res.status}`);
+  if (!res.ok) throw new PipelineError(`search: HTTP ${res.status}`, { code: "PIPELINE_RECALL_FAILED", context: { status: res.status, endpoint: "search" } });
   const data = (await res.json()) as { results?: MemoryHit[] };
   return data.results ?? [];
 }

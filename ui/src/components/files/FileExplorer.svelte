@@ -10,7 +10,6 @@
     isLoading,
     isFileLoading,
     getGitStatus,
-    getGitStatuses,
     isExpanded,
     toggleDir,
     loadTree,

@@ -1,15 +1,15 @@
 // Tests for Priompt-based context assembly (Spec 32 Context & State Foundation)
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildContextPacketWithPriompt } from "./priompt-context.js";
 import {
-  ensureProjectDir,
   ensurePhaseDir,
-  getProjectDir,
+  ensureProjectDir,
   getPhaseDir,
+  getProjectDir,
 } from "./project-files.js";
 import type { PlanningPhase } from "./types.js";
 

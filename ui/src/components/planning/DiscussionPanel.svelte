@@ -1,6 +1,7 @@
 <script lang="ts">
   import Spinner from "../shared/Spinner.svelte";
   import { authFetch } from "./api";
+  import { answerDiscussion, skipDiscussion } from "../../stores/planning.svelte";
 
   interface DiscussionOption {
     label: string;
@@ -10,13 +11,13 @@
   interface DiscussionQuestion {
     id: string;
     question: string;
-    description?: string;
+    description?: string | undefined;
     options: DiscussionOption[];
-    recommendation?: string;
+    recommendation?: string | undefined;
     answered: boolean;
-    decision?: string;
-    userNote?: string;
-    answeredAt?: string;
+    decision?: string | undefined;
+    userNote?: string | undefined;
+    answeredAt?: string | undefined;
   }
 
   let { projectId, phaseId }: { projectId: string; phaseId?: string } = $props();
@@ -60,13 +61,13 @@
       questions = (data.questions ?? []).map(q => ({
         id: q.id,
         question: q.question,
-        description: q.description,
+        ...(q.description !== undefined && { description: q.description }),
         options: q.options,
-        recommendation: q.recommendation,
+        ...(q.recommendation !== undefined && { recommendation: q.recommendation }),
         answered: q.status === "answered" || q.status === "skipped",
-        decision: q.decision ?? undefined,
-        userNote: q.userNote ?? undefined,
-        answeredAt: q.status !== "pending" ? q.updatedAt : undefined,
+        ...(q.decision !== null && q.decision !== undefined && { decision: q.decision }),
+        ...(q.userNote !== null && q.userNote !== undefined && { userNote: q.userNote }),
+        ...(q.status !== "pending" && q.updatedAt !== undefined && { answeredAt: q.updatedAt }),
       }));
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -81,36 +82,41 @@
     try {
       submitting[questionId] = true;
       
-      const postUrl = phaseId
-        ? `/api/planning/projects/${projectId}/discuss?phaseId=${encodeURIComponent(phaseId)}`
-        : `/api/planning/projects/${projectId}/discuss`;
-      const res = await authFetch(postUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId,
-          decision,
-          userNote: userNote?.trim() || undefined
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to submit decision');
+      // Use the reactive store for optimistic updates + API sync
+      const ok = await answerDiscussion(questionId, decision, userNote?.trim());
+      if (!ok) {
+        throw new Error("Failed to submit decision");
       }
 
-      // Update the question locally
-      questions = questions.map(q => 
-        q.id === questionId 
-          ? { 
-              ...q, 
-              answered: true, 
-              decision, 
-              userNote: userNote?.trim() || undefined,
+      // Update local questions state too
+      questions = questions.map(q =>
+        q.id === questionId
+          ? {
+              ...q,
+              answered: true,
+              decision,
+              ...(userNote?.trim() ? { userNote: userNote.trim() } : {}),
               answeredAt: new Date().toISOString()
             }
           : q
       );
       
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      submitting[questionId] = false;
+    }
+  }
+
+  async function handleSkip(questionId: string) {
+    if (submitting[questionId]) return;
+    try {
+      submitting[questionId] = true;
+      const ok = await skipDiscussion(questionId);
+      if (!ok) throw new Error("Failed to skip question");
+      questions = questions.map(q =>
+        q.id === questionId ? { ...q, answered: true, decision: "(skipped)", answeredAt: new Date().toISOString() } : q
+      );
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -180,12 +186,7 @@
           <div class="question-group">
             <h3 class="group-title">Questions Requiring Decision</h3>
             {#each pendingQuestions as question (question.id)}
-              <QuestionCard 
-                {question}
-                isSubmitting={submitting[question.id] || false}
-                onSelectOption={(option, note) => handleOptionSelect(question.id, option, note)}
-                onCustomDecision={(decision, note) => handleCustomDecision(question.id, decision, note)}
-              />
+              {@render QuestionCard(question, submitting[question.id] || false, false, (option, note) => handleOptionSelect(question.id, option, note), (decision, note) => handleCustomDecision(question.id, decision, note))}
             {/each}
           </div>
         {/if}
@@ -195,11 +196,7 @@
           <div class="question-group">
             <h3 class="group-title">Answered Questions</h3>
             {#each answeredQuestions as question (question.id)}
-              <QuestionCard 
-                {question}
-                isSubmitting={false}
-                readonly={true}
-              />
+              {@render QuestionCard(question, false, true)}
             {/each}
           </div>
         {/if}
@@ -269,36 +266,47 @@
           </div>
         {/each}
 
+        <!-- Skip button -->
+        <div class="skip-row">
+          <button
+            class="skip-btn"
+            onclick={() => handleSkip(question.id)}
+            disabled={isSubmitting}
+          >
+            Skip — use agent recommendation
+          </button>
+        </div>
+
         <!-- Custom decision option -->
         <details class="custom-option">
           <summary>Custom Decision</summary>
           <div class="custom-form">
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Enter custom decision..."
               class="custom-input"
               onkeydown={(e) => {
-                if (e.key === 'Enter' && e.target.value.trim()) {
-                  onCustomDecision?.(e.target.value.trim());
-                  e.target.value = '';
+                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                  onCustomDecision?.(e.currentTarget.value.trim());
+                  e.currentTarget.value = '';
                 }
               }}
             />
-            <textarea 
+            <textarea
               placeholder="Optional note explaining the decision..."
               class="custom-note"
               rows="2"
             ></textarea>
-            <button 
+            <button
               class="submit-custom-btn"
               onclick={(e) => {
-                const form = e.target.closest('.custom-form');
-                const input = form.querySelector('.custom-input');
-                const note = form.querySelector('.custom-note');
-                if (input.value.trim()) {
-                  onCustomDecision?.(input.value.trim(), note.value.trim() || undefined);
+                const form = e.currentTarget.closest('.custom-form');
+                const input = form?.querySelector<HTMLInputElement>('.custom-input');
+                const note = form?.querySelector<HTMLTextAreaElement>('.custom-note');
+                if (input?.value.trim()) {
+                  onCustomDecision?.(input.value.trim(), note?.value.trim() || undefined);
                   input.value = '';
-                  note.value = '';
+                  if (note) note.value = '';
                 }
               }}
               disabled={isSubmitting}
@@ -571,6 +579,34 @@
 
   .select-option-btn:disabled {
     opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .skip-row {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+  }
+
+  .skip-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    transition: all var(--transition-quick);
+  }
+
+  .skip-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+    border-color: var(--border-hover);
+  }
+
+  .skip-btn:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
   }
 

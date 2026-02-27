@@ -1,0 +1,58 @@
+{
+  "id": "demiurge-session-02",
+  "agent": "demiurge",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Walk me through the Ardent site. I want to review the materials and dyes pages for voice issues before we push."
+    },
+    {
+      "role": "assistant",
+      "content": "Four voice issues found across materials and dyes pages.\n\nFirst: the materials opener. 'What something is made of determines what it can become' is declarative-philosophical, which has been the pattern we've been moving away from. Replacement: 'Everything here was chosen because it lasts. Not because lasting is a selling point, but because these materials get better with use instead of worse.' Grounded, earned, not a setup.\n\nSecond: the Wickett & Craig Greek hover had a duplicate — both hover states showed Δέρμα. Changed the second to Βυρσοδεψική, which means tannery or tanning. Distinct and correct.\n\nThird: the dyes intro read 'Each name names a condition, not just a color.' That's declaring its own significance. Replacement: 'The names aren't colors. They're conditions — states of being that the color carries.' Same thought, reflective rather than announcing itself.\n\nFourth: the materials closing. 'These materials cost more. They should.' That's the mic drop pattern — closing with a judgment call rather than letting the work speak. Replacement: 'These materials cost more than the alternatives. The difference is in what they become over years, not what they look like on day one.' Earned by what came before it.\n\nAll four changes pushed to Cloudflare Pages via git."
+    },
+    {
+      "role": "user",
+      "content": "Good. Acme Workshop LLC — what's the status?"
+    },
+    {
+      "role": "assistant",
+      "content": "LLC officially approved. Texas Secretary of State effective date January 30, 2026. File number 806420308. Formation docs and operating agreement retrieved from Metis and stored in documents/ardent-llc/.\n\nBanking recommendation: Relay. It supports sub-accounts natively, which fits the Profit First methodology — you can separate income, taxes, operating expenses, and profit without opening multiple bank accounts. Also supports cash deposits through partner locations, which matters for craft shows.\n\nSitemap has been updated with journal entries and lexicon sections, pushed to deploy."
+    },
+    {
+      "role": "user",
+      "content": "What's the Claude Max math look like for my usage pattern?"
+    },
+    {
+      "role": "assistant",
+      "content": "At your usage pattern — approximately 1.5M tokens per day with roughly 80% output — the API cost would run $700 to $2,000 per month depending on which models you're hitting and the output/input split. Claude Max at $200 per month is exceptional value by that comparison. Enterprise is designed for organizations at scale and would be overkill for a solo LLC. The Max plan is the right tier."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "Acme Workshop LLC was officially approved by Texas Secretary of State with effective date January 30, 2026",
+      "Acme Workshop LLC file number is 806420308",
+      "Formation docs and operating agreement are stored in documents/ardent-llc/ on Metis",
+      "Relay bank was recommended for Acme Workshop LLC for its Profit First sub-account support and cash deposit capability",
+      "Claude Max at $200 per month is the recommended tier for solo LLC usage at 1.5M tokens per day with 80% output",
+      "API cost at the same usage pattern would run $700 to $2,000 per month",
+      "The Wickett & Craig Greek hover was corrected from duplicate Δέρμα to Βυρσοδεψική for the second hover state"
+    ],
+    "decisions": [
+      "Use Relay bank for Acme Workshop LLC for Profit First sub-account structure and cash deposit support",
+      "Subscribe to Claude Max ($200/month) rather than Enterprise for solo LLC usage"
+    ],
+    "contradictions": [],
+    "entities": [
+      "Acme Workshop LLC",
+      "Relay",
+      "Wickett & Craig",
+      "Cloudflare Pages"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-03",
+    "domain": "creative",
+    "notes": "Sourced from demiurge/memory/2026-02-03.md — Ardent site voice fixes and LLC approval"
+  }
+}

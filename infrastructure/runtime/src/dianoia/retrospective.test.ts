@@ -1,7 +1,7 @@
 // Tests for RetrospectiveGenerator (Spec 32 Phase 4)
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, readFileSync, rmSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {

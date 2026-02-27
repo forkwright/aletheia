@@ -69,7 +69,7 @@
           {/if}
         </div>
         <div class="card-sub badges">
-          {#each metrics.services as svc}
+          {#each metrics.services as svc (svc.name)}
             <Badge text={svc.name} variant={svc.healthy ? "success" : "error"} />
           {/each}
         </div>
@@ -112,7 +112,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each metrics.nous as agent}
+          {#each metrics.nous as agent (agent.name)}
             <tr>
               <td class="agent-name">{agent.name}</td>
               <td>{agent.activeSessions}</td>
@@ -134,7 +134,7 @@
             <tr><th>Job</th><th>Schedule</th><th>Next Run</th><th>Last Run</th></tr>
           </thead>
           <tbody>
-            {#each metrics.cron as job}
+            {#each metrics.cron as job (job.id)}
               <tr>
                 <td class="mono">{job.id}</td>
                 <td class="mono">{job.cron}</td>

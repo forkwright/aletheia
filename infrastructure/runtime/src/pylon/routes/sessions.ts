@@ -190,8 +190,8 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       webchatThreadId = thread.id;
       webchatBindingId = binding.id;
       webchatLockKey = `binding:${binding.id}`;
-    } catch (err) {
-      log.warn(`Webchat thread resolution failed: ${err instanceof Error ? err.message : err}`);
+    } catch (error) {
+      log.warn(`Webchat thread resolution failed: ${error instanceof Error ? error.message : error}`);
     }
 
     const newTopicMatch = message.trim().match(/^\/new(?:\s+(.+))?$/i);
@@ -202,8 +202,8 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       try {
         const session = store.findOrCreateSession(agentId, resolvedSessionKey);
         store.appendMessage(session.id, "user", boundaryContent, { tokenEstimate: 10 });
-      } catch (err) {
-        log.warn(`Topic boundary insert failed: ${err instanceof Error ? err.message : err}`);
+      } catch (error) {
+        log.warn(`Topic boundary insert failed: ${error instanceof Error ? error.message : error}`);
       }
       const enc = new TextEncoder();
       const topicStream = new ReadableStream({
@@ -240,8 +240,8 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
                   break;
                 }
               }
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
+            } catch (error) {
+              const msg = error instanceof Error ? error.message : String(error);
               log.error(`Stream error: ${msg}`);
               try {
                 const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
@@ -280,10 +280,24 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     try {
       await manager.triggerDistillation(id);
       return c.json({ ok: true, sessionId: id });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Distillation trigger failed: ${msg}`);
       return c.json({ error: "Failed to trigger distillation" }, 500);
+    }
+  });
+
+  app.post("/api/sessions/:id/distill/cancel", (c) => {
+    const id = c.req.param("id");
+    const session = store.findSessionById(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    try {
+      const cancelled = manager.cancelDistillation(id);
+      return c.json({ ok: true, cancelled });
+    } catch (error) {
+      log.error(`Failed to cancel distillation for ${id}`, { error });
+      return c.json({ error: "Failed to cancel distillation" }, 500);
     }
   });
 
@@ -317,8 +331,8 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
         sourceSessionId: id,
         checkpoint: at,
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       log.warn(`Session fork failed: ${msg}`);
       return c.json({ error: msg }, 400);
     }

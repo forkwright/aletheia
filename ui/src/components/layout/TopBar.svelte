@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getConnectionStatus } from "../../stores/connection.svelte";
-  import { getAgents, getActiveAgent, getActiveAgentId, setActiveAgent } from "../../stores/agents.svelte";
+  import { getAgents, getActiveAgentId, setActiveAgent } from "../../stores/agents.svelte";
   import { getBrandName } from "../../stores/branding.svelte";
   import { getAccessToken, logout } from "../../lib/auth";
   import { clearToken, getEffectiveToken } from "../../lib/api";
@@ -18,7 +18,6 @@
     activeView: ViewId;
   } = $props();
 
-  let agent = $derived(getActiveAgent());
   let hasSession = $derived(!!getAccessToken());
   let showMobileMenu = $state(false);
   let updateAvailable = $state(false);
@@ -198,9 +197,7 @@
     min-width: 0;
     /* Mark as scrollable so mobile.ts doesn't block touch */
   }
-  .agent-bar[data-scrollable] {
-    /* Marker attribute for mobile touchmove passthrough */
-  }
+  /* .agent-bar[data-scrollable] — marker attribute read by mobile.ts for touch passthrough */
   .agent-bar::-webkit-scrollbar {
     display: none;
   }

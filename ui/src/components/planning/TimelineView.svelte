@@ -22,8 +22,6 @@
   let { projectId }: { projectId: string } = $props();
 
   let milestones = $state<Milestone[]>([]);
-  let goal = $state("");
-  let projectState = $state("");
   let reqSummary = $state<RequirementsSummary>({ v1: 0, v2: 0, outOfScope: 0 });
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -45,8 +43,6 @@
         requirementsSummary: RequirementsSummary;
       };
       milestones = data.milestones ?? [];
-      goal = data.goal ?? "";
-      projectState = data.state ?? "";
       reqSummary = data.requirementsSummary ?? { v1: 0, v2: 0, outOfScope: 0 };
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);

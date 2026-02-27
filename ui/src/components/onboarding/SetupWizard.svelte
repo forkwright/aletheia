@@ -32,6 +32,16 @@
   let createdName = $state("");
   let createdEmoji = $state("🤖");
 
+  let accountUsernameEl = $state<HTMLInputElement | null>(null);
+  let profileNameEl = $state<HTMLInputElement | null>(null);
+  let agentNameEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (step === "account") accountUsernameEl?.focus();
+    else if (step === "profile") profileNameEl?.focus();
+    else if (step === "agent") agentNameEl?.focus();
+  });
+
   function deriveId(name: string): string {
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
     return id || "agent";
@@ -155,7 +165,7 @@
 <div class="wizard">
   <div class="wizard-card">
     <div class="progress">
-      {#each STEPS as s, i}
+      {#each STEPS as s, i (s)}
         <div
           class="dot"
           class:active={step === s}
@@ -179,7 +189,7 @@
       {#if showManual}
         <div class="manual-section">
           <p class="manual-label">Enter your API key or OAuth token manually:</p>
-          <div class="key-row" onkeydown={handleManualKeydown} role="group">
+          <form class="key-row" onsubmit={(e) => { e.preventDefault(); handleManualKeydown({ key: "Enter" } as KeyboardEvent); }}>
             <input
               type="password"
               class="key-input"
@@ -187,10 +197,10 @@
               bind:value={manualKey}
               disabled={credChecking}
             />
-            <button class="btn-secondary" onclick={submitManualKey} disabled={credChecking || !manualKey.trim()}>
+            <button class="btn-secondary" type="submit" disabled={credChecking || !manualKey.trim()}>
               {credChecking ? "..." : "Use key"}
             </button>
-          </div>
+          </form>
           {#if credError}
             <p class="error">{credError}</p>
           {/if}
@@ -212,7 +222,7 @@
       <h1 class="title">Create your account</h1>
       <p class="subtitle">Set a username and password to secure your instance.</p>
 
-      <div class="form" onkeydown={handleAccountKeydown} role="group">
+      <form class="form" onsubmit={(e) => { e.preventDefault(); handleAccountKeydown({ key: "Enter" } as KeyboardEvent); }}>
         <label class="field">
           <span class="field-label">Username</span>
           <input
@@ -220,8 +230,8 @@
             class="field-input"
             placeholder="e.g. alice"
             bind:value={accountUsername}
+            bind:this={accountUsernameEl}
             disabled={accountSaving}
-            autofocus
             autocomplete="username"
           />
         </label>
@@ -252,12 +262,13 @@
         {/if}
         <button
           class="btn-primary"
+          type="submit"
           onclick={submitAccount}
           disabled={accountSaving || !accountUsername.trim() || !accountPassword || !accountConfirm}
         >
           {accountSaving ? "Saving..." : "Continue"}
         </button>
-      </div>
+      </form>
 
     {:else if step === "profile"}
       <h1 class="title">About you</h1>
@@ -271,7 +282,7 @@
             class="field-input"
             placeholder="How should your agent address you?"
             bind:value={profileName}
-            autofocus
+            bind:this={profileNameEl}
           />
         </label>
         <label class="field">
@@ -290,7 +301,7 @@
               { value: "direct", label: "Direct", desc: "Answer first, terse, skip preamble" },
               { value: "balanced", label: "Balanced", desc: "Answer first with brief context" },
               { value: "detailed", label: "Detailed", desc: "Full explanations, explore implications" },
-            ] as { value: "direct" | "balanced" | "detailed"; label: string; desc: string }[]) as opt}
+            ] as { value: "direct" | "balanced" | "detailed"; label: string; desc: string }[]) as opt (opt.value)}
               <label class="style-option" class:selected={profileStyle === opt.value}>
                 <input type="radio" name="style" value={opt.value} bind:group={profileStyle} />
                 <span class="style-name">{opt.label}</span>
@@ -318,7 +329,7 @@
       <h1 class="title">Name your agent</h1>
       <p class="subtitle">Give your agent a name and personality.</p>
 
-      <div class="form" onkeydown={handleAgentKeydown} role="group">
+      <form class="form" onsubmit={(e) => { e.preventDefault(); handleAgentKeydown({ key: "Enter" } as KeyboardEvent); }}>
         <label class="field">
           <span class="field-label">Name</span>
           <input
@@ -326,8 +337,8 @@
             class="field-input"
             placeholder="e.g. Chiron"
             bind:value={agentName}
+            bind:this={agentNameEl}
             disabled={agentCreating}
-            autofocus
           />
         </label>
         <label class="field">
@@ -345,12 +356,13 @@
         {/if}
         <button
           class="btn-primary"
+          type="submit"
           onclick={createMyAgent}
           disabled={agentCreating || !agentName.trim()}
         >
           {agentCreating ? "Creating..." : "Create agent"}
         </button>
-      </div>
+      </form>
 
     {:else}
       <div class="ready-emoji">{createdEmoji}</div>

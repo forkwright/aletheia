@@ -1,12 +1,12 @@
 // workspace_index tool — manage and query the workspace file index
 import { existsSync } from "node:fs";
-import type { ToolHandler, ToolContext } from "../registry.js";
+import type { ToolContext, ToolHandler } from "../registry.js";
 import {
-  loadIndexConfig,
-  saveIndexConfig,
   indexWorkspace,
-  rebuildWorkspaceIndex,
+  loadIndexConfig,
   queryIndex,
+  rebuildWorkspaceIndex,
+  saveIndexConfig,
 } from "../workspace-indexer.js";
 
 export function createWorkspaceIndexTool(): ToolHandler {

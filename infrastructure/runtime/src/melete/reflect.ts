@@ -361,11 +361,21 @@ async function flushReflectionToMemory(
   }
 
   try {
-    const result = await target.addMemories(agentId, memories);
-    log.info(`Reflection memory flush for ${agentId}: ${result.added} stored, ${result.errors} errors`);
+    const result = await target.addMemories(agentId, memories, "reflection");
+    const receipt = {
+      origin: "reflection" as const,
+      agentId,
+      sessionId: "reflection",
+      timestamp: new Date().toISOString(),
+      factCount: memories.length,
+      added: result.added,
+      skipped: 0,
+      errors: result.errors,
+    };
+    log.info("Memory write receipt", receipt);
     return result.added;
-  } catch (err) {
-    log.error(`Reflection memory flush failed for ${agentId}: ${err instanceof Error ? err.message : err}`);
+  } catch (error) {
+    log.error(`Reflection memory flush failed for ${agentId}: ${error instanceof Error ? error.message : error}`);
     return 0;
   }
 }
@@ -446,7 +456,7 @@ export async function weeklyReflection(
 
   // Build the conversation from summaries (chronological)
   const conversation = summaries
-    .reverse() // oldest first
+    .toReversed() // oldest first
     .map((s) => {
       const date = new Date(s.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
       return `[${date}] ${s.summary}`;

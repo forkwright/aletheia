@@ -78,9 +78,9 @@ export const mem0AuditTool: ToolHandler = {
         ...data,
         instructions: "Review each memory for accuracy. Use memory_correct to fix errors, memory_forget to soft-delete, or mem0_retract for full removal including graph nodes.",
       });
-    } catch (err) {
+    } catch (error) {
       return JSON.stringify({
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   },

@@ -35,7 +35,7 @@ export function createSelfEvaluateTool(
         },
       },
     },
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -106,7 +106,7 @@ export function createSelfEvaluateTool(
         ? recommendations
         : ["No issues detected — performance is within normal parameters"];
 
-      return JSON.stringify(result);
+      return Promise.resolve(JSON.stringify(result));
     },
   };
 }

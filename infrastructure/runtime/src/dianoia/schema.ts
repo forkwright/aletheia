@@ -149,3 +149,81 @@ CREATE TABLE IF NOT EXISTS planning_discussions (
 CREATE INDEX IF NOT EXISTS idx_planning_discussions_project ON planning_discussions(project_id);
 CREATE INDEX IF NOT EXISTS idx_planning_discussions_phase ON planning_discussions(phase_id);
 `;
+
+// Phase 6: Interjection — Message injection queue (INTERJ-01) + Sub-agent interjection (INTERJ-02)
+export const PLANNING_V29_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_messages (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT,
+  source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'sub-agent', 'system')),
+  source_session_id TEXT,
+  content TEXT NOT NULL,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low', 'normal', 'high', 'critical')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'expired')),
+  delivered_at TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_messages_project ON planning_messages(project_id, status);
+CREATE INDEX IF NOT EXISTS idx_planning_messages_phase ON planning_messages(phase_id, status);
+`;
+
+// Phase 6: Observability — Decision audit trail (OBS-03) + Turn tracking (OBS-05)
+export const PLANNING_V28_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_decisions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT,
+  source TEXT NOT NULL CHECK(source IN ('user', 'agent', 'checkpoint', 'system')),
+  type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  rationale TEXT,
+  context TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_project ON planning_decisions(project_id);
+CREATE INDEX IF NOT EXISTS idx_planning_decisions_phase ON planning_decisions(phase_id);
+
+CREATE TABLE IF NOT EXISTS planning_turn_counts (
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  phase_id TEXT NOT NULL,
+  nous_id TEXT NOT NULL,
+  turn_count INTEGER NOT NULL DEFAULT 0,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (project_id, phase_id, nous_id)
+);
+`;
+
+// ─── V31: Annotations + Edit History (EDIT-07, SYNC-06) ─────
+
+export const PLANNING_V31_MIGRATION = `
+CREATE TABLE IF NOT EXISTS planning_annotations (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion')),
+  target_id TEXT NOT NULL,
+  author TEXT NOT NULL,
+  content TEXT NOT NULL,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_target ON planning_annotations(project_id, target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS planning_edit_history (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES planning_projects(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK(target_type IN ('requirement', 'phase', 'project', 'discussion', 'checkpoint')),
+  target_id TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  author TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_edit_history_target ON planning_edit_history(project_id, target_type, target_id);
+`;

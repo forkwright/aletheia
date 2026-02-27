@@ -57,7 +57,7 @@ export function createNoteTool(store: SessionStore): ToolHandler {
       },
     },
 
-    async execute(
+    execute(
       input: Record<string, unknown>,
       context: ToolContext,
     ): Promise<string> {
@@ -66,14 +66,14 @@ export function createNoteTool(store: SessionStore): ToolHandler {
       const nousId = context.nousId;
 
       if (!sessionId || !nousId) {
-        return "Error: note tool requires session and nous context.";
+        return Promise.resolve("Error: note tool requires session and nous context.");
       }
 
       switch (action) {
         case "add": {
           const content = input["content"] as string | undefined;
           if (!content?.trim()) {
-            return "Error: 'content' is required for 'add' action.";
+            return Promise.resolve("Error: 'content' is required for 'add' action.");
           }
 
           const trimmed = content.trim().slice(0, MAX_NOTE_LENGTH);
@@ -83,7 +83,7 @@ export function createNoteTool(store: SessionStore): ToolHandler {
             : "context";
 
           const id = store.addNote(sessionId, nousId, category, trimmed);
-          return `Note #${id} saved (${category}): "${trimmed}"`;
+          return Promise.resolve(`Note #${id} saved (${category}): "${trimmed}"`);
         }
 
         case "list": {
@@ -96,30 +96,30 @@ export function createNoteTool(store: SessionStore): ToolHandler {
           });
 
           if (notes.length === 0) {
-            return filterCategory
+            return Promise.resolve(filterCategory
               ? `No notes with category '${filterCategory}'.`
-              : "No notes in this session.";
+              : "No notes in this session.");
           }
 
           const lines = notes.map(
             (n) => `#${n.id} [${n.category}] ${n.content} (${n.createdAt})`,
           );
-          return `Notes (${notes.length}):\n${lines.join("\n")}`;
+          return Promise.resolve(`Notes (${notes.length}):\n${lines.join("\n")}`);
         }
 
         case "delete": {
           const noteId = input["id"] as number | undefined;
           if (noteId === undefined || noteId === null) {
-            return "Error: 'id' is required for 'delete' action.";
+            return Promise.resolve("Error: 'id' is required for 'delete' action.");
           }
           const deleted = store.deleteNote(noteId, nousId);
-          return deleted
+          return Promise.resolve(deleted
             ? `Note #${noteId} deleted.`
-            : `Note #${noteId} not found or not owned by you.`;
+            : `Note #${noteId} not found or not owned by you.`);
         }
 
         default:
-          return `Unknown action '${action}'. Use 'add', 'list', or 'delete'.`;
+          return Promise.resolve(`Unknown action '${action}'. Use 'add', 'list', or 'delete'.`);
       }
     },
   };

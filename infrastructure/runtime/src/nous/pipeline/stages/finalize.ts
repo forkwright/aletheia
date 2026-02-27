@@ -13,6 +13,82 @@ import { getSidecarUrl, getUserId } from "../../../koina/memory-client.js";
 import type { RuntimeServices, TurnState } from "../types.js";
 
 const log = createLogger("finalize");
+const reinforcementLog = createLogger("nous:reinforcement");
+
+function tokenizeForJaccard(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.replace(/[^a-z0-9]/g, ""))
+      .filter((t) => t.length >= 3),
+  );
+}
+
+/**
+ * Token-level Jaccard overlap between two strings.
+ * Tokenizes both strings (lowercase, strips non-alphanumeric, splits on whitespace, filters tokens < 3 chars).
+ * Returns intersection / union, or 0 if both token sets are empty.
+ */
+export function tokenJaccardOverlap(a: string, b: string): number {
+  const tokensA = tokenizeForJaccard(a);
+  const tokensB = tokenizeForJaccard(b);
+  if (tokensA.size === 0 && tokensB.size === 0) return 0;
+  let intersectionCount = 0;
+  for (const t of tokensA) {
+    if (tokensB.has(t)) intersectionCount++;
+  }
+  const union = tokensA.size + tokensB.size - intersectionCount;
+  return union === 0 ? 0 : intersectionCount / union;
+}
+
+/**
+ * Fire-and-forget reinforcement of memories actually used in the response.
+ * Uses Jaccard overlap >= 0.25 to detect which recalled memories influenced the output.
+ * Only those memories are sent to /evolution/reinforce — not every recall hit.
+ */
+function reinforceUsedMemories(
+  memoryIds: string[],
+  memoryTexts: Map<string, string>,
+  responseText: string,
+  sidecarUrl: string,
+  nousId: string,
+): void {
+  try {
+    const JACCARD_THRESHOLD = 0.25;
+    const usedIds = memoryIds.filter((id) => {
+      const text = memoryTexts.get(id);
+      if (!text) return false;
+      return tokenJaccardOverlap(text, responseText) >= JACCARD_THRESHOLD;
+    });
+
+    if (usedIds.length === 0) return;
+
+    reinforcementLog.debug(
+      `Reinforcing ${usedIds.length}/${memoryIds.length} used memories for ${nousId}`,
+    );
+
+    for (const memoryId of usedIds) {
+      void (async () => {
+        try {
+          await fetch(`${sidecarUrl}/evolution/reinforce`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memory_id: memoryId, user_id: nousId }),
+            signal: AbortSignal.timeout(5_000),
+          });
+        } catch (error: unknown) {
+          reinforcementLog.warn(
+            `Reinforcement failed for ${memoryId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      })();
+    }
+  } catch (error: unknown) {
+    reinforcementLog.warn(
+      `reinforceUsedMemories failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 export async function finalize(
   state: TurnState,
@@ -80,9 +156,14 @@ export async function finalize(
   if (turnToolCalls.length >= 3) {
     const skillModel = services.config.agents.defaults.compaction.distillationModel;
     const skillsDir = join(resolveWorkspace(services.config, nous)!, "..", "..", "shared", "skills");
-    extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId)
-      .then((candidate) => { if (candidate) saveLearnedSkill(candidate, skillsDir); })
-      .catch((err) => { log.debug(`Skill extraction failed (non-fatal): ${err instanceof Error ? err.message : err}`); });
+    void (async () => {
+      try {
+        const candidate = await extractSkillCandidate(services.router, turnToolCalls, skillModel, sessionId, seq, nousId);
+        if (candidate) saveLearnedSkill(candidate, skillsDir);
+      } catch (error) {
+        log.debug(`Skill extraction failed (non-fatal): ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   // Working state extraction — async, non-blocking, on cheap model
@@ -93,11 +174,14 @@ export async function finalize(
       .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 100)}) → ${t.output.slice(0, 100)}`)
       .join("\n");
     const previousState = services.store.getWorkingState(sessionId);
-    extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel)
-      .then((newState) => {
+    void (async () => {
+      try {
+        const newState = await extractWorkingState(services.router, outcome.text, toolSummary, previousState, wsModel);
         if (newState) services.store.updateWorkingState(sessionId, newState);
-      })
-      .catch((err) => { log.debug(`Working state extraction failed: ${err instanceof Error ? err.message : err}`); });
+      } catch (error) {
+        log.debug(`Working state extraction failed: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
   }
 
   // After-turn memory extraction — lightweight, non-blocking, on cheap model
@@ -108,8 +192,9 @@ export async function finalize(
       .map((t) => `${t.name}(${JSON.stringify(t.input).slice(0, 80)}) → ${t.output.slice(0, 80)}`)
       .join("\n");
 
-    extractTurnFacts(services.router, outcome.text, toolSummary, factModel)
-      .then(async (result) => {
+    void (async () => {
+      try {
+        const result = await extractTurnFacts(services.router, outcome.text, toolSummary, factModel);
         if (result.facts.length > 0) {
           try {
             const res = await fetch(`${getSidecarUrl()}/add_batch`, {
@@ -126,17 +211,46 @@ export async function finalize(
               signal: AbortSignal.timeout(10_000),
             });
             if (res.ok) {
-              const data = await res.json() as { added?: number; skipped?: number };
-              if ((data.added ?? 0) > 0) {
-                log.info(`Turn facts: ${data.added} stored, ${data.skipped ?? 0} deduped (${nousId}, ${result.durationMs}ms)`);
-              }
+              const data = await res.json() as { added?: number; skipped?: number; errors?: number };
+              const receipt = {
+                origin: "turn_extraction" as const,
+                agentId: nousId,
+                sessionId,
+                timestamp: new Date().toISOString(),
+                factCount: result.facts.length,
+                added: data.added ?? 0,
+                skipped: data.skipped ?? 0,
+                errors: data.errors ?? 0,
+                durationMs: result.durationMs,
+              };
+              log.info("Memory write receipt", receipt);
             }
-          } catch (err) {
-            log.debug(`Turn fact storage failed: ${err instanceof Error ? err.message : err}`);
+          } catch (error) {
+            log.debug(`Turn fact storage failed: ${error instanceof Error ? error.message : error}`);
           }
         }
-      })
-      .catch((err) => { log.debug(`Turn fact extraction failed: ${err instanceof Error ? err.message : err}`); });
+      } catch (error) {
+        log.debug(`Turn fact extraction failed: ${error instanceof Error ? error.message : error}`);
+      }
+    })();
+  }
+
+  // Reinforce recalled memories that were actually used in the response
+  // Fire-and-forget — never blocks turn completion
+  const { recalledMemoryIds, recalledMemoryTexts } = state;
+  if (
+    recalledMemoryIds &&
+    recalledMemoryIds.length > 0 &&
+    recalledMemoryTexts &&
+    outcome.text.length > 100
+  ) {
+    void reinforceUsedMemories(
+      recalledMemoryIds,
+      recalledMemoryTexts,
+      outcome.text,
+      getSidecarUrl(),
+      nousId,
+    );
   }
 
   // Note: auto-distillation scheduling moved to NousManager (runs after session lock release)

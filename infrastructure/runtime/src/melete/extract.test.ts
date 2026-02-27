@@ -1,6 +1,6 @@
 // Distillation extraction tests
 import { describe, expect, it, vi } from "vitest";
-import { extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
+import { deduplicateFactsViaSidecar, extractFromMessages, extractJson, findBalancedBraces, repairJson } from "./extract.js";
 
 function mockRouter(responseText: string) {
   return {
@@ -209,5 +209,200 @@ describe("noise filtering", () => {
     ], "test-model");
 
     expect(result.facts).toEqual(["This is a normal-length fact that should be kept"]);
+  });
+
+  it("filters session and system artifact patterns", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Session id: abc123-session-started",
+        "The conversation started at session created time",
+        "Project Alpha due October 2026",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual(["Project Alpha due October 2026"]);
+  });
+
+  it("filters meta-commentary about the conversation", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "The user mentioned the API is broken",
+        "The agent indicated the config path is wrong",
+        "The assistant told the user to restart the service",
+        "ALETHEIA_MEMORY_USER must be set in aletheia.env or all extractions default to user_id='default'",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual([
+      "ALETHEIA_MEMORY_USER must be set in aletheia.env or all extractions default to user_id='default'",
+    ]);
+  });
+
+  it("filters tool/function invocation facts", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Called tool grep to search for imports",
+        "Invoked function deployService with args prod",
+        "Executed command npm run build successfully",
+        "Widget torque spec is 185 ft-lbs per service manual",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual(["Widget torque spec is 185 ft-lbs per service manual"]);
+  });
+
+  it("filters acknowledgment phrases", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Sure, I will help with that",
+        "OK, understood the requirements",
+        "Sounds good, proceeding with the plan",
+        "Got it, will do that right away",
+        "Prosoche dedup window set to 8 hours to reduce alert fatigue",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual(["Prosoche dedup window set to 8 hours to reduce alert fatigue"]);
+  });
+
+  it("filters file path operation artifacts", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Reading file config.json to load settings",
+        "Writing path /etc/aletheia to disk",
+        "Opening directory /mnt/ssd/aletheia",
+        "Widget torque spec is 185 ft-lbs per service manual",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual(["Widget torque spec is 185 ft-lbs per service manual"]);
+  });
+
+  it("filters timestamp-only facts with no content", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "On 3:45 we discussed the project",
+        "At 14:00 the meeting occurred",
+        "MBA final project due March 15, needs 3 weeks of work",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    expect(result.facts).toEqual(["MBA final project due March 15, needs 3 weeks of work"]);
+  });
+
+  it("passes legitimate short facts above the minimum length threshold", async () => {
+    const json = JSON.stringify({
+      facts: [
+        "Uses Vim",
+        "Project Alpha due October 2026",
+      ],
+      decisions: [],
+    });
+    const router = mockRouter(json);
+    const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
+
+    // "Uses Vim" is filtered by the Uses pattern AND is under 15 chars
+    // "Project Alpha due October 2026" is 24 chars and doesn't match noise patterns
+    expect(result.facts).toEqual(["Project Alpha due October 2026"]);
+  });
+});
+
+describe("deduplicateFactsViaSidecar", () => {
+  it("returns original for single fact without calling fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await deduplicateFactsViaSidecar(
+      ["Only one fact here — no dedup needed"],
+      "http://localhost:8230",
+    );
+    expect(result).toEqual(["Only one fact here — no dedup needed"]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("returns original for empty array without calling fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await deduplicateFactsViaSidecar([], "http://localhost:8230");
+    expect(result).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("calls sidecar and returns deduplicated facts", async () => {
+    const facts = [
+      "User prefers polymer leather for belts",
+      "User strongly prefers polymer leather for belts",
+      "Project Alpha due October 2026",
+    ];
+    const deduped = [facts[0]!, facts[2]!];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ deduplicated: deduped, removed: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe("http://localhost:8230/dedup/batch");
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      texts: facts,
+      threshold: 0.90,
+    });
+    expect(result).toEqual(deduped);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to original facts on fetch error (fail-open)", async () => {
+    const facts = [
+      "Widget torque spec is 185 ft-lbs per service manual",
+      "Project Alpha due October 2026",
+    ];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new Error("ECONNREFUSED"),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(result).toEqual(facts);
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to original facts when sidecar returns non-200 status", async () => {
+    const facts = [
+      "Widget torque spec is 185 ft-lbs per service manual",
+      "Project Alpha due October 2026",
+    ];
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("Service Unavailable", { status: 503 }),
+    );
+
+    const result = await deduplicateFactsViaSidecar(facts, "http://localhost:8230");
+
+    expect(result).toEqual(facts);
+    fetchSpy.mockRestore();
   });
 });

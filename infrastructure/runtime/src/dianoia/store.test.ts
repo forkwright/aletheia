@@ -65,8 +65,8 @@ describe("getProjectOrThrow", () => {
     expect(() => store.getProjectOrThrow("nonexistent-id")).toThrow(PlanningError);
     try {
       store.getProjectOrThrow("nonexistent-id");
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 
@@ -207,6 +207,162 @@ describe("updatePhasePlan", () => {
   });
 });
 
+describe("updatePhase", () => {
+  it("updates name and goal", () => {
+    const project = store.createProject(defaultProject);
+    const phase = store.createPhase({
+      projectId: project.id,
+      name: "Old Name",
+      goal: "Old Goal",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+
+    const updated = store.updatePhase(phase.id, { name: "New Name", goal: "New Goal" });
+    expect(updated.name).toBe("New Name");
+    expect(updated.goal).toBe("New Goal");
+  });
+
+  it("updates successCriteria and requirements", () => {
+    const project = store.createProject(defaultProject);
+    const phase = store.createPhase({
+      projectId: project.id,
+      name: "Phase",
+      goal: "Goal",
+      requirements: ["REQ-01"],
+      successCriteria: ["old criterion"],
+      phaseOrder: 1,
+    });
+
+    const updated = store.updatePhase(phase.id, {
+      successCriteria: ["new criterion 1", "new criterion 2"],
+      requirements: ["REQ-01", "REQ-02"],
+    });
+    expect(updated.successCriteria).toEqual(["new criterion 1", "new criterion 2"]);
+    expect(updated.requirements).toEqual(["REQ-01", "REQ-02"]);
+  });
+
+  it("returns the updated phase object", () => {
+    const project = store.createProject(defaultProject);
+    const phase = store.createPhase({
+      projectId: project.id,
+      name: "Phase",
+      goal: "Goal",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+
+    const updated = store.updatePhase(phase.id, { name: "Updated" });
+    expect(updated.id).toBe(phase.id);
+    expect(updated.name).toBe("Updated");
+    expect(updated.goal).toBe("Goal"); // unchanged
+  });
+
+  it("throws PLANNING_PHASE_NOT_FOUND for missing id", () => {
+    expect(() => store.updatePhase("nonexistent", { name: "x" })).toThrow(PlanningError);
+  });
+});
+
+describe("deletePhase", () => {
+  it("removes the phase from the database", () => {
+    const project = store.createProject(defaultProject);
+    const phase = store.createPhase({
+      projectId: project.id,
+      name: "Phase to delete",
+      goal: "Goal",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+
+    store.deletePhase(phase.id);
+    expect(store.getPhase(phase.id)).toBeUndefined();
+    expect(store.listPhases(project.id)).toHaveLength(0);
+  });
+
+  it("nullifies phase_id on orphaned requirements", () => {
+    const project = store.createProject(defaultProject);
+    const phase = store.createPhase({
+      projectId: project.id,
+      name: "Phase",
+      goal: "Goal",
+      requirements: [],
+      successCriteria: [],
+      phaseOrder: 1,
+    });
+    const req = store.createRequirement({
+      projectId: project.id,
+      phaseId: phase.id,
+      reqId: "REQ-01",
+      description: "Test",
+      category: "test",
+      tier: "v1",
+    });
+
+    store.deletePhase(phase.id);
+    const updatedReqs = store.listRequirements(project.id);
+    expect(updatedReqs).toHaveLength(1);
+    // phaseId should be null since the phase was deleted
+    const row = db.prepare("SELECT phase_id FROM planning_requirements WHERE id = ?").get(req.id) as Record<string, unknown>;
+    expect(row["phase_id"]).toBeNull();
+  });
+
+  it("throws PLANNING_PHASE_NOT_FOUND for missing id", () => {
+    expect(() => store.deletePhase("nonexistent")).toThrow(PlanningError);
+  });
+});
+
+describe("reorderPhase", () => {
+  it("moves a phase down and shifts others up", () => {
+    const project = store.createProject(defaultProject);
+    const p1 = store.createPhase({ projectId: project.id, name: "A", goal: "A", requirements: [], successCriteria: [], phaseOrder: 0 });
+    store.createPhase({ projectId: project.id, name: "B", goal: "B", requirements: [], successCriteria: [], phaseOrder: 1 });
+    store.createPhase({ projectId: project.id, name: "C", goal: "C", requirements: [], successCriteria: [], phaseOrder: 2 });
+
+    // Move A from 0 to 2
+    store.reorderPhase(project.id, p1.id, 2);
+
+    const phases = store.listPhases(project.id);
+    expect(phases.map(p => p.name)).toEqual(["B", "C", "A"]);
+    expect(phases.map(p => p.phaseOrder)).toEqual([0, 1, 2]);
+  });
+
+  it("moves a phase up and shifts others down", () => {
+    const project = store.createProject(defaultProject);
+    store.createPhase({ projectId: project.id, name: "A", goal: "A", requirements: [], successCriteria: [], phaseOrder: 0 });
+    store.createPhase({ projectId: project.id, name: "B", goal: "B", requirements: [], successCriteria: [], phaseOrder: 1 });
+    const p3 = store.createPhase({ projectId: project.id, name: "C", goal: "C", requirements: [], successCriteria: [], phaseOrder: 2 });
+
+    // Move C from 2 to 0
+    store.reorderPhase(project.id, p3.id, 0);
+
+    const phases = store.listPhases(project.id);
+    expect(phases.map(p => p.name)).toEqual(["C", "A", "B"]);
+    expect(phases.map(p => p.phaseOrder)).toEqual([0, 1, 2]);
+  });
+
+  it("is a no-op when moving to same position", () => {
+    const project = store.createProject(defaultProject);
+    const p1 = store.createPhase({ projectId: project.id, name: "A", goal: "A", requirements: [], successCriteria: [], phaseOrder: 0 });
+    store.createPhase({ projectId: project.id, name: "B", goal: "B", requirements: [], successCriteria: [], phaseOrder: 1 });
+
+    store.reorderPhase(project.id, p1.id, 0);
+
+    const phases = store.listPhases(project.id);
+    expect(phases.map(p => p.name)).toEqual(["A", "B"]);
+  });
+
+  it("throws when phase doesn't belong to project", () => {
+    const proj1 = store.createProject(defaultProject);
+    const proj2 = store.createProject({ ...defaultProject, goal: "Other" });
+    const phase = store.createPhase({ projectId: proj1.id, name: "A", goal: "A", requirements: [], successCriteria: [], phaseOrder: 0 });
+
+    expect(() => store.reorderPhase(proj2.id, phase.id, 0)).toThrow(PlanningError);
+  });
+});
+
 describe("createCheckpoint / resolveCheckpoint", () => {
   it("stores and resolves a checkpoint decision", () => {
     const project = store.createProject(defaultProject);
@@ -289,8 +445,8 @@ describe("corrupt JSON handling", () => {
     expect(() => store.getProjectOrThrow(project.id)).toThrow(PlanningError);
     try {
       store.getProjectOrThrow(project.id);
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_STATE_CORRUPT");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_STATE_CORRUPT");
     }
   });
 });
@@ -333,8 +489,8 @@ describe("updateProjectGoal", () => {
     expect(() => store.updateProjectGoal("nonexistent", "goal")).toThrow(PlanningError);
     try {
       store.updateProjectGoal("nonexistent", "goal");
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 });
@@ -370,8 +526,8 @@ describe("updateProjectContext", () => {
     expect(() => store.updateProjectContext("nonexistent", { goal: "x" })).toThrow(PlanningError);
     try {
       store.updateProjectContext("nonexistent", { goal: "x" });
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_PROJECT_NOT_FOUND");
     }
   });
 });
@@ -427,7 +583,7 @@ describe("createRequirement rationale handling", () => {
   });
 });
 
-describe("updateRequirement", () => {
+describe("updateRequirement (expanded)", () => {
   it("updates tier from v1 to v2", () => {
     const project = store.createProject(defaultProject);
     const req = store.createRequirement({
@@ -438,10 +594,8 @@ describe("updateRequirement", () => {
       tier: "v1",
     });
 
-    store.updateRequirement(req.id, { tier: "v2" });
-
-    const requirements = store.listRequirements(project.id);
-    expect(requirements[0]?.tier).toBe("v2");
+    const updated = store.updateRequirement(req.id, { tier: "v2" });
+    expect(updated.tier).toBe("v2");
   });
 
   it("updates rationale for an out-of-scope requirement", () => {
@@ -454,35 +608,167 @@ describe("updateRequirement", () => {
       tier: "out-of-scope",
     });
 
-    store.updateRequirement(req.id, { rationale: "Web-first for now; mobile in v3" });
-
-    const requirements = store.listRequirements(project.id);
-    expect(requirements[0]?.rationale).toBe("Web-first for now; mobile in v3");
+    const updated = store.updateRequirement(req.id, { rationale: "Web-first for now; mobile in v3" });
+    expect(updated.rationale).toBe("Web-first for now; mobile in v3");
   });
 
-  it("updates both tier and rationale in one call", () => {
+  it("updates description", () => {
     const project = store.createProject(defaultProject);
     const req = store.createRequirement({
       projectId: project.id,
-      reqId: "REQ-22",
-      description: "Offline mode",
-      category: "platform",
+      reqId: "REQ-30",
+      description: "Old description",
+      category: "core",
       tier: "v1",
     });
 
-    store.updateRequirement(req.id, { tier: "out-of-scope", rationale: "Too complex for v1 scope" });
+    const updated = store.updateRequirement(req.id, { description: "New description" });
+    expect(updated.description).toBe("New description");
+  });
 
-    const requirements = store.listRequirements(project.id);
-    expect(requirements[0]?.tier).toBe("out-of-scope");
-    expect(requirements[0]?.rationale).toBe("Too complex for v1 scope");
+  it("updates category and reqId", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "OLD-01",
+      description: "Test",
+      category: "OLD",
+      tier: "v1",
+    });
+
+    const updated = store.updateRequirement(req.id, { category: "NEW", reqId: "NEW-01" });
+    expect(updated.category).toBe("NEW");
+    expect(updated.reqId).toBe("NEW-01");
+  });
+
+  it("updates status", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-31",
+      description: "Test",
+      category: "core",
+      tier: "v1",
+    });
+
+    const updated = store.updateRequirement(req.id, { status: "validated" });
+    expect(updated.status).toBe("validated");
+  });
+
+  it("returns the updated requirement object", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-32",
+      description: "Test",
+      category: "core",
+      tier: "v1",
+    });
+
+    const updated = store.updateRequirement(req.id, { tier: "v2", description: "Updated" });
+    expect(updated.id).toBe(req.id);
+    expect(updated.tier).toBe("v2");
+    expect(updated.description).toBe("Updated");
+    expect(updated.reqId).toBe("REQ-32"); // unchanged
   });
 
   it("throws PLANNING_REQUIREMENT_NOT_FOUND for an unknown id", () => {
     expect(() => store.updateRequirement("nonexistent-req-id", { tier: "v2" })).toThrow(PlanningError);
     try {
       store.updateRequirement("nonexistent-req-id", { tier: "v2" });
-    } catch (e) {
-      expect((e as PlanningError).code).toBe("PLANNING_REQUIREMENT_NOT_FOUND");
+    } catch (error) {
+      expect((error as PlanningError).code).toBe("PLANNING_REQUIREMENT_NOT_FOUND");
     }
+  });
+});
+
+describe("getRequirement / getRequirementByReqId", () => {
+  it("finds by internal id", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-40",
+      description: "Test",
+      category: "core",
+      tier: "v1",
+    });
+
+    const found = store.getRequirement(req.id);
+    expect(found).toBeDefined();
+    expect(found!.reqId).toBe("REQ-40");
+  });
+
+  it("finds by reqId within project", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-41",
+      description: "Test",
+      category: "core",
+      tier: "v1",
+    });
+
+    const found = store.getRequirementByReqId(project.id, "REQ-41");
+    expect(found).toBeDefined();
+    expect(found!.description).toBe("Test");
+  });
+
+  it("returns undefined for nonexistent reqId", () => {
+    const project = store.createProject(defaultProject);
+    const found = store.getRequirementByReqId(project.id, "NOPE-99");
+    expect(found).toBeUndefined();
+  });
+});
+
+describe("deleteRequirement", () => {
+  it("removes the requirement from the database", () => {
+    const project = store.createProject(defaultProject);
+    const req = store.createRequirement({
+      projectId: project.id,
+      reqId: "REQ-50",
+      description: "To be deleted",
+      category: "core",
+      tier: "v1",
+    });
+
+    store.deleteRequirement(req.id);
+    expect(store.getRequirement(req.id)).toBeUndefined();
+    expect(store.listRequirements(project.id)).toHaveLength(0);
+  });
+
+  it("throws PLANNING_REQUIREMENT_NOT_FOUND for missing id", () => {
+    expect(() => store.deleteRequirement("nonexistent")).toThrow(PlanningError);
+  });
+});
+
+describe("nextReqId", () => {
+  it("generates sequential IDs starting from 01", () => {
+    const project = store.createProject(defaultProject);
+    expect(store.nextReqId(project.id, "EDIT")).toBe("EDIT-01");
+  });
+
+  it("increments past existing IDs", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({ projectId: project.id, reqId: "EDIT-01", description: "a", category: "EDIT", tier: "v1" });
+    store.createRequirement({ projectId: project.id, reqId: "EDIT-02", description: "b", category: "EDIT", tier: "v1" });
+    store.createRequirement({ projectId: project.id, reqId: "EDIT-05", description: "c", category: "EDIT", tier: "v1" });
+
+    expect(store.nextReqId(project.id, "EDIT")).toBe("EDIT-06");
+  });
+
+  it("is case-insensitive on category input", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({ projectId: project.id, reqId: "TASK-03", description: "a", category: "TASK", tier: "v1" });
+
+    expect(store.nextReqId(project.id, "task")).toBe("TASK-04");
+  });
+
+  it("handles separate categories independently", () => {
+    const project = store.createProject(defaultProject);
+    store.createRequirement({ projectId: project.id, reqId: "LAY-03", description: "a", category: "LAY", tier: "v1" });
+    store.createRequirement({ projectId: project.id, reqId: "EDIT-01", description: "b", category: "EDIT", tier: "v1" });
+
+    expect(store.nextReqId(project.id, "LAY")).toBe("LAY-04");
+    expect(store.nextReqId(project.id, "EDIT")).toBe("EDIT-02");
   });
 });

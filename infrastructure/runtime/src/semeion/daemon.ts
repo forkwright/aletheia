@@ -37,7 +37,7 @@ export function spawnDaemon(opts: DaemonOpts): DaemonHandle {
     pid: 0,
     baseUrl,
     healthy: false,
-    stop: () => {},
+    stop: () => { /* replaced once the process starts */ },
   };
 
   let stopped = false;

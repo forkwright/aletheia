@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   PIPELINE_MAX_LOOPS: "Turn exceeded maximum tool loop count",
   PIPELINE_WALL_CLOCK: "Turn exceeded wall-clock time limit",
   PIPELINE_STREAM_INCOMPLETE: "Streaming pipeline ended without message_complete",
+  PIPELINE_RECALL_FAILED: "Memory recall HTTP request failed",
   TOOL_EXECUTION_FAILED: "Tool call returned an error",
   TOOL_NOT_FOUND: "Agent requested a tool that is not registered",
   EPHEMERAL_LIMIT: "Maximum concurrent ephemeral agents reached",
@@ -43,6 +44,7 @@ export const ERROR_CODES = {
   BROWSER_LAUNCH_FAILED: "Could not launch browser instance",
   BROWSER_MAX_PAGES: "Maximum concurrent browser pages reached",
   PATH_OUTSIDE_WORKSPACE: "Path is outside the agent workspace",
+  TOOL_SSRF_BLOCKED: "SSRF protection blocked the requested URL",
 
   // semeion (Signal)
   SIGNAL_DAEMON_DOWN: "Signal CLI daemon is not running",
@@ -51,10 +53,22 @@ export const ERROR_CODES = {
   SIGNAL_SSE_FAILED: "SSE connection to Signal daemon failed",
   SIGNAL_RPC_ERROR: "Signal RPC call returned an error",
 
+  // semeion (TTS)
+  TRANSPORT_TTS_NO_ENGINE: "No TTS engine available — set OPENAI_API_KEY or install Piper",
+  TRANSPORT_TTS_HTTP_ERROR: "OpenAI TTS HTTP request failed",
+  TRANSPORT_TTS_BINARY_NOT_FOUND: "Piper binary not found at configured path",
+  TRANSPORT_TTS_MODEL_NOT_FOUND: "Piper model not found at configured path",
+
   // taxis (config)
   CONFIG_NOT_FOUND: "Configuration file not found at expected path",
   CONFIG_VALIDATION_FAILED: "Configuration failed schema validation",
   CONFIG_MISSING_REQUIRED: "Required configuration field is missing",
+
+  // taxis (scaffold)
+  CONFIG_SCAFFOLD_INVALID_ID: "Agent scaffold failed — invalid agent ID",
+  CONFIG_SCAFFOLD_EXISTS: "Agent workspace already exists at target path",
+  CONFIG_SCAFFOLD_NO_CONFIG: "Cannot read config file for scaffold operation",
+  CONFIG_SCAFFOLD_DUPLICATE_ID: "Agent ID already exists in configuration",
 
   // distillation
   DISTILL_EXTRACTION_FAILED: "Fact extraction returned no results",
@@ -85,8 +99,15 @@ export const ERROR_CODES = {
   PATCH_TEST_FAILED: "Test suite failed after patch",
   PATCH_NOT_FOUND: "Patch ID not found in history",
 
+  // koina (encryption)
+  ENCRYPTION_NOT_INITIALIZED: "Encryption not initialized — call initEncryption first",
+  ENCRYPTION_VERSION_UNSUPPORTED: "Unsupported encryption version",
+
   // koina (PII)
   PII_SCAN_FAILED: "PII scan threw unexpectedly",
+
+  // portability
+  PORTABILITY_IMPORT_FAILED: "Agent file version not supported for import",
 
   // dianoia (planning)
   PLANNING_PROJECT_NOT_FOUND: "Planning project ID does not exist",
@@ -99,6 +120,24 @@ export const ERROR_CODES = {
   PLANNING_DISCUSSION_NOT_FOUND: "Discussion question ID does not exist",
   PLANNING_DUPLICATE_REQUIREMENT_ID: "Requirement ID already exists for this project",
   PLANNING_TABLE_STAKES_OUT_OF_SCOPE: "Table-stakes feature cannot be out-of-scope without rationale",
+  PLANNING_PLAN_NOT_FOUND: "Plan ID not found in execution snapshot",
+  PLANNING_PLAN_ID_REQUIRED: "planId is required for this operation",
+  PLANNING_PHASE_ID_REQUIRED: "phaseId is required for this operation",
+  PLANNING_OVERRIDE_NOTE_REQUIRED: "overrideNote is required for verification override",
+  PLANNING_CHECKPOINT_ID_REQUIRED: "checkpointId is required for this operation",
+  PLANNING_WORKSPACE_NOT_SET: "Workspace root not configured — call setWorkspaceRoot() first",
+  PLANNING_FILE_WRITE_FAILED: "File integrity check failed after write operation",
+  PLANNING_RESEARCH_ALL_FAILED: "All research dimensions failed — cannot proceed without domain research",
+  PLANNING_DISPATCH_FAILED: "Plan dispatch failed after retry",
+  PLANNING_DISPATCH_PARSE_FAILED: "Failed to parse dispatch response",
+
+  // Task system
+  TASK_NOT_FOUND: "Task ID does not exist",
+  TASK_PARENT_NOT_FOUND: "Parent task ID does not exist",
+  TASK_DEP_NOT_FOUND: "Dependency task ID does not exist",
+  TASK_MAX_DEPTH: "Maximum task hierarchy depth exceeded",
+  TASK_CYCLE: "Dependency cycle detected",
+  PLANNING_VERIFICATION_PARSE_FAILED: "Cannot extract verification check result from response",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

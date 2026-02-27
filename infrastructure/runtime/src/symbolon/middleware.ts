@@ -172,7 +172,7 @@ export function createAuthRoutes(
       sessionAuth: authConfig.mode === "session",
     }),
 
-    login: async (
+    login: (
       username: string,
       password: string,
       ip?: string,
@@ -185,13 +185,13 @@ export function createAuthRoutes(
       role: string;
     } | null> => {
       if (authConfig.mode !== "session" || !authConfig.session || !sessionStore) {
-        return null;
+        return Promise.resolve(null);
       }
 
       const user = authConfig.users?.find((u) => u.username === username);
-      if (!user) return null;
+      if (!user) return Promise.resolve(null);
 
-      if (!verifyPassword(password, user.passwordHash)) return null;
+      if (!verifyPassword(password, user.passwordHash)) return Promise.resolve(null);
 
       const { sessionId, refreshToken } = sessionStore.create({
         username: user.username,
@@ -215,16 +215,16 @@ export function createAuthRoutes(
         authConfig.session.secret,
       );
 
-      return {
+      return Promise.resolve({
         accessToken,
         refreshToken,
         expiresIn: authConfig.session.accessTokenTtl,
         username: user.username,
         role: user.role,
-      };
+      });
     },
 
-    refresh: async (
+    refresh: (
       refreshToken: string,
     ): Promise<{
       accessToken: string;
@@ -232,17 +232,17 @@ export function createAuthRoutes(
       expiresIn: number;
     } | null> => {
       if (authConfig.mode !== "session" || !authConfig.session || !sessionStore) {
-        return null;
+        return Promise.resolve(null);
       }
 
       const session = sessionStore.validateRefresh(refreshToken);
-      if (!session) return null;
+      if (!session) return Promise.resolve(null);
 
       const rotated = sessionStore.rotate(
         refreshToken,
         authConfig.session.refreshTokenTtl,
       );
-      if (!rotated) return null;
+      if (!rotated) return Promise.resolve(null);
 
       const accessToken = signToken(
         {
@@ -257,11 +257,11 @@ export function createAuthRoutes(
         authConfig.session.secret,
       );
 
-      return {
+      return Promise.resolve({
         accessToken,
         refreshToken: rotated.refreshToken,
         expiresIn: authConfig.session.accessTokenTtl,
-      };
+      });
     },
 
     logout: (sessionId: string): boolean => {

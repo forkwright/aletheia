@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Any, cast
 
 from .llm_backend import detect_backend
 
@@ -57,10 +58,9 @@ GRAPH_EXTRACTION_PROMPT = (
     "CREATED, MAINTAINS, DEPENDS_ON, LOCATED_IN, PART_OF, "
     "SCHEDULED_FOR, DIAGNOSED_WITH, PRESCRIBED, TREATS, "
     "VEHICLE_IS, INSTALLED_ON, COMPATIBLE_WITH, CONNECTED_TO, "
-    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES, "
-    "RELATES_TO. "
+    "COMMUNICATES_VIA, CONFIGURED_WITH, RUNS_ON, SERVES. "
     "Do NOT invent new relationship types outside this list. "
-    "Use RELATES_TO as fallback when no specific type fits."
+    "If no type from this list specifically describes the relationship, skip it entirely."
 )
 
 # Detect LLM backend at import time
@@ -68,7 +68,7 @@ _backend = detect_backend()
 LLM_BACKEND = _backend
 
 
-def build_mem0_config(backend: dict = None) -> dict:
+def build_mem0_config(backend: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build Mem0 config using detected backend."""
     if backend is None:
         backend = _backend
@@ -124,7 +124,7 @@ def build_mem0_config(backend: dict = None) -> dict:
     elif backend["provider"] == "anthropic-oauth":
         # OAuth mode: Mem0 needs an LLM config to init, but we'll replace
         # the LLM instance after creation. Use a placeholder.
-        config["llm"] = {
+        config["llm"] = cast("Any", {
             "provider": "anthropic",
             "config": {
                 "model": backend.get("model", "claude-haiku-4-5-20251001"),
@@ -132,7 +132,7 @@ def build_mem0_config(backend: dict = None) -> dict:
                 "temperature": 0.1,
                 "max_tokens": 2000,
             },
-        }
+        })
 
     return config
 

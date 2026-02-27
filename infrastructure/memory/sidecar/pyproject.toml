@@ -8,7 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "mem0ai[graph]>=0.1.0",
     "qdrant-client>=1.12.0",
-    "neo4j>=5.0.0",
+    "neo4j>=6.1.0",
+    "neo4j-graphrag[anthropic]>=1.13.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "networkx>=3.2.0",
@@ -17,6 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pyright>=1.1.408",
+    "pytest>=8.0.0",
     "ruff>=0.15.2",
 ]
 
@@ -52,3 +54,8 @@ pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportMissingImports = true
 reportMissingTypeStubs = false
+reportUnknownVariableType = "none"   # vendor lib gap — mem0/qdrant-client lack PEP 561 stubs
+reportUnknownMemberType = "none"     # vendor lib gap
+reportUnknownArgumentType = "none"   # vendor lib gap
+reportUnknownLambdaType = "none"     # vendor lib gap
+reportUnknownParameterType = "none"  # vendor lib gap

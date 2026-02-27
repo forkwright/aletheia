@@ -3,21 +3,30 @@
   import RequirementsTable from "./RequirementsTable.svelte";
   import RoadmapView from "./RoadmapView.svelte";
   import ExecutionStatus from "./ExecutionStatus.svelte";
+  import SpawnStatus from "./SpawnStatus.svelte";
+  import MessageQueue from "./MessageQueue.svelte";
   import DiscussionPanel from "./DiscussionPanel.svelte";
   import VerificationPanel from "./VerificationPanel.svelte";
   import CheckpointApproval from "./CheckpointApproval.svelte";
   import RetrospectiveView from "./RetrospectiveView.svelte";
   import TimelineView from "./TimelineView.svelte";
+  import TaskList from "./TaskList.svelte";
+  import EditHistory from "./EditHistory.svelte";
+  import ContextBudget from "./ContextBudget.svelte";
   import ErrorBanner from "../shared/ErrorBanner.svelte";
   import Spinner from "../shared/Spinner.svelte";
   import { getActiveAgentId } from "../../stores/agents.svelte";
   import { onGlobalEvent } from "../../lib/events.svelte";
   import { authFetch } from "./api";
 
+  type PlanningLayout = "panel" | "half" | "full";
+
   // Props from parent component (ChatView)
-  let { projectId: explicitProjectId, onClose }: {
+  let { projectId: explicitProjectId, onClose, layout = "panel", onLayoutChange }: {
     projectId?: string;
     onClose?: () => void;
+    layout?: PlanningLayout;
+    onLayoutChange?: () => void;
   } = $props();
 
   interface Project {
@@ -31,7 +40,7 @@
       description: string;
       scope?: string;
     };
-    projectContext?: any;
+    projectContext?: unknown;
     contextHash?: string;
     createdAt: string;
     updatedAt: string;
@@ -165,7 +174,7 @@
         name: req.reqId || `Requirement ${index + 1}`,
         description: req.description || "",
         tier: (req.tier as "v1" | "v2" | "out-of-scope") || "v1",
-        rationale: req.rationale,
+        ...(req.rationale !== undefined && { rationale: req.rationale }),
         category: req.category || "General",
       }));
     } catch {
@@ -233,7 +242,7 @@
       <span>Loading project...</span>
     </div>
   {:else if error}
-    <ErrorBanner message={error} onClose={() => error = null} />
+    <ErrorBanner message={error} onDismiss={() => { error = null; }} />
   {:else if !project}
     <div class="empty-state">
       <div class="empty-icon">📋</div>
@@ -243,12 +252,14 @@
   {:else}
     <div class="dashboard-content">
       <!-- Project Header -->
-      <ProjectHeader 
+      <ProjectHeader
         {project}
         stateLabel={stateLabel(project.state)}
         stateColor={stateColor(project.state)}
         onRefresh={loadProject}
-        onClose={onClose}
+        {layout}
+        {...(onLayoutChange !== undefined && { onLayoutChange })}
+        {...(onClose !== undefined && { onClose })}
       />
 
       <!-- Main Dashboard Grid -->
@@ -256,14 +267,14 @@
         <!-- Requirements Section -->
         {#if requirements.length > 0}
           <div class="dashboard-section">
-            <RequirementsTable {requirements} />
+            <RequirementsTable {requirements} projectId={project.id} />
           </div>
         {/if}
 
         <!-- Roadmap Section -->
         {#if phases.length > 0}
           <div class="dashboard-section">
-            <RoadmapView {phases} currentState={project.state} />
+            <RoadmapView {phases} currentState={project.state} projectId={project.id} />
           </div>
         {/if}
 
@@ -274,10 +285,29 @@
           </div>
         {/if}
 
+        <!-- Task List -->
+        <div class="dashboard-section full-width">
+          <TaskList projectId={project.id} />
+        </div>
+
         <!-- Execution Status -->
         {#if executionPlans.length > 0}
           <div class="dashboard-section">
             <ExecutionStatus plans={executionPlans} projectState={project.state} />
+          </div>
+        {/if}
+
+        <!-- Sub-Agent Status (INTERJ-04 / OBS-02) -->
+        {#if ["executing", "verifying"].includes(project.state)}
+          <div class="dashboard-section">
+            <SpawnStatus projectId={project.id} />
+          </div>
+        {/if}
+
+        <!-- Message Injection (INTERJ-01 / INTERJ-02) -->
+        {#if ["executing", "verifying"].includes(project.state)}
+          <div class="dashboard-section">
+            <MessageQueue projectId={project.id} />
           </div>
         {/if}
 
@@ -306,6 +336,20 @@
               <DiscussionPanel projectId={project.id} phaseId={activePhase.id} />
             </div>
           {/if}
+        {/if}
+
+        <!-- Context Budget (OBS-04) — visible during execution -->
+        {#if ["executing", "verifying", "phase-planning"].includes(project.state)}
+          <div class="dashboard-section">
+            <ContextBudget projectId={project.id} />
+          </div>
+        {/if}
+
+        <!-- Edit History (SYNC-06) — always visible when project has content -->
+        {#if requirements.length > 0 || phases.length > 0}
+          <div class="dashboard-section full-width">
+            <EditHistory projectId={project.id} />
+          </div>
         {/if}
 
         <!-- Retrospective (visible when project is complete or abandoned) -->

@@ -1,0 +1,55 @@
+{
+  "id": "syn-session-03",
+  "agent": "syn",
+  "source": "workspace-memory",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Something is eating the server's RAM. Need a full incident report on what happened this morning."
+    },
+    {
+      "role": "assistant",
+      "content": "Full incident report:\n\nAt 09:52:36 CST, last successful Signal message delivery. At 10:02:09, the server hit memory exhaustion and was forced into a hard reboot. At 10:04:13, signal-cli failed to reconnect post-reboot — 'Closed unexpectedly'. Signal recovered at approximately 10:35.\n\nRoot cause: 50+ orphaned mcp-todoist processes consumed 6.2GB RAM plus 2GB swap. That sent the server into thrash and forced the reboot. mcporter spawns a new process per MCP call and doesn't clean them up. The npx invocation made it worse — extra overhead per spawn on top of the process leak. This is architectural in mcporter.\n\nFixes I applied this session:\n\nOne: changed mcp-todoist config from npx to direct binary at /usr/bin/mcp-todoist — eliminates the npx overhead per call.\n\nTwo: created /mnt/ssd/aletheia/shared/bin/mcp-watchdog, cron'd every 5 minutes. Kills orphaned mcp-todoist processes when count exceeds 3. Kills stale npx MCP processes older than 5 minutes. Logs to /var/log/mcp-watchdog.log.\n\nThree: memory limits are already in place in the systemd service — MemoryMax=4G and MemorySwapMax=1G. Those held but weren't enough to prevent the OOM condition before the watchdog could act.\n\nFour: gluetun VPN was unhealthy after the reboot — DNS resolution was failing. Restarted, now healthy.\n\nFive: set the Signal profile name to 'Syn' via daemon JSON-RPC to silence the warnings.\n\nOne item pending that requires your action: the forkwright cron job runs health_check_remount.sh every 30 minutes with sudo mount but cron can't prompt for a password. Command to fix it is ready — do you want me to read it to you?"
+    },
+    {
+      "role": "user",
+      "content": "Yes, give me the sudo command."
+    },
+    {
+      "role": "assistant",
+      "content": "Run: echo 'forkwright ALL=(ALL) NOPASSWD: /usr/bin/mount' | sudo tee /etc/sudoers.d/forkwright-mount && sudo chmod 440 /etc/sudoers.d/forkwright-mount\n\nThat grants passwordless sudo for mount only, scoped to a dedicated sudoers fragment. The cron job will stop failing after that.\n\nOne other observation: qbittorrent is consuming 7-8GB of RAM — about 52% of the system. That may be normal for a large library but it contributed to the memory pressure. Worth monitoring over the next few days.\n\nKey lesson from today: when signal-cli fails post-reboot with TLS errors to chat.signal.org, check if HTTPS to Google, AWS, Anthropic, and Cloudflare are working. Signal uses certificate pinning — GraalVM native-image has different TLS behavior than system OpenSSL. If general HTTPS works, the Signal failure is likely transient. Wait 15-30 minutes before escalating."
+    }
+  ],
+  "expected": {
+    "facts": [
+      "At 09:52:36 CST on Feb 3, last successful Signal message delivery before the incident",
+      "At 10:02:09, the server hit memory exhaustion and hard-rebooted",
+      "50+ orphaned mcp-todoist processes consumed 6.2GB RAM plus 2GB swap causing the crash",
+      "signal-cli failed to reconnect post-reboot and recovered at approximately 10:35",
+      "mcporter spawns a new process per MCP call and does not clean them up",
+      "The mcp-watchdog script runs every 5 minutes and kills orphaned mcp-todoist processes when count exceeds 3",
+      "The watchdog logs to /var/log/mcp-watchdog.log",
+      "The systemd service has MemoryMax=4G and MemorySwapMax=1G limits",
+      "gluetun VPN DNS resolution was failing post-reboot and was restarted",
+      "qbittorrent is consuming 7-8GB RAM which is approximately 52% of system memory",
+      "Signal uses certificate pinning and GraalVM native-image has different TLS behavior than system OpenSSL",
+      "Post-reboot signal-cli TLS failures are often transient and resolve in 15-30 minutes"
+    ],
+    "decisions": [
+      "Change mcp-todoist config from npx invocation to direct binary at /usr/bin/mcp-todoist"
+    ],
+    "contradictions": [],
+    "entities": [
+      "mcp-watchdog",
+      "mcp-todoist",
+      "gluetun",
+      "signal-cli",
+      "mcporter"
+    ]
+  },
+  "metadata": {
+    "date": "2026-02-03",
+    "domain": "infrastructure",
+    "notes": "Sourced from syn/memory/2026-02-03.md — Signal connectivity failure incident and mcp-todoist memory leak"
+  }
+}
