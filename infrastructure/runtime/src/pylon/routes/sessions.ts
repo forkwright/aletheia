@@ -218,6 +218,8 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       return new Response(topicStream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" } });
     }
 
+    const deliveryQueue = deps.deliveryQueue;
+
     const stream = new ReadableStream({
       async start(controller) {
         const heartbeat = setInterval(() => {
@@ -225,6 +227,11 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
             controller.enqueue(encoder.encode(":heartbeat\n\n"));
           } catch { /* stream already closed */ }
         }, 30_000);
+
+        let clientDisconnected = false;
+        let lastTurnComplete: Record<string, unknown> | undefined;
+        let lastTurnId: string | undefined;
+        let lastSessionId: string | undefined;
 
         await withTurnAsync(
           { channel: "webchat", nousId: agentId, sessionKey: resolvedSessionKey },
@@ -239,10 +246,21 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
                 ...(webchatLockKey ? { lockKey: webchatLockKey } : {}),
                 ...(validMedia.length > 0 ? { media: validMedia } : {}),
               })) {
+                // Track turn metadata for delivery queue
+                if (event.type === "turn_start") {
+                  lastSessionId = event.sessionId;
+                  lastTurnId = event.turnId;
+                }
+                if (event.type === "turn_complete") {
+                  lastTurnComplete = event as unknown as Record<string, unknown>;
+                }
+
                 try {
                   const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
                   controller.enqueue(encoder.encode(payload));
                 } catch {
+                  // Client disconnected — mark and continue processing so the turn completes
+                  clientDisconnected = true;
                   break;
                 }
               }
@@ -252,10 +270,21 @@ export function sessionRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
               try {
                 const payload = `event: error\ndata: ${JSON.stringify({ type: "error", message: "Internal error" })}\n\n`;
                 controller.enqueue(encoder.encode(payload));
-              } catch { /* client already disconnected */ }
+              } catch { /* client already disconnected */
+                clientDisconnected = true;
+              }
             } finally {
+              // If client disconnected before turn_complete was delivered, queue it
+              if (clientDisconnected && lastTurnComplete && deliveryQueue && lastSessionId) {
+                deliveryQueue.enqueue({
+                  sessionId: lastSessionId,
+                  nousId: agentId,
+                  turnId: lastTurnId ?? `unknown:${Date.now()}`,
+                  payload: lastTurnComplete,
+                });
+              }
               clearInterval(heartbeat);
-              controller.close();
+              try { controller.close(); } catch { /* already closed */ }
             }
           },
         );

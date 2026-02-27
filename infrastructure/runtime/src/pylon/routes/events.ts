@@ -10,11 +10,41 @@ export function eventRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   app.get("/api/events", (c) => {
     const encoder = new TextEncoder();
     let closed = false;
+    const deliveryQueue = deps.deliveryQueue;
 
     const stream = new ReadableStream({
       start(controller) {
         const activeTurns = manager.getActiveTurnDetails();
-        controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify({ activeTurns })}\n\n`));
+        const pendingCount = deliveryQueue?.size ?? 0;
+        controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify({ activeTurns, pendingDeliveries: pendingCount })}\n\n`));
+
+        // Flush any pending deliveries from disconnected sessions
+        if (deliveryQueue) {
+          // Check all agents for pending deliveries
+          const nousIds = new Set(activeTurns.map(t => t.nousId));
+          // Also check configured agents
+          for (const agent of deps.config.agents.list) {
+            nousIds.add(agent.id);
+          }
+          for (const nousId of nousIds) {
+            const pending = deliveryQueue.flushByNous(nousId);
+            for (const delivery of pending) {
+              try {
+                controller.enqueue(encoder.encode(
+                  `event: missed_delivery\ndata: ${JSON.stringify({
+                    type: "missed_delivery",
+                    sessionId: delivery.sessionId,
+                    nousId: delivery.nousId,
+                    turnId: delivery.turnId,
+                    payload: delivery.payload,
+                    queuedAt: delivery.createdAt,
+                    attempts: delivery.attempts,
+                  })}\n\n`,
+                ));
+              } catch { closed = true; }
+            }
+          }
+        }
 
         const forward = (eventName: string) => (data: unknown) => {
           if (closed) return;
