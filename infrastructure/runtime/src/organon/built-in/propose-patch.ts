@@ -1,5 +1,5 @@
 // Runtime code patching — agents propose changes to their own source, gated by tsc + vitest
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
@@ -221,9 +221,9 @@ export function createPatchTools(): ToolHandler[] {
 
       // Run colocated tests if they exist
       const testFile = `src/${filePath.replace(".ts", ".test.ts")}`;
-      const absTestFile = join(runtimeDir, testFile);
       let testResult = { ok: true, output: "no colocated tests" };
-      if (existsSync(absTestFile)) {
+      try {
+        statSync(join(runtimeDir, testFile));
         testResult = runTests(runtimeDir, testFile);
         if (!testResult.ok) {
           writeFileSync(absPath, originalContent, "utf-8");
@@ -238,6 +238,9 @@ export function createPatchTools(): ToolHandler[] {
           log.warn(`Patch ${patchId} rejected: tests failed`);
           return Promise.resolve(JSON.stringify({ error: "Tests failed after patch", output: testResult.output }));
         }
+      } catch (e) {
+        if (!(e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "ENOENT")) throw e;
+        // No colocated test file — continue
       }
 
       // Rebuild

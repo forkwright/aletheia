@@ -179,14 +179,15 @@ function scanWorkspace(
 
       const relPath = relative(workspacePath, fullPath);
 
-      if (stat.size > MAX_FILE_SIZE) {
-        binaryFiles.push(relPath);
-        continue;
-      }
-
-      if (isTextFile(entry)) {
+      if (isTextFile(entry) && stat.size <= MAX_FILE_SIZE) {
         try {
-          files[relPath] = readFileSync(fullPath, "utf-8");
+          const data = readFileSync(fullPath, "utf-8");
+          // Re-check size of actual content to avoid TOCTOU
+          if (Buffer.byteLength(data) <= MAX_FILE_SIZE) {
+            files[relPath] = data;
+          } else {
+            binaryFiles.push(relPath);
+          }
         } catch { /* session export failed — skip */
           binaryFiles.push(relPath);
         }
