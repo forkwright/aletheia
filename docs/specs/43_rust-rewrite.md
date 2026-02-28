@@ -2,7 +2,7 @@
 
 **Status:** Planned
 **Supersedes:** N/A
-**Related:** #349 (research), #332 (OS integration), #338 (coding tool quality), #339–346 (bugs closed by completion)
+**Related:** #349 (research), #332 (OS integration), #338 (coding tool quality), #339–346 (bugs closed by completion), Spec 44 (Oikos — instance structure)
 
 ---
 
@@ -88,7 +88,7 @@ aletheia binary
 │   ├── embed     — fastembed-rs (local ONNX)
 │   └── recall    — retrieval + scoring pipeline
 ├── daemon        — per-nous background tasks (see below)
-├── taxis         — config, path resolution, secret refs, nous scaffold
+├── taxis         — config, path resolution, oikos hierarchy, secret refs, nous scaffold
 ├── koina         — errors, tracing, safe wrappers, fs utils
 ├── prostheke     — WASM plugin host (wasmtime)
 └── autarkeia     — agent export/import
@@ -243,11 +243,33 @@ Routing: each nous config declares which channel IDs are its portals; agora regi
 
 ---
 
+## Instance Structure (Oikos)
+
+**Full design: Spec 44.** Summary of what matters for the rewrite:
+
+All deployment-specific state lives under a single `instance/` directory (gitignored). Three-tier hierarchy with cascading resolution:
+
+| Tier | Directory | Scope | Examples |
+|------|-----------|-------|----------|
+| 0 | `instance/theke/` | Human + all nous | USER.md, AGENTS.md, shared research, deliberations |
+| 1 | `instance/shared/` | All nous | Default config, shared tools, skills, hooks |
+| 2 | `instance/nous/{id}/` | Individual nous | SOUL.md, MNEME.md, memory/, nous-specific tools |
+
+Plus: `instance/config/` (deployment), `instance/data/` (SQLite, Qdrant), `instance/signal/`, `instance/logs/`.
+
+**taxis::oikos** is the sole authority for all instance paths. Every crate that needs state goes through it. One env var (`ALETHEIA_INSTANCE`) relocates everything. Resolution walks nous → shared → theke (most specific first).
+
+Tools, context, config, hooks, and templates all resolve through the same cascade. Dropping a YAML file in the right tier directory is sufficient to add a capability — no code changes, no manifest updates.
+
+The scaffold template (`instance.example/`, tracked) defines the structure. `aletheia init` generates a live instance from it.
+
+---
+
 ## What Does Not Change
 
 - **Gnomon naming:** koina, taxis, mneme, hermeneus, organon, nous, semeion, pylon, prostheke, dianoia, daemon, symbolon, agora, autarkeia. Names are the design.
-- **Agent workspace files:** SOUL.md, TELOS.md, MNEME.md, IDENTITY.md, AGENTS.md, TOOLS.md, CONTEXT.md, PROSOCHE.md, EVAL_FEEDBACK.md, STRATEGY.md — Rust runtime reads the same files from the same structure.
-- **aletheia.json schema:** Same fields, serde instead of Zod. Existing configs remain valid.
+- **Agent workspace files:** SOUL.md, TELOS.md, MNEME.md, IDENTITY.md, TOOLS.md, CONTEXT.md, PROSOCHE.md, EVAL_FEEDBACK.md, STRATEGY.md — same files, now under `instance/nous/{id}/` (Spec 44). USER.md and AGENTS.md move to `instance/theke/` (shared, one canonical copy).
+- **aletheia.yaml schema:** Same fields, serde instead of Zod. Config moves to `instance/config/` (Spec 44).
 - **HTTP/SSE API surface:** Same endpoints, same event format. Svelte UI and TUI work without modification.
 - **Qdrant + Neo4j:** Correct databases. Kept. Connected correctly (once, not per-request).
 - **signal-cli binary:** JVM process unchanged. Rust rewrites the glue.
@@ -262,7 +284,7 @@ TS runtime and Rust rewrite run in parallel. Cutover when Rust passes the adapte
 | Phase | Module(s) | Proves |
 |-------|-----------|--------|
 | 1 | koina | Error types, tracing, safe wrappers, fs utils |
-| 2 | taxis | serde schema, path resolution, secret resolver |
+| 2 | taxis | serde schema, oikos path resolution, config cascade, secret resolver |
 | 3 | hermeneus (partial) | Anthropic streaming client: tool use, thinking, caching |
 | 4 | mneme | Merged memory: Qdrant + Neo4j + fastembed-rs + extraction loop |
 | 5 | organon | Tool registry + all built-in tools |
@@ -277,9 +299,9 @@ TS runtime and Rust rewrite run in parallel. Cutover when Rust passes the adapte
 
 **Locations:**
 - `infrastructure/runtime/` — TS runtime (production until cutover)
-- `infrastructure/runtime-rs/` — Rust rewrite (in development)
+- `crates/` — Rust workspace (in development)
 
-**Post-cutover:** remove `infrastructure/runtime/` and `infrastructure/memory/`.
+**Post-cutover:** remove `infrastructure/runtime/` and `infrastructure/memory/`. Instance state migrated to `instance/` per Spec 44 (oikos).
 
 ---
 
@@ -287,11 +309,11 @@ TS runtime and Rust rewrite run in parallel. Cutover when Rust passes the adapte
 
 ```bash
 scp aletheia server:/usr/local/bin/aletheia
-aletheia init   # creates anchor.json, session.key, memory token
+aletheia init   # scaffolds instance/ from instance.example/, prompts for secrets
 systemctl enable --now aletheia
 ```
 
-~10–15MB static binary. Replaces: 1.2MB bundle + ~50MB Node.js + 254 npm packages + Python venv + uvicorn. Qdrant and Neo4j remain as containers — correct tools, connected correctly.
+~10–15MB static binary. Replaces: 1.2MB bundle + ~50MB Node.js + 254 npm packages + Python venv + uvicorn. Qdrant and Neo4j remain as containers — correct tools, connected correctly. All state under `instance/` (Spec 44).
 
 ---
 

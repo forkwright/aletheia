@@ -1,8 +1,9 @@
 # Spec 36: Config Taxis — 4-Layer Workspace Architecture + SecretRef Credential Storage
 
-**Status:** Draft
+**Status:** Draft (partially superseded by Spec 44 — Oikos)
 **Origin:** Issue #267
 **Module:** `taxis`
+**See also:** Spec 44 supersedes the 4-layer architecture with the oikos 3-tier hierarchy. SecretRef, exec tool config, deploy pipeline, and sidecar security concerns remain valid here.
 
 ---
 

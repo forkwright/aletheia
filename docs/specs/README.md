@@ -45,6 +45,13 @@ that evolve with the system.
 | 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Shared task board, overview |
 | 43 | [A2UI Live Canvas](43_a2ui-canvas.md) | Draft | Agent-writable dynamic UI surface (from #319) |
 
+### Draft — Infrastructure
+
+| # | Spec | Status | Notes |
+|---|------|--------|-------|
+| 43 | [Rust Rewrite](43_rust-rewrite.md) | Planned | Clean rewrite, single binary, 14 crates |
+| 44 | [Oikos](44_oikos.md) | Draft | Instance structure, 3-tier hierarchy, cascading resolution |
+
 ### Draft — Future
 
 | # | Spec | Status | Notes |
@@ -65,7 +72,7 @@ that evolve with the system.
 - Specs describe *intent and design*, not implementation. Code is the source of truth.
 - Implemented specs are absorbed into `archive/DECISIONS.md` — individual spec files are deleted.
 - **Pre-archival:** Run the [Archival Checklist](ARCHIVAL-AUDIT.md) to verify all features were delivered.
-- **Next available number: 44**
+- **Next available number: 45**
 
 ## Issue ↔ Spec Cross-Reference
 

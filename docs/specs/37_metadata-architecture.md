@@ -3,6 +3,7 @@
 **Status:** Draft
 **Origin:** Issue #285
 **Module:** Cross-cutting
+**See also:** Spec 44 (Oikos) implements the cascade and convention-based discovery patterns described here.
 
 ---
 
