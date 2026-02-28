@@ -1,7 +1,22 @@
-# === Personal / Vault ===
+# === Oikos: instance is the entire private boundary ===
+/instance/
+!/instance.example/
+
+# === Legacy paths (remove after migration completes) ===
 theke/
 projects/
 /archive/
+nous/*/
+!nous/_example/
+!nous/_example/**
+shared/memory/
+shared/contracts/
+shared/checkpoints/
+shared/status/
+shared/insights/
+shared/task-contracts/
+shared/USER.md
+data/
 
 # === Secrets ===
 *.env
@@ -26,23 +41,6 @@ node_modules/
 __pycache__/
 *.pyc
 .cache/
-
-# === Agent workspaces (personal, live on server only) ===
-nous/*/
-!nous/_example/
-!nous/_example/**
-
-# === Shared personal data ===
-shared/memory/
-shared/contracts/
-shared/checkpoints/
-shared/status/
-shared/insights/
-shared/task-contracts/
-shared/USER.md
-
-# === Runtime data ===
-data/
 
 # === OS ===
 .DS_Store
