@@ -200,22 +200,137 @@ opt-level = 2      # optimize deps even in dev — faster iteration
 
 ---
 
+## Module Design Notes
+
+Implementation details for key modules. Design decisions, not specs — they'll evolve during implementation.
+
+### NousActor (nous)
+
+Each nous is a Tokio actor: independently-running task with owned state, own inbox, own background cycles.
+
+```rust
+struct NousActor {
+    id: NousId,
+    config: NousConfig,
+    inbox: mpsc::Receiver<NousMessage>,
+    state: NousState,
+    cron: JoinHandle<()>,
+    prosoche: JoinHandle<()>,
+    channel_listener: JoinHandle<()>,
+}
+```
+
+Lifecycle states: **Active** (processing turn, API calls, costs tokens) → **Idle** (background tasks, no API) → **Dormant** (paused, wakes on message/schedule). A dormant nous costs ~KB memory, zero tokens.
+
+Per-nous daemon (not global): evolution cron, distillation schedule, graph maintenance, prosoche collection, morning digest.
+
+### Memory (mneme)
+
+mem0 replacement in ~50 lines:
+
+```rust
+async fn extract_facts(text: &str) -> Result<Vec<Fact>>;
+async fn decide_action(fact: &Fact, similar: &[Memory]) -> MemoryAction;
+enum MemoryAction { Add, Update(MemoryId), Delete(MemoryId), NoOp }
+```
+
+CozoDB provides all three storage layers:
+- **Vectors:** HNSW with cosine/L2/IP. Per-nous scoping via `nous_id`.
+- **Graph:** Datalog with stratified negation. PageRank, community detection.
+- **Relations:** Stored relations for entity metadata, bi-temporal facts.
+
+Custom (first principles): bi-temporal knowledge graph, graph extraction, entity resolution, 6-factor recall scoring, cross-nous scoring, recollection-as-memory.
+
+### Anthropic Client (hermeneus)
+
+```rust
+pub enum MessageEvent {
+    TextDelta { text: String },
+    ToolUse(ToolUseBlock),
+    ThinkingDelta { thinking: String },
+    InputJsonDelta { partial_json: String },
+    MessageStart { usage: Usage },
+    MessageStop { stop_reason: StopReason, usage: Usage },
+}
+
+impl AnthropicClient {
+    pub async fn stream_message(&self, req: MessageRequest)
+        -> impl Stream<Item = Result<MessageEvent>>;
+    pub async fn count_tokens(&self, req: &MessageRequest) -> Result<TokenCount>;
+}
+```
+
+Streaming state machine as async stream consumer. `tokio::sync::mpsc` between stream and tool executor. Tool results injected back.
+
+### Plugins (prostheke)
+
+```wit
+interface aletheia-plugin {
+  record turn-context {
+    nous-id: string, response-text: string,
+    tool-calls: u32, input-tokens: u32, output-tokens: u32,
+  }
+  on-start: func() -> result<_, string>;
+  on-turn-complete: func(ctx: turn-context) -> result<_, string>;
+  on-shutdown: func() -> result<_, string>;
+}
+```
+
+Host-granted capabilities: tool registration, tracing, config read, mneme API. First-party plugins are internal Rust traits — no WASM overhead for core system.
+
+### Channels (agora)
+
+```rust
+pub trait ChannelProvider: Send + Sync {
+    fn id(&self) -> &str;
+    async fn send(&self, msg: OutboundMessage) -> Result<()>;
+    fn stream_inbound(&self) -> BoxStream<'_, Result<InboundMessage>>;
+    async fn start(&self) -> Result<()>;
+    async fn stop(&self) -> Result<()>;
+}
+```
+
+Signal: signal-cli subprocess, tokio::process, JSON-RPC, SSE stream.
+Slack: raw API, reqwest + WebSocket Socket mode.
+
+### Home Deployment Constraints
+
+- Signal is the primary UX. WebUI secondary. All functionality must work via Signal alone.
+- Nous independence: Syn runs continuous background. Syl wakes on Signal message. Akron sleeps until needed. NousActor handles all three.
+- DBus/eBPF are designed-in prosoche collection points, not afterthoughts.
+- NixOS module is the target deployment form for home server.
+
+---
+
 ## Milestones
 
-### M0: Foundation (Oikos + Core Crates)
+### M0a: Oikos Migration (TypeScript)
 
-**Goal:** Validate the instance structure and path resolution before anything else is built on top.
+**Goal:** Migrate current deployment to oikos instance structure. Validates the design before Rust implementation.
 
-| Phase | Crate/Work | What It Proves |
-|-------|-----------|----------------|
-| 0.1 | Oikos structure (TS) | Create `instance/` layout, migrate current deployment, validate design |
-| 0.2 | `koina` | Error types, tracing, safe wrappers compile and test |
-| 0.3 | `taxis` | figment-based config cascade (nous → shared → theke), oikos 3-tier path resolution, SecretRef resolver |
-| 0.4 | Oikos tool resolution (TS) | Tools discovered by cascade — drop YAML, it's a tool |
-| 0.5 | Oikos context assembly (TS) | Bootstrap reads from cascade, no hardcoded file lists |
-| 0.6 | Oikos config cascade (TS) | `defaults.yaml` + per-nous `overrides.yaml`, deep merge |
+| Phase | Work | What It Proves |
+|-------|------|----------------|
+| 0a.1 | Instance structure | Create `instance/` layout, migrate current deployment |
+| 0a.2 | Tool resolution | Tools discovered by cascade — drop YAML, it's a tool |
+| 0a.3 | Context assembly | Bootstrap reads from cascade, no hardcoded file lists |
+| 0a.4 | Config cascade | `defaults.yaml` + per-nous `overrides.yaml`, deep merge |
 
-**Success criteria:** Live deployment migrated to `instance/` structure. `koina` and `taxis` crates compile, test, and correctly resolve paths through the oikos hierarchy. All existing functionality preserved.
+**Success criteria:** Live deployment uses `instance/` layout. All existing functionality preserved.
+
+**Exit gate:** All current agent configs, tools, hooks, and context files live in the oikos hierarchy. Zero hardcoded paths.
+
+---
+
+### M0b: Foundation Crates (Rust)
+
+**Goal:** First Rust code. Error types, config resolution, path handling.
+
+| Phase | Crate | What It Proves |
+|-------|-------|----------------|
+| 0b.1 | `koina` | Error types (snafu), tracing setup, safe wrappers compile and test |
+| 0b.2 | `taxis` | figment-based config cascade (nous → shared → theke), oikos 3-tier path resolution, SecretRef resolver |
+
+**Success criteria:** `koina` and `taxis` compile, test, and correctly resolve paths through the oikos hierarchy.
 
 **Exit gate:** `taxis` Rust path resolution produces identical results to TS implementation for all current paths.
 
@@ -229,6 +344,7 @@ opt-level = 2      # optimize deps even in dev — faster iteration
 |-------|-------|----------------|
 | 1.1 | `hermeneus` (partial) | Anthropic streaming: tool use, adaptive thinking (effort param), prompt caching (two-breakpoint), Tool Search Tool |
 | 1.2 | `mneme` (CozoDB) | Unified embedded store: HNSW vectors + graph + relations + bi-temporal facts — single DB, zero external services |
+| 1.2a | `mneme` (CozoDB validation) | **Gate:** HNSW recall quality matches Qdrant baseline, Datalog query perf acceptable for graph traversal, concurrent read/write under realistic load. If fails → `StorageProvider` trait lets us pivot to rusqlite + custom graph. |
 | 1.3 | `mneme` (embedding) | `EmbeddingProvider` trait: fastembed-rs local default, optional Voyage-4-large. JEPA-informed: embed once, reuse for shift detection, recall, classification |
 | 1.4 | `mneme` (recall) | Hybrid retrieval (vector + graph + BM25), MMR diversity, temporal decay, recollection-as-memory |
 | 1.5 | `hermeneus` (complete) | Multi-credential routing, OAuth auto-refresh, `trait LlmProvider`, token counting (`/v1/messages/count_tokens`), batch API integration (50% discount for async ops: distillation, extraction, cron), server-side compaction as emergency fallback, citations for memory-grounded responses |
@@ -263,23 +379,14 @@ opt-level = 2      # optimize deps even in dev — faster iteration
 - **Spec 42, Gap 4 (Epistemic Confidence):** Behavioral norm in AGENTS.md template — `[verified]`, `[inferred]`, `[assumed]` markers. No code dependency.
 - **Issue #338 (Coding tool quality):** Per-call `cwd` parameter, per-nous `workingDir` config via oikos cascade, 120s default timeout, glob tool.
 
-**Performance patterns (from QA doc 05 Agent 2, must address in M2):**
-- `rusqlite::CachedStatement` for all session queries — TS recompiles SQL every call
-- SSE serialize-once broadcast — serialize message once, write bytes to all connected clients
-- `serde_json::value::RawValue` for lazy JSON deserialization — don't parse `workingState`/`distillationPriming` until needed
-- `LazyLock<RegexSet>` for interaction signals — TS recompiles RegExp inside loops
-- `bumpalo` arena allocator for per-turn transient data — allocation-free tool loop
-- `notify` crate for bootstrap file watching — TS does 11 sync reads per turn, cache and recompute only on change
-- Batch tool result messages into single SQLite transaction
-
-**Actor model critical pitfalls (from QA doc 03, must address in M2.2):**
+**Actor model critical pitfalls (must address in M2.2):**
 1. **Channel sizing** — bounded channels with backpressure. Unbounded = memory leak. Default: 32, tune empirically.
 2. **Shutdown signaling** — when all `NousHandle` clones drop, mpsc closes and actor exits. No separate shutdown unless cleanup needed.
 3. **Backpressure** — actor can't keep up → `send()` blocks (bounded) or caller handles `TrySendError::Full`. Never silently drop messages.
 4. **Task spawning** — spawned tasks outlive the actor. Use `JoinHandle` tracking or `CancellationToken`.
 5. **State ownership** — actor owns ALL mutable state. Handle is a thin `mpsc::Sender` wrapper. No `Arc<Mutex<_>>` between them.
 
-**Cancellation safety constraints (from QA doc 03 §3):**
+**Cancellation safety constraints:**
 - Cancel-SAFE: `sleep()`, `Receiver::recv()`, `Sender::reserve()`, reads into owned buffers
 - Cancel-UNSAFE: `Sender::send(msg)` (message lost), `write_all()` (partial write), mutex guard across `.await`
 - All `select!` branches must be cancel-safe or use reserve-then-send pattern
@@ -594,7 +701,7 @@ Every existing spec has been accounted for. This table is the definitive record.
 | 38 | Provider Adapters | M1 (hermeneus) | `trait LlmProvider`, multi-provider support |
 | 39 | Autonomy Gradient | M4 (dianoia) | 4-level autonomy, configurable per-agent/project |
 | 42 | Nous Team | M2 + M4 | Feedback loops, task handoff, consolidation, hygiene, epistemic tiers |
-| 43 | Rust Rewrite | Core of this plan | 13-phase migration, technology decisions, actor model |
+| 43 | Rust Rewrite | **Absorbed into this plan** | Unique content (NousActor, hermeneus, prostheke, agora, home deployment) merged into Module Design Notes. Spec file deleted. |
 | 44 | Oikos | M0 | Instance structure, 3-tier hierarchy, cascading resolution |
 
 ### Retained Independently
@@ -672,72 +779,14 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 | `docs/STANDARDS.md` | Code standards for current TS (adapt for Rust) |
 | `docs/gnomon.md` | Naming system and philosophy |
 | `docs/specs/archive/DECISIONS.md` | Archived spec decisions (33 specs) |
-| `docs/specs/43_rust-rewrite.md` | Detailed Rust rewrite spec (technology rationale, actor model, migration phases) |
+| ~~`docs/specs/43_rust-rewrite.md`~~ | Absorbed — content merged into MODULE DESIGN NOTES and MILESTONES sections above |
 | `docs/specs/44_oikos.md` | Detailed oikos spec (directory structure, resolution rules, migration plan) |
 | `docs/specs/40_testing-strategy.md` | Testing targets and patterns |
 | `docs/specs/41_observability.md` | Logging, metrics, traces architecture |
 
-### QA Research (2026-02-28)
+### Additional References
 
-18 parallel research agents, 3 rounds. Findings integrated into this plan. Raw docs preserved for implementation reference.
-
-| Document | Purpose | Key Value |
-|----------|---------|-----------|
-| `docs/rust-qa/01_PROJECT-QA.md` | Gap analysis, design review | **Integrated.** 30 design items, 19 unaccounted features → milestones, surface inventories. |
-| `docs/rust-qa/02_crates-audit.md` | 1,022 crates analyzed, 142 relevant | **Integrated.** → Dependency Policy, Crate-to-Module Mapping, Release Profile, cross-compilation notes. |
-| `docs/rust-qa/03_rust-agent-references.md` | 22-section implementation guide | **Integrated.** Patterns + code examples → `.claude/rules/rust.md`. Technology decisions → tech table + implementation standards. |
-| `docs/rust-qa/04_rust-agent-pitfalls.md` | 53 pitfall entries by category | **Integrated.** All pitfalls with code examples → `.claude/rules/rust.md`. Standards → implementation standards table. |
-| `docs/rust-qa/05_PROJECT-QA-RESEARCH.md` | Raw research from 10 agents | **Integrated:** Performance patterns (→ M2 constraints), Anthropic API features (→ M1.5 hermeneus), context token economics (→ Spec 35 notes), cognitive architecture frameworks (→ Research References), ecosystem watch items. Raw findings preserved for deep dives. |
-| `docs/rust-qa/06_STANDARDS.md` | Unified code standards | **Integrated.** Rust section, CI pipeline, deny.toml, philosophy, universal rules, git workflow → merged into `docs/STANDARDS.md`. Existing TS/Svelte/Python scan counts preserved. |
-
-### Reference Repositories (from QA doc 03 §21)
-
-Architecture-similar open source Rust projects. Study for patterns, not to copy.
-
-| Repository | Relevance | Key Patterns to Study |
-|-----------|-----------|----------------------|
-| [qdrant/qdrant](https://github.com/qdrant/qdrant) | **Closest architectural match** — vector DB, Axum, Tokio, multi-crate workspace | Actor model, storage engine, API design |
-| [quickwit-oss/quickwit](https://github.com/quickwit-oss/quickwit) | **Best actor model reference** — custom actor framework on Tokio | Pipeline architecture, actor lifecycle, message routing |
-| [rust-lang/rust-analyzer](https://github.com/rust-lang/rust-analyzer) | **Best workspace organization** — 30+ flat crates | Incremental computation, crate dependency graph |
-| [cozodb/cozo](https://github.com/cozodb/cozo) | Our embedded DB | Datalog engine internals, Rust API, storage backends |
-| [tokio-rs/axum](https://github.com/tokio-rs/axum) | Our HTTP framework | SSE, WebSocket, state extraction, middleware, testing |
-| [greptime/greptimedb](https://github.com/GreptimeTeam/greptimedb) | **Error handling model** — snafu + Location traces | Large workspace error layering pattern we're adopting |
-| [influxdata/influxdb](https://github.com/influxdata/influxdb) | Large async workspace | Query engine, Arrow integration, async patterns at scale |
-
-### Research References (from QA doc 05)
-
-Cognitive architecture and memory systems research informing Aletheia's design.
-
-**Frameworks adopted:**
-| Framework | Source | Aletheia Application |
-|-----------|--------|---------------------|
-| CoALA Memory Taxonomy | Princeton (arxiv 2309.02427) | Formalize working/episodic/semantic/procedural as distinct Rust types in mneme |
-| Complementary Learning Systems | CLS Survey (arxiv 2512.23343) | Two-speed memory: fast episodic encoding (every turn) + slow semantic extraction (nightly cron = hippocampal replay) |
-| Global Workspace Theory | Novel application | Prosoche IS a GWT implementation — formalize competition/selection/broadcast phases |
-| ACT-R Activation Retrieval | Anderson 1993 | Memory activation = recency + frequency + contextual fit, not just embedding similarity. Decay over time, increase with use. |
-| Recollection-as-Memory | OwlCore Exocortex | Every `recall()` creates association trace — self-improving retrieval. Already in M1.4. |
-
-**Patterns to track (M4+):**
-| Pattern | Source | When |
-|---------|--------|------|
-| Spacing-effect review | Cognitive science | Graduated review intervals for memory consolidation (nightly→weekly is coarse) |
-| Transactive memory | Social cognition | Each nous maintains model of what other nous know — smarter routing |
-| Stigmergic coordination | Pressure-field model (arxiv 2601.08129v2) | Compute "badness" per domain, agents gravitate to high-pressure areas. O(1) coordination. |
-| Active Inference | VERSES AI / pymdp | Agents minimize surprise not maximize reward — natural curiosity + caution |
-| Skill memory lifecycle | MemOS | Skills should evolve: usage tracking, refinement on outcomes, decay when unused |
-
-**Key research repos:**
-| Repository | Value |
-|-----------|-------|
-| [getzep/graphiti](https://github.com/getzep/graphiti) | Temporal knowledge graph — bi-temporal edges, episode-centric |
-| [Arlodotexe/OwlCore.AI.Exocortex](https://github.com/Arlodotexe/OwlCore.AI.Exocortex) | Recollection-as-memory pattern — recall is a write op |
-| [MemTensor/MemOS](https://github.com/MemTensor/MemOS) | Memory OS with skill lifecycle (MemCube, scheduling, multi-modal) |
-| [OpenSPG/KAG](https://github.com/OpenSPG/KAG) | Knowledge-augmented generation — logical query decomposition |
-| [EvoAgentX/EvoAgentX](https://github.com/EvoAgentX/EvoAgentX) | Self-evolving agent workflows |
-| [infer-actively/pymdp](https://github.com/infer-actively/pymdp) | Active inference framework |
-
-**Ecosystem watch:**
-- **presage** — Native Rust Signal client (AGPL). Could eliminate signal-cli JVM subprocess. Unstable API, monitor monthly.
-- **Wassette** (Microsoft) — WASM Components via MCP for sandboxed tool execution. Deny-by-default permissions. Aligns with our wasmtime prostheke design.
-- **redb 3.0** — Pure Rust embedded KV (ACID+MVCC). Alternative to CozoDB for simpler storage needs.
-- **Official MCP Rust SDK** — `modelcontextprotocol/rust-sdk`. Track alongside rmcp.
+| Document | Purpose |
+|----------|---------|
+| `docs/research.md` | Adopted frameworks, architecture repos, ecosystem watch, QA audit provenance |
+| `.claude/rules/rust.md` | Coding rules + performance patterns for Claude Code |
