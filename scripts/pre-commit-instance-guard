@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Pre-commit hook: reject any staged files under instance/
+# Install: cp scripts/pre-commit-instance-guard .git/hooks/pre-commit
+
+INSTANCE_FILES=$(git diff --cached --name-only | grep "^instance/" || true)
+
+if [[ -n "$INSTANCE_FILES" ]]; then
+    echo "ERROR: Attempting to commit instance/ files:"
+    echo "$INSTANCE_FILES"
+    echo ""
+    echo "instance/ is private deployment state and must not be tracked."
+    echo "If you need to update the scaffold, edit instance.example/ instead."
+    exit 1
+fi

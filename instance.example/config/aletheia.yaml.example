@@ -1,0 +1,19 @@
+# Aletheia Instance Configuration
+# Copy to instance/config/aletheia.yaml and configure.
+
+# Server
+port: 8080
+host: "0.0.0.0"
+
+# Credentials (relative to instance/config/)
+credentials:
+  anthropic: credentials/anthropic.json
+  oauth: credentials/oauth.json
+
+# Signal
+signal:
+  phone: "+1XXXXXXXXXX"
+  # data_dir defaults to instance/signal/
+
+# Agents (loaded from instance/nous/)
+# Each subdirectory with a SOUL.md is a nous.

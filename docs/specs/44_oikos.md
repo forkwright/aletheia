@@ -1,6 +1,6 @@
 # Spec 44: Oikos — Instance Structure and Hierarchical Resolution
 
-**Status:** Draft
+**Status:** Active — all design decisions resolved 2026-02-28
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 44
@@ -243,7 +243,7 @@ instance/shared/hooks/on-turn-complete.yaml     → fires for all nous
 instance/nous/syn/hooks/on-turn-complete.yaml    → fires for syn only (overrides? appends?)
 ```
 
-**Decision:** Nous-specific hooks supplement shared hooks (both fire). Shared fires first, then nous-specific. Explicit `override: true` in the nous-specific hook replaces instead.
+**Decision (G-01, resolved 2026-02-28):** Nous-specific hooks supplement shared hooks (both fire). Shared fires first, then nous-specific. A nous-specific hook can declare `replaces: shared/hooks/on-turn-complete.yaml` to take over instead. This aligns with the oikos metaphor: household members can claim shared responsibilities, but must do so explicitly.
 
 **Templates:**
 ```
@@ -252,6 +252,19 @@ instance/nous/demiurge/templates/system-prompt.md → demiurge's custom system p
 ```
 
 Most-specific wins for templates (they're complete documents, not collections).
+
+### Nous Identity: Define Once
+
+Currently a nous's properties are scattered across 4 files. In oikos:
+
+| Property | Single Source | Consumers |
+|----------|-------------|-----------|
+| Model, context_window, pipeline config | `nous/{id}/overrides.yaml` | Runtime reads via cascade |
+| Personality (emoji, creature, vibe) | `nous/{id}/IDENTITY.md` | Runtime, UI |
+| Narrative identity | `nous/{id}/SOUL.md` | Context assembly (references IDENTITY.md, doesn't restate it) |
+| Team overview | `theke/AGENTS.md` | **Generated** from individual IDENTITY.md + overrides.yaml. Not hand-maintained |
+
+No duplication. Change the model → edit one line in `overrides.yaml`. Change the emoji → edit IDENTITY.md. AGENTS.md regenerates.
 
 ### Defaults YAML
 
@@ -293,6 +306,27 @@ tools:
 ```
 
 The `self://` prefix resolves to the current nous's workspace. The `theke://` prefix resolves to theke. The `shared://` prefix resolves to shared. No prefix = relative to current tier. The `+` prefix on array values means append to the parent tier's array rather than replace it.
+
+### Tool Config Decomposition
+
+The current `shared/config/tools.yaml` monolith breaks into individual files under the appropriate tier:
+
+```
+instance/theke/tools/gcal.yaml        # calendar (human + all nous)
+instance/theke/tools/gdrive.yaml      # drive access
+instance/theke/tools/ssh.yaml         # SSH host definitions
+instance/shared/tools/distill.yaml    # distillation (nous-only)
+instance/shared/tools/pplx.yaml       # perplexity (nous-only, could be nous/syn/ if syn-only)
+instance/nous/syn/tools/todoist.yaml  # syn-specific tool config
+```
+
+One file per tool. Presence is declaration. Adding a tool = adding a file. Removing = deleting. No monolith to maintain.
+
+### Env Var Consolidation
+
+**Before:** `ALETHEIA_NOUS`, `ALETHEIA_SHARED`, `ALETHEIA_WORKSPACE` + hardcoded paths in scripts.
+
+**After:** One env var: `ALETHEIA_INSTANCE`. Everything derived via `taxis::oikos`. The old vars are removed, not aliased.
 
 ### Safety: Belt and Suspenders
 
@@ -523,6 +557,9 @@ The structural decision now doesn't constrain which mechanism is chosen later. T
   - Moves `~/.aletheia/` → `instance/config/` + `instance/data/`
   - Creates `instance/theke/` and populates from syn's shared files
   - Removes duplicate USER.md from all nous workspaces
+  - Drops per-nous `.git/` directories (content preserved, not history)
+  - Initializes single `instance/.git` (optional, user-configured)
+  - Renames GOALS.md → TELOS.md, MEMORY.md → MNEME.md (Spec 33 Phase 2)
   - Updates symlinks/references
 - Validation: `aletheia doctor` confirms oikos integrity post-migration
 - Rollback: migration creates backup tarball first
@@ -592,9 +629,13 @@ GOALS.md → TELOS.md and MEMORY.md → MNEME.md (Spec 33 Phase 2) are assumed c
 
 9. **Migration timing.** Migrate now (pre-rewrite). The structural clarity helps immediately and validates the design. TS runtime path updates are mechanical.
 
+## Decisions (Resolved 2026-02-28)
+
+10. **Instance-level git.** Single `.git` for the entire `instance/` directory (user preference). Existing per-nous git repos are dropped during migration (content preserved, history not — it's session memory, not source code). This cleanly separates platform git (the repo) from instance git (deployment state). Instance git is optional and user-configured — not required by the platform.
+
 ## Open Questions
 
-1. **Theke sync mechanism.** Deferred. Syncthing vs. git sub-repo vs. NAS mount. The directory structure is sync-agnostic — decide when cross-device access becomes a priority.
+1. **Theke sync mechanism.** Deferred. Syncthing vs. git sub-repo vs. NAS mount. The directory structure is sync-agnostic — decide when cross-device access becomes a priority. Note: decision 10 (instance-level git) may satisfy this if `instance/` is a git repo pushed to a private remote.
 
 ---
 
@@ -606,3 +647,58 @@ GOALS.md → TELOS.md and MEMORY.md → MNEME.md (Spec 33 Phase 2) are assumed c
 - Spec 43: Rust Rewrite (implementation vehicle)
 - Spec 33: Gnomon Alignment (workspace file renames)
 - PRs #198–203: Prior work on platform/instance separation
+
+
+---
+
+## Appendix: Issue & Spec Consolidation Audit
+
+Audit of all open issues and active specs against the rewrite + oikos plan. Each item gets one of: **Absorbed** (folded into rewrite/oikos), **Retained** (stays as separate concern), **Closed** (obsolete or resolved by rewrite).
+
+### Open Issues
+
+| # | Title | Disposition | Rationale |
+|---|-------|------------|-----------|
+| #352 | Spec 43: Rust rewrite tracking issue | **Retained** | Meta-issue tracking the rewrite itself |
+| #349 | Evaluate Rust rewrite | **Closed** | Evaluation complete — decision made, Spec 43 written |
+| #343 | deploy.sh broken systemd unit | **Closed** | deploy.sh ceases to exist. Rewrite: `aletheia init` generates systemd unit, `aletheia` binary is the service |
+| #342 | Shell injection in start.sh | **Closed** | start.sh ceases to exist. Single binary, no shell wrapper |
+| #340 | Sidecar bound to 0.0.0.0, auth unenforced | **Closed** | Sidecar ceases to exist. mneme is in-process. No network surface |
+| #339 | Deploy pipeline: bundle vs node_modules | **Closed** | No Node.js. Single static binary. No bundling, no npm |
+| #338 | Exec tool: cwd, timeouts, truncation | **Absorbed → Spec 44** | Working directory resolves through oikos (`taxis::oikos::nous(id)`). Timeout configurable via cascade (`defaults.yaml`). Truncation limits are organon tool config |
+| #332 | OS integration: eBPF/DBus/NixOS | **Retained → Spec 24** | Post-rewrite concern. eBPF/DBus are prosoche collectors. NixOS module packages the binary. Separate from rewrite core |
+| #328 | Planning dashboard bugs + redesign | **Retained** | UI concern, independent of rewrite. Fix in current Svelte UI |
+| #326 | TUI deferred items | **Retained** | TUI is separate binary (ratatui), not blocked by rewrite. Incremental improvements |
+| #319 | A2UI live canvas | **Retained → Spec 43b** | Post-rewrite feature. Pylon routes + UI components. Depends on stable pylon |
+
+### Active Specs
+
+| # | Spec | Disposition | Rationale |
+|---|------|------------|-----------|
+| 22 | Interop & Workflows (A2A, workflow engine) | **Deferred** | Post-rewrite. Event bus hardening happens naturally in Rust (typed broadcast channels). A2A and workflow engine are features on top of stable platform |
+| 24 | Aletheia Linux (eBPF/DBus/NixOS) | **Retained, post-rewrite** | Prosoche collectors (eBPF, DBus) plug into the daemon crate. NixOS module wraps the binary. Both depend on stable binary |
+| 27 | Embedding Space Intelligence (JEPA) | **Absorbed → mneme + nous crates** | Phases 1-3 (shift detection, embedding ops, predictive context) → mneme. Phase 4 (cross-agent semantic routing) → nous in M4. Phases 5-6 (goal vectors, collapse prevention) → M6. Turn bypass classifier → nous crate |
+| 29 | UI Layout & Theming | **Retained** | Svelte UI survives the rewrite unchanged. Layout work continues independently |
+| 30 | Homepage Dashboard | **Retained** | UI feature, independent of rewrite |
+| 33 | Gnomon Alignment | **Absorbed → rewrite** | Phase 1 (barrel exports, meta.ts) is TS-only — moot in Rust (crate boundaries enforce this). Phase 2 (GOALS→TELOS, MEMORY→MNEME) happens during oikos migration. Phase 3 (portability→autarkeia) done by crate naming. Phase 4 (role renames) happens in nous crate. Phase 5 (constant consolidation) inherent in Rust's type system. Close spec after migration |
+| 35 | Context Engineering | **Absorbed → nous + taxis crates** | Cache-group bootstrap → nous::bootstrap with stable prefix strategy. Skill relevance filtering → nous::skills. Turn bypass → nous::classifier. All grounded in oikos context assembly (Spec 44 Phase 3) |
+| 36 | Config Taxis | **Largely superseded by Spec 44** | 4-layer architecture → oikos 3-tier. SecretRef → taxis::secrets (retained). Exec tool config → absorbed into #338 disposition. Deploy pipeline → closed (#339, #343). Sidecar security → closed (#340). Archive after extracting SecretRef details into Spec 44 or taxis crate doc |
+| 37 | Metadata Architecture | **Absorbed → Spec 44 principles** | "Declarative over imperative" realized by oikos cascade. Convention-based discovery, schema-first validation — all in Spec 44. Archive as philosophical predecessor |
+| 38 | Provider Adapters | **Absorbed → hermeneus crate** | `trait LlmProvider` with Anthropic, OpenAI, Ollama implementations. Per-agent model config via oikos cascade. Crate-level concern, doesn't need separate spec |
+| 39 | Autonomy Gradient | **Absorbed → dianoia crate** | Confidence-gated step execution is internal to dianoia FSM. Config via oikos cascade (trust level per-nous). Doesn't need separate spec |
+| 40 | Testing Strategy | **Retained, adapted** | Coverage targets, patterns, CI enforcement — applies to Rust crates. Adapt framework references (vitest→cargo test, pytest→gone). Keep as living doc |
+| 41 | Observability | **Retained, adapted** | tracing crate replaces tslog. Metrics via prometheus/opentelemetry crates. Traces via tracing spans. Keep spec, update technology references |
+| 42 | Nous Team (closing feedback loops) | **Absorbed → nous + daemon crates** | Competence-driven routing → nous::routing. Reflection → daemon::evolution. Automatic MNEME promotion → daemon::consolidation. These are crate internals |
+| 43 | Rust Rewrite | **Active — the plan** | Everything flows through this |
+| 43b | A2UI Live Canvas | **Retained, post-rewrite** | Pylon routes + Svelte components. Builds on stable API surface |
+| 44 | Oikos | **Active — this spec** | Instance structure, hierarchy, migration |
+
+### Summary of Actions
+
+**Close these issues:** #349, #343, #342, #340, #339
+
+**Absorb and archive these specs:** 33, 35, 36, 37, 38, 39, 42 — key decisions preserved in Spec 43 and DECISIONS.md
+
+**Retain independently:** 22 (deferred), 24 (post-rewrite), 27 (absorbed into mneme but may keep spec for research context), 29, 30, 40, 41, 43b (A2UI canvas)
+
+**Retain issues:** #352, #332, #328, #326, #319
