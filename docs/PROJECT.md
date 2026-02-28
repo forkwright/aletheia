@@ -688,7 +688,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 | `docs/rust-qa/03_rust-agent-references.md` | 22-section implementation guide | **Integrated.** Patterns + code examples → `.claude/rules/rust.md`. Technology decisions → tech table + implementation standards. |
 | `docs/rust-qa/04_rust-agent-pitfalls.md` | 53 pitfall entries by category | **Integrated.** All pitfalls with code examples → `.claude/rules/rust.md`. Standards → implementation standards table. |
 | `docs/rust-qa/05_PROJECT-QA-RESEARCH.md` | Raw research from 10 agents | **Integrated:** Performance patterns (→ M2 constraints), Anthropic API features (→ M1.5 hermeneus), context token economics (→ Spec 35 notes), cognitive architecture frameworks (→ Research References), ecosystem watch items. Raw findings preserved for deep dives. |
-| `docs/rust-qa/06_STANDARDS.md` | Unified Rust code standards | Replaces STANDARDS.md for Rust codebase. Typestate, allocation, unsafe policy, lint config. |
+| `docs/rust-qa/06_STANDARDS.md` | Unified code standards | **Integrated.** Rust section, CI pipeline, deny.toml, philosophy, universal rules, git workflow → merged into `docs/STANDARDS.md`. Existing TS/Svelte/Python scan counts preserved. |
 
 ### Reference Repositories (from QA doc 03 §21)
 

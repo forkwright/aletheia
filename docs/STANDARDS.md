@@ -1,8 +1,418 @@
 # Aletheia Code Standards
 
-> The fixed target for v1.1 tooling, auditing, and remediation.
-> Each rule: what / why / compliant / non-compliant / enforced-by / scan count.
-> Last updated: 2026-02-25
+> Single source of truth for all languages. `.claude/rules/*.md` files are excerpts of this document.
+> Each rule: what / why / compliant / non-compliant / enforced-by / scan count (where applicable).
+> Last updated: 2026-02-28
+
+---
+
+## Philosophy
+
+Code is the documentation. Names, types, and structure carry meaning. Comments explain *why*, never *what*. If code needs a comment to explain what it does, the code needs refactoring.
+
+Fail fast, fail loud. Crash on invariant violations. No defensive fallbacks for impossible states. Sentinel values and silent degradation are bugs. Surface errors at the point of origin with full context.
+
+Parse, don't validate. Invalid data cannot exist. Newtypes with validation constructors enforce invariants at construction time. Once a value is constructed, its validity is a type-level guarantee.
+
+Minimize surface area. `pub(crate)` by default (Rust), unexported by default (TS). Every public item is a commitment. Expose the smallest API that serves the need.
+
+---
+
+## Universal Rules
+
+These apply regardless of language.
+
+### Naming
+
+#### Gnomon System (Persistent Names)
+
+Module directories, agent identities, subsystems, and major features follow the [gnomon naming system](gnomon.md). Names identify modes of attention, not implementations. Pass the layer test (L1-L4). If no Greek word fits naturally, the mode of attention isn't clear yet — wait.
+
+Applies to: modules, agents, subsystems, features that persist.
+Does not apply to: variables, functions, test fixtures, temporary branches.
+
+#### Code Names
+
+| Context | Convention | Example |
+|---------|-----------|---------|
+| Files | `kebab-case` | `session-store.rs`, `event-bus.ts` |
+| Types / Traits / Classes | `PascalCase` | `SessionStore`, `EmbeddingProvider` |
+| Functions / Methods | `camelCase` (TS) / `snake_case` (Rust/Python) | `loadConfig` / `load_config` |
+| Constants | `UPPER_SNAKE` | `MAX_TURNS`, `DEFAULT_PORT` |
+| Events | `noun:verb` | `turn:before`, `tool:called` |
+
+Verb-first for functions: `load_config`, `create_session`, `parse_input`. Drop `get_` prefix on getters.
+
+### Error Handling (Universal)
+
+Every error must:
+1. Carry context — what operation failed, with what inputs
+2. Be typed — callers can match on error kind
+3. Propagate — chain errors with `.context()` or equivalent, never swallow
+4. Surface — log at the point of handling, not the point of throwing
+
+Fail fast:
+- Panic on programmer bugs (violated invariants, impossible states)
+- `Result` / `throw` for anything the caller could handle or report
+- `expect("invariant description")` (Rust) over bare `unwrap()` — the message documents the invariant
+- Never panic in library code for recoverable errors
+
+No silent catch:
+- Every catch/match block must log, propagate, return a meaningful value, or explain why it's discarded
+- `/* intentional: reason */` for deliberate discard — never empty catch
+
+### Documentation
+
+Zero-comment default:
+- No inline comments except genuinely non-obvious *why* explanations
+- No creation dates, author info, "upgraded stack" explanations
+- No AI generation indicators
+- File headers: one line describing purpose (Rust: `//!` module doc, TS/Python: single-line comment)
+
+Doc comments (rustdoc `///`, JSDoc `/** */`) only on:
+- Public API items that cross module boundaries
+- `unsafe` functions (mandatory `# Safety` section)
+- Functions that can panic (mandatory `# Panics` section)
+- Functions returning `Result` with non-obvious error conditions
+
+### Testing (Universal)
+
+Behavior over implementation:
+- Test what the code does, not how it does it
+- One logical assertion per test
+- Descriptive names: `returns_empty_when_session_has_no_turns`, not `test_add` or `it_works`
+- Same-directory test files (`foo.test.ts`, `#[cfg(test)] mod tests`)
+
+Property-based testing:
+- Serialization round-trips, algebraic properties, state machine invariants
+- proptest / bolero (Rust) / fast-check (TS) for edge case discovery
+- Example tests document expected behavior; property tests catch the unexpected
+
+No coverage targets. Coverage is a vanity metric. Test the behavior that matters.
+
+### Module Boundaries
+
+Imports flow from higher layers to lower layers only. Never create cycles. Adding a cross-module import requires verifying the dependency graph.
+
+Each module declares its public surface explicitly. Consumers import from the public API, not internal files.
+
+### Events
+
+All event names: `noun:verb` format. No exceptions.
+- `turn:before`, `tool:called`, `session:created`, `distillation:complete`
+- Use module name as noun for lifecycle events: `plugin:loaded`, `daemon:started`
+
+### Git & Workflow
+
+#### Commits
+
+Conventional commits with module scope:
+```
+feat(mneme): add WAL checkpoint scheduling
+fix(hermeneus): correct token counting for tool results
+refactor(organon): extract tool validation into separate module
+test(nous): add property tests for message distillation
+perf(mneme): use cached prepared statements
+```
+
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
+
+Rules:
+- Present tense, imperative mood: "add X" not "added X"
+- First line ≤72 characters
+- Body wraps at 80 characters
+- One logical change per commit
+- Squash merge on PR — branch preserves detailed history
+
+#### Authorship
+
+All commits use Cody's identity. Agents are tooling, not contributors.
+
+#### Branches
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Feature | `feat/<description>` | `feat/embedding-provider` |
+| Bug fix | `fix/<description>` | `fix/distillation-overflow` |
+| Spec work | `spec<NN>/<description>` | `spec43/mneme-crate` |
+| Chore/docs | `chore/<description>` | `chore/update-deps` |
+
+Always branch from `main`. Always rebase before pushing. Never commit directly to `main`.
+
+#### Decision Documentation
+
+Significant design decisions get a document in `docs/specs/` or `docs/decisions/`. Include: context, options considered, decision, consequences.
+
+---
+
+## Rust
+
+### Edition & Toolchain
+
+- Edition: **2024** (latest stable)
+- Resolver: **2** (mandatory in workspace)
+- MSRV: latest stable (internal project — no MSRV ceremony)
+- Async: **Tokio** runtime, native `async fn` in traits (no `async-trait` crate)
+
+### Error Handling (Rust)
+
+Per-crate error types via `snafu` (GreptimeDB pattern — context wrapping, Location-based virtual stack traces):
+
+```rust
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Snafu)]
+pub enum ConfigError {
+    #[snafu(display("failed to read config from {path}"))]
+    ReadConfig {
+        path: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to parse config"))]
+    ParseConfig {
+        source: serde_yml::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+
+fn load_config(path: &Path) -> Result<Config, ConfigError> {
+    let contents = std::fs::read_to_string(path)
+        .context(ReadConfigSnafu { path: path.display().to_string() })?;
+    let config: Config = serde_yml::from_str(&contents)
+        .context(ParseConfigSnafu)?;
+    Ok(config)
+}
+```
+
+Layering:
+- `snafu` in library crates — typed, matchable, with Location tracking
+- `anyhow` only in `main()`, CLI entry points, and tests — never in library crates
+- `miette` for user-facing diagnostics
+- Convention: `source` field = internal error (walk chain), `error` field = external (stop walking)
+- Log errors where HANDLED, not where they occur
+
+### Types & Patterns
+
+**Newtypes for domain identifiers:**
+
+```rust
+pub struct AgentId(compact_str::CompactString);
+pub struct SessionId(ulid::Ulid);
+pub struct TurnId(u64);
+```
+
+No raw `String` or `u64` for identifiers. Construction validates. The type *is* the documentation.
+
+**Typestate for state machines:**
+
+```rust
+pub struct Session<S: SessionState> {
+    id: SessionId,
+    agent: AgentId,
+    _state: PhantomData<S>,
+}
+pub struct Idle;
+pub struct Active;
+
+impl Session<Idle> {
+    pub fn begin_turn(self) -> Session<Active> { /* ... */ }
+}
+impl Session<Active> {
+    pub fn complete(self) -> Session<Idle> { /* ... */ }
+    // Session<Idle> has no send_message() — compile error
+}
+```
+
+**Enums for closed sets, traits for open sets:**
+- Known finite variants → enum with exhaustive match
+- Runtime-extensible behavior → trait
+
+**`#[non_exhaustive]` on public enums** that may grow.
+
+**Visibility:** `pub(crate)` by default. `pub` only for public API items. Private by default.
+
+### Allocation Awareness
+
+| Situation | Use | Avoid |
+|-----------|-----|-------|
+| Read-only string input | `&str` | `String` |
+| Usually borrowed, sometimes owned | `Cow<'_, str>` | `String` |
+| Must own | `String` | — |
+| Compile-time known | `&'static str` | `String` |
+| Return from function, caller decides | `impl Into<String>` | Force `String` |
+
+Prefer iterator pipelines over collecting into intermediate `Vec`s. No `.clone()` in hot paths without justification.
+
+### Unsafe Policy
+
+- `#[deny(unsafe_code)]` at workspace level
+- Crates needing `unsafe`: explicit `#![allow(unsafe_code)]` at crate root with justification
+- Every `unsafe` block requires `// SAFETY:` comment
+- Expected: `mneme` (FFI/perf), `semeion` (signal IPC), `prostheke` (WASM host)
+- All others: `#[forbid(unsafe_code)]`
+
+### Lint Suppression
+
+- `#[expect(lint)]` over `#[allow(lint)]` — warns when suppression becomes unnecessary
+- Every suppression requires inline reason: `#[expect(clippy::too_many_arguments, reason = "builder pattern WIP")]`
+
+### Credentials
+
+```rust
+use secrecy::{ExposeSecret, SecretString};
+
+struct ProviderConfig {
+    api_key: SecretString,  // zeroized on drop, redacted in Debug
+    endpoint: String,
+}
+```
+
+`expose_secret()` is the only way to access the value.
+
+### Workspace Lints
+
+Single source of truth in workspace `Cargo.toml`. All crates inherit with `[lints] workspace = true`.
+
+```toml
+[workspace.lints.rust]
+future_incompatible = "warn"
+nonstandard_style = "warn"
+rust_2018_idioms = "warn"
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+# Deny-level
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+exit = "deny"
+
+# High-value warnings
+await_holding_lock = "warn"
+explicit_into_iter_loop = "warn"
+fallible_impl_from = "warn"
+fn_params_excessive_bools = "warn"
+implicit_clone = "warn"
+large_types_passed_by_value = "warn"
+map_err_ignore = "warn"
+match_wildcard_for_single_variants = "warn"
+needless_for_each = "warn"
+rc_mutex = "warn"
+string_add = "warn"
+string_to_string = "warn"
+trait_duplication_in_bounds = "warn"
+unused_self = "warn"
+```
+
+### Feature Flags
+
+Features are additive. Never negative names. Binary crate is the feature aggregator.
+
+```toml
+[features]
+default = ["signal", "fastembed", "graph"]
+signal = ["dep:signal-ipc"]
+browser = ["dep:chromiumoxide"]
+graph = ["dep:cozo"]
+fastembed = ["dep:fastembed"]
+voyage = ["dep:reqwest"]
+wasm-plugins = ["dep:wasmtime"]
+```
+
+### Conversion Methods
+
+| Prefix | Cost | Ownership | Example |
+|--------|------|-----------|---------|
+| `as_` | Free | `&self → &T` | `as_bytes()` |
+| `to_` | Expensive | `&self → T` | `to_lowercase()` |
+| `into_` | Variable | `self → T` | `into_bytes()` |
+
+### File Organization
+
+- One primary type per file when substantial (>100 lines)
+- Named files (`session.rs`) over `session/mod.rs` unless module has submodules
+- Tests in `#[cfg(test)] mod tests` at bottom of source file
+- Integration tests in `tests/` directory per crate
+- Imports grouped: std → external → workspace → local, blank line between groups
+
+### Rust Imports
+
+```rust
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use snafu::ResultExt;
+use tokio::sync::mpsc;
+
+use koina::error::AletheiaError;
+use taxis::config::Config;
+
+use crate::session::SessionStore;
+use super::handler::MessageHandler;
+```
+
+---
+
+## CI Pipeline
+
+Four stages, fail-fast ordering:
+
+### Stage 1: Fast Checks (seconds)
+```bash
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo deny check
+```
+
+### Stage 2: Build & Test (minutes)
+```bash
+cargo nextest run --workspace
+cargo test --doc
+cargo hack check --each-feature --no-dev-deps
+```
+
+### Stage 3: Deep Checks (PR merge gate)
+```bash
+cargo audit
+cargo semver-checks check-release  # if publishing crates
+```
+
+### Stage 4: Nightly/Weekly
+```bash
+cargo +nightly miri test -p aletheia-koina -p aletheia-taxis
+cargo fuzz run <target> -- -max_total_time=300
+cargo bench  # regression detection via divan
+```
+
+### Supply Chain (`deny.toml`)
+```toml
+[advisories]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+
+[licenses]
+unlicensed = "deny"
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0"]
+copyleft = "deny"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+```
 
 ---
 
