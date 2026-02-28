@@ -443,3 +443,88 @@ Layered context engineering and file-backed state on top of Dianoia v1, solving 
 - **Planning UI: 19 Svelte components, 7,286 lines.** PlanningDashboard, milestone TimelineView, DiscussionPanel with decision cards, RequirementsTable, ExecutionStatus with wave tracking, SpawnStatus, VerificationPanel, CheckpointApproval, AnnotationPanel, EditHistory, ContextBudget visualization, MessageQueue, RoadmapView, ProjectHeader, RetrospectiveView, CategoryProposal, TaskList.
 - **Learning/retrospective deferred to Spec 42.** Cross-project skill extraction, project retrospective generation, and reusable insights are the core thesis of Spec 42 (Nous Team — closing feedback loops). Verification is complete here; learning belongs in the spec that owns the feedback loop architecture.
 - **Migration was non-breaking.** File generation layered on existing SQLite writes. Tool surface stable throughout. Phase 2 refactored internals only. Phase 3 added new UI + API endpoints.
+
+---
+
+## Absorbed Into Rust Rewrite (2026-02-28)
+
+The following specs were absorbed into `docs/PROJECT.md` during the Rust rewrite planning consolidation. Their key decisions and design patterns are preserved here; implementation details are in the Rust crate design.
+
+### Gnomon Alignment (Spec 33)
+
+Module identity and naming infrastructure for the gnomon naming system.
+
+- **Module identity declared once in `meta.ts` (TS) / module root (Rust).** Name, logger prefix, error module, route prefix, event namespace defined at the boundary. Consumers import from the boundary, never from internals.
+- **Renames are O(1) after boundary infrastructure.** Rename directory + update one config = done. No grep-and-replace.
+- **Topology before labels.** SOUL.md + TELOS.md + MNEME.md triad is topologically coherent. Workspace files use gnomon vocabulary.
+- **Recognition, not disruption.** Internal module names change; external API routes stay stable (`/api/auth/*` doesn't become `/api/symbolon/*`).
+- **Phase 1 (barrel exports, meta.ts) is TS-only — moot in Rust** where crate boundaries enforce this natively. Phase 2 (GOALS→TELOS, MEMORY→MNEME) happens during oikos migration. Phase 3-5 inherent in Rust's type system and crate naming.
+- **Sub-agent role renames deferred** — `coder`/`reviewer`/etc. are clear enough as configuration labels; gnomon naming applies to modules, not sub-agent config values.
+
+### Context Engineering (Spec 35)
+
+Cache-aware bootstrap, skill filtering, turn classification.
+
+- **Cache-group bootstrap:** Stable prefix must be byte-identical across turns for Anthropic prompt cache (~10x cost reduction). Volatile content (recall, turn-specific) goes at the bottom, never the middle.
+- **Two-tier tool/skill descriptions:** Short manifest in prompt, full definition injected only when tool is called. ~4K token savings per turn.
+- **Semantic skill retrieval:** Top-5 relevant skills per turn (embedding similarity to user message), not all 130. ~2K savings.
+- **Turn bypass classifier:** Lightweight pre-pipeline check routes trivial turns past recall + working-state + fact extraction. Saves ~600-900ms + 2-3 Haiku calls.
+- **Tool consolidation:** sessions_spawn+dispatch→1 tool, sessions_send+ask→1, 5 memory mutation→2. ~800 token savings.
+- **Agent pinned context:** Agents control what stays resident vs. retrieved on demand. Recursive self-improvement at the prompt layer.
+- **Current TS system: ~31,500–46,500 tokens/turn** for system prompt. Target savings: ~7,700 tokens/turn across all optimizations.
+- Rust implementation: built into `nous::bootstrap` with stable prefix strategy, `nous::skills` for relevance filtering, `nous::classifier` for turn bypass. All grounded in oikos context assembly.
+
+### Config Taxis (Spec 36)
+
+4-layer workspace architecture and SecretRef credential storage. **Largely superseded by Spec 44 (Oikos).**
+
+- **SecretRef pattern retained:** Credentials referenced by name in config, resolved at runtime. `taxis::secrets` crate handles file-based, env-var, and (future) Vault resolution.
+- **Exec tool config:** Per-call `cwd` parameter, per-nous `workingDir` config, 120s default timeout (was 30s), dedicated `glob` tool for pattern matching.
+- **Deploy pipeline gaps:** npm install in deploy, anchor.json scaffolding, agent workspace scaffolding, systemd config — all addressed by oikos migration + single binary deployment.
+- **Memory sidecar security:** Bind to 127.0.0.1 (not 0.0.0.0), token auth at init. **Moot in Rust** — no sidecar, CozoDB is embedded.
+- **Shell injection in start.sh:** Pass API key via env var, not string interpolation. **Moot in Rust** — no shell scripts.
+
+### Metadata Architecture (Spec 37)
+
+Declarative over imperative. Convention-based discovery. **Realized by Spec 44 (Oikos).**
+
+- **Core principle: everything that *can* be config *is* config.** New capabilities added by dropping in files, not modifying code. Every `if (agentId === "X")` in core code is a failure of this principle.
+- **Configuration cascade:** Global defaults → agent-level → session-level → message-level. Most specific wins.
+- **Convention-based discovery:** File presence = feature enabled. No registration, no manifest.
+- **Schema-first validation:** Invalid config fails fast at boot. Figment + validator in Rust.
+- All patterns absorbed into oikos three-tier hierarchy (theke → shared → nous).
+
+### Provider Adapters (Spec 38)
+
+`trait LlmProvider` with multiple backend support.
+
+- **`LlmProvider` trait:** `complete()`, `stream()`, `count_tokens()`, `supported_models()`. Provider-agnostic request/response types.
+- **Provider registry:** Convention-based discovery from config. Model ID → provider mapping.
+- **Anthropic first, others later:** OpenAI (GPT-4o, o1), Ollama (local models) are planned but not v1.
+- **Fallback chain:** Retry on 429/5xx with next provider in chain. Per-agent model overrides via oikos cascade.
+- **Open questions preserved:** Thinking budget normalization across providers, tool schema translation (Anthropic vs OpenAI formats), streaming event normalization.
+- Rust implementation: `hermeneus` crate with `trait LlmProvider`, `AnthropicProvider` as default.
+
+### Autonomy Gradient (Spec 39)
+
+Confidence-gated step execution in Dianoia FSM.
+
+- **Four autonomy levels:** `confirm-all` (0), `confirm-destructive` (1, default), `confirm-novel` (2), `confirm-never` (3). Configurable per agent via oikos cascade.
+- **Level 1 (default):** Auto-advance read-only phases (research, requirements, roadmap). Confirm before writing files or executing code.
+- **Level 2:** Auto-advance when task matches previously successful pattern (requires competence model integration).
+- **Level 3:** Fully autonomous with audit trail. Confirm only on BLOCK or error.
+- **Rollback:** Open question — mechanism if auto-advanced step produces bad output.
+- Rust implementation: internal to `dianoia` crate FSM. Trust level per-nous via oikos config.
+
+### Nous Team (Spec 42)
+
+Closing feedback loops between primitives and autonomous operation.
+
+- **Gap 1 — Closed feedback loop:** Competence scores influence routing. Reflection findings auto-promote to MNEME.md. Kritikos rejections increment corrections for relevant domain.
+- **Gap 2 — Structured task handoff:** `task-create` / `task-send` as first-class primitives with state machine (created → assigned → in-progress → review → done). Context travels with handoff.
+- **Gap 3 — Autonomous prioritization:** Prosoche triggers auto-create dianoia projects for high-urgency signals. Priority queue for idle agents.
+- **Gap 4 — Epistemic confidence tiers:** Verified (checked against ground truth), Inferred (reasoned from context), Assumed (unchecked). Behavioral norm first, structured metadata later.
+- **Gap 5 — Pressure-triggered memory consolidation:** Sub-agent spawn on conversation pressure (turns elapsed, token pressure, domain switch, session idle). Supplements nightly cron. Haiku-powered, async, non-blocking.
+- **Gap 6 — Workspace hygiene check:** Session-start check for TELOS staleness, MNEME bloat, orphaned files, stale skills. Local file reads only, no LLM call.
+- **Gap 7 — Agent-writable workspace files:** MNEME.md append-only, CONTEXT.md writable. SOUL.md/TELOS.md/USER.md operator-only. Duplicate detection via embedding similarity. Max 5 writes/turn.
+- Rust implementation: Competence routing → `nous::routing`. Reflection → `daemon::evolution`. Consolidation → `daemon::consolidation`. Task handoff → `nous::tasks`. Confidence tiers → behavioral norm in AGENTS.md template.
