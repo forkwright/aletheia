@@ -8,11 +8,17 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["sqlite-tests"]
+sqlite-tests = ["aletheia-mneme/sqlite"]
+engine-tests = ["aletheia-mneme/mneme-engine"]
+
 [dev-dependencies]
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
-aletheia-mneme = { path = "../mneme" }
+aletheia-mneme = { path = "../mneme", default-features = false }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-nous = { path = "../nous" }
 serde_json = { workspace = true }
 tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

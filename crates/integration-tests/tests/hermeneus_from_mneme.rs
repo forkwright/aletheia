@@ -1,4 +1,5 @@
 //! Cross-crate tests converting mneme types to hermeneus types.
+#![cfg(feature = "sqlite-tests")]
 
 use aletheia_hermeneus::types as h;
 use aletheia_mneme::store::SessionStore;

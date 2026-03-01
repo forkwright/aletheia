@@ -262,10 +262,11 @@ impl KnowledgeStore {
             .run(&hnsw, BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
 
-        // Schema version tracking relation
+        // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
+        // relations only in temp_store_tx which does not persist across run() calls).
         self.db
             .run(
-                r":create _schema_version { key: String => version: Int }",
+                r":create schema_version { key: String => version: Int }",
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )
@@ -283,7 +284,7 @@ impl KnowledgeStore {
         );
         self.db
             .run(
-                r"?[key, version] <- [[$key, $version]] :put _schema_version { key => version }",
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
                 params,
                 ScriptMutability::Mutable,
             )
@@ -402,7 +403,7 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert("key".to_owned(), DataValue::Str("schema".into()));
         let rows = self.run_read(
-            r"?[version] := *_schema_version{key: $key, version}",
+            r"?[version] := *schema_version{key: $key, version}",
             params,
         )?;
         let row = rows.rows.into_iter().next().ok_or_else(|| {

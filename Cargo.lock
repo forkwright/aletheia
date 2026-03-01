@@ -93,6 +93,7 @@ dependencies = [
  "aletheia-taxis",
  "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
