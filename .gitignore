@@ -117,3 +117,7 @@ tui/target/
 
 # Deploy backups
 .deploy-backup/
+-e 
+# Vendored deps
+vendor/
+crates/mneme-bench/target/

@@ -5,6 +5,9 @@ members = [
     "crates/mneme",
     "crates/taxis",
 ]
+exclude = [
+    "crates/mneme-bench",
+]
 
 [workspace.package]
 edition = "2024"
