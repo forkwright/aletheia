@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod knowledge;
+pub mod knowledge_store;
 #[cfg(feature = "sqlite")]
 pub mod schema;
 #[cfg(feature = "sqlite")]
