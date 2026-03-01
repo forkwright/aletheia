@@ -8,15 +8,20 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lints.rust]
+# 42+ unsafe sites in graph_builder — Phase 2 will address these
 unsafe_code = { level = "allow", priority = 1 }
 rust_2018_idioms = { level = "allow", priority = 1 }
 future_incompatible = { level = "warn", priority = -1 }
+# Orphaned cfg guards for stripped input formats (gdl, dotgraph) — Phase 5 cleanup
+unexpected_cfgs = { level = "allow", priority = 1 }
 
 [lints.clippy]
 pedantic = { level = "allow", priority = 1 }
 dbg_macro = { level = "allow", priority = 1 }
 todo = { level = "allow", priority = 1 }
 unimplemented = { level = "allow", priority = 1 }
+# graph_builder patterns — suppress for Phase 1, fix in Phase 5
+mutable_key_type = { level = "allow", priority = 1 }
 
 [dependencies]
 rayon = "=1.10.0"

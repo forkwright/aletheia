@@ -869,7 +869,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx.commit_tx()?;
         Ok(())
     }
-    pub(crate) fn transact(&'s self) -> Result<SessionTx<'_>> {
+    pub(crate) fn transact(&'s self) -> Result<SessionTx<'s>> {
         let ret = SessionTx {
             store_tx: Box::new(self.db.transact(false)?),
             temp_store_tx: self.temp_db.transact(true)?,
@@ -879,7 +879,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         };
         Ok(ret)
     }
-    pub(crate) fn transact_write(&'s self) -> Result<SessionTx<'_>> {
+    pub(crate) fn transact_write(&'s self) -> Result<SessionTx<'s>> {
         let ret = SessionTx {
             store_tx: Box::new(self.db.transact(true)?),
             temp_store_tx: self.temp_db.transact(true)?,

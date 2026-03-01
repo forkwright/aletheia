@@ -13,6 +13,12 @@ future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 # CozoDB has unsafe in ndarray operations and string conversions — Phase 5 audit
 unsafe_code = { level = "allow", priority = 1 }
+# Orphaned cfg guards for stripped backends (storage-sqlite) — Phase 5 cleanup
+unexpected_cfgs = { level = "allow", priority = 1 }
+# Dead code in CozoDB internals — suppress, clean in Phase 5
+dead_code = { level = "allow", priority = 1 }
+# Private type visibility in CozoDB pub structs — suppress, clean in Phase 5
+private_interfaces = { level = "allow", priority = 1 }
 
 [lints.clippy]
 pedantic = { level = "allow", priority = 1 }
@@ -20,6 +26,23 @@ await_holding_lock = "warn"
 dbg_macro = { level = "allow", priority = 1 }
 todo = { level = "allow", priority = 1 }
 unimplemented = { level = "allow", priority = 1 }
+# CozoDB patterns — suppress for Phase 1, fix in Phase 5
+mutable_key_type = { level = "allow", priority = 1 }
+type_complexity = { level = "allow", priority = 1 }
+too_many_arguments = { level = "allow", priority = 1 }
+# CozoDB code quality patterns — suppress for Phase 1, fix in Phase 5
+get_first = { level = "allow", priority = 1 }
+iter_kv_map = { level = "allow", priority = 1 }
+let_and_return = { level = "allow", priority = 1 }
+manual_inspect = { level = "allow", priority = 1 }
+manual_unwrap_or_default = { level = "allow", priority = 1 }
+needless_borrows_for_generic_args = { level = "allow", priority = 1 }
+non_canonical_partial_ord_impl = { level = "allow", priority = 1 }
+question_mark = { level = "allow", priority = 1 }
+redundant_closure = { level = "allow", priority = 1 }
+swap_with_temporary = { level = "allow", priority = 1 }
+useless_conversion = { level = "allow", priority = 1 }
+useless_format = { level = "allow", priority = 1 }
 
 [features]
 default = ["storage-mem"]

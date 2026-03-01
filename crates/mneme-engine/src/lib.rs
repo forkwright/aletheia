@@ -1,6 +1,7 @@
 // aletheia-mneme-engine -- embedded Datalog + HNSW + graph engine for Aletheia
 
 use std::collections::BTreeMap;
+#[cfg(feature = "storage-new-rocksdb")]
 use std::path::Path;
 
 use crossbeam::channel::{bounded, Receiver, Sender};
@@ -15,8 +16,6 @@ pub use crate::storage::mem::MemStorage;
 pub use crate::storage::newrocks::NewRocksDbStorage;
 
 // Internal re-exports needed by submodules (not part of the public API)
-pub(crate) use crate::data::value::JsonData;
-pub(crate) use crate::data::value::Num;
 pub(crate) use crate::data::symb::Symbol;
 pub(crate) use crate::data::expr::Expr;
 pub(crate) use crate::parse::SourceSpan;
