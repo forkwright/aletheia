@@ -3,8 +3,8 @@
 // Refresh tokens have ~30 day lifetime — when those expire, manual re-auth is required.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 
 const log = createLogger("hermeneus.oauth");
 
@@ -184,6 +184,5 @@ export async function proactiveRefresh(credPath?: string): Promise<boolean> {
 }
 
 function defaultCredPath(): string {
-  const home = process.env["HOME"] ?? "/tmp";
-  return join(home, ".aletheia", "credentials", "anthropic.json");
+  return paths.credentialFile("anthropic");
 }

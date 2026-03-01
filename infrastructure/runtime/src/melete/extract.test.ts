@@ -282,7 +282,7 @@ describe("noise filtering", () => {
       facts: [
         "Reading file config.json to load settings",
         "Writing path /etc/aletheia to disk",
-        "Opening directory ~/.aletheia",
+        "Opening directory /inst/config",
         "Pitman arm torque spec is 185 ft-lbs per service manual",
       ],
       decisions: [],

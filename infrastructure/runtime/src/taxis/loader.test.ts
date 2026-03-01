@@ -14,6 +14,7 @@ vi.mock("./paths.js", () => ({
   paths: {
     configFile: () => "/test/aletheia.json",
     nousDir: (id: string) => `/test/nous/${id}`,
+    data: "/test/data",
   },
 }));
 

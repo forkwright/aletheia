@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
 import { hashPassword } from "../../symbolon/passwords.js";
+import { paths } from "../../taxis/paths.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon.setup");
 
-const configDir = (): string => process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia");
-const setupFlagFile = (): string => join(configDir(), ".setup-complete");
-const credentialFile = (): string => join(configDir(), "credentials", "anthropic.json");
-const aletheiaConfigFile = (): string => join(configDir(), "aletheia.json");
+const setupFlagFile = (): string => join(paths.configDir(), ".setup-complete");
+const credentialFile = (): string => paths.credentialFile("anthropic");
+const aletheiaConfigFile = (): string => paths.configFile();
 const claudeJsonPath = (): string => join(homedir(), ".claude.json");
 
 async function validateAnthropicKey(key: string): Promise<{ valid: boolean; error?: string }> {
@@ -104,7 +104,7 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     }
 
     try {
-      const credDir = join(configDir(), "credentials");
+      const credDir = join(paths.configDir(), "credentials");
       mkdirSync(credDir, { recursive: true });
 
       // Preserve existing backupCredentials/backupKeys if the file already exists
@@ -161,7 +161,7 @@ export function setupRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
       };
       cfg["gateway"] = gateway;
 
-      mkdirSync(configDir(), { recursive: true });
+      mkdirSync(paths.configDir(), { recursive: true });
       writeFileSync(aletheiaConfigFile(), JSON.stringify(cfg, null, 2), { mode: 0o600 });
       log.info(`Account created: ${username}`);
       return c.json({ success: true });

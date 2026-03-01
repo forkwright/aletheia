@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
-import { nousSharedDir } from "../taxis/paths.js";
+import { paths } from "../taxis/paths.js";
 import { PlanningStore } from "./store.js";
 import { ensureProjectDir, getProjectDir } from "./project-files.js";
 import type Database from "better-sqlite3";
@@ -161,16 +161,10 @@ export class RetrospectiveGenerator {
 
   /**
    * Read all retrospectives from past projects (for feeding into new project context).
-   * Scans nousSharedDir()/_shared/workspace/plans/ for retro.json files.
+   * Scans instance/data/plans/ for retro.json files.
    */
   readPastRetros(): RetrospectiveEntry[] {
-    let plansDir: string;
-    try {
-      plansDir = join(nousSharedDir(), "_shared", "workspace", "plans");
-    } catch {
-      // nousSharedDir() throws if anchor not initialized — return empty in that case
-      return [];
-    }
+    const plansDir = paths.plansDir();
 
     if (!existsSync(plansDir)) return [];
 

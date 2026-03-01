@@ -11,7 +11,7 @@ import { distillSession } from "../../../melete/pipeline.js";
 import { eventBus } from "../../../koina/event-bus.js";
 import { classifyDomain } from "../../interaction-signals.js";
 import { getSharedIndex, indexWorkspace, loadIndexConfig, queryIndex } from "../../../organon/workspace-indexer.js";
-import { nousSharedDir } from "../../../taxis/paths.js";
+import { paths } from "../../../taxis/paths.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
 import { detectPlanningIntent } from "../../../dianoia/intent.js";
 import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
@@ -215,12 +215,8 @@ export async function buildContext(
   {
     const sharedIndex = getSharedIndex();
     if (sharedIndex && sharedIndex.files.length > 0) {
-      let sharedDir: string | null = null;
-      try {
-        sharedDir = join(nousSharedDir(), "_shared");
-      } catch { /* anchor not initialized — skip injection */ }
-
-      if (sharedDir) {
+      const sharedDir = paths.theke;
+      if (existsSync(sharedDir)) {
         const hits = queryIndex(sharedIndex, msg.text ?? "", SHARED_MAX_RESULTS)
           .filter((hit) => {
             // Score is not directly returned by queryIndex — re-compute for threshold check
@@ -241,7 +237,7 @@ export async function buildContext(
           for (const hit of hits) {
             const staleMarker = sharedIndex.staleWarning ? " [stale]" : "";
             const staleLine = sharedIndex.staleWarning ? "\nContent may not reflect recent changes." : "";
-            const header = `--- workspace: _shared/${hit.path}${staleMarker} ---${staleLine}`;
+            const header = `--- workspace: theke/${hit.path}${staleMarker} ---${staleLine}`;
             let content = "";
             try {
               const absPath = join(sharedDir, hit.path);

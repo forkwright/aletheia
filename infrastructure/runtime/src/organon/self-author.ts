@@ -3,11 +3,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { basename, join } from "node:path";
 import { execSync } from "node:child_process";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 import type { ToolContext, ToolHandler, ToolRegistry } from "./registry.js";
 
 const log = createLogger("organon.self-author");
-
-const AUTHORED_DIR_NAME = "tools/authored";
 const MAX_TOOL_SIZE = 8192;
 const MAX_FAILURES = 3;
 const SANDBOX_TIMEOUT = 10_000;
@@ -22,8 +21,8 @@ interface AuthoredToolMeta {
   updatedAt: string;
 }
 
-function getAuthoredDir(workspace: string): string {
-  const dir = join(workspace, "..", "..", "shared", AUTHORED_DIR_NAME);
+function getAuthoredDir(_workspace: string): string {
+  const dir = paths.authoredToolsDir();
   mkdirSync(dir, { recursive: true });
   return dir;
 }

@@ -1,8 +1,5 @@
-// Paths module tests
-import { join } from "node:path";
-import { homedir } from "node:os";
+// Oikos paths module tests
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConfigError } from "../koina/errors.js";
 
 describe("paths", () => {
   const originalEnv = { ...process.env };
@@ -15,24 +12,47 @@ describe("paths", () => {
     process.env = { ...originalEnv };
   });
 
-  it("uses ALETHEIA_ROOT from env", async () => {
-    process.env["ALETHEIA_ROOT"] = "/custom/root";
+  it("uses ALETHEIA_ROOT from env as instance root", async () => {
+    process.env["ALETHEIA_ROOT"] = "/custom/instance";
     const { paths } = await import("./paths.js");
-    expect(paths.root).toBe("/custom/root");
-    expect(paths.nous).toBe("/custom/root/nous");
-    expect(paths.shared).toBe("/custom/root/shared");
+    expect(paths.root).toBe("/custom/instance");
   });
 
-  it("defaults ALETHEIA_ROOT to home directory path", async () => {
-    delete process.env["ALETHEIA_ROOT"];
+  it("derives tier directories from instance root", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
     const { paths } = await import("./paths.js");
-    expect(paths.root).toBe(join(homedir(), ".aletheia"));
+    expect(paths.theke).toBe("/inst/theke");
+    expect(paths.shared).toBe("/inst/shared");
+    expect(paths.nous).toBe("/inst/nous");
+    expect(paths.config).toBe("/inst/config");
+    expect(paths.data).toBe("/inst/data");
+    expect(paths.logs).toBe("/inst/logs");
   });
 
-  it("configDir uses ALETHEIA_CONFIG_DIR env", async () => {
+  it("derives shared subdirectories", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    const { paths } = await import("./paths.js");
+    expect(paths.sharedBin).toBe("/inst/shared/bin");
+    expect(paths.sharedTools).toBe("/inst/shared/tools");
+    expect(paths.sharedSkills).toBe("/inst/shared/skills");
+    expect(paths.sharedHooks).toBe("/inst/shared/hooks");
+    expect(paths.sharedTemplates).toBe("/inst/shared/templates");
+    expect(paths.sharedCalibration).toBe("/inst/shared/calibration");
+    expect(paths.sharedSchemas).toBe("/inst/shared/schemas");
+    expect(paths.coordination).toBe("/inst/shared/coordination");
+  });
+
+  it("configDir uses ALETHEIA_CONFIG_DIR env override", async () => {
     process.env["ALETHEIA_CONFIG_DIR"] = "/custom/config";
     const { paths } = await import("./paths.js");
     expect(paths.configDir()).toBe("/custom/config");
+  });
+
+  it("configDir defaults to instance/config without env override", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    delete process.env["ALETHEIA_CONFIG_DIR"];
+    const { paths } = await import("./paths.js");
+    expect(paths.configDir()).toBe("/inst/config");
   });
 
   it("configFile joins configDir with aletheia.json", async () => {
@@ -41,73 +61,75 @@ describe("paths", () => {
     expect(paths.configFile()).toBe("/etc/aletheia/aletheia.json");
   });
 
-  it("nousDir constructs agent workspace path", async () => {
-    delete process.env["ALETHEIA_ROOT"];
+  it("nousDir constructs per-agent workspace path", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
     const { paths } = await import("./paths.js");
-    expect(paths.nousDir("syn")).toBe(join(homedir(), ".aletheia", "nous", "syn"));
+    expect(paths.nousDir("syn")).toBe("/inst/nous/syn");
   });
 
   it("nousFile constructs file path in agent workspace", async () => {
-    delete process.env["ALETHEIA_ROOT"];
+    process.env["ALETHEIA_ROOT"] = "/inst";
     const { paths } = await import("./paths.js");
-    expect(paths.nousFile("syn", "SOUL.md")).toBe(join(homedir(), ".aletheia", "nous", "syn", "SOUL.md"));
+    expect(paths.nousFile("syn", "SOUL.md")).toBe("/inst/nous/syn/SOUL.md");
   });
 
-  it("sessionsDb joins configDir with sessions.db", async () => {
-    process.env["ALETHEIA_CONFIG_DIR"] = "/var/aletheia";
+  it("sessionsDb resolves to data/sessions.db", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
     const { paths } = await import("./paths.js");
-    expect(paths.sessionsDb()).toBe("/var/aletheia/sessions.db");
+    expect(paths.sessionsDb()).toBe("/inst/data/sessions.db");
   });
 
-  it("static paths are consistent", async () => {
-    delete process.env["ALETHEIA_ROOT"];
+  it("credentialFile resolves to config/credentials/<provider>.json", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
     const { paths } = await import("./paths.js");
-    expect(paths.sharedBin).toBe(join(homedir(), ".aletheia", "shared", "bin"));
-    expect(paths.sharedConfig).toBe(join(homedir(), ".aletheia", "shared", "config"));
-    expect(paths.sharedMemory).toBe(join(homedir(), ".aletheia", "shared", "memory"));
-    expect(paths.infrastructure).toBe(join(homedir(), ".aletheia", "infrastructure"));
-  });
-});
-
-describe("anchor-based paths", () => {
-  beforeEach(() => {
-    vi.resetModules();
+    expect(paths.credentialFile("anthropic")).toBe("/inst/config/credentials/anthropic.json");
   });
 
-  it("nousSharedDir() and deployDir() return values set by initPaths()", async () => {
-    const { initPaths, nousSharedDir, deployDir } = await import("./paths.js");
-    initPaths({ nousDir: "/custom/nous", deployDir: "/custom/deploy" });
-    expect(nousSharedDir()).toBe("/custom/nous");
-    expect(deployDir()).toBe("/custom/deploy");
+  it("credentialsDir resolves to config/credentials/", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    const { paths } = await import("./paths.js");
+    expect(paths.credentialsDir()).toBe("/inst/config/credentials");
   });
 
-  it("nousAgentDir() returns join of nousSharedDir and nousId", async () => {
-    const { initPaths, nousAgentDir } = await import("./paths.js");
-    initPaths({ nousDir: "/custom/nous", deployDir: "/custom/deploy" });
-    expect(nousAgentDir("syn")).toBe("/custom/nous/syn");
+  it("planningDb resolves to data/planning.db", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    const { paths } = await import("./paths.js");
+    expect(paths.planningDb()).toBe("/inst/data/planning.db");
   });
 
-  it("nousSharedDir() throws ConfigError with CONFIG_ANCHOR_NOT_FOUND before initPaths()", async () => {
-    const { nousSharedDir } = await import("./paths.js");
-    let caught: ConfigError | undefined;
-    try {
-      nousSharedDir();
-    } catch (e) {
-      caught = e as ConfigError;
-    }
-    expect(caught).toBeDefined();
-    expect(caught?.code).toBe("CONFIG_ANCHOR_NOT_FOUND");
+  it("coordination paths resolve under shared/coordination/", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    const { paths } = await import("./paths.js");
+    expect(paths.tracesDir()).toBe("/inst/shared/coordination/traces");
+    expect(paths.statusDir()).toBe("/inst/shared/coordination/status");
+    expect(paths.evolutionDir()).toBe("/inst/shared/coordination/evolution");
+    expect(paths.patchesDir()).toBe("/inst/shared/coordination/patches");
+    expect(paths.prosocheDir()).toBe("/inst/shared/coordination/prosoche");
+    expect(paths.memoryDir()).toBe("/inst/shared/coordination/memory");
   });
 
-  it("deployDir() throws ConfigError with CONFIG_ANCHOR_NOT_FOUND before initPaths()", async () => {
-    const { deployDir } = await import("./paths.js");
-    let caught: ConfigError | undefined;
-    try {
-      deployDir();
-    } catch (e) {
-      caught = e as ConfigError;
-    }
-    expect(caught).toBeDefined();
-    expect(caught?.code).toBe("CONFIG_ANCHOR_NOT_FOUND");
+  it("authoredToolsDir resolves under shared/tools/authored", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    const { paths } = await import("./paths.js");
+    expect(paths.authoredToolsDir()).toBe("/inst/shared/tools/authored");
+  });
+
+  it("pluginRoot uses ALETHEIA_PLUGIN_ROOT env override", async () => {
+    process.env["ALETHEIA_PLUGIN_ROOT"] = "/custom/plugins";
+    const { paths } = await import("./paths.js");
+    expect(paths.pluginRoot).toBe("/custom/plugins");
+  });
+
+  it("pluginRoot defaults to shared/plugins without env override", async () => {
+    process.env["ALETHEIA_ROOT"] = "/inst";
+    delete process.env["ALETHEIA_PLUGIN_ROOT"];
+    const { paths } = await import("./paths.js");
+    expect(paths.pluginRoot).toBe("/inst/shared/plugins");
+  });
+
+  it("repoRoot and infrastructure resolve to repo-level paths", async () => {
+    const { paths } = await import("./paths.js");
+    expect(paths.repoRoot).toBeTruthy();
+    expect(paths.infrastructure).toBe(`${paths.repoRoot}/infrastructure`);
   });
 });

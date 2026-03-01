@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
+import { paths } from "../../taxis/paths.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
 const log = createLogger("organon.propose-patch");
@@ -42,8 +43,8 @@ function getSrcDir(): string {
   return join(getRuntimeDir(), "src");
 }
 
-function getHistoryPath(workspace: string): string {
-  const dir = join(workspace, "..", "..", "shared", "patches");
+function getHistoryPath(_workspace: string): string {
+  const dir = paths.patchesDir();
   mkdirSync(dir, { recursive: true });
   return join(dir, "history.json");
 }

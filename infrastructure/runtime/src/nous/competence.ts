@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 
 const log = createLogger("nous.competence");
 
@@ -31,8 +32,8 @@ export class CompetenceModel {
   private dirty = false;
   private flushScheduled = false;
 
-  constructor(sharedRoot: string) {
-    const dir = join(sharedRoot, "shared", "competence");
+  constructor(_sharedRoot: string) {
+    const dir = join(paths.sharedCalibration, "competence");
     mkdirSync(dir, { recursive: true });
     this.filePath = join(dir, "model.json");
     this.load();
