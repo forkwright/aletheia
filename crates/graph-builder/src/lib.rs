@@ -1,8 +1,3 @@
-#![cfg_attr(has_maybe_uninit_write_slice, feature(maybe_uninit_write_slice))]
-#![cfg_attr(has_new_uninit, feature(new_uninit))]
-#![cfg_attr(has_doc_cfg, feature(doc_cfg))]
-#![cfg_attr(has_slice_partition_dedup, feature(slice_partition_dedup))]
-
 //! A library that can be used as a building block for high-performant graph
 //! algorithms.
 //!
@@ -251,7 +246,6 @@
 //! ```
 
 pub mod builder;
-mod compat;
 pub mod graph;
 pub mod graph_ops;
 pub mod index;
@@ -259,8 +253,6 @@ pub mod input;
 pub mod prelude;
 
 pub use crate::builder::GraphBuilder;
-pub use crate::graph::adj_list::DirectedALGraph;
-pub use crate::graph::adj_list::UndirectedALGraph;
 pub use crate::graph::csr::CsrLayout;
 pub use crate::graph::csr::DirectedCsrGraph;
 pub use crate::graph::csr::UndirectedCsrGraph;
@@ -282,13 +274,6 @@ pub enum Error {
     IdxError {
         #[from]
         source: std::num::TryFromIntError,
-    },
-    #[cfg(feature = "gdl")]
-    #[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-    #[error("error while parsing GDL input")]
-    GdlError {
-        #[from]
-        source: gdl::graph::GraphHandlerError,
     },
     #[error("invalid partitioning")]
     InvalidPartitioning,

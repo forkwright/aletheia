@@ -15,7 +15,6 @@ use std::{
 use rayon::prelude::*;
 
 use crate::{
-    compat::*,
     graph_ops::{DeserializeGraphOp, SerializeGraphOp, ToUndirectedOp},
     index::Idx,
     input::{edgelist::Edges, Direction},
@@ -294,20 +293,20 @@ where
 
         let [node_count, edge_count] = meta;
 
-        let mut offsets = Box::new_uninit_slice_compat(node_count.index() + 1);
+        let mut offsets = Box::<[_]>::new_uninit_slice(node_count.index() + 1);
         let offsets_ptr = offsets.as_mut_ptr() as *mut NI;
         let offsets_ptr =
             unsafe { std::slice::from_raw_parts_mut(offsets_ptr, node_count.index() + 1) };
         read.read_exact(offsets_ptr.as_mut_byte_slice())?;
 
-        let mut targets = Box::new_uninit_slice_compat(edge_count.index());
+        let mut targets = Box::<[_]>::new_uninit_slice(edge_count.index());
         let targets_ptr = targets.as_mut_ptr() as *mut Target<NI, EV>;
         let targets_ptr =
             unsafe { std::slice::from_raw_parts_mut(targets_ptr, edge_count.index()) };
         read.read_exact(targets_ptr.as_mut_byte_slice())?;
 
-        let offsets = unsafe { offsets.assume_init_compat() };
-        let targets = unsafe { targets.assume_init_compat() };
+        let offsets = unsafe { offsets.assume_init() };
+        let targets = unsafe { targets.assume_init() };
 
         Ok(Csr::new(offsets, targets))
     }
@@ -349,13 +348,13 @@ where
         read.read_exact(meta.as_mut_byte_slice())?;
         let [node_count] = meta;
 
-        let mut node_values = Box::new_uninit_slice_compat(node_count);
+        let mut node_values = Box::<[_]>::new_uninit_slice(node_count);
         let node_values_ptr = node_values.as_mut_ptr() as *mut NV;
         let node_values_slice =
             unsafe { std::slice::from_raw_parts_mut(node_values_ptr, node_count.index()) };
         read.read_exact(node_values_slice.as_mut_byte_slice())?;
 
-        let offsets = unsafe { node_values.assume_init_compat() };
+        let offsets = unsafe { node_values.assume_init() };
 
         Ok(NodeValues(offsets))
     }
@@ -894,6 +893,33 @@ where
         .for_each(|list| list.sort_unstable());
 }
 
+/// Stable equivalent of the unstable `slice::partition_dedup`. Returns the count of unique elements.
+/// Unique elements are moved to the front; duplicates remain at the tail (not necessarily valid).
+fn partition_dedup_by_eq<T: PartialEq>(slice: &mut [T]) -> usize {
+    let len = slice.len();
+    if len <= 1 {
+        return len;
+    }
+    let ptr = slice.as_mut_ptr();
+    let mut next_read: usize = 1;
+    let mut next_write: usize = 1;
+    unsafe {
+        while next_read < len {
+            let ptr_read = ptr.add(next_read);
+            let prev_ptr_write = ptr.add(next_write - 1);
+            if *ptr_read != *prev_ptr_write {
+                if next_read != next_write {
+                    let ptr_write = prev_ptr_write.offset(1);
+                    core::ptr::swap(ptr_read, ptr_write);
+                }
+                next_write += 1;
+            }
+            next_read += 1;
+        }
+    }
+    next_write
+}
+
 fn sort_and_deduplicate_targets<NI, EV>(
     offsets: &[NI],
     targets: &mut [Target<NI, EV>],
@@ -912,8 +938,9 @@ where
         .enumerate()
         .map(|(node, slice)| {
             slice.sort_unstable();
-            // deduplicate
-            let (dedup, _) = slice.partition_dedup_compat();
+            // deduplicate — partition_dedup is unstable; inline equivalent:
+            let dedup_len = partition_dedup_by_eq(slice);
+            let dedup = &mut slice[..dedup_len];
             let mut new_degree = dedup.len();
             // remove self loops .. there is at most once occurence of node inside dedup
             if let Ok(idx) = dedup.binary_search_by_key(&NI::new(node), |t| t.target) {
@@ -935,7 +962,11 @@ where
         .into_par_iter()
         .zip(new_target_slices.into_par_iter())
         .for_each(|(old_slice, new_slice)| {
-            MaybeUninit::write_slice_compat(new_slice, &old_slice[..new_slice.len()]);
+            // MaybeUninit::write_slice is unstable; use transmute-based copy
+            // SAFETY: &[T] and &[MaybeUninit<T>] have the same layout
+            let uninit_src: &[MaybeUninit<_>] =
+                unsafe { std::mem::transmute(&old_slice[..new_slice.len()]) };
+            new_slice.copy_from_slice(uninit_src);
         });
 
     // SAFETY: We copied all (potentially shortened) target ids from the old

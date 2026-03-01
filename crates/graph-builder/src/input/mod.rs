@@ -1,23 +1,8 @@
-pub mod binary;
-#[cfg(feature = "dotgraph")]
-#[cfg_attr(all(feature = "dotgraph", has_doc_cfg), doc(cfg(feature = "dotgraph")))]
-pub mod dotgraph;
 pub mod edgelist;
-#[cfg(feature = "gdl")]
-#[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-pub mod gdl;
-pub mod graph500;
 
-pub use binary::BinaryInput;
-#[cfg(feature = "dotgraph")]
-pub use dotgraph::DotGraph;
-#[cfg(feature = "dotgraph")]
-pub use dotgraph::DotGraphInput;
 pub use edgelist::EdgeList;
 pub use edgelist::EdgeListInput;
 pub use edgelist::Edges;
-pub use graph500::Graph500;
-pub use graph500::Graph500Input;
 
 use crate::index::Idx;
 

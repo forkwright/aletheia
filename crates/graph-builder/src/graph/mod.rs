@@ -1,4 +1,3 @@
-pub mod adj_list;
 pub mod csr;
 
 /// Represents the target of an edge and its associated value.
