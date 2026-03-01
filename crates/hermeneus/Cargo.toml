@@ -1,0 +1,21 @@
+[package]
+name = "aletheia-hermeneus"
+version = "0.1.0"
+description = "LLM provider abstraction and Anthropic streaming client"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }

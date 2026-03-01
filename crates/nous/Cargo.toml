@@ -1,0 +1,25 @@
+[package]
+name = "aletheia-nous"
+version = "0.1.0"
+description = "Agent session pipeline — bootstrap, routing, tool execution"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-koina = { path = "../koina" }
+aletheia-mneme = { path = "../mneme" }
+aletheia-taxis = { path = "../taxis" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tempfile = "3"

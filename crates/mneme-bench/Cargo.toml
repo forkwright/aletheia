@@ -1,0 +1,30 @@
+[package]
+name = "aletheia-mneme-bench"
+version = "0.1.0"
+description = "CozoDB validation gate — M1.2a benchmark"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/forkwright/aletheia"
+rust-version = "1.85"
+publish = false
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[dependencies]
+# Standalone binary — excluded from workspace to avoid sqlite3 link conflict
+# with rusqlite in aletheia-mneme. Run with: cd crates/mneme-bench && cargo run
+# graph-algo disabled due to graph_builder/rayon version conflict in 0.7.6
+# minimal = SQLite storage only. No graph-algo (graph_builder broken with rayon 1.10).
+# HNSW and Datalog still work — graph algos (PageRank, community detection) don't.
+# graph-algo disabled: graph_builder crate broken with rayon 1.10 (IntoIter/Iter mismatch)
+# HNSW and Datalog still work. PageRank/community detection unavailable.
+# Patched locally to add rayon as unconditional dep (cozo bug: uses rayon::spawn in lib.rs
+# but only declares rayon under graph-algo feature flag).
+cozo = { path = "../../vendor/cozo/cozo-core", default-features = false, features = ["minimal", "requests"] }
+rand = "0.8"
+serde_json = "1"
+
+[[bin]]
+name = "cozo-bench"
+path = "src/main.rs"

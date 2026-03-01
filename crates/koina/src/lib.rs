@@ -7,3 +7,15 @@
 pub mod error;
 pub mod id;
 pub mod tracing_init;
+
+// --- Static assertions: key types are Send + Sync ---
+#[cfg(test)]
+mod assertions {
+    use static_assertions::assert_impl_all;
+    use super::id::*;
+
+    assert_impl_all!(NousId: Send, Sync);
+    assert_impl_all!(SessionId: Send, Sync);
+    assert_impl_all!(TurnId: Send, Sync);
+    assert_impl_all!(ToolName: Send, Sync);
+}

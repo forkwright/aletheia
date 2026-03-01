@@ -1,0 +1,11 @@
+//! aletheia-hermeneus — LLM provider abstraction
+//!
+//! Hermeneus (Ἑρμηνεύς) — "interpreter." Provides a provider-agnostic interface
+//! for LLM interaction. Anthropic as the primary provider, with the trait
+//! designed for future OpenAI/Ollama backends.
+//!
+//! Depends only on `aletheia-koina`.
+
+pub mod error;
+pub mod provider;
+pub mod types;

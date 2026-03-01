@@ -1,8 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/hermeneus",
     "crates/koina",
+    "crates/mneme",
+    "crates/nous",
     "crates/taxis",
+]
+exclude = [
+    "crates/mneme-bench",
 ]
 
 [workspace.package]
