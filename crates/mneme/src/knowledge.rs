@@ -176,4 +176,120 @@ mod tests {
         assert_eq!(entity.name, back.name);
         assert_eq!(entity.aliases, back.aliases);
     }
+
+    #[test]
+    fn relationship_serde_roundtrip() {
+        let rel = Relationship {
+            src: "e-1".to_owned(),
+            dst: "e-2".to_owned(),
+            relation: "works_on".to_owned(),
+            weight: 0.85,
+            created_at: "2026-02-28T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&rel).unwrap();
+        let back: Relationship = serde_json::from_str(&json).unwrap();
+        assert_eq!(rel.src, back.src);
+        assert_eq!(rel.dst, back.dst);
+        assert_eq!(rel.relation, back.relation);
+    }
+
+    #[test]
+    fn embedded_chunk_serde_roundtrip() {
+        let chunk = EmbeddedChunk {
+            id: "emb-1".to_owned(),
+            content: "some text".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "fact-1".to_owned(),
+            nous_id: "syn".to_owned(),
+            embedding: vec![0.1, 0.2, 0.3],
+            created_at: "2026-02-28T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&chunk).unwrap();
+        let back: EmbeddedChunk = serde_json::from_str(&json).unwrap();
+        assert_eq!(chunk.content, back.content);
+        assert_eq!(chunk.embedding.len(), back.embedding.len());
+    }
+
+    #[test]
+    fn recall_result_serde_roundtrip() {
+        let result = RecallResult {
+            content: "Cody lives in Pflugerville".to_owned(),
+            distance: 0.12,
+            source_type: "fact".to_owned(),
+            source_id: "fact-1".to_owned(),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let back: RecallResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(result.content, back.content);
+        assert!((result.distance - back.distance).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn fact_with_empty_content() {
+        let fact = Fact {
+            id: "f-empty".to_owned(),
+            nous_id: "syn".to_owned(),
+            content: String::new(),
+            confidence: 0.5,
+            tier: EpistemicTier::Assumed,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&fact).unwrap();
+        let back: Fact = serde_json::from_str(&json).unwrap();
+        assert!(back.content.is_empty());
+    }
+
+    #[test]
+    fn fact_with_unicode_content() {
+        let fact = Fact {
+            id: "f-uni".to_owned(),
+            nous_id: "syn".to_owned(),
+            content: "Cody uses 日本語 and emoji 🦀".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Verified,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&fact).unwrap();
+        let back: Fact = serde_json::from_str(&json).unwrap();
+        assert_eq!(fact.content, back.content);
+    }
+
+    #[test]
+    fn entity_empty_aliases() {
+        let entity = Entity {
+            id: "e-2".to_owned(),
+            name: "Aletheia".to_owned(),
+            entity_type: "project".to_owned(),
+            aliases: vec![],
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&entity).unwrap();
+        let back: Entity = serde_json::from_str(&json).unwrap();
+        assert!(back.aliases.is_empty());
+    }
+
+    #[test]
+    fn epistemic_tier_display() {
+        assert_eq!(EpistemicTier::Verified.to_string(), "verified");
+        assert_eq!(EpistemicTier::Inferred.to_string(), "inferred");
+        assert_eq!(EpistemicTier::Assumed.to_string(), "assumed");
+    }
+
+    #[test]
+    fn epistemic_tier_as_str_matches_serde() {
+        for tier in [EpistemicTier::Verified, EpistemicTier::Inferred, EpistemicTier::Assumed] {
+            let json = serde_json::to_string(&tier).unwrap();
+            let expected = format!("\"{}\"", tier.as_str());
+            assert_eq!(json, expected);
+        }
+    }
 }

@@ -506,4 +506,128 @@ mod tests {
 
         assert!(e.compute_score(&new_dissimilar) > e.compute_score(&old_similar));
     }
+
+    // --- Boundary conditions ---
+
+    #[test]
+    fn all_weights_zero_returns_zero() {
+        let weights = RecallWeights {
+            vector_similarity: 0.0,
+            recency: 0.0,
+            relevance: 0.0,
+            epistemic_tier: 0.0,
+            relationship_proximity: 0.0,
+            access_frequency: 0.0,
+        };
+        let e = RecallEngine::with_weights(weights);
+        let factors = FactorScores {
+            vector_similarity: 1.0,
+            recency: 1.0,
+            relevance: 1.0,
+            epistemic_tier: 1.0,
+            relationship_proximity: 1.0,
+            access_frequency: 1.0,
+        };
+        assert!((e.compute_score(&factors)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn vector_similarity_negative_clamps() {
+        let e = engine();
+        assert!((e.score_vector_similarity(-0.5)).abs() < 1.01);
+        assert!(e.score_vector_similarity(-0.5) >= 0.0);
+    }
+
+    #[test]
+    fn vector_similarity_over_two_clamps() {
+        let e = engine();
+        assert!((e.score_vector_similarity(3.0)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn recency_negative_age_returns_one() {
+        let e = engine();
+        assert!((e.score_recency(-10.0) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn recency_very_old_near_zero() {
+        let e = engine();
+        let score = e.score_recency(1_000_000.0);
+        assert!(score >= 0.0);
+        assert!(score < 0.001);
+    }
+
+    #[test]
+    fn access_frequency_u64_max_no_panic() {
+        let e = engine();
+        let score = e.score_access_frequency(u64::MAX);
+        assert!(score.is_finite());
+        assert!(score > 0.0);
+    }
+
+    #[test]
+    fn proximity_high_hops_near_zero() {
+        let e = engine();
+        let score = e.score_relationship_proximity(Some(100));
+        assert!(score > 0.0);
+        assert!(score < 0.001);
+    }
+
+    #[test]
+    fn proximity_same_entity() {
+        let e = engine();
+        assert!((e.score_relationship_proximity(Some(0)) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn rank_empty_vec() {
+        let e = engine();
+        let ranked = e.rank(vec![]);
+        assert!(ranked.is_empty());
+    }
+
+    #[test]
+    fn rank_single_element() {
+        let e = engine();
+        let single = vec![ScoredResult {
+            content: "only".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "f1".to_owned(),
+            nous_id: "syn".to_owned(),
+            factors: FactorScores {
+                vector_similarity: 0.5,
+                ..FactorScores::default()
+            },
+            score: 0.0,
+        }];
+        let ranked = e.rank(single);
+        assert_eq!(ranked.len(), 1);
+        assert!(ranked[0].score > 0.0);
+    }
+
+    #[test]
+    fn recall_weights_serde_roundtrip() {
+        let weights = RecallWeights::default();
+        let json = serde_json::to_string(&weights).unwrap();
+        let back: RecallWeights = serde_json::from_str(&json).unwrap();
+        assert!((weights.vector_similarity - back.vector_similarity).abs() < f64::EPSILON);
+        assert!((weights.total() - back.total()).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn single_weight_isolation() {
+        let factors = FactorScores {
+            vector_similarity: 0.0,
+            recency: 0.0,
+            relevance: 1.0,
+            epistemic_tier: 0.0,
+            relationship_proximity: 0.0,
+            access_frequency: 0.0,
+        };
+        let e = engine();
+        let score = e.compute_score(&factors);
+        let expected = 0.15; // relevance weight
+        assert!((score - expected).abs() < 0.01);
+    }
 }

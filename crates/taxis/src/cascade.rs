@@ -335,4 +335,51 @@ mod tests {
         assert!(syn_names.contains(&"common.md"));
         assert!(demi_names.contains(&"common.md"));
     }
+
+    #[test]
+    fn discover_no_extension_filter() {
+        let (dir, oikos) = setup_oikos();
+        mkfile(dir.path(), "shared/tools/tool.md");
+        mkfile(dir.path(), "shared/tools/tool.yaml");
+        mkfile(dir.path(), "shared/tools/readme.txt");
+
+        let results = discover(&oikos, "syn", "tools", None);
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn resolve_with_subdir() {
+        let (dir, oikos) = setup_oikos();
+        mkfile(dir.path(), "nous/syn/hooks/pre-turn.sh");
+
+        let found = resolve(&oikos, "syn", "pre-turn.sh", Some("hooks"));
+        assert!(found.is_some());
+        assert!(found.unwrap().to_string_lossy().contains("hooks/pre-turn.sh"));
+    }
+
+    #[test]
+    fn resolve_all_partial_tiers() {
+        let (dir, oikos) = setup_oikos();
+        mkfile(dir.path(), "nous/syn/config.yaml");
+        mkfile(dir.path(), "theke/config.yaml");
+
+        let results = resolve_all(&oikos, "syn", "config.yaml", None);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].tier, Tier::Nous);
+        assert_eq!(results[1].tier, Tier::Theke);
+    }
+
+    #[test]
+    fn tier_display() {
+        assert_eq!(Tier::Nous.to_string(), "nous");
+        assert_eq!(Tier::Shared.to_string(), "shared");
+        assert_eq!(Tier::Theke.to_string(), "theke");
+    }
+
+    #[test]
+    fn resolve_all_empty_when_no_match() {
+        let (_dir, oikos) = setup_oikos();
+        let results = resolve_all(&oikos, "syn", "nonexistent.md", None);
+        assert!(results.is_empty());
+    }
 }

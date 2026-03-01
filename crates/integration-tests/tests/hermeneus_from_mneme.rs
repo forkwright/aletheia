@@ -92,7 +92,7 @@ fn tool_result_converts_to_content_block() {
                 other => panic!("expected ToolResult block, got {other:?}"),
             }
         }
-        other @ h::Content::Text(_) => panic!("expected Blocks content, got {other:?}"),
+        h::Content::Text(t) => panic!("expected Blocks content, got Text({t:?})"),
     }
 }
 

@@ -215,4 +215,51 @@ mod tests {
             PathBuf::from("/test/shared/coordination")
         );
     }
+
+    #[test]
+    fn data_paths() {
+        let oikos = Oikos::from_root("/srv/instance");
+        assert_eq!(oikos.data(), PathBuf::from("/srv/instance/data"));
+        assert_eq!(oikos.sessions_db(), PathBuf::from("/srv/instance/data/sessions.db"));
+        assert_eq!(oikos.planning_db(), PathBuf::from("/srv/instance/data/planning.db"));
+        assert_eq!(oikos.logs(), PathBuf::from("/srv/instance/logs"));
+        assert_eq!(oikos.signal(), PathBuf::from("/srv/instance/signal"));
+    }
+
+    #[test]
+    fn config_paths() {
+        let oikos = Oikos::from_root("/srv/instance");
+        assert_eq!(oikos.config(), PathBuf::from("/srv/instance/config"));
+        assert_eq!(oikos.credentials(), PathBuf::from("/srv/instance/config/credentials"));
+        assert_eq!(oikos.session_key(), PathBuf::from("/srv/instance/config/session.key"));
+    }
+
+    #[test]
+    fn nous_root_and_files() {
+        let oikos = Oikos::from_root("/srv/instance");
+        assert_eq!(oikos.nous_root(), PathBuf::from("/srv/instance/nous"));
+        assert_eq!(
+            oikos.nous_file("demiurge", "SOUL.md"),
+            PathBuf::from("/srv/instance/nous/demiurge/SOUL.md")
+        );
+    }
+
+    #[test]
+    fn config_file_defaults_to_json() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let oikos = Oikos::from_root(dir.path());
+        let cf = oikos.config_file();
+        assert!(cf.to_string_lossy().ends_with("aletheia.json"));
+    }
+
+    #[test]
+    fn config_file_prefers_yaml() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::write(dir.path().join("config/aletheia.yaml"), "{}").unwrap();
+
+        let oikos = Oikos::from_root(dir.path());
+        let cf = oikos.config_file();
+        assert!(cf.to_string_lossy().ends_with("aletheia.yaml"));
+    }
 }

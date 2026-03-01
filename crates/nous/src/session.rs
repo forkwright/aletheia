@@ -168,4 +168,52 @@ mod tests {
         assert!(!SessionManager::is_background("main"));
         assert!(!SessionManager::is_background("ask:syn"));
     }
+
+    // --- Edge cases ---
+
+    #[test]
+    fn distillation_exact_threshold() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        state.token_estimate = 180_000;
+        assert!(state.needs_distillation(0.9, 200_000));
+    }
+
+    #[test]
+    fn distillation_zero_ratio_always_triggers() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        state.token_estimate = 1;
+        assert!(state.needs_distillation(0.0, 200_000));
+    }
+
+    #[test]
+    fn ephemeral_empty_string() {
+        assert!(!SessionManager::is_ephemeral(""));
+    }
+
+    #[test]
+    fn ephemeral_prefix_substring_not_matched() {
+        assert!(!SessionManager::is_ephemeral("asking"));
+        assert!(!SessionManager::is_ephemeral("spawning"));
+        assert!(!SessionManager::is_ephemeral("dispatch"));
+    }
+
+    #[test]
+    fn next_turn_monotonic() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        let mut prev = 0;
+        for _ in 0..20 {
+            let next = state.next_turn();
+            assert!(next > prev);
+            prev = next;
+        }
+    }
+
+    #[test]
+    fn session_state_initial_values() {
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        assert_eq!(state.id, "ses-1");
+        assert_eq!(state.session_key, "main");
+        assert_eq!(state.distillation_count, 0);
+        assert!(state.bootstrap_hash.is_none());
+    }
 }
