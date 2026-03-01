@@ -1,10 +1,12 @@
 // Token-aware context assembly with cache boundary optimization
+// Supports oikos cascade: files resolved via nous/{id}/ → shared/ → theke/
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
 import { estimateTokens } from "../hermeneus/token-counter.js";
 import { assembleOrchestratorContext } from "../dianoia/orchestrator-context.js";
+import { cascadeResolve } from "../taxis/cascade.js";
 
 const log = createLogger("nous.bootstrap");
 
@@ -77,23 +79,46 @@ export function assembleBootstrap(
     degradedServices?: string[];
     /** Database handle for planning context injection */
     db?: import("better-sqlite3").Database;
+    /** Agent ID for oikos cascade resolution. When set, files are resolved
+     *  through nous/{nousId}/ → shared/ → theke/ instead of just workspace/. */
+    nousId?: string;
   },
 ): BootstrapResult {
   const maxTokens = opts?.maxTokens ?? 40000;
 
-  const files: BootstrapFile[] = WORKSPACE_FILES.map((f) => ({
-    ...f,
-    path: join(workspace, f.name),
-  }));
+  const files: BootstrapFile[] = WORKSPACE_FILES.map((f) => {
+    // If nousId provided, resolve through cascade — otherwise fall back to workspace dir
+    if (opts?.nousId) {
+      const cascadePath = cascadeResolve(opts.nousId, f.name);
+      return {
+        ...f,
+        path: cascadePath ?? join(workspace, f.name),
+      };
+    }
+    return {
+      ...f,
+      path: join(workspace, f.name),
+    };
+  });
 
   if (opts?.extraFiles) {
     for (const extra of opts.extraFiles) {
-      files.push({
-        name: extra,
-        path: join(workspace, extra),
-        priority: 10,
-        cacheGroup: "dynamic",
-      });
+      if (opts?.nousId) {
+        const cascadePath = cascadeResolve(opts.nousId, extra);
+        files.push({
+          name: extra,
+          path: cascadePath ?? join(workspace, extra),
+          priority: 10,
+          cacheGroup: "dynamic",
+        });
+      } else {
+        files.push({
+          name: extra,
+          path: join(workspace, extra),
+          priority: 10,
+          cacheGroup: "dynamic",
+        });
+      }
     }
   }
 

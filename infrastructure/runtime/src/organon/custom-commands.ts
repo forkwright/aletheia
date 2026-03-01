@@ -1,7 +1,9 @@
 // Custom commands — user-defined slash commands via Markdown files with YAML frontmatter
+// Supports oikos cascade: nous/{id}/commands/ → shared/commands/ → theke/commands/
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { cascadeDiscover } from "../taxis/cascade.js";
 import type { CommandHandler, CommandRegistry } from "../semeion/commands.js";
 import type { NousManager } from "../nous/manager.js";
 
@@ -156,6 +158,46 @@ export function loadCustomCommands(dir: string): CustomCommandDef[] {
   }
 
   log.info(`Loaded ${commands.length} custom commands from ${dir}`);
+  return commands;
+}
+
+/**
+ * Load custom commands via oikos cascade.
+ * Walks nous/{nousId}/commands/ → shared/commands/ → theke/commands/
+ * Agent-specific commands override shared/theke commands with the same filename.
+ */
+export function loadCustomCommandsCascade(nousId: string): CustomCommandDef[] {
+  const files = cascadeDiscover(nousId, "commands", ".md");
+  if (files.length === 0) return [];
+
+  const commands: CustomCommandDef[] = [];
+  for (const file of files) {
+    try {
+      const content = readFileSync(file.path, "utf-8");
+      const { frontmatter, body } = parseFrontmatter(content);
+
+      if (!frontmatter?.name || !frontmatter?.description) {
+        log.warn(`Skipping ${file.name} (${file.tier}): missing name or description`);
+        continue;
+      }
+
+      commands.push({
+        name: frontmatter.name,
+        description: frontmatter.description,
+        arguments: (frontmatter.arguments ?? []).map((a) => ({
+          name: a.name,
+          ...(a.required !== undefined ? { required: a.required } : {}),
+          ...(a.default !== undefined ? { default: a.default } : {}),
+        })),
+        ...(frontmatter.allowed_tools ? { allowedTools: frontmatter.allowed_tools } : {}),
+        prompt: body,
+      });
+    } catch (error) {
+      log.warn(`Failed to load command ${file.name} from ${file.tier}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  log.info(`Loaded ${commands.length} custom commands via cascade for ${nousId}`);
   return commands;
 }
 
