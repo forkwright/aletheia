@@ -221,6 +221,7 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
 
 /// Errors from identifier construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IdError {
     /// The identifier was empty.
     Empty { kind: &'static str },

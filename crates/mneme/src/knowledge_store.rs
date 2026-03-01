@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn ddl_templates_are_valid_strings() {
         // Verify DDL templates don't panic on formatting
-        assert!(!KNOWLEDGE_DDL.is_empty());
+        assert!(KNOWLEDGE_DDL.len() == 3);
         let emb = embeddings_ddl(1024);
         assert!(emb.contains("1024"));
         let idx = hnsw_ddl(1024);

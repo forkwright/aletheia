@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 // tracing will be used when pipeline stages are implemented
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "will be used when pipeline stages are implemented")]
 use tracing::instrument;
 
 use crate::config::PipelineConfig;
