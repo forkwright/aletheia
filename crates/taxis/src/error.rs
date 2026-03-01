@@ -33,10 +33,10 @@ pub enum Error {
     },
 
     /// Failed to parse YAML configuration.
-    #[snafu(display("failed to parse YAML config at {}", path.display()))]
+    #[snafu(display("failed to parse YAML config at {}: {reason}", path.display()))]
     ParseYaml {
         path: PathBuf,
-        source: serde_yml::Error,
+        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
