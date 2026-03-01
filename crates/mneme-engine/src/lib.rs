@@ -7,7 +7,8 @@ use std::path::Path;
 use crossbeam::channel::{bounded, Receiver, Sender};
 
 // Public type re-exports
-pub use crate::data::value::{DataValue, ValidityTs};
+pub use crate::data::value::{DataValue, ValidityTs, Vector};
+pub use ndarray::Array1;
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;
 pub use crate::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};

@@ -62,11 +62,11 @@ Plans:
   2. Integration test inserts vectors, runs HNSW kNN search, and retrieves the correct nearest neighbors
   3. All graph algorithm calls from KnowledgeStore go through `spawn_blocking` -- no rayon+Tokio deadlock possible
   4. Schema version is tracked in the mneme wrapper and queryable
-**Plans**: TBD
+**Plans**: 2 plans, 2 waves (sequential)
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01: Wire dependency, feature-gate errors, implement KnowledgeStore (Wave 1)
+- [ ] 03-02: Integration tests — fact round-trip, HNSW vector search, async wrappers (Wave 2)
 
 ### Phase 4: Hybrid Retrieval
 **Goal**: Single Datalog query combines BM25 full-text search, HNSW vector similarity, and graph joins with RRF fusion -- the unique capability that justifies keeping FTS
