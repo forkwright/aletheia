@@ -6,7 +6,7 @@ Wants=network-online.target aletheia-memory.service
 [Service]
 Type=simple
 Environment=ALETHEIA_HOME=__ALETHEIA_HOME__
-EnvironmentFile=-%h/.aletheia/env
+EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env
 ExecStart=__NODE_BIN__ __ALETHEIA_HOME__/infrastructure/runtime/dist/entry.mjs gateway start
 Restart=on-failure
 RestartSec=5

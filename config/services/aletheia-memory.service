@@ -8,7 +8,7 @@ Type=simple
 WorkingDirectory=__ALETHEIA_HOME__/infrastructure/memory/sidecar
 Environment=NEO4J_PASSWORD=chiron-memory
 Environment=NEO4J_AUTH=neo4j/chiron-memory
-EnvironmentFile=-%h/.aletheia/env
+EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env
 ExecStartPre=__COMPOSE_CMD__ \
   --project-directory __ALETHEIA_HOME__/infrastructure/memory \
   -p memory up -d
