@@ -1,0 +1,23 @@
+[package]
+name = "aletheia-taxis"
+version = "0.1.0"
+description = "Configuration cascade and path resolution for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+figment = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,23 @@
+[package]
+name = "aletheia-koina"
+version = "0.1.0"
+description = "Core types, errors, and tracing for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+compact_str = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
