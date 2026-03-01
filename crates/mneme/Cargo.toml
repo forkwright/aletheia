@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = ["sqlite"]
 sqlite = ["dep:rusqlite"]
+fastembed = ["dep:fastembed"]
 # cozo feature excluded from default — sqlite3 link conflict with rusqlite.
 # Build with: cargo build -p aletheia-mneme --no-default-features --features cozo
 # In production binary, only one storage backend is active.
@@ -20,6 +21,7 @@ sqlite = ["dep:rusqlite"]
 
 [dependencies]
 aletheia-koina = { path = "../koina" }
+fastembed = { version = "4", optional = true }
 rusqlite = { version = "0.33", features = ["bundled"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
