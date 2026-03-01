@@ -7,6 +7,7 @@ members = [
     "crates/mneme",
     "crates/nous",
     "crates/organon",
+    "crates/symbolon",
     "crates/taxis",
 ]
 exclude = [
@@ -83,7 +84,6 @@ tokio = { version = "1", features = ["rt", "macros"] }
 
 # Testing
 static_assertions = "1.1"
-tokio = { version = "1", features = ["macros", "rt"] }
 wiremock = "0.6"
 
 [profile.dev]

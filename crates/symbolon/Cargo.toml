@@ -1,0 +1,27 @@
+[package]
+name = "aletheia-symbolon"
+version = "0.1.0"
+description = "Authentication and authorization for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+argon2 = { version = "0.5", features = ["std"] }
+blake3 = "1"
+jsonwebtoken = "9"
+rand = "0.8"
+rusqlite = { version = "0.33", features = ["bundled"] }
+secrecy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
