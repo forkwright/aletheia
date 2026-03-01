@@ -7,22 +7,22 @@ import { createLogger } from "../koina/logger.js";
 const log = createLogger("taxis:nous-scaffold");
 
 const SHARED_WORKSPACE_DIRS = [
-  ["_shared", "workspace", "plans"],
-  ["_shared", "workspace", "specs"],
-  ["_shared", "workspace", "standards"],
-  ["_shared", "workspace", "references"],
+  ["workspace", "plans"],
+  ["workspace", "specs"],
+  ["workspace", "standards"],
+  ["workspace", "references"],
 ] as const;
 
-export function scaffoldNousShared(nousDir: string): string[] {
+export function scaffoldNousShared(sharedDir: string): string[] {
   const created: string[] = [];
   for (const segments of SHARED_WORKSPACE_DIRS) {
-    const dir = join(nousDir, ...segments);
+    const dir = join(sharedDir, ...segments);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
       created.push(segments.join("/"));
     }
   }
-  log.debug("scaffoldNousShared complete", { nousDir, created });
+  log.debug("scaffoldNousShared complete", { sharedDir, created });
   return created;
 }
 

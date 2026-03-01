@@ -18,7 +18,7 @@ import type { RuntimeServices, SystemBlock, TurnState } from "../types.js";
 
 const log = createLogger("pipeline:context");
 
-const SHARED_INJECTION_SCORE_THRESHOLD = 2; // minimum token matches for _shared/ content to be injected
+const SHARED_INJECTION_SCORE_THRESHOLD = 2; // minimum token matches for shared/ content to be injected
 const SHARED_TOKEN_BUDGET = 600;
 const SHARED_MAX_RESULTS = 3;
 
@@ -211,7 +211,7 @@ export async function buildContext(
     }
   }
 
-  // _shared/ workspace excerpt injection — surfaces shared workspace content per turn (INDX-04)
+  // Shared workspace excerpt injection — surfaces shared workspace content per turn (INDX-04)
   // Injection is silent when no matches exceed threshold or when index is still building.
   {
     const sharedIndex = getSharedIndex();

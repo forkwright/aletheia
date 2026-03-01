@@ -15,21 +15,21 @@ afterEach(() => {
 });
 
 describe("scaffoldNousShared", () => {
-  it("creates four subdirectories under _shared/workspace/", () => {
+  it("creates four subdirectories under workspace/", () => {
     scaffoldNousShared(tmpDir);
-    expect(existsSync(join(tmpDir, "_shared", "workspace", "plans"))).toBe(true);
-    expect(existsSync(join(tmpDir, "_shared", "workspace", "specs"))).toBe(true);
-    expect(existsSync(join(tmpDir, "_shared", "workspace", "standards"))).toBe(true);
-    expect(existsSync(join(tmpDir, "_shared", "workspace", "references"))).toBe(true);
+    expect(existsSync(join(tmpDir, "workspace", "plans"))).toBe(true);
+    expect(existsSync(join(tmpDir, "workspace", "specs"))).toBe(true);
+    expect(existsSync(join(tmpDir, "workspace", "standards"))).toBe(true);
+    expect(existsSync(join(tmpDir, "workspace", "references"))).toBe(true);
   });
 
   it("returns created paths as segment strings", () => {
     const created = scaffoldNousShared(tmpDir);
     expect(created).toEqual([
-      "_shared/workspace/plans",
-      "_shared/workspace/specs",
-      "_shared/workspace/standards",
-      "_shared/workspace/references",
+      "workspace/plans",
+      "workspace/specs",
+      "workspace/standards",
+      "workspace/references",
     ]);
   });
 
