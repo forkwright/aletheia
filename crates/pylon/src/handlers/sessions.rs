@@ -21,13 +21,15 @@ use aletheia_hermeneus::types::{
 use aletheia_mneme::types::SessionStatus;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, SessionNotFoundSnafu};
+use crate::extract::Claims;
 use crate::state::AppState;
 use crate::stream::{SseEvent, UsageData};
 
 /// POST /api/sessions — create a new session.
-#[instrument(skip(state, body))]
+#[instrument(skip(state, _claims, body))]
 pub async fn create(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Json(body): Json<CreateSessionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let nous_id = body.nous_id;
@@ -54,9 +56,10 @@ pub async fn create(
 }
 
 /// GET /api/sessions/{id} — get session state.
-#[instrument(skip(state))]
+#[instrument(skip(state, _claims))]
 pub async fn get_session(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = find_session(&state, &id).await?;
@@ -64,9 +67,10 @@ pub async fn get_session(
 }
 
 /// DELETE /api/sessions/{id} — close (archive) a session.
-#[instrument(skip(state))]
+#[instrument(skip(state, _claims))]
 pub async fn close(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let _ = find_session(&state, &id).await?;
@@ -84,9 +88,10 @@ pub async fn close(
 }
 
 /// GET /api/sessions/{id}/history — get conversation history.
-#[instrument(skip(state))]
+#[instrument(skip(state, _claims))]
 pub async fn history(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(id): Path<String>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<HistoryResponse>, ApiError> {
@@ -124,6 +129,7 @@ pub async fn history(
 /// POST /api/sessions/{id}/messages — send a message and stream the response via SSE.
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(session_id): Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {

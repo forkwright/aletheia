@@ -1,4 +1,5 @@
 //! Cross-crate tests for nous `SessionState` with mneme store.
+#![cfg(feature = "sqlite-tests")]
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;

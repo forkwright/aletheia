@@ -106,7 +106,134 @@ impl EmbeddingProvider for MockEmbeddingProvider {
     }
 }
 
+// ---------------------------------------------------------------------------
+// FastEmbed provider (local ONNX)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "fastembed")]
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+
+/// Local embedding provider using fastembed-rs (ONNX Runtime).
+///
+/// Downloads and caches models on first use. Default model is
+/// `BAAI/bge-small-en-v1.5` (384 dimensions). Thread-safe — the inner
+/// `TextEmbedding` is `Send + Sync`.
+#[cfg(feature = "fastembed")]
+pub struct FastEmbedProvider {
+    model: TextEmbedding,
+    model_name: String,
+    dimension: usize,
+}
+
+#[cfg(feature = "fastembed")]
+impl std::fmt::Debug for FastEmbedProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FastEmbedProvider")
+            .field("model_name", &self.model_name)
+            .field("dimension", &self.dimension)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "fastembed")]
+impl FastEmbedProvider {
+    /// Create a provider with the given model name, or the default (`BGE-small-en-v1.5`).
+    ///
+    /// Model files are downloaded to the fastembed cache on first use.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EmbeddingError::InitFailed`] if model lookup or initialization fails.
+    pub fn new(model_name: Option<&str>) -> EmbeddingResult<Self> {
+        let embedding_model = match model_name {
+            Some(name) => Self::resolve_model(name)?,
+            None => EmbeddingModel::BGESmallENV15,
+        };
+
+        let model_info = TextEmbedding::get_model_info(&embedding_model).map_err(|e| {
+            InitFailedSnafu {
+                message: format!("failed to get model info: {e}"),
+            }
+            .build()
+        })?;
+
+        let dimension = model_info.dim;
+        let code = model_info.model_code.clone();
+
+        let options = InitOptions::new(embedding_model).with_show_download_progress(false);
+
+        let model = TextEmbedding::try_new(options).map_err(|e| {
+            InitFailedSnafu {
+                message: format!("fastembed init failed: {e}"),
+            }
+            .build()
+        })?;
+
+        Ok(Self {
+            model,
+            model_name: code,
+            dimension,
+        })
+    }
+
+    fn resolve_model(name: &str) -> EmbeddingResult<EmbeddingModel> {
+        TextEmbedding::list_supported_models()
+            .into_iter()
+            .find(|info| info.model_code == name)
+            .map(|info| info.model)
+            .ok_or_else(|| {
+                InitFailedSnafu {
+                    message: format!("unknown fastembed model: {name}"),
+                }
+                .build()
+            })
+    }
+}
+
+#[cfg(feature = "fastembed")]
+impl EmbeddingProvider for FastEmbedProvider {
+    fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
+        self.model
+            .embed(vec![text], None)
+            .map_err(|e| {
+                EmbedFailedSnafu {
+                    message: format!("{e}"),
+                }
+                .build()
+            })?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                EmbedFailedSnafu {
+                    message: "fastembed returned empty result".to_owned(),
+                }
+                .build()
+            })
+    }
+
+    fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
+        self.model.embed(texts.to_vec(), None).map_err(|e| {
+            EmbedFailedSnafu {
+                message: format!("{e}"),
+            }
+            .build()
+        })
+    }
+
+    fn dimension(&self) -> usize {
+        self.dimension
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model_name
+    }
+}
+
 /// Embedding provider configuration.
+///
+/// Available providers:
+/// - `"mock"` — deterministic hash-based vectors for testing (always available)
+/// - `"fastembed"` — local ONNX-based embeddings via fastembed-rs (requires `fastembed` feature)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EmbeddingConfig {
     /// Provider type: `mock`, `fastembed`, `voyage`.
@@ -140,7 +267,16 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             let dim = config.dimension.unwrap_or(384);
             Ok(Box::new(MockEmbeddingProvider::new(dim)))
         }
-        // "fastembed" => { ... } // M1.3 Phase 2: fastembed-rs integration
+        #[cfg(feature = "fastembed")]
+        "fastembed" => {
+            let model = config.model.as_deref();
+            Ok(Box::new(FastEmbedProvider::new(model)?))
+        }
+        #[cfg(not(feature = "fastembed"))]
+        "fastembed" => InitFailedSnafu {
+            message: "fastembed feature not enabled — build with --features fastembed".to_owned(),
+        }
+        .fail(),
         // "voyage" => { ... }   // M1.3 Phase 3: Voyage AI API
         other => InitFailedSnafu {
             message: format!("unknown embedding provider: {other}"),
@@ -216,5 +352,82 @@ mod tests {
     fn mock_provider_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockEmbeddingProvider>();
+    }
+
+    #[cfg(not(feature = "fastembed"))]
+    #[test]
+    fn fastembed_not_enabled_returns_error() {
+        let config = EmbeddingConfig {
+            provider: "fastembed".to_owned(),
+            ..EmbeddingConfig::default()
+        };
+        let Err(err) = create_provider(&config) else {
+            panic!("expected error for disabled fastembed feature");
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not enabled"),
+            "expected 'not enabled' in error, got: {msg}"
+        );
+    }
+
+    #[cfg(feature = "fastembed")]
+    mod fastembed_tests {
+        use super::*;
+        use std::sync::LazyLock;
+
+        static PROVIDER: LazyLock<FastEmbedProvider> =
+            LazyLock::new(|| FastEmbedProvider::new(None).expect("fastembed provider init"));
+
+        #[test]
+        fn fastembed_provider_initializes() {
+            assert_eq!(PROVIDER.dimension(), 384);
+        }
+
+        #[test]
+        fn fastembed_embed_produces_correct_dimension() {
+            let vec = PROVIDER.embed("hello world").unwrap();
+            assert_eq!(vec.len(), 384);
+        }
+
+        #[test]
+        fn fastembed_embed_is_normalized() {
+            let vec = PROVIDER.embed("normalize me").unwrap();
+            let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+            assert!(
+                (norm - 1.0).abs() < 0.01,
+                "expected unit norm, got {norm}"
+            );
+        }
+
+        #[test]
+        fn fastembed_embed_deterministic() {
+            let v1 = PROVIDER.embed("test input").unwrap();
+            let v2 = PROVIDER.embed("test input").unwrap();
+            assert_eq!(v1, v2);
+        }
+
+        #[test]
+        fn fastembed_different_texts_differ() {
+            let v1 = PROVIDER.embed("hello").unwrap();
+            let v2 = PROVIDER.embed("world").unwrap();
+            assert_ne!(v1, v2);
+        }
+
+        #[test]
+        fn fastembed_batch_matches_individual() {
+            let texts = ["hello", "world", "test"];
+            let batch = PROVIDER.embed_batch(&texts).unwrap();
+            for (i, text) in texts.iter().enumerate() {
+                let individual = PROVIDER.embed(text).unwrap();
+                assert_eq!(batch[i], individual);
+            }
+        }
+
+        #[test]
+        fn fastembed_provider_send_sync() {
+            fn assert_send_sync<T: Send + Sync>() {}
+            assert_send_sync::<FastEmbedProvider>();
+        }
     }
 }

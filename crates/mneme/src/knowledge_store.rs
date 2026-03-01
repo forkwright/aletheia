@@ -6,7 +6,7 @@
 //!
 //! Until then, this code compiles and tests only with:
 //! ```sh
-//! cargo test -p aletheia-mneme --no-default-features --features cozo
+//! cargo test -p aletheia-mneme --no-default-features --features mneme-engine
 //! ```
 //!
 //! # Schema
@@ -195,6 +195,720 @@ pub mod queries {
             contains(aliases, $prefix)
         :limit $limit
     ";
+}
+
+/// Configuration for `KnowledgeStore` initialization.
+#[cfg(feature = "mneme-engine")]
+#[derive(Clone, Copy, Debug)]
+pub struct KnowledgeConfig {
+    /// Embedding dimension for the HNSW index.
+    pub dim: usize,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl Default for KnowledgeConfig {
+    fn default() -> Self {
+        Self { dim: 384 }
+    }
+}
+
+/// Typed wrapper around the Datalog engine providing domain-level knowledge operations.
+///
+/// Holds an `Arc<Db>` internally. Callers share via `Arc<KnowledgeStore>`.
+/// All sync methods can be called directly; async wrappers use `spawn_blocking`.
+#[cfg(feature = "mneme-engine")]
+pub struct KnowledgeStore {
+    db: std::sync::Arc<aletheia_mneme_engine::Db>,
+    dim: usize,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl KnowledgeStore {
+    const SCHEMA_VERSION: i64 = 1;
+
+    /// Open an in-memory knowledge store with default configuration.
+    pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
+        Self::open_mem_with_config(KnowledgeConfig::default())
+    }
+
+    /// Open an in-memory knowledge store with custom configuration.
+    pub fn open_mem_with_config(
+        config: KnowledgeConfig,
+    ) -> crate::error::Result<std::sync::Arc<Self>> {
+        let db = aletheia_mneme_engine::Db::open_mem()
+            .map_err(|e| crate::error::EngineInitSnafu { message: e.to_string() }.build())?;
+        let store = Self { db: std::sync::Arc::new(db), dim: config.dim };
+        store.init_schema()?;
+        Ok(std::sync::Arc::new(store))
+    }
+
+    fn init_schema(&self) -> crate::error::Result<()> {
+        use aletheia_mneme_engine::ScriptMutability;
+        use std::collections::BTreeMap;
+
+        for ddl in KNOWLEDGE_DDL {
+            self.db
+                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
+                .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+        }
+
+        let emb_ddl = embeddings_ddl(self.dim);
+        self.db
+            .run(&emb_ddl, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+
+        let hnsw = hnsw_ddl(self.dim);
+        self.db
+            .run(&hnsw, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+
+        // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
+        // relations only in temp_store_tx which does not persist across run() calls).
+        self.db
+            .run(
+                r":create schema_version { key: String => version: Int }",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+
+        // Insert initial version
+        let mut params = BTreeMap::new();
+        params.insert(
+            "key".to_owned(),
+            aletheia_mneme_engine::DataValue::Str("schema".into()),
+        );
+        params.insert(
+            "version".to_owned(),
+            aletheia_mneme_engine::DataValue::from(Self::SCHEMA_VERSION),
+        );
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+
+        Ok(())
+    }
+
+    /// Insert or update a fact.
+    pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
+        let params = fact_to_params(fact);
+        self.run_mut(queries::UPSERT_FACT, params)
+    }
+
+    /// Query current facts for a nous at a given time, up to limit results.
+    pub fn query_facts(
+        &self,
+        nous_id: &str,
+        now: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use aletheia_mneme_engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("now".to_owned(), DataValue::Str(now.into()));
+        params.insert("limit".to_owned(), DataValue::from(limit));
+
+        let rows = self.run_read(FULL_CURRENT_FACTS, params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Point-in-time fact query.
+    pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use aletheia_mneme_engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("time".to_owned(), DataValue::Str(time.into()));
+
+        let rows = self.run_read(queries::FACTS_AT_TIME, params)?;
+        rows_to_facts_partial(rows)
+    }
+
+    /// Insert or update an entity.
+    pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
+        let params = entity_to_params(entity);
+        self.run_mut(queries::UPSERT_ENTITY, params)
+    }
+
+    /// Insert a relationship.
+    pub fn insert_relationship(
+        &self,
+        rel: &crate::knowledge::Relationship,
+    ) -> crate::error::Result<()> {
+        let params = relationship_to_params(rel);
+        self.run_mut(queries::UPSERT_RELATIONSHIP, params)
+    }
+
+    /// Query 2-hop entity neighborhood. Returns raw rows for flexible callers.
+    pub fn entity_neighborhood(
+        &self,
+        entity_id: &str,
+    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        use aletheia_mneme_engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+        self.run_read(queries::ENTITY_NEIGHBORHOOD, params)
+    }
+
+    /// Insert a vector embedding for semantic search.
+    pub fn insert_embedding(
+        &self,
+        chunk: &crate::knowledge::EmbeddedChunk,
+    ) -> crate::error::Result<()> {
+        let params = embedding_to_params(chunk, self.dim);
+        self.run_mut(
+            r"?[id, content, source_type, source_id, nous_id, embedding, created_at] <- [
+                [$id, $content, $source_type, $source_id, $nous_id, $embedding, $created_at]
+              ]
+              :put embeddings { id => content, source_type, source_id, nous_id, embedding, created_at }",
+            params,
+        )
+    }
+
+    /// kNN semantic vector search.
+    pub fn search_vectors(
+        &self,
+        query_vec: Vec<f32>,
+        k: i64,
+        ef: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
+        use aletheia_mneme_engine::{Array1, DataValue, Vector};
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "query_vec".to_owned(),
+            DataValue::Vec(Vector::F32(Array1::from(query_vec))),
+        );
+        params.insert("k".to_owned(), DataValue::from(k));
+        params.insert("ef".to_owned(), DataValue::from(ef));
+
+        let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
+        rows_to_recall_results(rows)
+    }
+
+    /// Get the current schema version.
+    pub fn schema_version(&self) -> crate::error::Result<i64> {
+        use aletheia_mneme_engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        let rows = self.run_read(
+            r"?[version] := *schema_version{key: $key, version}",
+            params,
+        )?;
+        let row = rows.rows.into_iter().next().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: "schema version record missing",
+            }
+            .build()
+        })?;
+        extract_int(row.first().ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: "schema version row empty",
+            }
+            .build()
+        })?)
+    }
+
+    /// Raw query escape hatch for callers needing custom Datalog.
+    pub fn run_query(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        self.run_read(script, params)
+    }
+
+    // --- Async wrappers ---
+
+    /// Async `insert_fact` — wraps sync call in `spawn_blocking`.
+    pub async fn insert_fact_async(
+        self: &std::sync::Arc<Self>,
+        fact: crate::knowledge::Fact,
+    ) -> crate::error::Result<()> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.insert_fact(&fact))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `query_facts` — wraps sync call in `spawn_blocking`.
+    pub async fn query_facts_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        now: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.query_facts(&nous_id, &now, limit))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `search_vectors` — wraps sync call in `spawn_blocking`.
+    pub async fn search_vectors_async(
+        self: &std::sync::Arc<Self>,
+        query_vec: Vec<f32>,
+        k: i64,
+        ef: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.search_vectors(query_vec, k, ef))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    // --- Internal helpers ---
+
+    fn run_mut(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+    ) -> crate::error::Result<()> {
+        use aletheia_mneme_engine::ScriptMutability;
+        self.db
+            .run(script, params, ScriptMutability::Mutable)
+            .map(|_| ())
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+    }
+
+    fn run_read(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        use aletheia_mneme_engine::ScriptMutability;
+        self.db
+            .run(script, params, ScriptMutability::Immutable)
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+    }
+}
+
+// Extended query that returns all Fact fields (used by query_facts).
+#[cfg(feature = "mneme-engine")]
+const FULL_CURRENT_FACTS: &str = r"
+    ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id] :=
+        *facts{id, valid_from, content, nous_id, confidence, tier,
+               valid_to, superseded_by, source_session_id, recorded_at},
+        nous_id = $nous_id,
+        valid_from <= $now,
+        valid_to > $now,
+        is_null(superseded_by)
+    :order -confidence
+    :limit $limit
+";
+
+// --- Conversion helpers ---
+
+#[cfg(feature = "mneme-engine")]
+fn fact_to_params(
+    fact: &crate::knowledge::Fact,
+) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
+    use aletheia_mneme_engine::DataValue;
+    let mut p = std::collections::BTreeMap::new();
+    p.insert("id".to_owned(), DataValue::Str(fact.id.as_str().into()));
+    p.insert(
+        "valid_from".to_owned(),
+        DataValue::Str(fact.valid_from.as_str().into()),
+    );
+    p.insert(
+        "content".to_owned(),
+        DataValue::Str(fact.content.as_str().into()),
+    );
+    p.insert(
+        "nous_id".to_owned(),
+        DataValue::Str(fact.nous_id.as_str().into()),
+    );
+    p.insert(
+        "confidence".to_owned(),
+        DataValue::from(fact.confidence),
+    );
+    p.insert(
+        "tier".to_owned(),
+        DataValue::Str(fact.tier.as_str().into()),
+    );
+    p.insert(
+        "valid_to".to_owned(),
+        DataValue::Str(fact.valid_to.as_str().into()),
+    );
+    p.insert(
+        "superseded_by".to_owned(),
+        match &fact.superseded_by {
+            Some(s) => DataValue::Str(s.as_str().into()),
+            None => DataValue::Null,
+        },
+    );
+    p.insert(
+        "source_session_id".to_owned(),
+        match &fact.source_session_id {
+            Some(s) => DataValue::Str(s.as_str().into()),
+            None => DataValue::Null,
+        },
+    );
+    p.insert(
+        "recorded_at".to_owned(),
+        DataValue::Str(fact.recorded_at.as_str().into()),
+    );
+    p
+}
+
+#[cfg(feature = "mneme-engine")]
+fn entity_to_params(
+    entity: &crate::knowledge::Entity,
+) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
+    use aletheia_mneme_engine::DataValue;
+    let mut p = std::collections::BTreeMap::new();
+    p.insert("id".to_owned(), DataValue::Str(entity.id.as_str().into()));
+    p.insert(
+        "name".to_owned(),
+        DataValue::Str(entity.name.as_str().into()),
+    );
+    p.insert(
+        "entity_type".to_owned(),
+        DataValue::Str(entity.entity_type.as_str().into()),
+    );
+    p.insert(
+        "aliases".to_owned(),
+        DataValue::Str(entity.aliases.join(",").into()),
+    );
+    p.insert(
+        "created_at".to_owned(),
+        DataValue::Str(entity.created_at.as_str().into()),
+    );
+    p.insert(
+        "updated_at".to_owned(),
+        DataValue::Str(entity.updated_at.as_str().into()),
+    );
+    p
+}
+
+#[cfg(feature = "mneme-engine")]
+fn relationship_to_params(
+    rel: &crate::knowledge::Relationship,
+) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
+    use aletheia_mneme_engine::DataValue;
+    let mut p = std::collections::BTreeMap::new();
+    p.insert("src".to_owned(), DataValue::Str(rel.src.as_str().into()));
+    p.insert("dst".to_owned(), DataValue::Str(rel.dst.as_str().into()));
+    p.insert(
+        "relation".to_owned(),
+        DataValue::Str(rel.relation.as_str().into()),
+    );
+    p.insert("weight".to_owned(), DataValue::from(rel.weight));
+    p.insert(
+        "created_at".to_owned(),
+        DataValue::Str(rel.created_at.as_str().into()),
+    );
+    p
+}
+
+#[cfg(feature = "mneme-engine")]
+fn embedding_to_params(
+    chunk: &crate::knowledge::EmbeddedChunk,
+    _dim: usize,
+) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
+    use aletheia_mneme_engine::{Array1, DataValue, Vector};
+    let mut p = std::collections::BTreeMap::new();
+    p.insert("id".to_owned(), DataValue::Str(chunk.id.as_str().into()));
+    p.insert(
+        "content".to_owned(),
+        DataValue::Str(chunk.content.as_str().into()),
+    );
+    p.insert(
+        "source_type".to_owned(),
+        DataValue::Str(chunk.source_type.as_str().into()),
+    );
+    p.insert(
+        "source_id".to_owned(),
+        DataValue::Str(chunk.source_id.as_str().into()),
+    );
+    p.insert(
+        "nous_id".to_owned(),
+        DataValue::Str(chunk.nous_id.as_str().into()),
+    );
+    p.insert(
+        "embedding".to_owned(),
+        DataValue::Vec(Vector::F32(Array1::from(chunk.embedding.clone()))),
+    );
+    p.insert(
+        "created_at".to_owned(),
+        DataValue::Str(chunk.created_at.as_str().into()),
+    );
+    p
+}
+
+// Parse rows from FULL_CURRENT_FACTS into Vec<Fact>.
+// Columns: id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id
+#[cfg(feature = "mneme-engine")]
+fn rows_to_facts(
+    rows: aletheia_mneme_engine::NamedRows,
+    nous_id: &str,
+) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    use crate::knowledge::Fact;
+    let mut out = Vec::with_capacity(rows.rows.len());
+    for row in rows.rows {
+        let id = extract_str(row.first().ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing id",
+            }
+            .build()
+        })?)?;
+        let content = extract_str(row.get(1).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing content",
+            }
+            .build()
+        })?)?;
+        let confidence = extract_float(row.get(2).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing confidence",
+            }
+            .build()
+        })?)?;
+        let tier_str = extract_str(row.get(3).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing tier",
+            }
+            .build()
+        })?)?;
+        let recorded_at = extract_str(row.get(4).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing recorded_at",
+            }
+            .build()
+        })?)?;
+        let nous_id_col = extract_str(row.get(5).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing nous_id",
+            }
+            .build()
+        })?)?;
+        let valid_from = extract_str(row.get(6).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing valid_from",
+            }
+            .build()
+        })?)?;
+        let valid_to = extract_str(row.get(7).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing valid_to",
+            }
+            .build()
+        })?)?;
+        let superseded_by = extract_optional_str(row.get(8).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing superseded_by",
+            }
+            .build()
+        })?)?;
+        let source_session_id = extract_optional_str(row.get(9).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact row: missing source_session_id",
+            }
+            .build()
+        })?)?;
+
+        let tier = parse_epistemic_tier(&tier_str)?;
+
+        out.push(Fact {
+            id,
+            nous_id: if nous_id_col.is_empty() {
+                nous_id.to_owned()
+            } else {
+                nous_id_col
+            },
+            content,
+            confidence,
+            tier,
+            valid_from,
+            valid_to,
+            superseded_by,
+            source_session_id,
+            recorded_at,
+        });
+    }
+    Ok(out)
+}
+
+// Parse rows from FACTS_AT_TIME into Vec<Fact> (partial — only has id, content, confidence, tier).
+#[cfg(feature = "mneme-engine")]
+fn rows_to_facts_partial(
+    rows: aletheia_mneme_engine::NamedRows,
+) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    use crate::knowledge::Fact;
+    let mut out = Vec::with_capacity(rows.rows.len());
+    for row in rows.rows {
+        let id = extract_str(row.first().ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact_at row: missing id",
+            }
+            .build()
+        })?)?;
+        let content = extract_str(row.get(1).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact_at row: missing content",
+            }
+            .build()
+        })?)?;
+        let confidence = extract_float(row.get(2).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact_at row: missing confidence",
+            }
+            .build()
+        })?)?;
+        let tier_str = extract_str(row.get(3).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "fact_at row: missing tier",
+            }
+            .build()
+        })?)?;
+        let tier = parse_epistemic_tier(&tier_str)?;
+
+        out.push(Fact {
+            id,
+            nous_id: String::new(),
+            content,
+            confidence,
+            tier,
+            valid_from: String::new(),
+            valid_to: String::new(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: String::new(),
+        });
+    }
+    Ok(out)
+}
+
+// Parse rows from SEMANTIC_SEARCH into Vec<RecallResult>.
+// Columns: id, content, source_type, source_id, dist
+#[cfg(feature = "mneme-engine")]
+fn rows_to_recall_results(
+    rows: aletheia_mneme_engine::NamedRows,
+) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
+    use crate::knowledge::RecallResult;
+    let mut out = Vec::with_capacity(rows.rows.len());
+    for row in rows.rows {
+        let _id = extract_str(row.first().ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "recall row: missing id",
+            }
+            .build()
+        })?)?;
+        let content = extract_str(row.get(1).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "recall row: missing content",
+            }
+            .build()
+        })?)?;
+        let source_type = extract_str(row.get(2).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "recall row: missing source_type",
+            }
+            .build()
+        })?)?;
+        let source_id = extract_str(row.get(3).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "recall row: missing source_id",
+            }
+            .build()
+        })?)?;
+        let distance = extract_float(row.get(4).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "recall row: missing dist",
+            }
+            .build()
+        })?)?;
+
+        out.push(RecallResult {
+            content,
+            distance,
+            source_type,
+            source_id,
+        });
+    }
+    Ok(out)
+}
+
+// --- DataValue extraction utilities ---
+
+#[cfg(feature = "mneme-engine")]
+fn extract_str(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<String> {
+    match val {
+        aletheia_mneme_engine::DataValue::Str(s) => Ok(s.to_string()),
+        other => Err(crate::error::ConversionSnafu {
+            message: format!("expected Str, got {other:?}"),
+        }
+        .build()),
+    }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn extract_optional_str(
+    val: &aletheia_mneme_engine::DataValue,
+) -> crate::error::Result<Option<String>> {
+    match val {
+        aletheia_mneme_engine::DataValue::Null => Ok(None),
+        aletheia_mneme_engine::DataValue::Str(s) => Ok(Some(s.to_string())),
+        other => Err(crate::error::ConversionSnafu {
+            message: format!("expected Str or Null, got {other:?}"),
+        }
+        .build()),
+    }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn extract_float(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<f64> {
+    val.get_float().ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: format!("expected Num(Float), got {val:?}"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn extract_int(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<i64> {
+    val.get_int().ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: format!("expected Num(Int), got {val:?}"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn parse_epistemic_tier(s: &str) -> crate::error::Result<crate::knowledge::EpistemicTier> {
+    use crate::knowledge::EpistemicTier;
+    match s {
+        "verified" => Ok(EpistemicTier::Verified),
+        "inferred" => Ok(EpistemicTier::Inferred),
+        "assumed" => Ok(EpistemicTier::Assumed),
+        other => Err(crate::error::ConversionSnafu {
+            message: format!("unknown epistemic tier: {other}"),
+        }
+        .build()),
+    }
+}
+
+#[cfg(all(test, feature = "mneme-engine"))]
+mod engine_assertions {
+    use static_assertions::assert_impl_all;
+    use super::KnowledgeStore;
+    assert_impl_all!(KnowledgeStore: Send, Sync);
 }
 
 #[cfg(test)]

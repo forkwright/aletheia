@@ -1068,6 +1068,70 @@ PR: "fix: typed errors across runtime"
 
 ---
 
+## Project Governance
+
+Rules specific to the Rust rewrite project lifecycle.
+
+### Implementation Philosophy: Docs Are the Spec
+
+When implementing each crate:
+
+1. Read the relevant section of `docs/PROJECT.md`
+2. Read `docs/ARCHITECTURE.md` for boundary rules
+3. Read this document for invariants
+4. Read `docs/gnomon.md` for naming
+5. Implement from those documents
+6. Consult TS/Python code only to understand *intent*, not to copy implementation
+
+Known-wrong patterns do not carry forward: per-request DB connections, `execSync`, `appendFileSync`, mem0 monkey-patching, silent catches, bare `throw new Error`.
+
+### Commit Standards
+
+```
+<type>(<scope>): <imperative description, ≤72 chars>
+
+<what and why, wrapped at 72 chars>
+```
+
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`. Scopes: crate names + `ui`, `tui`, `cli`, `specs`, `ci`. Single author: `forkwright <alice@example.com>`. No `Co-authored-by` lines. No agent attribution.
+
+### Deviation Rules
+
+When implementing, deviations from the plan or existing specs follow escalation levels:
+
+| Level | Scope | Action |
+|-------|-------|--------|
+| L1 | Bug fix — broken behavior, no design change | Auto-fix, document in commit |
+| L2 | Critical addition — missing piece that blocks progress | Auto-add, document rationale in commit body |
+| L3 | Blocker resolution — spec conflict or impossible requirement | Auto-fix, flag in next status update |
+| L4 | Design change — different approach than what's specified | **STOP AND ASK.** No autonomous design changes. |
+
+### Research Protocol
+
+Claims about external systems, libraries, or protocols require evidence:
+
+| Tier | Source | Example |
+|------|--------|---------|
+| S1 | Peer-reviewed / official docs | Tokio docs, Rust reference, RFC |
+| S2 | Authoritative secondary | crates.io README, well-maintained blog |
+| S3 | Community knowledge | GitHub issues, Stack Overflow with verification |
+| S4 | Direct testing | "I ran this and observed..." |
+| S5 | Our synthesis | Combining sources into a conclusion |
+
+**Rules:** Inline-cite sources. Include counter-evidence when it exists. Never cite what you haven't read. "I don't know" is always acceptable; wrong is not.
+
+### What Carries Forward Unchanged
+
+- **Svelte 5 UI** — no reason to rewrite
+- **CozoDB** — absorbed as mneme-engine (replaces Qdrant + Neo4j)
+- **signal-cli** — JVM process unchanged, Rust rewrites the glue
+- **Agent workspace files** — SOUL.md, TELOS.md, MNEME.md, etc. Same files, oikos paths
+- **HTTP/SSE API surface** — same endpoints, same events. UI works without modification
+- **6-cycle self-improvement loop** — evolution, competence, skills, feedback, distillation, consolidation
+- **Gnomon naming** — the naming system is the architecture
+
+---
+
 ## Enforcement Summary Table
 
 | Rule | Tool | Config Location | Status |

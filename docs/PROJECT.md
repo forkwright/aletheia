@@ -1,8 +1,8 @@
 # Aletheia — Project Plan
 
-> The single source of truth for Aletheia's evolution from TypeScript prototype to Rust production system.
-> Every spec, issue, idea, and design decision consolidated here.
-> Last updated: 2026-03-02 — M0a/M0b/M1 complete, M2 core + M3.1 complete, CozoDB absorption in progress (GSD). 331 tests across 9 crates, ~14K lines Rust.
+> Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
+> For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
+> Last updated: 2026-03-03 — M0a/M0b/M1 complete, M2 core + M3.1 complete, CozoDB absorption in progress (GSD). 332 tests across 9 crates, ~13.4K lines Rust.
 
 ---
 
@@ -436,7 +436,7 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 - **Spec 42, Gaps 1-3 (Feedback Loops):** Competence scores influence routing. Kritikos flags feed back to competence model. Prosoche creates draft projects for high-urgency signals (auto-expire 48hr, per G-14).
 - **Spec 42, Gap 2 (Task Handoff):** Structured lightweight schema: `{id, from, to, type, context, status, created, updated}`. State machine: created → assigned → in-progress → review → done. Context travels with handoff. Informal `sessions_send` remains for quick coordination (G-13).
 - **Issue #313 (Prosoche signals):** Activity tracking, HEARTBEAT_OK dedup, work signals. Built into daemon.
-- **Issue #239 (Graph maintenance):** Automated Neo4j QA, Qdrant dedup, orphan purge. Per-nous cron schedule.
+- **Issue #239 (Graph maintenance):** Automated CozoDB graph QA, vector dedup, orphan purge. Per-nous cron schedule.
 
 **Success criteria:** Syn, Akron, Syl, Demiurge all running simultaneously. Background tasks execute independently. Cross-nous task handoff works without operator intervention. Semantic routing correctly directs messages to domain-appropriate nous without config labels.
 
@@ -484,269 +484,7 @@ These are not sequenced — they can be worked in parallel once the platform is 
 
 ---
 
-## Implementation Standards
-
-### Philosophy: Docs Are the Spec
-
-When implementing each crate:
-
-1. Read the relevant section of this document
-2. Read `docs/ARCHITECTURE.md` for boundary rules
-3. Read `docs/STANDARDS.md` for invariants
-4. Read `docs/gnomon.md` for naming
-5. Implement from those documents
-6. Consult TS/Python code only to understand *intent*, not to copy implementation
-
-Known-wrong patterns do not carry forward: per-request DB connections, `execSync`, `appendFileSync`, mem0 monkey-patching, silent catches, bare `throw new Error`.
-
-### Rust Standards
-
-| Rule | Detail |
-|------|--------|
-| **Error handling** | `snafu` enums per crate with `.context()` propagation and `Location` tracking (virtual stack traces). No `unwrap()` in library code. `anyhow` only in CLI entry points. Convention: `source` field = internal error (walk chain), `error` field = external (stop walking). Log where HANDLED, not where they occur. |
-| **Async** | All I/O is async (Tokio). No `block_on` inside async context. Document cancellation safety for every public async method. In `select!`: reserve-then-send, cursor-tracked writes, never hold mutex guards across `.await`. |
-| **Logging** | `tracing` with structured spans. `#[instrument]` on public functions. Spawned tasks MUST propagate spans via `.instrument()` or `.in_current_span()`. Never hold `span.enter()` across `.await`. |
-| **Config** | `figment` for hierarchical cascade (YAML + env + CLI) + `validator` for constraints. All config declarative YAML, validated at load. |
-| **Testing** | Unit tests in same file (`#[cfg(test)]`). Integration tests in `tests/`. Property tests for serialization roundtrips. |
-| **Dependencies** | Minimal. Prefer std when adequate. Each new dependency must justify itself. |
-| **Naming** | Gnomon system. Crate names = module names from architecture. |
-| **Newtypes** | Domain IDs (`AgentId`, `SessionId`, `NousId`, `TurnId`, `ToolName`) are newtype wrappers, not bare `String`/`u64`. Zero-cost, compile-time safety against parameter swaps. |
-| **Enums** | `#[non_exhaustive]` on all public enums that may grow. `#[expect(lint)]` over `#[allow(lint)]` (2024 edition — warns when suppression is no longer needed). `#[diagnostic::on_unimplemented]` on public traits (Tool, ChannelProvider, LlmProvider, StorageProvider) for clear error messages. |
-| **Typestate** | Use typestate pattern for multi-step builders and connection lifecycle (e.g. `Connection<Disconnected>` → `Connection<Connected>`). Compile-time state validation over runtime checks. |
-| **Unsafe** | Prohibited unless reviewed and documented. Zero unsafe in application code. |
-| **Clippy** | `#[deny(clippy::all)]`. No suppression without comment. |
-
-### Commit Standards
-
-```
-<type>(<scope>): <imperative description, ≤72 chars>
-
-<what and why, wrapped at 72 chars>
-```
-
-Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`. Scopes: crate names + `ui`, `tui`, `cli`, `specs`, `ci`. Single author: `forkwright <alice@example.com>`. No `Co-authored-by` lines. No agent attribution.
-
-### Deviation Rules
-
-When implementing, deviations from this plan or existing specs follow escalation levels:
-
-| Level | Scope | Action |
-|-------|-------|--------|
-| L1 | Bug fix — broken behavior, no design change | Auto-fix, document in commit |
-| L2 | Critical addition — missing piece that blocks progress | Auto-add, document rationale in commit body |
-| L3 | Blocker resolution — spec conflict or impossible requirement | Auto-fix, flag in next status update |
-| L4 | Design change — different approach than what's specified | **STOP AND ASK.** No autonomous design changes. |
-
-### Research Protocol
-
-Claims about external systems, libraries, or protocols require evidence:
-
-| Tier | Source | Example |
-|------|--------|---------|
-| S1 | Peer-reviewed / official docs | Tokio docs, Rust reference, RFC |
-| S2 | Authoritative secondary | crates.io README, well-maintained blog |
-| S3 | Community knowledge | GitHub issues, Stack Overflow with verification |
-| S4 | Direct testing | "I ran this and observed..." |
-| S5 | Our synthesis | Combining sources into a conclusion |
-
-**Rules:** Inline-cite sources. Include counter-evidence when it exists. Never cite what you haven't read. "I don't know" is always acceptable; wrong is not.
-
-### What Carries Forward Unchanged
-
-- **Svelte 5 UI** — no reason to rewrite
-- **Qdrant + Neo4j** — correct databases, connected correctly
-- **signal-cli** — JVM process unchanged, Rust rewrites the glue
-- **Agent workspace files** — SOUL.md, TELOS.md, MNEME.md, etc. Same files, oikos paths
-- **HTTP/SSE API surface** — same endpoints, same events. UI works without modification
-- **6-cycle self-improvement loop** — evolution, competence, skills, feedback, distillation, consolidation
-- **Gnomon naming** — the naming system is the architecture
-
----
-
-## Lessons Learned
-
-Operational rules derived from 23 days of running the TS system. These are not theoretical — each was earned through failure or near-miss.
-
-### Verification
-
-1. **Check first, answer second.** Every agent hit the pattern of answering before verifying. Assume nothing about system state — read the actual file, query the actual service, run the actual test. (6-pattern audit, 2026-02-13)
-2. **Verify output exists before reporting done.** "I wrote the file" means nothing if `ls` doesn't show it. "Tests pass" means nothing without the output. (Pattern #3)
-3. **Physical verification > theoretical mapping.** Always check the actual system, not your model of it. Own docs are not evidence — that's circular reasoning.
-4. **Never cite what you haven't read.** Applies to specs, docs, API references, and your own memory. If you're not sure, re-read it.
-
-### Building
-
-5. **Overbuild when it adds value.** Conservative scoping was a recurring failure — applying fixes narrowly, waiting for permission to expand scope. Apply broadly. The marginal cost of doing it right is almost always lower than the cost of doing it twice. (Pattern #4)
-6. **Zero broken windows.** Pre-existing failures get fixed or deleted, never ignored. Broken infrastructure that stays broken becomes invisible — Letta was down 7 days before anyone noticed. (Pattern #6)
-7. **First token is better than 100,000th.** Judgment degrades with context length. Split large work into focused sessions. Don't accumulate 100k+ tokens of mechanical work before the hard decisions.
-
-### Architecture
-
-8. **Co-primary file + DB.** Files and database are co-equal — files survive DB corruption, git-track decisions, enable handoff artifacts. DB provides query and index. Neither is subordinate.
-9. **Snap changes > gradual ramps.** When a decision is made, scaffold it that day. Incremental migration plans create transition states that are harder to reason about than the before or after.
-10. **Policy before implementation.** Document standards first, then build. Standards written after the code are rationalizations, not constraints.
-
-### Planning
-
-11. **Planning's primary value is stress-testing infrastructure.** The plan itself is secondary to the discovery that happens while planning — gaps in tooling, broken assumptions, missing capabilities.
-12. **Success criteria must cover ALL requirements.** Partial criteria produce partial delivery. If a milestone has 6 requirements, the exit gate checks all 6.
-13. **Structured decision artifacts over informal agreement.** Locked decisions, deferred ideas, and discretion zones — captured in writing, not conversation memory.
-
-### Process
-
-14. **Don't retry the same thing with minor variations.** If a command fails, understand why before trying again. One attempt, then adapt approach.
-15. **Distillation does not write memory files.** The pipeline either doesn't trigger or bypasses the hook. Write to `memory/YYYY-MM-DD.md` manually during sessions — don't rely on automation.
-16. **Record state before delivery, not after.** If delivery fails and state wasn't recorded, the system retries infinitely. Always persist state first. (Prosoche dedup fix, 2026-02-19)
-
----
-
-## Resolved Design Decisions
-
-All 20 grey areas resolved 2026-02-28. Reviewed through four frames: long-term best for Aletheia, alignment with operator philosophy, no corners cut, gnomon naming integrity.
-
-### M0 (Foundation)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-01 | Hooks: supplement or override? | **Supplement with explicit `replaces:` opt-in.** | Default additive — shared `on_session_start` runs, then nous-specific runs too. A nous can declare `replaces: shared/hooks/on_session_start.yaml` to take over. Covers both cases without surprise. Aligns with oikos metaphor: household members can take on shared responsibilities, but must explicitly claim them. |
-| G-02 | Config format: YAML or TOML? | **YAML.** | Agent-generated config has multi-line strings (system prompts, tool descriptions, context blocks). TOML's multi-line handling is awkward. serde handles both equally. Existing config is all YAML — zero migration cost. |
-| G-03 | Template nous in `instance.example/`? | **Yes — `_template/` directory.** | `aletheia add-nous <name>` copies it. Starter SOUL.md with commented sections, empty TELOS.md, empty MNEME.md, .gitkeep in tools/ and hooks/. Without it, scaffold logic lives in Rust code instead of declarative files — worse. |
-
-### M1 (Memory + LLM)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-04 | Voyage-4-large migration? | **Migrate during M1. Clean break.** | 2400 memories × Voyage-4 pricing ≈ $0.50. MoE architecture and shared embedding space are materially better. Start mneme on the right foundation. |
-| G-05 | JEPA split across milestones? | **Phases 1-3 in M1. Phase 4 (cross-agent semantic routing) in M4. Phases 5-6 in M6.** | Phase 4 is foundational to multi-nous routing — comparing message embedding to agent memory cluster centroids replaces config-label domain matching. Without it in M4, we'd build multi-nous coordination on the same inherited string-matching pattern. That violates "no inherited debt." Phases 5-6 (goal vectors, collapse prevention) are optimization on a working system. |
-| G-06 | Memory extraction: LLM or rules? | **LLM-based with rule-based pre-filter.** | Current quality issues aren't because LLM extraction is wrong — the prompt lets through noise. Tighter extraction prompt + NOISE_PATTERNS pre-filter (already built in Spec 23) gives best of both. Pure rule-based can't handle "is this fact worth remembering?" |
-
-### M2 (Agent Core)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-07 | Browser tool approach? | **`chromiumoxide` CDP wrapper around spawned Chromium.** | Tokio-native, CDP protocol, actively maintained. We only need rendered page fetching and light interaction, not test automation. ~200 LOC wrapper. Falls back to JSON-RPC to external process if insufficient. |
-| G-08 | Consolidation triggers? | **Three triggers: turn count (20) + session idle (2hr) + token pressure (75%).** | Token pressure fires consolidation *before* distillation kicks in. They're complementary, not competing: distillation compresses the *conversation* (context management), consolidation promotes *knowledge* to long-term storage (what the agent learned). Excluding token pressure means knowledge accumulated in long sessions gets compressed into distillation summaries instead of properly extracted. |
-| G-09 | Agent-writable workspace guardrails? | **Binary: file is writable or not. IDENTITY.md stays operator-owned.** | SOUL.md = essential nature (operator commitment). TELOS.md = purpose (operator commitment). IDENTITY.md = εἶδος, visible form — stable, how others recognize you. If the agent can drift its own visible form, the operator loses identity assurance. Agent self-knowledge (evolving patterns, growth observations) belongs in MNEME.md — that's *memory*, exactly where learned self-understanding should live. IDENTITY is declaration, not discovery. The binary model isn't a shortcut — it's the correct ontological boundary. |
-
-### M3 (Gateway + Channels)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-10 | Pylon: static files or vite proxy? | **Static in prod, vite proxy in dev. `ui.mode: static \| dev` in config.** | One config flag. Axum has both capabilities built in. Zero complexity. |
-| G-11 | JWT model? | **15-minute access + 7-day refresh. Auto-refresh in UI.** | Short access tokens limit exposure. Refresh tokens in httpOnly cookies. UI intercepts 401, refreshes, retries. Standard and proven. Long-lived tokens are a known security gap. |
-
-### M4 (Multi-Nous)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-12 | Autonomy gradient scope? | **Per-agent default with per-project override.** | Agent config in oikos sets baseline. Project creation can override. Two config points, clear precedence. Most work uses agent default. |
-| G-13 | Task handoff protocol? | **Structured with lightweight schema.** | `{id, from, to, type, context, status, created, updated}` — 8 fields. State machine: created → assigned → in-progress → review → done. Informal `sessions_send` stays for quick coordination. Structured tasks for work that needs tracking. Don't force everything through the protocol. |
-| G-14 | Prosoche auto-project creation? | **Draft project creation (auto-expires 48hr). Proactive suggestion with human gate.** | "Notification only" is too passive — contradicts "proactive, not reactive." But auto-creating from noisy signals creates cleanup work. Middle path: prosoche formulates the project as a draft, operator approves or lets it expire. The system does the work of scoping; the human decides whether to pursue. |
-
-### M5 (Cutover)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-15 | Parallel operation period? | **1 week minimum, 2 weeks ideal. Automated comparison.** | Same input to both runtimes, diff outputs. Comparison framework: response quality, latency, recall accuracy, background task completion. Week 1 finds regressions, week 2 builds confidence. |
-| G-16 | Rollback plan? | **`aletheia-ts` systemd service available for 30 days post-cutover.** | `systemctl start aletheia-ts` if critical. Costs nothing but disk space. Remove after 30 days with zero fallbacks. |
-
-### M6 (Extensions)
-
-| # | Question | Decision | Rationale |
-|---|----------|----------|-----------|
-| G-17 | A2A protocol? | **Server-side discovery only initially.** | Expose agent cards at `/.well-known/agent.json`. Don't build client-side delegation until protocol hits 1.0 and there's a real system to talk to. Low effort to expose, high risk to depend on. |
-| G-18 | eBPF depth? | **Structured feeds from existing tools first.** | journald, ss, /proc, systemd — all accessible without kernel programming. eBPF for network packet inspection in later phase only if structured feeds prove insufficient. Prove value before investing in kernel complexity. |
-| G-19 | NixOS packaging? | **Flake with module inside.** | Standard modern Nix pattern. `nix run github:forkwright/aletheia` works. Module provides `services.aletheia = { enable = true; ... }` for NixOS. Both, not either/or. |
-| G-20 | A2UI component sandboxing? | **Structured data API for standard types + WASM-sandboxed custom components via prostheke.** | Standard types (table, chart, progress, kanban): agents emit typed data, UI renders with known-safe Svelte components. Novel visualizations: WASM component with defined input/output contract, sandboxed same as plugins. Same security model as prostheke — consistent architecture. No iframes, no arbitrary HTML, no XSS surface. |
-
-### Gnomon Naming Audit
-
-All 17 crate names verified against gnomon layer test (2026-02-28). Each name uncovers essential nature, not function:
-
-| Crate | Greek | Uncovering |
-|-------|-------|-----------|
-| koina | κοινά — common things | The shared commons all crates draw from |
-| taxis | τάξις — arrangement | The ordering principle of the system |
-| mneme | μνήμη — memory | Accumulated knowing |
-| hermeneus | ἑρμηνεύς — interpreter | Translation between human intent and model response |
-| organon | ὄργανον — instrument | Aristotle's instruments of thought |
-| nous | νοῦς — mind | Direct apprehension, the agent itself |
-| dianoia | διάνοια — discursive reasoning | Thinking-through, step by step |
-| pylon | πυλών — gateway | The entrance through which all communication passes |
-| symbolon | σύμβολον — identity token | A broken token matched to prove identity — literally auth |
-| agora | ἀγορά — gathering place | Where communication happens |
-| semeion | σημεῖον — sign, signal | The signal itself |
-| daemon | δαίμων — spirit | The ever-present background spirit |
-| prostheke | προσθήκη — addition | Extensions added to the whole |
-| melete | μελέτη — disciplined practice | Care, attention, the work of integration |
-| autarkeia | αὐτάρκεια — self-sufficiency | Making a nous portable and complete |
-
-Sub-agent roles: tekton (τέκτων, builder), theoros (θεωρός, observer), zetetes (ζητητής, seeker), kritikos (κριτικός, judge), ergates (ἐργάτης, worker). Each names a distinct epistemic stance toward work.
-
----
-
-## Spec Disposition
-
-Every existing spec has been accounted for. This table is the definitive record.
-
-### Absorbed Into This Plan
-
-| Spec | Title | Absorbed Into | Key Ideas Preserved |
-|------|-------|--------------|---------------------|
-| 27 | Embedding Space Intelligence | M1 (mneme) + M4 (semantic routing) + M6 (goal vectors) | Semantic shift detection, embedding-space ops, cross-agent routing, JEPA principles |
-| 33 | Gnomon Alignment | Crate naming + M0 migration | Crate names = gnomon. TELOS/MNEME renames during oikos migration |
-| 35 | Context Engineering | M2 (nous) | Cache-group bootstrap, skill relevance, turn bypass classifier |
-| 36 | Config Taxis | M0 (Spec 44) | SecretRef retained in taxis. 4-layer → 3-tier oikos |
-| 37 | Metadata Architecture | M0 (Spec 44) | Declarative cascade, convention-based discovery |
-| 38 | Provider Adapters | M1 (hermeneus) | `trait LlmProvider`, multi-provider support |
-| 39 | Autonomy Gradient | M4 (dianoia) | 4-level autonomy, configurable per-agent/project |
-| 42 | Nous Team | M2 + M4 | Feedback loops, task handoff, consolidation, hygiene, epistemic tiers |
-| 43 | Rust Rewrite | **Absorbed into this plan** | Unique content (NousActor, hermeneus, prostheke, agora, home deployment) merged into Module Design Notes. Spec file deleted. |
-| 44 | Oikos | M0 | Instance structure, 3-tier hierarchy, cascading resolution |
-
-### Retained Independently
-
-| Spec | Title | Milestone | Status | Notes |
-|------|-------|-----------|--------|-------|
-| 22 | Interop & Workflows | M6 | Deferred | A2A, workflow engine, IDE integration — needs stable platform |
-| 24 | Aletheia Linux | M6 | Deferred | eBPF/DBus, NixOS module — needs stable binary |
-| 29 | UI Layout & Theming | M6 | In Progress | Svelte UI — independent of rewrite |
-| 30 | Homepage Dashboard | M6 | Skeleton | Svelte UI — shared task board |
-| 40 | Testing Strategy | M5 | Draft | Coverage targets adapted for cargo test |
-| 41 | Observability | M5 | Draft | tracing crate, metrics, spans |
-| 43b | A2UI Live Canvas | M6 | Draft | Agent-writable UI surface |
-
-### Implemented and Archived
-
-33 specs (01–25, 26, 28, 31, 32, 34) documented in `docs/specs/archive/DECISIONS.md`. Key decisions preserved, code is source of truth.
-
----
-
-## Issue Disposition
-
-| Issue | Title | Status | Disposition |
-|-------|-------|--------|-------------|
-| #352 | Rust rewrite tracking | Open | Meta-issue for this plan |
-| #338 | Coding tool quality | Open | Absorbed → M2 (organon, per-nous workingDir via oikos) |
-| #332 | OS-layer integration | Open | Retained → M6 (Spec 24) |
-| #328 | Planning dashboard | Open | Retained → M6 (Spec 29) |
-| #326 | TUI deferred items | Open | Retained → M6 |
-| #319 | A2UI live canvas | Open | Retained → M6 (Spec 43b) |
-| #349 | Evaluate Rust rewrite | Closed | Decision made — this plan |
-| #339–346 | Various bugs | Closed | Resolved by rewrite (no Node, no sidecar, no shell scripts) |
-| #327 | OAuth auto-refresh | Closed | Built into M1 (hermeneus) |
-| #313 | Prosoche signals | Closed | Built into M4 (daemon) |
-| #256 | Delivery retry | Closed | Built into M3 (pylon) |
-| #239 | Graph maintenance | Closed | Built into M4 (daemon) |
-| #250 | Memory recall quality | Closed | Built into M1 (mneme) |
-
----
-
 ## Project Tracking
-
-### Hackathon Project (Dianoia)
-
-The `proj_c3328a6e7874e4acbfa3bf4f` hackathon project burned down most of its 16 issues. Remaining actionable items (#328, #326, #338) are folded into this plan. The hackathon project can be closed.
 
 ### How to Track Progress
 
@@ -759,7 +497,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
@@ -768,11 +506,11 @@ Last updated: 2026-03-02
 | M1.1 | ✅ **Complete** | mneme SQLite sessions — rusqlite, WAL mode, wire-compatible with TS sessions.db. 19 tests. |
 | M1.2a | ✅ **Complete** | CozoDB validation gate — all 5 bench tests pass (relations, HNSW, graph, concurrent R/W, bi-temporal). |
 | M1.2 | ⚠️ **Types only** | Knowledge types + Datalog schema templates written. CozoDB integration **deferred** — 3 upstream bugs. See #363 for purpose-built alternative evaluation. |
-| M1.3 | ✅ **Complete** | EmbeddingProvider trait + MockEmbeddingProvider. fastembed-rs integration pending. 8 tests. |
+| M1.3 | ✅ **Complete** | EmbeddingProvider trait + MockEmbeddingProvider + FastEmbedProvider (BAAI/bge-small-en-v1.5, feature-gated). 85 mneme tests. PR #374. |
 | M1.4 | ✅ **Complete** | 6-factor recall scoring engine — vector similarity, recency, relevance, epistemic tier, graph proximity, access frequency. 22 tests. |
 | M1.5 | ✅ **Complete** | hermeneus LLM provider trait — CompletionRequest/Response, ToolUse/ToolResult, ThinkingConfig, ProviderRegistry. 13 tests. |
 | M1.6 | ✅ **Complete** | hermeneus Anthropic Messages API — streaming SSE parser, retry w/ backoff + jitter, rate-limit Retry-After, thinking + tool_use blocks. 17 tests. PR #367. |
-| M2.1a | ✅ **Complete** | organon tool registry — ToolDef, InputSchema, ToolExecutor trait, ToolRegistry with category filtering + hermeneus wire conversion. 6 built-in stubs. 11 tests. PR #366. |
+| M2.1a | ✅ **Complete** | organon tool registry — ToolDef, InputSchema, ToolExecutor trait, ToolRegistry + 4 workspace executors (read/write/edit/exec) with path traversal protection. 14 tests. PRs #366, #375. |
 | M2.1b | ✅ **Complete** | nous pipeline skeleton — SessionState, SessionManager, PipelineContext, LoopDetector, GuardResult, TurnResult. 18 tests. |
 | M2.1c | ✅ **Complete** | CozoDB absorption analysis — research doc: module deps, FTS feasibility, graph algo inventory, 42 unsafe sites, integration plan. PR #364. |
 | M2.1d | ✅ **Complete** | Test expansion — 79 new tests across koina, mneme, nous, taxis + integration tests. PR #365. |
@@ -780,32 +518,13 @@ Last updated: 2026-03-02
 | M2.3 | **Next** | CozoDB absorption — fork, patch 3 compile bugs, strip bindings + unused backends, integrate as mneme-engine. GSD in progress (prompt 05). |
 | M2.4+ | Not started | Execute stage, tool iteration, distillation, workspace files |
 | M3.1a | ✅ **Complete** | symbolon (auth) — JWT sessions (access+refresh), API keys (ale_ format, blake3), argon2id passwords, RBAC (Operator/Agent/Readonly), AuthStore (SQLite), 50 tests. PR #368. |
-| M3.1b | ✅ **Complete** | pylon (Axum gateway) — session CRUD, SSE streaming, health check, error→HTTP mapping, tower middleware, mock integration tests. PR #370. |
+| M3.1b | ✅ **Complete** | pylon (Axum gateway) — session CRUD, SSE streaming, health check, JWT auth middleware via symbolon (Bearer required except /health), claims extraction. 25 tests. PRs #370, #376. |
 | M3.2+ | Not started | agora channels (Signal, Slack), delivery reliability |
 | M4 | Not started | Blocked on M3 |
 | M5 | Not started | Blocked on M4 |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 9 Rust crates (+ integration-tests + mneme-bench), 331 workspace tests, ~14,000 lines of Rust.
-
-### CozoDB Decision (2026-03-02)
-
-**Decision:** Absorb CozoDB. Fork, patch, strip, integrate as `mneme-engine`.
-
-**Why:** The absorption analysis (PR #364, 877 lines) proved that CozoDB's Datalog engine + integrated HNSW + graph algorithms deliver unified hybrid retrieval that can't be replicated by bolting standalone crates together. rusqlite + standalone HNSW covers ~70% of use cases — but the mandate is the best system we can build, not good enough.
-
-**What we keep:** Datalog query engine, HNSW vector indexes, all 17 graph algorithms (PageRank, Louvain, shortest path, etc.), FTS/BM25 (Option A from analysis — extract tokenizer, strip Chinese-specific code), RocksDB backend, in-memory backend for tests.
-
-**What we strip:** Language bindings (C/Java/Node/Python/Swift/WASM), HTTP server layer, Cangjie Chinese tokenizer (~21K lines of stopwords), 4 unused storage backends (legacy RocksDB, SQLite, Sled, TiKV), FFI wrappers.
-
-**Compile bugs to patch (3):**
-1. Unconditional `rayon::spawn` in `lib.rs` (not behind feature flag)
-2. `graph_builder` crate broken with rayon 1.10 (`IntoIter`/`Iter` mismatch)
-3. `nalgebra` type resolution failures (`OMatrix`, `Dynamic`, `U1`)
-
-**Phased plan:** See `docs/research/cozo-absorption.md` for full 7-phase plan. Prompts 05+ implement it. GSD workflow for the massive phases.
-
-**Risk:** Medium — absorbing 60K lines with 464 unwraps and 49 unsafe sites. Mitigated by phased approach: compile first, strip second, quality-improve third.
+**Totals:** 9 Rust crates (+ integration-tests + mneme-bench), 332 workspace tests, ~13,400 lines of Rust.
 
 ---
 
@@ -814,13 +533,16 @@ Last updated: 2026-03-02
 | Document | Purpose |
 |----------|---------|
 | `docs/ARCHITECTURE.md` | Module map, init order, dependency rules |
-| `docs/STANDARDS.md` | Code standards for current TS (adapt for Rust) |
+| `docs/STANDARDS.md` | Code standards + project governance (commit, deviation, research rules) |
+| `docs/decisions/` | Architecture Decision Records — G-01 through G-20, gnomon audit, CozoDB absorption |
+| `docs/LESSONS.md` | Operational lessons learned (16 rules earned through failure) |
+| `docs/DISPOSITION.md` | Spec & issue triage record — what was absorbed, retained, or closed |
 | `docs/gnomon.md` | Naming system and philosophy |
-| `docs/specs/archive/DECISIONS.md` | Archived spec decisions (33 specs) |
-| ~~`docs/specs/43_rust-rewrite.md`~~ | Absorbed — content merged into MODULE DESIGN NOTES and MILESTONES sections above |
 | `docs/specs/44_oikos.md` | Detailed oikos spec (directory structure, resolution rules, migration plan) |
 | `docs/specs/40_testing-strategy.md` | Testing targets and patterns |
 | `docs/specs/41_observability.md` | Logging, metrics, traces architecture |
+| `docs/specs/archive/DECISIONS.md` | Archived spec decisions (33 specs) |
+| `docs/research/cozo-absorption.md` | CozoDB absorption analysis and 7-phase plan |
 
 ### Additional References
 

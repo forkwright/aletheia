@@ -1,0 +1,121 @@
+[package]
+name = "aletheia-mneme-engine"
+version = "0.1.0"
+description = "Embedded Datalog + HNSW + graph engine for Aletheia (absorbed from CozoDB 0.7.6)"
+edition.workspace = true
+license = "MPL-2.0"
+repository.workspace = true
+rust-version.workspace = true
+
+[lints.rust]
+rust_2018_idioms = { level = "allow", priority = 1 }
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+# CozoDB has unsafe in ndarray operations and string conversions — Phase 5 audit
+unsafe_code = { level = "allow", priority = 1 }
+# Orphaned cfg guards for stripped backends (storage-sqlite) — Phase 5 cleanup
+unexpected_cfgs = { level = "allow", priority = 1 }
+# Dead code in CozoDB internals — suppress, clean in Phase 5
+dead_code = { level = "allow", priority = 1 }
+# Private type visibility in CozoDB pub structs — suppress, clean in Phase 5
+private_interfaces = { level = "allow", priority = 1 }
+
+[lints.clippy]
+pedantic = { level = "allow", priority = 1 }
+await_holding_lock = "warn"
+dbg_macro = { level = "allow", priority = 1 }
+todo = { level = "allow", priority = 1 }
+unimplemented = { level = "allow", priority = 1 }
+# CozoDB patterns — suppress for Phase 1, fix in Phase 5
+mutable_key_type = { level = "allow", priority = 1 }
+type_complexity = { level = "allow", priority = 1 }
+too_many_arguments = { level = "allow", priority = 1 }
+# CozoDB code quality patterns — suppress for Phase 1, fix in Phase 5
+get_first = { level = "allow", priority = 1 }
+iter_kv_map = { level = "allow", priority = 1 }
+let_and_return = { level = "allow", priority = 1 }
+manual_inspect = { level = "allow", priority = 1 }
+manual_unwrap_or_default = { level = "allow", priority = 1 }
+needless_borrows_for_generic_args = { level = "allow", priority = 1 }
+non_canonical_partial_ord_impl = { level = "allow", priority = 1 }
+question_mark = { level = "allow", priority = 1 }
+redundant_closure = { level = "allow", priority = 1 }
+swap_with_temporary = { level = "allow", priority = 1 }
+useless_conversion = { level = "allow", priority = 1 }
+useless_format = { level = "allow", priority = 1 }
+
+[features]
+default = ["storage-mem"]
+storage-mem = []
+storage-new-rocksdb = ["dep:rocksdb"]
+graph-algo = []
+
+[dependencies]
+# Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
+rayon = "=1.10.0"
+
+# CozoDB core error type — migrating to snafu in Phase 5
+miette = { version = "5.10.0", features = ["fancy"] }
+
+# Graph/algorithm facade — provides page_rank + PageRankConfig + graph builder types
+graph = "0.3.1"
+
+# Priority queues and numeric types
+ordered-float = "4.2.0"
+priority-queue = "1.4"
+ndarray = { version = "0.15.6", features = ["serde"] }
+approx = "0.5.1"
+
+# Data encoding
+smallvec = { version = "1.13.2", features = ["serde", "write", "union", "const_generics", "const_new"] }
+smartstring = { version = "1.0.1", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_derive = "1.0"
+serde_bytes = "0.11"
+rmp = "0.8"
+rmp-serde = "1.2"
+rmpv = "1.0"
+
+# Utilities
+crossbeam = "0.8.4"
+itertools = "0.12.1"
+rustc-hash = "1.1.0"
+twox-hash = "1.6"
+byteorder = "1.5"
+num-traits = "0.2"
+regex = "1"
+sha2 = "0.10"
+chrono = "0.4"
+chrono-tz = "0.9"
+either = "1"
+rand = "0.8"
+base64 = "0.22"
+casey = "0.4"
+uuid = { version = "1", features = ["v1", "v4", "serde"] }
+pest = "2.7.9"
+pest_derive = "2.7.9"
+lazy_static = "1.4"
+log = "0.4"
+unicode-normalization = "0.1"
+thiserror = "1"
+
+# FTS
+aho-corasick = "1.1"
+rust-stemmers = "1.2"
+swapvec = "0.3"
+
+
+
+
+# LSH
+quadrature = "0.1"
+bytemuck = "1.25"
+
+# RocksDB backend (optional)
+rocksdb = { version = "0.22.0", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+env_logger = "0.11"
+static_assertions = { workspace = true }

@@ -1,28 +1,49 @@
-//! Placeholder auth extractor — always returns test claims.
-//! Real auth middleware (symbolon) will be wired in a future PR.
+//! JWT auth extractor — validates Bearer tokens via symbolon.
+
+use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-use crate::error::ApiError;
+use aletheia_symbolon::types::Role;
 
-/// Authenticated user claims.
+use crate::error::ApiError;
+use crate::state::AppState;
+
+/// Authenticated user claims extracted from a JWT Bearer token.
 #[derive(Debug, Clone)]
 pub struct Claims {
     pub sub: String,
+    pub role: Role,
+    pub nous_id: Option<String>,
 }
 
-impl<S: Send + Sync> FromRequestParts<S> for Claims {
+impl FromRequestParts<Arc<AppState>> for Claims {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let sub = parts
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let header = parts
             .headers
-            .get("x-user-id")
+            .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .unwrap_or("anonymous")
-            .to_owned();
+            .ok_or(ApiError::Unauthorized)?;
 
-        Ok(Self { sub })
+        let token = header
+            .strip_prefix("Bearer ")
+            .ok_or(ApiError::Unauthorized)?;
+
+        let claims = state
+            .jwt_manager
+            .validate(token)
+            .map_err(|_err| ApiError::Unauthorized)?;
+
+        Ok(Self {
+            sub: claims.sub,
+            role: claims.role,
+            nous_id: claims.nous_id,
+        })
     }
 }

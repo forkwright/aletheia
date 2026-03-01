@@ -7,10 +7,11 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::error::{ApiError, NousNotFoundSnafu};
+use crate::extract::Claims;
 use crate::state::AppState;
 
 /// GET /api/nous — list registered nous agents.
-pub async fn list(State(state): State<Arc<AppState>>) -> Json<NousListResponse> {
+pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<NousListResponse> {
     let config = state.session_manager.config();
     // Currently single-nous — return the configured agent
     Json(NousListResponse {
@@ -25,6 +26,7 @@ pub async fn list(State(state): State<Arc<AppState>>) -> Json<NousListResponse> 
 /// GET /api/nous/{id} — get nous status.
 pub async fn get_status(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
     let config = state.session_manager.config();
@@ -47,6 +49,7 @@ pub async fn get_status(
 /// GET /api/nous/{id}/tools — list tools available to a nous.
 pub async fn tools(
     State(state): State<Arc<AppState>>,
+    _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
     let config = state.session_manager.config();

@@ -6,5 +6,7 @@
 //! Depends only on `aletheia-koina`.
 
 pub mod cascade;
-pub mod oikos;
+pub mod config;
 pub mod error;
+pub mod loader;
+pub mod oikos;
