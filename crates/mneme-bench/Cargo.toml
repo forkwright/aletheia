@@ -14,16 +14,13 @@ pedantic = { level = "warn", priority = -1 }
 [dependencies]
 # Standalone binary — excluded from workspace to avoid sqlite3 link conflict
 # with rusqlite in aletheia-mneme. Run with: cd crates/mneme-bench && cargo run
-# graph-algo disabled due to graph_builder/rayon version conflict in 0.7.6
-# minimal = SQLite storage only. No graph-algo (graph_builder broken with rayon 1.10).
-# HNSW and Datalog still work — graph algos (PageRank, community detection) don't.
-# graph-algo disabled: graph_builder crate broken with rayon 1.10 (IntoIter/Iter mismatch)
-# HNSW and Datalog still work. PageRank/community detection unavailable.
-# Patched locally to add rayon as unconditional dep (cozo bug: uses rayon::spawn in lib.rs
-# but only declares rayon under graph-algo feature flag).
-cozo = { path = "../../vendor/cozo/cozo-core", default-features = false, features = ["minimal", "requests"] }
+# Vendor-patched: rayon made non-optional, graph_builder par_iter fixed, nalgebra cfg fixed.
+cozo = { path = "../../vendor/cozo/cozo-core", default-features = false, features = ["compact"] }
 rand = "0.8"
 serde_json = "1"
+
+[patch.crates-io]
+graph_builder = { path = "../../vendor/graph_builder" }
 
 [[bin]]
 name = "cozo-bench"

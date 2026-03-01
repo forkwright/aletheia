@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "cozo-core",
+]
+
+[profile.bench]
+lto = true
+debug = true

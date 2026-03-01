@@ -118,6 +118,7 @@ tui/target/
 # Deploy backups
 .deploy-backup/
 -e 
-# Vendored deps
-vendor/
+# Vendored deps — source tracked, build artifacts ignored
+vendor/cozo/target/
+vendor/graph_builder/target/
 crates/mneme-bench/target/

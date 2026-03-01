@@ -24,6 +24,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-integration-tests"
+version = "0.0.0"
+dependencies = [
+ "aletheia-hermeneus",
+ "aletheia-koina",
+ "aletheia-mneme",
+ "aletheia-nous",
+ "aletheia-taxis",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "aletheia-koina"
 version = "0.1.0"
 dependencies = [
