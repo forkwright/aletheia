@@ -19,10 +19,10 @@ aletheia-taxis = { path = "../taxis" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }
 static_assertions = { workspace = true }
 tempfile = "3"
-tokio = { workspace = true }

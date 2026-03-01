@@ -64,6 +64,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Actor inbox send failed (actor shut down).
+    #[snafu(display("actor send failed: {message}"))]
+    ActorSend {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Actor reply receive failed (actor dropped reply channel).
+    #[snafu(display("actor recv failed: {message}"))]
+    ActorRecv {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

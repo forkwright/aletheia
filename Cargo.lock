@@ -208,11 +208,13 @@ dependencies = [
  "aletheia-mneme",
  "aletheia-organon",
  "aletheia-taxis",
+ "indexmap 2.13.0",
  "serde",
  "serde_json",
  "snafu",
  "static_assertions",
  "tempfile",
+ "tokio",
  "tracing",
 ]
 
