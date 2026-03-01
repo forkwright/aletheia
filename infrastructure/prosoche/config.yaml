@@ -72,7 +72,7 @@ signals:
     warn_age_seconds: 518400     # 6 days
     critical_age_seconds: 1123200  # 13 days
     token_files:
-    - path: /home/syn/.aletheia/credentials/anthropic.json
+    - path: ${ALETHEIA_ROOT}/config/credentials/anthropic.json
       label: Anthropic OAuth (primary)
   sessions:
     enabled: true
