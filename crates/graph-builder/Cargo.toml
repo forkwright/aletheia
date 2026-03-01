@@ -1,0 +1,39 @@
+[package]
+name = "aletheia-graph-builder"
+version = "0.1.0"
+description = "CSR graph construction and traversal for Aletheia graph algorithms (graph_builder 0.4.1 absorbed)"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+
+[lints.rust]
+unsafe_code = { level = "allow", priority = 1 }
+rust_2018_idioms = { level = "allow", priority = 1 }
+future_incompatible = { level = "warn", priority = -1 }
+
+[lints.clippy]
+pedantic = { level = "allow", priority = 1 }
+dbg_macro = { level = "allow", priority = 1 }
+todo = { level = "allow", priority = 1 }
+unimplemented = { level = "allow", priority = 1 }
+
+[dependencies]
+rayon = "=1.10.0"
+graph = "0.3.1"
+atoi = "2.0"
+atomic = "0.5"
+byte-slice-cast = "1.2"
+dashmap = "5.5"
+delegate = "0.8"
+fast-float2 = "0.2"
+fxhash = "0.2"
+linereader = "0.4"
+log = "0.4"
+memmap2 = "0.5"
+num = "0.4"
+num-format = "0.4"
+num_cpus = "1.16"
+page_size = "0.4"
+parking_lot = "0.12"
+thiserror = "1"

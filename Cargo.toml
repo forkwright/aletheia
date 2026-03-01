@@ -1,10 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/graph-builder",
     "crates/hermeneus",
     "crates/integration-tests",
     "crates/koina",
     "crates/mneme",
+    "crates/mneme-engine",
     "crates/nous",
     "crates/organon",
     "crates/pylon",
@@ -55,6 +57,9 @@ trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 
 [workspace.dependencies]
+# Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
+rayon = "=1.10.0"
+
 # Error handling
 snafu = "0.8"
 
