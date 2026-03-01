@@ -792,4 +792,82 @@ mod tests {
         assert_eq!(history[0].tool_call_id.as_deref(), Some("tool_123"));
         assert_eq!(history[0].tool_name.as_deref(), Some("exec"));
     }
+
+    // --- Edge cases ---
+
+    #[test]
+    fn history_empty_session() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        let history = store.get_history("ses-1", None).unwrap();
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn history_limit_one() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        for i in 1..=5 {
+            store.append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10).unwrap();
+        }
+        let history = store.get_history("ses-1", Some(1)).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].content, "msg 5");
+    }
+
+    #[test]
+    fn history_limit_exceeds_count() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        store.append_message("ses-1", Role::User, "only", None, None, 10).unwrap();
+        let history = store.get_history("ses-1", Some(100)).unwrap();
+        assert_eq!(history.len(), 1);
+    }
+
+    #[test]
+    fn large_message_content() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        let big = "x".repeat(1_000_000);
+        store.append_message("ses-1", Role::User, &big, None, None, 250_000).unwrap();
+        let history = store.get_history("ses-1", None).unwrap();
+        assert_eq!(history[0].content.len(), 1_000_000);
+    }
+
+    #[test]
+    fn distill_empty_seqs_is_noop() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        store.append_message("ses-1", Role::User, "keep", None, None, 10).unwrap();
+        store.mark_messages_distilled("ses-1", &[]).unwrap();
+        let history = store.get_history("ses-1", None).unwrap();
+        assert_eq!(history.len(), 1);
+    }
+
+    #[test]
+    fn delete_nonexistent_note_returns_false() {
+        let store = test_store();
+        let deleted = store.delete_note(9999).unwrap();
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn message_sequence_always_increases() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        let s1 = store.append_message("ses-1", Role::User, "a", None, None, 5).unwrap();
+        let s2 = store.append_message("ses-1", Role::Assistant, "b", None, None, 5).unwrap();
+        let s3 = store.append_message("ses-1", Role::User, "c", None, None, 5).unwrap();
+        assert!(s1 < s2);
+        assert!(s2 < s3);
+    }
+
+    #[test]
+    fn budget_always_includes_at_least_one() {
+        let store = test_store();
+        store.create_session("ses-1", "syn", "main", None, None).unwrap();
+        store.append_message("ses-1", Role::User, "big", None, None, 999_999).unwrap();
+        let history = store.get_history_with_budget("ses-1", 1).unwrap();
+        assert_eq!(history.len(), 1);
+    }
 }
