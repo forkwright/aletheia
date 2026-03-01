@@ -785,18 +785,24 @@ Last updated: 2026-03-02
 
 **Totals:** 7 Rust crates (+ integration-tests), 248 workspace tests, ~9,000 lines of Rust, clean clippy.
 
-### CozoDB Decision (2026-03-01)
+### CozoDB Decision (2026-03-02)
 
-**Decision:** Keep rusqlite for sessions. Defer CozoDB unification.
+**Decision:** Absorb CozoDB. Fork, patch, strip, integrate as `mneme-engine`.
 
-**Why:** CozoDB 0.7.6 has three upstream bugs blocking clean compilation:
+**Why:** The absorption analysis (PR #364, 877 lines) proved that CozoDB's Datalog engine + integrated HNSW + graph algorithms deliver unified hybrid retrieval that can't be replicated by bolting standalone crates together. rusqlite + standalone HNSW covers ~70% of use cases — but the mandate is the best system we can build, not good enough.
+
+**What we keep:** Datalog query engine, HNSW vector indexes, all 17 graph algorithms (PageRank, Louvain, shortest path, etc.), FTS/BM25 (Option A from analysis — extract tokenizer, strip Chinese-specific code), RocksDB backend, in-memory backend for tests.
+
+**What we strip:** Language bindings (C/Java/Node/Python/Swift/WASM), HTTP server layer, Cangjie Chinese tokenizer (~21K lines of stopwords), 4 unused storage backends (legacy RocksDB, SQLite, Sled, TiKV), FFI wrappers.
+
+**Compile bugs to patch (3):**
 1. Unconditional `rayon::spawn` in `lib.rs` (not behind feature flag)
 2. `graph_builder` crate broken with rayon 1.10 (`IntoIter`/`Iter` mismatch)
 3. `nalgebra` type resolution failures (`OMatrix`, `Dynamic`, `U1`)
 
-**Path forward:** Fork CozoDB, patch the three bugs, use as vendored dep. Architecture is ready — knowledge types, Datalog templates, and recall engine are all storage-agnostic. The swap is mechanical when the fork compiles clean.
+**Phased plan:** See `docs/research/cozo-absorption.md` for full 7-phase plan. Prompts 05+ implement it. GSD workflow for the massive phases.
 
-**Risk:** Low. rusqlite is battle-tested for sessions. The knowledge store (facts, entities, vectors) is new functionality — no migration needed when CozoDB is ready.
+**Risk:** Medium — absorbing 60K lines with 464 unwraps and 49 unsafe sites. Mitigated by phased approach: compile first, strip second, quality-improve third.
 
 ---
 
