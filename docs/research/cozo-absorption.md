@@ -526,234 +526,294 @@ This is **3 types + 1 enum + 6 methods** — down from 30+ exported types and 20
 
 ## 7. Crate Integration Proposal
 
-### Structure Options
+### What We Strip (Revised)
 
-#### Option A: Single `mneme-engine` crate
+The goal is the best knowledge system we can build, not the smallest codebase. Only truly dead weight goes.
+
+| Strip | Lines | Rationale |
+|-------|-------|-----------|
+| **SQLite backend** | 426 | Link conflict with rusqlite; contains the only `transmute` UB. Feature-gated. |
+| **Sled backend** | 425 | Experimental, no time-travel, unmaintained upstream. Feature-gated. |
+| **TiKV backend** | 320 | Distributed KV — we're embedded-only. Feature-gated. |
+| **Legacy RocksDB** | 527 | Superseded by `newrocks.rs`, depends on custom C++ `cozorocks` wrapper. Feature-gated. |
+| **FFI/string wrappers** | ~350 | `*_str`, `*_fold_err` variants for C/Java/Python/WASM. We're Rust-native. |
+| **Chinese tokenizer** | 125 + 2 deps | `fts/cangjie/`, `jieba-rs`, `fast2s` — language-specific, not needed. |
+| **graph_builder unused** | ~4,100 | `adj_list.rs`, DOT/GDL/Graph500 input formats, `compat.rs`. |
+| **Total** | **~6,273** | **~9% reduction — zero capability loss** |
+
+### What We Keep and Why
+
+| Component | Lines | Why it matters |
+|-----------|-------|---------------|
+| **FTS** | 29,086 (3K logic + 26K data) | PROJECT.md specifies `hybrid retrieval (vector + graph + BM25)`. BM25 catches exact keywords that vectors miss. Research consensus: hybrid is 15-30% better recall than either alone. Stripping this means rebuilding it with tantivy later — more work, worse integration. |
+| **MinHash LSH** | 390 | Near-duplicate detection for memory deduplication, contradiction candidate finding. Already integrated with query engine. |
+| **CSV/JSON importers** | 401 | Bulk knowledge loading, test data injection, admin/debugging via CozoScript. Tiny maintenance cost. |
+| **All 17 graph algorithms** | 3,040 | PageRank (entity importance), Louvain/LabelProp (topic clustering), shortest path (explanation chains), BFS/DFS (neighborhood expansion), SCC (circular reference detection). Knowledge graphs benefit from all of these. |
+| **HNSW** | 1,035 | Core vector search capability. Needs performance work but the algorithm is correct. |
+| **CozoScript parser** | 3,189 + 275 PEG | Debugging, REPL, admin queries. The Datalog query language is the primary interface. |
+
+### Structure: Single `mneme-engine` Crate (Option A)
 
 ```
 crates/
-├── mneme/           # knowledge store, recall, embedding (existing)
-└── mneme-engine/    # absorbed cozo-core (stripped)
+├── mneme/           # knowledge store, recall, embedding, extraction (existing)
+└── mneme-engine/    # absorbed cozo-core
     └── src/
-        ├── data/       # core types
+        ├── data/       # core types (restore from upstream)
+        ├── fts/        # full-text search + tokenizers
         ├── parse/      # CozoScript parser
         ├── query/      # compilation + evaluation
-        ├── runtime/    # DB, transactions, HNSW, relations
-        ├── storage/    # trait + mem + rocksdb backends
-        ├── fixed_rule/ # graph algorithms
+        ├── runtime/    # DB, transactions, HNSW, LSH, relations
+        ├── storage/    # trait + mem + temp + rocksdb backends
+        ├── fixed_rule/ # graph algorithms + utilities
         └── lib.rs      # narrowed public API
 ```
 
-**Pros:** Clean separation, mneme imports mneme-engine as a dependency. Engine evolves independently.
-**Cons:** Two crates to maintain. Mneme-engine is still large (~25K lines post-strip).
+### Post-Absorption Line Counts
 
-#### Option B: Integrated into mneme as submodule
-
-```
-crates/mneme/
-├── src/
-│   ├── engine/       # absorbed cozo-core
-│   │   ├── data/
-│   │   ├── parse/
-│   │   ├── query/
-│   │   ├── runtime/
-│   │   ├── storage/
-│   │   └── fixed_rule/
-│   ├── knowledge.rs  # existing
-│   ├── recall.rs     # existing
-│   ├── embedding.rs  # existing
-│   └── lib.rs
-```
-
-**Pros:** Single crate, simpler dependency graph.
-**Cons:** Makes mneme very large. Engine internals visible to all mneme code — harder to enforce boundary.
-
-#### Option C: Split into mneme-datalog + mneme-index (recommended)
-
-```
-crates/
-├── mneme/            # knowledge store, recall, embedding (existing) — depends on both below
-├── mneme-datalog/    # query engine core
-│   └── src/
-│       ├── data/
-│       ├── parse/
-│       ├── query/
-│       ├── runtime/  # Db, SessionTx, relations (not HNSW)
-│       ├── storage/  # trait + backends
-│       └── fixed_rule/
-└── mneme-index/      # vector + graph indexes
-    └── src/
-        ├── hnsw.rs   # HNSW implementation
-        └── lib.rs    # index management API
-```
-
-**Pros:** Separation of concerns matches usage patterns. Datalog engine reusable without vector indexes.
-Could later add a `mneme-graph` crate for graph algorithms specifically.
-**Cons:** HNSW is currently methods on `SessionTx` — splitting requires introducing a trait boundary or
-callback interface between datalog and index modules. More upfront refactoring.
-
-**Recommendation: Option A** (single `mneme-engine`). Aletheia's architecture already has `mneme` as the
-memory layer. A single `mneme-engine` crate keeps the boundary clean without over-splitting. The internal
-module structure within mneme-engine already provides logical separation. Option C is elegant but the
-refactoring cost to decouple HNSW from SessionTx outweighs the architectural benefit at this stage.
-
-### Stripped Line Counts
-
-| Component | Current | After strip | Notes |
-|-----------|---------|-------------|-------|
-| `data/` | ~11,000 | ~11,000 | Unchanged (leaf module, no FTS types after cleanup) |
-| `fts/` | 29,086 | **0** | Removed entirely (Option B) |
-| `runtime/` | 7,569 | ~7,000 | Remove LSH (390), FTS refs (~180) |
-| `query/` | 6,830 | ~6,500 | Remove FTS RA variant, match arms (~330) |
-| `fixed_rule/` | 4,413 | ~4,000 | Remove CSV (215) + JSON (186) readers |
-| `parse/` | 3,189 | ~2,900 | Remove `parse/fts.rs` (164), FTS grammar (~125) |
-| `storage/` | 3,106 | ~1,400 | Keep only mod.rs (165) + mem (542) + temp (141) + newrocks (560) |
-| `lib.rs` | 664 | ~300 | Strip FFI wrappers, DbInstance enum → single backend |
-| `utils.rs` | 31 | 31 | Unchanged |
-| **Total** | **~66,163** | **~33,131** | **~50% reduction** |
-
-After stripping FTS, LSH, CSV/JSON import, and unused storage backends: **~33K lines** remain.
-The `data/` module (~11K) is the largest retained component and has the lowest unsafe/unwrap density.
-
-### Standards Alignment Effort
-
-| Standard | Gap | Effort |
-|----------|-----|--------|
-| `snafu` errors (not `miette`) | All errors use `miette::bail!` | 3-5 days — rewrite error handling across all modules |
-| `#[instrument]` on public fns | Zero tracing instrumentation | 2-3 days — add `tracing` spans to key paths |
-| Zero `unwrap()` in library code | 464 non-test unwraps (post-strip: ~340) | 5-8 days — tedious but mechanical |
-| Zero `unsafe` in library code | 7 cozo-core + 42 graph_builder (post-strip: 4 + 42) | 5-8 days — some require architectural changes |
-| Zero `panic!()` | 15 sites (post-strip: ~10) | 1-2 days |
-| `.js` import extensions | N/A (Rust) | 0 |
-| Typed error hierarchy | `miette` → `snafu` with `AletheiaError` | Part of snafu migration |
-| No `any` / `unknown` | Multiple `Box<dyn Any>` in data types | 2-3 days — needs careful refactoring |
-| **Total** | | **18-29 developer-days** |
-
-### Phased Absorption Plan
-
-#### Phase 1: Strip and Compile (1-2 days)
-
-1. Copy vendored source into `crates/mneme-engine/src/`
-2. Restore `data/` module from upstream CozoDB 0.7.6 source
-3. Strip FTS + LSH (Option B): delete `fts/`, `parse/fts.rs`, `minhash_lsh.rs`; edit 15 files
-4. Strip unused storage backends: disable features
-5. Strip CSV/JSON readers: remove 2 files, 2 registration entries
-6. Strip FFI/string wrappers from `lib.rs`
-7. Narrow public API to proposed surface
-8. Verify: `cargo check -p mneme-engine`
-9. **Gate:** Clean compilation with zero warnings
-
-#### Phase 2: Critical Safety Fixes (2-3 days)
-
-1. Fix UB: `minhash_lsh.rs` alignment → goes away with FTS strip
-2. Fix UB: `sqlite.rs` transmute → goes away with sqlite strip
-3. Audit `newrocks.rs:129` unsafe Sync impl — document or redesign
-4. Replace `SharedMut` in graph_builder with safe alternatives
-5. Delete `compat.rs` (set MSRV to 1.80+)
-6. **Gate:** Zero unsound unsafe remaining
-
-#### Phase 3: Error Migration (3-5 days)
-
-1. Replace `miette::bail!` with `snafu` error enums per module
-2. Define `MnemeEngineError` hierarchy following `AletheiaError` pattern
-3. Replace `unwrap()` in storage module (highest crash risk)
-4. Replace `panic!()` in storage trait defaults with `Result`
-5. **Gate:** `cargo clippy` clean, zero panics in non-test code
-
-#### Phase 4: unwrap() Elimination (5-8 days)
-
-1. `parse/` (133 sites): Helper functions wrapping PEG output extraction
-2. `runtime/` (95 sites): Lock handling, HNSW cache access
-3. `query/` (59 sites): Mixed assertion/access patterns
-4. `fixed_rule/` (31 sites): Algorithm assumptions
-5. `graph_builder` (19 sites): Lock guards, slice access
-6. **Gate:** Zero non-test `unwrap()` calls
-
-#### Phase 5: Instrumentation (2-3 days)
-
-1. Add `#[instrument]` to public API methods
-2. Add `tracing` spans to query compilation and evaluation
-3. Add structured logging to HNSW operations
-4. **Gate:** Key operations visible in traces
-
-#### Phase 6: Integration (1-2 days)
-
-1. Wire `mneme-engine` into `mneme` crate
-2. Replace knowledge_store.rs templates with live CozoDB calls
-3. Integration tests: schema creation, CRUD, HNSW search, graph queries
-4. **Gate:** All mneme integration tests pass
-
-**Total: 14-23 developer-days across 6 phases.** Phases 1-2 ship first (functional engine).
-Phase 3-4 can be done incrementally alongside feature work. Phase 5-6 complete the integration.
+| Component | Lines | Notes |
+|-----------|-------|-------|
+| `data/` | ~11,000 | Restored from upstream, remove FTS types from `program.rs` (~20 lines) |
+| `fts/` | 29,086 | Keep full, strip only `cangjie/` (125 lines) |
+| `runtime/` | 7,569 | Unchanged |
+| `query/` | 6,830 | Unchanged |
+| `fixed_rule/` | 4,413 | Unchanged |
+| `parse/` | 3,189 | Unchanged |
+| `storage/` | 1,408 | mod.rs (165) + mem (542) + temp (141) + newrocks (560) |
+| `lib.rs` | ~300 | Narrowed: strip FFI, keep Rust API |
+| `utils.rs` | 31 | Unchanged |
+| graph_builder (kept) | ~1,800 | CSR graph + builder, strip unused input formats |
+| **Total** | **~65,626** | **~99% of capability, ~96% of original code** |
 
 ---
 
 ## 8. graph_builder Assessment
 
-### What cozo-core Uses
+cozo-core imports `graph` 0.3.1 (optional, `graph-algo` feature) which wraps `graph_builder` 0.4.1.
+Used by 12 of 17 algorithms via `DirectedCsrGraph`, `GraphBuilder`, `CsrLayout`, neighbor traits,
+and `page_rank`/`PageRankConfig`.
 
-cozo-core does **not** import `graph_builder` directly. The dependency chain:
+**5,927 lines total, ~1,800 exercised by cozo-core.** Absorb alongside cozo-core, strip unused
+components (adj_list, DOT/GDL/Graph500 inputs, compat.rs polyfills). The 42 unsafe sites are
+concentrated in parallelism helpers (`SharedMut`) and `MaybeUninit` initialization — incrementally
+modernizable. petgraph replacement would require rewriting 12 algorithm files for no functional gain.
 
-```
-cozo-core → graph 0.3.1 (optional, feature "graph-algo") → graph_builder 0.4.1
-```
+---
 
-Types used (via `graph` crate re-exports):
-- `DirectedCsrGraph<u32, (), f64>` — CSR graph data structure
-- `GraphBuilder` — graph construction from edge lists
-- `CsrLayout` — CSR storage layout control
-- `Graph` trait — `node_count()`, `edge_count()`
-- `DirectedNeighbors` / `DirectedNeighborsWithValues` traits — neighbor iteration
-- `page_rank`, `PageRankConfig` — from `graph` crate (not graph_builder)
+## 9. Refactoring and Rewrite Opportunities
 
-Used by 12 of 17 algorithms in `fixed_rule/algos/`. Pattern:
+Analysis of CozoDB internals for architectural improvements during absorption.
 
-```rust
-// Build CSR graph from Datalog edge relation
-let graph: DirectedCsrGraph<u32, (), f64> = GraphBuilder::new()
-    .csr_layout(CsrLayout::Sorted)
-    .edges_with_values(edges)
-    .build();
+### 9.1 HNSW: KV-Stored Graph → In-Memory with WAL
 
-// Traverse
-for Target { target, value } in graph.out_neighbors_with_values(node) { ... }
-```
+**Current:** HNSW graph edges are stored as individual KV pairs in the storage backend. Every neighbor
+lookup during search requires a `store_tx.get()` → deserialize → compute distance cycle. For a KNN
+query with ef=200, this means hundreds of KV reads per search.
 
-### Size and Usage
+**Modern implementations** (hnswlib, usearch) keep the graph structure in memory with memory-mapped
+files or WAL-based persistence. This is orders of magnitude faster.
 
-| Metric | Value |
-|--------|-------|
-| Total lines | 5,927 |
-| Lines actually exercised by cozo-core | ~1,800 |
-| Lines unused by cozo-core | ~4,100 |
+**Proposal:** Implement an in-memory HNSW graph backed by WAL for durability. On startup, rebuild
+from the WAL (or snapshot + WAL replay). The `StoreTx` trait remains the persistence layer, but
+the hot path never touches it during search. This is the single highest-impact performance improvement.
 
-Unused components:
-- `adj_list.rs` (1,065 lines) — `UndirectedCsrGraph`, `AdjacencyListGraph` never used
-- `input/dotgraph.rs` (625 lines) — DOT format, feature-gated, unused
-- `input/gdl.rs` (208 lines) — GDL format, unused
-- `input/graph500.rs` (127 lines) — benchmark format, unused
-- `compat.rs` (186 lines) — pre-1.80 polyfills, delete with modern MSRV
-- `graph_ops.rs` (775 lines) — mostly parallel ops, relabel, serialize — largely unused
+### 9.2 Distance Computation: ndarray → Explicit SIMD
 
-### petgraph Replacement?
+**Current:** `VectorCache::dist()` (`runtime/hnsw.rs:67-109`) uses `ndarray` subtraction + `dot()`.
+The `a - b` expression allocates an intermediate vector on every call. No explicit SIMD.
 
-**Possible but questionable value.** Costs:
-- Rewrite 12 algorithm files to petgraph's API
-- petgraph's CSR construction is single-threaded (graph_builder uses rayon)
-- `graph` crate provides PageRank; petgraph doesn't — would need custom implementation
-- The `graph` crate wraps `graph_builder` — replacing one means replacing both
+**Proposal:** Replace with fused subtract-and-accumulate using `std::simd` (nightly) or `simdeez`/`pulp`
+for stable Rust. For 1024-dim f32 vectors, this is a 4-10x speedup on the hottest path in the system.
+At minimum, eliminate the intermediate allocation by computing distance in a single pass.
 
-**Recommendation: Absorb both `graph` and `graph_builder` alongside cozo-core.** Strip unused
-components (~4,100 lines), leaving ~1,800 lines of graph_builder that are well-integrated with the
-algorithm implementations. The total unsafe cost (42 sites) is concentrated in code that can be
-incrementally modernized (delete compat.rs: -9, safe parallel patterns: -8, modern MaybeUninit: -16).
+### 9.3 Tuple-at-a-Time → Vectorized Execution
 
-### Feature-Gate Note
+**Current:** Every RA operator returns `Box<dyn Iterator<Item = Result<Tuple>>>` where `Tuple = Vec<DataValue>`.
+Each tuple traverses a deep chain of virtual dispatch calls. The `eliminate_from_tuple()` function
+allocates a new Vec for every output tuple.
 
-If Aletheia doesn't need graph algorithms immediately, the entire `graph-algo` feature (and thus
-graph_builder) can be disabled at compile time. The knowledge store's basic Datalog queries, HNSW
-vector search, and relation management work without it. Graph algorithms can be enabled later when
-needed for PageRank entity importance, community detection, or shortest-path reasoning chains.
+**Long-term:** Columnar batch processing (Arrow-style) for filter/project/join. This is a large
+architectural change but would transform query throughput for analytical workloads (community detection,
+PageRank over large graphs).
+
+**Near-term:** Arena-allocated tuples (`bumpalo`) per query. Tuples are transient — allocated during
+query execution, freed in bulk at query end. Eliminates per-tuple heap allocation overhead.
+
+### 9.4 Expression VM: Stack Interpreter → Compiled Closures
+
+**Current:** The bytecode VM in `data/expr.rs` uses a `Vec<DataValue>` stack with per-value heap
+allocations. 5 instruction types (Binding, Const, Apply, JumpIfFalse, Goto).
+
+**Proposal:** Replace with compiled Rust closures. Each expression compiles to a `Box<dyn Fn(&Tuple) -> Result<DataValue>>`.
+Eliminates the interpreter loop, stack operations, and bytecode dispatch overhead. The compilation
+happens once at query compile time; execution is direct function calls.
+
+### 9.5 Query Optimization
+
+**Current:** No cost-based optimizer. Join ordering is determined by the magic set rewrite and the
+order atoms appear in rules. No selectivity estimation, no statistics.
+
+**Near-term improvement:** Relation cardinality statistics (maintained on write). Use for join ordering —
+put the smallest relation on the inner loop of nested-loop joins. Even without full selectivity
+estimation, this prevents pathological plans where a 1M-row relation is scanned for every row of
+a 10-row relation.
+
+### 9.6 Code Quality Modernization
+
+| Pattern | Count | Fix |
+|---------|-------|-----|
+| `lazy_static!` | 5 files | → `std::sync::LazyLock` |
+| `log` crate | all modules | → `tracing` with structured spans |
+| `miette::bail!` errors | pervasive | → `snafu` error enums per module |
+| Duplicated search RA code | 3× in `ra.rs` | Extract trait for `HnswSearchRA`/`FtsSearchRA`/`LshSearchRA` |
+| Duplicated `prefix_join` | 3× across RA types | Extract shared join implementation |
+| God functions (>200 lines) | `compile_magic_rule_body` (500+), `hnsw_put_vector` (210+) | Decompose |
+| Deep nesting (6+ levels) | `prefix_join` methods | Extract into named functions |
+| `JsonData::cmp()` via `to_string()` | `data/value.rs` | Structural comparison |
+| Filter bytecode cloning per iterator | `ra.rs` multiple sites | `Arc<Vec<Bytecode>>` sharing |
+
+### 9.7 Safety Cleanup (Revised Scope)
+
+Since we keep FTS and LSH, the `minhash_lsh.rs:310` unaligned read UB is a Phase 1 priority.
+Fix with `bytemuck::try_cast_slice`. The `newrocks.rs:129` unsafe Sync impl stays but gets
+an `// SAFETY:` documentation block and a `static_assertions::assert_impl_all!` test.
+
+**Estimated total cleanup effort: 20-30 developer-days** (higher than original estimate because
+we keep more code, but the work is higher-value — improving code we actually use).
+
+---
+
+## 10. Future Capabilities and Industry Alignment
+
+Based on analysis of Aletheia's current mneme design, the Python sidecar's production capabilities,
+and the state of the art in agent memory systems (Letta/MemGPT, Mem0, Zep/Graphiti, Microsoft
+GraphRAG, A-Mem, Hindsight, SimpleMem).
+
+### 10.1 What Aletheia Already Gets Right
+
+- **Bi-temporal facts** — matches Zep/Graphiti's model (valid_from/valid_to + recorded_at). Most frameworks don't have this.
+- **Epistemic tiering** (Verified/Inferred/Assumed) — unique among agent memory systems. No surveyed framework has this.
+- **6-factor recall scoring** — more sophisticated than any off-the-shelf memory system. Mem0 uses basic relevance; Letta uses recency + relevance.
+- **Per-nous memory scoping with cross-nous sharing** — aligns with multi-agent shared memory patterns (blackboard + access control).
+- **CozoDB as unified store** — vector + graph + relations in one embedded DB. Matches the industry trend toward hybrid (Zep: graph+vector, Mem0g: graph+vector+KV).
+- **Supersession chains** — fact versioning rather than overwrite. Matches Zep's temporal invalidation model.
+
+### 10.2 Gaps to Close During Absorption
+
+These are capabilities the Python sidecar has or the design calls for that the Rust implementation lacks.
+The absorption is the right time to architect for them.
+
+| Gap | Priority | Notes |
+|-----|----------|-------|
+| **Hybrid retrieval fusion** | P0 | BM25 + HNSW + graph traversal results must be fused. Reciprocal Rank Fusion (RRF) is the standard. CozoDB's FTS gives us BM25 natively in Datalog — the fusion can happen in a single query combining `~fts_idx`, `~hnsw_idx`, and graph joins. |
+| **MMR diversity** | P0 | Add `rank_diverse()` to recall engine. Maximal Marginal Relevance prevents returning 5 paraphrases of the same fact. |
+| **Access tracking** | P1 | The recall engine scores `access_frequency` but nothing records accesses. Add a CozoDB relation: `memory_access { memory_id: String, accessed_at: String => nous_id: String }`. |
+| **Write-time importance scoring** | P1 | Before storing a fact, score its importance (0-1). Prevents corpus noise accumulation. The Python sidecar observes this problem (PROJECT.md G-06). Two-pass: extract candidates, then score with minimum threshold. |
+| **Memory deduplication at ingest** | P1 | Before storing, check HNSW for cosine similarity > 0.95. Merge or skip near-duplicates. LSH also helps here for text-level dedup. |
+| **Controlled relationship vocabulary** | P2 | The Python sidecar has 28 canonical types with alias normalization. Port to Rust with the `normalize_type()` → `Option` pattern from `semantic-invariants.md`. |
+| **Entity resolution** | P2 | Fuzzy matching, alias resolution, stopword filtering. The Python sidecar has this. Critical for preventing duplicate entities ("John", "Dr. Smith", "my doctor" → same entity). |
+| **Confidence decay** | P2 | Facts should lose confidence over time unless reinforced. `effective_confidence = confidence * 0.5^(age / half_life)` with reinforcement resetting the clock. |
+| **Contradiction detection** | P2 | Embedding-based: find near-duplicates, compare predicate values. More principled than the Python sidecar's negation-word heuristic. Hindsight's confidence-scored belief revision is the state of the art. |
+| **Provenance chain** | P3 | Track how facts were derived: user-stated → inferred → refined → superseded. Enables epistemic auditing. Extend supersession chains into a full provenance graph. |
+| **Memory garbage collection** | P3 | Delete/archive facts with: tier=Assumed, confidence<0.3, zero access in 90 days. Prevents unbounded growth. |
+
+### 10.3 Architectural Decisions Informed by Industry
+
+**1. Agent-managed memory (Letta/Mem0 model).** The nous should actively manage its own memory via
+tool calls — deciding what to store, what to forget, what to consolidate. This aligns with Aletheia's
+agent-as-cognitive-extension philosophy. The memory system provides capabilities; the nous decides policy.
+
+**2. Consolidation strategy: background with pressure triggers.** Matches PROJECT.md G-08 design
+(turn count 20, idle 2hr, token pressure 75%). SimpleMem's recursive consolidation (compress related
+memories into higher-level abstractions) is the state of the art — 30x token reduction with
+26.4% F1 improvement. Implement as a melete background task.
+
+**3. Graph algorithms for retrieval, not just analysis.** Beyond PageRank for importance ranking:
+- **Community detection** (Louvain) for automatic topic clustering of the knowledge graph
+- **Shortest path** for explanation chains ("how is A related to B?")
+- **BFS neighborhood expansion** from seed entities — Zep uses this for context enrichment
+- **Betweenness centrality** to identify bridge concepts connecting knowledge clusters
+
+These are exactly the algorithms in CozoDB's `fixed_rule/algos/`. Keeping them all is correct.
+
+**4. Contextual embeddings (Anthropic pattern).** When embedding facts, prepend context:
+"This fact about [entity] was stated by [user/agent] on [date] in the context of [topic]..."
+Research shows 35-49% retrieval improvement. Can be done at embed time with no engine changes.
+
+**5. Matryoshka embeddings for tiered retrieval.** Use low-dimensional prefix for fast first-pass
+(broad recall), re-score with full dimensionality. CozoDB's HNSW supports configurable dimensions —
+create two indices at different dimensionalities on the same vectors.
+
+### 10.4 Revised Phased Plan
+
+#### Phase 1: Absorb and Compile (2-3 days)
+
+1. Copy vendored source into `crates/mneme-engine/src/`
+2. Restore `data/` module from upstream CozoDB 0.7.6
+3. Strip dead backends (sqlite, sled, tikv, legacy rocks) — feature flags only, no edits
+4. Strip FFI wrappers from `lib.rs`
+5. Strip Chinese tokenizer (`fts/cangjie/`)
+6. Strip unused graph_builder components
+7. Narrow public API
+8. **Gate:** `cargo check -p mneme-engine` clean
+
+#### Phase 2: Critical Safety (2-3 days)
+
+1. Fix `minhash_lsh.rs:310` UB → `bytemuck::try_cast_slice`
+2. Fix `minhash_lsh.rs:301,354` alignment → `bytemuck`
+3. Audit + document `newrocks.rs:129` unsafe Sync
+4. Replace `SharedMut` in graph_builder → safe parallel patterns
+5. Delete `compat.rs` (MSRV 1.80+)
+6. **Gate:** Zero unsound unsafe
+
+#### Phase 3: Wire into mneme (3-5 days)
+
+1. Implement `KnowledgeStore` struct wrapping `mneme-engine::Db`
+2. Execute existing Datalog DDL templates against live CozoDB
+3. Implement CRUD operations using existing query templates
+4. Wire HNSW search into recall pipeline
+5. Add access tracking relation and recording
+6. Integration tests: schema, CRUD, HNSW, graph traversal, bi-temporal
+7. **Gate:** All knowledge operations functional
+
+#### Phase 4: Hybrid Retrieval (3-5 days)
+
+1. Wire FTS/BM25 into recall pipeline alongside HNSW
+2. Implement Reciprocal Rank Fusion for BM25 + vector + graph results
+3. Add `rank_diverse()` with MMR to recall engine
+4. Add minimum score threshold to ranking
+5. **Gate:** Hybrid retrieval returns better results than vector-only (measure on test corpus)
+
+#### Phase 5: Error Migration + Standards (5-8 days)
+
+1. `miette` → `snafu` error hierarchy
+2. `log` → `tracing` with structured spans
+3. `lazy_static!` → `LazyLock`
+4. Eliminate unwrap/panic in storage + runtime (highest crash risk)
+5. `#[instrument]` on public API + query paths
+6. **Gate:** `cargo clippy` clean, key operations traced
+
+#### Phase 6: Performance (5-8 days)
+
+1. HNSW: in-memory graph with WAL persistence (biggest single improvement)
+2. Distance computation: eliminate intermediate allocation, explore SIMD
+3. Arena-allocated tuples for query execution
+4. Relation cardinality stats for join ordering
+5. **Gate:** HNSW KNN 10x faster than KV-based baseline
+
+#### Phase 7: Knowledge Quality (ongoing)
+
+1. Write-time importance scoring
+2. Ingest deduplication (HNSW + LSH)
+3. Confidence decay
+4. Contradiction detection
+5. Entity resolution
+6. Controlled relationship vocabulary
+7. Memory garbage collection
+
+**Total: Phases 1-4 deliver a functional, hybrid-retrieval knowledge system in ~11-16 days.**
+Phases 5-6 bring it to production quality in another ~10-16 days.
+Phase 7 is ongoing quality improvement with no fixed end date.
 
 ---
 
