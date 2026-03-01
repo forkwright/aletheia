@@ -75,6 +75,7 @@ dependencies = [
  "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-mneme",
+ "aletheia-organon",
  "aletheia-taxis",
  "serde",
  "serde_json",

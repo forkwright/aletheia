@@ -9,11 +9,13 @@
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
 use serde::{Deserialize, Serialize};
-// tracing will be used when pipeline stages are implemented
-#[expect(unused_imports, reason = "will be used when pipeline stages are implemented")]
 use tracing::instrument;
 
-use crate::config::PipelineConfig;
+use aletheia_taxis::oikos::Oikos;
+
+use crate::bootstrap::BootstrapAssembler;
+use crate::budget::TokenBudget;
+use crate::config::{NousConfig, PipelineConfig};
 use crate::session::SessionState;
 
 /// Input to the pipeline — an inbound message.
@@ -203,6 +205,43 @@ impl TurnUsage {
     pub fn total_tokens(&self) -> u64 {
         self.input_tokens + self.output_tokens
     }
+}
+
+/// Assemble bootstrap context and populate the pipeline context.
+///
+/// This is the "context" stage of the pipeline. It:
+/// 1. Creates a token budget from the nous config
+/// 2. Runs the bootstrap assembler against oikos workspace files
+/// 3. Sets [`PipelineContext::system_prompt`] and [`PipelineContext::remaining_tokens`]
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::ContextAssembly`] if required workspace files
+/// (e.g. SOUL.md) are missing.
+#[instrument(skip_all, fields(nous_id = %nous_config.id))]
+pub fn assemble_context(
+    oikos: &Oikos,
+    nous_config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+) -> crate::error::Result<()> {
+    let mut budget = TokenBudget::new(
+        u64::from(nous_config.context_window),
+        pipeline_config.history_budget_ratio,
+        u64::from(nous_config.max_output_tokens),
+        u64::from(nous_config.bootstrap_max_tokens),
+    );
+
+    let assembler = BootstrapAssembler::new(oikos);
+    let result = assembler.assemble(&nous_config.id, &mut budget)?;
+
+    ctx.system_prompt = Some(result.system_prompt);
+    #[expect(clippy::cast_possible_wrap, reason = "budget fits in i64 for practical context windows")]
+    {
+        ctx.remaining_tokens = budget.remaining() as i64;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -407,5 +446,39 @@ mod tests {
         let json = serde_json::to_string(&usage).unwrap();
         let back: TurnUsage = serde_json::from_str(&json).unwrap();
         assert_eq!(usage.total_tokens(), back.total_tokens());
+    }
+
+    // --- Context assembly ---
+
+    #[test]
+    fn assemble_context_populates_pipeline() {
+        use crate::config::{NousConfig, PipelineConfig};
+        use aletheia_taxis::oikos::Oikos;
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("nous/test-agent")).unwrap();
+        fs::create_dir_all(root.join("shared")).unwrap();
+        fs::create_dir_all(root.join("theke")).unwrap();
+        fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap();
+        fs::write(root.join("theke/USER.md"), "Test user.").unwrap();
+
+        let oikos = Oikos::from_root(root);
+        let nous_config = NousConfig {
+            id: "test-agent".to_owned(),
+            ..NousConfig::default()
+        };
+        let pipeline_config = PipelineConfig::default();
+        let mut ctx = PipelineContext::default();
+
+        assemble_context(&oikos, &nous_config, &pipeline_config, &mut ctx).unwrap();
+
+        assert!(ctx.system_prompt.is_some());
+        let prompt = ctx.system_prompt.unwrap();
+        assert!(prompt.contains("I am a test agent."));
+        assert!(prompt.contains("Test user."));
+        assert!(ctx.remaining_tokens > 0);
     }
 }

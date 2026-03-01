@@ -6,6 +6,8 @@
 //!
 //! Depends on all foundation crates: koina, taxis, mneme, hermeneus.
 
+pub mod bootstrap;
+pub mod budget;
 pub mod config;
 pub mod error;
 pub mod pipeline;

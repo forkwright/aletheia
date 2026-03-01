@@ -14,6 +14,7 @@ workspace = true
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
 aletheia-mneme = { path = "../mneme" }
+aletheia-organon = { path = "../organon" }
 aletheia-taxis = { path = "../taxis" }
 serde = { workspace = true }
 serde_json = { workspace = true }
