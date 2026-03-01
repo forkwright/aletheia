@@ -621,7 +621,7 @@ export async function startRuntime(configPath?: string): Promise<void> {
   eventBus.emit("boot:ready", { port, tools: runtime.tools.size, plugins: runtime.plugins.size });
   log.info(`Aletheia gateway listening on port ${port}`);
 
-  // INDX-01: Live file watcher — rebuilds shared index when _shared/ files change
+  // INDX-01: Live file watcher — rebuilds shared index when theke/ files change
   {
     if (existsSync(paths.theke)) {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;

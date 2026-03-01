@@ -65,7 +65,7 @@ export const ERROR_CODES = {
   CONFIG_VALIDATION_FAILED: "Configuration failed schema validation",
   CONFIG_MISSING_REQUIRED: "Required configuration field is missing",
   CONFIG_ANCHOR_NOT_FOUND: "Bootstrap anchor not found — run 'aletheia init' to configure",
-  CONFIG_ANCHOR_INVALID: "Bootstrap anchor.json failed schema validation",
+  CONFIG_INSTANCE_INVALID: "Instance directory structure validation failed",
   CONFIG_SECRET_UNRESOLVED: "SecretRef could not be resolved — env var not set, file not readable, or file is empty",
   CONFIG_SECRET_VAULT_UNSUPPORTED: "Vault SecretRef source is not yet implemented — a plugin interface is planned for future versions",
 
