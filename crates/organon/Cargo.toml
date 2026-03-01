@@ -1,0 +1,23 @@
+[package]
+name = "aletheia-organon"
+version = "0.1.0"
+description = "Tool registry, definitions, and built-in tool stubs"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-koina = { path = "../koina" }
+indexmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tokio = { workspace = true }

@@ -6,6 +6,7 @@ members = [
     "crates/koina",
     "crates/mneme",
     "crates/nous",
+    "crates/organon",
     "crates/taxis",
 ]
 exclude = [
@@ -74,7 +75,11 @@ figment = { version = "0.10", features = ["yaml", "json", "env"] }
 
 # Types
 compact_str = { version = "0.8", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
+
+# Async
+tokio = { version = "1", features = ["rt", "macros"] }
 
 # Testing
 static_assertions = "1.1"
