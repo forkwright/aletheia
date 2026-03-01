@@ -65,7 +65,7 @@ Plans:
 **Plans**: 2 plans, 2 waves (sequential)
 
 Plans:
-- [ ] 03-01: Wire dependency, feature-gate errors, implement KnowledgeStore (Wave 1)
+- [x] 03-01: Wire dependency, feature-gate errors, implement KnowledgeStore (Wave 1) -- completed 2026-03-01
 - [ ] 03-02: Integration tests — fact round-trip, HNSW vector search, async wrappers (Wave 2)
 
 ### Phase 4: Hybrid Retrieval
@@ -121,7 +121,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Copy + Compile | 3/3 | Complete   | 2026-03-01 |
 | 2. Critical Safety | 2/2 | Complete   | 2026-03-01 |
-| 3. Wire into mneme | 0/2 | Not started | - |
+| 3. Wire into mneme | 1/2 | In progress | - |
 | 4. Hybrid Retrieval | 0/2 | Not started | - |
 | 5. Error + Idiom Migration | 0/2 | Not started | - |
 | 6. Performance | 0/1 | Not started | - |

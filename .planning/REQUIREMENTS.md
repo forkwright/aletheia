@@ -47,11 +47,11 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 
 ### Integration
 
-- [ ] **INTG-01**: mneme-engine is a dependency of aletheia-mneme
+- [x] **INTG-01**: mneme-engine is a dependency of aletheia-mneme
 - [ ] **INTG-02**: KnowledgeStore uses mneme-engine for fact storage (insert + query round-trip works)
 - [ ] **INTG-03**: KnowledgeStore uses mneme-engine for HNSW vector search (insert + knn works)
-- [ ] **INTG-04**: Graph algorithm calls wrapped in `spawn_blocking` to prevent rayon+Tokio deadlock
-- [ ] **INTG-05**: Schema version tracking implemented in mneme wrapper
+- [x] **INTG-04**: Graph algorithm calls wrapped in `spawn_blocking` to prevent rayon+Tokio deadlock
+- [x] **INTG-05**: Schema version tracking implemented in mneme wrapper
 - [x] **INTG-06**: `vendor/cozo/` and `vendor/graph_builder/` deletable after absorption (all code in crates/)
 
 ### Hybrid Retrieval
@@ -141,11 +141,11 @@ Deferred beyond this milestone.
 | SAFE-03 | Phase 2 | Complete |
 | SAFE-04 | Phase 1 | Complete |
 | SAFE-05 | Phase 2 | Complete |
-| INTG-01 | Phase 3 | Pending |
-| INTG-02 | Phase 3 | Pending |
-| INTG-03 | Phase 3 | Pending |
-| INTG-04 | Phase 3 | Pending |
-| INTG-05 | Phase 3 | Pending |
+| INTG-01 | Phase 3 (03-01) | Complete |
+| INTG-02 | Phase 3 (03-02) | Pending |
+| INTG-03 | Phase 3 (03-02) | Pending |
+| INTG-04 | Phase 3 (03-01) | Complete |
+| INTG-05 | Phase 3 (03-01) | Complete |
 | INTG-06 | Phase 1 | Complete |
 | RETR-01 | Phase 4 | Pending |
 | RETR-02 | Phase 4 | Pending |

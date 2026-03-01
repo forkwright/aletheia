@@ -114,13 +114,17 @@ name = "aletheia-mneme"
 version = "0.1.0"
 dependencies = [
  "aletheia-koina",
+ "aletheia-mneme-engine",
  "fastembed",
+ "miette",
+ "ndarray 0.15.6",
  "rusqlite",
  "serde",
  "serde_json",
  "snafu",
  "static_assertions",
  "tempfile",
+ "tokio",
  "tracing",
 ]
 
