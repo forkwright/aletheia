@@ -11,11 +11,15 @@
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
+use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_organon::registry::ToolRegistry;
+use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapAssembler;
 use crate::budget::TokenBudget;
 use crate::config::{NousConfig, PipelineConfig};
+use crate::error;
 use crate::session::SessionState;
 
 /// Input to the pipeline — an inbound message.
@@ -242,6 +246,74 @@ pub fn assemble_context(
     }
 
     Ok(())
+}
+
+/// Guard stage — check rate limits, loop detection, safety.
+///
+/// Stub implementation. Always allows the request.
+#[must_use]
+pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult {
+    GuardResult::Allow
+}
+
+/// Run the full pipeline for one turn.
+///
+/// Stages: context → history (stub) → guard → execute.
+/// Resolve (stage 4) and finalize (stage 6) are future work.
+#[instrument(skip_all, fields(nous_id = %config.id))]
+pub async fn run_pipeline(
+    input: PipelineInput,
+    oikos: &Oikos,
+    config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+) -> error::Result<TurnResult> {
+    // Stage 1: Context
+    let mut ctx = PipelineContext::default();
+    assemble_context(oikos, config, pipeline_config, &mut ctx)?;
+
+    // Stage 2: History (stub — just add the user message)
+    #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+    let token_estimate = input.content.len() as i64 / 4;
+    ctx.messages.push(PipelineMessage {
+        role: "user".to_owned(),
+        content: input.content.clone(),
+        token_estimate,
+    });
+
+    // Stage 3: Guard
+    let guard = check_guard(&input.session, config);
+    match guard {
+        GuardResult::Allow => {}
+        GuardResult::RateLimited { retry_after_ms } => {
+            return Err(error::GuardRejectedSnafu {
+                reason: format!("rate limited, retry after {retry_after_ms}ms"),
+            }
+            .build());
+        }
+        GuardResult::LoopDetected { pattern } => {
+            return Err(error::LoopDetectedSnafu {
+                iterations: 0u32,
+                pattern,
+            }
+            .build());
+        }
+        GuardResult::Rejected { reason } => {
+            return Err(error::GuardRejectedSnafu { reason }.build());
+        }
+    }
+
+    // Stage 4: Resolve (stub)
+
+    // Stage 5: Execute
+    let result =
+        crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx).await?;
+
+    // Stage 6: Finalize (stub)
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -480,5 +552,106 @@ mod tests {
         assert!(prompt.contains("I am a test agent."));
         assert!(prompt.contains("Test user."));
         assert!(ctx.remaining_tokens > 0);
+    }
+
+    // --- run_pipeline ---
+
+    #[tokio::test]
+    async fn run_pipeline_simple() {
+        use std::fs;
+        use std::path::PathBuf;
+        use std::sync::Mutex;
+
+        use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
+        use aletheia_hermeneus::types::{
+            CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
+        };
+        use aletheia_koina::id::{NousId, SessionId};
+        use aletheia_organon::registry::ToolRegistry;
+        use aletheia_organon::types::ToolContext;
+        use tempfile::TempDir;
+
+        struct MockProvider {
+            response: Mutex<CompletionResponse>,
+        }
+        impl LlmProvider for MockProvider {
+            fn complete(
+                &self,
+                _request: &CompletionRequest,
+            ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
+                Ok(self.response.lock().expect("lock").clone())
+            }
+            fn supported_models(&self) -> &[&str] {
+                &["test-model"]
+            }
+            #[allow(clippy::unnecessary_literal_bound)]
+            fn name(&self) -> &str {
+                "mock"
+            }
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("nous/test-agent")).unwrap();
+        fs::create_dir_all(root.join("shared")).unwrap();
+        fs::create_dir_all(root.join("theke")).unwrap();
+        fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap();
+
+        let oikos = Oikos::from_root(root);
+        let nous_config = NousConfig {
+            id: "test-agent".to_owned(),
+            model: "test-model".to_owned(),
+            ..NousConfig::default()
+        };
+        let pipeline_config = PipelineConfig::default();
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(MockProvider {
+            response: Mutex::new(CompletionResponse {
+                id: "resp-1".to_owned(),
+                model: "test-model".to_owned(),
+                stop_reason: StopReason::EndTurn,
+                content: vec![ContentBlock::Text {
+                    text: "Hello from pipeline!".to_owned(),
+                }],
+                usage: Usage {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    ..Usage::default()
+                },
+            }),
+        }));
+
+        let tools = ToolRegistry::new();
+        let tool_ctx = ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            workspace: PathBuf::from("/tmp/test"),
+            allowed_roots: vec![PathBuf::from("/tmp")],
+        };
+
+        let session = crate::session::SessionState::new("test-session".to_owned(), "main".to_owned(), &nous_config);
+        let input = PipelineInput {
+            content: "Hello".to_owned(),
+            session,
+            config: pipeline_config.clone(),
+        };
+
+        let result = run_pipeline(
+            input,
+            &oikos,
+            &nous_config,
+            &pipeline_config,
+            &providers,
+            &tools,
+            &tool_ctx,
+        )
+        .await
+        .expect("pipeline should succeed");
+
+        assert_eq!(result.content, "Hello from pipeline!");
+        assert!(result.tool_calls.is_empty());
+        assert_eq!(result.usage.llm_calls, 1);
+        assert_eq!(result.stop_reason, "end_turn");
     }
 }

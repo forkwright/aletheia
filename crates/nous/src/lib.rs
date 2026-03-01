@@ -10,5 +10,6 @@ pub mod bootstrap;
 pub mod budget;
 pub mod config;
 pub mod error;
+pub mod execute;
 pub mod pipeline;
 pub mod session;
