@@ -13,6 +13,7 @@ use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::NousConfig;
 use aletheia_nous::session::SessionManager;
 use aletheia_organon::registry::ToolRegistry;
+use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::oikos::Oikos;
 
 use crate::router::build_router;
@@ -53,6 +54,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_manager = SessionManager::new(nous_config);
     let provider_registry = ProviderRegistry::new();
     let tool_registry = ToolRegistry::new();
+    let jwt_manager = Arc::new(JwtManager::new(JwtConfig::default()));
 
     let state = Arc::new(AppState {
         session_store: Mutex::new(session_store),
@@ -60,6 +62,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         session_manager,
         tool_registry,
         oikos,
+        jwt_manager,
         start_time: Instant::now(),
     });
 
