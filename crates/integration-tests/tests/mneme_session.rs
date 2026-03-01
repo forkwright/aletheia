@@ -1,4 +1,4 @@
-//! Cross-crate integration tests for mneme SessionStore.
+//! Cross-crate integration tests for mneme `SessionStore`.
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;

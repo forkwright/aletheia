@@ -7,9 +7,8 @@ use aletheia_mneme::types as m;
 fn convert_role(role: m::Role) -> h::Role {
     match role {
         m::Role::System => h::Role::System,
-        m::Role::User => h::Role::User,
+        m::Role::User | m::Role::ToolResult => h::Role::User,
         m::Role::Assistant => h::Role::Assistant,
-        m::Role::ToolResult => h::Role::User,
     }
 }
 
@@ -93,7 +92,7 @@ fn tool_result_converts_to_content_block() {
                 other => panic!("expected ToolResult block, got {other:?}"),
             }
         }
-        other => panic!("expected Blocks content, got {other:?}"),
+        other @ h::Content::Text(_) => panic!("expected Blocks content, got {other:?}"),
     }
 }
 

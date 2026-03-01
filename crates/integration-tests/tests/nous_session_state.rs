@@ -1,4 +1,4 @@
-//! Cross-crate tests for nous SessionState with mneme store.
+//! Cross-crate tests for nous `SessionState` with mneme store.
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;
