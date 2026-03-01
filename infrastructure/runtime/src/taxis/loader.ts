@@ -1,5 +1,8 @@
 // Load, validate, and resolve config
-import { type FSWatcher, watch } from "node:fs";
+// Supports YAML (.yaml) with JSON (.json) fallback, plus per-agent config cascade.
+import { existsSync, readFileSync, type FSWatcher, watch } from "node:fs";
+import { join } from "node:path";
+import yaml from "js-yaml";
 import { readJson } from "../koina/fs.js";
 import { ConfigError } from "../koina/errors.js";
 import { createLogger } from "../koina/logger.js";
@@ -12,13 +15,105 @@ import {
 
 const log = createLogger("taxis");
 
+/**
+ * Read a config file — tries YAML first, then JSON.
+ * Returns the parsed object, or null if the file doesn't exist.
+ */
+function readConfigFile(basePath: string): Record<string, unknown> | null {
+  // Try .yaml first
+  const yamlPath = basePath.replace(/\.json$/, ".yaml");
+  if (yamlPath !== basePath && existsSync(yamlPath)) {
+    try {
+      const content = readFileSync(yamlPath, "utf-8");
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        log.debug(`Loaded config from YAML: ${yamlPath}`);
+        return parsed as Record<string, unknown>;
+      }
+    } catch (error) {
+      log.warn(`Failed to parse YAML config ${yamlPath}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  // Fall back to JSON
+  return readJson(basePath);
+}
+
+/**
+ * Deep merge two config objects. Source values override target values.
+ * Arrays are replaced (not concatenated). Null values in source delete the key.
+ */
+export function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
+
+  for (const [key, sourceVal] of Object.entries(source)) {
+    if (sourceVal === null || sourceVal === undefined) {
+      delete result[key];
+      continue;
+    }
+
+    const targetVal = result[key];
+
+    if (
+      typeof sourceVal === "object" &&
+      !Array.isArray(sourceVal) &&
+      typeof targetVal === "object" &&
+      !Array.isArray(targetVal) &&
+      targetVal !== null
+    ) {
+      result[key] = deepMerge(
+        targetVal as Record<string, unknown>,
+        sourceVal as Record<string, unknown>,
+      );
+    } else {
+      result[key] = sourceVal;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Load per-agent config override from instance/nous/{id}/config.yaml (or .json).
+ * Returns null if no override exists.
+ */
+export function loadNousConfigOverride(nousId: string): Record<string, unknown> | null {
+  const nousDir = paths.nousDir(nousId);
+  const yamlPath = join(nousDir, "config.yaml");
+  const jsonPath = join(nousDir, "config.json");
+
+  if (existsSync(yamlPath)) {
+    try {
+      const content = readFileSync(yamlPath, "utf-8");
+      const parsed = yaml.load(content);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        log.debug(`Loaded nous config override from ${yamlPath}`);
+        return parsed as Record<string, unknown>;
+      }
+    } catch (error) {
+      log.warn(`Failed to parse nous config ${yamlPath}: ${error instanceof Error ? error.message : error}`);
+    }
+  } else if (existsSync(jsonPath)) {
+    const parsed = readJson<Record<string, unknown>>(jsonPath);
+    if (parsed) {
+      log.debug(`Loaded nous config override from ${jsonPath}`);
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 export function loadConfig(configPath?: string): AletheiaConfig {
   const file = configPath ?? paths.configFile();
   log.info(`Loading config from ${file}`);
 
-  const raw = readJson(file);
+  const raw = readConfigFile(file);
   if (raw === null) {
-    throw new ConfigError(`Config file not found: ${file}`, {
+    throw new ConfigError(`Config file not found: ${file} (tried .yaml and .json)`, {
       code: "CONFIG_NOT_FOUND", context: { path: file },
     });
   }
