@@ -239,7 +239,7 @@ pub(crate) struct MinHashLshIndexManifest {
 }
 
 impl MinHashLshIndexManifest {
-    pub(crate) fn get_hash_perms(&self) -> HashPermutations {
+    pub(crate) fn get_hash_perms(&self) -> miette::Result<HashPermutations> {
         HashPermutations::from_bytes(&self.perms)
     }
 }
@@ -298,6 +298,8 @@ impl HashPermutations {
         Self(perms)
     }
     pub(crate) fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `u32` has alignment >= `u8`. The pointer comes from a Vec<u32>,
+        // so it is valid for `len * size_of::<u32>()` bytes within the allocation.
         unsafe {
             std::slice::from_raw_parts(
                 self.0.as_ptr() as *const u8,
@@ -306,13 +308,10 @@ impl HashPermutations {
         }
     }
     // this is the inverse of `as_bytes`
-    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
-        unsafe {
-            let ptr = bytes.as_ptr() as *const u32;
-            let len = bytes.len() / std::mem::size_of::<u32>();
-            let perms = std::slice::from_raw_parts(ptr, len);
-            Self(perms.to_vec())
-        }
+    pub(crate) fn from_bytes(bytes: &[u8]) -> miette::Result<Self> {
+        let perms: &[u32] = bytemuck::try_cast_slice(bytes)
+            .map_err(|e| miette::miette!("MinHash permutation bytes are misaligned: {e}"))?;
+        Ok(Self(perms.to_vec()))
     }
 }
 
@@ -351,6 +350,8 @@ impl HashValues {
         result
     }
     pub(crate) fn get_bytes(&self) -> &[u8] {
+        // SAFETY: Same as HashPermutations::as_bytes — u32-to-u8 reinterpretation
+        // is alignment-safe since align_of::<u8>() == 1 <= align_of::<u32>().
         unsafe {
             std::slice::from_raw_parts(
                 self.0.as_ptr() as *const u8,
@@ -384,6 +385,6 @@ mod test {
         assert!(m1.jaccard(&m2) < 1.0);
         println!("{:?}", m1.jaccard(&m2));
         // println!("{:?}", m2.get_byte_chunks(2).collect_vec());
-        assert_eq!(perms.0, HashPermutations::from_bytes(perms.as_bytes()).0);
+        assert_eq!(perms.0, HashPermutations::from_bytes(perms.as_bytes()).unwrap().0);
     }
 }

@@ -271,7 +271,7 @@ impl<'a> SessionTx<'a> {
         let mut stack = vec![];
         let hnsw_filters = Self::make_hnsw_filters(relation_store)?;
         let fts_lsh_processors = self.make_fts_lsh_processors(relation_store)?;
-        let lsh_perms = self.make_lsh_hash_perms(relation_store);
+        let lsh_perms = self.make_lsh_hash_perms(relation_store)?;
 
         for tuple in res_iter {
             let extracted: Vec<DataValue> = key_extractors
@@ -452,12 +452,12 @@ impl<'a> SessionTx<'a> {
     fn make_lsh_hash_perms(
         &self,
         relation_store: &RelationHandle,
-    ) -> BTreeMap<SmartString<LazyCompact>, HashPermutations> {
+    ) -> miette::Result<BTreeMap<SmartString<LazyCompact>, HashPermutations>> {
         let mut perms = BTreeMap::new();
         for (name, (_, _, manifest)) in relation_store.lsh_indices.iter() {
-            perms.insert(name.clone(), manifest.get_hash_perms());
+            perms.insert(name.clone(), manifest.get_hash_perms()?);
         }
-        perms
+        Ok(perms)
     }
 
     fn make_fts_lsh_processors(
@@ -572,7 +572,7 @@ impl<'a> SessionTx<'a> {
         let mut stack = vec![];
         let hnsw_filters = Self::make_hnsw_filters(relation_store)?;
         let fts_lsh_processors = self.make_fts_lsh_processors(relation_store)?;
-        let lsh_perms = self.make_lsh_hash_perms(relation_store);
+        let lsh_perms = self.make_lsh_hash_perms(relation_store)?;
 
         for tuple in res_iter {
             let mut new_kv: Vec<DataValue> = key_extractors

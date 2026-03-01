@@ -829,7 +829,7 @@ impl<'a> SessionTx<'a> {
 
         let mut stack = vec![];
 
-        let hash_perms = manifest.get_hash_perms();
+        let hash_perms = manifest.get_hash_perms()?;
         let mut existing = TempCollector::default();
         for tuple in rel_handle.scan_all(self) {
             existing.push(tuple?);

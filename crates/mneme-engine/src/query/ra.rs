@@ -942,7 +942,7 @@ impl LshSearchRA {
         let config = self.lsh_search.clone();
         let filter_code = self.filter_bytecode.clone();
         let mut stack = vec![];
-        let perms = config.manifest.get_hash_perms();
+        let perms = config.manifest.get_hash_perms()?;
         let tokenizer = tx.tokenizers.get(
             &config.idx_handle.name,
             &config.manifest.tokenizer,

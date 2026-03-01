@@ -126,6 +126,13 @@ pub struct NewRocksDbTx<'a> {
     db_tx: Option<rocksdb::Transaction<'a, OptimisticTransactionDB>>,
 }
 
+// SAFETY: NewRocksDbTx wraps `rocksdb::Transaction<'a, OptimisticTransactionDB>`.
+// RocksDB's OptimisticTransactionDB is internally synchronized — concurrent reads
+// are safe and writes use optimistic locking (conflict detection at commit time).
+// Shared references (&NewRocksDbTx) only perform reads via `get()`, which RocksDB
+// guarantees are thread-safe. Mutable access (put/delete) goes through &mut self
+// or internal locking in the par_put path.
+// Reference: https://github.com/facebook/rocksdb/wiki/Basic-Operations#concurrency
 unsafe impl<'a> Sync for NewRocksDbTx<'a> {}
 
 impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {

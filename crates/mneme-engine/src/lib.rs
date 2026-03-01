@@ -36,6 +36,14 @@ pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
 
+#[cfg(test)]
+mod safety_assertions {
+    use static_assertions::assert_impl_all;
+    assert_impl_all!(crate::runtime::db::Db<crate::storage::mem::MemStorage>: Send, Sync);
+    #[cfg(feature = "storage-new-rocksdb")]
+    assert_impl_all!(crate::runtime::db::Db<crate::storage::newrocks::NewRocksDbStorage>: Send, Sync);
+}
+
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
 pub enum Db {
     Mem(crate::runtime::db::Db<MemStorage>),
