@@ -6,11 +6,14 @@
 //! Depends on `aletheia-koina` for types and errors.
 
 pub mod error;
+pub mod knowledge;
+#[cfg(feature = "sqlite")]
 pub mod schema;
+#[cfg(feature = "sqlite")]
 pub mod store;
 pub mod types;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod assertions {
     use static_assertions::assert_impl_all;
     use super::store::SessionStore;
