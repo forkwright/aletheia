@@ -172,6 +172,11 @@ where
 
     fn try_from(path: InputPath<P>) -> Result<Self, Self::Error> {
         let file = File::open(path.0.as_ref())?;
+        // SAFETY: memmap2's Mmap::map is inherently unsafe because the mapped memory becomes
+        // invalid if another process truncates or modifies the file after it is mapped. We
+        // accept this risk because: (1) the file is opened read-only, (2) the caller owns the
+        // file handle for the duration of parsing, and (3) edge list files are not expected to
+        // be modified concurrently during graph construction.
         let mmap = unsafe { memmap2::MmapOptions::new().populate().map(&file)? };
         EdgeList::try_from(mmap.as_ref())
     }

@@ -227,6 +227,10 @@ where
     fn to_byte_slice<S: AsRef<[Self]> + ?Sized>(slice: &S) -> &[u8] {
         let slice = slice.as_ref();
         let len = std::mem::size_of_val(slice);
+        // SAFETY: Target<NI, EV> is a #[repr(C)] struct whose fields (NI, EV) bound by
+        // ToByteSlice, which requires Copy + no padding. size_of_val gives the exact byte
+        // count of the slice. The pointer is valid for that many bytes and u8 alignment is
+        // always met.
         unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u8, len) }
     }
 }
@@ -239,6 +243,9 @@ where
     fn to_mut_byte_slice<S: AsMut<[Self]> + ?Sized>(slice: &mut S) -> &mut [u8] {
         let slice = slice.as_mut();
         let len = std::mem::size_of_val(slice);
+        // SAFETY: Same as ToByteSlice — Target<NI, EV> has #[repr(C)] layout with no padding
+        // (NI and EV bound by ToMutByteSlice). The mutable pointer is valid for size_of_val
+        // bytes within the slice's allocation, and u8 alignment is always satisfied.
         unsafe { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut u8, len) }
     }
 }
@@ -295,16 +302,24 @@ where
 
         let mut offsets = Box::<[_]>::new_uninit_slice(node_count.index() + 1);
         let offsets_ptr = offsets.as_mut_ptr() as *mut NI;
+        // SAFETY: `new_uninit_slice(node_count + 1)` allocates exactly `node_count + 1`
+        // MaybeUninit<NI> elements. Casting to *mut NI and creating a slice of the same
+        // length gives a valid mutable reference into the allocation.
         let offsets_ptr =
             unsafe { std::slice::from_raw_parts_mut(offsets_ptr, node_count.index() + 1) };
         read.read_exact(offsets_ptr.as_mut_byte_slice())?;
 
         let mut targets = Box::<[_]>::new_uninit_slice(edge_count.index());
         let targets_ptr = targets.as_mut_ptr() as *mut Target<NI, EV>;
+        // SAFETY: Same as offsets — `new_uninit_slice(edge_count)` allocates exactly
+        // edge_count MaybeUninit<Target<NI, EV>> elements; pointer and length match.
         let targets_ptr =
             unsafe { std::slice::from_raw_parts_mut(targets_ptr, edge_count.index()) };
         read.read_exact(targets_ptr.as_mut_byte_slice())?;
 
+        // SAFETY: Both slices were fully initialized by `read_exact` which writes exactly
+        // `size_of_val(&*offsets_ptr)` / `size_of_val(&*targets_ptr)` bytes, filling every
+        // element in the MaybeUninit slices.
         let offsets = unsafe { offsets.assume_init() };
         let targets = unsafe { targets.assume_init() };
 
@@ -350,10 +365,15 @@ where
 
         let mut node_values = Box::<[_]>::new_uninit_slice(node_count);
         let node_values_ptr = node_values.as_mut_ptr() as *mut NV;
+        // SAFETY: `new_uninit_slice(node_count)` allocates exactly node_count MaybeUninit<NV>
+        // elements. Pointer and length match the allocation; cast to *mut NV is valid because
+        // MaybeUninit<NV> has the same layout as NV.
         let node_values_slice =
             unsafe { std::slice::from_raw_parts_mut(node_values_ptr, node_count.index()) };
         read.read_exact(node_values_slice.as_mut_byte_slice())?;
 
+        // SAFETY: `read_exact` initialized all bytes in the node_values slice, filling every
+        // MaybeUninit<NV> element with valid data read from the serialized stream.
         let offsets = unsafe { node_values.assume_init() };
 
         Ok(NodeValues(offsets))
@@ -903,6 +923,12 @@ fn partition_dedup_by_eq<T: PartialEq>(slice: &mut [T]) -> usize {
     let ptr = slice.as_mut_ptr();
     let mut next_read: usize = 1;
     let mut next_write: usize = 1;
+    // SAFETY: Both `next_read` and `next_write` are bounded by `len` (the loop terminates
+    // when `next_read >= len`). The invariant `next_write <= next_read` is maintained
+    // throughout (we only advance next_write when a new unique element is found), so
+    // `ptr.add(next_read)` and `ptr.add(next_write)` are always within the slice allocation.
+    // `ptr::read` and `ptr::swap` operate on non-overlapping positions because next_write <
+    // next_read when copying occurs.
     unsafe {
         while next_read < len {
             let ptr_read = ptr.add(next_read);

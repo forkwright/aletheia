@@ -400,7 +400,14 @@ pub trait EdgeMutationWithValues<NI: Idx, EV> {
 
 #[repr(transparent)]
 pub struct SharedMut<T>(*mut T);
+// SAFETY: SharedMut<T> is a #[repr(transparent)] newtype over *mut T. Raw pointers are
+// !Send and !Sync by default, but SharedMut is used in parallel graph construction where
+// disjoint index ranges are written by separate threads (no data races). We propagate
+// T's Send bound, matching the contract of Arc<T>: the wrapper is Send iff T is Send.
 unsafe impl<T: Send> Send for SharedMut<T> {}
+// SAFETY: See Send impl above — same disjoint-write reasoning. Propagating T: Sync is
+// correct because SharedMut grants shared access (via add + write) only when callers
+// guarantee non-overlapping ranges.
 unsafe impl<T: Sync> Sync for SharedMut<T> {}
 
 impl<T> SharedMut<T> {
