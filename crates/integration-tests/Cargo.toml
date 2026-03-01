@@ -1,0 +1,18 @@
+[package]
+name = "aletheia-integration-tests"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+aletheia-koina = { path = "../koina" }
+aletheia-taxis = { path = "../taxis" }
+aletheia-mneme = { path = "../mneme" }
+aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-nous = { path = "../nous" }
+serde_json = { workspace = true }
+tempfile = "3"

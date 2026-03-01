@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/hermeneus",
+    "crates/integration-tests",
     "crates/koina",
     "crates/mneme",
     "crates/nous",
