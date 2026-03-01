@@ -102,6 +102,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "static_assertions",
+ "tempfile",
  "tokio",
 ]
 
