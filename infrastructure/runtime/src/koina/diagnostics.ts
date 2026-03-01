@@ -1,12 +1,10 @@
 // Diagnostic checks for `aletheia doctor`
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
 import { loadConfig } from "../taxis/loader.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
-import { readJson } from "./fs.js";
 
 export interface DiagnosticResult {
   name: string;
@@ -36,98 +34,61 @@ const checks: DiagnosticCheck[] = [
 ];
 
 function checkBootstrapAnchor(_config: AletheiaConfig | null): DiagnosticResult {
-  const path = join(homedir(), ".aletheia", "anchor.json");
-  const raw = readJson<Record<string, unknown>>(path);
+  const instanceRoot = paths.root;
+  const requiredDirs = ["config", "data", "nous", "shared", "theke", "logs"];
+  const missing = requiredDirs.filter((d) => !existsSync(join(instanceRoot, d)));
 
-  if (raw === null) {
+  if (missing.length > 0) {
     return {
-      name: "bootstrap_anchor",
+      name: "instance_structure",
       status: "warn",
-      message: `anchor.json not found at ${path} — run 'aletheia init' to configure your deployment`,
+      message: `Instance root: ${instanceRoot}\n  Missing dirs: ${missing.join(", ")} — run 'aletheia init' or migration script`,
     };
   }
-
-  if (typeof raw["nousDir"] !== "string" || typeof raw["deployDir"] !== "string") {
-    return {
-      name: "bootstrap_anchor",
-      status: "error",
-      message: `anchor.json at ${path} is missing nousDir or deployDir`,
-    };
-  }
-
-  const nousDir = raw["nousDir"] as string;
-  const deployDirVal = raw["deployDir"] as string;
-  const nousExists = existsSync(nousDir);
-  const deployExists = existsSync(deployDirVal);
-
-  const lines = [
-    `anchor.json: ${path}`,
-    `  nousDir:   ${nousDir}${nousExists ? "" : "  (directory does not exist)"}`,
-    `  deployDir: ${deployDirVal}${deployExists ? "" : "  (directory does not exist)"}`,
-  ];
 
   return {
-    name: "bootstrap_anchor",
-    status: nousExists && deployExists ? "ok" : "warn",
-    message: lines.join("\n"),
+    name: "instance_structure",
+    status: "ok",
+    message: `Instance root: ${instanceRoot} (${requiredDirs.length} dirs OK)`,
   };
 }
 
 function checkNousScaffoldDirs(_config: AletheiaConfig | null): DiagnosticResult {
-  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
-  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
-    return {
-      name: "nous_scaffold",
-      status: "warn",
-      message: "Skipped (anchor.json not found or nousDir missing)",
-    };
-  }
-  const nousDir = anchorRaw["nousDir"] as string;
   const required = [
-    join(nousDir, "_shared", "workspace", "plans"),
-    join(nousDir, "_shared", "workspace", "specs"),
-    join(nousDir, "_shared", "workspace", "standards"),
-    join(nousDir, "_shared", "workspace", "references"),
+    paths.plansDir(),
+    join(paths.data, "sessions"),
+    paths.credentialsDir(),
   ];
   const missing = required.filter((d) => !existsSync(d));
   if (missing.length === 0) {
     return {
       name: "nous_scaffold",
       status: "ok",
-      message: `_shared/ scaffold complete (${required.length} dirs)`,
+      message: `Instance scaffold complete (${required.length} dirs)`,
     };
   }
   return {
     name: "nous_scaffold",
     status: "warn",
-    message: `Missing scaffold dirs: ${missing.map((d) => d.replace(nousDir + "/", "")).join(", ")} — run 'aletheia init' to fix`,
+    message: `Missing scaffold dirs: ${missing.map((d) => d.replace(paths.root + "/", "")).join(", ")} — run 'aletheia init' to fix`,
   };
 }
 
 function checkWorkspaceIndexHealth(_config: AletheiaConfig | null): DiagnosticResult {
-  const anchorRaw = readJson<Record<string, unknown>>(join(homedir(), ".aletheia", "anchor.json"));
-  if (anchorRaw === null || typeof anchorRaw["nousDir"] !== "string") {
+  const thekeDir = paths.theke;
+  if (!existsSync(thekeDir)) {
     return {
       name: "workspace_index",
       status: "warn",
-      message: "Skipped (anchor.json not found or nousDir missing)",
+      message: `theke/ not found at ${thekeDir} — run 'aletheia init' to scaffold`,
     };
   }
-  const nousDir = anchorRaw["nousDir"] as string;
-  const sharedDir = join(nousDir, "_shared");
-  if (!existsSync(sharedDir)) {
-    return {
-      name: "workspace_index",
-      status: "warn",
-      message: `_shared/ not found at ${sharedDir} — run 'aletheia init' to scaffold`,
-    };
-  }
-  const indexDir = join(sharedDir, ".aletheia-index");
+  const indexDir = join(thekeDir, ".aletheia-index");
   if (!existsSync(indexDir)) {
     return {
       name: "workspace_index",
       status: "warn",
-      message: "_shared/ exists but has no index yet — will be built at next daemon startup",
+      message: "theke/ exists but has no index yet — will be built at next daemon startup",
     };
   }
   // Check for any manifest file to confirm index was successfully built

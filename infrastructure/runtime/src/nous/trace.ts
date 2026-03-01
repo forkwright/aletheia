@@ -2,6 +2,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 
 const log = createLogger("trace");
 
@@ -123,8 +124,8 @@ export class TraceBuilder {
   }
 }
 
-export function persistTrace(trace: TurnTrace, workspace: string): void {
-  const tracesDir = join(workspace, "..", "..", "shared", "traces");
+export function persistTrace(trace: TurnTrace, _workspace: string): void {
+  const tracesDir = paths.tracesDir();
   if (!existsSync(tracesDir)) mkdirSync(tracesDir, { recursive: true });
 
   const filePath = join(tracesDir, `${trace.nousId}.jsonl`);

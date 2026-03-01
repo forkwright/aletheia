@@ -1,8 +1,8 @@
 // Provider router — model string to provider, failover, retry with backoff
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 import { ProviderError } from "../koina/errors.js";
 import {
   AnthropicProvider,
@@ -309,8 +309,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   const envApiKey = process.env["ANTHROPIC_API_KEY"];
 
   if (!envAuthToken && !envApiKey) {
-    const home = process.env["HOME"] ?? "/tmp";
-    const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
+    const credPath = paths.credentialFile("anthropic");
     try {
       const raw = readFileSync(credPath, "utf-8");
       let creds: Record<string, unknown> | undefined;
@@ -354,8 +353,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   // Read credential label from file (default: "primary" for file-based, "default" for env)
   let primaryLabel = "default";
   {
-    const home2 = process.env["HOME"] ?? "/tmp";
-    const credPath2 = join(home2, ".aletheia", "credentials", "anthropic.json");
+    const credPath2 = paths.credentialFile("anthropic");
     try {
       const raw = JSON.parse(readFileSync(credPath2, "utf-8")) as Record<string, unknown>;
       if (typeof raw["label"] === "string" && raw["label"].length > 0) {
@@ -375,8 +373,7 @@ export function createDefaultRouter(config?: RouterConfig): ProviderRouter {
   // Read backup credentials for failover on 429/5xx
   // Supports both legacy "backupKeys" (API key strings) and
   // "backupCredentials" (typed objects with oauth/apiKey support)
-  const home = process.env["HOME"] ?? "/tmp";
-  const credPath = join(home, ".aletheia", "credentials", "anthropic.json");
+  const credPath = paths.credentialFile("anthropic");
   try {
     const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
     const backups: AnthropicProvider[] = [];

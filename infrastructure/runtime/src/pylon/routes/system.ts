@@ -2,11 +2,11 @@
 import { Hono } from "hono";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { createLogger } from "../../koina/logger.js";
 import { tryReloadConfig } from "../../taxis/loader.js";
 import { eventBus } from "../../koina/event-bus.js";
 import { getVersion } from "../../version.js";
+import { paths } from "../../taxis/paths.js";
 import type { RouteDeps, RouteRefs } from "./deps.js";
 
 const log = createLogger("pylon");
@@ -45,7 +45,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   app.post("/api/system/update", async (c) => {
     const { execFileSync } = await import("node:child_process");
-    const root = process.env["ALETHEIA_ROOT"] ?? join(homedir(), ".aletheia");
+    const root = paths.repoRoot;
     try {
       const gitOutput = execFileSync("git", ["pull", "origin", "main"], {
         cwd: root, timeout: 60_000, encoding: "utf-8",
@@ -64,10 +64,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   // Credential labels — exposes configured credential names (no secrets)
   app.get("/api/system/credentials", (c) => {
-    const credPath = join(
-      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
-      "credentials", "anthropic.json",
-    );
+    const credPath = paths.credentialFile("anthropic");
     try {
       const raw = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;
       const primary = typeof raw["label"] === "string" ? raw["label"] : "primary";
@@ -105,10 +102,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   // Update primary credential
   app.put("/api/system/credentials/primary", async (c) => {
-    const credPath = join(
-      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
-      "credentials", "anthropic.json",
-    );
+    const credPath = paths.credentialFile("anthropic");
     const body = await c.req.json<{ type: "oauth" | "api"; value: string; label?: string }>();
     if (!body.value || typeof body.value !== "string") {
       return c.json({ error: "value is required" }, 400);
@@ -141,10 +135,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   // Add a backup credential
   app.post("/api/system/credentials/backups", async (c) => {
-    const credPath = join(
-      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
-      "credentials", "anthropic.json",
-    );
+    const credPath = paths.credentialFile("anthropic");
     const body = await c.req.json<{ type: "oauth" | "api"; value: string; label: string }>();
     if (!body.value || !body.label) return c.json({ error: "value and label are required" }, 400);
     const credType = body.type === "oauth" ? "oauth" : "api";
@@ -169,10 +160,7 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
 
   // Remove a backup credential by label
   app.delete("/api/system/credentials/backups/:label", (c) => {
-    const credPath = join(
-      process.env["ALETHEIA_CONFIG_DIR"] ?? join(homedir(), ".aletheia"),
-      "credentials", "anthropic.json",
-    );
+    const credPath = paths.credentialFile("anthropic");
     const label = c.req.param("label");
     try {
       const existing = JSON.parse(readFileSync(credPath, "utf-8")) as Record<string, unknown>;

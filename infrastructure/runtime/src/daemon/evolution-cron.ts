@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 import { type PipelineConfig, PipelineConfigSchema, savePipelineConfig } from "../nous/pipeline-config.js";
 import type { ProviderRouter } from "../hermeneus/router.js";
 import type { TextBlock } from "../hermeneus/anthropic.js";
@@ -43,8 +44,8 @@ interface BenchmarkTask {
   turnSeq: number;
 }
 
-function getArchiveDir(workspace: string): string {
-  return join(workspace, "..", "..", "shared", "evolution");
+function getArchiveDir(_workspace: string): string {
+  return paths.evolutionDir();
 }
 
 function getArchivePath(workspace: string, nousId: string): string {

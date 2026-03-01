@@ -3,6 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs");
 vi.mock("node:os", () => ({ homedir: () => "/home/testuser" }));
+vi.mock("../../taxis/paths.js", () => ({
+  paths: {
+    configDir: () => "/inst/config",
+    credentialFile: (provider: string) => `/inst/config/credentials/${provider}.json`,
+    configFile: () => "/inst/config/aletheia.json",
+    config: "/inst/config",
+  },
+}));
 
 // Mock global fetch to prevent real Anthropic API calls during tests
 const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
@@ -31,8 +39,8 @@ function makeApp(agentCount = 0) {
   return setupRoutes(makeDeps(agentCount), makeRefs());
 }
 
-const SETUP_FLAG = "/home/testuser/.aletheia/.setup-complete";
-const CRED_FILE = "/home/testuser/.aletheia/credentials/anthropic.json";
+const SETUP_FLAG = "/inst/config/.setup-complete";
+const CRED_FILE = "/inst/config/credentials/anthropic.json";
 const CLAUDE_JSON = "/home/testuser/.claude.json";
 
 beforeEach(() => {

@@ -69,7 +69,6 @@ program
       let authMode: "none" | "token" | "session" = "none";
       let authBlock: Record<string, unknown> = { mode: "none" };
       let nousDir = "";
-      let deployDir = "";
 
       if (!profileOnlyMode) {
         // API key — auto-detect from ~/.claude.json (same source as web wizard)
@@ -114,62 +113,19 @@ program
           console.log(`  Save this — you'll need it to access the UI and API.\n`);
         }
 
-        // Anchor.json — bootstrap path configuration
-        const { homedir: homedirFn } = await import("node:os");
-        const { writeBootstrapAnchor, anchorPath } = await import("./taxis/bootstrap-loader.js");
-        const anchorFilePath = anchorPath();
-        const defaultNousDir = join(homedirFn(), ".aletheia", "nous");
-        const defaultDeployDir = join(homedirFn(), ".aletheia", "deploy");
-        nousDir = defaultNousDir;
-        deployDir = defaultDeployDir;
-
-        const existingAnchor = readJson(anchorFilePath);
-        if (existingAnchor && typeof existingAnchor === "object") {
-          const a = existingAnchor as { nousDir?: string; deployDir?: string };
-          if (a.nousDir) {
-            const keepNous = (await ask(`nous.dir is currently ${a.nousDir}. Keep it? [Y/n] `)).trim().toLowerCase();
-            if (keepNous === "" || keepNous === "y") {
-              nousDir = a.nousDir;
-            } else {
-              const input = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
-              if (input) nousDir = input;
-            }
-          } else {
-            const input = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
-            if (input) nousDir = input;
-          }
-          if (a.deployDir) {
-            const keepDeploy = (await ask(`deploy.dir is currently ${a.deployDir}. Keep it? [Y/n] `)).trim().toLowerCase();
-            if (keepDeploy === "" || keepDeploy === "y") {
-              deployDir = a.deployDir;
-            } else {
-              const input = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
-              if (input) deployDir = input;
-            }
-          } else {
-            const input = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
-            if (input) deployDir = input;
-          }
-        } else {
-          const nousInput = (await ask(`nous.dir [${defaultNousDir}]: `)).trim();
-          if (nousInput) nousDir = nousInput;
-          const deployInput = (await ask(`deploy.dir [${defaultDeployDir}]: `)).trim();
-          if (deployInput) deployDir = deployInput;
+        // Scaffold instance directories
+        nousDir = paths.nous;
+        for (const dir of [paths.config, paths.credentials, paths.data, paths.nous, paths.shared, paths.theke, paths.logs]) {
+          mkdirSync(dir, { recursive: true });
         }
+        console.log(`  Instance: ${paths.root}`);
 
-        mkdirSync(nousDir, { recursive: true });
-        mkdirSync(deployDir, { recursive: true });
-        writeBootstrapAnchor(nousDir, deployDir);
-        console.log(`  Anchor: ${anchorFilePath}`);
-
-        // Scaffold _shared/ workspace dirs — authoritative (throws on failure)
         const { scaffoldNousShared: doScaffold, mergeGitignore: doMerge } = await import("./taxis/nous-scaffold.js");
         const sharedCreated = doScaffold(nousDir);
         doMerge(nousDir);
         if (sharedCreated.length > 0) {
           console.log(`  Scaffold: ${sharedCreated.join(", ")}`);
         }
-        // If sharedCreated.length === 0, all dirs already existed — report nothing (silence = nothing new)
       }
 
       // First agent
@@ -212,16 +168,7 @@ program
         });
       }
 
-      // Scaffold agent — resolve nousDir from anchor.json or use value set in anchor step above
-      let scaffoldNousDir: string;
-      if (profileOnlyMode) {
-        const { anchorPath: getAnchorPath } = await import("./taxis/bootstrap-loader.js");
-        const { homedir: homedirFn2 } = await import("node:os");
-        const existingAnchorForProfile = readJson(getAnchorPath()) as { nousDir?: string } | null;
-        scaffoldNousDir = existingAnchorForProfile?.nousDir ?? join(homedirFn2(), ".aletheia", "nous");
-      } else {
-        scaffoldNousDir = nousDir;
-      }
+      const scaffoldNousDir = paths.nous;
       mkdirSync(scaffoldNousDir, { recursive: true });
       const templateDir = join(scaffoldNousDir, "_example");
       if (!existsSync(templateDir)) {
@@ -965,17 +912,17 @@ memoryCmd
   .command("audit")
   .description("Run recall precision/recall audit against ground-truth corpus")
   .option("-u, --url <url>", "Sidecar URL", "http://localhost:8230")
-  .option("-c, --corpus <path>", "Corpus JSONL path", "~/.aletheia/corpus/recall.jsonl")
+  .option("-c, --corpus <path>", "Corpus JSONL path")
   .option("--save-baseline", "Save current scores as new baseline")
   .option("--agent <id>", "Filter to a specific agent")
   .action(async (opts: { url: string; corpus: string; saveBaseline?: boolean; agent?: string }) => {
     const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import("node:fs");
     const { join, dirname } = await import("node:path");
+    const { paths } = await import("./taxis/paths.js");
 
-    // Resolve corpus path (expand ~)
-    const home = process.env["HOME"] ?? "/root";
-    const corpusPath = opts.corpus.replace(/^~/, home);
-    const baselinePath = join(home, ".aletheia", "corpus", "recall-baseline.json");
+    // Resolve corpus path
+    const corpusPath = opts.corpus ?? join(paths.data, "corpus", "recall.jsonl");
+    const baselinePath = join(paths.data, "corpus", "recall-baseline.json");
 
     if (!existsSync(corpusPath)) {
       console.log(`No corpus file found at ${corpusPath}. Create a JSONL file with {query, expected_ids, domain} entries.`);
@@ -1480,8 +1427,7 @@ program
     const { existsSync: exists } = await import("node:fs");
     const { execSync } = await import("node:child_process");
     const { join } = await import("node:path");
-    const { loadBootstrapAnchor } = await import("./taxis/bootstrap-loader.js");
-
+    const { paths } = await import("./taxis/paths.js");
     const dryRun = opts.dryRun ?? false;
     const skipUi = opts.skipUi ?? false;
     const restart = opts.restart !== false; // default true unless --no-restart
@@ -1503,76 +1449,32 @@ program
       }
     };
 
-    // Find source root — look for infrastructure/runtime/package.json
-    let sourceRoot: string;
-    try {
-      const { anchor } = loadBootstrapAnchor();
-      // Anchor gives us deploy dir; source root is typically the repo root
-      // Walk up from anchor's nousDir to find the repo
-      const repoMarkers = ["infrastructure/runtime/package.json", ".git"];
-      let candidate = join(anchor.nousDir, "..");
-      let found = false;
-      for (let i = 0; i < 5; i++) {
-        if (repoMarkers.every(m => exists(join(candidate, m)))) {
-          sourceRoot = candidate;
-          found = true;
-          break;
-        }
-        candidate = join(candidate, "..");
-      }
-      if (!found) {
-        // Fallback: common location
-        if (exists("/mnt/ssd/aletheia/infrastructure/runtime/package.json")) {
-          sourceRoot = "/mnt/ssd/aletheia";
-        } else {
-          console.error("Cannot locate Aletheia source root. Run from the repo or set anchor.json.");
-          process.exit(1);
-          return;
-        }
-      }
-    } catch {
-      if (exists("/mnt/ssd/aletheia/infrastructure/runtime/package.json")) {
-        sourceRoot = "/mnt/ssd/aletheia";
-      } else {
-        console.error("Cannot locate Aletheia source root.");
-        process.exit(1);
-        return;
-      }
-    }
-
-    const runtimeDir = join(sourceRoot!, "infrastructure", "runtime");
-    const uiDir = join(sourceRoot!, "ui");
-
-    // Determine deploy target
-    let deployDir: string;
-    try {
-      const { anchor } = loadBootstrapAnchor();
-      deployDir = anchor.deployDir;
-    } catch {
-      deployDir = join(sourceRoot!, "deploy");
-    }
+    const sourceRoot = paths.repoRoot;
+    const runtimeDir = join(sourceRoot, "infrastructure", "runtime");
+    const uiDir = join(sourceRoot, "ui");
+    const deployDir = join(sourceRoot, "deploy");
 
     console.log(`\nAletheia Update${dryRun ? " (dry run)" : ""}`);
-    console.log(`  Source:  ${sourceRoot!}`);
+    console.log(`  Source:  ${sourceRoot}`);
     console.log(`  Deploy:  ${deployDir}`);
     console.log();
 
     // Step 1: Git pull (with dirty check)
     try {
       if (!dryRun) {
-        const status = execSync("git status --porcelain", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+        const status = execSync("git status --porcelain", { cwd: sourceRoot, encoding: "utf-8" }).trim();
         if (status) {
           console.log(`  ⚠️  Working tree has uncommitted changes (${status.split("\n").length} files)`);
         }
       }
     } catch { /* git status failed — proceed anyway */ }
 
-    const sha1 = dryRun ? "abc1234" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
-    if (!run("git pull origin main --ff-only", "Git pull", sourceRoot!)) {
+    const sha1 = dryRun ? "abc1234" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot, encoding: "utf-8" }).trim();
+    if (!run("git pull origin main --ff-only", "Git pull", sourceRoot)) {
       console.error("\nGit pull failed. Resolve conflicts first.");
       process.exit(1);
     }
-    const sha2 = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+    const sha2 = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot, encoding: "utf-8" }).trim();
     if (sha1 === sha2 && !dryRun) {
       console.log("  Already up to date.");
     }
@@ -1607,7 +1509,7 @@ program
 
     // Copy shared assets
     for (const dir of ["shared/bin", "shared/config", "shared/templates"]) {
-      const src = join(sourceRoot!, dir);
+      const src = join(sourceRoot, dir);
       const dest = join(deployDir, dir);
       if (exists(src)) {
         run(`mkdir -p ${dest} && rsync -a --delete ${src}/ ${dest}/`, `Sync ${dir}`);
@@ -1616,7 +1518,7 @@ program
 
     // Step 5: Restart
     if (restart) {
-      const finalSha = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot!, encoding: "utf-8" }).trim();
+      const finalSha = dryRun ? "def5678" : execSync("git rev-parse --short HEAD", { cwd: sourceRoot, encoding: "utf-8" }).trim();
       run("systemctl --user restart aletheia", "Restart daemon");
 
       if (!dryRun) {

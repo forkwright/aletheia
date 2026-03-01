@@ -3,9 +3,8 @@ import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
 import { trySafe } from "./koina/safe.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
-import { loadBootstrapAnchor } from "./taxis/bootstrap-loader.js";
 import { mergeGitignore, scaffoldNousShared } from "./taxis/nous-scaffold.js";
-import { initPaths, nousSharedDir, paths } from "./taxis/paths.js";
+import { paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
@@ -122,27 +121,21 @@ export interface AletheiaRuntime {
 }
 
 export function createRuntime(configPath?: string): AletheiaRuntime {
-  const { anchor } = loadBootstrapAnchor();
-  initPaths(anchor);
-
   // Best-effort gap-fill — non-blocking, warns on newly created dirs
   trySafe("nous:scaffold", () => {
-    const nousDir = nousSharedDir(); // called inside callback — MUST be after initPaths()
-    const created = scaffoldNousShared(nousDir);
+    const created = scaffoldNousShared(paths.nous);
     if (created.length > 0) {
       log.warn("nous scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
     }
-    mergeGitignore(nousDir); // idempotent — safe every startup
+    mergeGitignore(paths.nous);
   }, undefined);
 
-  // INDX-01/INDX-05: Wire _shared/ as default indexed path — background build at startup
+  // INDX-01/INDX-05: Wire theke/ as default indexed path — background build at startup
   trySafe("workspace-index:startup", () => {
-    const nousDir = nousSharedDir(); // called inside callback — requires initPaths() to have run
-    const sharedDir = join(nousDir, "_shared");
-    if (existsSync(sharedDir)) {
+    if (existsSync(paths.theke)) {
       void (async () => {
         try {
-          const index = await rebuildWorkspaceIndex(sharedDir);
+          const index = await rebuildWorkspaceIndex(paths.theke);
           setSharedIndex(index);
           log.debug("Workspace index background build complete", { fileCount: index.files.length });
         } catch (error: unknown) {
@@ -152,7 +145,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     }
   }, undefined);
 
-  const plansDb = openPlansDb(paths.sessionsDb());
+  const plansDb = openPlansDb(paths.planningDb());
   log.info("Plans DB opened", { path: plansDb.name });
 
   eventBus.emit("boot:start", {});
@@ -630,30 +623,25 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // INDX-01: Live file watcher — rebuilds shared index when _shared/ files change
   {
-    let sharedDir: string | null = null;
-    try {
-      sharedDir = join(nousSharedDir(), "_shared");
-    } catch { /* anchor not set — skip watcher */ }
-
-    if (sharedDir && existsSync(sharedDir)) {
+    if (existsSync(paths.theke)) {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-      const capturedSharedDir = sharedDir;
-      _sharedIndexWatcher = watch(capturedSharedDir, { recursive: true }, (_event, filename) => {
-        if (!filename || filename.includes(".aletheia-index")) return; // avoid recursive trigger on index writes
+      const capturedThekeDir = paths.theke;
+      _sharedIndexWatcher = watch(capturedThekeDir, { recursive: true }, (_event, filename) => {
+        if (!filename || filename.includes(".aletheia-index")) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           void (async () => {
             try {
-              const index = await rebuildWorkspaceIndex(capturedSharedDir);
+              const index = await rebuildWorkspaceIndex(capturedThekeDir);
               setSharedIndex(index);
               log.debug("Workspace index rebuilt after file change", { filename });
             } catch (error: unknown) {
               log.warn("Workspace index rebuild after file change failed", { err: error instanceof Error ? error.message : error });
             }
           })();
-        }, 300); // 300ms debounce — avoids burst rebuilds on bulk saves (inotify on Linux)
+        }, 300);
       });
-      log.debug("Workspace index file watcher started", { dir: capturedSharedDir });
+      log.debug("Workspace index file watcher started", { dir: capturedThekeDir });
     }
   }
 

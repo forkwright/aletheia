@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 
 const log = createLogger("uncertainty");
 
@@ -27,8 +28,8 @@ export class UncertaintyTracker {
   private dirty = false;
   private flushScheduled = false;
 
-  constructor(sharedRoot: string) {
-    const dir = join(sharedRoot, "shared", "calibration");
+  constructor(_sharedRoot: string) {
+    const dir = paths.sharedCalibration;
     mkdirSync(dir, { recursive: true });
     this.filePath = join(dir, "points.json");
     this.load();

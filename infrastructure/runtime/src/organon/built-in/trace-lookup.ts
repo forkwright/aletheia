@@ -1,6 +1,7 @@
 // Introspective debugging — agents inspect their own reasoning provenance
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { paths } from "../../taxis/paths.js";
 import type { ToolContext, ToolHandler } from "../registry.js";
 
 export const traceLookupTool: ToolHandler = {
@@ -42,8 +43,7 @@ export const traceLookupTool: ToolHandler = {
     const filter = (input["filter"] as string) ?? "all";
 
     // Find traces file for this agent
-    const workspace = context.workspace ?? "";
-    const tracesFile = join(workspace, "..", "..", "shared", "traces", `${context.nousId}.jsonl`);
+    const tracesFile = join(paths.tracesDir(), `${context.nousId}.jsonl`);
 
     if (!existsSync(tracesFile)) {
       return Promise.resolve(JSON.stringify({ error: "No traces found", file: tracesFile }));

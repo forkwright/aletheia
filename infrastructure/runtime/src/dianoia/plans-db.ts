@@ -1,9 +1,9 @@
 // plans-db.ts — standalone plans.db opener with one-time migration from sessions.db
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { createLogger } from "../koina/logger.js";
-import { nousSharedDir } from "../taxis/paths.js";
+import { paths } from "../taxis/paths.js";
 import {
   PLANNING_V20_DDL,
   PLANNING_V21_MIGRATION,
@@ -21,7 +21,7 @@ import {
 const log = createLogger("dianoia:plans-db");
 
 export function plansDbPath(): string {
-  return join(nousSharedDir(), "_shared", "workspace", "plans.db");
+  return paths.planningDb();
 }
 
 /**
@@ -52,12 +52,9 @@ function migratePlansDb(sessionsDbPath: string, targetPath: string): void {
 }
 
 /**
- * Open (or create) the standalone plans.db at nousSharedDir()/_shared/workspace/plans.db.
+ * Open (or create) the standalone plans.db.
  * Runs one-time migration from sessionsDbPath if plans.db is absent.
  * Applies all PLANNING_V* migrations to the opened DB.
- *
- * IMPORTANT: nousSharedDir() is called inside this function — never at module scope.
- * This function must be called after initPaths() in createRuntime().
  */
 export function openPlansDb(sessionsDbPath: string): Database.Database {
   const targetPath = plansDbPath();

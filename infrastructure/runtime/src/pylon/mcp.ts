@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 import type { AletheiaConfig } from "../taxis/schema.js";
 import type { NousManager } from "../nous/manager.js";
 import type { SessionStore } from "../mneme/store.js";
@@ -83,9 +84,7 @@ export function createMcpRoutes(
   store: SessionStore,
 ): Hono {
   const app = new Hono();
-  const credPath = process.env["ALETHEIA_HOME"]
-    ? `${process.env["ALETHEIA_HOME"]}/credentials`
-    : `${process.env["HOME"]}/.aletheia/credentials`;
+  const credPath = paths.credentialsDir();
   const tokens = loadMcpTokens(credPath);
   const requireAuth = config.gateway.mcp?.requireAuth ?? true;
   const maxBody = config.gateway.maxBodyBytes ?? 1_048_576;

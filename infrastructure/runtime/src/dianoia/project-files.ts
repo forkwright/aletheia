@@ -1,7 +1,7 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { nousSharedDir } from "../taxis/paths.js";
+import { paths } from "../taxis/paths.js";
 import { createLogger } from "../koina/logger.js";
 import { PlanningError } from "../koina/errors.js";
 import type {
@@ -55,15 +55,11 @@ function validateFileWritten(filePath: string, operation: string): void {
 /**
  * Resolve the absolute path for a project directory.
  * Backward compatible: absolute paths (pre-migration) are returned as-is.
- * New-style: slug resolves relative to nousSharedDir()/_shared/workspace/plans/{slug}.
- *
- * IMPORTANT: nousSharedDir() is called inside this function — never at module scope.
+ * New-style: slug resolves relative to instance/data/plans/{slug}.
  */
 export function getProjectDir(projectDirValue: string): string {
-  // Backward compat: absolute paths from pre-migration projects resolve as-is
   if (projectDirValue.startsWith("/")) return projectDirValue;
-  // New-style slug: resolve from nous shared workspace at call time
-  return join(nousSharedDir(), "_shared", "workspace", "plans", projectDirValue);
+  return join(paths.plansDir(), projectDirValue);
 }
 
 export function getPhaseDir(projectDirValue: string, phaseId: string): string {

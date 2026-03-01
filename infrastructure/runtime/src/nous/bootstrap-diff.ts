@@ -1,7 +1,8 @@
 // Bootstrap diff detection — file-level change tracking across sessions
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { createLogger } from "../koina/logger.js";
+import { paths } from "../taxis/paths.js";
 
 const log = createLogger("nous.bootstrap-diff");
 
@@ -15,9 +16,8 @@ export interface BootstrapDiff {
 
 const hashCache = new Map<string, Record<string, string>>();
 
-function resolveSharedStatusDir(workspace: string): string {
-  // workspace = ~/.aletheia/nous/syn → shared/status = ~/.aletheia/shared/status
-  return join(dirname(workspace), "..", "shared", "status");
+function resolveSharedStatusDir(_workspace: string): string {
+  return paths.statusDir();
 }
 
 export function detectBootstrapDiff(
