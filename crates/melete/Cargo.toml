@@ -1,0 +1,25 @@
+[package]
+name = "aletheia-melete"
+version = "0.1.0"
+description = "Context distillation engine — compresses conversation history"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+aletheia-hermeneus = { path = "../hermeneus" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+jiff = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+static_assertions = { workspace = true }
