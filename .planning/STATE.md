@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-01T21:04:36Z"
+status: in_progress
+last_updated: "2026-03-01T21:16:00Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 3
+  total_plans: 8
+  completed_plans: 8
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Every milestone produces a PR that meets the absolute quality bar
-**Current focus:** Phase 2 -- Critical Safety
+**Current focus:** Phase 3 -- Wire into Mneme (COMPLETE)
 
 ## Current Position
 
-Phase: 3 of 6 (Wire into Mneme) -- IN PROGRESS
-Plan: 1 of 2 in current phase (03-01 complete)
-Status: Phase 3 in progress -- 03-01 done: KnowledgeStore implemented, mneme-engine feature wired
-Last activity: 2026-03-01 -- 03-01 complete: Vector re-export, feature-gated errors, KnowledgeStore with domain methods + async wrappers
+Phase: 3 of 6 (Wire into Mneme) -- COMPLETE
+Plan: 2 of 2 in current phase (03-02 complete)
+Status: Phase 3 complete -- 03-02 done: 6 integration tests pass (TEST-02, TEST-03, INTG-04, INTG-05)
+Last activity: 2026-03-01 -- 03-02 complete: knowledge_engine.rs integration tests, feature-gated test suite
 
-Progress: [█████░░░░░] 38%
+Progress: [██████░░░░] 50%
 
 ## Milestone: v1.0 CozoDB Absorption
 
@@ -38,9 +38,9 @@ Progress: [█████░░░░░] 38%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 38 min
-- Total execution time: ~2.0 hours
+- Total plans completed: 8
+- Average duration: 32 min
+- Total execution time: ~2.1 hours
 
 **By Phase:**
 
@@ -48,10 +48,10 @@ Progress: [█████░░░░░] 38%
 |-------|-------|-------|----------|
 | 01-copy-compile | 3/3 | 114 min | 38 min |
 | 02-critical-safety | 2/2 | ~60 min | ~30 min |
-| 03-wire-into-mneme | 1/2 | 10 min | 10 min |
+| 03-wire-into-mneme | 2/2 | 15 min | 7.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 25 min, 75 min, 14 min, 25 min, 10 min
+- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min
 - Trend: integration work fast when interfaces are well-specified
 
 *Updated after each plan completion*
@@ -84,6 +84,7 @@ Recent decisions affecting current work:
 - AD-19 (03-01): ndarray=0.15.6 and miette=5.10.0 matched from mneme-engine -- plan spec said 0.16/7 but mneme-engine uses older versions; must match to avoid dep conflicts
 - AD-20 (03-01): DataValue has no into_num() -- DataValue::from(i64) already produces Num::Int directly; plan spec used non-existent method
 - AD-21 (03-01): KnowledgeConfig derives Copy -- only contains usize; avoids needless_pass_by_value clippy lint on open_mem_with_config
+- AD-22 (03-02): schema_version not _schema_version -- CozoDB temp_store_tx (underscore prefix) is per-run; persistent store_tx requires no-underscore name
 
 ### Pending Todos
 
@@ -98,8 +99,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 03-wire-into-mneme/03-01-PLAN.md -- Phase 3 plan 1 of 2 done
-Resume file: (continue with 03-02: integration tests)
+Stopped at: Completed 03-wire-into-mneme/03-02-PLAN.md -- Phase 3 complete (2/2 plans done)
+Resume file: (continue with Phase 4)
 
 ---
-*Last updated: 2026-03-01 -- 03-01 complete (KnowledgeStore implemented, 5 deviations auto-fixed, all checks green)*
+*Last updated: 2026-03-01 -- 03-02 complete (6 integration tests, 1 auto-fixed bug, all checks green)*

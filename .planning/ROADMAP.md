@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Copy + Compile** - Create crate skeletons, copy source, strip backends + cangjie + FFI, pin rayon, get cargo check/clippy clean (completed 2026-03-01)
 - [x] **Phase 2: Critical Safety** - Fix minhash_lsh UB, document all unsafe sites, add static_assertions for Send+Sync (completed 2026-03-01)
-- [ ] **Phase 3: Wire into mneme** - Connect KnowledgeStore to mneme-engine, fact round-trip, HNSW vector search, spawn_blocking wrappers
+- [x] **Phase 3: Wire into mneme** - Connect KnowledgeStore to mneme-engine, fact round-trip, HNSW vector search, spawn_blocking wrappers (completed 2026-03-01)
 - [ ] **Phase 4: Hybrid Retrieval** - BM25 + HNSW + graph join in single Datalog query, RRF fusion, HNSW connectivity validation
 - [ ] **Phase 5: Error + Idiom Migration** - miette to snafu, log to tracing, lazy_static to LazyLock, systematic unwrap audit
 - [ ] **Phase 6: Performance** - Query timeout via cancellation token, ndarray fused distance computation
@@ -66,7 +66,7 @@ Plans:
 
 Plans:
 - [x] 03-01: Wire dependency, feature-gate errors, implement KnowledgeStore (Wave 1) -- completed 2026-03-01
-- [ ] 03-02: Integration tests — fact round-trip, HNSW vector search, async wrappers (Wave 2)
+- [x] 03-02: Integration tests — fact round-trip, HNSW vector search, async wrappers (Wave 2) -- completed 2026-03-01
 
 ### Phase 4: Hybrid Retrieval
 **Goal**: Single Datalog query combines BM25 full-text search, HNSW vector similarity, and graph joins with RRF fusion -- the unique capability that justifies keeping FTS
@@ -121,7 +121,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Copy + Compile | 3/3 | Complete   | 2026-03-01 |
 | 2. Critical Safety | 2/2 | Complete   | 2026-03-01 |
-| 3. Wire into mneme | 1/2 | In progress | - |
+| 3. Wire into mneme | 2/2 | Complete | 2026-03-01 |
 | 4. Hybrid Retrieval | 0/2 | Not started | - |
 | 5. Error + Idiom Migration | 0/2 | Not started | - |
 | 6. Performance | 0/1 | Not started | - |
