@@ -7,6 +7,7 @@ members = [
     "crates/integration-tests",
     "crates/koina",
     "crates/mneme",
+    "crates/melete",
     "crates/mneme-engine",
     "crates/nous",
     "crates/organon",
@@ -91,6 +92,9 @@ uuid = { version = "1", features = ["v4"] }
 compact_str = { version = "0.8", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
+
+# Time
+jiff = "0.2"
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
