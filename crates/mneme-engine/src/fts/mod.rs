@@ -7,14 +7,12 @@
  */
 
 use crate::data::memcmp::MemCmpEncoder;
-use crate::fts::cangjie::tokenizer::CangJieTokenizer;
 use crate::fts::tokenizer::{
     AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
     RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
-use crate::DataValue;
-use jieba_rs::Jieba;
+use crate::data::value::DataValue;
 use miette::{bail, ensure, miette, Result};
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
@@ -23,7 +21,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 pub(crate) mod ast;
-pub(crate) mod cangjie;
 pub(crate) mod indexing;
 pub(crate) mod tokenizer;
 
@@ -105,33 +102,6 @@ impl TokenizerConfig {
                     max_gram as usize,
                     prefix_only,
                 ))
-            }
-            "Cangjie" => {
-                let hmm = match self.args.get(1) {
-                    None => false,
-                    Some(d) => d.get_bool().ok_or_else(|| {
-                        miette!("Second argument `use_hmm` to Cangjie must be a boolean")
-                    })?,
-                };
-                let option = match self.args.get(0) {
-                    None => cangjie::options::TokenizerOption::Default { hmm },
-                    Some(d) => {
-                        let s = d.get_str().ok_or_else(|| {
-                            miette!("First argument `kind` to Cangjie must be a string")
-                        })?;
-                        match s {
-                            "default" => cangjie::options::TokenizerOption::Default { hmm },
-                            "all" => cangjie::options::TokenizerOption::All,
-                            "search" => cangjie::options::TokenizerOption::ForSearch { hmm },
-                            "unicode" => cangjie::options::TokenizerOption::Unicode,
-                            _ => bail!("Unknown Cangjie kind: {}", s),
-                        }
-                    }
-                };
-                Box::new(CangJieTokenizer {
-                    worker: std::sync::Arc::new(Jieba::new()),
-                    option,
-                })
             }
             _ => bail!("Unknown tokenizer: {}", self.name),
         })

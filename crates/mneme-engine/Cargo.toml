@@ -77,20 +77,13 @@ log = "0.4"
 unicode-normalization = "0.1"
 thiserror = "1"
 
-# FTS (keep — cangjie stripped in Plan 02)
+# FTS
 aho-corasick = "1.1"
 rust-stemmers = "1.2"
 swapvec = "0.3"
 
-# Chinese tokenizer — stripped in Plan 02; kept here for verbatim compile
-jieba-rs = "0.7"
-fast2s = "0.3"
 
-# HTTP fetcher — stripped in Plan 02; kept here for verbatim compile
-minreq = { version = "2.11", features = ["https-rustls"] }
 
-# CSV reader — stripped in Plan 02; kept here for verbatim compile
-csv = "1.3"
 
 # LSH
 quadrature = "0.1"

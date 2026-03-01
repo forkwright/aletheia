@@ -18,12 +18,13 @@ use smartstring::{LazyCompact, SmartString};
 use crate::data::expr::Expr;
 use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
-use crate::fixed_rule::FixedRulePayload;
+use crate::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::fts::{TokenizerCache, TokenizerConfig};
 use crate::parse::SourceSpan;
 use crate::runtime::callback::CallbackOp;
-use crate::runtime::db::Poison;
-use crate::{DbInstance, FixedRule, RegularTempStore, ScriptMutability};
+use crate::runtime::db::{Poison, ScriptMutability};
+use crate::runtime::temp_store::RegularTempStore;
+use crate::{DbInstance, TestMultiTx};
 
 #[test]
 fn test_limit_offset() {
@@ -638,7 +639,7 @@ fn test_index_short() {
 #[test]
 fn test_multi_tx() {
     let db = DbInstance::default();
-    let tx = db.multi_transaction(true);
+    let tx = db.multi_transaction_test(true);
     tx.run_script(":create a {a}", Default::default()).unwrap();
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
         .unwrap();
@@ -654,7 +655,7 @@ fn test_multi_tx() {
     );
 
     let db = DbInstance::default();
-    let tx = db.multi_transaction(true);
+    let tx = db.multi_transaction_test(true);
     tx.run_script(":create a {a}", Default::default()).unwrap();
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
         .unwrap();
@@ -669,7 +670,7 @@ fn test_multi_tx() {
 
 #[test]
 fn test_vec_types() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(":create a {k: String => v: <F32; 8>}")
         .unwrap();
     db.run_default("?[k, v] <- [['k', [1,2,3,4,5,6,7,8]]] :put a {k => v}")
@@ -699,7 +700,7 @@ fn test_vec_types() {
 
 #[test]
 fn test_vec_index_insertion() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(
         r"
         ?[k, v, m] <- [['a', [1,2], true],
@@ -740,7 +741,7 @@ fn test_vec_index_insertion() {
 
 #[test]
 fn test_vec_index() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(
         r"
         ?[k, v] <- [['a', [1,2]],
@@ -810,7 +811,7 @@ fn test_vec_index() {
 
 #[test]
 fn test_fts_indexing() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
         .unwrap();
     db.run_default(
@@ -857,7 +858,7 @@ fn test_fts_indexing() {
 fn test_lsh_indexing2() {
     for i in 1..10 {
         let f = i as f64 / 10.;
-        let db = DbInstance::new("mem", "", "").unwrap();
+        let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
             .unwrap();
         db.run_script(
@@ -879,7 +880,7 @@ fn test_lsh_indexing2() {
 fn test_lsh_indexing3() {
     for i in 1..10 {
         let f = i as f64 / 10.;
-        let db = DbInstance::new("mem", "", "").unwrap();
+        let db = DbInstance::default();
         db.run_default(r":create text {id: String,  => text: String, url: String? default null, dt: Float default now(), dup_for: String? default null }")
             .unwrap();
         db.run_script(
@@ -950,7 +951,7 @@ fn filtering() {
 fn test_lsh_indexing4() {
     for i in 1..10 {
         let f = i as f64 / 10.;
-        let db = DbInstance::new("mem", "", "").unwrap();
+        let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
             .unwrap();
         db.run_script(
@@ -971,7 +972,7 @@ fn test_lsh_indexing4() {
 
 #[test]
 fn test_lsh_indexing() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
         .unwrap();
     db.run_default(
@@ -1038,7 +1039,7 @@ fn test_lsh_indexing() {
 
 #[test]
 fn test_insertions() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {k => v: <F32; 1536> default rand_vec(1536)}")
         .unwrap();
     db.run_default(r"?[k] <- [[1]] :put a {k}").unwrap();
@@ -1088,28 +1089,11 @@ fn tokenizers() {
         println!("Token {:?}", token.text);
     }
 
-    println!("XXXXXXXXXXXXX");
-
-    let tokenizer = tokenizers
-        .get(
-            "cangjie",
-            &TokenizerConfig {
-                name: "Cangjie".into(),
-                args: vec![],
-            },
-            &[],
-        )
-        .unwrap();
-
-    let mut token_stream = tokenizer.token_stream("这个产品Finchat.io是一个相对比较有特色的文档问答类网站，它集成了750多家公司的经融数据。感觉是把财报等数据借助Embedding都向量化了，然后接入ChatGPT进行对话。");
-    while let Some(token) = token_stream.next() {
-        println!("Token {:?}", token.text);
-    }
 }
 
 #[test]
 fn multi_index_vec() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(
         r#"
         :create product {
@@ -1150,7 +1134,7 @@ fn multi_index_vec() {
 
 #[test]
 fn ensure_not() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(
         r"
     %ignore_error { :create id_alloc{id: Int => next_id: Int, last_id: Int}}
@@ -1165,7 +1149,7 @@ fn ensure_not() {
 
 #[test]
 fn insertion() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {x => y}").unwrap();
     assert!(db
         .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
@@ -1177,7 +1161,7 @@ fn insertion() {
 
 #[test]
 fn deletion() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {x => y}").unwrap();
     assert!(db.run_default(r"?[x] <- [[1]] :delete a {x}").is_err());
     assert!(db
@@ -1188,7 +1172,7 @@ fn deletion() {
 
 #[test]
 fn into_payload() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r":create a {x => y}").unwrap();
     db.run_default(r"?[x, y] <- [[1, 2], [3, 4]] :insert a {x => y}")
         .unwrap();
@@ -1217,7 +1201,7 @@ fn into_payload() {
 
 #[test]
 fn returning() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(":create a {x => y}").unwrap();
     let res = db
         .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y} ")
@@ -1271,7 +1255,7 @@ fn returning() {
 
 #[test]
 fn parser_corner_case() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     db.run_default(r#"?[x] := x = 1 or x = 2"#).unwrap();
     db.run_default(r#"?[C] := C = 1  orx[C] := C = 1"#).unwrap();
     db.run_default(r#"?[C] := C = true, C  inx[C] := C = 1"#)
@@ -1283,7 +1267,7 @@ fn parser_corner_case() {
 
 #[test]
 fn as_store_in_imperative_script() {
-    let db = DbInstance::new("mem", "", "").unwrap();
+    let db = DbInstance::default();
     let res = db
         .run_default(
             r#"

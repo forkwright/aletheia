@@ -23,7 +23,7 @@ use crate::runtime::callback::CallbackCollector;
 use crate::runtime::db::{seconds_since_the_epoch, RunningQueryCleanup, RunningQueryHandle};
 use crate::runtime::relation::InputRelationHandle;
 use crate::runtime::transact::SessionTx;
-use crate::{DataValue, Db, NamedRows, Poison, Storage, ValidityTs};
+use crate::{DataValue, DbCore as Db, NamedRows, Poison, Storage, ValidityTs};
 
 enum ControlCode {
     Termination(NamedRows),

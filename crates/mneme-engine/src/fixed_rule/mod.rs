@@ -820,14 +820,6 @@ lazy_static! {
                 Arc::<Box<dyn FixedRule>>::new(Box::new(ReorderSort)),
             ),
             (
-                "JsonReader".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(JsonReader)),
-            ),
-            (
-                "CsvReader".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(CsvReader)),
-            ),
-            (
                 "Constant".to_string(),
                 Arc::<Box<dyn FixedRule>>::new(Box::new(Constant)),
             ),

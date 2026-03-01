@@ -27,70 +27,12 @@ pub(crate) struct StopWordFilter {
 }
 
 impl StopWordFilter {
-    /// Creates a new [`StopWordFilter`] for the given [`Language`]
-    ///
-    /// Returns `Some` if a list of stop words is available and `None` otherwise.
+    /// Creates a new [`StopWordFilter`] for the given language code.
+    /// Only English ("en") is supported.
     pub(crate) fn for_lang(language: &str) -> Result<Self> {
         let words = match language {
-            "af" => stopwords::AF,
-            "ar" => stopwords::AR,
-            "hy" => stopwords::HY,
-            "eu" => stopwords::EU,
-            "bn" => stopwords::BN,
-            "br" => stopwords::BR,
-            "bg" => stopwords::BG,
-            "ca" => stopwords::CA,
-            "zh" => stopwords::ZH,
-            "hr" => stopwords::HR,
-            "cs" => stopwords::CS,
-            "da" => stopwords::DA,
-            "nl" => stopwords::NL,
             "en" => stopwords::EN,
-            "eo" => stopwords::EO,
-            "et" => stopwords::ET,
-            "fi" => stopwords::FI,
-            "fr" => stopwords::FR,
-            "gl" => stopwords::GL,
-            "de" => stopwords::DE,
-            "el" => stopwords::EL,
-            "gu" => stopwords::GU,
-            "ha" => stopwords::HA,
-            "he" => stopwords::HE,
-            "hi" => stopwords::HI,
-            "hu" => stopwords::HU,
-            "id" => stopwords::ID,
-            "ga" => stopwords::GA,
-            "it" => stopwords::IT,
-            "ja" => stopwords::JA,
-            "ko" => stopwords::KO,
-            "ku" => stopwords::KU,
-            "la" => stopwords::LA,
-            "lt" => stopwords::LT,
-            "lv" => stopwords::LV,
-            "ms" => stopwords::MS,
-            "mr" => stopwords::MR,
-            "no" => stopwords::NO,
-            "fa" => stopwords::FA,
-            "pl" => stopwords::PL,
-            "pt" => stopwords::PT,
-            "ro" => stopwords::RO,
-            "ru" => stopwords::RU,
-            "sk" => stopwords::SK,
-            "sl" => stopwords::SL,
-            "so" => stopwords::SO,
-            "st" => stopwords::ST,
-            "es" => stopwords::ES,
-            "sw" => stopwords::SW,
-            "sv" => stopwords::SV,
-            "th" => stopwords::TH,
-            "tl" => stopwords::TL,
-            "tr" => stopwords::TR,
-            "uk" => stopwords::UK,
-            "ur" => stopwords::UR,
-            "vi" => stopwords::VI,
-            "yo" => stopwords::YO,
-            "zu" => stopwords::ZU,
-            _ => bail!("Unsupported language: {}", language),
+            _ => bail!("Unsupported language: {} (only 'en' supported)", language),
         };
 
         Ok(Self::new(words.iter().map(|&word| word.to_owned())))

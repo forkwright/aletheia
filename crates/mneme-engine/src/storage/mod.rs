@@ -11,21 +11,12 @@ use miette::Result;
 
 use crate::data::tuple::Tuple;
 use crate::data::value::ValidityTs;
-use crate::decode_tuple_from_kv;
+use crate::runtime::relation::decode_tuple_from_kv;
 
 pub(crate) mod mem;
-#[cfg(feature = "storage-rocksdb")]
-pub(crate) mod rocks;
-#[cfg(feature = "storage-sled")]
-pub(crate) mod sled;
-#[cfg(feature = "storage-sqlite")]
-pub(crate) mod sqlite;
 pub(crate) mod temp;
-#[cfg(feature = "storage-tikv")]
-pub(crate) mod tikv;
 #[cfg(feature = "storage-new-rocksdb")]
-pub mod newrocks;
-// pub(crate) mod re;
+pub(crate) mod newrocks;
 
 /// Swappable storage trait for Cozo's storage engine
 pub trait Storage<'s>: Send + Sync + Clone {

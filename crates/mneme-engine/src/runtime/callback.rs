@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter};
 use crossbeam::channel::Sender;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::{Db, NamedRows, Storage};
+use crate::{DbCore as Db, NamedRows, Storage};
 
 /// Represents the kind of operation that triggered the callback
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

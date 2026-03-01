@@ -12,7 +12,7 @@ use crate::data::value::ValidityTs;
 use crate::runtime::db::{BadDbInit, DbManifest};
 use crate::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::storage::{Storage, StoreTx};
-use crate::Db;
+use crate::DbCore as Db;
 
 const KEY_PREFIX_LEN: usize = 9;
 const CURRENT_STORAGE_VERSION: u64 = 3;

@@ -33,7 +33,7 @@ use crate::runtime::relation::{
 };
 use crate::runtime::transact::SessionTx;
 use crate::storage::Storage;
-use crate::{Db, NamedRows, SourceSpan, StoreTx};
+use crate::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("attempting to write into relation {0} of arity {1} with data of arity {2}")]

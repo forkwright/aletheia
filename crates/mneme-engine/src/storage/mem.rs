@@ -28,8 +28,8 @@ use crate::utils::swap_option_result;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
-pub fn new_cozo_mem() -> Result<crate::Db<MemStorage>> {
-    let ret = crate::Db::new(MemStorage::default())?;
+pub fn new_cozo_mem() -> Result<crate::DbCore<MemStorage>> {
+    let ret = crate::DbCore::new(MemStorage::default())?;
 
     ret.initialize()?;
     Ok(ret)
