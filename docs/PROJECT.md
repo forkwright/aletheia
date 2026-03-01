@@ -2,7 +2,7 @@
 
 > The single source of truth for Aletheia's evolution from TypeScript prototype to Rust production system.
 > Every spec, issue, idea, and design decision consolidated here.
-> Last updated: 2026-02-28 — QA audit integrated (docs 01–03), CozoDB decision, snafu error layering, 20 grey areas resolved
+> Last updated: 2026-03-01 — M0a/M0b/M1 complete, CozoDB deferred (3 upstream bugs), 118 tests across 6 crates
 
 ---
 
@@ -759,15 +759,39 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
+Last updated: 2026-03-01
+
 | Milestone | Status | Notes |
 |-----------|--------|-------|
-| M0 | **Not started** | First priority |
-| M1 | Not started | Blocked on M0 |
-| M2 | Not started | Blocked on M1 |
+| M0a | ✅ **Complete** | Oikos TS migration — PRs #355, #356, #359 merged. Migration script ready (`scripts/migrate-to-oikos.sh`), pending live server execution. |
+| M0b | ✅ **Complete** | koina + taxis Rust crates — PR #358 merged. Newtypes, snafu errors, tracing, oikos cascade, path resolution. 30 tests. |
+| M1.1 | ✅ **Complete** | mneme SQLite sessions — rusqlite, WAL mode, wire-compatible with TS sessions.db. 19 tests. |
+| M1.2a | ✅ **Complete** | CozoDB validation gate — all 5 bench tests pass (relations, HNSW, graph, concurrent R/W, bi-temporal). |
+| M1.2 | ⚠️ **Types only** | Knowledge types + Datalog schema templates written. CozoDB integration **deferred** — 3 upstream bugs block compilation (rayon, graph_builder, nalgebra). Swap is clean when CozoDB 0.8 ships or we fork/patch. |
+| M1.3 | ✅ **Complete** | EmbeddingProvider trait + MockEmbeddingProvider. fastembed-rs integration pending. 8 tests. |
+| M1.4 | ✅ **Complete** | 6-factor recall scoring engine — vector similarity, recency, relevance, epistemic tier, graph proximity, access frequency. 22 tests. |
+| M1.5 | ✅ **Complete** | hermeneus LLM provider trait — CompletionRequest/Response, ToolUse/ToolResult, ThinkingConfig, ProviderRegistry. 13 tests. |
+| M2.1 | ✅ **Complete** | nous pipeline skeleton — SessionState, SessionManager, PipelineContext, LoopDetector, GuardResult, TurnResult. 18 tests. |
+| M2.2+ | **Not started** | Context bootstrap, history loading, execute stage, tool iteration |
 | M3 | Not started | Blocked on M2 |
 | M4 | Not started | Blocked on M3 |
 | M5 | Not started | Blocked on M4 |
 | M6 | Backlog | Independent items, work anytime after M5 |
+
+**Totals:** 6 Rust crates, 118 workspace tests, ~7,500 lines of Rust, clean clippy.
+
+### CozoDB Decision (2026-03-01)
+
+**Decision:** Keep rusqlite for sessions. Defer CozoDB unification.
+
+**Why:** CozoDB 0.7.6 has three upstream bugs blocking clean compilation:
+1. Unconditional `rayon::spawn` in `lib.rs` (not behind feature flag)
+2. `graph_builder` crate broken with rayon 1.10 (`IntoIter`/`Iter` mismatch)
+3. `nalgebra` type resolution failures (`OMatrix`, `Dynamic`, `U1`)
+
+**Path forward:** Fork CozoDB, patch the three bugs, use as vendored dep. Architecture is ready — knowledge types, Datalog templates, and recall engine are all storage-agnostic. The swap is mechanical when the fork compiles clean.
+
+**Risk:** Low. rusqlite is battle-tested for sessions. The knowledge store (facts, entities, vectors) is new functionality — no migration needed when CozoDB is ready.
 
 ---
 
