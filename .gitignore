@@ -17,6 +17,9 @@ shared/insights/
 shared/task-contracts/
 shared/USER.md
 data/
+# Rust crate source directories named 'data' are source code, not runtime data
+!crates/*/src/data/
+!crates/*/src/data/**
 
 # === Secrets ===
 *.env
