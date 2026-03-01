@@ -1,0 +1,47 @@
+[package]
+name = "aletheia-pylon"
+version = "0.1.0"
+description = "Axum HTTP gateway for Aletheia"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# HTTP framework
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+snafu = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# Types
+ulid = { workspace = true }
+
+# Internal crates
+aletheia-koina = { path = "../koina" }
+aletheia-taxis = { path = "../taxis" }
+aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-organon = { path = "../organon" }
+aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
+aletheia-nous = { path = "../nous" }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "test-util"] }
+tracing-subscriber = { workspace = true }

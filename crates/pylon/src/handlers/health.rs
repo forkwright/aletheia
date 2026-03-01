@@ -1,0 +1,72 @@
+//! Health check endpoint.
+
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::Json;
+use serde::Serialize;
+
+use crate::state::AppState;
+
+/// GET /api/health — liveness + readiness check.
+pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let uptime = state.start_time.elapsed().as_secs();
+
+    let mut checks = Vec::new();
+
+    // Check session store connectivity
+    let store_ok = state.session_store.lock().is_ok_and(|store| {
+        store.list_sessions(None).is_ok()
+    });
+    checks.push(HealthCheck {
+        name: "session_store",
+        status: if store_ok { "pass" } else { "fail" },
+        message: if store_ok {
+            None
+        } else {
+            Some("session store unavailable".to_owned())
+        },
+    });
+
+    // Check provider registry has at least one provider
+    let has_providers = !state.provider_registry.providers().is_empty();
+    checks.push(HealthCheck {
+        name: "providers",
+        status: if has_providers { "pass" } else { "warn" },
+        message: if has_providers {
+            None
+        } else {
+            Some("no LLM providers registered".to_owned())
+        },
+    });
+
+    let status = if checks.iter().any(|c| c.status == "fail") {
+        "unhealthy"
+    } else if checks.iter().any(|c| c.status == "warn") {
+        "degraded"
+    } else {
+        "healthy"
+    };
+
+    Json(HealthResponse {
+        status,
+        version: env!("CARGO_PKG_VERSION"),
+        uptime_seconds: uptime,
+        checks,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    pub status: &'static str,
+    pub version: &'static str,
+    pub uptime_seconds: u64,
+    pub checks: Vec<HealthCheck>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthCheck {
+    pub name: &'static str,
+    pub status: &'static str,
+    pub message: Option<String>,
+}
