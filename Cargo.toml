@@ -6,6 +6,9 @@ members = [
     "crates/koina",
     "crates/mneme",
     "crates/nous",
+    "crates/organon",
+    "crates/pylon",
+    "crates/symbolon",
     "crates/taxis",
 ]
 exclude = [
@@ -59,6 +62,15 @@ snafu = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# HTTP
+axum = "0.8"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace"] }
+
+# Secrets
+secrecy = { version = "0.10", features = ["serde"] }
+
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -68,10 +80,16 @@ figment = { version = "0.10", features = ["yaml", "json", "env"] }
 
 # Types
 compact_str = { version = "0.8", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio-stream = "0.1"
 
 # Testing
 static_assertions = "1.1"
+wiremock = "0.6"
 
 [profile.dev]
 opt-level = 1

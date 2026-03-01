@@ -9,11 +9,13 @@
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
 use serde::{Deserialize, Serialize};
-// tracing will be used when pipeline stages are implemented
-#[expect(unused_imports, reason = "will be used when pipeline stages are implemented")]
 use tracing::instrument;
 
-use crate::config::PipelineConfig;
+use aletheia_taxis::oikos::Oikos;
+
+use crate::bootstrap::BootstrapAssembler;
+use crate::budget::TokenBudget;
+use crate::config::{NousConfig, PipelineConfig};
 use crate::session::SessionState;
 
 /// Input to the pipeline — an inbound message.
@@ -205,6 +207,43 @@ impl TurnUsage {
     }
 }
 
+/// Assemble bootstrap context and populate the pipeline context.
+///
+/// This is the "context" stage of the pipeline. It:
+/// 1. Creates a token budget from the nous config
+/// 2. Runs the bootstrap assembler against oikos workspace files
+/// 3. Sets [`PipelineContext::system_prompt`] and [`PipelineContext::remaining_tokens`]
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::ContextAssembly`] if required workspace files
+/// (e.g. SOUL.md) are missing.
+#[instrument(skip_all, fields(nous_id = %nous_config.id))]
+pub fn assemble_context(
+    oikos: &Oikos,
+    nous_config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+) -> crate::error::Result<()> {
+    let mut budget = TokenBudget::new(
+        u64::from(nous_config.context_window),
+        pipeline_config.history_budget_ratio,
+        u64::from(nous_config.max_output_tokens),
+        u64::from(nous_config.bootstrap_max_tokens),
+    );
+
+    let assembler = BootstrapAssembler::new(oikos);
+    let result = assembler.assemble(&nous_config.id, &mut budget)?;
+
+    ctx.system_prompt = Some(result.system_prompt);
+    #[expect(clippy::cast_possible_wrap, reason = "budget fits in i64 for practical context windows")]
+    {
+        ctx.remaining_tokens = budget.remaining() as i64;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +345,140 @@ mod tests {
         assert!(ctx.messages.is_empty());
         assert!(!ctx.needs_distillation);
         assert_eq!(ctx.guard_result, GuardResult::Allow);
+    }
+
+    // --- Guard Result variants ---
+
+    #[test]
+    fn guard_result_rate_limited() {
+        let g = GuardResult::RateLimited { retry_after_ms: 5000 };
+        assert_ne!(g, GuardResult::Allow);
+        match g {
+            GuardResult::RateLimited { retry_after_ms } => assert_eq!(retry_after_ms, 5000),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn guard_result_loop_detected() {
+        let g = GuardResult::LoopDetected { pattern: "exec:abc".to_owned() };
+        match g {
+            GuardResult::LoopDetected { pattern } => assert_eq!(pattern, "exec:abc"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn guard_result_rejected() {
+        let g = GuardResult::Rejected { reason: "unsafe content".to_owned() };
+        match g {
+            GuardResult::Rejected { reason } => assert!(reason.contains("unsafe")),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    // --- Loop Detector edge cases ---
+
+    #[test]
+    fn loop_detector_threshold_1() {
+        let mut det = LoopDetector::new(1);
+        let result = det.record("exec", "hash");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn loop_detector_call_count_tracks() {
+        let mut det = LoopDetector::new(10);
+        det.record("a", "1");
+        det.record("b", "2");
+        det.record("c", "3");
+        assert_eq!(det.call_count(), 3);
+    }
+
+    #[test]
+    fn loop_detector_many_unique_then_repeat() {
+        let mut det = LoopDetector::new(3);
+        for i in 0..20 {
+            det.record("tool", &format!("hash{i}"));
+        }
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_some());
+    }
+
+    // --- Interaction Signal ---
+
+    #[test]
+    fn all_interaction_signals_serde_roundtrip() {
+        let signals = [
+            InteractionSignal::Conversation,
+            InteractionSignal::ToolExecution,
+            InteractionSignal::CodeGeneration,
+            InteractionSignal::Research,
+            InteractionSignal::Planning,
+            InteractionSignal::ErrorRecovery,
+        ];
+        for signal in signals {
+            let json = serde_json::to_string(&signal).unwrap();
+            let back: InteractionSignal = serde_json::from_str(&json).unwrap();
+            assert_eq!(signal, back);
+        }
+    }
+
+    // --- Turn Usage ---
+
+    #[test]
+    fn turn_usage_default_is_zero() {
+        let usage = TurnUsage::default();
+        assert_eq!(usage.total_tokens(), 0);
+        assert_eq!(usage.llm_calls, 0);
+    }
+
+    #[test]
+    fn turn_usage_serde_roundtrip() {
+        let usage = TurnUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 80,
+            cache_write_tokens: 20,
+            llm_calls: 2,
+        };
+        let json = serde_json::to_string(&usage).unwrap();
+        let back: TurnUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(usage.total_tokens(), back.total_tokens());
+    }
+
+    // --- Context assembly ---
+
+    #[test]
+    fn assemble_context_populates_pipeline() {
+        use crate::config::{NousConfig, PipelineConfig};
+        use aletheia_taxis::oikos::Oikos;
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("nous/test-agent")).unwrap();
+        fs::create_dir_all(root.join("shared")).unwrap();
+        fs::create_dir_all(root.join("theke")).unwrap();
+        fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").unwrap();
+        fs::write(root.join("theke/USER.md"), "Test user.").unwrap();
+
+        let oikos = Oikos::from_root(root);
+        let nous_config = NousConfig {
+            id: "test-agent".to_owned(),
+            ..NousConfig::default()
+        };
+        let pipeline_config = PipelineConfig::default();
+        let mut ctx = PipelineContext::default();
+
+        assemble_context(&oikos, &nous_config, &pipeline_config, &mut ctx).unwrap();
+
+        assert!(ctx.system_prompt.is_some());
+        let prompt = ctx.system_prompt.unwrap();
+        assert!(prompt.contains("I am a test agent."));
+        assert!(prompt.contains("Test user."));
+        assert!(ctx.remaining_tokens > 0);
     }
 }

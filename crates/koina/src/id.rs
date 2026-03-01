@@ -348,4 +348,95 @@ mod tests {
         let back: ToolName = serde_json::from_str(&json).unwrap();
         assert_eq!(name, back);
     }
+
+    // --- Boundary values ---
+
+    #[test]
+    fn nous_id_max_length_accepted() {
+        let max = "a".repeat(64);
+        assert!(NousId::new(max).is_ok());
+    }
+
+    #[test]
+    fn nous_id_leading_hyphen() {
+        assert!(NousId::new("-syn").is_ok());
+    }
+
+    #[test]
+    fn nous_id_digits_only() {
+        assert!(NousId::new("123").is_ok());
+    }
+
+    #[test]
+    fn nous_id_special_chars_rejected() {
+        assert!(matches!(NousId::new("syn_1"), Err(IdError::InvalidFormat { .. })));
+        assert!(matches!(NousId::new("syn.1"), Err(IdError::InvalidFormat { .. })));
+        assert!(matches!(NousId::new("syn 1"), Err(IdError::InvalidFormat { .. })));
+    }
+
+    #[test]
+    fn tool_name_max_length_accepted() {
+        let max = "a".repeat(128);
+        assert!(ToolName::new(max).is_ok());
+    }
+
+    #[test]
+    fn tool_name_empty_rejected() {
+        assert!(matches!(ToolName::new(""), Err(IdError::Empty { .. })));
+    }
+
+    #[test]
+    fn tool_name_too_long_rejected() {
+        let long = "a".repeat(129);
+        assert!(matches!(ToolName::new(long), Err(IdError::TooLong { .. })));
+    }
+
+    #[test]
+    fn tool_name_only_hyphens_underscores() {
+        assert!(ToolName::new("--__--").is_ok());
+    }
+
+    #[test]
+    fn session_id_parse_invalid() {
+        assert!(SessionId::parse("").is_err());
+        assert!(SessionId::parse("not-a-ulid").is_err());
+        assert!(SessionId::parse("too-short").is_err());
+    }
+
+    #[test]
+    fn session_id_display_is_ulid_format() {
+        let id = SessionId::new();
+        let s = id.to_string();
+        assert_eq!(s.len(), 26);
+        assert!(s.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn turn_id_zero() {
+        let t = TurnId::new(0);
+        assert_eq!(t.as_u64(), 0);
+        assert_eq!(t.next(), TurnId::new(1));
+    }
+
+    #[test]
+    fn turn_id_display() {
+        assert_eq!(TurnId::new(42).to_string(), "42");
+        assert_eq!(TurnId::new(0).to_string(), "0");
+    }
+
+    #[test]
+    fn id_error_display_formats() {
+        let empty = IdError::Empty { kind: "NousId" };
+        assert_eq!(empty.to_string(), "NousId cannot be empty");
+
+        let long = IdError::TooLong { kind: "NousId", max: 64, actual: 100 };
+        assert!(long.to_string().contains("100"));
+
+        let fmt = IdError::InvalidFormat {
+            kind: "NousId",
+            value: "Bad".to_owned(),
+            reason: "uppercase".to_owned(),
+        };
+        assert!(fmt.to_string().contains("Bad"));
+    }
 }
