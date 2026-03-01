@@ -60,6 +60,9 @@ export const paths = {
   },
 
   configFile(): string {
+    // Prefer YAML, fall back to JSON (backward compat)
+    const yamlPath = join(this.configDir(), "aletheia.yaml");
+    if (existsSync(yamlPath)) return yamlPath;
     return join(this.configDir(), "aletheia.json");
   },
 

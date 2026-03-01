@@ -54,7 +54,7 @@ import { createPatchTools } from "./organon/built-in/propose-patch.js";
 import { createPipelineConfigTool } from "./organon/built-in/pipeline-config.js";
 import { createWorkspaceIndexTool } from "./organon/built-in/workspace-index.js";
 import { rebuildWorkspaceIndex, setSharedIndex } from "./organon/workspace-indexer.js";
-import { loadCustomCommands, registerCustomCommands } from "./organon/custom-commands.js";
+import { loadCustomCommandsCascade, registerCustomCommands } from "./organon/custom-commands.js";
 import { NousManager } from "./nous/manager.js";
 import { DianoiaOrchestrator } from "./dianoia/orchestrator.js";
 import { FileSyncDaemon } from "./dianoia/file-sync.js";
@@ -670,10 +670,13 @@ export async function startRuntime(configPath?: string): Promise<void> {
 
   // --- Command Registry ---
   const commandRegistry = createDefaultRegistry();
-  const customCmds = loadCustomCommands(join(paths.shared, "commands"));
+  // Load custom commands via oikos cascade (nous/ → shared/ → theke/)
+  // Use first configured agent as cascade context; commands are shared anyway
+  const primaryNousId = config.agents.list[0]?.id ?? "default";
+  const customCmds = loadCustomCommandsCascade(primaryNousId);
   if (customCmds.length > 0) {
     const registered = registerCustomCommands(customCmds, commandRegistry, runtime.manager);
-    log.info(`Loaded ${registered} custom commands from shared/commands/`);
+    log.info(`Loaded ${registered} custom commands via cascade`);
   }
   setCommandsRef(commandRegistry);
 

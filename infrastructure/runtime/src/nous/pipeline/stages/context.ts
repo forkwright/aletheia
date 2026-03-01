@@ -43,6 +43,7 @@ export async function buildContext(
   // Bootstrap
   const bootstrap = assembleBootstrap(workspace, {
     maxTokens: services.config.agents.defaults.bootstrapMaxTokens,
+    nousId,
     ...(services.skillsSection ? { skillsSection: services.skillsSection } : {}),
     ...(degradedServices.length > 0 ? { degradedServices } : {}),
     db: services.store.getDb(),
