@@ -37,7 +37,7 @@
 //! identifier, one can use the builder like so:
 //!
 //! ```
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let graph: DirectedCsrGraph<usize> = GraphBuilder::new()
 //!     .edges(vec![(0, 1), (0, 2), (1, 2), (1, 3), (2, 3)])
@@ -57,7 +57,7 @@
 //! change the expected types:
 //!
 //! ```
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let graph: UndirectedCsrGraph<u32> = GraphBuilder::new()
 //!     .csr_layout(CsrLayout::Sorted)
@@ -75,7 +75,7 @@
 //! Edges can have attached values to represent weighted graphs:
 //!
 //! ```
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let graph: UndirectedCsrGraph<u32, (), f32> = GraphBuilder::new()
 //!     .csr_layout(CsrLayout::Sorted)
@@ -100,7 +100,7 @@
 //! ```
 //! use std::path::PathBuf;
 //!
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let path = [env!("CARGO_MANIFEST_DIR"), "resources", "example.el"]
 //!     .iter()
@@ -130,7 +130,7 @@
 //! ```
 //! use std::path::PathBuf;
 //!
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let path = [env!("CARGO_MANIFEST_DIR"), "resources", "example.wel"]
 //!     .iter()
@@ -187,7 +187,7 @@
 //! One can use [`DirectedCsrGraph`] or [`UndirectedCsrGraph`] to build a CSR-based graph:
 //!
 //! ```
-//! use graph_builder::prelude::*;
+//! use aletheia_graph_builder::prelude::*;
 //!
 //! let graph: DirectedCsrGraph<usize> = GraphBuilder::new()
 //!     .edges(vec![(0, 1), (0, 2), (1, 2), (1, 3), (2, 3)])
@@ -203,48 +203,6 @@
 //! assert_eq!(graph.in_neighbors(1).as_slice(), &[0]);
 //! ```
 //!
-//! ## Adjacency List (AL)
-//!
-//! In the Adjacency List implementation, we essentially store the graph as `Vec<Vec<ID>>`. The outer
-//! `Vec` has a length of `node_count` and at each index, we store the neighbors for that particular
-//! node in its own, heap-allocated `Vec`.
-//!
-//! The downside of that representation is that - compared to CSR - it is expected to be slower, both
-//! in building it and also in reading from it, as cache misses are becoming more likely due to the
-//! isolated heap allocations for individual neighbor lists.
-//!
-//! However, in contrast to CSR, an adjacency list is mutable, i.e., it is possible to add edges to the
-//! graph even after it has been built. This makes the data structure interesting for more flexible graph
-//! construction frameworks or for algorithms that need to add new edges as part of the computation.
-//! Currently, adding edges is constrained by source and target node already existing in the graph.
-//!
-//! Internally, the individual neighbor lists for each node are protected by a `Mutex` in order to support
-//! parallel read and write operations on the graph topology.
-//!
-//! One can use [`DirectedALGraph`] or [`UndirectedALGraph`] to build a Adjacency-List-based graph:
-//!
-//! ```
-//! use graph_builder::prelude::*;
-//!
-//! let graph: DirectedALGraph<usize> = GraphBuilder::new()
-//!     .edges(vec![(0, 1), (0, 2), (1, 2), (1, 3), (2, 3)])
-//!     .build();
-//!
-//! assert_eq!(graph.node_count(), 4);
-//! assert_eq!(graph.edge_count(), 5);
-//!
-//! assert_eq!(graph.out_degree(1), 2);
-//! assert_eq!(graph.in_degree(1), 1);
-//!
-//! assert_eq!(graph.out_neighbors(1).as_slice(), &[2, 3]);
-//! assert_eq!(graph.in_neighbors(1).as_slice(), &[0]);
-//!
-//! // Let's mutate the graph by adding another edge
-//! graph.add_edge(1, 0);
-//! assert_eq!(graph.edge_count(), 6);
-//! assert_eq!(graph.out_neighbors(1).as_slice(), &[2, 3, 0]);
-//! ```
-
 pub mod builder;
 pub mod graph;
 pub mod graph_ops;

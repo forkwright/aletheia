@@ -176,6 +176,7 @@ fn rm_does_not_need_all_keys() {
     assert!(db.run_default("?[uid] <- [[1]] :rm status {uid}").is_ok());
 }
 
+#[cfg(feature = "graph-algo")]
 #[test]
 fn strict_checks_for_fixed_rules_args() {
     let db = DbInstance::default();

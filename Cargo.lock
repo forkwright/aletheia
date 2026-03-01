@@ -61,6 +61,7 @@ dependencies = [
  "page_size",
  "parking_lot",
  "rayon",
+ "tempfile",
  "thiserror 1.0.69",
 ]
 

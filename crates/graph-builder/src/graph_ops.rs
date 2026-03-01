@@ -63,7 +63,7 @@ pub trait ForEachNodeParallelOp<NI: Idx> {
     /// # Example
     ///
     /// ```
-    /// # use graph_builder::prelude::*;
+    /// # use aletheia_graph_builder::prelude::*;
     /// # use std::ops::Range;
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (0, 2), (1, 2)])
@@ -104,7 +104,7 @@ pub trait ForEachNodeParallelByPartitionOp<NI: Idx> {
     /// # Example
     ///
     /// ```
-    /// # use graph_builder::prelude::*;
+    /// # use aletheia_graph_builder::prelude::*;
     /// # use std::ops::Range;
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (0, 2), (1, 2)])
@@ -145,7 +145,7 @@ pub trait RelabelByDegreeOp<NI, EV> {
     /// # Example
     ///
     /// ```
-    /// use graph_builder::prelude::*;
+    /// use aletheia_graph_builder::prelude::*;
     ///
     /// let mut graph: UndirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (1, 2), (1, 3), (3, 0)])
@@ -184,7 +184,7 @@ pub trait ToUndirectedOp {
     /// # Example
     ///
     /// ```
-    /// use graph_builder::prelude::*;
+    /// use aletheia_graph_builder::prelude::*;
     ///
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (2, 0)])
@@ -208,15 +208,17 @@ pub trait ToUndirectedOp {
     /// # Example
     ///
     /// ```
-    /// use graph_builder::prelude::*;
+    /// use aletheia_graph_builder::prelude::*;
     ///
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 2), (1, 0), (2, 0)])
     ///     .build();
     ///
-    /// // No layout specified, a default layput is chosen
+    /// // No layout specified, a default layout is chosen (order is unspecified)
     /// let un_graph = graph.to_undirected(None);
-    /// assert_eq!(un_graph.neighbors(0).as_slice(), &[2, 1, 2]);
+    /// let mut neighbors: Vec<u32> = un_graph.neighbors(0).as_slice().to_vec();
+    /// neighbors.sort();
+    /// assert_eq!(neighbors, &[1, 2, 2]);
     ///
     /// // The `Sorted` layout
     /// let un_graph = graph.to_undirected(CsrLayout::Sorted);
@@ -342,7 +344,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use graph_builder::prelude::*;
+    /// # use aletheia_graph_builder::prelude::*;
     /// # use std::ops::Range;
     /// let graph: UndirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (0, 2), (0, 3), (0, 3)])
@@ -379,7 +381,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use graph_builder::prelude::*;
+    /// # use aletheia_graph_builder::prelude::*;
     /// # use std::ops::Range;
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(0, 1), (0, 2), (2, 1), (2, 3)])
@@ -416,7 +418,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use graph_builder::prelude::*;
+    /// # use aletheia_graph_builder::prelude::*;
     /// # use std::ops::Range;
     /// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
     ///     .edges(vec![(1, 0), (1, 2), (2, 0), (3, 2)])
