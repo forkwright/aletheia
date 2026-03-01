@@ -1,16 +1,24 @@
 //! Signal channel provider — wraps signal-cli JSON-RPC.
 
 pub mod client;
+pub mod envelope;
 pub mod error;
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
+
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tracing::{Instrument, instrument};
 
 use crate::types::{
-    ChannelCapabilities, ChannelProvider, ProbeResult,
+    ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
 };
+
+const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +82,39 @@ impl SignalProvider {
             self.default_account = Some(account_id.clone());
         }
         self.clients.insert(account_id, client);
+    }
+
+    /// Start listening for inbound messages on all registered accounts.
+    ///
+    /// Spawns a polling task per account. Messages from all accounts merge
+    /// into the returned receiver. Dropping the receiver stops all tasks
+    /// (the send half detects the closed channel).
+    #[instrument(skip(self))]
+    pub fn listen(
+        &self,
+        poll_interval: Option<Duration>,
+    ) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
+        let interval = poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL);
+        let (tx, rx) = mpsc::channel(64);
+        let mut handles = Vec::with_capacity(self.clients.len());
+
+        for (account_id, signal_client) in &self.clients {
+            let tx = tx.clone();
+            let account_id = account_id.clone();
+            let signal_client = signal_client.clone();
+            let span = tracing::info_span!(
+                "signal_poll",
+                account = %account_id
+            );
+
+            let handle = tokio::spawn(
+                poll_loop(signal_client, account_id, tx, interval)
+                    .instrument(span),
+            );
+            handles.push(handle);
+        }
+
+        (rx, handles)
     }
 
     fn resolve_client(
@@ -209,6 +250,39 @@ impl std::fmt::Debug for SignalProvider {
     }
 }
 
+async fn poll_loop(
+    signal_client: client::SignalClient,
+    account_id: String,
+    tx: mpsc::Sender<InboundMessage>,
+    interval: Duration,
+) {
+    tracing::info!("polling started");
+    loop {
+        match signal_client.receive(Some(&account_id)).await {
+            Ok(envelopes) => {
+                for env in &envelopes {
+                    if let Some(msg) =
+                        envelope::extract_message(env)
+                    {
+                        if tx.send(msg).await.is_err() {
+                            tracing::info!(
+                                "receiver dropped, stopping poll"
+                            );
+                            return;
+                        }
+                    } else {
+                        tracing::debug!("skipping non-message envelope");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "receive poll failed");
+            }
+        }
+        tokio::time::sleep(interval).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +334,111 @@ mod tests {
         let provider = SignalProvider::new();
         let caps = provider.capabilities();
         assert_eq!(caps.max_text_length, 2000);
+    }
+
+    #[test]
+    fn listen_empty_provider_returns_empty() {
+        // Create a runtime manually to avoid #[tokio::test] overhead
+        // when we just need to verify the return shape.
+        let provider = SignalProvider::new();
+        let (rx, handles) = provider.listen(None);
+        assert!(handles.is_empty());
+        drop(rx);
+    }
+
+    #[tokio::test]
+    async fn listen_returns_receiver_and_handles() {
+        let server = wiremock::MockServer::start().await;
+
+        // Return empty result so the poll loop has something to do
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let mut provider = SignalProvider::new();
+        let signal_client =
+            client::SignalClient::new(&server.uri()).expect("client");
+        provider.add_account("+1111111111".to_owned(), signal_client);
+
+        let (rx, handles) = provider.listen(Some(Duration::from_secs(60)));
+        assert_eq!(handles.len(), 1);
+
+        // Drop receiver to stop the poll tasks
+        drop(rx);
+
+        // Wait for task to finish (it should detect closed channel)
+        for h in handles {
+            // Use a timeout so the test doesn't hang
+            let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn poll_loop_stops_on_receiver_drop() {
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [
+                {
+                    "envelope": {
+                        "sourceNumber": "+9999999999",
+                        "timestamp": 100,
+                        "dataMessage": {
+                            "timestamp": 100,
+                            "message": "test msg"
+                        }
+                    }
+                }
+            ],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let signal_client =
+            client::SignalClient::new(&server.uri()).expect("client");
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let handle = tokio::spawn(super::poll_loop(
+            signal_client,
+            "+0000000000".to_owned(),
+            tx,
+            Duration::from_millis(50),
+        ));
+
+        // Receive one message
+        let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("timeout")
+            .expect("message");
+        assert_eq!(msg.text, "test msg");
+
+        // Drop receiver — poll loop should stop
+        drop(rx);
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), handle).await;
+        assert!(
+            result.is_ok(),
+            "poll loop should stop when receiver is dropped"
+        );
     }
 }

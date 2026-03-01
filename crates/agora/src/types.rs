@@ -57,6 +57,27 @@ pub struct ProbeResult {
     pub details: Option<HashMap<String, serde_json::Value>>,
 }
 
+/// A normalized inbound message received from any channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboundMessage {
+    /// Channel this message came from (e.g., "signal").
+    pub channel: String,
+    /// Sender identifier (phone number, user ID, etc.).
+    pub sender: String,
+    /// Display name if known.
+    pub sender_name: Option<String>,
+    /// Group/conversation identifier (None for DM).
+    pub group_id: Option<String>,
+    /// Message text content.
+    pub text: String,
+    /// Unix timestamp in milliseconds.
+    pub timestamp: u64,
+    /// Attachment file paths or identifiers.
+    pub attachments: Vec<String>,
+    /// Raw channel-specific payload for extensions.
+    pub raw: Option<serde_json::Value>,
+}
+
 /// The contract every channel provider must implement.
 ///
 /// Object-safe via `Pin<Box<dyn Future>>` (matches `ToolExecutor` in organon).
@@ -81,4 +102,36 @@ pub trait ChannelProvider: Send + Sync {
     fn probe<'a>(
         &'a self,
     ) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inbound_message_serde_roundtrip() {
+        let msg = InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "+1234567890".to_owned(),
+            sender_name: Some("Alice".to_owned()),
+            group_id: Some("grp123".to_owned()),
+            text: "hello world".to_owned(),
+            timestamp: 1_709_312_345_678,
+            attachments: vec!["photo.jpg".to_owned()],
+            raw: Some(serde_json::json!({"extra": "data"})),
+        };
+
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: InboundMessage =
+            serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(back.channel, msg.channel);
+        assert_eq!(back.sender, msg.sender);
+        assert_eq!(back.sender_name, msg.sender_name);
+        assert_eq!(back.group_id, msg.group_id);
+        assert_eq!(back.text, msg.text);
+        assert_eq!(back.timestamp, msg.timestamp);
+        assert_eq!(back.attachments, msg.attachments);
+        assert_eq!(back.raw, msg.raw);
+    }
 }
