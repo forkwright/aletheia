@@ -12,6 +12,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-hermeneus"
+version = "0.1.0"
+dependencies = [
+ "aletheia-koina",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "tracing",
+]
+
+[[package]]
 name = "aletheia-koina"
 version = "0.1.0"
 dependencies = [
@@ -34,6 +46,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "static_assertions",
  "tempfile",
  "tracing",
 ]
