@@ -1,0 +1,28 @@
+[package]
+name = "aletheia-agora"
+version = "0.1.0"
+description = "Channel registry and provider implementations (Signal, Slack)"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+aletheia-taxis = { path = "../taxis" }
+indexmap = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tokio = { workspace = true }
+wiremock = { workspace = true }

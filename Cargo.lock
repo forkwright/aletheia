@@ -47,6 +47,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-agora"
+version = "0.1.0"
+dependencies = [
+ "aletheia-koina",
+ "aletheia-taxis",
+ "indexmap 2.13.0",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "aletheia-graph-builder"
 version = "0.1.0"
 dependencies = [
