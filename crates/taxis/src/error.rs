@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 /// Errors from configuration and path resolution.
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
 pub enum Error {
     /// The instance root directory does not exist.
