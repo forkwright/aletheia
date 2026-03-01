@@ -6,6 +6,37 @@
 
 ---
 
+## Critical: Execution Framing
+
+Claude Code sessions must **execute tasks**, not analyze prompts. Every prompt MUST
+open with an imperative action directive. The model defaults to exploration and
+commentary unless explicitly told to implement.
+
+**Always start prompts with:**
+```
+You are an engineer. Implement the following task completely — write code, run
+tests, commit, push, and open a PR. Do not summarize the task, audit the prompt,
+or explain what you would do. Do the work.
+```
+
+**Key framing rules (from Anthropic's own Claude Code system prompts):**
+- "Do what has been asked; nothing more, nothing less." (Task tool prompt)
+- "Avoid over-engineering. Only make changes that are directly requested." (System prompt)
+- "Don't add features, refactor code, or make 'improvements' beyond what was asked." (System prompt)
+- "Do not create files unless they're absolutely necessary." (System prompt)
+- "Read and understand existing code before suggesting modifications." (System prompt)
+- "Your output should be concise and polished. Avoid filler words, repetition, or
+  restating what the user has already said. Get to the point quickly." (Tone prompt)
+
+**Avoid these anti-patterns that cause analysis-not-action:**
+- ❌ "Here is the task..." (reads as a briefing doc to analyze)
+- ❌ Long context sections before the action directive (model starts analyzing)
+- ❌ "You should..." / "Consider..." (advisory, not imperative)
+- ✅ "Implement..." / "Create..." / "Build..." / "Write..." (direct action verbs)
+- ✅ Action directive FIRST, then context, then scope details
+
+---
+
 ## Environment
 
 - **Clone location:** `/home/ck/aletheia-ops/aletheia` on Metis
@@ -14,9 +45,15 @@
 
 ## Prompt Preamble
 
-Every Claude Code prompt MUST start with this block (adapt the branch name and task):
+Every Claude Code prompt MUST start with the execution directive, then this setup block (adapt the branch name and task):
 
 ```
+## Directive
+
+You are an engineer. Implement this task completely — write the code, run the
+tests, fix any issues, commit, push, and open a PR. Do not analyze or summarize
+the prompt. Execute it.
+
 ## Setup
 
 You are working in the Aletheia repository at /home/ck/aletheia-ops/aletheia.
@@ -82,6 +119,9 @@ Run these checks and fix any issues:
 4. git diff --stat  (review your own changes — nothing unexpected)
 
 If any check fails, fix it before creating the PR.
+
+After the PR is created, respond with: PR: <url>
+If no PR was created, respond with: PR: none — <reason>
 ```
 
 ## Branch Naming
@@ -98,6 +138,12 @@ Use descriptive prefixes:
 ```markdown
 # Task: <clear one-line description>
 
+## Directive
+
+You are an engineer. Implement this task completely — write the code, run the
+tests, fix any issues, commit, push, and open a PR. Do not analyze or summarize
+the prompt. Execute it.
+
 ## Setup
 <preamble block from above — with specific branch name>
 
@@ -106,17 +152,35 @@ Use descriptive prefixes:
 
 ## Context
 <what exists, what's already been decided, relevant commits/issues>
+<keep this SHORT — just enough to orient. Long context goes AFTER the scope.>
 
-## Scope
-<exactly what to build/fix — be specific about files, functions, behaviors>
+## Task
+<exactly what to build/fix — imperative voice, specific files and behaviors>
+<numbered steps if order matters>
 <what is explicitly OUT of scope>
 
 ## Acceptance Criteria
 <numbered list of concrete, verifiable outcomes>
+<each criterion should be testable — "X file exists", "Y test passes", "Z compiles">
 
 ## Before Creating the PR
 <validation gate block from above>
 ```
+
+**Note the section is called "Task", not "Scope".** "Scope" reads as a briefing
+document to analyze. "Task" reads as work to execute.
+
+## Prompt Quality Checklist
+
+Before dispatching a prompt, verify:
+
+1. **Does it open with an action directive?** First sentence must be imperative.
+2. **Is the task section in imperative voice?** "Create X" not "X should be created."
+3. **Is context minimal?** Only what's needed to orient. Don't front-load analysis.
+4. **Are acceptance criteria testable?** Each one should be pass/fail verifiable.
+5. **Is there a clear deliverable?** PR URL, file path, or explicit output format.
+6. **For docs-only tasks:** Still use imperative framing. "Write a research document
+   at path X that covers Y" not "Produce an analysis of Y."
 
 ## Common Mistakes to Prevent
 
