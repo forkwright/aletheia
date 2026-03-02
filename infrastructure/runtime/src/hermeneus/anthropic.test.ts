@@ -1,6 +1,7 @@
 // Anthropic provider tests
 import { describe, expect, it, vi } from "vitest";
 import { AnthropicProvider } from "./anthropic.js";
+import { ProviderError } from "../koina/errors.js";
 
 // Mock the Anthropic SDK
 vi.mock("@anthropic-ai/sdk", () => {
@@ -217,7 +218,7 @@ describe("AnthropicProvider", () => {
       expect(err.recoverable).toBe(true);
     });
 
-    it("converts mid-stream non-APIError to rethrown error", async () => {
+    it("wraps mid-stream non-APIError as recoverable ProviderError", async () => {
       const provider = new AnthropicProvider({ apiKey: "sk-test" });
       const mockStream = {
         async *[Symbol.asyncIterator]() {
@@ -234,8 +235,11 @@ describe("AnthropicProvider", () => {
       (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
         .client.messages.create = vi.fn().mockResolvedValue(mockStream);
 
-      const err = await collectStreamError(provider);
-      expect(err).toBeInstanceOf(TypeError);
+      const err = await collectStreamError(provider) as ProviderError;
+      expect(err).toBeInstanceOf(ProviderError);
+      expect(err.code).toBe("PROVIDER_INVALID_RESPONSE");
+      expect(err.recoverable).toBe(true);
+      expect(err.message).toContain("Connection reset");
     });
   });
 });

@@ -406,10 +406,16 @@ export class AnthropicProvider {
         }
       }
     } catch (error) {
-      // Mid-stream errors arrive as raw APIError — convert to ProviderError
-      // so the router's retry/failover logic can handle them
+      if (error instanceof ProviderError) throw error;
       if (error instanceof APIError) throw this.toProviderError(error, model);
-      throw error;
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`Stream iteration error: ${msg}`);
+      throw new ProviderError(`Anthropic stream error: ${msg}`, {
+        cause: error,
+        code: "PROVIDER_INVALID_RESPONSE",
+        recoverable: true,
+        context: { model, phase: "stream_iteration" },
+      });
     }
 
     yield {

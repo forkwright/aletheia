@@ -64,29 +64,38 @@ impl VectorCache {
         self.cache.insert(k, v);
     }
     fn dist(&self, v1: &Vector, v2: &Vector) -> f64 {
+        use ndarray::Zip;
         match self.distance {
             HnswDistance::L2 => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
-                    let diff = a - b;
-                    diff.dot(&diff) as f64
+                    Zip::from(a).and(b)
+                        .fold(0.0f32, |acc, &x, &y| {
+                            let d = x - y;
+                            acc + d * d
+                        }) as f64
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
-                    let diff = a - b;
-                    diff.dot(&diff)
+                    Zip::from(a).and(b)
+                        .fold(0.0f64, |acc, &x, &y| {
+                            let d = x - y;
+                            acc + d * d
+                        })
                 }
                 _ => panic!("Cannot compute L2 distance between {:?} and {:?}", v1, v2),
             },
             HnswDistance::Cosine => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
-                    let a_norm = a.dot(a) as f64;
-                    let b_norm = b.dot(b) as f64;
-                    let dot = a.dot(b) as f64;
-                    1.0 - dot / (a_norm * b_norm).sqrt()
+                    let (a_norm, b_norm, dot) = Zip::from(a).and(b)
+                        .fold((0.0f32, 0.0f32, 0.0f32), |(an, bn, d), &x, &y| {
+                            (an + x * x, bn + y * y, d + x * y)
+                        });
+                    1.0 - dot as f64 / (a_norm as f64 * b_norm as f64).sqrt()
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
-                    let a_norm = a.dot(a);
-                    let b_norm = b.dot(b);
-                    let dot = a.dot(b);
+                    let (a_norm, b_norm, dot) = Zip::from(a).and(b)
+                        .fold((0.0f64, 0.0f64, 0.0f64), |(an, bn, d), &x, &y| {
+                            (an + x * x, bn + y * y, d + x * y)
+                        });
                     1.0 - dot / (a_norm * b_norm).sqrt()
                 }
                 _ => panic!(

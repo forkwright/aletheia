@@ -15,9 +15,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Copy + Compile** - Create crate skeletons, copy source, strip backends + cangjie + FFI, pin rayon, get cargo check/clippy clean (completed 2026-03-01)
 - [x] **Phase 2: Critical Safety** - Fix minhash_lsh UB, document all unsafe sites, add static_assertions for Send+Sync (completed 2026-03-01)
 - [x] **Phase 3: Wire into mneme** - Connect KnowledgeStore to mneme-engine, fact round-trip, HNSW vector search, spawn_blocking wrappers (completed 2026-03-01)
-- [ ] **Phase 4: Hybrid Retrieval** - BM25 + HNSW + graph join in single Datalog query, RRF fusion, HNSW connectivity validation
-- [ ] **Phase 5: Error + Idiom Migration** - miette to snafu, log to tracing, lazy_static to LazyLock, systematic unwrap audit
-- [ ] **Phase 6: Performance** - Query timeout via cancellation token, ndarray fused distance computation
+- [x] **Phase 4: Hybrid Retrieval** - BM25 + HNSW + graph join in single Datalog query, RRF fusion, HNSW connectivity validation (completed 2026-03-01)
+- [x] **Phase 5: Error + Idiom Migration** - miette to snafu, log to tracing, lazy_static to LazyLock, systematic unwrap audit (completed 2026-03-02)
+- [x] **Phase 6: Performance** - Query timeout via cancellation token, ndarray fused distance computation (completed 2026-03-02)
+- [ ] **Phase 7: Integrate Hybrid Retrieval** - Rebase feat/mneme-engine-p4 onto main, resolve conflicts with Phase 6, verify tests (gap closure)
+- [ ] **Phase 8: Integrate Idiom Migration** - Rebase feat/mneme-engine-p5 onto integrated branch, resolve conflicts, update tracking docs (gap closure)
 
 ## Phase Details
 
@@ -112,16 +114,51 @@ Plans:
 Plans:
 - [ ] 06-01: TBD
 
+### Phase 7: Integrate Hybrid Retrieval
+**Goal**: Rebase the 6 `feat/mneme-engine-p4` commits onto current main so hybrid retrieval is available on the integration branch -- BM25, RRF, search_hybrid, and all Phase 4 tests land on main
+**Depends on**: Phase 6
+**Requirements**: RETR-01, RETR-02, RETR-03, RETR-04, TEST-04, TEST-06, PERF-01
+**Gap Closure**: Closes gaps from audit — Phase 4 implemented on `feat/mneme-engine-p4` but never merged
+**Success Criteria** (what must be TRUE):
+  1. All 6 Phase 4 commits rebased onto current main without regressions
+  2. `cargo test -p aletheia-mneme-engine` passes (166+ tests including BM25/RRF)
+  3. `cargo test --test knowledge_engine` passes (6+ integration tests including hybrid retrieval)
+  4. `search_hybrid()`, `HybridQuery`, `ReciprocalRankFusion` available on integration branch
+**Plans**: TBD
+
+Plans:
+- [ ] 07-01: TBD
+
+### Phase 8: Integrate Idiom Migration
+**Goal**: Rebase the 9 `feat/mneme-engine-p5` commits onto the Phase 7 result so all idiom migrations land -- snafu errors, tracing, LazyLock, unwrap audit, and ABSORPTION.md
+**Depends on**: Phase 7
+**Requirements**: IDIOM-01, IDIOM-02, IDIOM-03, IDIOM-04, IDIOM-05, DOCS-01
+**Gap Closure**: Closes gaps from audit — Phase 5 implemented on `feat/mneme-engine-p5` but never merged; P5 also lacks P4 changes
+**Success Criteria** (what must be TRUE):
+  1. All 9 Phase 5 commits rebased onto Phase 7 result without regressions
+  2. Zero `use miette` or `miette::` imports remain in mneme-engine
+  3. Zero `log::` or `use log` imports remain in mneme-engine
+  4. Zero `lazy_static!` invocations remain in mneme-engine
+  5. `cargo test -p aletheia-mneme-engine` passes with all migrations applied
+  6. ABSORPTION.md present in crate docs
+  7. ROADMAP.md, REQUIREMENTS.md, STATE.md fully reconciled
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Copy + Compile | 3/3 | Complete   | 2026-03-01 |
 | 2. Critical Safety | 2/2 | Complete   | 2026-03-01 |
 | 3. Wire into mneme | 2/2 | Complete | 2026-03-01 |
-| 4. Hybrid Retrieval | 0/2 | Not started | - |
-| 5. Error + Idiom Migration | 0/2 | Not started | - |
-| 6. Performance | 0/1 | Not started | - |
+| 4. Hybrid Retrieval | 2/2 | Complete   | 2026-03-01 |
+| 5. Error + Idiom Migration | 3/3 | Complete   | 2026-03-02 |
+| 6. Performance | 1/1 | Complete   | 2026-03-02 |
+| 7. Integrate Hybrid Retrieval | 0/1 | Not started | — |
+| 8. Integrate Idiom Migration | 0/1 | Not started | — |
