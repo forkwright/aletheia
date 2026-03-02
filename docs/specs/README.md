@@ -29,10 +29,11 @@ that evolve with the system.
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
 | 29 | [UI Layout & Theming](29_ui-layout-and-theming.md) | In Progress | Svelte UI — survives rewrite unchanged |
-| 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Skeleton | Svelte UI — shared task board |
+| 30 | [Homepage Dashboard](30_homepage-dashboard.md) | Absorbed → Spec 45 | Task board and activity feed become workspace views |
 | 40 | [Testing Strategy](40_testing-strategy.md) | Draft | Adapt for Rust crates (vitest→cargo test) |
 | 41 | [Observability](41_observability.md) | Draft | tracing crate, metrics, spans |
-| 43b | [A2UI Live Canvas](43_a2ui-canvas.md) | Draft | Post-rewrite: agent-writable UI surface |
+| 43b | [A2UI Live Canvas](43_a2ui-canvas.md) | Integrated → Spec 45 | Canvas surfaces render within the workspace |
+| 45 | [Coworking Workspace](45_coworking-workspace.md) | Draft | Shared operations surface — human + agent coworking, controls, health, cost, replay |
 
 ### Deferred — Post-Rewrite
 
@@ -67,7 +68,7 @@ These specs' key decisions are preserved in Spec 43, Spec 44, and [DECISIONS.md]
 - Specs describe *intent and design*, not implementation. Code is the source of truth.
 - Implemented specs are absorbed into `archive/DECISIONS.md` — individual spec files are deleted.
 - **Pre-archival:** Run the [Archival Checklist](ARCHIVAL-AUDIT.md) to verify all features were delivered.
-- **Next available number: 45**
+- **Next available number: 46**
 
 ## Issue ↔ Spec Cross-Reference
 

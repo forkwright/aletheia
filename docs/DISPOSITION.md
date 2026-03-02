@@ -21,10 +21,11 @@
 | 22 | Interop & Workflows | M6 | Deferred | A2A, workflow engine, IDE integration — needs stable platform |
 | 24 | Aletheia Linux | M6 | Deferred | eBPF/DBus, NixOS module — needs stable binary |
 | 29 | UI Layout & Theming | M6 | In Progress | Svelte UI — independent of rewrite |
-| 30 | Homepage Dashboard | M6 | Skeleton | Svelte UI — shared task board |
+| 30 | Homepage Dashboard | M6 | Absorbed → Spec 45 | Task board and activity feed become workspace views |
 | 40 | Testing Strategy | M5 | Draft | Coverage targets adapted for cargo test |
 | 41 | Observability | M5 | Draft | tracing crate, metrics, spans |
-| 43b | A2UI Live Canvas | M6 | Draft | Agent-writable UI surface |
+| 43b | A2UI Live Canvas | M6 | Integrated → Spec 45 | Canvas surfaces render within the coworking workspace |
+| 45 | Coworking Workspace | M6 | Draft | Shared operations surface -- human + agent coworking, controls, health, cost, session replay |
 
 ### Implemented and Archived
 

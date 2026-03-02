@@ -473,11 +473,11 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 
 | Phase | Work | Origin |
 |-------|------|--------|
-| 6.1 | A2UI Live Canvas — agent-writable dynamic UI surface | Spec 43b, Issue #319 |
+| 6.1 | Coworking Workspace — shared operations surface, controls, health, cost, session replay | Spec 45 (absorbs Specs 30, 43b) |
 | 6.2 | Interop — A2A protocol, workflow engine, IDE integration | Spec 22 |
 | 6.3 | Aletheia Linux — eBPF/DBus sensing, NixOS module | Spec 24, Issue #332 |
 | 6.4 | Embedding space intelligence — JEPA goal vectors, collapse prevention, embedding health monitoring | Spec 27 (phases 5-6) |
-| 6.5 | UI layout overhaul + homepage dashboard | Specs 29, 30, Issue #328 |
+| 6.5 | UI layout overhaul | Spec 29, Issue #328 |
 | 6.6 | TUI enhancements — fuzzy filter, F2 overlay, OSC 8, plan widget | Issue #326 |
 
 These are not sequenced — they can be worked in parallel once the platform is stable. Each is a self-contained project.
