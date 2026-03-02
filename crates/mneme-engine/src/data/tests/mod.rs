@@ -13,3 +13,4 @@ mod json;
 mod memcmp;
 mod validity;
 mod values;
+mod properties;

@@ -120,3 +120,74 @@ fn sessions_ask_def() -> ToolDef {
         auto_activate: false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use aletheia_koina::id::{NousId, SessionId, ToolName};
+
+    use crate::registry::ToolRegistry;
+    use crate::types::{ToolContext, ToolInput};
+
+    fn test_ctx() -> ToolContext {
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            workspace: PathBuf::from("/tmp/test"),
+            allowed_roots: vec![PathBuf::from("/tmp")],
+        }
+    }
+
+    #[tokio::test]
+    async fn register_communication_tools() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        assert_eq!(reg.definitions().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn message_stub_responds() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::new("message").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"to": "+1234567890", "text": "hello"}),
+        };
+        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
+        assert!(!result.is_error);
+        assert!(result.content.contains("stub"), "expected stub: {}", result.content);
+    }
+
+    #[tokio::test]
+    async fn sessions_ask_stub_responds() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::new("sessions_ask").expect("valid"),
+            tool_use_id: "tu_2".to_owned(),
+            arguments: serde_json::json!({"agentId": "syn", "message": "hello"}),
+        };
+        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn message_def_requires_to_and_text() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("message").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert_eq!(def.input_schema.required, vec!["to", "text"]);
+    }
+
+    #[tokio::test]
+    async fn sessions_ask_def_requires_agent_and_message() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("sessions_ask").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert_eq!(def.input_schema.required, vec!["agentId", "message"]);
+    }
+}

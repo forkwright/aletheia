@@ -466,5 +466,44 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\
             "expected RateLimited, got: {err:?}"
         );
     }
+
+    #[test]
+    fn malformed_json_data_returns_error() {
+        let sse = "\
+event: message_start\n\
+data: this is not valid json\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        assert!(result.is_err(), "malformed JSON data should produce an error");
+    }
+
+    #[test]
+    fn non_retryable_sse_error_is_api_error() {
+        use crate::error::Error;
+
+        let sse = "\
+event: error\n\
+data: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad input\"}}\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let err = parse_sse_stream(reader, &mut acc, &mut |_| {}).expect_err("should error");
+        assert!(
+            matches!(err, Error::ApiError { status: 0, .. }),
+            "expected ApiError, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn empty_stream_returns_ok_with_defaults() {
+        let (events, response) = collect_events("");
+        assert!(events.is_empty(), "no events from empty stream");
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
+        assert!(response.content.is_empty());
+    }
 }
 

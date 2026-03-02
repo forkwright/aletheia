@@ -841,3 +841,101 @@ async fn nous_list_from_manager() {
     assert_eq!(agents[0]["model"], "mock-model");
     assert_eq!(agents[0]["status"], "active");
 }
+
+#[tokio::test]
+async fn empty_json_body_send_message_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/sessions/{id}/messages"),
+        Some(serde_json::json!({})),
+    );
+
+    let resp = router.clone().oneshot(req).await.expect("response");
+    assert!(
+        resp.status() == StatusCode::BAD_REQUEST
+            || resp.status() == StatusCode::UNPROCESSABLE_ENTITY,
+        "expected 400 or 422, got {}",
+        resp.status()
+    );
+}
+
+#[tokio::test]
+async fn double_close_session_is_idempotent() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let first = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .await
+        .expect("first close");
+    assert_eq!(first.status(), StatusCode::NO_CONTENT);
+
+    let second = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .await
+        .expect("second close");
+    assert_eq!(second.status(), StatusCode::NO_CONTENT);
+
+    // Session should still be accessible as archived after both closes
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .await
+        .expect("get after double close");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "archived");
+}
+
+#[tokio::test]
+async fn get_session_after_create_reflects_state() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], id);
+    assert_eq!(body["status"], "active");
+    assert_eq!(body["nous_id"], "syn");
+}
+
+#[tokio::test]
+async fn unknown_route_returns_404() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/nonexistent"))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn missing_auth_header_returns_401() {
+    let (app, _dir) = app().await;
+    let req = json_request(
+        "POST",
+        "/api/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "no-auth-test"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.expect("response");
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}

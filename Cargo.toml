@@ -102,6 +102,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal
 tokio-stream = "0.1"
 
 # Testing
+proptest = "1"
 static_assertions = "1.1"
 wiremock = "0.6"
 
