@@ -50,7 +50,7 @@ export function agentRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
   });
 
   app.get("/api/branding", (c) => {
-    return c.json(config.branding ?? { name: "Aletheia" });
+    return c.json(config.branding ?? { name: "Ergon" });
   });
 
   app.get("/api/config", (c) => {

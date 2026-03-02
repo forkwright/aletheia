@@ -19,7 +19,7 @@ updates:
       - dependency-name: zod
         update-types: [version-update:semver-major]
     reviewers:
-      - forkwright
+      - CKickertz
 
   # UI (Svelte/Vite)
   - package-ecosystem: npm
@@ -36,7 +36,7 @@ updates:
         dependency-type: production
         update-types: [patch]
     reviewers:
-      - forkwright
+      - CKickertz
 
   # Memory sidecar (Python)
   - package-ecosystem: pip

@@ -1,30 +1,30 @@
-# Aletheia
+# Ergon
 
-> Self-hosted multi-agent AI system with a web UI, persistent memory, and Signal messaging.
+> Multi-agent AI platform with persistent memory, messaging, and a web interface. Fork of forkwright/aletheia.
 
-Privacy-first distributed cognition. N agents + 1 human operator. Web chat UI (Svelte 5), dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, tool approval system, HTTP API.
+Self-hosted distributed cognition. N agents + 1 human operator. Web chat UI (Svelte 5), dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, tool system, HTTP API.
 
 ## Documentation
-- [README.md](README.md): Architecture, directory structure, deployment, configuration, API reference
-- [ALETHEIA.md](ALETHEIA.md): System manifesto and naming philosophy
-- [RESCUE.md](RESCUE.md): Full recovery guide from scratch
-- [CHANGELOG.md](CHANGELOG.md): Change history with decision context
+- [README.md](README.md): Architecture, directory structure, services, quick start
+- [ALETHEIA.md](ALETHEIA.md): Upstream naming philosophy
+- [RESCUE.md](RESCUE.md): Full recovery guide
+- [CHANGELOG.md](CHANGELOG.md): Change history
 - [docs/QUICKSTART.md](docs/QUICKSTART.md): Zero-to-running in 5 minutes
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Full config reference (all Zod-validated options)
-- [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Production setup with systemd, Signal, memory sidecar
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Building, module architecture, testing, contributing
-- [docs/PLUGINS.md](docs/PLUGINS.md): Plugin system, lifecycle hooks, tool registration
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Full config reference (Zod-validated)
+- [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md): Agent workspace files and token budgets
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Production setup with systemd and memory services
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Building, module architecture, testing
+- [docs/PLUGINS.md](docs/PLUGINS.md): Plugin system and tool registration
 
 ## Key Directories
-- [nous/_example/](nous/_example/): Template agent workspace (SOUL.md, USER.md, AGENTS.md, etc.)
-- [shared/bin/](shared/bin/): Shared scripts (pplx, scholar, browse, ingest-doc, aletheia-graph, nous-health)
-- [shared/config/](shared/config/): Environment and tool configuration
+- [instance/nous/](instance/nous/): Agent workspaces (SOUL.md, USER.md, AGENTS.md, MEMORY.md)
+- [shared/bin/](shared/bin/): Shared scripts and CLI tools
 - [config/](config/): Example gateway config (aletheia.example.json)
-- [infrastructure/runtime/](infrastructure/runtime/): Gateway source (TypeScript, tsdown)
-- [infrastructure/runtime/src/](infrastructure/runtime/src/): Module architecture (taxis, mneme, hermeneus, organon, semeion, pylon, prostheke, nous, distillation, daemon, koina)
+- [infrastructure/runtime/](infrastructure/runtime/): Gateway source (TypeScript/tsdown)
 - [infrastructure/memory/](infrastructure/memory/): Mem0 sidecar + Qdrant + Neo4j
 - [infrastructure/prosoche/](infrastructure/prosoche/): Adaptive attention daemon
+- [crates/](crates/): Rust workspace (11 crates, target architecture)
+- [ui/](ui/): Web UI (Svelte 5)
 
 ## Configuration
 - [config/aletheia.example.json](config/aletheia.example.json): Gateway config reference

@@ -1,32 +1,31 @@
-# Rescue Document
+# Recovery Guide
 
-Recovery guide for restoring Aletheia from scratch.
+Full restore from scratch.
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
-| Service | `aletheia status` |
+| Service status | `aletheia status` |
 | Config | `~/.aletheia/aletheia.json` |
-| Runtime | `infrastructure/runtime/` |
+| Runtime source | `infrastructure/runtime/` |
 | Sessions DB | `~/.aletheia/sessions.db` |
-| Memory sidecar | `curl http://localhost:8230/health` (port 8230) |
+| Memory sidecar | `curl http://localhost:8230/health` |
 
 ## Full Recovery
 
 ```bash
 # 1. Clone and build
-git clone https://github.com/forkwright/aletheia.git && cd aletheia
-./setup.sh    # builds runtime + UI, installs CLI, starts gateway
+git clone https://github.com/CKickertz/ergon.git && cd ergon
+./setup.sh
 
 # 2. Memory infrastructure (optional)
-cd infrastructure/memory && podman compose up -d  # Qdrant + Neo4j
-# Start Mem0 sidecar separately — see docs/DEPLOYMENT.md#memory-sidecar
+cd infrastructure/memory && podman compose up -d
 
-# 3. Gateway config
+# 3. Config
 mkdir -p ~/.aletheia/credentials
 cp config/aletheia.example.json ~/.aletheia/aletheia.json
-# Edit: agents, credentials
+# Edit: agents, credentials, branding
 
 # 4. Start
 aletheia start
@@ -45,11 +44,6 @@ Gitignored files that need manual setup:
 - `~/.aletheia/credentials/`
 - `infrastructure/memory/sidecar/.venv/`
 
-## File Permissions
+## Troubleshooting
 
-```bash
-git update-index --chmod=+x infrastructure/runtime/aletheia.mjs
-setfacl -m u:<service-user>:rwx shared/bin/*
-```
-
-For troubleshooting, see [DEPLOYMENT.md](docs/DEPLOYMENT.md#troubleshooting).
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md#troubleshooting).

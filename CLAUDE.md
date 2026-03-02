@@ -2,6 +2,8 @@
 
 Project conventions for AI coding agents working on this codebase.
 
+**Ergon** is a fork of [forkwright/aletheia](https://github.com/forkwright/aletheia). Internal module names are preserved from upstream for merge compatibility.
+
 ## Standards
 
 Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, typed errors, never empty catch, test behavior not implementation.
@@ -28,90 +30,85 @@ Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, 
 | `organon` | Tool registry, tool definitions, built-in tool set |
 | `symbolon` | JWT tokens, password hashing, RBAC policies — leaf node |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize |
-| `melete` | Context distillation, compression strategies, token budget management |
-| `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client |
-| `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware |
-| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together |
-| `graph-builder` | CSR graph construction/traversal (build tool) |
-| `integration-tests` | Cross-crate integration tests |
-| `mneme-bench` | CozoDB validation benchmarks (excluded from default build) |
+| `melete` | Context distillation, compression, token budgets |
+| `agora` | Channel registry, ChannelProvider trait, Signal + Slack providers |
+| `pylon` | Axum HTTP gateway, SSE streaming, static UI serving |
+
+Plus: `graph-builder` (build-time dep visualization), `integration-tests`, `mneme-bench`.
 
 ### TypeScript Runtime (current production)
 
-- **Runtime:** `infrastructure/runtime/src/` — TypeScript, tsdown, vitest
-- **UI:** `ui/` — Svelte 5, Vite
-- **Memory sidecar:** `infrastructure/memory/sidecar/` — Python FastAPI
+Gateway source: `infrastructure/runtime/src/`
 
-### Config
+| Module | Purpose |
+|--------|---------|
+| `taxis/` | Config loading + Zod validation |
+| `mneme/` | Session store (better-sqlite3, 10 migrations) |
+| `hermeneus/` | Anthropic SDK + provider router |
+| `organon/` | Tool registry + 48 built-in tools + skills |
+| `semeion/` | Signal client + listener + commands |
+| `pylon/` | Hono HTTP gateway, MCP, Web UI |
+| `nous/` | Agent bootstrap + turn pipeline |
+| `melete/` | Distillation, reflection, memory flush |
+| `symbolon/` | Split-token authentication |
+| `dianoia/` | Multi-phase planning orchestrator |
+| `agora/` | Channel abstraction, Slack integration |
+| `daemon/` | Cron, watchdog, update checker |
+| `koina/` | Shared utilities |
 
-- **TS runtime:** `~/.aletheia/aletheia.json` — validated by Zod in `taxis/schema.ts`
-- **Rust crates:** `instance/config/aletheia.yaml` — figment cascade (defaults → YAML → env vars)
+### Other Components
 
-### Other
+| Path | What |
+|------|------|
+| `ui/` | Web UI (Svelte 5, Vite) |
+| `infrastructure/memory/` | Mem0 sidecar (Python/FastAPI) + Qdrant + Neo4j |
+| `infrastructure/prosoche/` | Adaptive attention daemon (Python) |
+| `instance/` | Deployment state: agent workspaces, config, data |
+| `shared/` | Scripts, templates, hooks, calibration |
 
-- **Specs:** `docs/specs/` — design documents numbered by implementation order
-- **Decisions:** `docs/decisions/` — Architecture Decision Records
-
-## Commands
-
-### Rust
-
-```bash
-cargo build                            # Debug build
-cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # All tests (747 across 14 crates)
-cargo test -p aletheia-hermeneus       # Single crate
-cargo clippy --workspace               # Lint (zero warnings policy)
-```
-
-### TypeScript
+## Development
 
 ```bash
 cd infrastructure/runtime
-npx vitest run                         # All tests
-npx vitest run src/path/file.test.ts   # Specific test
-npx tsdown                             # Build runtime
-npx tsc --noEmit                       # Type check
-npx oxlint src/                        # Lint
-cd ../../ui && npm run build           # Build UI
-aletheia doctor                        # Validate config
+npm install
+npx tsdown                  # Build
+npm run typecheck           # tsc --noEmit
+npm run lint:check          # oxlint
 ```
 
-## Patterns
+**Never run `npm test` locally.** CI handles full test runs.
 
-### Rust
+## Git
 
-- **Errors:** `snafu` enums per crate with `.context()` propagation and `Location` tracking. See `.claude/rules/rust.md`.
-- **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`, etc.)
-- **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
-- **Async:** Tokio actor model (`NousActor` pattern)
-- **Config:** figment YAML cascade in `taxis`
+- Branch from `main`. Always squash merge.
+- Author: `Cody Kickertz <cody.kickertz@gmail.com>`
+- Commit format: `<type>: <description>` (feat, fix, refactor, docs, test, chore)
 
-### TypeScript
+## Key Patterns
 
-- **Modules:** Greek names — koina, taxis, mneme, hermeneus, nous, organon, melete, symbolon, dianoia, semeion, pylon, prostheke
-- **Errors:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts`
-- **Logging:** `createLogger("module-name")` — structured with AsyncLocalStorage context
-- **Events:** `eventBus` — `noun:verb` naming (e.g., `turn:before`, `tool:called`)
-- **Config:** Zod schemas in `taxis/schema.ts`
-- **Imports:** `.js` extensions, order: node → external → internal → local
+- **Typed errors:** All errors extend `AletheiaError`. Codes in `koina/error-codes.ts`.
+- **trySafe/trySafeAsync:** Non-critical ops use safe wrappers from `koina/safe.ts`.
+- **exactOptionalPropertyTypes:** Use conditional spread for optional fields.
+- **oxlint require-await:** Use `Promise.resolve()` instead of `async` for sync tool handlers.
 
-### Both Stacks
+## Dianoia (Planning)
 
-- **Naming:** Greek names per [gnomon.md](docs/gnomon.md). Names identify modes of attention, not implementations.
-- **No barrel files** — import from the file that owns the symbol
-- **Module imports flow downward** — higher layers may depend on lower, never the reverse
+Multi-phase planning at `src/dianoia/`. Key patterns:
+- Constructor-injected `Database.Database` and `dispatchTool`
+- `OrThrow` pattern for required lookups
+- All test `makeDb()` helpers must include ALL migrations
 
-## Before Submitting
+## Configuration
 
-### Rust
-1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace` — zero warnings
-3. No `unwrap()` in library code
-4. New errors use snafu with context
+- Example: `config/aletheia.example.json`
+- Schema: `infrastructure/runtime/src/taxis/schema.ts` (Zod, source of truth)
+- Branding: Set `branding.name` in config to customize UI title
 
-### TypeScript
-1. Tests pass for affected files
-2. No new empty catch blocks
-3. New errors use typed error classes
-4. `npx tsc --noEmit` clean
+## Documentation
+
+- [docs/QUICKSTART.md](docs/QUICKSTART.md): Setup
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Config reference
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Building and testing
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Production setup
+- [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md): Agent workspace reference
+- [ALETHEIA.md](ALETHEIA.md): Upstream naming philosophy

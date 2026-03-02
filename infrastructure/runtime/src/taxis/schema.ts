@@ -433,7 +433,7 @@ const WatchdogConfig = z
 
 const BrandingConfig = z
   .object({
-    name: z.string().default("Aletheia"),
+    name: z.string().default("Ergon"),
     tagline: z.string().optional(),
     favicon: z.string().optional(),
   })
