@@ -2,7 +2,7 @@
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
 > For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
-> Last updated: 2026-03-04 — M0a/M0b/M1 complete, M2 core + M3 complete. 718 tests across 14 crates, ~21K lines Rust.
+> Last updated: 2026-03-01 — M0a/M0b/M1 complete, M2 core + M3 complete. 718 tests across 14 crates, ~21K lines Rust.
 
 ---
 
@@ -497,7 +497,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
-Last updated: 2026-03-04
+Last updated: 2026-03-01
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|

@@ -1,8 +1,22 @@
 # Aletheia Configuration Reference
 
+## Current Runtime (TypeScript)
+
 Config file location: `~/.aletheia/aletheia.json`
 
 Validated at startup against the Zod schema in `src/taxis/schema.ts`. Unknown top-level fields are preserved (passthrough) for forward compatibility.
+
+## Rust Crates
+
+Config file location: `instance/config/aletheia.yaml` (or `~/.aletheia/aletheia.yaml`)
+
+Loaded by the `taxis` crate using figment with a three-layer cascade: compiled defaults, YAML file, environment variables (prefix `ALETHEIA_`). Environment variables override YAML, YAML overrides defaults. The Rust config uses `AletheiaConfig` structs validated at deserialization time, not a separate validation pass.
+
+Key differences from the JSON config:
+- YAML format instead of JSON
+- Figment cascade (defaults, file, env) instead of single-file loading
+- camelCase field names still work (compat layer), but snake_case is canonical
+- Secret values use `SecretString` from the `secrecy` crate, never logged or serialized to debug output
 
 ---
 
@@ -96,6 +110,7 @@ Each entry defines a nous (agent).
 
 Extra fields are preserved (passthrough).
 
+**JSON example (current runtime):**
 ```json
 {
   "id": "research",
@@ -104,6 +119,19 @@ Extra fields are preserved (passthrough).
   "model": "claude-sonnet-4-5-20250929",
   "identity": { "name": "Scholar", "emoji": "📚" }
 }
+```
+
+**YAML example (Rust):**
+```yaml
+agents:
+  list:
+    - id: research
+      name: Scholar
+      workspace: /path/to/aletheia/instance/nous/scholar
+      model: claude-sonnet-4-5-20250929
+      identity:
+        name: Scholar
+        emoji: "📚"
 ```
 
 ---
@@ -459,7 +487,7 @@ Used in `agents.defaults.heartbeat` or per-agent `heartbeat`. Sends periodic che
 
 ## Minimal Config
 
-The smallest working configuration:
+### JSON (current runtime)
 
 ```json
 {
@@ -476,6 +504,19 @@ The smallest working configuration:
     ]
   }
 }
+```
+
+### YAML (Rust)
+
+```yaml
+agents:
+  defaults:
+    model:
+      primary: claude-sonnet-4-5-20250929
+  list:
+    - id: main
+      default: true
+      workspace: /path/to/instance/nous/main
 ```
 
 Everything else has sensible defaults. Add sections as needed.
