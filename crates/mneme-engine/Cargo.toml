@@ -54,7 +54,7 @@ graph-algo = []
 
 [dependencies]
 # Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
-rayon = "=1.10.0"
+rayon = "=1.11.0"
 
 snafu = { workspace = true }
 

@@ -62,7 +62,7 @@ unused_self = "warn"
 
 [workspace.dependencies]
 # Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
-rayon = "=1.10.0"
+rayon = "=1.11.0"
 
 # Error handling
 snafu = "0.8"
