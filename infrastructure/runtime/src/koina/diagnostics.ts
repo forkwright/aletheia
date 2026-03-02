@@ -1,6 +1,6 @@
 // Diagnostic checks for `aletheia doctor`
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { accessSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
 import { loadConfig } from "../taxis/loader.js";
@@ -224,7 +224,9 @@ function checkPluginPaths(config: AletheiaConfig | null): DiagnosticResult {
     return { name: "plugin_paths", status: "ok", message: "No plugin paths configured" };
   }
 
-  const missing = loadPaths.filter((p) => !existsSync(p));
+  const missing = loadPaths.filter((p) => {
+    try { accessSync(p); return false; } catch { return true; }
+  });
   if (missing.length === 0) {
     return { name: "plugin_paths", status: "ok", message: `All ${loadPaths.length} plugin paths exist` };
   }

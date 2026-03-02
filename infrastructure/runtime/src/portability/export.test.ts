@@ -4,7 +4,12 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Fixed test root — created in beforeEach, cleaned in afterAll
-const TEST_ROOT = "/tmp/aletheia-export-test";
+const { TEST_ROOT } = vi.hoisted(() => {
+  const { join } = require("node:path");
+  const { tmpdir } = require("node:os");
+  const { randomUUID } = require("node:crypto");
+  return { TEST_ROOT: join(tmpdir(), "aletheia-export-test-" + randomUUID()) };
+});
 
 vi.mock("../koina/logger.js", () => ({
   createLogger: () => ({
@@ -17,7 +22,7 @@ vi.mock("../koina/logger.js", () => ({
 
 vi.mock("../taxis/paths.js", () => {
   const { join: pj } = require("node:path");
-  const root = "/tmp/aletheia-export-test";
+  const root = TEST_ROOT;
   return {
     paths: {
       root,
