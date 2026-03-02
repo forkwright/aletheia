@@ -132,6 +132,49 @@ export class AnthropicProvider {
     }
   }
 
+  // Convert APIError to typed ProviderError for retry/failover.
+  // Handles both HTTP-level errors (status set) and mid-stream SSE errors
+  // (status may be undefined — infer from error body).
+  private toProviderError(error: APIError, model: string): ProviderError {
+    let status = error.status;
+
+    // Mid-stream SSE errors arrive with status=undefined. Parse error body to infer status.
+    if (status === undefined) {
+      const body = error as unknown as { error?: { type?: string } };
+      const errorType = body.error?.type;
+      if (errorType === "overloaded_error") status = 529;
+      else if (errorType === "rate_limit_error") status = 429;
+      else if (errorType === "authentication_error") status = 401;
+      else if (errorType === "api_error" || errorType === "internal_server_error") status = 500;
+    }
+
+    log.error(`Anthropic API ${status ?? "unknown"}: ${error.message}`);
+
+    const isExpiredToken = status === 401
+      && error.message.includes("OAuth token has expired");
+
+    const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
+      : status === 529 ? "PROVIDER_OVERLOADED" as const
+      : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
+      : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
+      : "PROVIDER_INVALID_RESPONSE" as const;
+
+    const recoverable = status === 429 || status === 529
+      || (status !== undefined && status >= 500) || isExpiredToken
+      || status === undefined;
+
+    return new ProviderError(
+      `Anthropic API error: ${status ?? "stream"} ${error.message}`,
+      {
+        cause: error,
+        code,
+        recoverable,
+        ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
+        context: { status, model },
+      },
+    );
+  }
+
   // Build anthropic-beta header — merges OAuth beta with any feature betas.
   // Per-request headers override defaultHeaders, so we must include oauth
   // beta explicitly whenever we set per-request headers.
@@ -227,31 +270,7 @@ export class AnthropicProvider {
         credentialLabel: this.label,
       };
     } catch (error) {
-      if (error instanceof APIError) {
-        const status = error.status;
-        log.error(`Anthropic API ${status}: ${error.message}`);
-
-        const isExpiredToken = status === 401
-          && error.message.includes("OAuth token has expired");
-
-        const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
-          : status === 529 ? "PROVIDER_OVERLOADED" as const
-          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
-          : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
-          : "PROVIDER_INVALID_RESPONSE" as const;
-
-        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
-        throw new ProviderError(
-          `Anthropic API error: ${status} ${error.message}`,
-          {
-            cause: error,
-            code,
-            recoverable,
-            ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
-            context: { status, model },
-          },
-        );
-      }
+      if (error instanceof APIError) throw this.toProviderError(error, model);
       const msg = error instanceof Error ? error.message : String(error);
       log.error(`Anthropic request failed: ${msg}`);
       throw new ProviderError(`Anthropic request failed: ${msg}`, {
@@ -287,24 +306,7 @@ export class AnthropicProvider {
         ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
       });
     } catch (error) {
-      if (error instanceof APIError) {
-        const status = error.status;
-        log.error(`Anthropic API ${status}: ${error.message}`);
-        const isExpiredToken = status === 401
-          && error.message.includes("OAuth token has expired");
-
-        const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
-          : status === 529 ? "PROVIDER_OVERLOADED" as const
-          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
-          : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
-          : "PROVIDER_INVALID_RESPONSE" as const;
-        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
-        throw new ProviderError(`Anthropic API error: ${status} ${error.message}`, {
-          cause: error, code, recoverable,
-          ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
-          context: { status, model },
-        });
-      }
+      if (error instanceof APIError) throw this.toProviderError(error, model);
       throw error;
     }
 
@@ -316,91 +318,98 @@ export class AnthropicProvider {
     // Track in-progress content blocks by index
     const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[]; signature?: string }>();
 
-    for await (const event of stream) {
-      switch (event.type) {
-        case "message_start": {
-          const msg = event.message;
-          responseModel = msg.model;
-          const u = msg.usage;
-          usage.inputTokens = u.input_tokens;
-          usage.outputTokens = u.output_tokens;
-          usage.cacheReadTokens = (u as unknown as Record<string, number>)["cache_read_input_tokens"] ?? 0;
-          usage.cacheWriteTokens = (u as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0;
-          break;
-        }
-
-        case "content_block_start": {
-          const block = event.content_block;
-          if (block.type === "text") {
-            blockState.set(event.index, { type: "text", text: "" });
-          } else if (block.type === "tool_use") {
-            blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
-            yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
-          } else if (block.type === "thinking") {
-            blockState.set(event.index, { type: "thinking", text: "" });
+    try {
+      for await (const event of stream) {
+        switch (event.type) {
+          case "message_start": {
+            const msg = event.message;
+            responseModel = msg.model;
+            const u = msg.usage;
+            usage.inputTokens = u.input_tokens;
+            usage.outputTokens = u.output_tokens;
+            usage.cacheReadTokens = (u as unknown as Record<string, number>)["cache_read_input_tokens"] ?? 0;
+            usage.cacheWriteTokens = (u as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0;
+            break;
           }
-          break;
-        }
 
-        case "content_block_delta": {
-          const delta = event.delta;
-          if (delta.type === "text_delta") {
-            const state = blockState.get(event.index);
-            if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
-            yield { type: "text_delta", text: delta.text };
-          } else if (delta.type === "thinking_delta") {
-            const state = blockState.get(event.index);
-            if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
-            yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
-          } else if (delta.type === "signature_delta") {
+          case "content_block_start": {
+            const block = event.content_block;
+            if (block.type === "text") {
+              blockState.set(event.index, { type: "text", text: "" });
+            } else if (block.type === "tool_use") {
+              blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
+              yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
+            } else if (block.type === "thinking") {
+              blockState.set(event.index, { type: "thinking", text: "" });
+            }
+            break;
+          }
+
+          case "content_block_delta": {
+            const delta = event.delta;
+            if (delta.type === "text_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
+              yield { type: "text_delta", text: delta.text };
+            } else if (delta.type === "thinking_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
+              yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
+            } else if (delta.type === "signature_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "thinking") {
+                state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+              }
+            } else if (delta.type === "input_json_delta") {
+              const state = blockState.get(event.index);
+              if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
+            }
+            break;
+          }
+
+          case "content_block_stop": {
             const state = blockState.get(event.index);
             if (state?.type === "thinking") {
-              state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+              contentBlocks.push({
+                type: "thinking",
+                thinking: state.text ?? "",
+                ...(state.signature ? { signature: state.signature } : {}),
+              });
+            } else if (state?.type === "text") {
+              contentBlocks.push({ type: "text", text: state.text ?? "" });
+            } else if (state?.type === "tool_use") {
+              let input: Record<string, unknown> = {};
+              try {
+                input = JSON.parse(state.jsonParts?.join("") ?? "{}");
+              } catch { /* stream abort cleanup */
+                log.warn("Failed to parse tool_use input JSON from stream");
+              }
+              contentBlocks.push({
+                type: "tool_use",
+                id: state.id!,
+                name: state.name!,
+                input,
+              });
+              yield { type: "tool_use_end", index: event.index };
             }
-          } else if (delta.type === "input_json_delta") {
-            const state = blockState.get(event.index);
-            if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
+            break;
           }
-          break;
-        }
 
-        case "content_block_stop": {
-          const state = blockState.get(event.index);
-          if (state?.type === "thinking") {
-            contentBlocks.push({
-              type: "thinking",
-              thinking: state.text ?? "",
-              ...(state.signature ? { signature: state.signature } : {}),
-            });
-          } else if (state?.type === "text") {
-            contentBlocks.push({ type: "text", text: state.text ?? "" });
-          } else if (state?.type === "tool_use") {
-            let input: Record<string, unknown> = {};
-            try {
-              input = JSON.parse(state.jsonParts?.join("") ?? "{}");
-            } catch { /* stream abort cleanup */
-              log.warn("Failed to parse tool_use input JSON from stream");
+          case "message_delta": {
+            stopReason = event.delta.stop_reason ?? "end_turn";
+            const deltaUsage = event.usage as unknown as Record<string, number> | undefined;
+            if (deltaUsage?.["output_tokens"]) {
+              usage.outputTokens = deltaUsage["output_tokens"];
             }
-            contentBlocks.push({
-              type: "tool_use",
-              id: state.id!,
-              name: state.name!,
-              input,
-            });
-            yield { type: "tool_use_end", index: event.index };
+            break;
           }
-          break;
-        }
-
-        case "message_delta": {
-          stopReason = event.delta.stop_reason ?? "end_turn";
-          const deltaUsage = event.usage as unknown as Record<string, number> | undefined;
-          if (deltaUsage?.["output_tokens"]) {
-            usage.outputTokens = deltaUsage["output_tokens"];
-          }
-          break;
         }
       }
+    } catch (error) {
+      // Mid-stream errors arrive as raw APIError — convert to ProviderError
+      // so the router's retry/failover logic can handle them
+      if (error instanceof APIError) throw this.toProviderError(error, model);
+      throw error;
     }
 
     yield {

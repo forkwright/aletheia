@@ -22,10 +22,12 @@ vi.mock("@anthropic-ai/sdk", () => {
   }
 
   class APIError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
+    status: number | undefined;
+    error?: { type?: string };
+    constructor(status: number | undefined, message: string, errorBody?: { type?: string }) {
       super(message);
       this.status = status;
+      this.error = errorBody;
       this.name = "APIError";
     }
   }
@@ -149,5 +151,91 @@ describe("AnthropicProvider", () => {
 
     expect(err.code).toBe("PROVIDER_AUTH_FAILED");
     expect(err.recoverable).toBe(false);
+  });
+
+  async function collectStreamError(provider: AnthropicProvider): Promise<unknown> {
+    const gen = provider.completeStreaming({
+      model: "claude-sonnet-4-6",
+      system: "test",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    try {
+      for await (const _event of gen) { /* consume */ }
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  describe("mid-stream error handling", () => {
+    it("converts mid-stream 529 APIError to recoverable ProviderError", async () => {
+      const provider = new AnthropicProvider({ apiKey: "sk-test" });
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "message_start",
+            message: {
+              model: "claude-sonnet-4-6",
+              usage: { input_tokens: 10, output_tokens: 0 },
+            },
+          };
+          const { APIError: MockAPIError } = await import("@anthropic-ai/sdk");
+          throw new MockAPIError(529, "Overloaded");
+        },
+      };
+      (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
+        .client.messages.create = vi.fn().mockResolvedValue(mockStream);
+
+      const err = await collectStreamError(provider) as { code: string; recoverable: boolean; retryAfterMs?: number };
+      expect(err).not.toBeNull();
+      expect(err.code).toBe("PROVIDER_OVERLOADED");
+      expect(err.recoverable).toBe(true);
+      expect(err.retryAfterMs).toBe(30_000);
+    });
+
+    it("converts mid-stream APIError with undefined status and overloaded_error body to PROVIDER_OVERLOADED", async () => {
+      const provider = new AnthropicProvider({ apiKey: "sk-test" });
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "message_start",
+            message: {
+              model: "claude-sonnet-4-6",
+              usage: { input_tokens: 10, output_tokens: 0 },
+            },
+          };
+          const { APIError: MockAPIError } = await import("@anthropic-ai/sdk");
+          throw new MockAPIError(undefined, "Overloaded", { type: "overloaded_error" });
+        },
+      };
+      (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
+        .client.messages.create = vi.fn().mockResolvedValue(mockStream);
+
+      const err = await collectStreamError(provider) as { code: string; recoverable: boolean };
+      expect(err).not.toBeNull();
+      expect(err.code).toBe("PROVIDER_OVERLOADED");
+      expect(err.recoverable).toBe(true);
+    });
+
+    it("converts mid-stream non-APIError to rethrown error", async () => {
+      const provider = new AnthropicProvider({ apiKey: "sk-test" });
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "message_start",
+            message: {
+              model: "claude-sonnet-4-6",
+              usage: { input_tokens: 10, output_tokens: 0 },
+            },
+          };
+          throw new TypeError("Connection reset");
+        },
+      };
+      (provider as unknown as { client: { messages: { create: ReturnType<typeof vi.fn> } } })
+        .client.messages.create = vi.fn().mockResolvedValue(mockStream);
+
+      const err = await collectStreamError(provider);
+      expect(err).toBeInstanceOf(TypeError);
+    });
   });
 });
