@@ -100,8 +100,10 @@ async fn serve(cli: Cli) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create data dir {}", parent.display()))?;
     }
-    let session_store = SessionStore::open(&db_path)
-        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+    let session_store = Arc::new(Mutex::new(
+        SessionStore::open(&db_path)
+            .with_context(|| format!("failed to open session store at {}", db_path.display()))?,
+    ));
     info!(path = %db_path.display(), "session store opened");
 
     // JWT manager
@@ -119,6 +121,7 @@ async fn serve(cli: Cli) -> Result<()> {
         Arc::clone(&oikos_arc),
         None,
         None,
+        Some(Arc::clone(&session_store)),
     );
 
     if config.agents.list.is_empty() {
@@ -149,7 +152,7 @@ async fn serve(cli: Cli) -> Result<()> {
 
     // Pylon HTTP gateway — shares registries with NousManager, owns the manager
     let state = Arc::new(AppState {
-        session_store: Mutex::new(session_store),
+        session_store,
         nous_manager,
         provider_registry,
         tool_registry,

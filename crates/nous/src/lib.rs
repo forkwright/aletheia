@@ -13,6 +13,7 @@ pub mod config;
 pub mod error;
 pub mod execute;
 pub mod handle;
+pub mod history;
 pub mod manager;
 pub mod message;
 pub mod pipeline;

@@ -60,12 +60,13 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         Arc::clone(&oikos),
         None,
         None,
+        None,
     );
     let nous_config = NousConfig::default();
     nous_manager.spawn(nous_config, PipelineConfig::default()).await;
 
     let state = Arc::new(AppState {
-        session_store: Mutex::new(session_store),
+        session_store: Arc::new(Mutex::new(session_store)),
         nous_manager,
         provider_registry,
         tool_registry,

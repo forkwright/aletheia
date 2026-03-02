@@ -1,7 +1,9 @@
 //! Manages all nous actor instances.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use aletheia_mneme::store::SessionStore;
 
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -30,6 +32,7 @@ pub struct NousManager {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    session_store: Option<Arc<Mutex<SessionStore>>>,
 }
 
 impl NousManager {
@@ -41,6 +44,7 @@ impl NousManager {
         oikos: Arc<Oikos>,
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+        session_store: Option<Arc<Mutex<SessionStore>>>,
     ) -> Self {
         Self {
             actors: HashMap::new(),
@@ -49,6 +53,7 @@ impl NousManager {
             oikos,
             embedding_provider,
             vector_search,
+            session_store,
         }
     }
 
@@ -72,6 +77,7 @@ impl NousManager {
             Arc::clone(&self.oikos),
             self.embedding_provider.clone(),
             self.vector_search.clone(),
+            self.session_store.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -228,7 +234,7 @@ mod tests {
     }
 
     fn test_manager(oikos: Arc<Oikos>) -> NousManager {
-        NousManager::new(test_providers(), Arc::new(ToolRegistry::new()), oikos, None, None)
+        NousManager::new(test_providers(), Arc::new(ToolRegistry::new()), oikos, None, None, None)
     }
 
     fn syn_config() -> NousConfig {

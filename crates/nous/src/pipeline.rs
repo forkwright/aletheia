@@ -9,10 +9,13 @@
 //! 5. **Execute** — call LLM, process tool use, iterate
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument, warn};
 
 use aletheia_mneme::embedding::EmbeddingProvider;
+use aletheia_mneme::store::SessionStore;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
@@ -23,6 +26,7 @@ use crate::bootstrap::BootstrapAssembler;
 use crate::budget::TokenBudget;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
+use crate::history::{self, HistoryConfig, HistoryResult};
 use crate::session::SessionState;
 
 /// Input to the pipeline — an inbound message.
@@ -45,14 +49,18 @@ pub struct PipelineContext {
     pub messages: Vec<PipelineMessage>,
     /// Available tools for this turn.
     pub tools: Vec<String>,
-    /// Token budget remaining after bootstrap + history.
+    /// Token budget remaining after bootstrap (system prompt space).
     pub remaining_tokens: i64,
+    /// Token budget allocated for conversation history.
+    pub history_budget: i64,
     /// Whether distillation is needed before this turn.
     pub needs_distillation: bool,
     /// Guard decision.
     pub guard_result: GuardResult,
     /// Recall stage output, if recall was run.
     pub recall_result: Option<crate::recall::RecallStageResult>,
+    /// History stage output, if history was loaded.
+    pub history_result: Option<HistoryResult>,
 }
 
 impl Default for PipelineContext {
@@ -62,9 +70,11 @@ impl Default for PipelineContext {
             messages: Vec::new(),
             tools: Vec::new(),
             remaining_tokens: 0,
+            history_budget: 0,
             needs_distillation: false,
             guard_result: GuardResult::Allow,
             recall_result: None,
+            history_result: None,
         }
     }
 }
@@ -249,6 +259,7 @@ pub fn assemble_context(
     #[expect(clippy::cast_possible_wrap, reason = "budget fits in i64 for practical context windows")]
     {
         ctx.remaining_tokens = budget.remaining() as i64;
+        ctx.history_budget = budget.history_budget() as i64;
     }
 
     Ok(())
@@ -264,7 +275,7 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
 
 /// Run the full pipeline for one turn.
 ///
-/// Stages: context → history (stub) → guard → execute.
+/// Stages: context → recall → history → guard → execute.
 /// Resolve (stage 4) and finalize (stage 6) are future work.
 #[expect(clippy::too_many_arguments, reason = "pipeline threading requires all dependencies until config struct refactor")]
 #[instrument(skip_all, fields(nous_id = %config.id))]
@@ -278,6 +289,7 @@ pub async fn run_pipeline(
     tool_ctx: &ToolContext,
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
+    session_store: Option<&Mutex<SessionStore>>,
 ) -> error::Result<TurnResult> {
     // Stage 1: Context
     let mut ctx = PipelineContext::default();
@@ -309,14 +321,29 @@ pub async fn run_pipeline(
         debug!("recall skipped: embedding provider or vector search not configured");
     }
 
-    // Stage 2: History (stub — just add the user message)
-    #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-    let token_estimate = input.content.len() as i64 / 4;
-    ctx.messages.push(PipelineMessage {
-        role: "user".to_owned(),
-        content: input.content.clone(),
-        token_estimate,
-    });
+    // Stage 2: History
+    let history_config = HistoryConfig::default();
+    if let Some(store_mutex) = session_store {
+        let store = store_mutex.lock().expect("session store lock");
+        let (messages, hist_result) = history::load_history(
+            &store,
+            &input.session.id,
+            ctx.history_budget,
+            &history_config,
+            &input.content,
+        )?;
+        ctx.messages = messages;
+        ctx.history_budget -= hist_result.tokens_consumed;
+        ctx.history_result = Some(hist_result);
+    } else {
+        #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+        let token_estimate = input.content.len() as i64 / 4;
+        ctx.messages.push(PipelineMessage {
+            role: "user".to_owned(),
+            content: input.content.clone(),
+            token_estimate,
+        });
+    }
 
     // Stage 3: Guard
     let guard = check_guard(&input.session, config);
@@ -680,6 +707,7 @@ mod tests {
             &providers,
             &tools,
             &tool_ctx,
+            None,
             None,
             None,
         )

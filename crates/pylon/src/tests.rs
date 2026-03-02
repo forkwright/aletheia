@@ -110,6 +110,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         Arc::clone(&oikos),
         None,
         None,
+        None,
     );
 
     let nous_config = NousConfig {
@@ -122,7 +123,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
     let jwt_manager = test_jwt_manager();
 
     let state = Arc::new(AppState {
-        session_store: Mutex::new(store),
+        session_store: Arc::new(Mutex::new(store)),
         nous_manager,
         provider_registry,
         tool_registry,
