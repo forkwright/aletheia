@@ -493,3 +493,28 @@ Known optimization opportunities from TS codebase analysis. Apply when implement
 - **Arena allocation** — `bumpalo` for per-turn transient data (tool results, intermediate parsing). Freed in bulk at turn end.
 - **File watching** — `notify` crate for bootstrap files. TS does 11 sync reads per turn; cache and recompute only on change.
 - **Batched writes** — Group tool result messages into single SQLite transaction. Don't commit per-message.
+
+---
+
+## Test Execution in Prompts
+
+When working on a specific crate, use **targeted tests during development** and **full suite only as final gate**.
+
+### During Development (after each change)
+```bash
+cargo test -p <crate-being-modified>
+cargo test -p integration-tests
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+The clippy pass type-checks the full workspace — it catches cross-crate breakage without running every test.
+
+### Final Gate (once, before creating PR)
+```bash
+cargo test --workspace
+```
+
+This avoids repeated full-suite compilations during iteration while still catching everything before the PR lands.
+
+### After CI Exists
+Once `.github/workflows/test.yml` is active, prompts only need targeted tests + clippy. CI handles the full sweep on PR.

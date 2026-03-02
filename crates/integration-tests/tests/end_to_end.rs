@@ -142,13 +142,15 @@ impl TestHarness {
         std::fs::write(root.join("theke/USER.md"), "Test user.")
             .expect("write USER.md");
 
-        let store = SessionStore::open_in_memory().expect("in-memory store");
         let oikos = Arc::new(Oikos::from_root(root));
+        let store = SessionStore::open_in_memory().expect("in-memory store");
 
         let mut provider_registry = ProviderRegistry::new();
         provider_registry.register(provider);
         let provider_registry = Arc::new(provider_registry);
         let tool_registry = Arc::new(ToolRegistry::new());
+
+        let session_store = Arc::new(Mutex::new(store));
 
         let mut nous_manager = NousManager::new(
             Arc::clone(&provider_registry),
@@ -156,6 +158,7 @@ impl TestHarness {
             Arc::clone(&oikos),
             None,
             None,
+            Some(Arc::clone(&session_store)),
         );
 
         let nous_config = NousConfig {
@@ -175,8 +178,8 @@ impl TestHarness {
         }));
 
         let state = Arc::new(AppState {
-            session_store: Mutex::new(store),
-            nous_manager,
+            session_store,
+            nous_manager: Arc::new(nous_manager),
             provider_registry,
             tool_registry,
             oikos,
