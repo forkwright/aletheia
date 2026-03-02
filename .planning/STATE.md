@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-03-01T21:16:00Z"
+status: unknown
+last_updated: "2026-03-02T17:16:29.109Z"
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 8
+  completed_phases: 5
+  total_plans: 14
+  completed_plans: 12
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 3 of 6 (Wire into Mneme) -- COMPLETE
-Plan: 2 of 2 in current phase (03-02 complete)
-Status: Phase 3 complete -- 03-02 done: 6 integration tests pass (TEST-02, TEST-03, INTG-04, INTG-05)
-Last activity: 2026-03-01 -- 03-02 complete: knowledge_engine.rs integration tests, feature-gated test suite
+Phase: 7 of 8 (Integrate Hybrid Retrieval) -- IN PROGRESS
+Plan: 1 of 1 in current phase (07-01 complete)
+Status: Phase 7 Plan 01 complete -- BM25, RRF, search_hybrid() landed on main (f33f05e7)
+Last activity: 2026-03-02 -- 07-01 complete: hybrid retrieval integrated via cherry-pick, all tests pass
 
-Progress: [██████░░░░] 50%
+Progress: [████████░░] 80%
 
 ## Milestone: v1.0 CozoDB Absorption
 
@@ -49,9 +49,10 @@ Progress: [██████░░░░] 50%
 | 01-copy-compile | 3/3 | 114 min | 38 min |
 | 02-critical-safety | 2/2 | ~60 min | ~30 min |
 | 03-wire-into-mneme | 2/2 | 15 min | 7.5 min |
+| 07-integrate-hybrid-retrieval | 1/1 | 7 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min
+- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min, 7 min
 - Trend: integration work fast when interfaces are well-specified
 
 *Updated after each plan completion*
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - AD-20 (03-01): DataValue has no into_num() -- DataValue::from(i64) already produces Num::Int directly; plan spec used non-existent method
 - AD-21 (03-01): KnowledgeConfig derives Copy -- only contains usize; avoids needless_pass_by_value clippy lint on open_mem_with_config
 - AD-22 (03-02): schema_version not _schema_version -- CozoDB temp_store_tx (underscore prefix) is per-run; persistent store_tx requires no-underscore name
+- [Phase 07-integrate-hybrid-retrieval]: Squashed all Phase 4 cherry-picks into single commit — reset --soft main staged all changes together; cleaner than forcing split
+- [Phase 07-integrate-hybrid-retrieval]: knowledge_store.rs conflict resolved additively: Phase 6 run_query_with_timeout() and Phase 4 search_hybrid() both kept, Phase 6 block first
 
 ### Pending Todos
 
@@ -98,9 +101,9 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Completed 03-wire-into-mneme/03-02-PLAN.md -- Phase 3 complete (2/2 plans done)
-Resume file: (continue with Phase 4)
+Last session: 2026-03-02
+Stopped at: Completed 07-integrate-hybrid-retrieval/07-01-PLAN.md -- Phase 7 Plan 01 done (BM25, RRF, search_hybrid on main)
+Resume file: (continue with next phase)
 
 ---
-*Last updated: 2026-03-01 -- 03-02 complete (6 integration tests, 1 auto-fixed bug, all checks green)*
+*Last updated: 2026-03-02 -- 07-01 complete (173 mneme-engine tests, 66 mneme tests, 9+ integration tests, clippy clean)*

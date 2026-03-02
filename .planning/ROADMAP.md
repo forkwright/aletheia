@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Hybrid Retrieval** - BM25 + HNSW + graph join in single Datalog query, RRF fusion, HNSW connectivity validation (completed 2026-03-01)
 - [x] **Phase 5: Error + Idiom Migration** - miette to snafu, log to tracing, lazy_static to LazyLock, systematic unwrap audit (completed 2026-03-02)
 - [x] **Phase 6: Performance** - Query timeout via cancellation token, ndarray fused distance computation (completed 2026-03-02)
-- [ ] **Phase 7: Integrate Hybrid Retrieval** - Rebase feat/mneme-engine-p4 onto main, resolve conflicts with Phase 6, verify tests (gap closure)
+- [x] **Phase 7: Integrate Hybrid Retrieval** - Rebase feat/mneme-engine-p4 onto main, resolve conflicts with Phase 6, verify tests (gap closure) (completed 2026-03-02)
 - [ ] **Phase 8: Integrate Idiom Migration** - Rebase feat/mneme-engine-p5 onto integrated branch, resolve conflicts, update tracking docs (gap closure)
 
 ## Phase Details
@@ -124,10 +124,10 @@ Plans:
   2. `cargo test -p aletheia-mneme-engine` passes (166+ tests including BM25/RRF)
   3. `cargo test --test knowledge_engine` passes (6+ integration tests including hybrid retrieval)
   4. `search_hybrid()`, `HybridQuery`, `ReciprocalRankFusion` available on integration branch
-**Plans**: TBD
+**Plans**: 1 plan, 1 wave (sequential)
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01: Cherry-pick Phase 4 code commits, resolve knowledge_store.rs conflict, squash, verify (Wave 1)
 
 ### Phase 8: Integrate Idiom Migration
 **Goal**: Rebase the 9 `feat/mneme-engine-p5` commits onto the Phase 7 result so all idiom migrations land -- snafu errors, tracing, LazyLock, unwrap audit, and ABSORPTION.md
@@ -160,5 +160,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 4. Hybrid Retrieval | 2/2 | Complete   | 2026-03-01 |
 | 5. Error + Idiom Migration | 3/3 | Complete   | 2026-03-02 |
 | 6. Performance | 1/1 | Complete   | 2026-03-02 |
-| 7. Integrate Hybrid Retrieval | 0/1 | Not started | — |
+| 7. Integrate Hybrid Retrieval | 1/1 | Complete   | 2026-03-02 |
 | 8. Integrate Idiom Migration | 0/1 | Not started | — |
