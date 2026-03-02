@@ -161,4 +161,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Error + Idiom Migration | 3/3 | Complete   | 2026-03-02 |
 | 6. Performance | 1/1 | Complete   | 2026-03-02 |
 | 7. Integrate Hybrid Retrieval | 1/1 | Complete   | 2026-03-02 |
-| 8. Integrate Idiom Migration | 1/1 | Complete | 2026-03-02 |
+| 8. Integrate Idiom Migration | 1/1 | Complete   | 2026-03-02 |
