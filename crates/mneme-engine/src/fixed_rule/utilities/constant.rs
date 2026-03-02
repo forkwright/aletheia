@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use smartstring::{LazyCompact, SmartString};
@@ -44,7 +43,7 @@ impl FixedRule for Constant {
         &self,
         options: &BTreeMap<SmartString<LazyCompact>, Expr>,
         rule_head: &[Symbol],
-        span: SourceSpan,
+        _span: SourceSpan,
     ) -> Result<usize> {
         let data = options
             .get("data")
@@ -69,7 +68,7 @@ impl FixedRule for Constant {
     fn init_options(
         &self,
         options: &mut BTreeMap<SmartString<LazyCompact>, Expr>,
-        span: SourceSpan,
+        _span: SourceSpan,
     ) -> Result<()> {
         let data = options
             .get("data")
@@ -105,7 +104,7 @@ impl FixedRule for Constant {
                     last_len = Some(tuple.len());
                     tuples.push(DataValue::List(tuple));
                 }
-                row => {
+                _row => {
                     
 
                     bail!("Bad row for constant rule: {0:?}")

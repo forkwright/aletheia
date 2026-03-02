@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use snafu::Snafu;
 use crate::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::ensure;
 use crossbeam::channel::{bounded, Receiver, Sender};
 #[allow(unused_imports)]
 use either::{Left, Right};

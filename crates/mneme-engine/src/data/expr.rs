@@ -12,7 +12,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::mem;
 
 use snafu::Snafu;
-use crate::{bail, ensure};
+use crate::bail;
 use crate::error::DbResult as Result;
 use itertools::Itertools;
 use serde::de::{Error, Visitor};

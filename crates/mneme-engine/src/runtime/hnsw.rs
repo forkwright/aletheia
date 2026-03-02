@@ -16,7 +16,6 @@ use crate::parse::sys::HnswDistance;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;

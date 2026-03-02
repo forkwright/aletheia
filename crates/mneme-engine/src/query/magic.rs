@@ -24,7 +24,6 @@ use crate::data::program::{
 use crate::data::relation::{ColType, NullableColType};
 use crate::data::symb::{Symbol, PROG_ENTRY};
 use crate::parse::SourceSpan;
-use crate::query::logical::NamedFieldNotFound;
 
 use crate::runtime::transact::SessionTx;
 

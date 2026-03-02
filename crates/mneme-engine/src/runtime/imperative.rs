@@ -9,7 +9,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail};
 use either::{Either, Left, Right};
@@ -314,7 +313,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     ControlCode::Termination(res) => {
                         ret = res;
                     }
-                    ControlCode::Break(_, span) | ControlCode::Continue(_, span) => {
+                    ControlCode::Break(_, _span) | ControlCode::Continue(_, _span) => {
                         
 
                         bail!("control flow has nowhere to go")

@@ -8,7 +8,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
@@ -21,7 +20,6 @@ use crate::data::program::{
 };
 use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
-use crate::parse::SourceSpan;
 use crate::query::ra::RelAlgebra;
 use crate::runtime::relation::AccessLevel;
 use crate::runtime::transact::SessionTx;

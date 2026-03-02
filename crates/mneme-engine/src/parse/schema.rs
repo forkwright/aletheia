@@ -8,7 +8,6 @@
 
 use std::collections::BTreeSet;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
@@ -16,9 +15,8 @@ use smartstring::SmartString;
 
 use crate::data::relation::{VecElementType, ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::data::symb::Symbol;
-use crate::data::value::DataValue;
 use crate::parse::expr::{build_expr};
-use crate::parse::{ExtractSpan, Pair, Rule, SourceSpan};
+use crate::parse::{ExtractSpan, Pair, Rule};
 
 pub(crate) fn parse_schema(
     pair: Pair<'_>,
@@ -32,7 +30,7 @@ pub(crate) fn parse_schema(
 
     
     for p in src.next().unwrap().into_inner() {
-        let span = p.extract_span();
+        let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
             bail!("Column is defined multiple times");
@@ -42,7 +40,7 @@ pub(crate) fn parse_schema(
     }
     if let Some(ps) = src.next() {
         for p in ps.into_inner() {
-            let span = p.extract_span();
+            let _span = p.extract_span();
             let (col, ident) = parse_col(p)?;
             if !seen_names.insert(col.name.clone()) {
                 bail!("Column is defined multiple times");
@@ -117,7 +115,7 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
             let len = match inner.next() {
                 None => None,
                 Some(len_p) => {
-                    let span = len_p.extract_span();
+                    let _span = len_p.extract_span();
                     let expr = build_expr(len_p, &Default::default())?;
                     let dv = expr.eval_to_const()?;
 

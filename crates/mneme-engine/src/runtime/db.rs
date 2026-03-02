@@ -41,7 +41,7 @@ use crate::data::value::{DataValue, ValidityTs, LARGEST_UTF_CHAR};
 use crate::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::fts::TokenizerCache;
 use crate::parse::sys::SysOp;
-use crate::parse::{parse_expressions, parse_script, CozoScript, SourceSpan};
+use crate::parse::{parse_expressions, parse_script, CozoScript};
 use crate::query::compile::{CompiledProgram, CompiledRule, CompiledRuleSet};
 use crate::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
@@ -1509,12 +1509,12 @@ impl<'s, S: Storage<'s>> Db<S> {
         // deal with assertions
         if let Some(assertion) = &out_opts.assertion {
             match assertion {
-                QueryAssertion::AssertNone(span) => {
-                    if let Some(tuple) = result_store.all_iter().next() {
+                QueryAssertion::AssertNone(_span) => {
+                    if let Some(_tuple) = result_store.all_iter().next() {
                         bail!("The query is asserted to return no result, but a tuple was found")
                     }
                 }
-                QueryAssertion::AssertSome(span) => {
+                QueryAssertion::AssertSome(_span) => {
                     if result_store.all_iter().next().is_none() {
                         
                         bail!("The query is asserted to return some results, but returned none")
@@ -1830,12 +1830,12 @@ pub fn evaluate_expressions(
     params: &BTreeMap<String, DataValue>,
     vars: &BTreeMap<String, DataValue>,
 ) -> Result<DataValue> {
-    _evaluate_expressions(src, params, vars).map_err(|err| err)
+    _evaluate_expressions(src, params, vars)
 }
 
 /// Get the variables referenced in a string expression
 pub fn get_variables(src: &str, params: &BTreeMap<String, DataValue>) -> Result<BTreeSet<String>> {
-    _get_variables(src, params).map_err(|err| err)
+    _get_variables(src, params)
 }
 
 fn _evaluate_expressions(

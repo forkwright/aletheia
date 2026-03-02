@@ -9,7 +9,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
@@ -23,7 +22,7 @@ use crate::data::value::{DataValue, ValidityTs};
 use crate::fts::TokenizerConfig;
 use crate::parse::expr::{build_expr, parse_string};
 use crate::parse::query::parse_query;
-use crate::parse::{ExtractSpan, Pairs, Rule, SourceSpan};
+use crate::parse::{ExtractSpan, Pairs, Rule};
 use crate::runtime::relation::AccessLevel;
 use crate::{Expr, FixedRule};
 
@@ -581,10 +580,10 @@ pub(crate) fn parse_sys(
                                     "IP" => HnswDistance::InnerProduct,
                                     "Cosine" => HnswDistance::Cosine,
                                     _ => {
-                                        return Err(bail!(
+                                        bail!(
                                             "Invalid distance: {}",
                                             opt_val.as_str()
-                                        ))
+                                        )
                                     }
                                 }
                             }
@@ -636,7 +635,7 @@ pub(crate) fn parse_sys(
             let inner = inner.into_inner().next().unwrap();
             match inner.as_rule() {
                 Rule::index_create => {
-                    let span = inner.extract_span();
+                    let _span = inner.extract_span();
                     let mut inner = inner.into_inner();
                     let rel = inner.next().unwrap();
                     let name = inner.next().unwrap();

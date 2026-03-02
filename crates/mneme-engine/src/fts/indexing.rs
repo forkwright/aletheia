@@ -17,7 +17,6 @@ use crate::parse::fts::parse_fts_query;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -384,7 +383,7 @@ impl<'a> SessionTx<'a> {
         let to_index = match eval_bytecode(extractor, tuple, stack)? {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
-            val => {
+            _val => {
                 
 
                 bail!("FTS index extractor must return a string, got {}")
@@ -435,7 +434,7 @@ impl<'a> SessionTx<'a> {
         let to_index = match eval_bytecode(extractor, tuple, stack)? {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
-            val => {
+            _val => {
                 
 
                 bail!("FTS index extractor must return a string, got {}")

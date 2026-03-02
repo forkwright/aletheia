@@ -11,7 +11,6 @@ use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail};
 use serde_derive::{Deserialize, Serialize};

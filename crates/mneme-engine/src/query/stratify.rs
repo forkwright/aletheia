@@ -9,7 +9,6 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{ensure};
 use itertools::Itertools;

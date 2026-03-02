@@ -9,11 +9,9 @@
 use std::collections::BTreeSet;
 use std::mem;
 
-use snafu::Snafu;
-use crate::{bail, ensure};
+use crate::bail;
 use crate::error::DbResult as Result;
 use crate::data::program::{NormalFormAtom, NormalFormInlineRule};
-use crate::parse::SourceSpan;
 
 
 
@@ -203,19 +201,19 @@ impl NormalFormInlineRule {
                             bail!("Encountered unsafe negation, or empty rule definition");
                         }
                     }
-                    NormalFormAtom::Predicate(p) => {
+                    NormalFormAtom::Predicate(_p) => {
                         bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
-                    NormalFormAtom::Unification(u) => {
+                    NormalFormAtom::Unification(_u) => {
                         bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
-                    NormalFormAtom::HnswSearch(s) => {
+                    NormalFormAtom::HnswSearch(_s) => {
                         bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
-                    NormalFormAtom::FtsSearch(s) => {
+                    NormalFormAtom::FtsSearch(_s) => {
                         bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
-                    NormalFormAtom::LshSearch(s) => {
+                    NormalFormAtom::LshSearch(_s) => {
                         bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                 }
