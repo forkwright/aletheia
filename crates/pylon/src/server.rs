@@ -10,8 +10,8 @@ use tracing::info;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::store::SessionStore;
-use aletheia_nous::config::NousConfig;
-use aletheia_nous::session::SessionManager;
+use aletheia_nous::config::{NousConfig, PipelineConfig};
+use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::oikos::Oikos;
@@ -45,28 +45,36 @@ pub enum ServerError {
 
 /// Start the HTTP gateway and block until shutdown.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
-    let oikos = Oikos::from_root(&config.instance_path);
+    let oikos = Arc::new(Oikos::from_root(&config.instance_path));
 
     let session_store =
         SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
 
-    let nous_config = NousConfig::default();
-    let session_manager = SessionManager::new(nous_config);
-    let provider_registry = ProviderRegistry::new();
-    let tool_registry = ToolRegistry::new();
+    let provider_registry = Arc::new(ProviderRegistry::new());
+    let tool_registry = Arc::new(ToolRegistry::new());
     let jwt_manager = Arc::new(JwtManager::new(JwtConfig::default()));
+
+    let mut nous_manager = NousManager::new(
+        Arc::clone(&provider_registry),
+        Arc::clone(&tool_registry),
+        Arc::clone(&oikos),
+        None,
+        None,
+    );
+    let nous_config = NousConfig::default();
+    nous_manager.spawn(nous_config, PipelineConfig::default()).await;
 
     let state = Arc::new(AppState {
         session_store: Mutex::new(session_store),
+        nous_manager,
         provider_registry,
-        session_manager,
         tool_registry,
         oikos,
         jwt_manager,
         start_time: Instant::now(),
     });
 
-    let app = build_router(state);
+    let app = build_router(state.clone());
 
     let listener = TcpListener::bind(&config.bind_addr)
         .await
@@ -80,6 +88,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context(ServeSnafu)?;
+
+    state.nous_manager.shutdown_readonly().await;
 
     info!("pylon shutdown complete");
     Ok(())

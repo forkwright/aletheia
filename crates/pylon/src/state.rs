@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::store::SessionStore;
-use aletheia_nous::session::SessionManager;
+use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::JwtManager;
 use aletheia_taxis::oikos::Oikos;
@@ -13,10 +13,10 @@ use aletheia_taxis::oikos::Oikos;
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
 pub struct AppState {
     pub session_store: Mutex<SessionStore>,
-    pub session_manager: SessionManager,
-    pub provider_registry: ProviderRegistry,
-    pub tool_registry: ToolRegistry,
-    pub oikos: Oikos,
+    pub nous_manager: NousManager,
+    pub provider_registry: Arc<ProviderRegistry>,
+    pub tool_registry: Arc<ToolRegistry>,
+    pub oikos: Arc<Oikos>,
     pub jwt_manager: Arc<JwtManager>,
     pub start_time: Instant,
 }

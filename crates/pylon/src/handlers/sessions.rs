@@ -15,12 +15,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 use tracing::{info, instrument, warn};
 
-use aletheia_hermeneus::types::{
-    CompletionRequest, Content, ContentBlock, Message as LlmMessage, Role as LlmRole,
-};
 use aletheia_mneme::types::SessionStatus;
+use aletheia_nous::pipeline::TurnResult;
 
-use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, SessionNotFoundSnafu};
+use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu};
 use crate::extract::Claims;
 use crate::state::AppState;
 use crate::stream::{SseEvent, UsageData};
@@ -35,18 +33,20 @@ pub async fn create(
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
-    let manager = &state.session_manager;
-    let session_state = manager.create_session(&ulid::Ulid::new().to_string(), &session_key);
+    let config = state.nous_manager.get_config(&nous_id)
+        .ok_or_else(|| NousNotFoundSnafu { id: nous_id.clone() }.build())?;
+
+    let id = ulid::Ulid::new().to_string();
+    let model = config.model.clone();
 
     let state_clone = Arc::clone(&state);
-    let id = session_state.id.clone();
-    let nid = session_state.nous_id.clone();
+    let id_clone = id.clone();
+    let nid = nous_id.clone();
     let skey = session_key.clone();
-    let model = session_state.model.clone();
 
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.lock().expect("store lock");
-        store.find_or_create_session(&id, &nid, &skey, Some(&model), None)
+        store.find_or_create_session(&id_clone, &nid, &skey, Some(&model), None)
     })
     .await??;
 
@@ -146,26 +146,60 @@ pub async fn send_message(
     // Store the user message
     store_message(&state, &session_id, aletheia_mneme::types::Role::User, &content, 0).await?;
 
-    let model = session
-        .model
-        .clone()
-        .unwrap_or_else(|| "claude-opus-4-20250514".to_owned());
+    // Resolve the nous actor
+    let nous_id = &session.nous_id;
+    let handle = state
+        .nous_manager
+        .get(nous_id)
+        .ok_or_else(|| {
+            InternalSnafu {
+                message: format!("no actor for nous {nous_id}"),
+            }
+            .build()
+        })?
+        .clone();
 
-    let request = build_completion_request(&state, &session_id, &model).await?;
-
-    if state.provider_registry.find_provider(&model).is_none() {
-        return Err(InternalSnafu {
-            message: format!("no provider for model {model}"),
+    // Pre-flight: verify provider exists for the model
+    if let Some(config) = state.nous_manager.get_config(nous_id) {
+        if state.provider_registry.find_provider(&config.model).is_none() {
+            return Err(InternalSnafu {
+                message: format!("no provider for model {}", config.model),
+            }
+            .build());
         }
-        .build());
     }
 
+    let session_key = session.session_key.clone();
     let (tx, rx) = mpsc::channel::<SseEvent>(32);
     let state_clone = Arc::clone(&state);
     let sid = session_id.clone();
 
-    tokio::task::spawn_blocking(move || {
-        run_completion(&state_clone, &model, &request, &tx, &sid);
+    tokio::spawn(async move {
+        match handle.send_turn(&session_key, &content).await {
+            Ok(result) => {
+                emit_turn_result_events(&tx, &result).await;
+
+                // Store assistant response
+                let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
+                let _ = store_message(
+                    &state_clone,
+                    &sid,
+                    aletheia_mneme::types::Role::Assistant,
+                    &result.content,
+                    token_estimate,
+                )
+                .await;
+            }
+            Err(err) => {
+                warn!(error = %err, "turn failed");
+                let _ = tx
+                    .send(SseEvent::Error {
+                        code: "turn_failed".to_owned(),
+                        message: err.to_string(),
+                    })
+                    .await;
+            }
+        }
     });
 
     let stream = ReceiverStream::new(rx).map(|event| {
@@ -178,6 +212,45 @@ pub async fn send_message(
             .interval(Duration::from_secs(15))
             .text("ping"),
     ))
+}
+
+async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResult) {
+    if !result.content.is_empty() {
+        let _ = tx
+            .send(SseEvent::TextDelta {
+                text: result.content.clone(),
+            })
+            .await;
+    }
+
+    for tc in &result.tool_calls {
+        let _ = tx
+            .send(SseEvent::ToolUse {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                input: tc.input.clone(),
+            })
+            .await;
+        if let Some(ref result_content) = tc.result {
+            let _ = tx
+                .send(SseEvent::ToolResult {
+                    tool_use_id: tc.id.clone(),
+                    content: result_content.clone(),
+                    is_error: tc.is_error,
+                })
+                .await;
+        }
+    }
+
+    let _ = tx
+        .send(SseEvent::MessageComplete {
+            stop_reason: result.stop_reason.clone(),
+            usage: UsageData {
+                input_tokens: result.usage.input_tokens,
+                output_tokens: result.usage.output_tokens,
+            },
+        })
+        .await;
 }
 
 async fn store_message(
@@ -196,136 +269,6 @@ async fn store_message(
     })
     .await?
     .map_err(ApiError::from)
-}
-
-async fn build_completion_request(
-    state: &Arc<AppState>,
-    session_id: &str,
-    model: &str,
-) -> Result<CompletionRequest, ApiError> {
-    let state_clone = Arc::clone(state);
-    let sid = session_id.to_owned();
-    let history = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.get_history(&sid, Some(50))
-    })
-    .await??;
-
-    let messages: Vec<LlmMessage> = history
-        .iter()
-        .filter_map(|m| {
-            let role = match m.role {
-                aletheia_mneme::types::Role::User => LlmRole::User,
-                aletheia_mneme::types::Role::Assistant => LlmRole::Assistant,
-                _ => return None,
-            };
-            Some(LlmMessage {
-                role,
-                content: Content::Text(m.content.clone()),
-            })
-        })
-        .collect();
-
-    Ok(CompletionRequest {
-        model: model.to_owned(),
-        system: None,
-        messages,
-        max_tokens: 4096,
-        tools: state.tool_registry.to_hermeneus_tools(),
-        temperature: None,
-        thinking: None,
-        stop_sequences: vec![],
-    })
-}
-
-fn run_completion(
-    state: &AppState,
-    model: &str,
-    request: &CompletionRequest,
-    tx: &mpsc::Sender<SseEvent>,
-    session_id: &str,
-) {
-    let Some(provider) = state.provider_registry.find_provider(model) else {
-        let _ = tx.blocking_send(SseEvent::Error {
-            code: "no_provider".to_owned(),
-            message: format!("no provider for model {model}"),
-        });
-        return;
-    };
-
-    match provider.complete(request) {
-        Ok(response) => {
-            emit_response_events(tx, &response);
-
-            let full_text: String = response
-                .content
-                .iter()
-                .filter_map(|b| match b {
-                    ContentBlock::Text { text } => Some(text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("");
-
-            if let Ok(store) = state.session_store.lock() {
-                let _ = store.append_message(
-                    session_id,
-                    aletheia_mneme::types::Role::Assistant,
-                    &full_text,
-                    None,
-                    None,
-                    i64::try_from(response.usage.output_tokens).unwrap_or(0),
-                );
-            }
-        }
-        Err(err) => {
-            warn!(error = %err, "completion failed");
-            let _ = tx.blocking_send(SseEvent::Error {
-                code: "completion_failed".to_owned(),
-                message: err.to_string(),
-            });
-        }
-    }
-}
-
-fn emit_response_events(
-    tx: &mpsc::Sender<SseEvent>,
-    response: &aletheia_hermeneus::types::CompletionResponse,
-) {
-    for block in &response.content {
-        let event = match block {
-            ContentBlock::Text { text } => SseEvent::TextDelta {
-                text: text.clone(),
-            },
-            ContentBlock::Thinking { thinking } => SseEvent::ThinkingDelta {
-                thinking: thinking.clone(),
-            },
-            ContentBlock::ToolUse { id, name, input } => SseEvent::ToolUse {
-                id: id.clone(),
-                name: name.clone(),
-                input: input.clone(),
-            },
-            ContentBlock::ToolResult {
-                tool_use_id,
-                content,
-                is_error,
-            } => SseEvent::ToolResult {
-                tool_use_id: tool_use_id.clone(),
-                content: content.clone(),
-                is_error: is_error.unwrap_or(false),
-            },
-            _ => continue,
-        };
-        let _ = tx.blocking_send(event);
-    }
-
-    let _ = tx.blocking_send(SseEvent::MessageComplete {
-        stop_reason: format!("{:?}", response.stop_reason),
-        usage: UsageData {
-            input_tokens: response.usage.input_tokens,
-            output_tokens: response.usage.output_tokens,
-        },
-    });
 }
 
 async fn find_session(
