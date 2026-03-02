@@ -37,6 +37,10 @@
 
 | Issue | Title | Status | Disposition |
 |-------|-------|--------|-------------|
+| #409 | mneme: architectural risks and pre-deployment blockers | Closed | Consolidated → .planning/REQUIREMENTS.md v2 section (Phases 9-14) |
+| #408 | mneme subsystem improvement plan: post-absorption roadmap | Closed | Consolidated → .planning/ROADMAP.md v2 section + REQUIREMENTS.md |
+| #411 | mneme: knowledge lifecycle — extraction, conflict resolution, consolidation | Closed | Consolidated → .planning/REQUIREMENTS.md v2 section (KL-01..12), ROADMAP.md Phase 15 |
+| #405 | v1.0 tech debt: cleanup backlog from CozoDB absorption | Closed | Consolidated → .planning/REQUIREMENTS.md v2 section (QUAL-01..07, BUG-01..03) |
 | #352 | Rust rewrite tracking | Open | Meta-issue for this plan |
 | #338 | Coding tool quality | Open | Absorbed → M2 (organon, per-nous workingDir via oikos) |
 | #332 | OS-layer integration | Open | Retained → M6 (Spec 24) |

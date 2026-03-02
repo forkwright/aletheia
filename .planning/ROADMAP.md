@@ -162,3 +162,148 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 6. Performance | 1/1 | Complete   | 2026-03-02 |
 | 7. Integrate Hybrid Retrieval | 1/1 | Complete   | 2026-03-02 |
 | 8. Integrate Idiom Migration | 1/1 | Complete   | 2026-03-02 |
+
+---
+
+# Roadmap: v2 mneme Subsystem
+
+## Overview
+
+Post-absorption work to make the engine production-ready. v1 proved the absorption works — all 53 requirements met, 268 tests pass. v2 connects the engine to agent capability (recall pipeline), hardens query safety, and lifts the performance ceiling (HNSW redesign). Progressive quality improvement runs continuously alongside feature work.
+
+Source: Issues #405, #408, #409, #411 — consolidated into planning docs, issues closed.
+
+## Principles
+
+1. **Product impact before engineering purity.** Recall pipeline > typed query builder > HNSW redesign > async engine.
+2. **Bugs before features.** Graph score aggregation and RRF encoding must be fixed before recall pipeline ships.
+3. **Tests travel with features.** No separate "testing phase." Each feature brings its failure-mode tests.
+4. **Quality work is opportunistic.** Lint cleanup, unwrap triage, and suppression tightening happen when touching those files for other reasons. Never scheduled as standalone work.
+
+## Phases
+
+### Phase 9: Bug Fixes & Correctness
+**Goal**: Fix known correctness issues in hybrid search before wiring it to production recall
+**Depends on**: v1 complete (Phase 8)
+**Requirements**: BUG-01, BUG-02, BUG-03
+**Success Criteria**:
+  1. Graph score aggregation sums `graph_raw` scores via `sum()` before RRF consumes them — no duplicate entity tuples
+  2. RRF uses -1 (not 0) for missing signal ranks — unambiguous encoding
+  3. Hybrid search executes correctly with only 2 signals (BM25 + LSH) when graph rules return empty
+  4. Regression tests for all three fixes
+
+### Phase 10: Recall Pipeline
+**Goal**: Agent turns retrieve knowledge from KnowledgeStore — the gap between "engine works in tests" and "agents know things"
+**Depends on**: Phase 9 (correctness)
+**Requirements**: RECALL-01, RECALL-02, RECALL-03, RECALL-04
+**Success Criteria**:
+  1. `impl VectorSearch for KnowledgeStore` exists and passes trait contract tests
+  2. Embedding provider is selected and configured (fastembed-rs local or API-based)
+  3. `main.rs` passes live `VectorSearch` impl to `RecallStage` (no more `None`)
+  4. End-to-end test: insert knowledge, run agent turn, verify recall influences response
+  5. Integration test for recall with empty knowledge store (graceful no-op)
+
+### Phase 11: Typed Query Builder
+**Goal**: Compile-time validated Datalog queries — no more format!() string interpolation for schema access
+**Depends on**: Phase 10 (recall pipeline working = queries are exercised in production)
+**Requirements**: QSAFE-01, QSAFE-02, QSAFE-03, QSAFE-04
+**Success Criteria**:
+  1. All ~10 KnowledgeStore query patterns use typed builder instead of format!() strings
+  2. Builder validates field references at compile time — schema change = compile error, not runtime surprise
+  3. Builder emits valid Datalog strings internally (verified by comparing output to known-good queries)
+  4. No Datalog injection possible through entity IDs or user-supplied values
+
+### Phase 12: HNSW Redesign
+**Goal**: In-memory vector search with WAL persistence — remove the KV-hop performance ceiling
+**Depends on**: Phase 10 (recall pipeline exercising HNSW in production gives real performance baseline)
+**Requirements**: HNSW-01, HNSW-02, HNSW-03, HNSW-04, DEP-01
+**Success Criteria**:
+  1. New in-memory HNSW implementation passes same correctness tests as KV-backed version
+  2. WAL replay test: kill during write, restart, verify index integrity
+  3. Benchmark shows measurable improvement at 10K+ vectors vs. KV-backed version
+  4. KV-backed version remains as fallback (feature-gated)
+  5. graph-builder absorbed into mneme — rayon pin eliminated
+  6. Old graph-builder crate deleted from workspace
+
+### Phase 13: KV Store Evaluation
+**Goal**: Assess whether RocksDB is still the right choice after HNSW moves to memory
+**Depends on**: Phase 12 (HNSW redesign clarifies what the KV store actually needs to do)
+**Requirements**: DEP-02, DEP-03
+**Success Criteria**:
+  1. Evaluation doc comparing redb, fjall, sled against Aletheia's actual access patterns (facts + relations + FTS indices)
+  2. Decision: stay with RocksDB, migrate, or defer. Written with rationale.
+  3. If migrating: data migration path documented, correctness tests pass with new backend
+
+### Phase 14: Async Engine
+**Goal**: Cooperative async Db::run() — engine works with Tokio instead of fighting it
+**Depends on**: Phase 12 (async HNSW search benefits from in-memory design)
+**Requirements**: ASYNC-01, ASYNC-02, ASYNC-03
+**Success Criteria**:
+  1. `Db::run()` yields between evaluation steps — doesn't monopolize blocking thread pool
+  2. Existing cancellation token check-points become yield points
+  3. All existing tests pass with async path
+  4. Benchmark: concurrent query throughput improves vs. spawn_blocking baseline
+### Phase 15: Knowledge Lifecycle
+**Goal**: Agents populate, maintain, and evolve their knowledge graph — extraction from conversations, conflict resolution on write, consolidation as the graph grows
+**Depends on**: Phase 10 (recall pipeline — extraction stage lives adjacent to RecallStage), Phase 11 (typed query builder — extraction writes need schema safety)
+**Requirements**: KL-01, KL-02, KL-03, KL-04, KL-05, KL-06, KL-07, KL-08, KL-09, KL-10, KL-11, KL-12
+**References**: Zep/Graphiti temporal KG ([arxiv.org/abs/2501.13956](https://arxiv.org/abs/2501.13956)), Mem0 ([arxiv.org/abs/2504.19413](https://arxiv.org/abs/2504.19413))
+**Success Criteria**:
+  1. Every agent turn triggers extraction pipeline — conversation text → structured triples written to knowledge graph
+  2. Extraction is schema-aware — triples conform to relation schema, not freeform
+  3. On write, semantic search detects contradictions with existing edges — old facts invalidated with `t_invalid`, not deleted
+  4. Conflict log tracks what was superseded and why
+  5. Retrieval tracking records access timestamps on edges
+  6. Decay scoring integrated into RRF fusion — stale facts rank lower
+  7. Consolidation job clusters related facts (Louvain community detection), summarizes via LLM, replaces originals
+  8. Explicit forgetting: user/agent can mark facts as forgotten with reason
+**Suggested internal sequencing**:
+  - Step 1: Entity/relationship extraction (KL-01..04) — populates the graph
+  - Step 2: Conflict resolution (KL-05..08) — maintains coherence
+  - Step 3: Retrieval tracking (KL-09) — provides data for decay
+  - Step 4: Decay scoring (KL-11) — improves retrieval quality
+  - Step 5: Consolidation (KL-10) — manages growth
+  - Step 6: Explicit forgetting (KL-12) — user control
+
+
+## Ongoing Work (Not Phased)
+
+These happen continuously, not in dedicated phases:
+
+### Internal Quality (QUAL-01..07)
+- Remove unused snafu imports when touching those files
+- Tighten lint suppressions one at a time during related work
+- Fix string-matching timeout detection when touching error handling
+- Progressive unwrap conversion prioritized by call-graph reachability
+- from_shape_ptr alignment — may become moot after HNSW redesign
+- Storage abstraction simplification — after KV evaluation decision
+- Miri testing for unsafe sites — after alignment and HNSW work stabilizes
+
+### Integration Tests (ITEST-01..06)
+- Each new feature brings its failure-mode tests
+- Concurrent access tests built during recall pipeline work
+- Recovery tests built during HNSW redesign (WAL replay covers this)
+- Edge case tests accumulated incrementally
+
+### Performance & Capabilities (PERF-V2-01..03, CAP-01..02)
+- Query metrics: add when observability infrastructure exists (M5, Spec 41)
+- RocksDB backup: add if RocksDB stays after Phase 13 evaluation
+- BM25 parameter configurability: add if multi-language support planned
+- CSV/JSON import: add when productivity features need it
+- FTS tokenizer config: add with multi-language support
+
+## Progress
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 9. Bug Fixes & Correctness | Not started | |
+| 10. Recall Pipeline | Not started | Highest priority |
+| 11. Typed Query Builder | Not started | |
+| 12. HNSW Redesign | Not started | |
+| 13. KV Store Evaluation | Not started | |
+| 14. Async Engine | Not started | |
+| 15. Knowledge Lifecycle | Not started | Extraction + conflict resolution after Phase 10-11; consolidation at scale |
+
+---
+*v2 roadmap created: 2026-03-03*
+*Source: Issues #405, #408, #409, #411*

@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: complete
-last_updated: "2026-03-02T18:05:00.000Z"
+milestone: v2
+milestone_name: mneme-v2
+status: planning
+last_updated: "2026-03-03T00:00:00.000Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 15
-  completed_plans: 15
+  total_phases: 7
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -16,97 +16,79 @@ progress:
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-01)
+See: docs/PROJECT.md for full project roadmap
 
 **Core value:** Every milestone produces a PR that meets the absolute quality bar
-**Current focus:** Phase 3 -- Wire into Mneme (COMPLETE)
+**Current focus:** v2 mneme subsystem — recall pipeline, query safety, HNSW redesign
 
 ## Current Position
 
-Phase: 8 of 8 (Integrate Idiom Migration) -- COMPLETE
-Plan: 1 of 1 in current phase (08-01 complete)
-Status: Phase 8 Plan 01 complete -- snafu, tracing, LazyLock, unwrap audit, ABSORPTION.md landed on main (f9f7b8bb)
-Last activity: 2026-03-02 -- PR #407 merged (clippy cleanup, 22→10 warnings). 08-01 complete: all idiom migrations integrated, 173 mneme-engine tests pass, milestone v1.0 COMPLETE
+Phase: 9 of 15 (Bug Fixes & Correctness) — NOT STARTED
+Status: v1 CozoDB absorption COMPLETE (53/53 requirements, 268 tests). v2 planning docs integrated from issues #405, #408, #409, #411.
+Last activity: 2026-03-03 — v2 requirements and roadmap integrated into planning docs. Issues #405, #408, #409, #411 to be closed.
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
-## Milestone: v1.0 CozoDB Absorption
+## v1 Milestone: CozoDB Absorption — COMPLETE
 
-**Prompt:** `/home/ck/aletheia-ops/prompts/05_GSD_cozo-absorption.md`
-**Branch:** `feat/mneme-engine`
-**PR title:** `feat(mneme-engine): CozoDB absorption -- fork, patch, strip, integrate`
+All 8 phases complete. 53/53 requirements satisfied. 268 tests passing. PR #406 merged.
+Full v1 details preserved in ROADMAP.md (top section) and REQUIREMENTS.md (v1 section).
 
-## Performance Metrics
-
-**Velocity:**
+**Performance Metrics (v1):**
 - Total plans completed: 15
-- Average duration: ~20 min
 - Total execution time: ~2.5 hours
+- Average duration: ~20 min per plan
 
-**By Phase:**
+## v2 Milestone: mneme Subsystem Improvements
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-copy-compile | 3/3 | 114 min | 38 min |
-| 02-critical-safety | 2/2 | ~60 min | ~30 min |
-| 03-wire-into-mneme | 2/2 | 15 min | 7.5 min |
-| 07-integrate-hybrid-retrieval | 1/1 | 7 min | 7 min |
-| 08-integrate-idiom-migration | 1/1 | ~10 min | ~10 min |
+**Scope:** Connect engine to agent capability, harden query safety, lift performance ceiling.
 
-**Recent Trend:**
-- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min, 7 min, ~10 min
-- Trend: integration work fast when interfaces are well-specified
+| Phase | Requirements | Status | Notes |
+|-------|-------------|--------|-------|
+| 9. Bug Fixes & Correctness | BUG-01..03 | Not started | Graph score aggregation, RRF encoding, empty seed_entities |
+| 10. Recall Pipeline | RECALL-01..04 | Not started | **Highest priority** — makes the engine matter |
+| 11. Typed Query Builder | QSAFE-01..04 | Not started | Compile-time Datalog validation |
+| 12. HNSW Redesign | HNSW-01..04, DEP-01 | Not started | In-memory + WAL, absorb graph-builder |
+| 13. KV Store Evaluation | DEP-02..03 | Not started | After HNSW clarifies KV responsibilities |
+| 14. Async Engine | ASYNC-01..03 | Not started | Cooperative async Db::run() |
+| 15. Knowledge Lifecycle | KL-01..12 | Not started | Extraction, conflict resolution, consolidation (#411) |
 
-*Updated after each plan completion*
+**Ongoing (unphased):** QUAL-01..07, ITEST-01..06, PERF-V2-01..03, CAP-01..02
 
 ## Accumulated Context
 
-### Decisions
+### Decisions (v2)
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+- AD-23: v2 requirements consolidated from issues #405, #408, #409 into planning docs as canon
+- AD-24: Bug fixes (Phase 9) must precede recall pipeline — correctness before features
+- AD-25: Typed query builder sequenced after recall pipeline — safety layer before patterns multiply, but recall pipeline lights up the product
+- AD-26: graph-builder absorption into mneme during HNSW redesign — kills rayon pin and crate boundary simultaneously
+- AD-27: RocksDB evaluation deferred until HNSW redesign clarifies actual KV store responsibilities
+- AD-28: Integration tests built alongside features, not as separate phase
+- AD-29: Quality cleanup is opportunistic — touch the file, fix the lint. Never scheduled standalone.
+- AD-30: Knowledge lifecycle (extraction + conflict resolution) sequenced after recall pipeline and typed query builder — extraction stage lives adjacent to RecallStage, writes need schema safety. Consolidation/forgetting deferred until graph actually grows.
 
-- AD-1: Single crate for absorbed code (no split -- circular dep risk)
-- AD-2: Separate graph-builder crate (42 unsafe sites isolated, rayon pin isolated)
-- AD-4: Keep FTS, strip only Chinese tokenizer (hybrid retrieval needs native Datalog integration)
-- AD-5: Preserve CozoDB module names (upstream diffability)
-- AD-7: Rename newrocks.rs to rocksdb.rs
-- AD-8 (01-01): unsafe_code = allow in mneme-engine -- cozo-core has ndarray/raw-ptr unsafe (research incorrect)
-- AD-9 (01-01): graph = 0.3.1 dep only in mneme-engine -- cozo uses graph::prelude facade, not graph_builder directly
-- AD-10 (01-01): jieba-rs/fast2s/minreq/csv in Plan 01 deps -- stripped atomically with source in Plan 02
-- AD-11 (01-02): DbCore alias -- internal crate::Db meant runtime::db::Db<S>; public Db enum collides; DbCore disambiguates
-- AD-12 (01-02): Test-only DbInstance alias -- 7 test modules rely on crate::DbInstance; pub(crate) cfg(test) alias in lib.rs keeps tests working without exposing public DbInstance
-- AD-13 (01-02): Stopwords 1303 lines not 300 -- EN constant has 1296 stopwords; plan estimate wrong; kept full EN list for FTS correctness
-- [Phase 01-copy-compile]: Bulk lint suppression in Cargo.toml [lints] for absorbed CozoDB patterns — Phase 5 will fix each category
-- [Phase 01-copy-compile]: dead_code/private_interfaces are rustc lints (not clippy) — must be in [lints.rust] section
-- AD-14 (02-01): bytemuck::try_cast_slice for from_bytes -- alignment-checked cast returns Err on misalignment; as_bytes/get_bytes (u32-to-u8) remain raw ptr since u8 align <= u32 align always holds
-- AD-15 (02-01): static_assertions in #[cfg(test)] mod -- dev-dep only; compile-time Send+Sync proof for Db<MemStorage> and Db<NewRocksDbStorage>
-- AD-16 (02-01): Tasks 1+2 committed atomically -- Task 1 alone left callers in broken state; both tasks completed before single commit
-- AD-17 (02-02): gitignore bare `data/` pattern excluded crates/*/src/data/ from git -- fixed with negation exceptions; all 4 mneme-engine data/ files now first-time tracked
-- AD-18 (02-02): from_shape_ptr alignment caveat documented not fixed -- Vec<u8> may not satisfy f32/f64 alignment; deferred to Phase 5 (requires serialization format change)
-- AD-19 (03-01): ndarray=0.15.6 and miette=5.10.0 matched from mneme-engine -- plan spec said 0.16/7 but mneme-engine uses older versions; must match to avoid dep conflicts
-- AD-20 (03-01): DataValue has no into_num() -- DataValue::from(i64) already produces Num::Int directly; plan spec used non-existent method
-- AD-21 (03-01): KnowledgeConfig derives Copy -- only contains usize; avoids needless_pass_by_value clippy lint on open_mem_with_config
-- AD-22 (03-02): schema_version not _schema_version -- CozoDB temp_store_tx (underscore prefix) is per-run; persistent store_tx requires no-underscore name
-- [Phase 07-integrate-hybrid-retrieval]: Squashed all Phase 4 cherry-picks into single commit — reset --soft main staged all changes together; cleaner than forcing split
-- [Phase 07-integrate-hybrid-retrieval]: knowledge_store.rs conflict resolved additively: Phase 6 run_query_with_timeout() and Phase 4 search_hybrid() both kept, Phase 6 block first
-- [Phase 08-integrate-idiom-migration]: Cherry-picked 8 of 9 p5 commits (skipped daa1024e docs-only), squashed to single commit on main
-- [Phase 08-integrate-idiom-migration]: rrf.rs required manual fix (miette->snafu) since Phase 7 added this file after Phase 5 was implemented — only file p5 couldn't reach
+### Key References
 
-### Pending Todos
-
-None yet.
+- ABSORPTION.md: `docs/ABSORPTION.md` — v1 audit trail (lines removed, unsafe sites, unwraps)
+- KnowledgeStore: `crates/mneme/src/knowledge_store.rs`
+- RecallStage: `crates/nous/src/recall.rs`
+- HNSW implementation: `crates/mneme-engine/src/runtime/hnsw.rs`
+- Eval loop: `crates/mneme-engine/src/query/eval.rs`
+- graph-builder: `crates/graph-builder/` (42 unsafe sites, rayon pin)
+- Hybrid search: `search_hybrid()` in KnowledgeStore
 
 ### Blockers/Concerns
 
-- R1: rayon 1.11 breaks graph_builder -- must pin `=1.10.0`
-- R4: minhash_lsh.rs:310 unsound alignment cast -- Phase 2 fix
-- R7: 464 unwraps reachable from public API -- Phase 5 audit
+- R8: Graph score aggregation bug (BUG-01) — must fix before recall pipeline ships
+- R9: RRF rank encoding ambiguity (BUG-02) — 0 vs -1 for missing signals
+- R10: Rayon pin (DEP-01) — ticking clock, resolved during HNSW redesign
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Completed 08-integrate-idiom-migration/08-01-PLAN.md -- Phase 8 Plan 01 done (snafu, tracing, LazyLock, ABSORPTION.md on main) -- MILESTONE COMPLETE
-Resume file: (milestone v1.0 complete — all 53 requirements satisfied)
+Last session: 2026-03-03
+Stopped at: v2 planning docs integrated. Issues #405, #408, #409, #411 ready to close.
+Resume file: Phase 9 (Bug Fixes) when ready to start executing
 
 ---
-*Last updated: 2026-03-02 -- 08-01 complete (173 mneme-engine tests, 86 mneme tests, 5 integration tests, clippy clean) -- v1.0 CozoDB Absorption milestone COMPLETE*
+*Last updated: 2026-03-03 — v2 planning integrated from issues #405, #408, #409, #411*
