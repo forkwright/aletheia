@@ -5,7 +5,7 @@
 //
 // Design: Spec 21 Phase 1 (Agent Portability)
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import type { DistillationPriming, Session, SessionStore, WorkingState } from "../mneme/store.js";
@@ -151,44 +151,37 @@ function scanWorkspace(
   const binaryFiles: string[] = [];
 
   function walk(dir: string): void {
-    let entries: string[];
+    let dirents: import("node:fs").Dirent[];
     try {
-      entries = readdirSync(dir);
-    } catch { /* memory file read failed — skip */
+      dirents = readdirSync(dir, { withFileTypes: true });
+    } catch { /* directory read failed */
       return;
     }
 
-    for (const entry of entries) {
-      if (entry.startsWith(".") && entry !== ".env") continue;
-      if (IGNORE_DIRS.has(entry)) continue;
+    for (const dirent of dirents) {
+      if (dirent.name.startsWith(".") && dirent.name !== ".env") continue;
+      if (IGNORE_DIRS.has(dirent.name)) continue;
 
-      const fullPath = join(dir, entry);
-      let stat;
-      try {
-        stat = statSync(fullPath);
-      } catch { /* config read failed — skip */
-        continue;
-      }
+      const fullPath = join(dir, dirent.name);
 
-      if (stat.isDirectory()) {
+      if (dirent.isDirectory()) {
         walk(fullPath);
         continue;
       }
 
-      if (!stat.isFile()) continue;
+      if (!dirent.isFile()) continue;
 
       const relPath = relative(workspacePath, fullPath);
 
-      if (isTextFile(entry) && stat.size <= MAX_FILE_SIZE) {
+      if (isTextFile(dirent.name)) {
         try {
           const data = readFileSync(fullPath, "utf-8");
-          // Re-check size of actual content to avoid TOCTOU
           if (Buffer.byteLength(data) <= MAX_FILE_SIZE) {
             files[relPath] = data;
           } else {
             binaryFiles.push(relPath);
           }
-        } catch { /* session export failed — skip */
+        } catch { /* file read failed */
           binaryFiles.push(relPath);
         }
       } else {
@@ -197,7 +190,7 @@ function scanWorkspace(
     }
   }
 
-  walk(workspacePath);
+    walk(workspacePath);
   return { files, binaryFiles };
 }
 

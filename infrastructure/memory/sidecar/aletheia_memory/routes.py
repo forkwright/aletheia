@@ -429,7 +429,7 @@ def _apply_confidence_weight(results: list[dict[str, Any]]) -> list[dict[str, An
         results.sort(key=lambda r: r.get("score", 0), reverse=True)
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("confidence weighting failed: %s", e)
+        logger.warning("confidence weighting failed: %s", _sanitize_log(e))
     return results
 
 
@@ -496,7 +496,7 @@ async def _semantic_dedup_check(
         if results.points and results.points[0].score >= threshold:
             return True
     except Exception as e:
-        logger.warning("Semantic dedup check failed (proceeding with add): %s", e)
+        logger.warning("Semantic dedup check failed (proceeding with add): %s", _sanitize_log(e))
     return False
 
 
@@ -987,7 +987,7 @@ async def _collect_qdrant_metrics(
             "total_entries": total_entries,
         }
     except Exception as e:
-        logger.warning("qdrant metric collection failed: %s", e)
+        logger.warning("qdrant metric collection failed: %s", _sanitize_log(e))
         return {"orphan_count": None, "entries_by_agent": None, "total_entries": None}
 
 
@@ -1019,7 +1019,7 @@ async def _collect_noise_rate(qdrant_ok: bool) -> float | None:
                 penalized += 1
         return penalized / len(points)
     except Exception as e:
-        logger.warning("noise rate collection failed: %s", e)
+        logger.warning("noise rate collection failed: %s", _sanitize_log(e))
         return None
 
 
@@ -1039,7 +1039,7 @@ async def _collect_neo4j_metrics(neo4j_ok: bool) -> dict[str, Any]:
         return {"relates_to_rate": relates_to_rate, "total_relationships": total_rels}
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("neo4j metric collection failed: %s", e)
+        logger.warning("neo4j metric collection failed: %s", _sanitize_log(e))
         return {"relates_to_rate": None, "total_relationships": 0}
 
 
@@ -1281,7 +1281,7 @@ async def graph_stats() -> dict[str, Any]:
         }
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph_stats failed (Neo4j may be down): %s", e)
+        logger.warning("graph_stats failed (Neo4j may be down): %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
 
@@ -1429,7 +1429,7 @@ async def graph_export(
         }
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph/export failed (Neo4j may be down): %s", e)
+        logger.warning("graph/export failed (Neo4j may be down): %s", _sanitize_log(e))
         return {"ok": False, "available": False, "nodes": [], "edges": [], "total_nodes": 0}
 
 
@@ -1498,8 +1498,8 @@ async def graph_search(
         return {"ok": True, "results": results, "total": len(results)}
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph/search failed: %s", e)
-        return {"ok": False, "results": [], "error": str(e)}
+        logger.warning("graph/search failed: %s", _sanitize_log(e))
+        return {"ok": False, "results": [], "error": "graph search failed"}
 
 
 # --- Phase 2.1: Graph-Enhanced Retrieval ---
@@ -1579,7 +1579,7 @@ def _neo4j_expand_sync(query: str, user_id: str, graph_depth: int = 1) -> list[s
         mark_neo4j_ok()
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("_neo4j_expand_sync failed: %s", e)
+        logger.warning("_neo4j_expand_sync failed: %s", _sanitize_log(e))
     return neighbors
 
 
@@ -1602,7 +1602,7 @@ async def _neo4j_expand_with_timeout(
         logger.warning("Neo4j expansion timed out after %dms", timeout_ms)
         return []
     except Exception as e:
-        logger.warning("Neo4j expansion failed: %s", e)
+        logger.warning("Neo4j expansion failed: %s", _sanitize_log(e))
         return []
 
 
@@ -1647,7 +1647,7 @@ def _qdrant_search_direct(
             output.append(row)
         return output
     except Exception as e:
-        logger.warning("_qdrant_search_direct failed: %s", e)
+        logger.warning("_qdrant_search_direct failed: %s", _sanitize_log(e))
         return []
 
 
@@ -1699,7 +1699,7 @@ async def graph_enhanced_search(req: GraphEnhancedSearchRequest, request: Reques
                 _qdrant_search_direct, expanded_query, req.user_id, req.limit * 2, min_score, mem
             )
         except Exception as e:
-            logger.warning("graph_enhanced_search: expanded search failed: %s", e)
+            logger.warning("graph_enhanced_search: expanded search failed: %s", _sanitize_log(e))
 
     # Step 3: Merge and deduplicate by memory ID, keeping highest score
     seen_ids: set[str] = set()
@@ -2083,7 +2083,7 @@ async def add_foresight(req: ForesightAddRequest) -> dict[str, Any]:
         return {"ok": True, "entity": req.entity, "signal": req.signal}
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("add_foresight failed (Neo4j may be down): %s", e)
+        logger.warning("add_foresight failed (Neo4j may be down): %s", _sanitize_log(e))
         return {"ok": False, "available": False, "reason": "graph_unavailable"}
 
 
@@ -2121,7 +2121,7 @@ async def active_foresight() -> dict[str, Any]:
         return {"ok": True, "signals": signals}
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("active_foresight failed: %s", e)
+        logger.warning("active_foresight failed: %s", str(e).replace("\n", " "))
         return {"ok": True, "signals": []}
 
 
@@ -2160,7 +2160,7 @@ async def decay_foresight() -> dict[str, Any]:
         return {"ok": True, "decayed": decayed, "deleted": deleted}
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("decay_foresight failed (Neo4j may be down): %s", e)
+        logger.warning("decay_foresight failed (Neo4j may be down): %s", _sanitize_log(e))
         return {"ok": True, "decayed": 0, "deleted": 0}
 
 
@@ -2398,7 +2398,7 @@ async def analyze_graph(req: GraphAnalyzeRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="networkx not installed") from err
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph/analyze failed (Neo4j may be down): %s", e)
+        logger.warning("graph/analyze failed (Neo4j may be down): %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
 
@@ -2653,7 +2653,7 @@ async def entity_detail(name: str, request: Request) -> dict[str, Any]:
         raise
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("entity_detail failed: %s", e)
+        logger.warning("entity_detail failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
     # Memory mentions (Qdrant search by entity name)
@@ -2724,7 +2724,7 @@ async def delete_entity(name: str) -> dict[str, Any]:
         raise
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("delete_entity failed: %s", e)
+        logger.warning("delete_entity failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
 
@@ -2761,7 +2761,7 @@ async def flag_entity(name: str, request: Request) -> dict[str, Any]:
         raise
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("flag_entity failed: %s", e)
+        logger.warning("flag_entity failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
 
@@ -2833,7 +2833,7 @@ async def merge_entities(req: EntityMergeRequest) -> dict[str, Any]:
                 mark_neo4j_down()
                 logger.warning("merge_entities fallback failed: %s", e2)
         else:
-            logger.warning("merge_entities failed: %s", e)
+            logger.warning("merge_entities failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
 
@@ -2922,7 +2922,7 @@ async def _check_contradictions(
         return contradictions
 
     except Exception as e:
-        logger.warning("Contradiction check failed: %s", e)
+        logger.warning("Contradiction check failed: %s", _sanitize_log(e))
         return []
 
 
@@ -3335,7 +3335,7 @@ async def graph_timeline(
         mark_neo4j_ok()
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph/timeline failed: %s", e)
+        logger.warning("graph/timeline failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False, "nodes": [], "edges": []}
 
     # Filter by date range if specified
@@ -3483,7 +3483,7 @@ async def graph_drift(request: Request, user_id: str = "default", stale_days: in
         mark_neo4j_ok()
     except Exception as e:
         mark_neo4j_down()
-        logger.warning("graph/drift failed: %s", e)
+        logger.warning("graph/drift failed: %s", _sanitize_log(e))
         return {"ok": False, "available": False}
 
     # Check memory staleness via Qdrant

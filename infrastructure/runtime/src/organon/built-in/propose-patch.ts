@@ -1,5 +1,5 @@
 // Runtime code patching — agents propose changes to their own source, gated by tsc + vitest
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
@@ -224,7 +224,7 @@ export function createPatchTools(): ToolHandler[] {
       const testFile = `src/${filePath.replace(".ts", ".test.ts")}`;
       let testResult = { ok: true, output: "no colocated tests" };
       try {
-        statSync(join(runtimeDir, testFile));
+        accessSync(join(runtimeDir, testFile));
         testResult = runTests(runtimeDir, testFile);
         if (!testResult.ok) {
           writeFileSync(absPath, originalContent, "utf-8");

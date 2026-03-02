@@ -56,11 +56,11 @@ export function loadPipelineConfig(workspace: string): PipelineConfig {
   const filePath = join(workspace, "pipeline.json");
 
   try {
+    const raw = readFileSync(filePath, "utf-8");
     const stat = statSync(filePath);
     const cached = cache.get(filePath);
     if (cached && cached.mtimeMs === stat.mtimeMs) return cached.config;
 
-    const raw = readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     const result = PipelineConfigSchema.parse(parsed);
     cache.set(filePath, { config: result, mtimeMs: stat.mtimeMs });

@@ -1,4 +1,5 @@
 // Project file generators — markdown files as source of truth for Dianoia projects (Spec 32)
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "../taxis/paths.js";
@@ -18,7 +19,7 @@ const log = createLogger("dianoia:files");
 // --- Atomic file writing utility ---
 
 function atomicWriteFile(filePath: string, content: string, encoding: BufferEncoding = "utf-8"): void {
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
   try {
     writeFileSync(tmpPath, content, encoding);
     renameSync(tmpPath, filePath);
