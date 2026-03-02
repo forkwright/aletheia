@@ -823,6 +823,10 @@ lazy_static! {
                 "Constant".to_string(),
                 Arc::<Box<dyn FixedRule>>::new(Box::new(Constant)),
             ),
+            (
+                "ReciprocalRankFusion".to_string(),
+                Arc::<Box<dyn FixedRule>>::new(Box::new(ReciprocalRankFusion)),
+            ),
         ])
     };
 }

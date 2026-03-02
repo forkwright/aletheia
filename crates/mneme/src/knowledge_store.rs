@@ -104,6 +104,15 @@ pub fn hnsw_ddl(dim: usize) -> String {
     )
 }
 
+/// Datalog DDL for FTS index on facts.content.
+pub fn fts_ddl() -> &'static str {
+    r"::fts create facts:content_fts {
+        extractor: content,
+        tokenizer: Simple,
+        filters: [Lowercase, Stemmer('English'), Stopwords('en')]
+    }"
+}
+
 /// Query templates for common knowledge operations.
 pub mod queries {
     /// Insert or update a fact.
@@ -195,6 +204,24 @@ pub mod queries {
             contains(aliases, $prefix)
         :limit $limit
     ";
+
+    /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
+    /// Graph sub-rules are injected dynamically by `build_hybrid_query`.
+    pub const HYBRID_SEARCH_BASE: &str = r"
+        bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
+
+        vec[id, score] :=
+            ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},
+            score = 1.0 - raw_dist
+
+        {GRAPH_RULES}
+
+        ?[id, rrf_score, bm25_rank, vec_rank, graph_rank] <~
+            ReciprocalRankFusion(bm25[], vec[], graph[])
+
+        :order -rrf_score
+        :limit $limit
+    ";
 }
 
 /// Configuration for `KnowledgeStore` initialization.
@@ -210,6 +237,39 @@ impl Default for KnowledgeConfig {
     fn default() -> Self {
         Self { dim: 384 }
     }
+}
+
+/// Parameters for a hybrid BM25 + HNSW + graph retrieval query.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone)]
+pub struct HybridQuery {
+    /// Full-text search query string (BM25 signal).
+    pub text: String,
+    /// Query embedding vector (HNSW signal).
+    pub embedding: Vec<f32>,
+    /// Seed entity IDs for graph neighborhood expansion (graph signal).
+    /// Empty slice disables the graph signal.
+    pub seed_entities: Vec<String>,
+    /// Maximum number of results to return.
+    pub limit: usize,
+    /// ef parameter for HNSW search (controls recall/speed tradeoff).
+    pub ef: usize,
+}
+
+/// A single result from a hybrid retrieval query.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone)]
+pub struct HybridResult {
+    /// Document ID (from facts or embeddings relation).
+    pub id: String,
+    /// Fused RRF score (higher = more relevant).
+    pub rrf_score: f64,
+    /// Rank in BM25 signal (0 = not in BM25 results).
+    pub bm25_rank: i64,
+    /// Rank in vector search signal (0 = not in vector results).
+    pub vec_rank: i64,
+    /// Rank in graph neighborhood signal (0 = no graph contribution).
+    pub graph_rank: i64,
 }
 
 /// Typed wrapper around the Datalog engine providing domain-level knowledge operations.
@@ -260,6 +320,11 @@ impl KnowledgeStore {
         let hnsw = hnsw_ddl(self.dim);
         self.db
             .run(&hnsw, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+
+        let fts = fts_ddl();
+        self.db
+            .run(fts, BTreeMap::new(), ScriptMutability::Mutable)
             .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
 
         // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
@@ -460,6 +525,60 @@ impl KnowledgeStore {
                     crate::error::EngineQuerySnafu { message: msg }.build()
                 }
             })
+    }
+
+    /// Raw mutable query escape hatch — runs script with `ScriptMutability::Mutable`.
+    /// Required for `:rm` and `:put` operations from caller code.
+    pub fn run_mut_query(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        use aletheia_mneme_engine::ScriptMutability;
+        self.db
+            .run(script, params, ScriptMutability::Mutable)
+            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+    }
+
+    /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
+    ///
+    /// Runs a single Datalog query combining all three signals in the engine.
+    /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
+    pub fn search_hybrid(
+        &self,
+        q: &HybridQuery,
+    ) -> crate::error::Result<Vec<HybridResult>> {
+        use aletheia_mneme_engine::{Array1, DataValue, Vector};
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("query_text".to_owned(), DataValue::Str(q.text.as_str().into()));
+        params.insert(
+            "query_vec".to_owned(),
+            DataValue::Vec(Vector::F32(Array1::from(q.embedding.clone()))),
+        );
+        // usize -> i64: limit/ef are user-controlled small values; truncate at i64::MAX for safety
+        let limit_i64 = i64::try_from(q.limit).unwrap_or(i64::MAX);
+        let ef_i64 = i64::try_from(q.ef).unwrap_or(i64::MAX);
+        params.insert("k".to_owned(), DataValue::from(limit_i64));
+        params.insert("ef".to_owned(), DataValue::from(ef_i64));
+        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+
+        let script = build_hybrid_query(q);
+        let rows = self.run_read(&script, params)?;
+        rows_to_hybrid_results(rows)
+    }
+
+    /// Async `search_hybrid` — wraps sync call in `spawn_blocking`.
+    pub async fn search_hybrid_async(
+        self: &std::sync::Arc<Self>,
+        q: HybridQuery,
+    ) -> crate::error::Result<Vec<HybridResult>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.search_hybrid(&q))
+            .await
+            .context(crate::error::JoinSnafu)?
     }
 
     // --- Async wrappers ---
@@ -876,6 +995,77 @@ fn rows_to_recall_results(
     Ok(out)
 }
 
+// Build the hybrid Datalog query with dynamic graph sub-rules.
+// When seed_entities is empty, graph is an empty relation.
+// When non-empty, seeds are expanded inline (avoids is_in() built-in dependency).
+#[cfg(feature = "mneme-engine")]
+fn build_hybrid_query(q: &HybridQuery) -> String {
+    let graph_rules = if q.seed_entities.is_empty() {
+        // Empty graph relation — graph signal contributes 0 to RRF
+        "graph[id, score] <- []".to_owned()
+    } else {
+        let seed_data: Vec<String> = q
+            .seed_entities
+            .iter()
+            .map(|s| format!("[\"{}\"]", s.replace('"', "\\\"")))
+            .collect();
+        let seeds_inline = seed_data.join(", ");
+        format!(
+            "seed_list[e] <- [{seeds_inline}]\n        \
+             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
+             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
+             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5"
+        )
+    };
+    queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
+}
+
+// Parse rows from ReciprocalRankFusion output into Vec<HybridResult>.
+// Columns: id (Str), rrf_score (Float), bm25_rank (Int), vec_rank (Int), graph_rank (Int)
+#[cfg(feature = "mneme-engine")]
+fn rows_to_hybrid_results(
+    rows: aletheia_mneme_engine::NamedRows,
+) -> crate::error::Result<Vec<HybridResult>> {
+    let mut out = Vec::with_capacity(rows.rows.len());
+    for row in rows.rows {
+        let id = extract_str(row.first().ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "hybrid row: missing id",
+            }
+            .build()
+        })?)?;
+        let rrf_score = extract_float(row.get(1).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "hybrid row: missing rrf_score",
+            }
+            .build()
+        })?)?;
+        let bm25_rank = extract_int(row.get(2).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "hybrid row: missing bm25_rank",
+            }
+            .build()
+        })?)?;
+        let vec_rank = extract_int(row.get(3).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "hybrid row: missing vec_rank",
+            }
+            .build()
+        })?)?;
+        let graph_rank = extract_int(row.get(4).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "hybrid row: missing graph_rank",
+            }
+            .build()
+        })?)?;
+        out.push(HybridResult { id, rrf_score, bm25_rank, vec_rank, graph_rank });
+    }
+    // Sort by rrf_score descending (RRF output is unordered since it comes through :order in Datalog,
+    // but :order is applied by the engine — this is a safety sort for correctness)
+    out.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(out)
+}
+
 // --- DataValue extraction utilities ---
 
 #[cfg(feature = "mneme-engine")]
@@ -1008,6 +1198,9 @@ mod tests {
         assert!(emb.contains("1024"));
         let idx = hnsw_ddl(1024);
         assert!(idx.contains("1024"));
+        let fts = fts_ddl();
+        assert!(fts.contains("content_fts"));
+        assert!(fts.contains("bm25") || fts.contains("Simple"));
     }
 
     #[test]
@@ -1018,5 +1211,40 @@ mod tests {
         assert!(queries::ENTITY_NEIGHBORHOOD.contains("$entity_id"));
         assert!(queries::SUPERSEDE_FACT.contains("$old_id"));
         assert!(queries::SUPERSEDE_FACT.contains("$new_id"));
+        assert!(queries::HYBRID_SEARCH_BASE.contains("$query_text"));
+        assert!(queries::HYBRID_SEARCH_BASE.contains("$query_vec"));
+        assert!(queries::HYBRID_SEARCH_BASE.contains("ReciprocalRankFusion"));
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn build_hybrid_query_empty_seeds() {
+        let q = HybridQuery {
+            text: "test".into(),
+            embedding: vec![0.0; 4],
+            seed_entities: vec![],
+            limit: 5,
+            ef: 20,
+        };
+        let script = build_hybrid_query(&q);
+        assert!(script.contains("graph[id, score] <- []"), "empty seeds must produce empty graph relation");
+        assert!(script.contains("ReciprocalRankFusion"));
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn build_hybrid_query_with_seeds() {
+        let q = HybridQuery {
+            text: "test".into(),
+            embedding: vec![0.0; 4],
+            seed_entities: vec!["e-rust".into(), "e-python".into()],
+            limit: 5,
+            ef: 20,
+        };
+        let script = build_hybrid_query(&q);
+        assert!(script.contains("seed_list"), "non-empty seeds must produce seed_list relation");
+        assert!(script.contains("e-rust"));
+        assert!(script.contains("e-python"));
+        assert!(script.contains("*relationships"));
     }
 }

@@ -994,6 +994,7 @@ pub(crate) struct HnswSearch {
 pub(crate) enum FtsScoreKind {
     TfIdf,
     Tf,
+    Bm25,
 }
 
 #[derive(Clone, Debug)]
@@ -1291,6 +1292,7 @@ impl SearchInput {
                 match r {
                     "tf_idf" => FtsScoreKind::TfIdf,
                     "tf" => FtsScoreKind::Tf,
+                    "bm25" => FtsScoreKind::Bm25,
                     s => bail!("Unknown score kind for FTS: {}", s),
                 }
             }
