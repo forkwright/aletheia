@@ -580,6 +580,90 @@ Theatron events (task completed, phase failed, health degraded) can optionally p
 
 If prostheke (WASM plugins) matures, a view for browsing, installing, and configuring plugins. Each plugin shows its granted capabilities, resource usage, and health.
 
+### Search + Navigation
+
+#### Global Search
+
+Cmd+/ or a persistent search bar. Search across everything simultaneously: sessions, tasks, memory facts, file contents, view names, widget types, config keys, agent notes. Results grouped by domain. Click any result to navigate directly. The theatron's nervous system -- find anything in the system without knowing where it lives.
+
+#### Breadcrumb Trail
+
+Show navigation history as a breadcrumb path. "Home → Syn → Session #s_01J8K → Turn 14." Click any segment to jump back. Supports deep drill-down without losing context. Useful when exploring session replays or chasing a thread through agent → session → tool call → file.
+
+#### Pinned Views
+
+Pin any view to a favorites bar for one-click access. "Syn's detail," "Current sprint," "Cost this week." Personal shortcuts that survive sessions. The operator's bookmarks.
+
+### Governance + Audit
+
+#### Decision Log
+
+Every mutation the operator makes through the theatron -- model toggle, task creation, config change, phase approval, loop break -- logged with timestamp, old value, new value, and context. Not for compliance. For "what did I change yesterday that broke Demi's session?" Browsable, searchable, filterable by agent/action type.
+
+#### Annotation Layer
+
+Attach sticky notes to anything: a session, a turn, a widget, an agent, a phase. "This session was great -- Demi nailed the test strategy." "This phase took too long because of the CozoDB compaction issue." Annotations persist and surface in relevant views. They become training data for evaluation snapshots and the raw material for retrospectives.
+
+#### Permission Boundaries
+
+As agent capabilities grow, define what each agent can do through the theatron. Can Demi create views scoped to other agents? Can Syn modify taxis config directly? Not ACLs -- lightweight guardrails. Probably just a taxis config section with sensible defaults. Mostly relevant once agents start authoring views and interacting with the system autonomously.
+
+### Temporal
+
+#### Time Travel
+
+"Show me the home dashboard as it looked at 3pm yesterday." The theatron snapshots system state periodically (agent statuses, task lists, health, cost). Scrub a timeline to see historical state. Not replay (that's session-scoped) -- this is system-wide state at a point in time. Answers "when did things go sideways?" when you come back to the desk after being away.
+
+#### Drift Detection
+
+Has an agent's behavior changed over time? Compare tool usage patterns, error rates, response lengths, cost per turn, and task completion rates across weeks and months. Surface subtle degradation: "Syn's average PR review quality dropped 15% after the model switch on March 3." Feeds into evaluation snapshots but distinct -- drift detection is passive and continuous, evaluations are active and periodic.
+
+#### Config Diffing
+
+What changed in taxis since yesterday? Since last week? Diff any two config snapshots. Shows which agents had model changes, which thresholds moved, which groups were modified. Paired with the decision log, this reconstructs the full "what happened and why" story for any time period.
+
+### Intelligence
+
+#### What-If Projections
+
+"If I switch Syn to Haiku for all lint tasks, what would last week have cost?" Retroactive cost modeling based on historical token usage and alternative model pricing. Doesn't require re-running anything -- just reprices the token counts. Helps make informed model routing decisions before committing.
+
+#### Correlation Surfacing
+
+The theatron knows cost, quality (via annotations/evals), speed (session duration), and model choice. Surface correlations automatically: "Sessions using Opus for architecture tasks have 40% fewer correction notes." "Haiku sessions are 3x cheaper but take 2x more turns on average." The data exists -- the theatron just needs to connect dots.
+
+#### Suggested Actions
+
+Based on patterns, prosoche signals, and system state, the theatron suggests actions: "Demi has been idle for 6 hours and there are 3 open test tasks -- wake Demi?" "Cost is trending 20% over last week -- consider switching Akron to Haiku for routine work." Not autonomous execution -- just nudges in a persistent suggestions panel. The operator decides.
+
+### Ceremony
+
+#### Standup View
+
+A purpose-built view for daily check-ins. For each agent: what it did since last standup, what's planned next, what's blocked. Auto-populated from session history, task completions, and prosoche signals. The operator reviews it with coffee. Replaces "hey Syn, what's the status?" with a surface that's always ready.
+
+#### Retrospective View
+
+End-of-week or end-of-sprint view. Aggregates: tasks completed, cost incurred, phases advanced, sessions run, errors encountered, annotations left. Side-by-side comparison with previous period. "This week cost $45 (down from $62) and completed 14 tasks (up from 9)." The material for honest self-assessment of the human-agent team.
+
+#### New Agent Onboarding
+
+When a new nous joins the team, a guided setup flow: choose a name (with gnomon suggestions), configure personality/domain, select model, seed initial memory, assign to groups, create a starter dashboard. Not a wizard -- a purpose-built view that walks through the bootstrapping steps and creates the initial taxis config. Makes adding the 7th, 8th, 9th agent feel intentional rather than ad hoc.
+
+### Infrastructure
+
+#### Resource Monitor
+
+Not just token cost but compute cost. CPU, memory, and disk usage per agent session. CozoDB size trends over time. Embedding index growth. Session store size. The theatron as a window into the machine, not just the agents. Useful for capacity planning: "At this growth rate, CozoDB will hit 1GB in 4 months."
+
+#### Communication Graph
+
+Visualize inter-agent communication. Which agents ask each other questions (sessions_ask)? Which send fire-and-forget messages (sessions_send)? How often? A force-directed graph where node size = activity, edge thickness = communication frequency. Shows team dynamics: is Syn a bottleneck? Are there isolated agents that never collaborate?
+
+#### External Integration Tiles
+
+GitHub PR status, CI pipeline health, NAS availability, network status. Small status tiles that surface information from outside Aletheia. Bind to REST endpoints or webhook receivers. The theatron as the single pane of glass for the operator's entire infrastructure, not just the agent system.
+
 ---
 
 ## Implementation Strategy
