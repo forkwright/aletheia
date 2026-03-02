@@ -12,7 +12,7 @@
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
@@ -275,8 +275,8 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
 
 /// Run the full pipeline for one turn.
 ///
-/// Stages: context → recall → history → guard → execute.
-/// Resolve (stage 4) and finalize (stage 6) are future work.
+/// Stages: context → recall → history → guard → execute → finalize.
+/// Resolve (stage 4) is future work.
 #[expect(clippy::too_many_arguments, reason = "pipeline threading requires all dependencies until config struct refactor")]
 #[instrument(skip_all, fields(nous_id = %config.id))]
 pub async fn run_pipeline(
@@ -373,7 +373,25 @@ pub async fn run_pipeline(
     let result =
         crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx).await?;
 
-    // Stage 6: Finalize (stub)
+    // Stage 6: Finalize
+    if let Some(store_mutex) = session_store {
+        let store = store_mutex.lock().expect("session store lock");
+        let finalize_config = crate::finalize::FinalizeConfig::default();
+        match crate::finalize::finalize(&store, &input.session, &input.content, &result, &finalize_config) {
+            Ok(fr) => {
+                debug!(
+                    messages = fr.messages_persisted,
+                    usage = fr.usage_recorded,
+                    "finalize complete"
+                );
+            }
+            Err(e) => {
+                error!(error = %e, "finalize failed, returning result without persistence");
+            }
+        }
+    } else {
+        debug!("no session store, skipping finalize");
+    }
 
     Ok(result)
 }

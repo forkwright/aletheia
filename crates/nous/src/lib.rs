@@ -12,6 +12,7 @@ pub mod budget;
 pub mod config;
 pub mod error;
 pub mod execute;
+pub mod finalize;
 pub mod handle;
 pub mod history;
 pub mod manager;
