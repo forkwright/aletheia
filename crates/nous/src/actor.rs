@@ -8,6 +8,7 @@ use tracing::{debug, info, instrument, warn, Instrument};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::id::{NousId, SessionId};
+use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
@@ -36,11 +37,14 @@ pub struct NousActor {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
 }
 
 impl NousActor {
     /// Create a new actor. Use [`NousManager::spawn`](crate::manager::NousManager::spawn)
     /// or [`spawn`] to start it.
+    #[expect(clippy::too_many_arguments, reason = "actor requires all runtime dependencies")]
     pub(crate) fn new(
         id: String,
         config: NousConfig,
@@ -49,6 +53,8 @@ impl NousActor {
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
         oikos: Arc<Oikos>,
+        embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+        vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     ) -> Self {
         Self {
             id,
@@ -61,6 +67,8 @@ impl NousActor {
             providers,
             tools,
             oikos,
+            embedding_provider,
+            vector_search,
         }
     }
 
@@ -164,6 +172,8 @@ impl NousActor {
             &self.providers,
             &self.tools,
             &tool_ctx,
+            self.embedding_provider.as_deref(),
+            self.vector_search.as_deref(),
         )
         .await
     }
@@ -216,12 +226,14 @@ pub fn spawn(
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
 ) -> (NousHandle, tokio::task::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.clone();
     let handle = NousHandle::new(id.clone(), tx);
 
-    let actor = NousActor::new(id.clone(), config, pipeline_config, rx, providers, tools, oikos);
+    let actor = NousActor::new(id.clone(), config, pipeline_config, rx, providers, tools, oikos, embedding_provider, vector_search);
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
     let join_handle = tokio::spawn(async move { actor.run().await }.instrument(span));
@@ -314,7 +326,7 @@ mod tests {
         let config = test_config();
         let pipeline_config = PipelineConfig::default();
 
-        let (handle, join) = spawn(config, pipeline_config, providers, tools, oikos);
+        let (handle, join) = spawn(config, pipeline_config, providers, tools, oikos, None, None);
         (handle, join, dir)
     }
 

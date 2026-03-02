@@ -2,6 +2,7 @@
 //!
 //! Each inbound message flows through stages:
 //! 1. **Context** — assemble bootstrap (SOUL.md, USER.md, etc.)
+//!     - **Recall** — retrieve and inject relevant knowledge
 //! 2. **History** — load conversation history within token budget
 //! 3. **Guard** — check rate limits, loop detection, safety
 //! 4. **Resolve** — resolve model, tools, and routing
@@ -9,7 +10,9 @@
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use tracing::{debug, instrument, warn};
+
+use aletheia_mneme::embedding::EmbeddingProvider;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
@@ -48,6 +51,8 @@ pub struct PipelineContext {
     pub needs_distillation: bool,
     /// Guard decision.
     pub guard_result: GuardResult,
+    /// Recall stage output, if recall was run.
+    pub recall_result: Option<crate::recall::RecallStageResult>,
 }
 
 impl Default for PipelineContext {
@@ -59,6 +64,7 @@ impl Default for PipelineContext {
             remaining_tokens: 0,
             needs_distillation: false,
             guard_result: GuardResult::Allow,
+            recall_result: None,
         }
     }
 }
@@ -260,6 +266,7 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
 ///
 /// Stages: context → history (stub) → guard → execute.
 /// Resolve (stage 4) and finalize (stage 6) are future work.
+#[expect(clippy::too_many_arguments, reason = "pipeline threading requires all dependencies until config struct refactor")]
 #[instrument(skip_all, fields(nous_id = %config.id))]
 pub async fn run_pipeline(
     input: PipelineInput,
@@ -269,10 +276,38 @@ pub async fn run_pipeline(
     providers: &ProviderRegistry,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
+    embedding_provider: Option<&dyn EmbeddingProvider>,
+    vector_search: Option<&dyn crate::recall::VectorSearch>,
 ) -> error::Result<TurnResult> {
     // Stage 1: Context
     let mut ctx = PipelineContext::default();
     assemble_context(oikos, config, pipeline_config, &mut ctx)?;
+
+    // Stage 1.5: Recall
+    if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
+        let recall_config = crate::recall::RecallConfig::default();
+        let recall_stage = crate::recall::RecallStage::new(recall_config);
+        #[expect(clippy::cast_sign_loss, reason = "remaining_tokens is positive after context assembly")]
+        let budget = ctx.remaining_tokens.max(0) as u64;
+        match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
+            Ok(recall_result) => {
+                if let Some(ref section) = recall_result.recall_section {
+                    if let Some(ref mut prompt) = ctx.system_prompt {
+                        prompt.push_str("\n\n");
+                        prompt.push_str(section);
+                    }
+                    #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
+                    { ctx.remaining_tokens -= recall_result.tokens_consumed as i64; }
+                }
+                ctx.recall_result = Some(recall_result);
+            }
+            Err(e) => {
+                warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
+            }
+        }
+    } else {
+        debug!("recall skipped: embedding provider or vector search not configured");
+    }
 
     // Stage 2: History (stub — just add the user message)
     #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
@@ -645,6 +680,8 @@ mod tests {
             &providers,
             &tools,
             &tool_ctx,
+            None,
+            None,
         )
         .await
         .expect("pipeline should succeed");

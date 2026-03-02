@@ -16,4 +16,5 @@ pub mod handle;
 pub mod manager;
 pub mod message;
 pub mod pipeline;
+pub mod recall;
 pub mod session;
