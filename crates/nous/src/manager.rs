@@ -16,9 +16,15 @@ use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
 use crate::message::NousStatus;
 
+struct ActorEntry {
+    handle: NousHandle,
+    join: JoinHandle<()>,
+    config: NousConfig,
+}
+
 /// Manages the lifecycle of all nous actors.
 pub struct NousManager {
-    actors: HashMap<String, (NousHandle, JoinHandle<()>)>,
+    actors: HashMap<String, ActorEntry>,
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
@@ -52,14 +58,14 @@ impl NousManager {
     pub async fn spawn(&mut self, config: NousConfig, pipeline_config: PipelineConfig) -> NousHandle {
         let id = config.id.clone();
 
-        if let Some((old_handle, old_join)) = self.actors.remove(&id) {
+        if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
-            let _ = old_handle.shutdown().await;
-            let _ = old_join.await;
+            let _ = old.handle.shutdown().await;
+            let _ = old.join.await;
         }
 
         let (handle, join_handle) = actor::spawn(
-            config,
+            config.clone(),
             pipeline_config,
             Arc::clone(&self.providers),
             Arc::clone(&self.tools),
@@ -69,24 +75,40 @@ impl NousManager {
         );
 
         info!(nous_id = %id, "actor spawned");
-        self.actors.insert(id, (handle.clone(), join_handle));
+        self.actors.insert(id, ActorEntry {
+            handle: handle.clone(),
+            join: join_handle,
+            config,
+        });
         handle
     }
 
     /// Look up a handle by nous id.
     #[must_use]
     pub fn get(&self, nous_id: &str) -> Option<&NousHandle> {
-        self.actors.get(nous_id).map(|(h, _)| h)
+        self.actors.get(nous_id).map(|e| &e.handle)
+    }
+
+    /// Look up a config by nous id.
+    #[must_use]
+    pub fn get_config(&self, nous_id: &str) -> Option<&NousConfig> {
+        self.actors.get(nous_id).map(|e| &e.config)
+    }
+
+    /// All stored configs.
+    #[must_use]
+    pub fn configs(&self) -> Vec<&NousConfig> {
+        self.actors.values().map(|e| &e.config).collect()
     }
 
     /// Query status from all actors.
     pub async fn list(&self) -> Vec<NousStatus> {
         let mut statuses = Vec::with_capacity(self.actors.len());
-        for (handle, _) in self.actors.values() {
-            match handle.status().await {
+        for entry in self.actors.values() {
+            match entry.handle.status().await {
                 Ok(status) => statuses.push(status),
                 Err(_) => {
-                    warn!(nous_id = handle.id(), "failed to query actor status");
+                    warn!(nous_id = entry.handle.id(), "failed to query actor status");
                 }
             }
         }
@@ -100,7 +122,7 @@ impl NousManager {
         let entries: Vec<(String, NousHandle, JoinHandle<()>)> = self
             .actors
             .drain()
-            .map(|(id, (handle, join))| (id, handle, join))
+            .map(|(id, e)| (id, e.handle, e.join))
             .collect();
 
         for (id, handle, _) in &entries {
@@ -116,6 +138,19 @@ impl NousManager {
         }
 
         info!("all actors stopped");
+    }
+
+    /// Send shutdown to all actors without requiring `&mut self`.
+    ///
+    /// Used when the manager is behind `Arc` and mutable access is unavailable.
+    /// Does not drain the entries — cleanup happens when the `Arc` drops.
+    pub async fn shutdown_readonly(&self) {
+        info!(count = self.actors.len(), "shutting down all actors");
+        for entry in self.actors.values() {
+            if let Err(e) = entry.handle.shutdown().await {
+                warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
+            }
+        }
     }
 
     /// Number of managed actors.
@@ -242,6 +277,45 @@ mod tests {
         let (_dir, oikos) = test_oikos();
         let mgr = test_manager(oikos);
         assert!(mgr.get("unknown").is_none());
+    }
+
+    #[tokio::test]
+    async fn get_config_returns_stored_config() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        mgr.spawn(syn_config(), PipelineConfig::default()).await;
+
+        let config = mgr.get_config("syn").expect("config");
+        assert_eq!(config.id, "syn");
+        assert_eq!(config.model, "test-model");
+
+        mgr.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn get_config_returns_none_for_unknown() {
+        let (_dir, oikos) = test_oikos();
+        let mgr = test_manager(oikos);
+        assert!(mgr.get_config("unknown").is_none());
+    }
+
+    #[tokio::test]
+    async fn configs_returns_all() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        mgr.spawn(syn_config(), PipelineConfig::default()).await;
+        mgr.spawn(demiurge_config(), PipelineConfig::default()).await;
+
+        let configs = mgr.configs();
+        assert_eq!(configs.len(), 2);
+
+        let ids: Vec<&str> = configs.iter().map(|c| c.id.as_str()).collect();
+        assert!(ids.contains(&"syn"));
+        assert!(ids.contains(&"demiurge"));
+
+        mgr.shutdown_all().await;
     }
 
     #[tokio::test]
