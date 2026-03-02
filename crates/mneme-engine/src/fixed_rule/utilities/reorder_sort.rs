@@ -129,7 +129,7 @@ impl FixedRule for ReorderSort {
         &self,
         opts: &BTreeMap<SmartString<LazyCompact>, Expr>,
         _rule_head: &[Symbol],
-        span: SourceSpan,
+        _span: SourceSpan,
     ) -> Result<usize> {
         let out_opts = opts.get("out").ok_or_else(|| {
             crate::error::AdhocError("ReorderSort: option 'out' not provided".to_string())

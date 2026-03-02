@@ -119,10 +119,10 @@ impl InputAtom {
                         .try_collect()?,
                     span,
                 },
-                InputAtom::Unification { inner } => {
+                InputAtom::Unification { inner: _ } => {
                     bail!("Unsafe negation in rule")
                 }
-                InputAtom::Search { inner } => {
+                InputAtom::Search { inner: _ } => {
                     bail!("Unsafe negation in rule")
                 }
             },

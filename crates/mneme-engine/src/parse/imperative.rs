@@ -10,7 +10,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
@@ -20,7 +19,7 @@ use crate::parse::query::parse_query;
 use crate::parse::sys::parse_sys;
 use crate::parse::{
     ExtractSpan, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, ImperativeSysop, Pair,
-    Rule, SourceSpan,
+    Rule,
 };
 use crate::{DataValue, FixedRule, ValidityTs};
 

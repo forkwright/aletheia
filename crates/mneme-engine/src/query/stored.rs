@@ -88,7 +88,7 @@ impl<'a> SessionTx<'a> {
                             callback_collector,
                             false,
                         )
-                        .map_err(|err| err)?;
+                        ?;
                     to_clear.extend(cleanups);
                 }
                 let destroy_res = self.destroy_relation(&meta.name)?;
@@ -699,7 +699,7 @@ impl<'a> SessionTx<'a> {
                         callback_collector,
                         false,
                     )
-                    .map_err(|err| err)?;
+                    ?;
                 to_clear.extend(cleanups);
             }
         }
@@ -1014,7 +1014,7 @@ impl<'a> SessionTx<'a> {
                             callback_collector,
                             false,
                         )
-                        .map_err(|err| err)?;
+                        ?;
                     to_clear.extend(cleanups);
                 }
             }

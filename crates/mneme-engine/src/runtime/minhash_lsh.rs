@@ -16,7 +16,6 @@ use crate::fts::TokenizerConfig;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, Expr, SourceSpan, Symbol};
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use itertools::Itertools;
 use quadrature::integrate;

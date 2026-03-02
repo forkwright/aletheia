@@ -11,13 +11,13 @@ rust-version.workspace = true
 rust_2018_idioms = { level = "allow", priority = 1 }
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
-# CozoDB has unsafe in ndarray operations and string conversions — Phase 5 audit
+# CozoDB has unsafe in ndarray operations and string conversions — tracked in #405
 unsafe_code = { level = "allow", priority = 1 }
-# Orphaned cfg guards for stripped backends (storage-sqlite) — Phase 5 cleanup
+# Orphaned cfg guards for stripped backends (storage-sqlite) — tracked in #405
 unexpected_cfgs = { level = "allow", priority = 1 }
-# Dead code in CozoDB internals — suppress, clean in Phase 5
+# Dead code in CozoDB internals — tracked in #405
 dead_code = { level = "allow", priority = 1 }
-# Private type visibility in CozoDB pub structs — suppress, clean in Phase 5
+# Private type visibility in CozoDB pub structs — tracked in #405
 private_interfaces = { level = "allow", priority = 1 }
 
 [lints.clippy]
@@ -26,11 +26,11 @@ await_holding_lock = "warn"
 dbg_macro = { level = "allow", priority = 1 }
 todo = { level = "allow", priority = 1 }
 unimplemented = { level = "allow", priority = 1 }
-# CozoDB patterns — suppress for Phase 1, fix in Phase 5
+# CozoDB patterns — tracked in #405
 mutable_key_type = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
 too_many_arguments = { level = "allow", priority = 1 }
-# CozoDB code quality patterns — suppress for Phase 1, fix in Phase 5
+# CozoDB code quality patterns — tracked in #405
 get_first = { level = "allow", priority = 1 }
 iter_kv_map = { level = "allow", priority = 1 }
 let_and_return = { level = "allow", priority = 1 }
@@ -43,6 +43,8 @@ redundant_closure = { level = "allow", priority = 1 }
 swap_with_temporary = { level = "allow", priority = 1 }
 useless_conversion = { level = "allow", priority = 1 }
 useless_format = { level = "allow", priority = 1 }
+# ensure! macro + float comparisons — inherited CozoDB pattern
+neg_cmp_op_on_partial_ord = { level = "allow", priority = 1 }
 
 [features]
 default = ["storage-mem"]

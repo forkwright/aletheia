@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;

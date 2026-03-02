@@ -1,6 +1,5 @@
 // Public crate-level error type for mneme-engine.
 use snafu::Snafu;
-use crate::{bail, ensure};
 
 /// Top-level error type for the mneme-engine public API.
 ///

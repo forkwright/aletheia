@@ -13,7 +13,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail, ensure};
 use either::{Left, Right};
@@ -111,7 +110,7 @@ pub(crate) fn parse_query(
                                 rs.push(rule);
                             }
                             InputInlineRulesOrFixed::Fixed { fixed } => {
-                                let fixed_span = fixed.span;
+                                let _fixed_span = fixed.span;
                                 bail!("The rule '{}' cannot have multiple definitions since it contains non-Horn clauses", e.key().name)
                             }
                         }
@@ -210,10 +209,10 @@ pub(crate) fn parse_query(
             }
             Rule::timeout_option => {
                 let pair = pair.into_inner().next().unwrap();
-                let span = pair.extract_span();
+                let _span = pair.extract_span();
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_float()
                     .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 if timeout > 0. {
@@ -229,10 +228,10 @@ pub(crate) fn parse_query(
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     let pair = pair.into_inner().next().unwrap();
-                    let span = pair.extract_span();
+                    let _span = pair.extract_span();
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
-                        .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
+                        .map_err(|_err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                         .get_float()
                         .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                     ensure!(sleep > 0., crate::error::AdhocError("Query option {} requires a positive integer".to_string()));
@@ -241,20 +240,20 @@ pub(crate) fn parse_query(
             }
             Rule::limit_option => {
                 let pair = pair.into_inner().next().unwrap();
-                let span = pair.extract_span();
+                let _span = pair.extract_span();
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
                     .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
                 let pair = pair.into_inner().next().unwrap();
-                let span = pair.extract_span();
+                let _span = pair.extract_span();
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
                     .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.offset = Some(offset as usize);
@@ -339,7 +338,7 @@ pub(crate) fn parse_query(
             }
             Rule::disable_magic_rewrite_option => {
                 let pair = pair.into_inner().next().unwrap();
-                let span = pair.extract_span();
+                let _span = pair.extract_span();
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
                     .map_err(|_err| crate::error::AdhocError("Query option is not constant".to_string()))?
@@ -484,7 +483,7 @@ fn parse_rule(
     let span = src.extract_span();
     let mut src = src.into_inner();
     let head = src.next().unwrap();
-    let head_span = head.extract_span();
+    let _head_span = head.extract_span();
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
     
@@ -798,7 +797,7 @@ fn parse_fixed_rule(
 
     
 
-    for (a, v) in aggr.iter().zip(head.iter()) {
+    for (a, _v) in aggr.iter().zip(head.iter()) {
         ensure!(a.is_none(), crate::error::AdhocError("fixed rule cannot be combined with aggregation".to_string()))
     }
 
@@ -1004,7 +1003,7 @@ fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]) {
 }
 
 fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
-    let vld_span = expr.span();
+    let _vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
             let microseconds = n.get_int().ok_or(crate::error::AdhocError("bad specification of validity".to_string()))?;

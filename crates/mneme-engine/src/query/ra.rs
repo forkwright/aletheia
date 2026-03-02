@@ -10,12 +10,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
 
-use snafu::Snafu;
 use crate::error::DbResult as Result;
 use crate::{bail};
 use either::{Left, Right};
 use itertools::Itertools;
-use tracing::{debug, error};
+use tracing::debug;
 use smartstring::SmartString;
 
 use crate::data::expr::{compute_bounds, eval_bytecode, eval_bytecode_pred, Bytecode, Expr};
@@ -899,7 +898,7 @@ pub(crate) struct LshSearchRA {
 impl LshSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.lsh_search.filter.is_some() {
+        if let Some(filter) = self.lsh_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -907,7 +906,6 @@ impl LshSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.lsh_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }
@@ -972,7 +970,7 @@ pub(crate) struct FtsSearchRA {
 impl FtsSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.fts_search.filter.is_some() {
+        if let Some(filter) = self.fts_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -980,7 +978,6 @@ impl FtsSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.fts_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }
@@ -1056,7 +1053,7 @@ impl FtsSearchRA {
 impl HnswSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.hnsw_search.filter.is_some() {
+        if let Some(filter) = self.hnsw_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -1064,7 +1061,6 @@ impl HnswSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.hnsw_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }
