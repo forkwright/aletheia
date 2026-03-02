@@ -8,9 +8,10 @@
 
 use std::collections::BTreeSet;
 
+use snafu::Snafu;
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::{bail, ensure, Diagnostic, Result, miette};
-use thiserror::Error;
 
 use crate::data::expr::Expr;
 use crate::data::program::{
@@ -18,7 +19,7 @@ use crate::data::program::{
     NormalFormAtom, NormalFormRelationApplyAtom, NormalFormRuleApplyAtom, TempSymbGen, Unification,
 };
 use crate::parse::SourceSpan;
-use crate::query::reorder::UnsafeNegation;
+
 use crate::runtime::transact::SessionTx;
 
 #[derive(Debug)]
@@ -118,11 +119,11 @@ impl InputAtom {
                         .try_collect()?,
                     span,
                 },
-                InputAtom::Unification { inner } => {
-                    bail!(UnsafeNegation(inner.span))
+                InputAtom::Unification { inner: _ } => {
+                    bail!("Unsafe negation in rule")
                 }
-                InputAtom::Search { inner } => {
-                    bail!(UnsafeNegation(inner.span))
+                InputAtom::Search { inner: _ } => {
+                    bail!("Unsafe negation in rule")
                 }
             },
             InputAtom::Search { inner } => InputAtom::Search { inner },
@@ -156,7 +157,7 @@ impl InputAtom {
         for k in args.keys() {
             ensure!(
                 fields.contains(k),
-                NamedFieldNotFound(name.to_string(), k.to_string(), span)
+                NamedFieldNotFound { relation: name.to_string(), field: k.to_string(), span }
             );
         }
         let mut new_args = vec![];
@@ -203,7 +204,7 @@ impl InputAtom {
                     .map(|a| a.do_disjunctive_normal_form(r#gen, tx));
                 let mut result = args
                     .next()
-                    .ok_or_else(|| miette!("empty conjunction"))??;
+                    .ok_or_else(|| crate::error::AdhocError("empty conjunction".to_string()))??;
                 for a in args {
                     result = result.conjunctive_to_disjunctive_de_morgen(a?)
                 }
@@ -358,11 +359,10 @@ impl InputRelationApplyAtom {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("stored relation '{0}' does not have field '{1}'")]
-#[diagnostic(code(eval::named_field_not_found))]
-pub(crate) struct NamedFieldNotFound(
-    pub(crate) String,
-    pub(crate) String,
-    #[label] pub(crate) SourceSpan,
-);
+#[derive(Debug, Snafu)]
+#[snafu(display("stored relation '{relation}' does not have field '{field}'"))]
+pub(crate) struct NamedFieldNotFound {
+    pub(crate) relation: String,
+    pub(crate) field: String,
+    pub(crate) span: SourceSpan,
+}

@@ -13,9 +13,9 @@ use std::collections::Bound::Included;
 use std::mem;
 use std::ops::Bound::Excluded;
 
+use crate::error::DbResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
-use miette::Result;
 
 use crate::data::aggr::Aggregation;
 use crate::data::tuple::Tuple;

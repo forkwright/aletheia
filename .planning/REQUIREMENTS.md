@@ -56,22 +56,22 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 
 ### Hybrid Retrieval
 
-- [ ] **RETR-01**: BM25 full-text search executes as a Datalog query
-- [ ] **RETR-02**: HNSW vector similarity search executes as a Datalog query
-- [ ] **RETR-03**: Combined BM25 + HNSW + graph join retrieval works in a single Datalog query
-- [ ] **RETR-04**: RRF (Reciprocal Rank Fusion) merging happens within the engine, not app-layer
+- [x] **RETR-01**: BM25 full-text search executes as a Datalog query
+- [x] **RETR-02**: HNSW vector similarity search executes as a Datalog query
+- [x] **RETR-03**: Combined BM25 + HNSW + graph join retrieval works in a single Datalog query
+- [x] **RETR-04**: RRF (Reciprocal Rank Fusion) merging happens within the engine, not app-layer
 
 ### Error and Idiom Migration
 
-- [ ] **IDIOM-01**: miette error types migrated to snafu pattern
-- [ ] **IDIOM-02**: log macros replaced with tracing macros
-- [ ] **IDIOM-03**: lazy_static replaced with LazyLock
-- [ ] **IDIOM-04**: Systematic unwrap audit — unwraps in paths reachable from public API converted to typed errors
-- [ ] **IDIOM-05**: env_logger fully removed (replaced by tracing subscriber in test harness)
+- [x] **IDIOM-01**: miette error types migrated to snafu pattern
+- [x] **IDIOM-02**: log macros replaced with tracing macros
+- [x] **IDIOM-03**: lazy_static replaced with LazyLock
+- [x] **IDIOM-04**: Systematic unwrap audit — unwraps in paths reachable from public API converted to typed errors
+- [x] **IDIOM-05**: env_logger fully removed (replaced by tracing subscriber in test harness)
 
 ### Performance
 
-- [ ] **PERF-01**: HNSW connectivity verification test exists to detect recall degradation
+- [x] **PERF-01**: HNSW connectivity verification test exists to detect recall degradation
 - [x] **PERF-02**: Query timeout via cancellation token in eval loop
 - [x] **PERF-03**: ndarray fused operations for distance computation where applicable
 
@@ -80,13 +80,13 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 - [x] **TEST-01**: CozoDB's own test suite (`runtime/tests.rs`) passes under mneme-engine
 - [x] **TEST-02**: Integration test: create DB, insert fact, query fact, verify round-trip
 - [x] **TEST-03**: Integration test: create DB, insert vectors, HNSW knn search, verify results
-- [ ] **TEST-04**: Integration test: hybrid retrieval (BM25 + HNSW + graph) end-to-end
+- [x] **TEST-04**: Integration test: hybrid retrieval (BM25 + HNSW + graph) end-to-end
 - [x] **TEST-05**: `cargo clippy --workspace` clean (crate-level `#[expect]` for inherited CozoDB warnings)
-- [ ] **TEST-06**: HNSW soft-deletion connectivity test (verify <5% degradation after N cycles)
+- [x] **TEST-06**: HNSW soft-deletion connectivity test (verify <5% degradation after N cycles)
 
 ### Documentation
 
-- [ ] **DOCS-01**: ABSORPTION.md documents lines removed (before/after), unsafe sites carried, unwraps carried, remaining cleanup
+- [x] **DOCS-01**: ABSORPTION.md documents lines removed (before/after), unsafe sites carried, unwraps carried, remaining cleanup
 - [x] **DOCS-02**: UPSTREAM-REVIEW.md documents reviewed PRs/issues/branches with disposition
 - [x] **DOCS-03**: VENDORED.md documents source origin, version, copyright headers preserved
 
@@ -147,32 +147,32 @@ Deferred beyond this milestone.
 | INTG-04 | Phase 3 (03-01) | Complete |
 | INTG-05 | Phase 3 (03-01) | Complete |
 | INTG-06 | Phase 1 | Complete |
-| RETR-01 | Phase 7 (gap closure) | Pending |
-| RETR-02 | Phase 7 (gap closure) | Pending |
-| RETR-03 | Phase 7 (gap closure) | Pending |
-| RETR-04 | Phase 7 (gap closure) | Pending |
-| IDIOM-01 | Phase 8 (gap closure) | Pending |
-| IDIOM-02 | Phase 8 (gap closure) | Pending |
-| IDIOM-03 | Phase 8 (gap closure) | Pending |
-| IDIOM-04 | Phase 8 (gap closure) | Pending |
-| IDIOM-05 | Phase 8 (gap closure) | Pending |
-| PERF-01 | Phase 7 (gap closure) | Pending |
+| RETR-01 | Phase 7 (gap closure) | Complete |
+| RETR-02 | Phase 7 (gap closure) | Complete |
+| RETR-03 | Phase 7 (gap closure) | Complete |
+| RETR-04 | Phase 7 (gap closure) | Complete |
+| IDIOM-01 | Phase 8 (gap closure) | Complete |
+| IDIOM-02 | Phase 8 (gap closure) | Complete |
+| IDIOM-03 | Phase 8 (gap closure) | Complete |
+| IDIOM-04 | Phase 8 (gap closure) | Complete |
+| IDIOM-05 | Phase 8 (gap closure) | Complete |
+| PERF-01 | Phase 7 (gap closure) | Complete |
 | PERF-02 | Phase 6 | Complete |
 | PERF-03 | Phase 6 | Complete |
 | TEST-01 | Phase 1 | Complete |
 | TEST-02 | Phase 3 | Complete |
 | TEST-03 | Phase 3 | Complete |
-| TEST-04 | Phase 7 (gap closure) | Pending |
+| TEST-04 | Phase 7 (gap closure) | Complete |
 | TEST-05 | Phase 1 | Complete |
-| TEST-06 | Phase 7 (gap closure) | Pending |
-| DOCS-01 | Phase 8 (gap closure) | Pending |
+| TEST-06 | Phase 7 (gap closure) | Complete |
+| DOCS-01 | Phase 8 (gap closure) | Complete |
 | DOCS-02 | Phase 1 | Complete |
 | DOCS-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 53 total
-- Satisfied on main: 40
-- Pending integration: 13 (gap closure phases 7-8)
+- Satisfied on main: 53
+- Pending integration: 0
 - Unmapped: 0
 
 **Per-phase breakdown:**
@@ -187,4 +187,4 @@ Deferred beyond this milestone.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 -- 01-02 complete: CRATE-05, STRIP-01..08, API-01..08 marked complete*
+*Last updated: 2026-03-02 -- 08-01 complete: IDIOM-01..05, DOCS-01 marked complete — all 53 v1 requirements satisfied*

@@ -9,8 +9,9 @@
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
-use miette::{bail, Result};
 use crate::data::program::ReturnMutation;
+use crate::error::DbResult as Result;
+use crate::{bail};
 
 use crate::data::tuple::TupleT;
 use crate::data::value::DataValue;

@@ -11,14 +11,15 @@ use std::fmt::{Display, Formatter};
 use std::mem;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use snafu::Snafu;
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::DateTime;
 use itertools::Itertools;
-use miette::{bail, ensure, Diagnostic, Result};
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::Expr;
 use crate::data::value::{DataValue, JsonData, Num, UuidWrapper, Validity, ValidityTs, Vector};
@@ -130,42 +131,39 @@ impl StoredRelationMetadata {
             }
         }
         if col.default_gen.is_none() {
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("required column {0} not provided by input")]
-            #[diagnostic(code(eval::required_col_not_provided))]
-            struct ColumnNotProvided(String);
+            #[derive(Debug, Snafu)]
+            #[snafu(display("required column {col} not provided by input"))]
+            struct ColumnNotProvided { col: String }
 
-            bail!(ColumnNotProvided(col.name.to_string()))
+            bail!(ColumnNotProvided { col: col.name.to_string() })
         }
         Ok(())
     }
     pub(crate) fn compatible_with_col(&self, col: &ColumnDef) -> Result<()> {
         for target in self.keys.iter().chain(self.non_keys.iter()) {
             if target.name == col.name {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("requested column {0} has typing {1}, but the requested typing is {2}")]
-                #[diagnostic(code(eval::col_type_mismatch))]
-                struct IncompatibleTyping(String, NullableColType, NullableColType);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("requested column {col} has typing {target_type}, but the requested typing is {req_type}"))]
+                struct IncompatibleTyping { col: String, target_type: NullableColType, req_type: NullableColType }
                 if (!col.typing.nullable || col.typing.coltype != ColType::Any)
                     && target.typing != col.typing
                 {
-                    bail!(IncompatibleTyping(
-                        col.name.to_string(),
-                        target.typing.clone(),
-                        col.typing.clone()
-                    ))
+                    bail!(IncompatibleTyping {
+                        col: col.name.to_string(),
+                        target_type: target.typing.clone(),
+                        req_type: col.typing.clone(),
+                    })
                 }
 
                 return Ok(());
             }
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("required column {0} not found")]
-        #[diagnostic(code(eval::required_col_not_found))]
-        struct ColumnNotFound(String);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("required column {col} not found"))]
+        struct ColumnNotFound { col: String }
 
-        bail!(ColumnNotFound(col.name.to_string()))
+        bail!(ColumnNotFound { col: col.name.to_string() })
     }
 }
 
@@ -175,34 +173,30 @@ impl NullableColType {
             return if self.nullable {
                 Ok(data)
             } else {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("encountered null value for non-null type {0}")]
-                #[diagnostic(code(eval::coercion_null))]
-                struct InvalidNullValue(NullableColType);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("encountered null value for non-null type {typing}"))]
+                struct InvalidNullValue { typing: NullableColType }
 
-                Err(InvalidNullValue(self.clone()).into())
+                Err(InvalidNullValue { typing: self.clone() }.into())
             };
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("data coercion failed: expected type {0}, got value {1:?}")]
-        #[diagnostic(code(eval::coercion_failed))]
-        struct DataCoercionFailed(NullableColType, DataValue);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("data coercion failed: expected type {typing}, got value {val:?}"))]
+        struct DataCoercionFailed { typing: NullableColType, val: DataValue }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("bad list length: expected datatype {0}, got length {1}")]
-        #[diagnostic(code(eval::coercion_bad_list_len))]
-        struct BadListLength(NullableColType, usize);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("bad list length: expected datatype {typing}, got length {len}"))]
+        struct BadListLength { typing: NullableColType, len: usize }
 
-        let make_err = || DataCoercionFailed(self.clone(), data.clone());
+        let make_err = || DataCoercionFailed { typing: self.clone(), val: data.clone() };
 
         Ok(match &self.coltype {
             ColType::Any => match data {
                 DataValue::Set(s) => DataValue::List(s.into_iter().collect_vec()),
                 DataValue::Bot => {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("data coercion failed: internal type Bot not allowed")]
-                    #[diagnostic(code(eval::coercion_from_bot))]
+                    #[derive(Debug, Snafu)]
+                    #[snafu(display("data coercion failed: internal type Bot not allowed"))]
                     struct DataCoercionFromBot;
 
                     bail!(DataCoercionFromBot)
@@ -222,13 +216,12 @@ impl NullableColType {
             ColType::Bytes => match data {
                 d @ DataValue::Bytes(_) => d,
                 DataValue::Str(s) => {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("cannot decode string as base64-encoded bytes: {0}")]
-                    #[diagnostic(code(eval::coercion_bad_base_64))]
-                    struct BadBase64EncodedString(String);
+                    #[derive(Debug, Snafu)]
+                    #[snafu(display("cannot decode string as base64-encoded bytes: {msg}"))]
+                    struct BadBase64EncodedString { msg: String }
                     let b = STANDARD
                         .decode(s)
-                        .map_err(|e| BadBase64EncodedString(e.to_string()))?;
+                        .map_err(|e| BadBase64EncodedString { msg: e.to_string() })?;
                     DataValue::Bytes(b)
                 }
                 _ => bail!(make_err()),
@@ -237,7 +230,7 @@ impl NullableColType {
             ColType::List { eltype, len } => {
                 if let DataValue::List(l) = data {
                     if let Some(expected) = len {
-                        ensure!(*expected == l.len(), BadListLength(self.clone(), l.len()))
+                        ensure!(*expected == l.len(), BadListLength { typing: self.clone(), len: l.len() })
                     }
                     DataValue::List(
                         l.into_iter()
@@ -251,7 +244,7 @@ impl NullableColType {
             ColType::Vec { eltype, len } => match &data {
                 DataValue::List(l) => {
                     if l.len() != *len {
-                        bail!(BadListLength(self.clone(), l.len()))
+                        bail!(BadListLength { typing: self.clone(), len: l.len() })
                     }
                     match eltype {
                         VecElementType::F32 => {
@@ -326,7 +319,7 @@ impl NullableColType {
             },
             ColType::Tuple(typ) => {
                 if let DataValue::List(l) = data {
-                    ensure!(typ.len() == l.len(), BadListLength(self.clone(), l.len()));
+                    ensure!(typ.len() == l.len(), BadListLength { typing: self.clone(), len: l.len() });
                     DataValue::List(
                         l.into_iter()
                             .zip(typ.iter())
@@ -338,10 +331,9 @@ impl NullableColType {
                 }
             }
             ColType::Validity => {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("{0} cannot be coerced into validity")]
-                #[diagnostic(code(eval::invalid_validity))]
-                struct InvalidValidity(DataValue);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("{val:?} cannot be coerced into validity"))]
+                struct InvalidValidity { val: DataValue }
 
                 match data {
                     vld @ DataValue::Validity(_) => vld,
@@ -360,13 +352,13 @@ impl NullableColType {
                                 Some(remaining) => (false, remaining),
                             };
                             let dt = DateTime::parse_from_rfc3339(ts_str)
-                                .map_err(|_| InvalidValidity(DataValue::Str(s.into())))?;
+                                .map_err(|_| InvalidValidity { val: DataValue::Str(s.into()) })?;
                             let st: SystemTime = dt.into();
                             let microseconds =
                                 st.duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
 
                             if microseconds == i64::MAX || microseconds == i64::MIN {
-                                bail!(InvalidValidity(DataValue::Str(s.into())))
+                                bail!(InvalidValidity { val: DataValue::Str(s.into()) })
                             }
 
                             DataValue::Validity(Validity {
@@ -381,7 +373,7 @@ impl NullableColType {
                             let o_is_assert = l[1].get_bool();
                             if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
                                 if ts == i64::MAX || ts == i64::MIN {
-                                    bail!(InvalidValidity(DataValue::List(l)))
+                                    bail!(InvalidValidity { val: DataValue::List(l) })
                                 }
                                 return Ok(DataValue::Validity(Validity {
                                     timestamp: ValidityTs(Reverse(ts)),
@@ -389,9 +381,9 @@ impl NullableColType {
                                 }));
                             }
                         }
-                        bail!(InvalidValidity(DataValue::List(l)))
+                        bail!(InvalidValidity { val: DataValue::List(l) })
                     }
-                    v => bail!(InvalidValidity(v)),
+                    v => bail!(InvalidValidity { val: v }),
                 }
             }
             ColType::Json => DataValue::Json(JsonData(match data {

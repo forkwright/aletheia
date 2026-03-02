@@ -10,12 +10,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
 
+use crate::error::DbResult as Result;
+use crate::{bail};
 use either::{Left, Right};
 use itertools::Itertools;
-use log::{debug, error};
-use miette::{bail, Diagnostic, Result};
+use tracing::debug;
 use smartstring::SmartString;
-use thiserror::Error;
 
 use crate::data::expr::{compute_bounds, eval_bytecode, eval_bytecode_pred, Bytecode, Expr};
 use crate::data::program::{FtsSearch, HnswSearch, MagicSymbol};
@@ -74,10 +74,7 @@ pub(crate) struct UnificationRA {
     pub(crate) span: SourceSpan,
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Found value {0:?} while iterating, unacceptable for an Entity ID")]
-#[diagnostic(code(eval::iter_bad_entity_id))]
-struct EntityIdExpected(DataValue, #[label] SourceSpan);
+
 
 fn eliminate_from_tuple(mut ret: Tuple, eliminate_indices: &BTreeSet<usize>) -> Tuple {
     if !eliminate_indices.is_empty() {
@@ -138,13 +135,9 @@ impl UnificationRA {
                 .map_ok(move |tuple| -> Result<Vec<Tuple>> {
                     let result_list = eval_bytecode(&self.expr_bytecode, &tuple, &mut stack)?;
                     let result_list = result_list.get_slice().ok_or_else(|| {
-                        #[derive(Debug, Error, Diagnostic)]
-                        #[error("Invalid spread unification")]
-                        #[diagnostic(code(eval::invalid_spread_unif))]
-                        #[diagnostic(help("Spread unification requires a list at the right"))]
-                        struct BadSpreadUnification(#[label] SourceSpan);
+                        
 
-                        BadSpreadUnification(self.span)
+                        crate::error::AdhocError("Invalid spread unification".to_string())
                     })?;
                     let mut coll = vec![];
                     for result in result_list {
@@ -347,13 +340,7 @@ impl Debug for RelAlgebra {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Invalid time travel on relation {0}")]
-#[diagnostic(code(eval::invalid_time_travel))]
-#[diagnostic(help(
-    "Time travel scanning requires the last key column of the relation to be of type 'Validity'"
-))]
-pub(crate) struct InvalidTimeTravelScanning(pub(crate) String, #[label] pub(crate) SourceSpan);
+
 
 impl RelAlgebra {
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
@@ -445,7 +432,7 @@ impl RelAlgebra {
                         nullable: false,
                     })
                 {
-                    bail!(InvalidTimeTravelScanning(storage.name.to_string(), span));
+                    bail!("Invalid time travel on relation");
                 };
                 Ok(Self::StoredWithValidity(StoredWithValidityRA {
                     bindings,
@@ -830,12 +817,12 @@ impl InlineFixedRA {
     }
 }
 
-pub(crate) fn flatten_err<T, E1: Into<miette::Error>, E2: Into<miette::Error>>(
-    v: std::result::Result<std::result::Result<T, E2>, E1>,
+pub(crate) fn flatten_err<T>(
+    v: std::result::Result<Result<T>, crate::error::BoxErr>,
 ) -> Result<T> {
     match v {
-        Err(e) => Err(e.into()),
-        Ok(Err(e)) => Err(e.into()),
+        Err(e) => Err(e),
+        Ok(Err(e)) => Err(e),
         Ok(Ok(v)) => Ok(v),
     }
 }
@@ -911,7 +898,7 @@ pub(crate) struct LshSearchRA {
 impl LshSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.lsh_search.filter.is_some() {
+        if let Some(filter) = self.lsh_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -919,7 +906,6 @@ impl LshSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.lsh_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }
@@ -984,7 +970,7 @@ pub(crate) struct FtsSearchRA {
 impl FtsSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.fts_search.filter.is_some() {
+        if let Some(filter) = self.fts_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -992,7 +978,6 @@ impl FtsSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.fts_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }
@@ -1068,7 +1053,7 @@ impl FtsSearchRA {
 impl HnswSearchRA {
     fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         self.parent.fill_binding_indices_and_compile()?;
-        if self.hnsw_search.filter.is_some() {
+        if let Some(filter) = self.hnsw_search.filter.as_mut() {
             let bindings: BTreeMap<_, _> = self
                 .own_bindings
                 .iter()
@@ -1076,7 +1061,6 @@ impl HnswSearchRA {
                 .enumerate()
                 .map(|(a, b)| (b, a))
                 .collect();
-            let filter = self.hnsw_search.filter.as_mut().unwrap();
             filter.fill_binding_indices(&bindings)?;
             self.filter_bytecode = Some((filter.compile()?, filter.span()));
         }

@@ -9,9 +9,9 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::error::DbResult as Result;
+use crate::{ensure};
 use itertools::Itertools;
-use miette::{ensure, Diagnostic, Result};
-use thiserror::Error;
 
 use crate::data::program::{
     FixedRuleArg, MagicSymbol, NormalFormAtom, NormalFormProgram, NormalFormRulesOrFixed,
@@ -161,22 +161,11 @@ fn verify_no_cycle(g: &StratifiedGraph<&'_ Symbol>, sccs: &[BTreeSet<&Symbol>]) 
         for scc in sccs {
             if scc.contains(k) {
                 for (v, negated) in vs {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("Query is unstratifiable")]
-                    #[diagnostic(code(eval::unstratifiable))]
-                    #[diagnostic(help(
-                        "The rule '{0}' is in the strongly connected component {1:?},\n\
-                    and is involved in at least one forbidden dependency \n\
-                    (negation, non-meet aggregation, or algorithm-application)."
-                    ))]
-                    struct UnStratifiableProgram(String, Vec<String>);
+                    
 
                     ensure!(
                         !negated || !scc.contains(v),
-                        UnStratifiableProgram(
-                            v.to_string(),
-                            scc.iter().map(|v| v.to_string()).collect_vec()
-                        )
+                        "Query is unstratifiable"
                     );
                 }
             }

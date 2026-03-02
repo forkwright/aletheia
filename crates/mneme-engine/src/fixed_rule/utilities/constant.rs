@@ -8,9 +8,9 @@
 
 use std::collections::BTreeMap;
 
-use miette::{bail, ensure, Diagnostic, Result};
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::Expr;
 use crate::data::program::WrongFixedRuleOptionError;
@@ -43,7 +43,7 @@ impl FixedRule for Constant {
         &self,
         options: &BTreeMap<SmartString<LazyCompact>, Expr>,
         rule_head: &[Symbol],
-        span: SourceSpan,
+        _span: SourceSpan,
     ) -> Result<usize> {
         let data = options
             .get("data")
@@ -55,14 +55,8 @@ impl FixedRule for Constant {
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
-                    #[derive(Error, Debug, Diagnostic)]
-                    #[error("Constant rule does not have data")]
-                    #[diagnostic(code(parser::empty_const_rule))]
-                    #[diagnostic(help(
-                        "If you insist on using this empty rule, explicitly give its head"
-                    ))]
-                    struct EmptyConstRuleError(#[label] SourceSpan);
-                    bail!(EmptyConstRuleError(span))
+                    
+                    bail!("Constant rule does not have data")
                 }
                 i => i,
             }
@@ -74,7 +68,7 @@ impl FixedRule for Constant {
     fn init_options(
         &self,
         options: &mut BTreeMap<SmartString<LazyCompact>, Expr>,
-        span: SourceSpan,
+        _span: SourceSpan,
     ) -> Result<()> {
         let data = options
             .get("data")
@@ -100,34 +94,20 @@ impl FixedRule for Constant {
             match row {
                 DataValue::List(tuple) => {
                     if let Some(l) = &last_len {
-                        #[derive(Error, Debug, Diagnostic)]
-                        #[error("Constant head must have the same arity as the data given")]
-                        #[diagnostic(code(parser::const_data_arity_mismatch))]
-                        #[diagnostic(help("First row length: {0}; the mismatch: {1:?}"))]
-                        struct ConstRuleRowArityMismatch(
-                            usize,
-                            Vec<DataValue>,
-                            #[label] SourceSpan,
-                        );
+                        
 
                         ensure!(
                             *l == tuple.len(),
-                            ConstRuleRowArityMismatch(*l, tuple, span)
+                            crate::error::AdhocError("Constant head must have the same arity as the data given".to_string())
                         );
                     };
                     last_len = Some(tuple.len());
                     tuples.push(DataValue::List(tuple));
                 }
-                row => {
-                    #[derive(Error, Debug, Diagnostic)]
-                    #[error("Bad row for constant rule: {0:?}")]
-                    #[diagnostic(code(parser::bad_row_for_const))]
-                    #[diagnostic(help(
-                        "The body of a constant rule should evaluate to a list of lists"
-                    ))]
-                    struct ConstRuleRowNotList(DataValue);
+                _row => {
+                    
 
-                    bail!(ConstRuleRowNotList(row))
+                    bail!("Bad row for constant rule: {0:?}")
                 }
             }
         }

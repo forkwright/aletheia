@@ -9,15 +9,15 @@
 use crate::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::parse::expr::parse_string;
 use crate::parse::{CozoScriptParser, Pair, Rule};
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use lazy_static::lazy_static;
-use miette::{IntoDiagnostic, Result};
+use std::sync::LazyLock;
 use pest::pratt_parser::{Op, PrattParser};
 use pest::Parser;
 use smartstring::SmartString;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
-    let mut pairs = CozoScriptParser::parse(Rule::fts_doc, q).into_diagnostic()?;
+    let mut pairs = CozoScriptParser::parse(Rule::fts_doc, q).map_err(|e| crate::error::AdhocError(e.to_string()))?;
     let pairs = pairs.next().unwrap().into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)
@@ -70,7 +70,7 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
                             .as_str()
                             .replace('_', "")
                             .parse::<i64>()
-                            .into_diagnostic()?;
+                            .map_err(|e| crate::error::AdhocError(e.to_string()))?;
                         distance = i as u32;
                     }
                     _ => literals.push(build_phrase(pair)?),
@@ -104,7 +104,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             .as_str()
                             .replace('_', "")
                             .parse::<f64>()
-                            .into_diagnostic()?;
+                            .map_err(|e| crate::error::AdhocError(e.to_string()))?;
                         booster = f;
                     }
                     Rule::int => {
@@ -112,7 +112,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             .as_str()
                             .replace('_', "")
                             .parse::<i64>()
-                            .into_diagnostic()?;
+                            .map_err(|e| crate::error::AdhocError(e.to_string()))?;
                         booster = i as f64;
                     }
                     _ => unreachable!("unexpected rule: {:?}", boosted.as_rule()),
@@ -128,16 +128,14 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     })
 }
 
-lazy_static! {
-    static ref PRATT_PARSER: PrattParser<Rule> = {
-        use pest::pratt_parser::Assoc::*;
+static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    use pest::pratt_parser::Assoc::*;
 
-        PrattParser::new()
-            .op(Op::infix(Rule::fts_not, Left))
-            .op(Op::infix(Rule::fts_and, Left))
-            .op(Op::infix(Rule::fts_or, Left))
-    };
-}
+    PrattParser::new()
+        .op(Op::infix(Rule::fts_not, Left))
+        .op(Op::infix(Rule::fts_and, Left))
+        .op(Op::infix(Rule::fts_or, Left))
+});
 
 #[cfg(test)]
 mod tests {

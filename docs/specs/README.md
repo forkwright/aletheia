@@ -21,7 +21,7 @@ that evolve with the system.
 
 | # | Spec | Status | Notes |
 |---|------|--------|-------|
-| 43 | [Rust Rewrite](43_rust-rewrite.md) | Planned | Single binary, 14 crates, merged sidecar, Tokio actors |
+| 43 | [Rust Rewrite](43_rust-rewrite.md) | Planned | Single binary, 15 crates, merged sidecar, Tokio actors |
 | 44 | [Oikos](44_oikos.md) | Draft | Instance structure, 3-tier hierarchy (theke/shared/nous), cascading resolution |
 
 ### Retained — Independent Concerns
@@ -78,6 +78,7 @@ These specs' key decisions are preserved in Spec 43, Spec 44, and [DECISIONS.md]
 | #338 | Exec tool quality | Absorbed → Spec 44 | cwd via oikos, timeouts via cascade |
 | #332 | OS integration | Retained → Spec 24 | Post-rewrite (eBPF/DBus/NixOS) |
 | #328 | Planning dashboard | Retained → Spec 29 | UI bug + redesign |
+| #405 | v1 tech debt cleanup | Active | Clippy, unused imports, SAFETY audit |
 | #326 | TUI deferred items | Retained | Incremental improvements |
 | #319 | A2UI live canvas | Retained → Spec 43b | Post-rewrite feature |
 | #349 | Evaluate Rust rewrite | **Closed** | Decision made |

@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use miette::Result;
+use crate::error::DbResult as Result;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::{eval_bytecode_pred, Expr};

@@ -1,6 +1,6 @@
+use crate::error::DbResult as Result;
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
-use miette::{IntoDiagnostic, Result};
 
 /// A [`TokenFilter`] which splits compound words into their parts
 /// based on a given dictionary.
@@ -56,7 +56,7 @@ impl SplitCompoundWords {
         let dict = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
             .build(dict)
-            .into_diagnostic()?;
+            .map_err(|e| crate::error::AdhocError(e.to_string()))?;
 
         Ok(Self::from_automaton(dict))
     }

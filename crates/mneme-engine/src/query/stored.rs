@@ -9,11 +9,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail};
 use itertools::Itertools;
-use miette::{bail, Diagnostic, IntoDiagnostic, Result, WrapErr};
 use pest::Parser;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::{Bytecode, Expr};
 use crate::data::program::{FixedRuleApply, InputInlineRulesOrFixed, InputProgram, RelationOp};
@@ -29,16 +30,13 @@ use crate::parse::{parse_script, CozoScriptParser, Rule};
 use crate::runtime::callback::{CallbackCollector, CallbackOp};
 use crate::runtime::minhash_lsh::HashPermutations;
 use crate::runtime::relation::{
-    extend_tuple_from_v, AccessLevel, InputRelationHandle, InsufficientAccessLevel, RelationHandle,
+    extend_tuple_from_v, AccessLevel, InputRelationHandle, RelationHandle,
 };
 use crate::runtime::transact::SessionTx;
 use crate::storage::Storage;
 use crate::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("attempting to write into relation {0} of arity {1} with data of arity {2}")]
-#[diagnostic(code(eval::relation_arity_mismatch))]
-struct RelationArityMismatch(String, usize, usize);
+
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn execute_relation<'s, S: Storage<'s>>(
@@ -58,26 +56,16 @@ impl<'a> SessionTx<'a> {
         let mut replaced_old_triggers = None;
         if op == RelationOp::Replace {
             if !propagate_triggers {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("replace op in trigger is not allowed: {0}")]
-                #[diagnostic(code(eval::replace_in_trigger))]
-                struct ReplaceInTrigger(String);
-                bail!(ReplaceInTrigger(meta.name.to_string()))
+                
+                bail!("replace op in trigger is not allowed")
             }
             if let Ok(old_handle) = self.get_relation(&meta.name, true) {
                 if !old_handle.indices.is_empty() {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("cannot replace relation {0} since it has indices")]
-                    #[diagnostic(code(eval::replace_rel_with_indices))]
-                    struct ReplaceRelationWithIndices(String);
-                    bail!(ReplaceRelationWithIndices(old_handle.name.to_string()))
+                    
+                    bail!("cannot replace relation since it has indices")
                 }
                 if old_handle.access_level < AccessLevel::Normal {
-                    bail!(InsufficientAccessLevel(
-                        old_handle.name.to_string(),
-                        "relation replacement".to_string(),
-                        old_handle.access_level
-                    ));
+                    bail!("Insufficient access level for this operation");
                 }
                 if old_handle.has_triggers() {
                     replaced_old_triggers = Some((old_handle.put_triggers, old_handle.rm_triggers))
@@ -100,13 +88,7 @@ impl<'a> SessionTx<'a> {
                             callback_collector,
                             false,
                         )
-                        .map_err(|err| {
-                            if err.source_code().is_some() {
-                                err
-                            } else {
-                                err.with_source_code(format!("{trigger}"))
-                            }
-                        })?;
+                        ?;
                     to_clear.extend(cleanups);
                 }
                 let destroy_res = self.destroy_relation(&meta.name)?;
@@ -227,11 +209,7 @@ impl<'a> SessionTx<'a> {
             || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!(InsufficientAccessLevel(
-                relation_store.name.to_string(),
-                "row insertion".to_string(),
-                relation_store.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
 
         let mut key_extractors = make_extractors(
@@ -452,7 +430,7 @@ impl<'a> SessionTx<'a> {
     fn make_lsh_hash_perms(
         &self,
         relation_store: &RelationHandle,
-    ) -> miette::Result<BTreeMap<SmartString<LazyCompact>, HashPermutations>> {
+    ) -> Result<BTreeMap<SmartString<LazyCompact>, HashPermutations>> {
         let mut perms = BTreeMap::new();
         for (name, (_, _, manifest)) in relation_store.lsh_indices.iter() {
             perms.insert(name.clone(), manifest.get_hash_perms()?);
@@ -471,7 +449,7 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-                .into_diagnostic()?
+                .map_err(|e| crate::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -486,7 +464,7 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-                .into_diagnostic()?
+                .map_err(|e| crate::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -505,7 +483,7 @@ impl<'a> SessionTx<'a> {
         for (name, (_, manifest)) in relation_store.hnsw_indices.iter() {
             if let Some(f_code) = &manifest.index_filter {
                 let parsed = CozoScriptParser::parse(Rule::expr, f_code)
-                    .into_diagnostic()?
+                    .map_err(|e| crate::error::AdhocError(e.to_string()))?
                     .next()
                     .unwrap();
                 let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -537,11 +515,7 @@ impl<'a> SessionTx<'a> {
             || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!(InsufficientAccessLevel(
-                relation_store.name.to_string(),
-                "row update".to_string(),
-                relation_store.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
 
         let key_extractors = make_extractors(
@@ -725,13 +699,7 @@ impl<'a> SessionTx<'a> {
                         callback_collector,
                         false,
                     )
-                    .map_err(|err| {
-                        if err.source_code().is_some() {
-                            err
-                        } else {
-                            err.with_source_code(format!("{trigger} "))
-                        }
-                    })?;
+                    ?;
                 to_clear.extend(cleanups);
             }
         }
@@ -806,11 +774,7 @@ impl<'a> SessionTx<'a> {
         span: SourceSpan,
     ) -> Result<()> {
         if relation_store.access_level < AccessLevel::ReadOnly {
-            bail!(InsufficientAccessLevel(
-                relation_store.name.to_string(),
-                "row check".to_string(),
-                relation_store.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
 
         let key_extractors = make_extractors(
@@ -853,11 +817,7 @@ impl<'a> SessionTx<'a> {
         span: SourceSpan,
     ) -> Result<()> {
         if relation_store.access_level < AccessLevel::ReadOnly {
-            bail!(InsufficientAccessLevel(
-                relation_store.name.to_string(),
-                "row check".to_string(),
-                relation_store.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
 
         let mut key_extractors = make_extractors(
@@ -932,11 +892,7 @@ impl<'a> SessionTx<'a> {
             callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!(InsufficientAccessLevel(
-                relation_store.name.to_string(),
-                "row removal".to_string(),
-                relation_store.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
         let key_extractors = make_extractors(
             &relation_store.metadata.keys,
@@ -1058,13 +1014,7 @@ impl<'a> SessionTx<'a> {
                             callback_collector,
                             false,
                         )
-                        .map_err(|err| {
-                            if err.source_code().is_some() {
-                                err
-                            } else {
-                                err.with_source_code(format!("{trigger} "))
-                            }
-                        })?;
+                        ?;
                     to_clear.extend(cleanups);
                 }
             }
@@ -1108,9 +1058,8 @@ impl<'a> SessionTx<'a> {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Assertion failure for {key:?} of {relation}: {notice}")]
-#[diagnostic(code(transact::assertion_failure))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Assertion failure for {key:?} of {relation}: {notice}"))]
 struct TransactAssertionFailure {
     relation: String,
     key: Vec<DataValue>,
@@ -1127,10 +1076,10 @@ impl DataExtractor {
         Ok(match self {
             DataExtractor::DefaultExtractor(expr, typ) => typ
                 .coerce(expr.clone().eval_to_const()?, cur_vld)
-                .wrap_err_with(|| format!("when processing tuple {tuple:?}"))?,
+                .map_err(|e| crate::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
             DataExtractor::IndexExtractor(i, typ) => typ
                 .coerce(tuple[*i].clone(), cur_vld)
-                .wrap_err_with(|| format!("when processing tuple {tuple:?}"))?,
+                .map_err(|e| crate::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
         })
     }
 }
@@ -1186,11 +1135,8 @@ fn make_extractor(
             stored.typing.clone(),
         ))
     } else {
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("cannot make extractor for column {0}")]
-        #[diagnostic(code(eval::unable_to_make_extractor))]
-        struct UnableToMakeExtractor(String);
-        Err(UnableToMakeExtractor(stored.name.to_string()).into())
+        
+        Err(Box::new(crate::error::AdhocError("cannot make extractor for column".to_string())) as Box<dyn std::error::Error + Send + Sync + 'static>)
     }
 }
 

@@ -8,9 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
 use itertools::Itertools;
-use miette::Result;
 use rand::prelude::*;
 use smartstring::{LazyCompact, SmartString};
 

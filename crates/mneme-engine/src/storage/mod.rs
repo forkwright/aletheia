@@ -6,8 +6,8 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::Result;
 
 use crate::data::tuple::Tuple;
 use crate::data::value::ValidityTs;

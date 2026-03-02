@@ -9,11 +9,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
+use crate::error::DbResult as Result;
+use crate::{bail};
 use either::{Either, Left, Right};
 use itertools::Itertools;
-use miette::{bail, Diagnostic, Report, Result};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::program::RelationOp;
 use crate::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
@@ -257,7 +257,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         cur_vld: ValidityTs,
         ps: &ImperativeProgram,
         readonly: bool,
-    ) -> Result<NamedRows, Report> {
+    ) -> Result<NamedRows> {
         let mut callback_collector = BTreeMap::new();
         let mut write_lock_names = BTreeSet::new();
         for p in ps {
@@ -313,13 +313,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                     ControlCode::Termination(res) => {
                         ret = res;
                     }
-                    ControlCode::Break(_, span) | ControlCode::Continue(_, span) => {
-                        #[derive(Debug, Error, Diagnostic)]
-                        #[error("control flow has nowhere to go")]
-                        #[diagnostic(code(eval::dangling_ctrl_flow))]
-                        struct DanglingControlFlow(#[label] SourceSpan);
+                    ControlCode::Break(_, _span) | ControlCode::Continue(_, _span) => {
+                        
 
-                        bail!(DanglingControlFlow(span))
+                        bail!("control flow has nowhere to go")
                     }
                 },
             }

@@ -6,12 +6,12 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use miette::Result;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use smartstring::{LazyCompact, SmartString};

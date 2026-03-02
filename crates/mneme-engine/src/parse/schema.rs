@@ -8,16 +8,15 @@
 
 use std::collections::BTreeSet;
 
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use miette::{bail, ensure, Diagnostic, Result, IntoDiagnostic};
 use smartstring::SmartString;
-use thiserror::Error;
 
 use crate::data::relation::{VecElementType, ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::data::symb::Symbol;
-use crate::data::value::DataValue;
 use crate::parse::expr::{build_expr};
-use crate::parse::{ExtractSpan, Pair, Rule, SourceSpan};
+use crate::parse::{ExtractSpan, Pair, Rule};
 
 pub(crate) fn parse_schema(
     pair: Pair<'_>,
@@ -29,25 +28,22 @@ pub(crate) fn parse_schema(
     let mut dep_bindings = vec![];
     let mut seen_names = BTreeSet::new();
 
-    #[derive(Debug, Error, Diagnostic)]
-    #[error("Column {0} is defined multiple times")]
-    #[diagnostic(code(parser::dup_name_in_cols))]
-    struct DuplicateNameInCols(String, #[label] SourceSpan);
+    
     for p in src.next().unwrap().into_inner() {
-        let span = p.extract_span();
+        let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
-            bail!(DuplicateNameInCols(col.name.to_string(), span));
+            bail!("Column is defined multiple times");
         }
         keys.push(col);
         key_bindings.push(ident)
     }
     if let Some(ps) = src.next() {
         for p in ps.into_inner() {
-            let span = p.extract_span();
+            let _span = p.extract_span();
             let (col, ident) = parse_col(p)?;
             if !seen_names.insert(col.name.clone()) {
-                bail!(DuplicateNameInCols(col.name.to_string(), span));
+                bail!("Column is defined multiple times");
             }
             dependents.push(col);
             dep_bindings.push(ident)
@@ -119,17 +115,14 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
             let len = match inner.next() {
                 None => None,
                 Some(len_p) => {
-                    let span = len_p.extract_span();
+                    let _span = len_p.extract_span();
                     let expr = build_expr(len_p, &Default::default())?;
                     let dv = expr.eval_to_const()?;
 
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("Bad specification of list length in type: {0:?}")]
-                    #[diagnostic(code(parser::bad_list_len_in_type))]
-                    struct BadListLenSpec(DataValue, #[label] SourceSpan);
+                    
 
-                    let n = dv.get_int().ok_or(BadListLenSpec(dv, span))?;
-                    ensure!(n >= 0, BadListLenSpec(DataValue::from(n), span));
+                    let n = dv.get_int().ok_or(crate::error::AdhocError("Bad specification of list length in type".to_string()))?;
+                    ensure!(n >= 0, "Bad specification of list length in type: negative length");
                     Some(n as usize)
                 }
             };
@@ -146,7 +139,7 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                 _ => unreachable!()
             };
             let len = inner.next().unwrap();
-            let len = len.as_str().replace('_', "").parse::<usize>().into_diagnostic()?;
+            let len = len.as_str().replace('_', "").parse::<usize>().map_err(|e| crate::error::AdhocError(e.to_string()))?;
             ColType::Vec {
                 eltype,
                 len,

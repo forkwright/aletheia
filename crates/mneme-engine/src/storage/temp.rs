@@ -9,10 +9,10 @@
 use std::collections::BTreeMap;
 use std::default::Default;
 
-use miette::Result;
 
 use crate::data::tuple::Tuple;
 use crate::data::value::ValidityTs;
+use crate::error::DbResult as Result;
 use crate::runtime::relation::decode_tuple_from_kv;
 use crate::storage::mem::SkipIterator;
 use crate::storage::{Storage, StoreTx};

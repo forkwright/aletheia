@@ -2,7 +2,7 @@
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
 > For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
-> Last updated: 2026-03-01 — M0a/M0b/M1 complete, M2 core + M3 complete. 718 tests across 14 crates, ~21K lines Rust.
+> Last updated: 2026-03-02 — M0a/M0b/M1 complete, M2 core + M3 complete. 745 tests across 15 crates, ~21K lines Rust (+42K vendored mneme-engine).
 
 ---
 
@@ -529,7 +529,7 @@ Last updated: 2026-03-01
 | M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 14 Rust crates (+ integration-tests + mneme-bench + graph-builder), 718 workspace tests, ~21K lines of Rust (+ 42K absorbed CozoDB in mneme-engine).
+**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 745 tests (`#[test]` + `#[tokio::test]`), ~21K lines of Rust (+42K vendored CozoDB in mneme-engine).
 
 ---
 

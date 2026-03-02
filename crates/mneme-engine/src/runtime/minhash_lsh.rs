@@ -9,14 +9,15 @@
 // Some ideas are from https://github.com/schelterlabs/rust-minhash
 
 use crate::data::expr::{eval_bytecode, eval_bytecode_pred, Bytecode};
+use crate::{bail};
 use crate::data::tuple::Tuple;
 use crate::fts::tokenizer::TextAnalyzer;
 use crate::fts::TokenizerConfig;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, Expr, SourceSpan, Symbol};
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::{bail, miette, Result};
 use quadrature::integrate;
 use rand::{thread_rng, RngCore};
 use rustc_hash::FxHashSet;
@@ -184,7 +185,7 @@ impl<'a> SessionTx<'a> {
             let orig_tuple = config
                 .base_handle
                 .get(self, &key)?
-                .ok_or_else(|| miette!("Tuple not found in base LSH relation"))?;
+                .ok_or_else(|| crate::error::AdhocError("Tuple not found in base LSH relation".to_string()))?;
             if let Some((filter_code, span)) = filter_code {
                 if !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
                     continue;
@@ -239,7 +240,7 @@ pub(crate) struct MinHashLshIndexManifest {
 }
 
 impl MinHashLshIndexManifest {
-    pub(crate) fn get_hash_perms(&self) -> miette::Result<HashPermutations> {
+    pub(crate) fn get_hash_perms(&self) -> Result<HashPermutations> {
         HashPermutations::from_bytes(&self.perms)
     }
 }
@@ -308,9 +309,9 @@ impl HashPermutations {
         }
     }
     // this is the inverse of `as_bytes`
-    pub(crate) fn from_bytes(bytes: &[u8]) -> miette::Result<Self> {
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let perms: &[u32] = bytemuck::try_cast_slice(bytes)
-            .map_err(|e| miette::miette!("MinHash permutation bytes are misaligned: {e}"))?;
+            .map_err(|e| crate::error::AdhocError(format!("MinHash permutation bytes are misaligned: {e}")))?;
         Ok(Self(perms.to_vec()))
     }
 }

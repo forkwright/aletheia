@@ -6,6 +6,9 @@ use std::path::Path;
 
 use crossbeam::channel::{bounded, Receiver, Sender};
 
+pub mod error;
+pub use error::{Error, Result};
+
 // Public type re-exports
 pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use ndarray::Array1;
@@ -54,14 +57,18 @@ pub enum Db {
 
 impl Db {
     /// Open an in-memory database.
-    pub fn open_mem() -> miette::Result<Self> {
-        crate::storage::mem::new_cozo_mem().map(Db::Mem)
+    pub fn open_mem() -> crate::Result<Self> {
+        crate::storage::mem::new_cozo_mem()
+            .map(Db::Mem)
+            .map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Open a RocksDB-backed database at the given path.
     #[cfg(feature = "storage-new-rocksdb")]
-    pub fn open_rocksdb(path: impl AsRef<Path>) -> miette::Result<Self> {
-        crate::storage::newrocks::new_cozo_newrocksdb(path).map(Db::RocksDb)
+    pub fn open_rocksdb(path: impl AsRef<Path>) -> crate::Result<Self> {
+        crate::storage::newrocks::new_cozo_newrocksdb(path)
+            .map(Db::RocksDb)
+            .map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Execute a Datalog script.
@@ -70,34 +77,37 @@ impl Db {
         script: &str,
         params: BTreeMap<String, DataValue>,
         mutability: ScriptMutability,
-    ) -> miette::Result<NamedRows> {
-        match self {
+    ) -> crate::Result<NamedRows> {
+        let result = match self {
             Db::Mem(db) => db.run_script(script, params, mutability),
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.run_script(script, params, mutability),
-        }
+        };
+        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Export relations for backup.
-    pub fn export_relations<I, T>(&self, relations: I) -> miette::Result<BTreeMap<String, NamedRows>>
+    pub fn export_relations<I, T>(&self, relations: I) -> crate::Result<BTreeMap<String, NamedRows>>
     where
         I: Iterator<Item = T>,
         T: AsRef<str>,
     {
-        match self {
+        let result = match self {
             Db::Mem(db) => db.export_relations(relations),
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.export_relations(relations),
-        }
+        };
+        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Import relations from backup.
-    pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> miette::Result<()> {
-        match self {
+    pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::Result<()> {
+        let result = match self {
             Db::Mem(db) => db.import_relations(data),
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.import_relations(data),
-        }
+        };
+        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Register a custom fixed rule (graph algorithm).
@@ -105,12 +115,13 @@ impl Db {
         &self,
         name: String,
         rule: R,
-    ) -> miette::Result<()> {
-        match self {
+    ) -> crate::Result<()> {
+        let result = match self {
             Db::Mem(db) => db.register_fixed_rule(name, rule),
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.register_fixed_rule(name, rule),
-        }
+        };
+        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
     }
 
     /// Register a callback for relation changes.
@@ -132,8 +143,8 @@ impl Db {
         let (app2db_send, app2db_recv): (Sender<TransactionPayload>, Receiver<TransactionPayload>) =
             bounded(1);
         let (db2app_send, db2app_recv): (
-            Sender<miette::Result<NamedRows>>,
-            Receiver<miette::Result<NamedRows>>,
+            Sender<crate::error::DbResult<NamedRows>>,
+            Receiver<crate::error::DbResult<NamedRows>>,
         ) = bounded(1);
         let db = self.clone_inner();
         rayon::spawn(move || db.run_multi_transaction_inner(write, app2db_recv, db2app_send));
@@ -164,7 +175,7 @@ impl DbInner {
         self,
         write: bool,
         payloads: Receiver<TransactionPayload>,
-        results: Sender<miette::Result<NamedRows>>,
+        results: Sender<crate::error::DbResult<NamedRows>>,
     ) {
         match self {
             DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
@@ -179,7 +190,7 @@ pub struct MultiTransaction {
     /// Commands can be sent into the transaction through this channel
     pub sender: Sender<TransactionPayload>,
     /// Results can be retrieved from the transaction from this channel
-    pub receiver: Receiver<miette::Result<NamedRows>>,
+    pub receiver: Receiver<crate::error::DbResult<NamedRows>>,
 }
 
 /// A poison token used to cancel an in-progress operation.
@@ -191,14 +202,14 @@ impl DbInstance {
         crate::storage::mem::new_cozo_mem().unwrap()
     }
 
-    pub(crate) fn run_default(&self, script: &str) -> miette::Result<NamedRows> {
+    pub(crate) fn run_default(&self, script: &str) -> crate::error::DbResult<NamedRows> {
         use crate::runtime::db::ScriptMutability;
         self.run_script(script, Default::default(), ScriptMutability::Mutable)
     }
 
     pub(crate) fn multi_transaction_test(&self, write: bool) -> TestMultiTx {
         let (app_tx, app_rx) = bounded::<TransactionPayload>(1);
-        let (db_tx, db_rx) = bounded::<miette::Result<NamedRows>>(1);
+        let (db_tx, db_rx) = bounded::<crate::error::DbResult<NamedRows>>(1);
         let db = self.clone();
         rayon::spawn(move || db.run_multi_transaction(write, app_rx, db_tx));
         TestMultiTx { sender: app_tx, receiver: db_rx }
@@ -208,22 +219,22 @@ impl DbInstance {
 #[cfg(test)]
 pub(crate) struct TestMultiTx {
     pub(crate) sender: Sender<TransactionPayload>,
-    pub(crate) receiver: Receiver<miette::Result<NamedRows>>,
+    pub(crate) receiver: Receiver<crate::error::DbResult<NamedRows>>,
 }
 
 #[cfg(test)]
 impl TestMultiTx {
-    pub(crate) fn run_script(&self, script: &str, params: BTreeMap<String, DataValue>) -> miette::Result<NamedRows> {
+    pub(crate) fn run_script(&self, script: &str, params: BTreeMap<String, DataValue>) -> crate::error::DbResult<NamedRows> {
         self.sender.send(TransactionPayload::Query((script.to_string(), params))).unwrap();
         self.receiver.recv().unwrap()
     }
 
-    pub(crate) fn commit(self) -> miette::Result<()> {
+    pub(crate) fn commit(self) -> crate::error::DbResult<()> {
         self.sender.send(TransactionPayload::Commit).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }
 
-    pub(crate) fn abort(self) -> miette::Result<()> {
+    pub(crate) fn abort(self) -> crate::error::DbResult<()> {
         self.sender.send(TransactionPayload::Abort).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }

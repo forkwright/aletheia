@@ -9,8 +9,9 @@
 use std::collections::BTreeSet;
 use std::mem;
 
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use miette::{bail, ensure, Result};
 use smallvec::SmallVec;
 use smartstring::SmartString;
 
@@ -23,8 +24,7 @@ use crate::data::program::{
 use crate::data::relation::{ColType, NullableColType};
 use crate::data::symb::{Symbol, PROG_ENTRY};
 use crate::parse::SourceSpan;
-use crate::query::logical::NamedFieldNotFound;
-use crate::query::ra::InvalidTimeTravelScanning;
+
 use crate::runtime::transact::SessionTx;
 
 impl NormalFormProgram {
@@ -366,10 +366,7 @@ impl NormalFormProgram {
                                                             nullable: false,
                                                         })
                                                     {
-                                                        bail!(InvalidTimeTravelScanning(
-                                                            name.to_string(),
-                                                            *span
-                                                        ));
+                                                        bail!("Invalid time travel scanning for relation '{}'", name);
                                                     }
                                                 }
 
@@ -400,10 +397,7 @@ impl NormalFormProgram {
                                                             nullable: false,
                                                         })
                                                     {
-                                                        bail!(InvalidTimeTravelScanning(
-                                                            name.to_string(),
-                                                            *span
-                                                        ));
+                                                        bail!("Invalid time travel scanning for relation '{}'", name);
                                                     }
                                                 }
                                                 let fields: BTreeSet<_> = relation
@@ -416,11 +410,7 @@ impl NormalFormProgram {
                                                 for k in bindings.keys() {
                                                     ensure!(
                                                         fields.contains(&k),
-                                                        NamedFieldNotFound(
-                                                            name.to_string(),
-                                                            k.to_string(),
-                                                            *span
-                                                        )
+                                                        "stored relation '{}' does not have field '{}'", name, k
                                                     );
                                                 }
                                                 let new_bindings = relation

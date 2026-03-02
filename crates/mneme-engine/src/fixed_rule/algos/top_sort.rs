@@ -6,10 +6,10 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
 use std::collections::BTreeMap;
 
-use miette::Result;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::Expr;

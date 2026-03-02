@@ -10,8 +10,8 @@ use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::Result;
 
 use crate::runtime::db::Poison;
 

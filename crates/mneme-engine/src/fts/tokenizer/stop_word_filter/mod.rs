@@ -15,10 +15,11 @@ mod stopwords;
 
 use std::sync::Arc;
 
+use crate::error::DbResult as Result;
+use crate::{bail};
 use rustc_hash::FxHashSet;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
-use miette::{bail, Result};
 
 /// `TokenFilter` that removes stop words from a token stream
 #[derive(Clone)]

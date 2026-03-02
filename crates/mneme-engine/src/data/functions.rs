@@ -13,13 +13,14 @@ use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, TimeZone, Utc};
 use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
-use miette::{bail, ensure, miette, IntoDiagnostic, Result};
 use num_traits::FloatConst;
 use rand::prelude::*;
 use serde_json::{json, Value};
@@ -83,7 +84,7 @@ pub(crate) fn op_set_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(&args[0]);
     let path = args[1]
         .get_slice()
-        .ok_or_else(|| miette!("json path must be a string"))?;
+        .ok_or_else(|| crate::error::AdhocError("json path must be a string".to_string()))?;
     let pointer = get_json_path(&mut result, path)?;
     let new_val = to_json(&args[2]);
     *pointer = new_val;
@@ -100,18 +101,18 @@ fn get_json_path_immutable<'a>(
                 let key = val2str(key);
                 let entry = obj
                     .get(&key)
-                    .ok_or_else(|| miette!("json path does not exist"))?;
+                    .ok_or_else(|| crate::error::AdhocError("json path does not exist".to_string()))?;
                 pointer = entry;
             }
             JsonValue::Array(arr) => {
                 let key = key
                     .get_int()
-                    .ok_or_else(|| miette!("json path must be a string or a number"))?
+                    .ok_or_else(|| crate::error::AdhocError("json path must be a string or a number".to_string()))?
                     as usize;
 
                 let val = arr
                     .get(key)
-                    .ok_or_else(|| miette!("json path does not exist"))?;
+                    .ok_or_else(|| crate::error::AdhocError("json path does not exist".to_string()))?;
                 pointer = val;
             }
             _ => {
@@ -136,7 +137,7 @@ fn get_json_path<'a>(
             JsonValue::Array(arr) => {
                 let key = key
                     .get_int()
-                    .ok_or_else(|| miette!("json path must be a string or a number"))?
+                    .ok_or_else(|| crate::error::AdhocError("json path must be a string or a number".to_string()))?
                     as usize;
                 if arr.len() <= key + 1 {
                     arr.resize_with(key + 1, || JsonValue::Null);
@@ -158,10 +159,10 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(&args[0]);
     let path = args[1]
         .get_slice()
-        .ok_or_else(|| miette!("json path must be a string"))?;
+        .ok_or_else(|| crate::error::AdhocError("json path must be a string".to_string()))?;
     let (last, path) = path
         .split_last()
-        .ok_or_else(|| miette!("json path must not be empty"))?;
+        .ok_or_else(|| crate::error::AdhocError("json path must not be empty".to_string()))?;
     let pointer = get_json_path(&mut result, path)?;
     match pointer {
         JsonValue::Object(obj) => {
@@ -171,7 +172,7 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
         JsonValue::Array(arr) => {
             let key = last
                 .get_int()
-                .ok_or_else(|| miette!("json path must be a string or a number"))?
+                .ok_or_else(|| crate::error::AdhocError("json path must be a string or a number".to_string()))?
                 as usize;
             arr.remove(key);
         }
@@ -269,7 +270,7 @@ define_op!(OP_PARSE_JSON, 1, false);
 pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
     match args[0].get_str() {
         Some(s) => {
-            let value = serde_json::from_str(s).into_diagnostic()?;
+            let value = serde_json::from_str(s).map_err(|e| crate::error::AdhocError(e.to_string()))?;
             Ok(DataValue::Json(JsonData(value)))
         }
         None => bail!("parse_json requires a string argument"),
@@ -326,7 +327,7 @@ pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     let left = &args[0];
     let right = args[1]
         .get_slice()
-        .ok_or_else(|| miette!("right hand side of 'is_in' must be a list"))?;
+        .ok_or_else(|| crate::error::AdhocError("right hand side of 'is_in' must be a list".to_string()))?;
     Ok(DataValue::from(right.contains(left)))
 }
 
@@ -425,7 +426,7 @@ fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Vec(a), b) => {
             let f = b
                 .get_float()
-                .ok_or_else(|| miette!("can only add numbers to vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only add numbers to vectors".to_string()))?;
             match a {
                 Vector::F32(mut v) => {
                     v += f as f32;
@@ -440,7 +441,7 @@ fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
         (a, DataValue::Vec(b)) => {
             let f = a
                 .get_float()
-                .ok_or_else(|| miette!("can only add numbers to vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only add numbers to vectors".to_string()))?;
             match b {
                 Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v + f as f32))),
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v + f))),
@@ -510,7 +511,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Vec(a), b) => {
             let b = b
                 .get_float()
-                .ok_or_else(|| miette!("can only subtract numbers from vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only subtract numbers from vectors".to_string()))?;
             match a.clone() {
                 Vector::F32(mut v) => {
                     v -= b as f32;
@@ -525,7 +526,7 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
         (a, DataValue::Vec(b)) => {
             let a = a
                 .get_float()
-                .ok_or_else(|| miette!("can only subtract vectors from numbers"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only subtract vectors from numbers".to_string()))?;
             match b.clone() {
                 Vector::F32(mut v) => {
                     v -= a as f32;
@@ -587,7 +588,7 @@ fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Vec(a), b) => {
             let f = b
                 .get_float()
-                .ok_or_else(|| miette!("can only add numbers to vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only add numbers to vectors".to_string()))?;
             match a {
                 Vector::F32(mut v) => {
                     v *= f as f32;
@@ -602,7 +603,7 @@ fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
         (a, DataValue::Vec(b)) => {
             let f = a
                 .get_float()
-                .ok_or_else(|| miette!("can only add numbers to vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only add numbers to vectors".to_string()))?;
             match b {
                 Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v * f as f32))),
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v * f))),
@@ -642,7 +643,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Vec(a), b) => {
             let b = b
                 .get_float()
-                .ok_or_else(|| miette!("can only subtract numbers from vectors"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only subtract numbers from vectors".to_string()))?;
             match a.clone() {
                 Vector::F32(mut v) => {
                     v /= b as f32;
@@ -657,7 +658,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
         (a, DataValue::Vec(b)) => {
             let a = a
                 .get_float()
-                .ok_or_else(|| miette!("can only subtract vectors from numbers"))?;
+                .ok_or_else(|| crate::error::AdhocError("can only subtract vectors from numbers".to_string()))?;
             match b {
                 Vector::F32(v) => DataValue::Vec(Vector::F32(a as f32 / v)),
                 Vector::F64(v) => DataValue::Vec(Vector::F64(a / v)),
@@ -1047,13 +1048,13 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F32(v)) => {
             let b = args[1]
                 .get_float()
-                .ok_or_else(|| miette!("'pow' requires numbers"))?;
+                .ok_or_else(|| crate::error::AdhocError("'pow' requires numbers".to_string()))?;
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b as f32)))));
         }
         DataValue::Vec(Vector::F64(v)) => {
             let b = args[1]
                 .get_float()
-                .ok_or_else(|| miette!("'pow' requires numbers"))?;
+                .ok_or_else(|| crate::error::AdhocError("'pow' requires numbers".to_string()))?;
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.powf(b)))));
         }
         _ => bail!("'pow' requires numbers"),
@@ -1093,7 +1094,7 @@ pub(crate) fn op_and(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
         if !arg
             .get_bool()
-            .ok_or_else(|| miette!("'and' requires booleans"))?
+            .ok_or_else(|| crate::error::AdhocError("'and' requires booleans".to_string()))?
         {
             return Ok(DataValue::from(false));
         }
@@ -1106,7 +1107,7 @@ pub(crate) fn op_or(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
         if arg
             .get_bool()
-            .ok_or_else(|| miette!("'or' requires booleans"))?
+            .ok_or_else(|| crate::error::AdhocError("'or' requires booleans".to_string()))?
         {
             return Ok(DataValue::from(true));
         }
@@ -1383,7 +1384,7 @@ pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
         r @ DataValue::Regex(_) => r.clone(),
         DataValue::Str(s) => {
             DataValue::Regex(RegexWrapper(regex::Regex::new(s).map_err(|err| {
-                miette!("The string cannot be interpreted as regex: {}", err)
+                crate::error::AdhocError(format!("The string cannot be interpreted as regex: {}", err))
             })?))
         }
         _ => bail!("'regex' requires strings"),
@@ -1584,7 +1585,7 @@ define_op!(OP_SORTED, 1, false);
 pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
     let mut arg = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("'sort' requires lists"))?
+        .ok_or_else(|| crate::error::AdhocError("'sort' requires lists".to_string()))?
         .to_vec();
     arg.sort();
     Ok(DataValue::List(arg))
@@ -1594,7 +1595,7 @@ define_op!(OP_REVERSE, 1, false);
 pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
     let mut arg = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("'reverse' requires lists"))?
+        .ok_or_else(|| crate::error::AdhocError("'reverse' requires lists".to_string()))?
         .to_vec();
     arg.reverse();
     Ok(DataValue::List(arg))
@@ -1602,7 +1603,7 @@ pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_HAVERSINE, 4, false);
 pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
-    let miette = || miette!("'haversine' requires numbers");
+    let miette = || crate::error::AdhocError("'haversine' requires numbers".to_string());
     let lat1 = args[0].get_float().ok_or_else(miette)?;
     let lon1 = args[1].get_float().ok_or_else(miette)?;
     let lat2 = args[2].get_float().ok_or_else(miette)?;
@@ -1617,7 +1618,7 @@ pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_HAVERSINE_DEG_INPUT, 4, false);
 pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
-    let miette = || miette!("'haversine_deg_input' requires numbers");
+    let miette = || crate::error::AdhocError("'haversine_deg_input' requires numbers".to_string());
     let lat1 = args[0].get_float().ok_or_else(miette)? * f64::PI() / 180.;
     let lon1 = args[1].get_float().ok_or_else(miette)? * f64::PI() / 180.;
     let lat2 = args[2].get_float().ok_or_else(miette)? * f64::PI() / 180.;
@@ -1634,7 +1635,7 @@ define_op!(OP_DEG_TO_RAD, 1, false);
 pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
     let x = args[0]
         .get_float()
-        .ok_or_else(|| miette!("'deg_to_rad' requires numbers"))?;
+        .ok_or_else(|| crate::error::AdhocError("'deg_to_rad' requires numbers".to_string()))?;
     Ok(DataValue::from(x * f64::PI() / 180.))
 }
 
@@ -1642,7 +1643,7 @@ define_op!(OP_RAD_TO_DEG, 1, false);
 pub(crate) fn op_rad_to_deg(args: &[DataValue]) -> Result<DataValue> {
     let x = args[0]
         .get_float()
-        .ok_or_else(|| miette!("'rad_to_deg' requires numbers"))?;
+        .ok_or_else(|| crate::error::AdhocError("'rad_to_deg' requires numbers".to_string()))?;
     Ok(DataValue::from(x * 180. / f64::PI()))
 }
 
@@ -1650,7 +1651,7 @@ define_op!(OP_FIRST, 1, false);
 pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
     Ok(args[0]
         .get_slice()
-        .ok_or_else(|| miette!("'first' requires lists"))?
+        .ok_or_else(|| crate::error::AdhocError("'first' requires lists".to_string()))?
         .first()
         .cloned()
         .unwrap_or(DataValue::Null))
@@ -1660,7 +1661,7 @@ define_op!(OP_LAST, 1, false);
 pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
     Ok(args[0]
         .get_slice()
-        .ok_or_else(|| miette!("'last' requires lists"))?
+        .ok_or_else(|| crate::error::AdhocError("'last' requires lists".to_string()))?
         .last()
         .cloned()
         .unwrap_or(DataValue::Null))
@@ -1670,10 +1671,10 @@ define_op!(OP_CHUNKS, 2, false);
 pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
     let arg = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("first argument of 'chunks' must be a list"))?;
+        .ok_or_else(|| crate::error::AdhocError("first argument of 'chunks' must be a list".to_string()))?;
     let n = args[1]
         .get_int()
-        .ok_or_else(|| miette!("second argument of 'chunks' must be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("second argument of 'chunks' must be an integer".to_string()))?;
     ensure!(n > 0, "second argument to 'chunks' must be positive");
     let res = arg
         .chunks(n as usize)
@@ -1686,10 +1687,10 @@ define_op!(OP_CHUNKS_EXACT, 2, false);
 pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
     let arg = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("first argument of 'chunks_exact' must be a list"))?;
+        .ok_or_else(|| crate::error::AdhocError("first argument of 'chunks_exact' must be a list".to_string()))?;
     let n = args[1]
         .get_int()
-        .ok_or_else(|| miette!("second argument of 'chunks_exact' must be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("second argument of 'chunks_exact' must be an integer".to_string()))?;
     ensure!(n > 0, "second argument to 'chunks_exact' must be positive");
     let res = arg
         .chunks_exact(n as usize)
@@ -1702,10 +1703,10 @@ define_op!(OP_WINDOWS, 2, false);
 pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
     let arg = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("first argument of 'windows' must be a list"))?;
+        .ok_or_else(|| crate::error::AdhocError("first argument of 'windows' must be a list".to_string()))?;
     let n = args[1]
         .get_int()
-        .ok_or_else(|| miette!("second argument of 'windows' must be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("second argument of 'windows' must be an integer".to_string()))?;
     ensure!(n > 0, "second argument to 'windows' must be positive");
     let res = arg
         .windows(n as usize)
@@ -1749,7 +1750,7 @@ fn get_impl(args: &[DataValue]) -> Result<DataValue> {
         DataValue::List(l) => {
             let n = args[1]
                 .get_int()
-                .ok_or_else(|| miette!("second argument to 'get' mut be an integer"))?;
+                .ok_or_else(|| crate::error::AdhocError("second argument to 'get' mut be an integer".to_string()))?;
             let idx = get_index(n, l.len(), false)?;
             Ok(l[idx].clone())
         }
@@ -1757,14 +1758,14 @@ fn get_impl(args: &[DataValue]) -> Result<DataValue> {
             let res = match &args[1] {
                 DataValue::Str(s) => json
                     .get(s as &str)
-                    .ok_or_else(|| miette!("key '{}' not found in json", s))?
+                    .ok_or_else(|| crate::error::AdhocError(format!("key '{}' not found in json", s)))?
                     .clone(),
                 DataValue::Num(i) => {
                     let i = i
                         .get_int()
-                        .ok_or_else(|| miette!("index '{}' not found in json", i))?;
+                        .ok_or_else(|| crate::error::AdhocError(format!("index '{}' not found in json", i)))?;
                     json.get(i as usize)
-                        .ok_or_else(|| miette!("index '{}' not found in json", i))?
+                        .ok_or_else(|| crate::error::AdhocError(format!("index '{}' not found in json", i)))?
                         .clone()
                 }
                 DataValue::List(l) => get_json_path_immutable(json, l)?.clone(),
@@ -1808,13 +1809,13 @@ define_op!(OP_SLICE, 3, false);
 pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
     let l = args[0]
         .get_slice()
-        .ok_or_else(|| miette!("first argument to 'slice' mut be a list"))?;
+        .ok_or_else(|| crate::error::AdhocError("first argument to 'slice' mut be a list".to_string()))?;
     let m = args[1]
         .get_int()
-        .ok_or_else(|| miette!("second argument to 'slice' mut be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("second argument to 'slice' mut be an integer".to_string()))?;
     let n = args[2]
         .get_int()
-        .ok_or_else(|| miette!("third argument to 'slice' mut be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("third argument to 'slice' mut be an integer".to_string()))?;
     let m = get_index(m, l.len(), false)?;
     let n = get_index(n, l.len(), true)?;
     Ok(DataValue::List(l[m..n].to_vec()))
@@ -1825,7 +1826,7 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(
         args[0]
             .get_str()
-            .ok_or_else(|| miette!("'chars' requires strings"))?
+            .ok_or_else(|| crate::error::AdhocError("'chars' requires strings".to_string()))?
             .chars()
             .map(|c| {
                 let mut s = SmartString::new();
@@ -1840,17 +1841,17 @@ define_op!(OP_SLICE_STRING, 3, false);
 pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
     let s = args[0]
         .get_str()
-        .ok_or_else(|| miette!("first argument to 'slice_string' mut be a string"))?;
+        .ok_or_else(|| crate::error::AdhocError("first argument to 'slice_string' mut be a string".to_string()))?;
     let m = args[1]
         .get_int()
-        .ok_or_else(|| miette!("second argument to 'slice_string' mut be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("second argument to 'slice_string' mut be an integer".to_string()))?;
     ensure!(
         m >= 0,
         "second argument to 'slice_string' mut be a positive integer"
     );
     let n = args[2]
         .get_int()
-        .ok_or_else(|| miette!("third argument to 'slice_string' mut be an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("third argument to 'slice_string' mut be an integer".to_string()))?;
     ensure!(n >= m, "third argument to 'slice_string' mut be a positive integer greater than the second argument");
     Ok(DataValue::Str(
         s.chars().skip(m as usize).take((n - m) as usize).collect(),
@@ -1901,7 +1902,7 @@ pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Str(s) => {
             let b = STANDARD
                 .decode(s)
-                .map_err(|_| miette!("Data is not properly encoded"))?;
+                .map_err(|_| crate::error::AdhocError("Data is not properly encoded".to_string()))?;
             Ok(DataValue::Bytes(b))
         }
         _ => bail!("'decode_base64' requires strings"),
@@ -1975,7 +1976,7 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Str(t) => {
             let s = t as &str;
             i64::from_str(s)
-                .map_err(|_| miette!("The string cannot be interpreted as int"))?
+                .map_err(|_| crate::error::AdhocError("The string cannot be interpreted as int".to_string()))?
                 .into()
         }
         DataValue::Validity(vld) => DataValue::Num(Num::Int(vld.timestamp.0 .0)),
@@ -1996,7 +1997,7 @@ pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
             "INF" => f64::INFINITY.into(),
             "NEG_INF" => f64::NEG_INFINITY.into(),
             s => f64::from_str(s)
-                .map_err(|_| miette!("The string cannot be interpreted as float"))?
+                .map_err(|_| crate::error::AdhocError("The string cannot be interpreted as float".to_string()))?
                 .into(),
         },
         v => bail!("'to_float' does not recognize {:?}", v),
@@ -2041,7 +2042,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 {
                     let f = el
                         .as_f64()
-                        .ok_or_else(|| miette!("'vec' requires a list of numbers"))?;
+                        .ok_or_else(|| crate::error::AdhocError("'vec' requires a list of numbers".to_string()))?;
                     row.fill(f as f32);
                 }
                 Ok(DataValue::Vec(Vector::F32(res_arr)))
@@ -2054,7 +2055,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 {
                     let f = el
                         .as_f64()
-                        .ok_or_else(|| miette!("'vec' requires a list of numbers"))?;
+                        .ok_or_else(|| crate::error::AdhocError("'vec' requires a list of numbers".to_string()))?;
                     row.fill(f);
                 }
                 Ok(DataValue::Vec(Vector::F64(res_arr)))
@@ -2066,7 +2067,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(l.iter()) {
                     let f = el
                         .get_float()
-                        .ok_or_else(|| miette!("'vec' requires a list of numbers"))?;
+                        .ok_or_else(|| crate::error::AdhocError("'vec' requires a list of numbers".to_string()))?;
                     row.fill(f as f32);
                 }
                 Ok(DataValue::Vec(Vector::F32(res_arr)))
@@ -2076,7 +2077,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(l.iter()) {
                     let f = el
                         .get_float()
-                        .ok_or_else(|| miette!("'vec' requires a list of numbers"))?;
+                        .ok_or_else(|| crate::error::AdhocError("'vec' requires a list of numbers".to_string()))?;
                     row.fill(f);
                 }
                 Ok(DataValue::Vec(Vector::F64(res_arr)))
@@ -2095,7 +2096,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Str(s) => {
             let bytes = STANDARD
                 .decode(s)
-                .map_err(|_| miette!("Data is not base64 encoded"))?;
+                .map_err(|_| crate::error::AdhocError("Data is not base64 encoded".to_string()))?;
             match t {
                 VecElementType::F32 => {
                     let f32_count = bytes.len() / mem::size_of::<f32>();
@@ -2136,7 +2137,7 @@ define_op!(OP_RAND_VEC, 1, true);
 pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
     let len = args[0]
         .get_int()
-        .ok_or_else(|| miette!("'rand_vec' requires an integer"))? as usize;
+        .ok_or_else(|| crate::error::AdhocError("'rand_vec' requires an integer".to_string()))? as usize;
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
             "F32" | "Float" => VecElementType::F32,
@@ -2261,28 +2262,28 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
         1 => {
             let end = args[0]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for end"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for end".to_string()))?;
             [0, end]
         }
         2 => {
             let start = args[0]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for start"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for start".to_string()))?;
             let end = args[1]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for end"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for end".to_string()))?;
             [start, end]
         }
         3 => {
             let start = args[0]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for start"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for start".to_string()))?;
             let end = args[1]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for end"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for end".to_string()))?;
             let step = args[2]
                 .get_int()
-                .ok_or_else(|| miette!("'int_range' requires integer argument for step"))?;
+                .ok_or_else(|| crate::error::AdhocError("'int_range' requires integer argument for step".to_string()))?;
             let mut current = start;
             let mut result = vec![];
             if step > 0 {
@@ -2328,10 +2329,10 @@ define_op!(OP_RAND_INT, 2, false);
 pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     let lower = &args[0]
         .get_int()
-        .ok_or_else(|| miette!("'rand_int' requires integers"))?;
+        .ok_or_else(|| crate::error::AdhocError("'rand_int' requires integers".to_string()))?;
     let upper = &args[1]
         .get_int()
-        .ok_or_else(|| miette!("'rand_int' requires integers"))?;
+        .ok_or_else(|| crate::error::AdhocError("'rand_int' requires integers".to_string()))?;
     Ok(thread_rng().gen_range(*lower..=*upper).into())
 }
 
@@ -2432,7 +2433,7 @@ pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
         DataValue::Str(s) => {
-            let id = uuid::Uuid::try_parse(s).map_err(|_| miette!("invalid UUID"))?;
+            let id = uuid::Uuid::try_parse(s).map_err(|_| crate::error::AdhocError("invalid UUID".to_string()))?;
             Ok(DataValue::uuid(id))
         }
         _ => bail!("'to_uuid' requires a string"),
@@ -2480,21 +2481,21 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
             v => {
                 let f = v
                     .get_float()
-                    .ok_or_else(|| miette!("'format_timestamp' expects a number"))?;
+                    .ok_or_else(|| crate::error::AdhocError("'format_timestamp' expects a number".to_string()))?;
                 (f * 1000.) as i64
             }
         };
         Utc.timestamp_millis_opt(millis)
             .latest()
-            .ok_or_else(|| miette!("bad time: {}", &args[0]))?
+            .ok_or_else(|| crate::error::AdhocError(format!("bad time: {}", &args[0])))?
     };
     match args.get(1) {
         Some(tz_v) => {
             let tz_s = tz_v.get_str().ok_or_else(|| {
-                miette!("'format_timestamp' timezone specification requires a string")
+                crate::error::AdhocError("'format_timestamp' timezone specification requires a string".to_string())
             })?;
             let tz = chrono_tz::Tz::from_str(tz_s)
-                .map_err(|_| miette!("bad timezone specification: {}", tz_s))?;
+                .map_err(|_| crate::error::AdhocError(format!("bad timezone specification: {}", tz_s)))?;
             let dt_tz = dt.with_timezone(&tz);
             let s = SmartString::from(dt_tz.to_rfc3339());
             Ok(DataValue::Str(s))
@@ -2510,8 +2511,8 @@ define_op!(OP_PARSE_TIMESTAMP, 1, false);
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let s = args[0]
         .get_str()
-        .ok_or_else(|| miette!("'parse_timestamp' expects a string"))?;
-    let dt = DateTime::parse_from_rfc3339(s).map_err(|_| miette!("bad datetime: {}", s))?;
+        .ok_or_else(|| crate::error::AdhocError("'parse_timestamp' expects a string".to_string()))?;
+    let dt = DateTime::parse_from_rfc3339(s).map_err(|_| crate::error::AdhocError(format!("bad datetime: {}", s)))?;
     let st: SystemTime = dt.into();
     Ok(DataValue::from(
         st.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(),
@@ -2519,7 +2520,7 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
-    let dt = DateTime::parse_from_rfc3339(s).map_err(|_| miette!("bad datetime: {}", s))?;
+    let dt = DateTime::parse_from_rfc3339(s).map_err(|_| crate::error::AdhocError(format!("bad datetime: {}", s)))?;
     let st: SystemTime = dt.into();
     let microseconds = st.duration_since(UNIX_EPOCH).unwrap().as_micros();
     Ok(ValidityTs(Reverse(microseconds as i64)))
@@ -2573,13 +2574,13 @@ define_op!(OP_VALIDITY, 1, true);
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
     let ts = args[0]
         .get_int()
-        .ok_or_else(|| miette!("'validity' expects an integer"))?;
+        .ok_or_else(|| crate::error::AdhocError("'validity' expects an integer".to_string()))?;
     let is_assert = if args.len() == 1 {
         true
     } else {
         args[1]
             .get_bool()
-            .ok_or_else(|| miette!("'validity' expects a boolean as second argument"))?
+            .ok_or_else(|| crate::error::AdhocError("'validity' expects a boolean as second argument".to_string()))?
     };
     Ok(DataValue::Validity(Validity {
         timestamp: ValidityTs(Reverse(ts)),

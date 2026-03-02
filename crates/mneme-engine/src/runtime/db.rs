@@ -21,16 +21,16 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[allow(unused_imports)]
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
 use crossbeam::sync::ShardedLock;
 use either::{Left, Right};
 use itertools::Itertools;
-use miette::Report;
 #[allow(unused_imports)]
-use miette::{bail, ensure, miette, Diagnostic, IntoDiagnostic, Result, WrapErr};
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::functions::current_validity;
 use crate::data::json::JsonValue;
@@ -41,7 +41,7 @@ use crate::data::value::{DataValue, ValidityTs, LARGEST_UTF_CHAR};
 use crate::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::fts::TokenizerCache;
 use crate::parse::sys::SysOp;
-use crate::parse::{parse_expressions, parse_script, CozoScript, SourceSpan};
+use crate::parse::{parse_expressions, parse_script, CozoScript};
 use crate::query::compile::{CompiledProgram, CompiledRule, CompiledRuleSet};
 use crate::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
@@ -52,7 +52,7 @@ use crate::runtime::callback::{
     CallbackCollector, CallbackDeclaration, CallbackOp, EventCallbackRegistry,
 };
 use crate::runtime::relation::{
-    extend_tuple_from_v, AccessLevel, InsufficientAccessLevel, RelationHandle, RelationId,
+    extend_tuple_from_v, AccessLevel, RelationHandle, RelationId,
 };
 use crate::runtime::transact::SessionTx;
 use crate::storage::temp::TempStorage;
@@ -71,7 +71,7 @@ pub(crate) struct RunningQueryCleanup {
 
 impl Drop for RunningQueryCleanup {
     fn drop(&mut self) {
-        let mut map = self.running_queries.lock().unwrap();
+        let mut map = self.running_queries.lock().unwrap(); // INVARIANT: lock is not poisoned
         if let Some(handle) = map.remove(&self.id) {
             handle.poison.0.store(true, Ordering::Relaxed);
         }
@@ -115,15 +115,9 @@ impl<S> Debug for Db<S> {
     }
 }
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Initialization of database failed")]
-#[diagnostic(code(db::init))]
-pub(crate) struct BadDbInit(#[help] pub(crate) String);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Cannot import data into relation {0} as it is an index")]
-#[diagnostic(code(tx::import_into_index))]
-pub(crate) struct ImportIntoIndex(pub(crate) String);
+
+
 
 #[derive(serde_derive::Serialize, serde_derive::Deserialize, Debug, Clone, Default)]
 /// Rows in a relation, together with headers for the fields.
@@ -197,31 +191,31 @@ impl NamedRows {
     pub fn from_json(value: &JsonValue) -> Result<Self> {
         let headers = value
             .get("headers")
-            .ok_or_else(|| miette!("NamedRows requires 'headers' field"))?;
+            .ok_or_else(|| crate::error::AdhocError("NamedRows requires 'headers' field".to_string()))?;
         let headers = headers
             .as_array()
-            .ok_or_else(|| miette!("'headers' field must be an array"))?;
+            .ok_or_else(|| crate::error::AdhocError("'headers' field must be an array".to_string()))?;
         let headers = headers
             .iter()
             .map(|h| -> Result<String> {
                 let h = h
                     .as_str()
-                    .ok_or_else(|| miette!("'headers' field must be an array of strings"))?;
+                    .ok_or_else(|| crate::error::AdhocError("'headers' field must be an array of strings".to_string()))?;
                 Ok(h.to_string())
             })
             .try_collect()?;
         let rows = value
             .get("rows")
-            .ok_or_else(|| miette!("NamedRows requires 'rows' field"))?;
+            .ok_or_else(|| crate::error::AdhocError("NamedRows requires 'rows' field".to_string()))?;
         let rows = rows
             .as_array()
-            .ok_or_else(|| miette!("'rows' field must be an array"))?;
+            .ok_or_else(|| crate::error::AdhocError("'rows' field must be an array".to_string()))?;
         let rows = rows
             .iter()
             .map(|row| -> Result<Vec<DataValue>> {
                 let row = row
                     .as_array()
-                    .ok_or_else(|| miette!("'rows' field must be an array of arrays"))?;
+                    .ok_or_else(|| crate::error::AdhocError("'rows' field must be an array of arrays".to_string()))?;
                 Ok(row.iter().map(DataValue::from).collect_vec())
             })
             .try_collect()?;
@@ -343,7 +337,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 }
                 TransactionPayload::Query((script, params)) => {
                     let p =
-                        match parse_script(&script, &params, &self.fixed_rules.read().unwrap(), ts)
+                        match parse_script(&script, &params, &self.fixed_rules.read().unwrap(), ts) // INVARIANT: lock is not poisoned
                         {
                             Ok(p) => p,
                             Err(err) => {
@@ -396,7 +390,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 
     /// This returns the set of fixed rule implementations for this specific backend.
     pub fn get_fixed_rules(&'s self) -> BTreeMap<String, Arc<Box<dyn FixedRule>>> {
-        return self.fixed_rules.read().unwrap().clone();
+        return self.fixed_rules.read().unwrap().clone(); // INVARIANT: lock is not poisoned
     }
 
     /// Run the CozoScript passed in. The `params` argument is a map of parameters.
@@ -457,11 +451,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             let size_hint = handle.metadata.keys.len() + handle.metadata.non_keys.len();
 
             if handle.access_level < AccessLevel::ReadOnly {
-                bail!(InsufficientAccessLevel(
-                    handle.name.to_string(),
-                    "data export".to_string(),
-                    handle.access_level
-                ));
+                bail!("Insufficient access level for this operation");
             }
 
             let mut cols = handle
@@ -501,14 +491,11 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
-        #[derive(Debug, Diagnostic, Error)]
-        #[error("cannot import data for relation '{0}': {1}")]
-        #[diagnostic(code(import::bad_data))]
-        struct BadDataForRelation(String, JsonValue);
+        
 
         let rel_names = data.keys().map(SmartString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
-        let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec();
+        let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
 
         let cur_vld = current_validity();
 
@@ -527,17 +514,13 @@ impl<'s, S: Storage<'s>> Db<S> {
                 }
             };
             if relation.contains(':') {
-                bail!(ImportIntoIndex(relation.to_string()))
+                bail!("Cannot import data into relation as it is an index")
             }
             let handle = tx.get_relation(relation, false)?;
             let has_indices = !handle.indices.is_empty();
 
             if handle.access_level < AccessLevel::Protected {
-                bail!(InsufficientAccessLevel(
-                    handle.name.to_string(),
-                    "data import".to_string(),
-                    handle.access_level
-                ));
+                bail!("Insufficient access level for this operation");
             }
 
             let header2idx: BTreeMap<_, _> = in_data
@@ -552,13 +535,9 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .keys
                 .iter()
                 .map(|col| -> Result<(usize, &ColumnDef)> {
-                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
-                        miette!(
-                            "required header {} not found for relation {}",
+                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::error::AdhocError(format!("required header {} not found for relation {}",
                             col.name,
-                            relation
-                        )
-                    })?;
+                            relation)))?;
                     Ok((*idx, col))
                 })
                 .try_collect()?;
@@ -571,13 +550,9 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .non_keys
                     .iter()
                     .map(|col| -> Result<(usize, &ColumnDef)> {
-                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
-                            miette!(
-                                "required header {} not found for relation {}",
+                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::error::AdhocError(format!("required header {} not found for relation {}",
                                 col.name,
-                                relation
-                            )
-                        })?;
+                                relation)))?;
                         Ok((*idx, col))
                     })
                     .try_collect()?
@@ -589,7 +564,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .map(|(i, col)| -> Result<DataValue> {
                         let v = row
                             .get(*i)
-                            .ok_or_else(|| miette!("row too short: {:?}", row))?;
+                            .ok_or_else(|| crate::error::AdhocError(format!("row too short: {:?}", row)))?;
                         col.typing.coerce(v.clone(), cur_vld)
                     })
                     .try_collect()?;
@@ -617,7 +592,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .map(|(i, col)| -> Result<DataValue> {
                             let v = row
                                 .get(*i)
-                                .ok_or_else(|| miette!("row too short: {:?}", row))?;
+                                .ok_or_else(|| crate::error::AdhocError(format!("row too short: {:?}", row)))?;
                             col.typing.coerce(v.clone(), cur_vld)
                         })
                         .try_collect()?;
@@ -704,7 +679,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         {
             let rel_names = relations.iter().map(SmartString::from).collect_vec();
             let locks = self.obtain_relation_locks(rel_names.iter());
-            let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec();
+            let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
 
             let source_db = crate::new_cozo_sqlite(in_file)?;
             let mut src_tx = source_db.transact()?;
@@ -712,27 +687,19 @@ impl<'s, S: Storage<'s>> Db<S> {
 
             for relation in relations {
                 if relation.contains(':') {
-                    bail!(ImportIntoIndex(relation.to_string()))
+                    bail!("Cannot import data into relation as it is an index")
                 }
                 let src_handle = src_tx.get_relation(relation, false)?;
                 let dst_handle = dst_tx.get_relation(relation, false)?;
 
                 if !dst_handle.indices.is_empty() {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("Cannot import data into relation {0} from backup as the relation has indices")]
-                    #[diagnostic(code(tx::bare_import_with_indices))]
-                    #[diagnostic(help("Use `import_relations()` instead"))]
-                    pub(crate) struct RestoreIntoRelWithIndices(pub(crate) String);
+                    
 
-                    bail!(RestoreIntoRelWithIndices(dst_handle.name.to_string()))
+                    bail!("Cannot import data into relation from backup as the relation has indices")
                 }
 
                 if dst_handle.access_level < AccessLevel::Protected {
-                    bail!(InsufficientAccessLevel(
-                        dst_handle.name.to_string(),
-                        "data import".to_string(),
-                        dst_handle.access_level
-                    ));
+                    bail!("Insufficient access level for this operation");
                 }
 
                 let src_lower = Tuple::default().encode_as_key(src_handle.id);
@@ -761,7 +728,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     where
         R: FixedRule + 'static,
     {
-        match self.fixed_rules.write().unwrap().entry(name) {
+        match self.fixed_rules.write().unwrap().entry(name) { // INVARIANT: lock is not poisoned
             Entry::Vacant(ent) => {
                 ent.insert(Arc::new(Box::new(rule_impl)));
                 Ok(())
@@ -780,7 +747,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         if DEFAULT_FIXED_RULES.contains_key(name) {
             bail!("Cannot unregister builtin fixed rule {}", name);
         }
-        Ok(self.fixed_rules.write().unwrap().remove(name).is_some())
+        Ok(self.fixed_rules.write().unwrap().remove(name).is_some()) // INVARIANT: lock is not poisoned
     }
 
     /// Register callback channel to receive changes when the requested relation are successfully committed.
@@ -801,7 +768,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             sender,
         };
 
-        let mut guard = self.event_callbacks.write().unwrap();
+        let mut guard = self.event_callbacks.write().unwrap(); // INVARIANT: lock is not poisoned
         let new_id = self.callback_count.fetch_add(1, Ordering::SeqCst);
         guard
             .1
@@ -816,7 +783,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Unregister callbacks/channels to run when changes to relations are committed.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn unregister_callback(&self, id: u32) -> bool {
-        let mut guard = self.event_callbacks.write().unwrap();
+        let mut guard = self.event_callbacks.write().unwrap(); // INVARIANT: lock is not poisoned
         let ret = guard.0.remove(&id);
         if let Some(cb) = &ret {
             guard.1.get_mut(&cb.dependent).unwrap().remove(&id);
@@ -835,7 +802,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut collected = vec![];
         let mut pending = vec![];
         {
-            let locks = self.relation_locks.read().unwrap();
+            let locks = self.relation_locks.read().unwrap(); // INVARIANT: lock is not poisoned
             for rel in rels {
                 match locks.get(rel) {
                     None => {
@@ -846,7 +813,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
         }
         if !pending.is_empty() {
-            let mut locks = self.relation_locks.write().unwrap();
+            let mut locks = self.relation_locks.write().unwrap(); // INVARIANT: lock is not poisoned
             for rel in pending {
                 let lock = locks.entry(rel.clone()).or_default().clone();
                 collected.push(lock);
@@ -916,7 +883,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         cur_vld: ValidityTs,
         p: InputProgram,
         read_only: bool,
-    ) -> Result<NamedRows, Report> {
+    ) -> Result<NamedRows> {
         let mut callback_collector = BTreeMap::new();
         let write_lock_names = p.needs_write_lock();
         let is_write = write_lock_names.is_some();
@@ -925,7 +892,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
         let _write_lock_guards = if is_write {
-            Some(write_lock[0].read().unwrap())
+            Some(write_lock[0].read().unwrap()) // INVARIANT: lock is not poisoned
         } else {
             None
         };
@@ -1216,7 +1183,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::ListRelations => self.list_relations(tx),
             SysOp::ListFixedRules => {
-                let rules = self.fixed_rules.read().unwrap();
+                let rules = self.fixed_rules.read().unwrap(); // INVARIANT: lock is not poisoned
                 Ok(NamedRows::new(
                     vec!["rule".to_string()],
                     rules
@@ -1235,7 +1202,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_name_strs)
                 };
-                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec();
+                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
                 let mut bounds = vec![];
                 for rs in rel_names {
                     let bound = tx.destroy_relation(rs)?;
@@ -1269,7 +1236,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap();
+                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
                     tx.create_index(rel_name, idx_name, cols)?;
                 }
                 Ok(NamedRows::new(
@@ -1288,7 +1255,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap();
+                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
                     tx.create_hnsw_index(config)?;
                 }
                 Ok(NamedRows::new(
@@ -1307,7 +1274,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap();
+                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
                     tx.create_fts_index(config)?;
                 }
                 Ok(NamedRows::new(
@@ -1326,7 +1293,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap();
+                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
                     tx.create_minhash_lsh_index(config)?;
                 }
 
@@ -1346,7 +1313,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
                         .unwrap();
-                    let _guard = lock.read().unwrap();
+                    let _guard = lock.read().unwrap(); // INVARIANT: lock is not poisoned
                     tx.remove_index(rel_name, idx_name)?
                 };
 
@@ -1370,7 +1337,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_names)
                 };
-                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec();
+                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
                 for (old, new) in rename_pairs {
                     tx.rename_relation(old, new)?;
                 }
@@ -1381,7 +1348,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::ListRunning => self.list_running(),
             SysOp::KillRunning(id) => {
-                let queries = self.running_queries.lock().unwrap();
+                let queries = self.running_queries.lock().unwrap(); // INVARIANT: lock is not poisoned
                 Ok(match queries.get(id) {
                     None => NamedRows::new(
                         vec![STATUS_STR.to_string()],
@@ -1467,26 +1434,18 @@ impl<'s, S: Storage<'s>> Db<S> {
         // Some checks in case the query specifies mutation
         if let Some((meta, op, _)) = &input_program.out_opts.store_relation {
             if *op == RelationOp::Create {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Stored relation {0} conflicts with an existing one")]
-                #[diagnostic(code(eval::stored_relation_conflict))]
-                struct StoreRelationConflict(String);
+                
 
                 ensure!(
                     !tx.relation_exists(&meta.name)?,
-                    StoreRelationConflict(meta.name.to_string())
-                )
+                    "Stored relation conflicts with an existing one"
+                );
             } else if *op != RelationOp::Replace {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Stored relation {0} not found")]
-                #[diagnostic(code(eval::stored_relation_not_found))]
-                struct StoreRelationNotFoundError(String);
-
                 let existing = tx.get_relation(&meta.name, false)?;
 
                 ensure!(
                     tx.relation_exists(&meta.name)?,
-                    StoreRelationNotFoundError(meta.name.to_string())
+                    "Stored relation not found"
                 );
 
                 existing.ensure_compatible(
@@ -1518,7 +1477,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             started_at: since_the_epoch,
             poison: poison.clone(),
         };
-        self.running_queries.lock().unwrap().insert(id, handle);
+        self.running_queries.lock().unwrap().insert(id, handle); // INVARIANT: lock is not poisoned
 
         // RAII cleanups of running query handle
         let _guard = RunningQueryCleanup {
@@ -1550,24 +1509,15 @@ impl<'s, S: Storage<'s>> Db<S> {
         // deal with assertions
         if let Some(assertion) = &out_opts.assertion {
             match assertion {
-                QueryAssertion::AssertNone(span) => {
-                    if let Some(tuple) = result_store.all_iter().next() {
-                        #[derive(Debug, Error, Diagnostic)]
-                        #[error(
-                            "The query is asserted to return no result, but a tuple {0:?} is found"
-                        )]
-                        #[diagnostic(code(eval::assert_none_failure))]
-                        struct AssertNoneFailure(Tuple, #[label] SourceSpan);
-                        bail!(AssertNoneFailure(tuple.into_tuple(), *span))
+                QueryAssertion::AssertNone(_span) => {
+                    if let Some(_tuple) = result_store.all_iter().next() {
+                        bail!("The query is asserted to return no result, but a tuple was found")
                     }
                 }
-                QueryAssertion::AssertSome(span) => {
+                QueryAssertion::AssertSome(_span) => {
                     if result_store.all_iter().next().is_none() {
-                        #[derive(Debug, Error, Diagnostic)]
-                        #[error("The query is asserted to return some results, but returned none")]
-                        #[diagnostic(code(eval::assert_some_failure))]
-                        struct AssertSomeFailure(#[label] SourceSpan);
-                        bail!(AssertSomeFailure(*span))
+                        
+                        bail!("The query is asserted to return some results, but returned none")
                     }
                 }
             }
@@ -1605,7 +1555,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .wrap_err_with(|| format!("when executing against relation '{}'", meta.name))?;
+                    .map_err(|e| crate::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
@@ -1661,7 +1611,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .wrap_err_with(|| format!("when executing against relation '{}'", meta.name))?;
+                    .map_err(|e| crate::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
@@ -1880,24 +1830,12 @@ pub fn evaluate_expressions(
     params: &BTreeMap<String, DataValue>,
     vars: &BTreeMap<String, DataValue>,
 ) -> Result<DataValue> {
-    _evaluate_expressions(src, params, vars).map_err(|err| {
-        if err.source().is_none() {
-            err.with_source_code(format!("{src} "))
-        } else {
-            err
-        }
-    })
+    _evaluate_expressions(src, params, vars)
 }
 
 /// Get the variables referenced in a string expression
 pub fn get_variables(src: &str, params: &BTreeMap<String, DataValue>) -> Result<BTreeSet<String>> {
-    _get_variables(src, params).map_err(|err| {
-        if err.source().is_none() {
-            err.with_source_code(format!("{src} "))
-        } else {
-            err
-        }
-    })
+    _get_variables(src, params)
 }
 
 fn _evaluate_expressions(
@@ -1929,10 +1867,8 @@ impl Poison {
     /// Will return `Err` if user has initiated termination.
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Running query is killed before completion")]
-        #[diagnostic(code(eval::killed))]
-        #[diagnostic(help("A query may be killed by timeout, or explicit command"))]
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Running query is killed before completion"))]
         struct ProcessKilled;
 
         if self.0.load(Ordering::Relaxed) {
@@ -1961,7 +1897,7 @@ pub(crate) fn seconds_since_the_epoch() -> Result<f64> {
     #[cfg(not(target_arch = "wasm32"))]
     return Ok(now
         .duration_since(UNIX_EPOCH)
-        .into_diagnostic()?
+        .map_err(|e| crate::error::AdhocError(e.to_string()))?
         .as_secs_f64());
 
     #[cfg(target_arch = "wasm32")]
