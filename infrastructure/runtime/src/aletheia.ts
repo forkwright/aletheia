@@ -6,6 +6,7 @@ import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
 import { mergeGitignore, scaffoldNousShared } from "./taxis/nous-scaffold.js";
 import { paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
+import { migrateLegacyPaths } from "./taxis/migrate-legacy.js";
 import { SessionStore } from "./mneme/store.js";
 import { createDefaultRouter, type ProviderRouter } from "./hermeneus/router.js";
 import { proactiveRefresh } from "./hermeneus/oauth-refresh.js";
@@ -150,6 +151,8 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
   eventBus.emit("boot:start", {});
   log.info("Initializing Aletheia runtime");
 
+  // Migrate legacy ~/.aletheia/ state files to oikos layout (safe no-op if already done)
+  migrateLegacyPaths();
   const config = loadConfig(configPath);
 
   applyEnv(config);
