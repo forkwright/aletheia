@@ -2,7 +2,7 @@
 
 > Module map, dependency graph, trait boundaries, and extension points.
 > Covers both the Rust crate workspace (target architecture) and the TypeScript runtime (current production).
-> Last updated: 2026-03-01
+> Last updated: 2026-03-02
 
 ---
 
@@ -16,7 +16,7 @@ When adding a new module, check gnomon.md's process section and anti-patterns be
 
 ## Rust Crate Workspace
 
-11 application crates in `crates/`, plus `graph-builder` (build tool), `integration-tests` (test harness), `mneme-bench` (benchmarks, excluded from default build).
+11 application crates in `crates/`, plus `aletheia` (binary entrypoint), `graph-builder` (build tool), `integration-tests` (test harness), `mneme-bench` (benchmarks, excluded from default build). 15 crate directories total, 14 in the default workspace build.
 
 ### Crates
 
@@ -33,25 +33,34 @@ When adding a new module, check gnomon.md's process section and anti-patterns be
 | `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
 | `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | all application crates |
 
 ### Dependency Graph
 
 ```
-                        pylon
-                     /  | |  \  \
-                   /    | |   \   \
-                nous  symbolon  |   |
-              / | | \         mneme |
-            /   |  \  \        |    |
-       taxis organon melete    |    |
-          |     |      |       |    |
-        koina  hermeneus    mneme-engine
-                                    agora
-                                   /    \
-                                taxis  koina
+                        aletheia (binary)
+                    /   /   |   \   \   \
+                  /   /     |    \    \    \
+              pylon nous  agora melete organon ...
+              / | \   |\   / \     |      |
+             /  |  \  | \ /   \    |      |
+      symbolon  |  mneme taxis  hermeneus  koina
+                |    |     |       |
+              organon |   koina   koina
+                |   mneme-engine
+              hermeneus
+                |
+              koina
 ```
 
-Imports are directional. Higher-layer crates may depend on lower layers. Lower-layer crates must not depend on higher layers. `koina` and `symbolon` are true leaf nodes with no internal dependencies.
+Layer rules:
+- **Leaf nodes** (no workspace deps): `koina`, `symbolon`, `mneme-engine`
+- **Low layer** (leaf deps only): `taxis`, `hermeneus`, `melete`, `organon`, `agora`, `mneme`
+- **Mid layer**: `nous` (taxis, mneme, hermeneus, organon)
+- **High layer**: `pylon` (nous, mneme, hermeneus, organon, taxis, symbolon)
+- **Top**: `aletheia` binary (all application crates)
+
+Imports are directional. Higher-layer crates depend on lower layers. Lower-layer crates must not depend on higher layers.
 
 ### Trait Boundaries
 
