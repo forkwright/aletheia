@@ -7,6 +7,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_taxis::oikos::Oikos;
 
@@ -21,6 +22,8 @@ pub struct NousManager {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
 }
 
 impl NousManager {
@@ -30,12 +33,16 @@ impl NousManager {
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
         oikos: Arc<Oikos>,
+        embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+        vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     ) -> Self {
         Self {
             actors: HashMap::new(),
             providers,
             tools,
             oikos,
+            embedding_provider,
+            vector_search,
         }
     }
 
@@ -57,6 +64,8 @@ impl NousManager {
             Arc::clone(&self.providers),
             Arc::clone(&self.tools),
             Arc::clone(&self.oikos),
+            self.embedding_provider.clone(),
+            self.vector_search.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -184,7 +193,7 @@ mod tests {
     }
 
     fn test_manager(oikos: Arc<Oikos>) -> NousManager {
-        NousManager::new(test_providers(), Arc::new(ToolRegistry::new()), oikos)
+        NousManager::new(test_providers(), Arc::new(ToolRegistry::new()), oikos, None, None)
     }
 
     fn syn_config() -> NousConfig {

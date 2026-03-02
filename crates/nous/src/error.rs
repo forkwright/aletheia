@@ -80,6 +80,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Recall stage embedding failed.
+    #[snafu(display("recall embedding failed: {message}"))]
+    RecallEmbedding {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Recall stage search failed.
+    #[snafu(display("recall search failed: {message}"))]
+    RecallSearch {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
