@@ -3,7 +3,9 @@
     "defaults": {
       "model": {
         "primary": "claude-opus-4-6",
-        "fallbacks": ["claude-sonnet-4-6"]
+        "fallbacks": [
+          "claude-sonnet-4-6"
+        ]
       },
       "bootstrapMaxTokens": 40000,
       "contextTokens": 200000,
@@ -35,23 +37,23 @@
         "id": "syn",
         "name": "Atlas",
         "default": true,
-        "workspace": "/path/to/aletheia/nous/atlas",
+        "workspace": "/path/to/ergon/nous/atlas",
         "identity": {
           "name": "Atlas",
-          "emoji": "🏛️"
+          "emoji": "\ud83c\udfdb\ufe0f"
         }
       },
       {
         "id": "research",
         "name": "Scholar",
-        "workspace": "/path/to/aletheia/nous/scholar",
+        "workspace": "/path/to/ergon/nous/scholar",
         "model": {
           "primary": "claude-sonnet-4-6",
           "fallbacks": []
         },
         "identity": {
           "name": "Scholar",
-          "emoji": "📚"
+          "emoji": "\ud83d\udcda"
         }
       }
     ]
@@ -107,7 +109,9 @@
   "plugins": {
     "enabled": true,
     "load": {
-      "paths": ["infrastructure/memory/aletheia-memory"]
+      "paths": [
+        "infrastructure/memory/aletheia-memory"
+      ]
     }
   },
   "session": {
@@ -121,14 +125,14 @@
       {
         "name": "eval-feedback",
         "schedule": "0 3 * * *",
-        "command": "python3 /path/to/aletheia/infrastructure/evaluation/scripts/eval-feedback.py",
+        "command": "python3 /path/to/ergon/infrastructure/evaluation/scripts/eval-feedback.py",
         "timeoutSeconds": 120
       }
     ]
   },
   "env": {
-    "PATH": "/path/to/aletheia/shared/bin",
-    "ALETHEIA_ROOT": "/path/to/aletheia"
+    "PATH": "/path/to/ergon/shared/bin",
+    "ALETHEIA_ROOT": "/path/to/ergon"
   },
   "watchdog": {
     "enabled": true,
@@ -143,5 +147,8 @@
         "url": "http://localhost:6333/healthz"
       }
     ]
+  },
+  "branding": {
+    "name": "Ergon"
   }
 }

@@ -1,6 +1,6 @@
 import { fetchBranding, type Branding } from "../lib/api";
 
-const DEFAULT: Branding = { name: "Aletheia" };
+const DEFAULT: Branding = { name: "Ergon" };
 
 let branding = $state<Branding>({ ...DEFAULT });
 let loaded = $state(false);

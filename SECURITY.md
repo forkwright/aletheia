@@ -1,27 +1,15 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported |
-|---------|-----------|
-| 0.x (latest minor) | ✓ |
-| 0.x (previous minor) | Bug fixes only |
-| < current - 2 minors | ✗ |
-
 ## Reporting a Vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Report privately via GitHub's built-in security advisory system:
-→ https://github.com/forkwright/aletheia/security/advisories/new
+Report privately via GitHub security advisories:
+→ https://github.com/CKickertz/ergon/security/advisories/new
 
 Or email: cody.kickertz@pm.me
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Any suggested fix
+Include: description, steps to reproduce, potential impact, and any suggested fix.
 
 ## Response SLA
 
@@ -35,9 +23,9 @@ Include:
 ## Scope
 
 **In scope:**
-- Authentication and session token handling (`symbolon/`)
+- Authentication and session token handling
 - Credential exposure in logs or API responses
-- Path traversal in plugin loader (`prostheke/`) or export (`portability/`)
+- Path traversal in plugin loader or export
 - SSRF via agent tool calls
 - Prompt injection leading to tool abuse
 - Memory data leakage between agent namespaces
@@ -45,38 +33,8 @@ Include:
 **Out of scope:**
 - Social engineering
 - Physical access attacks
-- Issues in dependencies (report to upstream; we'll patch promptly)
+- Issues in upstream dependencies (report to upstream; we patch promptly)
 
-## Disclosure Policy
+## Disclosure
 
-After a fix is released, we will publish a GitHub Security Advisory with:
-- CVE (requested if warranted)
-- Description
-- Affected versions
-- Fixed version
-- Credit to reporter (if desired)
-
-## Credential Audit (2026-02-27)
-
-Credential scan performed before v1.4 public release using:
-
-```
-git log --all --oneline -S "sk-ant"
-git log --all --oneline -S "sk-ant-api"
-git log --all --oneline -S "ghp_"
-git log --all --oneline -S "ANTHROPIC_API_KEY="
-git log --all --oneline -S "password"
-```
-
-**Result: No actual credential values found in tracked git history.**
-
-All matches were:
-- Feature code for credential management (SecretRef spec, credential UI)
-- Config template/example files with placeholder values
-- Git commit metadata (author email in commit records)
-
-The file `shared/config/aletheia.env` contains real credentials but is excluded
-from git tracking via `.gitignore` (`*.env` pattern).
-
-If you discover credentials in git history after forking: use `git filter-repo` or
-BFG Repo-Cleaner to rewrite history and rotate the exposed credentials immediately.
+After a fix ships, we publish a GitHub Security Advisory with affected versions, fix version, and reporter credit (if desired).
