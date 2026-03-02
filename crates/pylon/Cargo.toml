@@ -46,5 +46,6 @@ aletheia-symbolon = { path = "../symbolon" }
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 reqwest = { workspace = true }
 secrecy = { workspace = true }
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "test-util"] }
 tracing-subscriber = { workspace = true }

@@ -61,6 +61,14 @@ impl From<aletheia_hermeneus::error::Error> for ApiError {
     }
 }
 
+impl From<aletheia_nous::error::Error> for ApiError {
+    fn from(err: aletheia_nous::error::Error) -> Self {
+        Self::Internal {
+            message: err.to_string(),
+        }
+    }
+}
+
 impl From<tokio::task::JoinError> for ApiError {
     fn from(err: tokio::task::JoinError) -> Self {
         Self::Internal {
