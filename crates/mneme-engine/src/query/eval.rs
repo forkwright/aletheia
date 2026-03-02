@@ -10,9 +10,9 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use log::{debug, trace};
-use miette::Result;
+use tracing::{debug, trace};
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 

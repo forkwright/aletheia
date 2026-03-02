@@ -7,13 +7,14 @@
  */
 
 use crate::data::memcmp::MemCmpEncoder;
+use crate::{bail, ensure};
 use crate::fts::tokenizer::{
     AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
     RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
 use crate::data::value::DataValue;
-use miette::{bail, ensure, miette, Result};
+use crate::error::DbResult as Result;
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
 use smartstring::{LazyCompact, SmartString};
@@ -82,19 +83,19 @@ impl TokenizerConfig {
                     .get(0)
                     .unwrap_or(&DataValue::from(1))
                     .get_int()
-                    .ok_or_else(|| miette!("First argument `min_gram` must be an integer"))?;
+                    .ok_or_else(|| crate::error::AdhocError("First argument `min_gram` must be an integer".to_string()))?;
                 let max_gram = self
                     .args
                     .get(1)
                     .unwrap_or(&DataValue::from(min_gram))
                     .get_int()
-                    .ok_or_else(|| miette!("Second argument `max_gram` must be an integer"))?;
+                    .ok_or_else(|| crate::error::AdhocError("Second argument `max_gram` must be an integer".to_string()))?;
                 let prefix_only = self
                     .args
                     .get(2)
                     .unwrap_or(&DataValue::Bool(false))
                     .get_bool()
-                    .ok_or_else(|| miette!("Third argument `prefix_only` must be a boolean"))?;
+                    .ok_or_else(|| crate::error::AdhocError("Third argument `prefix_only` must be a boolean".to_string()))?;
                 ensure!(min_gram >= 1, "min_gram must be >= 1");
                 ensure!(max_gram >= min_gram, "max_gram must be >= min_gram");
                 Box::new(NgramTokenizer::new(
@@ -114,9 +115,9 @@ impl TokenizerConfig {
             "RemoveLong" => RemoveLongFilter::limit(
                 self.args
                     .get(0)
-                    .ok_or_else(|| miette!("Missing first argument `min_length`"))?
+                    .ok_or_else(|| crate::error::AdhocError("Missing first argument `min_length`".to_string()))?
                     .get_int()
-                    .ok_or_else(|| miette!("First argument `min_length` must be an integer"))?
+                    .ok_or_else(|| crate::error::AdhocError("First argument `min_length` must be an integer".to_string()))?
                     as usize,
             )
             .into(),
@@ -125,14 +126,14 @@ impl TokenizerConfig {
                 match self
                     .args
                     .get(0)
-                    .ok_or_else(|| miette!("Missing first argument `compound_words_list`"))?
+                    .ok_or_else(|| crate::error::AdhocError("Missing first argument `compound_words_list`".to_string()))?
                 {
                     DataValue::List(l) => {
                         for v in l {
                             list_values.push(
                                 v.get_str()
                                     .ok_or_else(|| {
-                                        miette!("First argument `compound_words_list` must be a list of strings")
+                                        crate::error::AdhocError("First argument `compound_words_list` must be a list of strings".to_string())
                                     })?,
                             );
                         }
@@ -140,17 +141,17 @@ impl TokenizerConfig {
                     _ => bail!("First argument `compound_words_list` must be a list of strings"),
                 }
                 SplitCompoundWords::from_dictionary(list_values)
-                    .map_err(|e| miette!("Failed to load dictionary: {}", e))?
+                    .map_err(|e| crate::error::AdhocError(format!("Failed to load dictionary: {}", e)))?
                     .into()
             }
             "Stemmer" => {
                 let language = match self
                     .args
                     .get(0)
-                    .ok_or_else(|| miette!("Missing first argument `language` to Stemmer"))?
+                    .ok_or_else(|| crate::error::AdhocError("Missing first argument `language` to Stemmer".to_string()))?
                     .get_str()
                     .ok_or_else(|| {
-                        miette!("First argument `language` to Stemmer must be a string")
+                        crate::error::AdhocError("First argument `language` to Stemmer must be a string".to_string())
                     })?
                     .to_lowercase()
                     .as_str()
@@ -179,7 +180,7 @@ impl TokenizerConfig {
             }
             "Stopwords" => {
                 match self.args.get(0).ok_or_else(|| {
-                    miette!("Filter Stopwords requires language name or a list of stopwords")
+                    crate::error::AdhocError("Filter Stopwords requires language name or a list of stopwords".to_string())
                 })? {
                     DataValue::Str(name) => StopWordFilter::for_lang(name)?.into(),
                     DataValue::List(l) => {
@@ -188,8 +189,8 @@ impl TokenizerConfig {
                             stopwords.push(
                                 v.get_str()
                                     .ok_or_else(|| {
-                                        miette!(
-                                            "First argument `stopwords` must be a list of strings"
+                                        crate::error::AdhocError(
+                                            "First argument `stopwords` must be a list of strings".to_string()
                                         )
                                     })?
                                     .to_string(),

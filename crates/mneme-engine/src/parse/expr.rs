@@ -8,12 +8,13 @@
 
 use std::collections::BTreeMap;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use lazy_static::lazy_static;
-use miette::{bail, ensure, Diagnostic, Result};
+use std::sync::LazyLock;
 use pest::pratt_parser::{Op, PrattParser};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::{get_op, Bytecode, Expr, NoImplementationError};
 use crate::data::functions::{
@@ -25,35 +26,30 @@ use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
 use crate::parse::{ExtractSpan, Pair, Rule, SourceSpan};
 
-lazy_static! {
-    static ref PRATT_PARSER: PrattParser<Rule> = {
-        use pest::pratt_parser::Assoc::*;
+static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
+    use pest::pratt_parser::Assoc::*;
 
-        PrattParser::new()
-            .op(Op::infix(Rule::op_or, Left))
-            .op(Op::infix(Rule::op_and, Left))
-            .op(Op::infix(Rule::op_gt, Left)
-                | Op::infix(Rule::op_lt, Left)
-                | Op::infix(Rule::op_ge, Left)
-                | Op::infix(Rule::op_le, Left))
-            .op(Op::infix(Rule::op_eq, Left) | Op::infix(Rule::op_ne, Left))
-            .op(Op::infix(Rule::op_mod, Left))
-            .op(Op::infix(Rule::op_add, Left)
-                | Op::infix(Rule::op_sub, Left)
-                | Op::infix(Rule::op_concat, Left))
-            .op(Op::infix(Rule::op_mul, Left) | Op::infix(Rule::op_div, Left))
-            .op(Op::infix(Rule::op_pow, Right))
-            .op(Op::infix(Rule::op_coalesce, Left))
-            .op(Op::prefix(Rule::minus))
-            .op(Op::prefix(Rule::negate))
-            .op(Op::infix(Rule::op_field_access, Left))
-    };
-}
+    PrattParser::new()
+        .op(Op::infix(Rule::op_or, Left))
+        .op(Op::infix(Rule::op_and, Left))
+        .op(Op::infix(Rule::op_gt, Left)
+            | Op::infix(Rule::op_lt, Left)
+            | Op::infix(Rule::op_ge, Left)
+            | Op::infix(Rule::op_le, Left))
+        .op(Op::infix(Rule::op_eq, Left) | Op::infix(Rule::op_ne, Left))
+        .op(Op::infix(Rule::op_mod, Left))
+        .op(Op::infix(Rule::op_add, Left)
+            | Op::infix(Rule::op_sub, Left)
+            | Op::infix(Rule::op_concat, Left))
+        .op(Op::infix(Rule::op_mul, Left) | Op::infix(Rule::op_div, Left))
+        .op(Op::infix(Rule::op_pow, Right))
+        .op(Op::infix(Rule::op_coalesce, Left))
+        .op(Op::prefix(Rule::minus))
+        .op(Op::prefix(Rule::negate))
+        .op(Op::infix(Rule::op_field_access, Left))
+});
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Invalid expression encountered")]
-#[diagnostic(code(parser::invalid_expression))]
-pub(crate) struct InvalidExpression(#[label] pub(crate) SourceSpan);
+
 
 pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Result<()> {
     match expr {
@@ -108,7 +104,7 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
             }
         }
         Expr::UnboundApply { op, span, .. } => {
-            bail!(NoImplementationError(*span, op.to_string()));
+            bail!(NoImplementationError { span: *span, op: op.to_string() });
         }
     }
     Ok(())
@@ -117,7 +113,7 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
 pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Result<Expr> {
     ensure!(
         pair.as_rule() == Rule::expr,
-        InvalidExpression(pair.extract_span())
+        "Invalid expression encountered"
     );
 
     PRATT_PARSER
@@ -184,31 +180,25 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             tuple_pos: None,
         },
         Rule::param => {
-            #[derive(Error, Diagnostic, Debug)]
-            #[error("Required parameter {0} not found")]
-            #[diagnostic(code(parser::param_not_found))]
-            struct ParamNotFoundError(String, #[label] SourceSpan);
+            
 
             let param_str = pair.as_str().strip_prefix('$').unwrap();
             Expr::Const {
                 val: param_pool
                     .get(param_str)
-                    .ok_or_else(|| ParamNotFoundError(param_str.to_string(), span))?
+                    .ok_or_else(|| crate::error::AdhocError(format!("Required parameter {param_str} not found")))?
                     .clone(),
                 span,
             }
         }
         Rule::pos_int => {
-            #[derive(Error, Diagnostic, Debug)]
-            #[error("Cannot parse integer")]
-            #[diagnostic(code(parser::bad_pos_int))]
-            struct BadIntError(#[label] SourceSpan);
+            
 
             let i = pair
                 .as_str()
                 .replace('_', "")
                 .parse::<i64>()
-                .map_err(|_| BadIntError(span))?;
+                .map_err(|_| crate::error::AdhocError("Cannot parse integer".to_string()))?;
             Expr::Const {
                 val: DataValue::from(i),
                 span,
@@ -236,16 +226,13 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::dot_float | Rule::sci_float => {
-            #[derive(Error, Diagnostic, Debug)]
-            #[error("Cannot parse float")]
-            #[diagnostic(code(parser::bad_float))]
-            struct BadFloatError(#[label] SourceSpan);
+            
 
             let f = pair
                 .as_str()
                 .replace('_', "")
                 .parse::<f64>()
-                .map_err(|_| BadFloatError(span))?;
+                .map_err(|_| crate::error::AdhocError("Cannot parse float".to_string()))?;
             Expr::Const {
                 val: DataValue::from(f),
                 span,
@@ -304,19 +291,13 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
-            #[derive(Error, Diagnostic, Debug)]
-            #[error("Named function '{0}' not found")]
-            #[diagnostic(code(parser::func_not_function))]
-            struct FuncNotFoundError(String, #[label] SourceSpan);
+            
 
             match ident {
                 "cond" => {
                     if args.is_empty() {
-                        #[derive(Error, Diagnostic, Debug)]
-                        #[error("'cond' cannot have empty body")]
-                        #[diagnostic(code(parser::empty_cond))]
-                        struct EmptyCond(#[label] SourceSpan);
-                        bail!(EmptyCond(span));
+                        
+                        bail!("'cond' cannot have empty body");
                     }
                     if args.len() & 1 == 1 {
                         args.insert(
@@ -354,12 +335,9 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                     Expr::Cond { clauses, span }
                 }
                 "if" => {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("wrong number of arguments to if: 2 or 3 required")]
-                    #[diagnostic(code(parser::bad_if))]
-                    struct WrongArgsToIf(#[label] SourceSpan);
+                    
 
-                    ensure!(args.len() == 2 || args.len() == 3, WrongArgsToIf(span));
+                    ensure!(args.len() == 2 || args.len() == 3, crate::error::AdhocError("wrong number of arguments to if: 2 or 3 required".to_string()));
 
                     let mut clauses = vec![];
                     let mut args = args.into_iter();
@@ -386,28 +364,17 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                     },
                     Some(op) => {
                         op.post_process_args(&mut args);
-                        #[derive(Error, Diagnostic, Debug)]
-                        #[error("Wrong number of arguments for function '{0}'")]
-                        #[diagnostic(code(parser::func_wrong_num_args))]
-                        struct WrongNumArgsError(String, #[label] SourceSpan, #[help] String);
+                        
 
                         if op.vararg {
                             ensure!(
                                 op.min_arity <= args.len(),
-                                WrongNumArgsError(
-                                    ident.to_string(),
-                                    span,
-                                    format!("Need at least {} argument(s)", op.min_arity)
-                                )
+                                "Wrong number of arguments for function: need at least {} argument(s)", op.min_arity
                             );
                         } else {
                             ensure!(
                                 op.min_arity == args.len(),
-                                WrongNumArgsError(
-                                    ident.to_string(),
-                                    span,
-                                    format!("Need exactly {} argument(s)", op.min_arity)
-                                )
+                                "Wrong number of arguments for function: need exactly {} argument(s)", op.min_arity
                             );
                         }
                         Expr::Apply {
@@ -438,15 +405,9 @@ pub(crate) fn parse_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     }
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("invalid UTF8 code {0}")]
-#[diagnostic(code(parser::invalid_utf8_code))]
-struct InvalidUtf8Error(u32, #[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("invalid escape sequence {0}")]
-#[diagnostic(code(parser::invalid_escape_seq))]
-struct InvalidEscapeSeqError(String, #[label] SourceSpan);
+
+
 
 fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     let pairs = pair.into_inner().next().unwrap().into_inner();
@@ -465,11 +426,11 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code)
-                    .ok_or_else(|| InvalidUtf8Error(code, pair.extract_span()))?;
+                    .ok_or_else(|| crate::error::AdhocError(format!("invalid UTF8 code {code}")))?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(InvalidEscapeSeqError(s.to_string(), pair.extract_span()))
+                bail!("invalid escape sequence {}", s)
             }
             s => ret.push_str(s),
         }
@@ -494,11 +455,11 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code)
-                    .ok_or_else(|| InvalidUtf8Error(code, pair.extract_span()))?;
+                    .ok_or_else(|| crate::error::AdhocError(format!("invalid UTF8 code {code}")))?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(InvalidEscapeSeqError(s.to_string(), pair.extract_span()))
+                bail!("invalid escape sequence {}", s)
             }
             s => ret.push_str(s),
         }

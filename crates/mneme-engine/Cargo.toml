@@ -54,8 +54,7 @@ graph-algo = []
 # Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
 rayon = "=1.10.0"
 
-# CozoDB core error type — migrating to snafu in Phase 5
-miette = { version = "5.10.0", features = ["fancy"] }
+snafu = { workspace = true }
 
 # Graph/algorithm facade — provides page_rank + PageRankConfig + graph builder types
 graph = "0.3.1"
@@ -95,10 +94,8 @@ casey = "0.4"
 uuid = { version = "1", features = ["v1", "v4", "serde"] }
 pest = "2.7.9"
 pest_derive = "2.7.9"
-lazy_static = "1.4"
-log = "0.4"
+tracing = { workspace = true }
 unicode-normalization = "0.1"
-thiserror = "1"
 
 # FTS
 aho-corasick = "1.1"
@@ -117,5 +114,5 @@ rocksdb = { version = "0.22.0", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
-env_logger = "0.11"
 static_assertions = { workspace = true }
+tracing-subscriber = { workspace = true }

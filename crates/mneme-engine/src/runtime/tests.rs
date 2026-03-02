@@ -11,13 +11,14 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use itertools::Itertools;
-use log::debug;
+use tracing::debug;
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::Expr;
 use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
+use crate::error::DbResult as Result;
 use crate::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::fts::{TokenizerCache, TokenizerConfig};
 use crate::parse::SourceSpan;
@@ -73,7 +74,7 @@ fn test_meet_aggr_empty() {
 
 #[test]
 fn test_layers() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
     let db = DbInstance::default();
     let res = db
@@ -92,7 +93,7 @@ fn test_layers() {
 
 #[test]
 fn test_conditions() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let db = DbInstance::default();
     db.run_default(
         r#"
@@ -122,7 +123,7 @@ fn test_conditions() {
 
 #[test]
 fn test_classical() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let db = DbInstance::default();
     let res = db
         .run_default(
@@ -539,7 +540,7 @@ fn test_custom_rules() {
             _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
             _rule_head: &[Symbol],
             _span: SourceSpan,
-        ) -> miette::Result<usize> {
+        ) -> Result<usize> {
             Ok(1)
         }
 
@@ -548,7 +549,7 @@ fn test_custom_rules() {
             payload: FixedRulePayload<'_, '_>,
             out: &'_ mut RegularTempStore,
             _poison: Poison,
-        ) -> miette::Result<()> {
+        ) -> Result<()> {
             let rel = payload.get_input(0)?;
             let mult = payload.integer_option("mult", Some(2))?;
             for maybe_row in rel.iter()? {

@@ -9,8 +9,8 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::Result;
 
 use crate::data::program::SortDir;
 use crate::data::symb::Symbol;

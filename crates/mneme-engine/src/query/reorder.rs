@@ -9,26 +9,15 @@
 use std::collections::BTreeSet;
 use std::mem;
 
-use miette::{bail, Diagnostic, Result};
-use thiserror::Error;
-
+use snafu::Snafu;
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use crate::data::program::{NormalFormAtom, NormalFormInlineRule};
 use crate::parse::SourceSpan;
 
-#[derive(Diagnostic, Debug, Error)]
-#[error("Encountered unsafe negation, or empty rule definition")]
-#[diagnostic(code(eval::unsafe_negation))]
-#[diagnostic(help(
-    "Only rule applications that are partially bounded, \
-or expressions / unifications that are completely bounded, can be safely negated. \
-You may also encounter this error if your rule can never produce any rows."
-))]
-pub(crate) struct UnsafeNegation(#[label] pub(crate) SourceSpan);
 
-#[derive(Diagnostic, Debug, Error)]
-#[error("Atom contains unbound variable, or rule contains no variable at all")]
-#[diagnostic(code(eval::unbound_variable))]
-pub(crate) struct UnboundVariable(#[label] pub(crate) SourceSpan);
+
+
 
 impl NormalFormInlineRule {
     pub(crate) fn convert_to_well_ordered_rule(self) -> Result<Self> {
@@ -204,30 +193,30 @@ impl NormalFormInlineRule {
                         if r.args.iter().any(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRule(r.clone()));
                         } else {
-                            bail!(UnsafeNegation(r.span));
+                            bail!("Encountered unsafe negation, or empty rule definition");
                         }
                     }
                     NormalFormAtom::NegatedRelation(v) => {
                         if v.args.iter().any(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRelation(v.clone()));
                         } else {
-                            bail!(UnsafeNegation(v.span));
+                            bail!("Encountered unsafe negation, or empty rule definition");
                         }
                     }
                     NormalFormAtom::Predicate(p) => {
-                        bail!(UnboundVariable(p.span()))
+                        bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                     NormalFormAtom::Unification(u) => {
-                        bail!(UnboundVariable(u.span))
+                        bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                     NormalFormAtom::HnswSearch(s) => {
-                        bail!(UnboundVariable(s.span))
+                        bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                     NormalFormAtom::FtsSearch(s) => {
-                        bail!(UnboundVariable(s.span))
+                        bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                     NormalFormAtom::LshSearch(s) => {
-                        bail!(UnboundVariable(s.span))
+                        bail!("Atom contains unbound variable, or rule contains no variable at all")
                     }
                 }
             }

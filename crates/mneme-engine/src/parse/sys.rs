@@ -9,11 +9,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use miette::{bail, ensure, miette, Diagnostic, Result};
 use ordered_float::OrderedFloat;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::program::InputProgram;
 use crate::data::relation::VecElementType;
@@ -97,10 +98,7 @@ pub enum HnswDistance {
     Cosine,
 }
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Cannot interpret {0} as process ID")]
-#[diagnostic(code(parser::not_proc_id))]
-struct ProcessIdError(String, #[label] SourceSpan);
+
 
 pub(crate) fn parse_sys(
     mut src: Pairs<'_>,
@@ -118,7 +116,7 @@ pub(crate) fn parse_sys(
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val
                 .get_int()
-                .ok_or_else(|| miette!("Process ID must be an integer"))?;
+                .ok_or_else(|| crate::error::AdhocError("Process ID must be an integer".to_string()))?;
             SysOp::KillRunning(i_val as u64)
         }
         Rule::explain_op => {
@@ -250,7 +248,7 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_positive_weight = v.get_float().ok_or_else(|| {
-                                    miette!("false_positive_weight must be a float")
+                                    crate::error::AdhocError("false_positive_weight must be a float".to_string())
                                 })?;
                             }
                             "false_negative_weight" => {
@@ -258,7 +256,7 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_negative_weight = v.get_float().ok_or_else(|| {
-                                    miette!("false_negative_weight must be a float")
+                                    crate::error::AdhocError("false_negative_weight must be a float".to_string())
                                 })?;
                             }
                             "n_gram" => {
@@ -267,7 +265,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 n_gram = v
                                     .get_int()
-                                    .ok_or_else(|| miette!("n_gram must be an integer"))?
+                                    .ok_or_else(|| crate::error::AdhocError("n_gram must be an integer".to_string()))?
                                     as usize;
                             }
                             "n_perm" => {
@@ -276,7 +274,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 n_perm = v
                                     .get_int()
-                                    .ok_or_else(|| miette!("n_perm must be an integer"))?
+                                    .ok_or_else(|| crate::error::AdhocError("n_perm must be an integer".to_string()))?
                                     as usize;
                             }
                             "target_threshold" => {
@@ -285,7 +283,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 target_threshold = v
                                     .get_float()
-                                    .ok_or_else(|| miette!("target_threshold must be a float"))?;
+                                    .ok_or_else(|| crate::error::AdhocError("target_threshold must be a float".to_string()))?;
                             }
                             "extractor" => {
                                 let mut ex = build_expr(opt_val, param_pool)?;
@@ -540,7 +538,7 @@ pub(crate) fn parse_sys(
                                 let v = build_expr(opt_val, param_pool)?
                                     .eval_to_const()?
                                     .get_int()
-                                    .ok_or_else(|| miette!("Invalid vec_dim: {}", opt_val_str))?;
+                                    .ok_or_else(|| crate::error::AdhocError(format!("Invalid vec_dim: {}", opt_val_str)))?;
                                 ensure!(v > 0, "Invalid vec_dim: {}", v);
                                 vec_dim = v as usize;
                             }
@@ -549,7 +547,7 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        miette!("Invalid ef_construction: {}", opt_val_str)
+                                        crate::error::AdhocError(format!("Invalid ef_construction: {}", opt_val_str))
                                     })?;
                                 ensure!(v > 0, "Invalid ef_construction: {}", v);
                                 ef_construction = v as usize;
@@ -559,7 +557,7 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        miette!("Invalid m_neighbours: {}", opt_val_str)
+                                        crate::error::AdhocError(format!("Invalid m_neighbours: {}", opt_val_str))
                                     })?;
                                 ensure!(v > 0, "Invalid m_neighbours: {}", v);
                                 m_neighbours = v as usize;
@@ -569,7 +567,7 @@ pub(crate) fn parse_sys(
                                     "F32" | "Float" => VecElementType::F32,
                                     "F64" | "Double" => VecElementType::F64,
                                     _ => {
-                                        return Err(miette!("Invalid dtype: {}", opt_val.as_str()))
+                                        return Err(Box::new(crate::error::AdhocError(format!("Invalid dtype: {}", opt_val.as_str()))) as crate::error::BoxErr)
                                     }
                                 }
                             }
@@ -583,7 +581,7 @@ pub(crate) fn parse_sys(
                                     "IP" => HnswDistance::InnerProduct,
                                     "Cosine" => HnswDistance::Cosine,
                                     _ => {
-                                        return Err(miette!(
+                                        return Err(bail!(
                                             "Invalid distance: {}",
                                             opt_val.as_str()
                                         ))
@@ -599,7 +597,7 @@ pub(crate) fn parse_sys(
                             "keep_pruned_connections" => {
                                 keep_pruned_connections = opt_val.as_str().trim() == "true";
                             }
-                            _ => return Err(miette!("Invalid option: {}", opt_name.as_str())),
+                            _ => return Err(Box::new(crate::error::AdhocError(format!("Invalid option: {}", opt_name.as_str()))) as crate::error::BoxErr),
                         }
                     }
                     if ef_construction == 0 {
@@ -646,12 +644,9 @@ pub(crate) fn parse_sys(
                         .map(|p| Symbol::new(p.as_str(), p.extract_span()))
                         .collect_vec();
 
-                    #[derive(Debug, Diagnostic, Error)]
-                    #[error("index must have at least one column specified")]
-                    #[diagnostic(code(parser::empty_index))]
-                    struct EmptyIndex(#[label] SourceSpan);
+                    
 
-                    ensure!(!cols.is_empty(), EmptyIndex(span));
+                    ensure!(!cols.is_empty(), crate::error::AdhocError("index must have at least one column specified".to_string()));
                     SysOp::CreateIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),

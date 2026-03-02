@@ -6,6 +6,8 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::error::DbResult as Result;
+use crate::{bail};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use std::cmp::Ordering;
 use std::collections::btree_map::Range;
@@ -17,7 +19,6 @@ use std::ops::Bound;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use miette::{bail, Result};
 
 use crate::data::tuple::{check_key_for_validity, Tuple};
 use crate::data::value::ValidityTs;
@@ -50,10 +51,10 @@ impl<'s> Storage<'s> for MemStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
-            let wtr = self.store.write().unwrap();
+            let wtr = self.store.write().unwrap(); // INVARIANT: lock is not poisoned
             MemTx::Writer(wtr, Default::default())
         } else {
-            let rdr = self.store.read().unwrap();
+            let rdr = self.store.read().unwrap(); // INVARIANT: lock is not poisoned
             MemTx::Reader(rdr)
         })
     }
@@ -66,7 +67,7 @@ impl<'s> Storage<'s> for MemStorage {
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        let mut store = self.store.write().unwrap();
+        let mut store = self.store.write().unwrap(); // INVARIANT: lock is not poisoned
         for pair in data {
             let (k, v) = pair?;
             store.insert(k, v);

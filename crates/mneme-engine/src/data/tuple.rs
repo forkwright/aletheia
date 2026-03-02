@@ -7,11 +7,11 @@
  */
 
 use crate::data::functions::TERMINAL_VALIDITY;
-use miette::Result;
 use std::cmp::Reverse;
 
 use crate::data::memcmp::MemCmpEncoder;
 use crate::data::value::{DataValue, Validity, ValidityTs};
+use crate::error::DbResult as Result;
 use crate::runtime::relation::RelationId;
 
 pub type Tuple = Vec<DataValue>;

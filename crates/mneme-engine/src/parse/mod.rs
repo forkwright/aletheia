@@ -14,12 +14,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail};
 use either::{Either, Left};
-use miette::{bail, Diagnostic, IntoDiagnostic, Result};
 use pest::error::InputLocation;
 use pest::Parser;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::program::InputProgram;
 use crate::data::relation::NullableColType;
@@ -209,9 +210,8 @@ impl ImperativeStmt {
 
 impl CozoScript {
     pub(crate) fn get_single_program(self) -> Result<InputProgram> {
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("expect script to contain only a single program")]
-        #[diagnostic(code(parser::expect_singleton))]
+        #[derive(Debug, Snafu)]
+        #[snafu(display("expect script to contain only a single program"))]
         struct ExpectSingleProgram;
         match self {
             CozoScript::Single(s) => Ok(s),
@@ -246,29 +246,16 @@ impl SourceSpan {
     }
 }
 
-impl From<&'_ SourceSpan> for miette::SourceSpan {
-    fn from(s: &'_ SourceSpan) -> Self {
-        miette::SourceSpan::new(s.0.into(), s.1.into())
-    }
-}
 
-impl From<SourceSpan> for miette::SourceSpan {
-    fn from(s: SourceSpan) -> Self {
-        miette::SourceSpan::new(s.0.into(), s.1.into())
-    }
-}
-
-#[derive(thiserror::Error, Diagnostic, Debug)]
-#[error("The query parser has encountered unexpected input / end of input at {span}")]
-#[diagnostic(code(parser::pest))]
+#[derive(Debug, Snafu)]
+#[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]
 pub(crate) struct ParseError {
-    #[label]
     pub(crate) span: SourceSpan,
 }
 
 pub(crate) fn parse_type(src: &str) -> Result<NullableColType> {
     let parsed = CozoScriptParser::parse(Rule::col_type_with_term, src)
-        .into_diagnostic()?
+        .map_err(|e| crate::error::AdhocError(e.to_string()))?
         .next()
         .unwrap();
     parse_nullable_type(parsed.into_inner().next().unwrap())

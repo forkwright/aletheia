@@ -13,12 +13,13 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use either::{Left, Right};
 use itertools::Itertools;
-use miette::{bail, ensure, Diagnostic, LabeledSpan, Report, Result};
 use pest::Parser;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::aggr::{parse_aggr, Aggregation};
 use crate::data::expr::Expr;
@@ -32,45 +33,27 @@ use crate::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationM
 use crate::data::symb::{Symbol, PROG_ENTRY};
 use crate::data::value::{DataValue, ValidityTs};
 use crate::fixed_rule::utilities::constant::Constant;
-use crate::fixed_rule::{FixedRuleHandle, FixedRuleNotFoundError};
+use crate::fixed_rule::FixedRuleHandle;
 use crate::parse::expr::build_expr;
 use crate::parse::schema::parse_schema;
 use crate::parse::{CozoScriptParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};
 use crate::runtime::relation::InputRelationHandle;
 use crate::FixedRule;
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Query option {0} is not constant")]
-#[diagnostic(code(parser::option_not_constant))]
-struct OptionNotConstantError(&'static str, #[label] SourceSpan, #[related] [Report; 1]);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Query option {0} requires a non-negative integer")]
-#[diagnostic(code(parser::option_not_non_neg))]
-struct OptionNotNonNegIntError(&'static str, #[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Query option {0} requires a positive integer")]
-#[diagnostic(code(parser::option_not_pos))]
-struct OptionNotPosIntError(&'static str, #[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Query option {0} requires a boolean")]
-#[diagnostic(code(parser::option_not_bool))]
-struct OptionNotBoolError(&'static str, #[label] SourceSpan);
+
+
+
+
 
 #[derive(Debug)]
 struct MultipleRuleDefinitionError(String, Vec<SourceSpan>);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Multiple query output assertions defined")]
-#[diagnostic(code(parser::multiple_out_assert))]
-struct DuplicateQueryAssertion(#[label] SourceSpan);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Multiple query yields defined")]
-#[diagnostic(code(parser::multiple_yields))]
-struct DuplicateYield(#[label] SourceSpan);
+
+
 
 impl Error for MultipleRuleDefinitionError {}
 
@@ -84,16 +67,6 @@ impl Display for MultipleRuleDefinitionError {
     }
 }
 
-impl Diagnostic for MultipleRuleDefinitionError {
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new("parser::mult_rule_def"))
-    }
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(
-            self.1.iter().map(|s| LabeledSpan::new_with_span(None, s)),
-        ))
-    }
-}
 
 fn merge_spans(symbs: &[Symbol]) -> SourceSpan {
     let mut fst = symbs.first().unwrap().span;
@@ -129,33 +102,17 @@ pub(crate) fn parse_query(
                         let key = e.key().to_string();
                         match e.get_mut() {
                             InputInlineRulesOrFixed::Rules { rules: rs } => {
-                                #[derive(Debug, Error, Diagnostic)]
-                                #[error("Rule {0} has multiple definitions with conflicting heads")]
-                                #[diagnostic(code(parser::head_aggr_mismatch))]
-                                #[diagnostic(help("The arity of each rule head must match. In addition, any aggregation \
-                            applied must be the same."))]
-                                struct RuleHeadMismatch(
-                                    String,
-                                    #[label] SourceSpan,
-                                    #[label] SourceSpan,
-                                );
+                                
                                 let prev = rs.first().unwrap();
-                                ensure!(prev.aggr == rule.aggr, {
-                                    RuleHeadMismatch(
-                                        key,
-                                        merge_spans(&prev.head),
-                                        merge_spans(&rule.head),
-                                    )
-                                });
+                                ensure!(prev.aggr == rule.aggr,
+                                    "Rule {} has multiple definitions with conflicting heads", key
+                                );
 
                                 rs.push(rule);
                             }
                             InputInlineRulesOrFixed::Fixed { fixed } => {
                                 let fixed_span = fixed.span;
-                                bail!(MultipleRuleDefinitionError(
-                                    e.key().name.to_string(),
-                                    vec![rule.span, fixed_span]
-                                ))
+                                bail!("The rule '{}' cannot have multiple definitions since it contains non-Horn clauses", e.key().name)
                             }
                         }
                     }
@@ -197,19 +154,13 @@ pub(crate) fn parse_query(
                         }
                     };
                     found_span.push(span);
-                    bail!(MultipleRuleDefinitionError(
-                        name.name.to_string(),
-                        found_span
-                    ));
+                    bail!("The rule '{}' cannot have multiple definitions since it contains non-Horn clauses", name.name);
                 }
 
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Constant rules cannot have aggregation application")]
-                #[diagnostic(code(parser::aggr_in_const_rule))]
-                struct AggrInConstRuleError(#[label] SourceSpan);
+                
 
-                for (a, v) in aggr.iter().zip(head.iter()) {
-                    ensure!(a.is_none(), AggrInConstRuleError(v.span));
+                for (a, _v) in aggr.iter().zip(head.iter()) {
+                    ensure!(a.is_none(), "Constant rules cannot have aggregation application");
                 }
                 let data_part = src.next().unwrap();
                 let data_part_str = data_part.as_str();
@@ -223,10 +174,10 @@ pub(crate) fn parse_query(
                 fixed_impl.init_options(&mut options, span)?;
                 let arity = fixed_impl.arity(&options, &head, span)?;
 
-                ensure!(arity != 0, EmptyRowForConstRule(span));
+                ensure!(arity != 0, "Encountered empty row for constant rule");
                 ensure!(
                     head.is_empty() || arity == head.len(),
-                    FixedRuleHeadArityMismatch(arity, head.len(), span)
+                    "Fixed rule head arity mismatch"
                 );
                 if head.is_empty() && name.is_prog_entry() {
                     if let Ok(mut datalist) =
@@ -262,9 +213,9 @@ pub(crate) fn parse_query(
                 let span = pair.extract_span();
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| OptionNotConstantError("timeout", span, [err]))?
+                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_float()
-                    .ok_or(OptionNotNonNegIntError("timeout", span))?;
+                    .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 if timeout > 0. {
                     out_opts.timeout = Some(timeout);
                 } else {
@@ -281,10 +232,10 @@ pub(crate) fn parse_query(
                     let span = pair.extract_span();
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
-                        .map_err(|err| OptionNotConstantError("sleep", span, [err]))?
+                        .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                         .get_float()
-                        .ok_or(OptionNotNonNegIntError("sleep", span))?;
-                    ensure!(sleep > 0., OptionNotPosIntError("sleep", span));
+                        .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    ensure!(sleep > 0., crate::error::AdhocError("Query option {} requires a positive integer".to_string()));
                     out_opts.sleep = Some(sleep);
                 }
             }
@@ -293,9 +244,9 @@ pub(crate) fn parse_query(
                 let span = pair.extract_span();
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| OptionNotConstantError("limit", span, [err]))?
+                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
-                    .ok_or(OptionNotNonNegIntError("limit", span))?;
+                    .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
@@ -303,9 +254,9 @@ pub(crate) fn parse_query(
                 let span = pair.extract_span();
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| OptionNotConstantError("offset", span, [err]))?
+                    .map_err(|err| crate::error::AdhocError("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
-                    .ok_or(OptionNotNonNegIntError("offset", span))?;
+                    .ok_or(crate::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.offset = Some(offset as usize);
             }
             Rule::sort_option => {
@@ -375,14 +326,14 @@ pub(crate) fn parse_query(
             Rule::assert_none_option => {
                 ensure!(
                     out_opts.assertion.is_none(),
-                    DuplicateQueryAssertion(pair.extract_span())
+                    "Multiple query output assertions defined"
                 );
                 out_opts.assertion = Some(QueryAssertion::AssertNone(pair.extract_span()))
             }
             Rule::assert_some_option => {
                 ensure!(
                     out_opts.assertion.is_none(),
-                    DuplicateQueryAssertion(pair.extract_span())
+                    "Multiple query output assertions defined"
                 );
                 out_opts.assertion = Some(QueryAssertion::AssertSome(pair.extract_span()))
             }
@@ -391,9 +342,9 @@ pub(crate) fn parse_query(
                 let span = pair.extract_span();
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|err| OptionNotConstantError("disable_magic_rewrite", span, [err]))?
+                    .map_err(|_err| crate::error::AdhocError("Query option is not constant".to_string()))?
                     .get_bool()
-                    .ok_or(OptionNotBoolError("disable_magic_rewrite", span))?;
+                    .ok_or(crate::error::AdhocError("Query option requires a boolean".to_string()))?;
                 disable_magic_rewrite = val;
             }
             Rule::EOI => break,
@@ -470,25 +421,19 @@ pub(crate) fn parse_query(
     }
 
     if !prog.out_opts.sorters.is_empty() {
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Sort key '{0}' not found")]
-        #[diagnostic(code(parser::sort_key_not_found))]
-        struct SortKeyNotFound(String, #[label] SourceSpan);
+        
 
         let head_args = prog.get_entry_out_head()?;
 
         for (sorter, _) in &prog.out_opts.sorters {
             ensure!(
                 head_args.contains(sorter),
-                SortKeyNotFound(sorter.to_string(), sorter.span)
-            )
+                "Sort key not found"
+            );
         }
     }
 
-    #[derive(Debug, Error, Diagnostic)]
-    #[error("Input relation '{0}' has no keys")]
-    #[diagnostic(code(parser::relation_has_no_keys))]
-    struct RelationHasNoKeys(String, #[label] SourceSpan);
+    
 
     let empty_mutation_head = match &prog.out_opts.store_relation {
         None => false,
@@ -497,7 +442,7 @@ pub(crate) fn parse_query(
                 if handle.dep_bindings.is_empty() {
                     true
                 } else {
-                    bail!(RelationHasNoKeys(handle.name.to_string(), handle.span));
+                    bail!("Input relation has no keys");
                 }
             } else {
                 false
@@ -509,7 +454,7 @@ pub(crate) fn parse_query(
         let head_args = prog.get_entry_out_head()?;
         if let Some((handle, _, _)) = &mut prog.out_opts.store_relation {
             if head_args.is_empty() {
-                bail!(RelationHasNoKeys(handle.name.to_string(), handle.span));
+                bail!("Input relation has no keys");
             }
             handle.key_bindings = head_args.clone();
             handle.metadata.keys = head_args
@@ -542,12 +487,9 @@ fn parse_rule(
     let head_span = head.extract_span();
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
-    #[derive(Debug, Error, Diagnostic)]
-    #[error("Horn-clause rule cannot have empty rule head")]
-    #[diagnostic(code(parser::empty_horn_rule_head))]
-    struct EmptyRuleHead(#[label] SourceSpan);
+    
 
-    ensure!(!head.is_empty(), EmptyRuleHead(head_span));
+    ensure!(!head.is_empty(), crate::error::AdhocError("Horn-clause rule cannot have empty rule head".to_string()));
     let body = src.next().unwrap();
     let mut body_clauses = vec![];
     let mut ignored_counter = 0;
@@ -714,14 +656,11 @@ fn parse_atom(
             let name_p = src.next().unwrap();
             let name_segs = name_p.as_str().split(':').collect_vec();
 
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("Search head must be of the form `relation_name:index_name`")]
-            #[diagnostic(code(parser::invalid_search_head))]
-            struct InvalidSearchHead(#[label] SourceSpan);
+            
 
             ensure!(
                 name_segs.len() == 2,
-                InvalidSearchHead(name_p.extract_span())
+                "Search head must be of the form `relation_name:index_name`"
             );
             let relation = Symbol::new(name_segs[0], name_p.extract_span());
             let index = Symbol::new(name_segs[1], name_p.extract_span());
@@ -813,10 +752,7 @@ fn parse_rule_head(
     Ok((Symbol::new(name.as_str(), name.extract_span()), args, aggrs))
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[diagnostic(code(parser::aggr_not_found))]
-#[error("Aggregation '{0}' not found")]
-struct AggrNotFound(String, #[label] SourceSpan);
+
 
 fn parse_rule_head_arg(
     src: Pair<'_>,
@@ -837,7 +773,7 @@ fn parse_rule_head_arg(
                 Symbol::new(var.as_str(), var.extract_span()),
                 Some((
                     parse_aggr(aggr_name)
-                        .ok_or_else(|| AggrNotFound(aggr_name.to_string(), aggr_p.extract_span()))?
+                        .ok_or_else(|| crate::error::AdhocError(format!("Aggregation '{aggr_name}' not found")))?
                         .clone(),
                     args,
                 )),
@@ -847,10 +783,7 @@ fn parse_rule_head_arg(
     })
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("bad specification of validity")]
-#[diagnostic(code(parser::bad_validity_spec))]
-struct BadValiditySpecification(#[label] SourceSpan);
+
 
 fn parse_fixed_rule(
     src: Pair<'_>,
@@ -861,18 +794,12 @@ fn parse_fixed_rule(
     let mut src = src.into_inner();
     let (out_symbol, head, aggr) = parse_rule_head(src.next().unwrap(), param_pool)?;
 
-    #[derive(Debug, Error, Diagnostic)]
-    #[error("fixed rule cannot be combined with aggregation")]
-    #[diagnostic(code(parser::fixed_aggr_conflict))]
-    struct AggrInfixedError(#[label] SourceSpan);
+    
 
-    #[derive(Debug, Error, Diagnostic)]
-    #[error("fixed rule cannot have duplicate bindings")]
-    #[diagnostic(code(parser::duplicate_bindings_for_fixed_rule))]
-    struct DuplicateBindingError(#[label] SourceSpan);
+    
 
     for (a, v) in aggr.iter().zip(head.iter()) {
-        ensure!(a.is_none(), AggrInfixedError(v.span))
+        ensure!(a.is_none(), crate::error::AdhocError("fixed rule cannot be combined with aggregation".to_string()))
     }
 
     let mut seen_bindings = BTreeSet::new();
@@ -904,7 +831,7 @@ fn parse_fixed_rule(
                                 bindings.push(symb);
                             } else {
                                 if !seen_bindings.insert(s) {
-                                    bail!(DuplicateBindingError(v.extract_span()))
+                                    bail!("fixed rule cannot have duplicate bindings")
                                 }
                                 let symb = Symbol::new(s, v.extract_span());
                                 bindings.push(symb);
@@ -934,7 +861,7 @@ fn parse_fixed_rule(
                                         bindings.push(symb);
                                     } else {
                                         if !seen_bindings.insert(s) {
-                                            bail!(DuplicateBindingError(v.extract_span()))
+                                            bail!("fixed rule cannot have duplicate bindings")
                                         }
                                         bindings.push(Symbol::new(v.as_str(), v.extract_span()))
                                     }
@@ -971,13 +898,13 @@ fn parse_fixed_rule(
                                     let v = match vs.next() {
                                         Some(vp) => {
                                             if !seen_bindings.insert(vp.as_str()) {
-                                                bail!(DuplicateBindingError(vp.extract_span()))
+                                                bail!("fixed rule cannot have duplicate bindings")
                                             }
                                             Symbol::new(vp.as_str(), vp.extract_span())
                                         }
                                         None => {
                                             if !seen_bindings.insert(kp.as_str()) {
-                                                bail!(DuplicateBindingError(kp.extract_span()))
+                                                bail!("fixed rule cannot have duplicate bindings")
                                             }
                                             Symbol::new(k.clone(), kp.extract_span())
                                         }
@@ -1021,13 +948,13 @@ fn parse_fixed_rule(
 
     let fixed_impl = fixed_rules
         .get(&fixed.name as &str)
-        .ok_or_else(|| FixedRuleNotFoundError(fixed.name.to_string(), name_pair.extract_span()))?;
+        .ok_or_else(|| crate::error::AdhocError(format!("Fixed rule '{}' not found", fixed.name)))?;
     fixed_impl.init_options(&mut options, args_list_span)?;
     let arity = fixed_impl.arity(&options, &head, name_pair.extract_span())?;
 
     ensure!(
         head.is_empty() || arity == head.len(),
-        FixedRuleHeadArityMismatch(arity, head.len(), args_list_span)
+        "Fixed rule head arity mismatch"
     );
 
     Ok((
@@ -1044,16 +971,9 @@ fn parse_fixed_rule(
     ))
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Fixed rule head arity mismatch")]
-#[diagnostic(code(parser::fixed_rule_head_arity_mismatch))]
-#[diagnostic(help("Expected arity: {0}, number of arguments given: {1}"))]
-struct FixedRuleHeadArityMismatch(usize, usize, #[label] SourceSpan);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Encountered empty row for constant rule")]
-#[diagnostic(code(parser::const_rule_empty_row))]
-struct EmptyRowForConstRule(#[label] SourceSpan);
+
+
 
 fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]) {
     let entry_symbol = Symbol::new(PROG_ENTRY, Default::default());
@@ -1087,16 +1007,16 @@ fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
-            let microseconds = n.get_int().ok_or(BadValiditySpecification(vld_span))?;
+            let microseconds = n.get_int().ok_or(crate::error::AdhocError("bad specification of validity".to_string()))?;
             Ok(ValidityTs(Reverse(microseconds)))
         }
         DataValue::Str(s) => match &s as &str {
             "NOW" => Ok(cur_vld),
             "END" => Ok(MAX_VALIDITY_TS),
-            s => Ok(str2vld(s).map_err(|_| BadValiditySpecification(vld_span))?),
+            s => Ok(str2vld(s).map_err(|_| crate::error::AdhocError("bad specification of validity".to_string()))?),
         },
         _ => {
-            bail!(BadValiditySpecification(vld_span))
+            bail!("bad specification of validity")
         }
     }
 }

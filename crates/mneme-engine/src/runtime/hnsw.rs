@@ -7,6 +7,7 @@
  */
 
 use crate::data::expr::{eval_bytecode_pred, Bytecode};
+use crate::{bail};
 use crate::data::program::HnswSearch;
 use crate::data::relation::VecElementType;
 use crate::data::tuple::{Tuple, ENCODED_KEY_MIN_LEN};
@@ -15,8 +16,9 @@ use crate::parse::sys::HnswDistance;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
+use snafu::Snafu;
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::{bail, miette, Result};
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rand::Rng;
@@ -201,10 +203,10 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             // bottom level since we are going up
-            let bottom_level = ep[0].get_int().unwrap();
+            let bottom_level = ep[0].get_int().unwrap(); // INVARIANT: integer stored by HNSW insert path
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
-            let ep_idx = ep[orig_table.metadata.keys.len() + 1].get_int().unwrap() as usize;
-            let ep_subidx = ep[orig_table.metadata.keys.len() + 2].get_int().unwrap() as i32;
+            let ep_idx = ep[orig_table.metadata.keys.len() + 1].get_int().unwrap() as usize; // INVARIANT: integer stored by HNSW insert path
+            let ep_subidx = ep[orig_table.metadata.keys.len() + 2].get_int().unwrap() as i32; // INVARIANT: integer stored by HNSW insert path
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, orig_table, self)?;
             let ep_distance = vec_cache.v_dist(q, &ep_key);
@@ -344,7 +346,7 @@ impl<'a> SessionTx<'a> {
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
                             .unwrap();
-                    let mut target_degree = target_self_val[0].get_float().unwrap() as usize + 1;
+                    let mut target_degree = target_self_val[0].get_float().unwrap() as usize + 1; // INVARIANT: float stored by HNSW insert path
                     if target_degree > m_max {
                         // shrink links
                         target_degree = self.hnsw_shrink_neighbour(
@@ -458,7 +460,7 @@ impl<'a> SessionTx<'a> {
                     }
                 };
                 let old_existing_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..]).unwrap();
+                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 if old_existing_val[2].get_bool().unwrap() {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
@@ -612,8 +614,8 @@ impl<'a> SessionTx<'a> {
             .filter_map(move |res| {
                 let tuple = res.unwrap();
 
-                let key_idx = tuple[2 * key_len + 3].get_int().unwrap() as usize;
-                let key_subidx = tuple[2 * key_len + 4].get_int().unwrap() as i32;
+                let key_idx = tuple[2 * key_len + 3].get_int().unwrap() as usize; // INVARIANT: integer stored by HNSW insert path
+                let key_subidx = tuple[2 * key_len + 4].get_int().unwrap() as i32; // INVARIANT: integer stored by HNSW insert path
                 let key_tup = tuple[key_len + 3..2 * key_len + 3].to_vec();
                 if key_tup == cand_key.0 {
                     None
@@ -621,16 +623,16 @@ impl<'a> SessionTx<'a> {
                     if include_deleted {
                         return Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5].get_float().unwrap(),
+                            tuple[2 * key_len + 5].get_float().unwrap(), // INVARIANT: float stored by HNSW insert path
                         ));
                     }
-                    let is_deleted = tuple[2 * key_len + 7].get_bool().unwrap();
+                    let is_deleted = tuple[2 * key_len + 7].get_bool().unwrap(); // INVARIANT: bool stored by HNSW insert path
                     if is_deleted {
                         None
                     } else {
                         Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5].get_float().unwrap(),
+                            tuple[2 * key_len + 5].get_float().unwrap(), // INVARIANT: float stored by HNSW insert path
                         ))
                     }
                 }
@@ -748,8 +750,8 @@ impl<'a> SessionTx<'a> {
                 Ok(t) => Some({
                     (
                         t[1..orig_table.metadata.keys.len() + 1].to_vec(),
-                        t[orig_table.metadata.keys.len() + 1].get_int().unwrap() as usize,
-                        t[orig_table.metadata.keys.len() + 2].get_int().unwrap() as i32,
+                        t[orig_table.metadata.keys.len() + 1].get_int().unwrap() as usize, // INVARIANT: integer stored by HNSW insert path
+                        t[orig_table.metadata.keys.len() + 2].get_int().unwrap() as i32, // INVARIANT: integer stored by HNSW insert path
                     )
                 }),
                 Err(_) => None,
@@ -825,8 +827,8 @@ impl<'a> SessionTx<'a> {
                     )?
                     .unwrap();
                 let mut neighbour_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..]).unwrap();
-                neighbour_val[0] = DataValue::from(neighbour_val[0].get_float().unwrap() - 1.);
+                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                neighbour_val[0] = DataValue::from(neighbour_val[0].get_float().unwrap() - 1.); // INVARIANT: float stored by HNSW insert path
                 self.store_tx.put(
                     &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
                     &idx_table.encode_val_only_for_store(&neighbour_val, Default::default())?,
@@ -857,7 +859,7 @@ impl<'a> SessionTx<'a> {
             if let Some(ep) = ep_res {
                 let ep = ep?;
                 let target_key_bytes = idx_table.encode_key_for_store(&ep, Default::default())?;
-                let bottom_level = ep[0].get_int().unwrap();
+                let bottom_level = ep[0].get_int().unwrap(); // INVARIANT: integer stored by HNSW insert path
                 // canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [
                     DataValue::from(bottom_level),
@@ -908,7 +910,7 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            let bottom_level = ep[0].get_int().unwrap();
+            let bottom_level = ep[0].get_int().unwrap(); // INVARIANT: integer stored by HNSW insert path
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => x as usize,
                 None => {
@@ -967,7 +969,7 @@ impl<'a> SessionTx<'a> {
                 let mut cand_tuple = config
                     .base_handle
                     .get(self, &cand_key.0)?
-                    .ok_or_else(|| miette!("corrupted index"))?;
+                    .ok_or_else(|| crate::error::AdhocError("corrupted index".to_string()))?;
 
                 // make sure the order is the same as in all_bindings()!!!
                 if config.bind_field.is_some() {

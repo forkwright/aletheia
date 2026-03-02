@@ -9,18 +9,18 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use crossbeam::channel::{bounded, Receiver, Sender};
 #[allow(unused_imports)]
 use either::{Left, Right};
 #[cfg(feature = "graph-algo")]
 use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
 use itertools::Itertools;
-use lazy_static::lazy_static;
-use miette::IntoDiagnostic;
+use std::sync::LazyLock;
 #[allow(unused_imports)]
-use miette::{bail, ensure, Diagnostic, Report, Result};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::Expr;
 use crate::data::program::{
@@ -65,16 +65,12 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     }
     /// Ensure the input relation contains tuples of the given minimal length.
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Input relation to algorithm has insufficient arity")]
-        #[diagnostic(help("Arity should be at least {0} but is {1}"))]
-        #[diagnostic(code(algo::input_relation_bad_arity))]
-        struct InputRelationArityError(usize, usize, #[label] SourceSpan);
+        
 
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
         ensure!(
             arity >= len,
-            InputRelationArityError(len, arity, self.arg_manifest.span())
+            "Input relation to algorithm has insufficient arity"
         );
         Ok(self)
     }
@@ -87,7 +83,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    RuleNotFoundError(name.symbol().to_string(), name.symbol().span)
+                    crate::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 Box::new(store.all_iter().map(|t| Ok(t.into_tuple())))
             }
@@ -106,7 +102,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    RuleNotFoundError(name.symbol().to_string(), name.symbol().span)
+                    crate::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 let t = vec![prefix.clone()];
                 Box::new(store.prefix_iter(&t).map(|t| Ok(t.into_tuple())))
@@ -143,20 +139,20 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     )> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Report> = None;
+        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
         let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
             Ok(tuple) => {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(NotAnEdgeError(self.span()).into());
+                        error = Some(crate::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(NotAnEdgeError(self.span()).into());
+                        error = Some(crate::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
@@ -216,20 +212,20 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     )> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Report> = None;
+        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
         let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
             Ok(tuple) => {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(NotAnEdgeError(self.span()).into());
+                        error = Some(crate::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(NotAnEdgeError(self.span()).into());
+                        error = Some(crate::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
@@ -257,14 +253,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                         Some(f) => {
                             if !f.is_finite() {
                                 error = Some(
-                                    BadEdgeWeightError(
-                                        d,
-                                        self.arg_manifest
+                                    BadEdgeWeightError {
+                                        val: d,
+                                        span: self.arg_manifest
                                             .bindings()
                                             .get(2)
                                             .map(|s| s.span)
                                             .unwrap_or_else(|| self.span()),
-                                    )
+                                    }
                                     .into(),
                                 );
                                 return None;
@@ -272,14 +268,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
 
                             if f < 0. && !allow_negative_weights {
                                 error = Some(
-                                    BadEdgeWeightError(
-                                        d,
-                                        self.arg_manifest
+                                    BadEdgeWeightError {
+                                        val: d,
+                                        span: self.arg_manifest
                                             .bindings()
                                             .get(2)
                                             .map(|s| s.span)
                                             .unwrap_or_else(|| self.span()),
-                                    )
+                                    }
                                     .into(),
                                 );
                                 return None;
@@ -288,14 +284,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                         }
                         None => {
                             error = Some(
-                                BadEdgeWeightError(
-                                    d,
-                                    self.arg_manifest
+                                BadEdgeWeightError {
+                                    val: d,
+                                    span: self.arg_manifest
                                         .bindings()
                                         .get(2)
                                         .map(|s| s.span)
                                         .unwrap_or_else(|| self.span()),
-                                )
+                                }
                                 .into(),
                             );
                             return None;
@@ -618,8 +614,8 @@ impl SimpleFixedRule {
                     let (app2db_sender, app2db_receiver) = bounded(0);
                     db2app_sender
                         .send((inputs, options, app2db_sender))
-                        .into_diagnostic()?;
-                    app2db_receiver.recv().into_diagnostic()?
+                        .map_err(|e| crate::error::AdhocError(e.to_string()))?;
+                    app2db_receiver.recv().map_err(|e| crate::error::AdhocError(e.to_string()))?
                 }),
             },
             db2app_receiver,
@@ -673,14 +669,11 @@ impl FixedRule for SimpleFixedRule {
             .try_collect()?;
         let results: NamedRows = (self.rule)(inputs, options)?;
         for row in results.rows {
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("arity mismatch: expect {1}, got {2}")]
-            #[diagnostic(code(parser::simple_fixed_rule_arity_mismatch))]
-            struct ArityMismatch(#[label] SourceSpan, usize, usize);
+            
 
             ensure!(
                 row.len() == self.return_arity,
-                ArityMismatch(payload.span(), self.return_arity, row.len())
+                "arity mismatch: expect {}, got {}", self.return_arity, row.len()
             );
             out.put(row);
         }
@@ -688,22 +681,15 @@ impl FixedRule for SimpleFixedRule {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Cannot determine arity for algo {0} since {1}")]
-#[diagnostic(code(parser::no_algo_arity))]
-pub(crate) struct CannotDetermineArity(
-    pub(crate) String,
-    pub(crate) String,
-    #[label] pub(crate) SourceSpan,
-);
+
 
 #[derive(Clone, Debug)]
 pub(crate) struct FixedRuleHandle {
     pub(crate) name: Symbol,
 }
 
-lazy_static! {
-    pub(crate) static ref DEFAULT_FIXED_RULES: BTreeMap<String, Arc<Box<dyn FixedRule>>> = {
+pub(crate) static DEFAULT_FIXED_RULES: LazyLock<BTreeMap<String, Arc<Box<dyn FixedRule>>>> =
+    LazyLock::new(|| {
         BTreeMap::from([
             #[cfg(feature = "graph-algo")]
             (
@@ -828,8 +814,7 @@ lazy_static! {
                 Arc::<Box<dyn FixedRule>>::new(Box::new(ReciprocalRankFusion)),
             ),
         ])
-    };
-}
+    });
 
 impl FixedRuleHandle {
     pub(crate) fn new(name: &str, span: SourceSpan) -> Self {
@@ -839,60 +824,29 @@ impl FixedRuleHandle {
     }
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The relation cannot be interpreted as an edge")]
-#[diagnostic(code(algo::not_an_edge))]
-#[diagnostic(help("Edge relation requires tuples of length at least two"))]
-struct NotAnEdgeError(#[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error(
-    "The value {0:?} at the third position in the relation cannot be interpreted as edge weights"
-)]
-#[diagnostic(code(algo::invalid_edge_weight))]
-#[diagnostic(help(
-    "Edge weights must be finite numbers. Some algorithm also requires positivity."
-))]
-struct BadEdgeWeightError(DataValue, #[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The requested rule '{0}' cannot be found")]
-#[diagnostic(code(algo::rule_not_found))]
-struct RuleNotFoundError(String, #[label] SourceSpan);
+#[derive(Debug, Snafu)]
+#[snafu(display("The value {val:?} at the third position in the relation cannot be interpreted as edge weights"))]
+struct BadEdgeWeightError {
+    val: DataValue,
+    span: SourceSpan,
+}
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Invalid reverse scanning of triples")]
-#[diagnostic(code(algo::invalid_reverse_triple_scan))]
-#[diagnostic(help(
-    "Inverse scanning of triples requires the type to be 'ref', or the value be indexed"
-))]
-struct InvalidInverseTripleUse(String, #[label] SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Required node with key {missing:?} not found")]
-#[diagnostic(code(algo::node_with_key_not_found))]
-#[diagnostic(help(
-    "The relation is interpreted as a relation of nodes, but the required key is missing"
-))]
+
+
+
+#[derive(Debug, Snafu)]
+#[snafu(display("Required node with key {missing:?} not found"))]
 pub(crate) struct NodeNotFoundError {
     pub(crate) missing: DataValue,
-    #[label]
     pub(crate) span: SourceSpan,
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Unacceptable value {0:?} encountered")]
-#[diagnostic(code(algo::unacceptable_value))]
-pub(crate) struct BadExprValueError(
-    pub(crate) DataValue,
-    #[label] pub(crate) SourceSpan,
-    #[help] pub(crate) String,
-);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The requested fixed rule '{0}' is not found")]
-#[diagnostic(code(parser::fixed_rule_not_found))]
-pub(crate) struct FixedRuleNotFoundError(pub(crate) String, #[label] pub(crate) SourceSpan);
+
+
 
 impl MagicFixedRuleRuleArg {
     pub(crate) fn arity(
@@ -903,7 +857,7 @@ impl MagicFixedRuleRuleArg {
         Ok(match self {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = stores.get(name).ok_or_else(|| {
-                    RuleNotFoundError(name.symbol().to_string(), name.symbol().span)
+                    crate::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 store.arity
             }

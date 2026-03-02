@@ -8,12 +8,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::error::DbResult as Result;
 use graph::prelude::{
     CsrLayout, DirectedCsrGraph, DirectedNeighborsWithValues, Graph, GraphBuilder,
 };
 use itertools::Itertools;
-use log::debug;
-use miette::Result;
+use tracing::debug;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::Expr;

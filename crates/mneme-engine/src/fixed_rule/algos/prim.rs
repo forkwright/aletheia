@@ -6,16 +6,15 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use miette::Diagnostic;
-use miette::Result;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::expr::Expr;
 use crate::data::symb::Symbol;
@@ -43,21 +42,15 @@ impl FixedRule for MinimumSpanningTreePrim {
             Err(_) => 0,
             Ok(rel) => {
                 let tuple = rel.iter()?.next().ok_or_else(|| {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("The provided starting nodes relation is empty")]
-                    #[diagnostic(code(algo::empty_starting))]
-                    struct EmptyStarting(#[label] SourceSpan);
+                    
 
-                    EmptyStarting(rel.span())
+                    crate::error::AdhocError("The provided starting nodes relation is empty".to_string()))
                 })??;
                 let dv = &tuple[0];
                 *inv_indices.get(dv).ok_or_else(|| {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("The requested starting node {0:?} is not found")]
-                    #[diagnostic(code(algo::starting_node_not_found))]
-                    struct StartingNodeNotFound(DataValue, #[label] SourceSpan);
+                    
 
-                    StartingNodeNotFound(dv.clone(), rel.span())
+                    crate::error::AdhocError("The requested starting node {0:?} is not found".to_string()), rel.span())
                 })?
             }
         };

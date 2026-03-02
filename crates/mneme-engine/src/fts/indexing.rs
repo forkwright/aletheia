@@ -7,6 +7,7 @@
  */
 
 use crate::data::expr::{eval_bytecode, eval_bytecode_pred, Bytecode};
+use crate::{bail};
 use crate::data::program::{FtsScoreKind, FtsSearch};
 use crate::data::tuple::{decode_tuple_from_key, Tuple, ENCODED_KEY_MIN_LEN};
 use crate::data::value::LARGEST_UTF_CHAR;
@@ -16,15 +17,15 @@ use crate::parse::fts::parse_fts_query;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
+use snafu::Snafu;
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::{bail, miette, Diagnostic, Result};
 use ordered_float::OrderedFloat;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smartstring::{LazyCompact, SmartString};
 use std::cmp::Reverse;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use thiserror::Error;
 
 #[derive(Default)]
 pub(crate) struct FtsCache {
@@ -352,7 +353,7 @@ impl<'a> SessionTx<'a> {
             let mut cand_tuple = config
                 .base_handle
                 .get(self, &found_key)?
-                .ok_or_else(|| miette!("corrupted index"))?;
+                .ok_or_else(|| crate::error::AdhocError("corrupted index".to_string()))?;
 
             if config.bind_score.is_some() {
                 cand_tuple.push(DataValue::from(score));
@@ -384,12 +385,9 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             val => {
-                #[derive(Debug, Diagnostic, Error)]
-                #[error("FTS index extractor must return a string, got {0}")]
-                #[diagnostic(code(eval::fts::extractor::invalid_return_type))]
-                struct FtsExtractError(String);
+                
 
-                bail!(FtsExtractError(format!("{}", val)))
+                bail!("FTS index extractor must return a string, got {}")
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);
@@ -438,12 +436,9 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             val => {
-                #[derive(Debug, Diagnostic, Error)]
-                #[error("FTS index extractor must return a string, got {0}")]
-                #[diagnostic(code(eval::fts::extractor::invalid_return_type))]
-                struct FtsExtractError(String);
+                
 
-                bail!(FtsExtractError(format!("{}", val)))
+                bail!("FTS index extractor must return a string, got {}")
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);

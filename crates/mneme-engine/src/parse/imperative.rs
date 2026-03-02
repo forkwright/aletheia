@@ -10,11 +10,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
-use miette::{Diagnostic, Result};
 use smartstring::SmartString;
-use thiserror::Error;
 
 use crate::parse::query::parse_query;
 use crate::parse::sys::parse_sys;
@@ -47,15 +47,9 @@ pub(crate) fn parse_imperative_block(
     Ok(collected)
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("cannot manipulate permanent relation in imperative script")]
-#[diagnostic(code(parser::manipulate_perm_rel_in_script))]
-struct CannotManipulatePermRel(#[label] SourceSpan);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("duplicate marker found")]
-#[diagnostic(code(parser::dup_marker))]
-struct DuplicateMarker(#[label] SourceSpan);
+
+
 
 fn parse_imperative_stmt(
     pair: Pair<'_>,

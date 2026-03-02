@@ -8,8 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::error::DbResult as Result;
+use crate::{bail};
 use itertools::Itertools;
-use miette::{bail, Result};
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::{eval_bytecode, Expr};
@@ -17,7 +18,7 @@ use crate::data::functions::OP_LIST;
 use crate::data::program::WrongFixedRuleOptionError;
 use crate::data::symb::Symbol;
 use crate::data::value::DataValue;
-use crate::fixed_rule::{CannotDetermineArity, FixedRule, FixedRulePayload};
+use crate::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::parse::SourceSpan;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::RegularTempStore;
@@ -131,11 +132,7 @@ impl FixedRule for ReorderSort {
         span: SourceSpan,
     ) -> Result<usize> {
         let out_opts = opts.get("out").ok_or_else(|| {
-            CannotDetermineArity(
-                "ReorderSort".to_string(),
-                "option 'out' not provided".to_string(),
-                span,
-            )
+            crate::error::AdhocError("ReorderSort: option 'out' not provided".to_string())
         })?;
         Ok(match out_opts {
             Expr::Const {
@@ -143,11 +140,7 @@ impl FixedRule for ReorderSort {
                 ..
             } => l.len() + 1,
             Expr::Apply { op, args, .. } if **op == OP_LIST => args.len() + 1,
-            _ => bail!(CannotDetermineArity(
-                "ReorderSort".to_string(),
-                "invalid option 'out' given, expect a list".to_string(),
-                span
-            )),
+            _ => bail!("ReorderSort: invalid option 'out' given, expect a list"),
         })
     }
 }

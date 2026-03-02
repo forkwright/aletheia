@@ -11,12 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem;
 
+use snafu::Snafu;
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::{bail, miette, Diagnostic, Result};
 use serde::de::{Error, Visitor};
 use serde::{Deserializer, Serializer};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::functions::*;
 use crate::data::relation::NullableColType;
@@ -59,16 +60,13 @@ pub enum Bytecode {
     },
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The variable '{0}' is unbound")]
-#[diagnostic(code(eval::unbound))]
-struct UnboundVariableError(String, #[label] SourceSpan);
+#[derive(Debug, Snafu)]
+#[snafu(display("The variable '{var}' is unbound"))]
+struct UnboundVariableError { var: String, span: SourceSpan }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The tuple bound by variable '{0}' is too short: index is {1}, length is {2}")]
-#[diagnostic(help("This is definitely a bug. Please report it."))]
-#[diagnostic(code(eval::tuple_too_short))]
-struct TupleTooShortError(String, usize, usize, #[label] SourceSpan);
+#[derive(Debug, Snafu)]
+#[snafu(display("The tuple bound by variable '{var}' is too short: index is {idx}, length is {len}"))]
+struct TupleTooShortError { var: String, idx: usize, len: usize, span: SourceSpan }
 
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
@@ -78,7 +76,7 @@ pub fn eval_bytecode_pred(
 ) -> Result<bool> {
     match eval_bytecode(bytecodes, bindings, stack)? {
         DataValue::Bool(b) => Ok(b),
-        v => bail!(PredicateTypeError(span, v)),
+        v => bail!(PredicateTypeError { span, val: v }),
     }
 }
 
@@ -103,19 +101,19 @@ pub fn eval_bytecode(
         match current_instruction {
             Bytecode::Binding { var, tuple_pos, .. } => match tuple_pos {
                 None => {
-                    bail!(UnboundVariableError(var.name.to_string(), var.span))
+                    bail!(UnboundVariableError { var: var.name.to_string(), span: var.span })
                 }
                 Some(i) => {
                     let val = bindings
                         .as_ref()
                         .get(*i)
                         .ok_or_else(|| {
-                            TupleTooShortError(
-                                var.name.to_string(),
-                                *i,
-                                bindings.as_ref().len(),
-                                var.span,
-                            )
+                            TupleTooShortError {
+                                var: var.name.to_string(),
+                                idx: *i,
+                                len: bindings.as_ref().len(),
+                                span: var.span,
+                            }
                         })?
                         .clone();
                     stack.push(val);
@@ -130,7 +128,7 @@ pub fn eval_bytecode(
                 let frame_start = stack.len() - *arity;
                 let args_frame = &stack[frame_start..];
                 let result = (op.inner)(args_frame)
-                    .map_err(|err| EvalRaisedError(*span, err.to_string()))?;
+                    .map_err(|err| EvalRaisedError { span: *span, msg: err.to_string() })?;
                 stack.truncate(frame_start);
                 stack.push(result);
                 pointer += 1;
@@ -139,7 +137,7 @@ pub fn eval_bytecode(
                 let val = stack.pop().unwrap();
                 let cond = val
                     .get_bool()
-                    .ok_or_else(|| PredicateTypeError(*span, val))?;
+                    .ok_or_else(|| PredicateTypeError { span: *span, val })?;
                 if cond {
                     pointer += 1;
                 } else {
@@ -244,26 +242,21 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("No implementation found for op `{1}`")]
-#[diagnostic(code(eval::no_implementation))]
-pub(crate) struct NoImplementationError(#[label] pub(crate) SourceSpan, pub(crate) String);
+#[derive(Debug, Snafu)]
+#[snafu(display("No implementation found for op `{op}`"))]
+pub(crate) struct NoImplementationError { pub(crate) span: SourceSpan, pub(crate) op: String }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Found value {1:?} where a boolean value is expected")]
-#[diagnostic(code(eval::predicate_not_bool))]
-pub(crate) struct PredicateTypeError(#[label] pub(crate) SourceSpan, pub(crate) DataValue);
+#[derive(Debug, Snafu)]
+#[snafu(display("Found value {val:?} where a boolean value is expected"))]
+pub(crate) struct PredicateTypeError { pub(crate) span: SourceSpan, pub(crate) val: DataValue }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Cannot build entity ID from {0:?}")]
-#[diagnostic(code(parser::bad_eid))]
-#[diagnostic(help("Entity ID should be an integer satisfying certain constraints"))]
-struct BadEntityId(DataValue, #[label] SourceSpan);
+#[derive(Debug, Snafu)]
+#[snafu(display("Cannot build entity ID from {id:?}"))]
+struct BadEntityId { id: DataValue, span: SourceSpan }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Evaluation of expression failed")]
-#[diagnostic(code(eval::throw))]
-struct EvalRaisedError(#[label] SourceSpan, #[help] String);
+#[derive(Debug, Snafu)]
+#[snafu(display("Evaluation of expression failed: {msg}"))]
+struct EvalRaisedError { span: SourceSpan, msg: String }
 
 impl Expr {
     pub(crate) fn compile(&self) -> Result<Vec<Bytecode>> {
@@ -332,14 +325,13 @@ impl Expr {
     ) -> Result<()> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Cannot find binding {0}")]
-                #[diagnostic(code(eval::bad_binding))]
-                struct BadBindingError(String, #[label] SourceSpan);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("Cannot find binding {var}"))]
+                struct BadBindingError { var: String, span: SourceSpan }
 
                 let found_idx = *binding_map
                     .get(var)
-                    .ok_or_else(|| BadBindingError(var.to_string(), var.span))?;
+                    .ok_or_else(|| BadBindingError { var: var.to_string(), span: var.span })?;
                 *tuple_pos = Some(found_idx)
             }
             Expr::Const { .. } => {}
@@ -355,7 +347,7 @@ impl Expr {
                 }
             }
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         }
         Ok(())
@@ -391,16 +383,15 @@ impl Expr {
             //     }
             // }
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         }
         Ok(())
     }
     /// Evaluate the expression to a constant value if possible
     pub fn eval_to_const(mut self) -> Result<DataValue> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Expression contains unevaluated constant")]
-        #[diagnostic(code(eval::not_constant))]
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Expression contains unevaluated constant"))]
         struct NotConstError;
 
         self.partial_eval()?;
@@ -468,7 +459,7 @@ impl Expr {
                 }
             }
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         }
         Ok(())
@@ -477,18 +468,18 @@ impl Expr {
         match self {
             Expr::Binding { var, tuple_pos, .. } => match tuple_pos {
                 None => {
-                    bail!(UnboundVariableError(var.name.to_string(), var.span))
+                    bail!(UnboundVariableError { var: var.name.to_string(), span: var.span })
                 }
                 Some(i) => Ok(bindings
                     .as_ref()
                     .get(*i)
                     .ok_or_else(|| {
-                        TupleTooShortError(
-                            var.name.to_string(),
-                            *i,
-                            bindings.as_ref().len(),
-                            var.span,
-                        )
+                        TupleTooShortError {
+                            var: var.name.to_string(),
+                            idx: *i,
+                            len: bindings.as_ref().len(),
+                            span: var.span,
+                        }
                     })?
                     .clone()),
             },
@@ -499,14 +490,14 @@ impl Expr {
                     .map(|v| v.eval(bindings.as_ref()))
                     .try_collect()?;
                 Ok((op.inner)(&args)
-                    .map_err(|err| EvalRaisedError(self.span(), err.to_string()))?)
+                    .map_err(|err| EvalRaisedError { span: self.span(), msg: err.to_string() })?)
             }
             Expr::Cond { clauses, .. } => {
                 for (cond, val) in clauses {
                     let cond_val = cond.eval(bindings.as_ref())?;
                     let cond_val = cond_val
                         .get_bool()
-                        .ok_or_else(|| PredicateTypeError(cond.span(), cond_val))?;
+                        .ok_or_else(|| PredicateTypeError { span: cond.span(), val: cond_val })?;
 
                     if cond_val {
                         return val.eval(bindings.as_ref());
@@ -515,7 +506,7 @@ impl Expr {
                 Ok(DataValue::Null)
             }
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         }
     }
@@ -580,13 +571,11 @@ impl Expr {
                         if let Some(val) = args[1].get_const() {
                             if target == symb {
                                 let s = val.get_str().ok_or_else(|| {
-                                    #[derive(Debug, Error, Diagnostic)]
-                                    #[error("Cannot prefix scan with {0:?}")]
-                                    #[diagnostic(code(eval::bad_string_range_scan))]
-                                    #[diagnostic(help("A string argument is required"))]
-                                    struct StrRangeScanError(DataValue, #[label] SourceSpan);
+                                    #[derive(Debug, Snafu)]
+                                    #[snafu(display("Cannot prefix scan with {val:?}"))]
+                                    struct StrRangeScanError { val: DataValue, span: SourceSpan }
 
-                                    StrRangeScanError(val.clone(), symb.span)
+                                    StrRangeScanError { val: val.clone(), span: symb.span }
                                 })?;
                                 let lower = DataValue::from(s);
                                 // let lower = DataValue::Str(s.to_string());
@@ -603,7 +592,7 @@ impl Expr {
                 _ => ValueRange::default(),
             },
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         })
     }
@@ -630,7 +619,7 @@ impl Expr {
                 }
             }
             Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+                bail!(NoImplementationError { span: *span, op: op.to_string() });
             }
         }
         Ok(())
@@ -639,20 +628,20 @@ impl Expr {
         match self {
             Expr::Apply { op, args, .. } => {
                 if op.name != "OP_LIST" {
-                    Err(miette!("Invalid fields op: {} for {}", op.name, self))
+                    Err(Box::new(crate::error::AdhocError(format!("Invalid fields op: {} for {}", op.name, self))) as crate::error::BoxErr)
                 } else {
                     let mut collected = vec![];
                     for field in args.iter() {
                         match field {
                             Expr::Binding { var, .. } => collected.push(var.name.clone()),
-                            _ => return Err(miette!("Invalid field element: {}", field)),
+                            _ => return Err(Box::new(crate::error::AdhocError(format!("Invalid field element: {}", field))) as crate::error::BoxErr),
                         }
                     }
                     Ok(collected)
                 }
             }
             Expr::Binding { var, .. } => Ok(vec![var.name.clone()]),
-            _ => Err(miette!("Invalid fields: {}", self)),
+            _ => Err(Box::new(crate::error::AdhocError(format!("Invalid fields: {}", self))) as crate::error::BoxErr),
         }
     }
 }

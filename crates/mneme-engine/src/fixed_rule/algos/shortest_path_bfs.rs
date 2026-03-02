@@ -16,8 +16,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::error::DbResult as Result;
 use itertools::Itertools;
-use miette::Result;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::Expr;

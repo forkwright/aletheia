@@ -11,10 +11,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
-use miette::{bail, ensure, miette, Diagnostic, Result};
+use snafu::Snafu;
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use smallvec::SmallVec;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::aggr::Aggregation;
 use crate::data::expr::Expr;
@@ -29,7 +30,7 @@ use crate::query::logical::{Disjunction, NamedFieldNotFound};
 use crate::runtime::hnsw::HnswIndexManifest;
 use crate::runtime::minhash_lsh::{LshSearch, MinHashLshIndexManifest};
 use crate::runtime::relation::{
-    AccessLevel, InputRelationHandle, InsufficientAccessLevel, RelationHandle,
+    AccessLevel, InputRelationHandle, RelationHandle,
 };
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
@@ -288,25 +289,20 @@ pub(crate) struct MagicFixedRuleApply {
     pub(crate) fixed_impl: Arc<Box<dyn FixedRule>>,
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Cannot find a required named option '{name}' for '{rule_name}'")]
-#[diagnostic(code(fixed_rule::arg_not_found))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Cannot find a required named option '{name}' for '{rule_name}'"))]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
-    #[label]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Wrong value for option '{name}' of '{rule_name}'")]
-#[diagnostic(code(fixed_rule::arg_wrong))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Wrong value for option '{name}' of '{rule_name}'"))]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
-    #[label]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
-    #[help]
     pub(crate) help: String,
 }
 
@@ -319,17 +315,15 @@ impl MagicFixedRuleApply {
         tx: &SessionTx<'_>,
         stores: &BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Input relation to fixed rule has insufficient arity")]
-        #[diagnostic(help("Arity should be at least {0} but is {1}"))]
-        #[diagnostic(code(fixed_rule::input_relation_bad_arity))]
-        struct InputRelationArityError(usize, usize, #[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Input relation to fixed rule has insufficient arity"))]
+        struct InputRelationArityError { required: usize, actual: usize, span: SourceSpan }
 
         let rel = self.relation(idx)?;
         let arity = rel.arity(tx, stores)?;
         ensure!(
             arity >= len,
-            InputRelationArityError(len, arity, rel.span())
+            InputRelationArityError { required: len, actual: arity, span: rel.span() }
         );
         Ok(rel)
     }
@@ -337,12 +331,10 @@ impl MagicFixedRuleApply {
         self.rule_args.len()
     }
     pub(crate) fn relation(&self, idx: usize) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Cannot find a required positional argument at index {idx} for '{rule_name}'")]
-        #[diagnostic(code(fixed_rule::not_enough_args))]
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Cannot find a required positional argument at index {idx} for '{rule_name}'"))]
         pub(crate) struct FixedRuleNotEnoughRelationError {
             idx: usize,
-            #[label]
             span: SourceSpan,
             rule_name: String,
         }
@@ -548,16 +540,12 @@ impl Display for InputProgram {
     }
 }
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Entry head not found")]
-#[diagnostic(code(parser::no_entry_head))]
-#[diagnostic(help("You need to explicitly name your entry arguments"))]
-struct EntryHeadNotExplicitlyDefinedError(#[label] SourceSpan);
+#[derive(Debug, Snafu)]
+#[snafu(display("Entry head not found"))]
+struct EntryHeadNotExplicitlyDefinedError { span: SourceSpan }
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Program has no entry")]
-#[diagnostic(code(parser::no_entry))]
-#[diagnostic(help("You need to have one rule named '?'"))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Program has no entry"))]
 pub(crate) struct NoEntryError;
 
 impl InputProgram {
@@ -622,7 +610,7 @@ impl InputProgram {
                 }
                 InputInlineRulesOrFixed::Fixed { fixed } => {
                     if fixed.head.is_empty() {
-                        Err(EntryHeadNotExplicitlyDefinedError(entry.first_span()).into())
+                        Err(EntryHeadNotExplicitlyDefinedError { span: entry.first_span() }.into())
                     } else {
                         Ok(fixed.head.to_vec())
                     }
@@ -1091,32 +1079,29 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound(
-                self.relation.name.to_string(),
-                name.to_string(),
-                self.span
-            ));
+            bail!(NamedFieldNotFound {
+                relation: self.relation.name.to_string(),
+                field: name.to_string(),
+                span: self.span,
+            });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for LSH search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct LshRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Field `{field}` is required for LSH search"))]
+        struct LshRequiredMissing { field: String, span: SourceSpan }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected a list of keys for LSH search")]
-        #[diagnostic(code(parser::expected_list_for_lsh_keys))]
-        struct ExpectedListForLshKeys(#[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Expected a list of keys for LSH search"))]
+        struct ExpectedListForLshKeys { span: SourceSpan }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Wrong arity for LSH keys, expected {1}, got {2}")]
-        #[diagnostic(code(parser::wrong_arity_for_lsh_keys))]
-        struct WrongArityForKeys(#[label] SourceSpan, usize, usize);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Wrong arity for LSH keys, expected {expected}, got {actual}"))]
+        struct WrongArityForKeys { span: SourceSpan, expected: usize, actual: usize }
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(LshRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| LshRequiredMissing { field: "query".to_string(), span: self.span })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1137,30 +1122,28 @@ impl SearchInput {
             None => None,
             Some(k_expr) => {
                 let k = k_expr.eval_to_const()?;
-                let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
+                let k = k.get_int().ok_or(ExpectedPosIntForLshK { span: self.span })?;
 
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Expected positive integer for `k`")]
-                #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-                struct ExpectedPosIntForFtsK(#[label] SourceSpan);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("Expected positive integer for `k`"))]
+                struct ExpectedPosIntForLshK { span: SourceSpan }
 
-                ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
+                ensure!(k > 0, ExpectedPosIntForLshK { span: self.span });
                 Some(k as usize)
             }
         };
 
         let filter = self.parameters.remove("filter");
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Extra parameters for LSH search: {0:?}")]
-        #[diagnostic(code(parser::extra_parameters_for_lsh_search))]
-        struct ExtraParametersForLshSearch(Vec<String>, #[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Extra parameters for LSH search: {params:?}"))]
+        struct ExtraParametersForLshSearch { params: Vec<String>, span: SourceSpan }
 
         if !self.parameters.is_empty() {
-            bail!(ExtraParametersForLshSearch(
-                self.parameters.keys().map(|s| s.to_string()).collect(),
-                self.span
-            ));
+            bail!(ExtraParametersForLshSearch {
+                params: self.parameters.keys().map(|s| s.to_string()).collect(),
+                span: self.span,
+            });
         }
 
         conj.push(NormalFormAtom::LshSearch(LshSearch {
@@ -1235,22 +1218,21 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound(
-                self.relation.name.to_string(),
-                name.to_string(),
-                self.span
-            ));
+            bail!(NamedFieldNotFound {
+                relation: self.relation.name.to_string(),
+                field: name.to_string(),
+                span: self.span,
+            });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for HNSW search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct HnswRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Field `{field}` is required for HNSW search"))]
+        struct HnswRequiredMissing { field: String, span: SourceSpan }
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(HnswRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| HnswRequiredMissing { field: "query".to_string(), span: self.span })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1270,16 +1252,15 @@ impl SearchInput {
         let k_expr = self
             .parameters
             .remove("k")
-            .ok_or_else(|| miette!(HnswRequiredMissing("k".to_string(), self.span)))?;
+            .ok_or_else(|| HnswRequiredMissing { field: "k".to_string(), span: self.span })?;
         let k = k_expr.eval_to_const()?;
-        let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
+        let k = k.get_int().ok_or(ExpectedPosIntForFtsK { span: self.span })?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `k`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-        struct ExpectedPosIntForFtsK(#[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Expected positive integer for `k`"))]
+        struct ExpectedPosIntForFtsK { span: SourceSpan }
 
-        ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
+        ensure!(k > 0, ExpectedPosIntForFtsK { span: self.span });
 
         let score_kind_expr = self.parameters.remove("score_kind");
         let score_kind = match score_kind_expr {
@@ -1287,7 +1268,7 @@ impl SearchInput {
                 let r = expr.eval_to_const()?;
                 let r = r
                     .get_str()
-                    .ok_or_else(|| miette!("Score kind for FTS must be a string"))?;
+                    .ok_or_else(|| crate::error::AdhocError("Score kind for FTS must be a string".to_string()))?;
 
                 match r {
                     "tf_idf" => FtsScoreKind::TfIdf,
@@ -1399,22 +1380,21 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound(
-                self.relation.name.to_string(),
-                name.to_string(),
-                self.span
-            ));
+            bail!(NamedFieldNotFound {
+                relation: self.relation.name.to_string(),
+                field: name.to_string(),
+                span: self.span,
+            });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for HNSW search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct HnswRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Field `{field}` is required for HNSW vector search"))]
+        struct HnswVecRequiredMissing { field: String, span: SourceSpan }
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(HnswRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| HnswVecRequiredMissing { field: "query".to_string(), span: self.span })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1434,43 +1414,40 @@ impl SearchInput {
         let k_expr = self
             .parameters
             .remove("k")
-            .ok_or_else(|| miette!(HnswRequiredMissing("k".to_string(), self.span)))?;
+            .ok_or_else(|| HnswVecRequiredMissing { field: "k".to_string(), span: self.span })?;
         let k = k_expr.eval_to_const()?;
-        let k = k.get_int().ok_or(ExpectedPosIntForHnswK(self.span))?;
+        let k = k.get_int().ok_or(ExpectedPosIntForHnswK { span: self.span })?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `k`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-        struct ExpectedPosIntForHnswK(#[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Expected positive integer for `k`"))]
+        struct ExpectedPosIntForHnswK { span: SourceSpan }
 
-        ensure!(k > 0, ExpectedPosIntForHnswK(self.span));
+        ensure!(k > 0, ExpectedPosIntForHnswK { span: self.span });
 
         let ef_expr = self
             .parameters
             .remove("ef")
-            .ok_or_else(|| miette!(HnswRequiredMissing("ef".to_string(), self.span)))?;
+            .ok_or_else(|| HnswVecRequiredMissing { field: "ef".to_string(), span: self.span })?;
         let ef = ef_expr.eval_to_const()?;
-        let ef = ef.get_int().ok_or(ExpectedPosIntForHnswEf(self.span))?;
+        let ef = ef.get_int().ok_or(ExpectedPosIntForHnswEf { span: self.span })?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `ef`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_ef))]
-        struct ExpectedPosIntForHnswEf(#[label] SourceSpan);
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Expected positive integer for `ef`"))]
+        struct ExpectedPosIntForHnswEf { span: SourceSpan }
 
-        ensure!(ef > 0, ExpectedPosIntForHnswEf(self.span));
+        ensure!(ef > 0, ExpectedPosIntForHnswEf { span: self.span });
 
         let radius_expr = self.parameters.remove("radius");
         let radius = match radius_expr {
             Some(expr) => {
                 let r = expr.eval_to_const()?;
-                let r = r.get_float().ok_or(ExpectedFloatForHnswRadius(self.span))?;
+                let r = r.get_float().ok_or(ExpectedFloatForHnswRadius { span: self.span })?;
 
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Expected positive float for `radius`")]
-                #[diagnostic(code(parser::expected_float_for_hnsw_radius))]
-                struct ExpectedFloatForHnswRadius(#[label] SourceSpan);
+                #[derive(Debug, Snafu)]
+                #[snafu(display("Expected positive float for `radius`"))]
+                struct ExpectedFloatForHnswRadius { span: SourceSpan }
 
-                ensure!(r > 0.0, ExpectedFloatForHnswRadius(self.span));
+                ensure!(r > 0.0, ExpectedFloatForHnswRadius { span: self.span });
                 Some(r)
             }
             None => None,
@@ -1576,11 +1553,7 @@ impl SearchInput {
     ) -> Result<Disjunction> {
         let base_handle = tx.get_relation(&self.relation, false)?;
         if base_handle.access_level < AccessLevel::ReadOnly {
-            bail!(InsufficientAccessLevel(
-                base_handle.name.to_string(),
-                "reading rows".to_string(),
-                base_handle.access_level
-            ));
+            bail!("Insufficient access level for this operation");
         }
         if let Some((idx_handle, manifest)) =
             base_handle.hnsw_indices.get(&self.index.name).cloned()
@@ -1596,13 +1569,11 @@ impl SearchInput {
         {
             return self.normalize_lsh(base_handle, idx_handle, manifest, r#gen);
         }
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Index {name} not found on relation {relation}")]
-        #[diagnostic(code(eval::hnsw_index_not_found))]
+        #[derive(Debug, Snafu)]
+        #[snafu(display("Index {name} not found on relation {relation}"))]
         struct IndexNotFound {
             relation: String,
             name: String,
-            #[label]
             span: SourceSpan,
         }
         bail!(IndexNotFound {

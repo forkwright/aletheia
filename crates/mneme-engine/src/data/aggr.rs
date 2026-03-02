@@ -9,7 +9,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 
-use miette::{bail, ensure, miette, Result};
+use crate::{bail, ensure};
+use crate::error::DbResult as Result;
 use rand::prelude::*;
 
 use crate::data::value::DataValue;
@@ -598,10 +599,10 @@ impl NormalAggrObj for AggrMin {
         let f1 = self
             .found
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         let f2 = value
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         if f1 > f2 {
             self.found = value.clone();
         }
@@ -630,10 +631,10 @@ impl MeetAggrObj for MeetAggrMin {
         }
         let f1 = left
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         let f2 = right
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
 
         Ok(if f1 > f2 {
             *left = right.clone();
@@ -670,10 +671,10 @@ impl NormalAggrObj for AggrMax {
         let f1 = self
             .found
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         let f2 = value
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         if f1 < f2 {
             self.found = value.clone();
         }
@@ -702,10 +703,10 @@ impl MeetAggrObj for MeetAggrMax {
         }
         let f1 = left
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
         let f2 = right
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| crate::error::AdhocError("'min' applied to non-numerical values".to_string()))?;
 
         Ok(if f1 < f2 {
             *left = right.clone();
@@ -823,7 +824,7 @@ impl NormalAggrObj for AggrMinCost {
                 let c = &l[1];
                 let cost = c
                     .get_float()
-                    .ok_or_else(|| miette!("Cost must be numeric"))?;
+                    .ok_or_else(|| crate::error::AdhocError("Cost must be numeric".to_string()))?;
                 if cost < self.cost {
                     self.cost = cost;
                     self.found = l[0].clone();
@@ -861,11 +862,11 @@ impl MeetAggrObj for MeetAggrMinCost {
                 let cur_cost = l.get(1).unwrap();
                 let cur_cost = cur_cost
                     .get_float()
-                    .ok_or_else(|| miette!("'min_cost' must have numerical costs"))?;
+                    .ok_or_else(|| crate::error::AdhocError("'min_cost' must have numerical costs".to_string()))?;
                 let prev_cost = prev.get(1).unwrap();
                 let prev_cost = prev_cost
                     .get_float()
-                    .ok_or_else(|| miette!("'prev_cost' must have numerical costs"))?;
+                    .ok_or_else(|| crate::error::AdhocError("'prev_cost' must have numerical costs".to_string()))?;
 
                 if prev_cost <= cur_cost {
                     false
@@ -1236,10 +1237,10 @@ impl Aggregation {
                     AggrCollect::default()
                 } else {
                     let arg = args[0].get_int().ok_or_else(|| {
-                        miette!(
+                        crate::error::AdhocError(format!(
                             "the argument to 'collect' must be an integer, got {:?}",
                             args[0]
-                        )
+                        ))
                     })?;
                     ensure!(
                         arg > 0,

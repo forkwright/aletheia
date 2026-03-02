@@ -8,8 +8,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use miette::{bail, ensure, Result};
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use smartstring::{LazyCompact, SmartString};

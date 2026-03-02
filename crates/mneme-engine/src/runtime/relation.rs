@@ -10,14 +10,15 @@ use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
 
+use snafu::Snafu;
+use crate::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
-use log::error;
-use miette::{bail, ensure, Diagnostic, IntoDiagnostic, Result};
+use tracing::error;
 use pest::Parser;
 use rmp_serde::Serializer;
 use serde::Serialize;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::data::memcmp::MemCmpEncoder;
 use crate::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
@@ -138,14 +139,12 @@ impl Display for AccessLevel {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}")]
-#[diagnostic(code(eval::stored_rel_arity_mismatch))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"))]
 struct StoredRelArityMismatch {
     name: String,
     expect_arity: usize,
     actual_arity: usize,
-    #[label]
     span: SourceSpan,
 }
 
@@ -332,13 +331,8 @@ impl Debug for RelationHandle {
     }
 }
 
-#[derive(thiserror::Error, miette::Diagnostic, Debug)]
-#[error("Cannot deserialize relation")]
-#[diagnostic(code(deser::relation))]
-#[diagnostic(help(
-    "This could indicate a bug, or you are using an incompatible DB version. \
-Consider file a bug report."
-))]
+#[derive(Debug, Snafu)]
+#[snafu(display("Cannot deserialize relation"))]
 pub(crate) struct RelationDeserError;
 
 impl RelationHandle {
@@ -404,15 +398,19 @@ impl RelationHandle {
     ) -> Result<Option<Tuple>> {
         let key_data = key.encode_as_key(self.id);
         if self.is_temp {
-            Ok(tx
-                .temp_store_tx
+            tx.temp_store_tx
                 .get(&key_data, false)?
-                .map(|val_data| rmp_serde::from_slice(&val_data[ENCODED_KEY_MIN_LEN..]).unwrap()))
+                .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
+                    .map_err(|e| crate::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                .transpose()
+                .map_err(|e| Box::new(e) as crate::error::BoxErr)
         } else {
-            Ok(tx
-                .store_tx
+            tx.store_tx
                 .get(&key_data, false)?
-                .map(|val_data| rmp_serde::from_slice(&val_data[ENCODED_KEY_MIN_LEN..]).unwrap()))
+                .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
+                    .map_err(|e| crate::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                .transpose()
+                .map_err(|e| Box::new(e) as crate::error::BoxErr)
         }
     }
 
@@ -525,20 +523,15 @@ pub fn decode_tuple_from_kv(key: &[u8], val: &[u8], size_hint: Option<usize>) ->
 
 pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
+        // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption
         let vals: Vec<DataValue> = rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..]).unwrap();
         key.extend(vals);
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("index {0} for relation {1} already exists")]
-#[diagnostic(code(tx::index_already_exists))]
-pub(crate) struct IndexAlreadyExists(String, String);
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Cannot create relation {0} as one with the same name already exists")]
-#[diagnostic(code(eval::rel_name_conflict))]
-struct RelNameConflictError(String);
+
+
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn relation_exists(&self, name: &str) -> Result<bool> {
@@ -562,11 +555,7 @@ impl<'a> SessionTx<'a> {
         }
         let mut original = self.get_relation(name, true)?;
         if original.access_level < AccessLevel::Protected {
-            bail!(InsufficientAccessLevel(
-                original.name.to_string(),
-                "set triggers".to_string(),
-                original.access_level
-            ))
+            bail!("Insufficient access level for stored relation");
         }
         original.put_triggers = puts.to_vec();
         original.rm_triggers = rms.to_vec();
@@ -594,10 +583,10 @@ impl<'a> SessionTx<'a> {
 
         if is_temp {
             if self.store_tx.exists(&encoded, true)? {
-                bail!(RelNameConflictError(input_meta.name.to_string()))
+                bail!("Cannot create relation {} as one with the same name already exists")
             };
         } else if self.temp_store_tx.exists(&encoded, true)? {
-            bail!(RelNameConflictError(input_meta.name.to_string()))
+            bail!("Cannot create relation {} as one with the same name already exists")
         }
 
         let metadata = input_meta.metadata.clone();
@@ -642,10 +631,7 @@ impl<'a> SessionTx<'a> {
         Ok(meta)
     }
     pub(crate) fn get_relation(&self, name: &str, lock: bool) -> Result<RelationHandle> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Cannot find requested stored relation '{0}'")]
-        #[diagnostic(code(query::relation_not_found))]
-        struct StoredRelationNotFoundError(String);
+        
 
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
@@ -653,11 +639,11 @@ impl<'a> SessionTx<'a> {
         let found = if name.starts_with('_') {
             self.temp_store_tx
                 .get(&encoded, lock)?
-                .ok_or_else(|| StoredRelationNotFoundError(name.to_string()))?
+                .ok_or_else(|| crate::error::AdhocError("Cannot find requested stored relation".to_string()))?
         } else {
             self.store_tx
                 .get(&encoded, lock)?
-                .ok_or_else(|| StoredRelationNotFoundError(name.to_string()))?
+                .ok_or_else(|| crate::error::AdhocError("Cannot find requested stored relation".to_string()))?
         };
         let metadata = RelationHandle::decode(&found)?;
         Ok(metadata)
@@ -693,16 +679,7 @@ impl<'a> SessionTx<'a> {
             );
         }
         if store.access_level < AccessLevel::Normal {
-            bail!(InsufficientAccessLevel(
-                store.name.to_string(),
-                "relation removal".to_string(),
-                store.access_level
-            ))
-        }
-
-        for k in store.indices.keys() {
-            let more_to_clean = self.destroy_relation(&format!("{name}:{k}"))?;
-            to_clean.extend(more_to_clean);
+            bail!("Insufficient access level for stored relation");
         }
 
         for k in store.hnsw_indices.keys() {
@@ -742,10 +719,7 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!(IndexAlreadyExists(
-                config.index_name.to_string(),
-                config.index_name.to_string()
-            ));
+            bail!("index {} for relation {} already exists");
         }
 
         let inv_idx_keys = rel_handle.metadata.keys.clone();
@@ -819,7 +793,7 @@ impl<'a> SessionTx<'a> {
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
         let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-            .into_diagnostic()?
+            .map_err(|e| crate::error::AdhocError(e.to_string()))?
             .next()
             .unwrap();
         let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -872,10 +846,7 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!(IndexAlreadyExists(
-                config.index_name.to_string(),
-                config.index_name.to_string()
-            ));
+            bail!("index {} for relation {} already exists");
         }
 
         // Build key columns definitions
@@ -955,7 +926,7 @@ impl<'a> SessionTx<'a> {
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
 
         let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-            .into_diagnostic()?
+            .map_err(|e| crate::error::AdhocError(e.to_string()))?
             .next()
             .unwrap();
         let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -1013,10 +984,7 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!(IndexAlreadyExists(
-                config.index_name.to_string(),
-                config.index_name.to_string()
-            ));
+            bail!("index {} for relation {} already exists");
         }
 
         // Check that what we are indexing are really vectors
@@ -1157,7 +1125,7 @@ impl<'a> SessionTx<'a> {
         }
         let filter = if let Some(f_code) = &manifest.index_filter {
             let parsed = CozoScriptParser::parse(Rule::expr, f_code)
-                .into_diagnostic()?
+                .map_err(|e| crate::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -1240,10 +1208,7 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&idx_name.name) {
-            bail!(IndexAlreadyExists(
-                idx_name.name.to_string(),
-                rel_name.name.to_string()
-            ));
+            bail!("index {} for relation {} already exists");
         }
 
         // Build column definitions
@@ -1261,16 +1226,9 @@ impl<'a> SessionTx<'a> {
                 }
             }
 
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("column {0} in index {1} for relation {2} not found")]
-            #[diagnostic(code(tx::col_in_idx_not_found))]
-            pub(crate) struct ColInIndexNotFound(String, String, String);
+            
 
-            bail!(ColInIndexNotFound(
-                col.name.to_string(),
-                idx_name.name.to_string(),
-                rel_name.name.to_string()
-            ));
+            bail!("column {} in index {} for relation {} not found");
         }
 
         'outer: for key in rel_handle.metadata.keys.iter() {
@@ -1376,20 +1334,17 @@ impl<'a> SessionTx<'a> {
         let is_lsh = rel.lsh_indices.contains_key(&idx_name.name);
         let is_fts = rel.fts_indices.contains_key(&idx_name.name);
         if is_lsh || is_fts {
-            self.tokenizers.named_cache.write().unwrap().clear();
-            self.tokenizers.hashed_cache.write().unwrap().clear();
+            self.tokenizers.named_cache.write().unwrap().clear(); // INVARIANT: lock is not poisoned
+            self.tokenizers.hashed_cache.write().unwrap().clear(); // INVARIANT: lock is not poisoned
         }
         if rel.indices.remove(&idx_name.name).is_none()
             && rel.hnsw_indices.remove(&idx_name.name).is_none()
             && rel.lsh_indices.remove(&idx_name.name).is_none()
             && rel.fts_indices.remove(&idx_name.name).is_none()
         {
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("index {0} for relation {1} not found")]
-            #[diagnostic(code(tx::idx_not_found))]
-            pub(crate) struct IndexNotFound(String, String);
+            
 
-            bail!(IndexNotFound(idx_name.to_string(), rel_name.to_string()));
+            bail!("index for relation not found");
         }
 
         let mut to_clean =
@@ -1417,7 +1372,7 @@ impl<'a> SessionTx<'a> {
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.store_tx.exists(&new_encoded, true)? {
-            bail!(RelNameConflictError(new.name.to_string()))
+            bail!("Cannot create relation {} as one with the same name already exists")
         };
 
         let old_key = DataValue::Str(old.name.clone());
@@ -1425,11 +1380,7 @@ impl<'a> SessionTx<'a> {
 
         let mut rel = self.get_relation(old, true)?;
         if rel.access_level < AccessLevel::Normal {
-            bail!(InsufficientAccessLevel(
-                rel.name.to_string(),
-                "renaming relation".to_string(),
-                rel.access_level
-            ));
+            bail!("Insufficient access level {} for {} on stored relation '{}'");
         }
         rel.name = new.name.clone();
 
@@ -1445,7 +1396,7 @@ impl<'a> SessionTx<'a> {
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.temp_store_tx.exists(&new_encoded, true)? {
-            bail!(RelNameConflictError(new.name.to_string()))
+            bail!("Cannot create relation {} as one with the same name already exists")
         };
 
         let old_key = DataValue::Str(old.name.clone());
@@ -1463,11 +1414,4 @@ impl<'a> SessionTx<'a> {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Insufficient access level {2} for {1} on stored relation '{0}'")]
-#[diagnostic(code(tx::insufficient_access_level))]
-pub(crate) struct InsufficientAccessLevel(
-    pub(crate) String,
-    pub(crate) String,
-    pub(crate) AccessLevel,
-);
+

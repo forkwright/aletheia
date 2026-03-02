@@ -9,7 +9,8 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use miette::{ensure, Result};
+use crate::error::DbResult as Result;
+use crate::{ensure};
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use smartstring::{LazyCompact, SmartString};

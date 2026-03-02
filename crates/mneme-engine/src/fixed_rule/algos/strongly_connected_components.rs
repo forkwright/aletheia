@@ -7,12 +7,12 @@
  */
 #![allow(unused_imports)]
 
+use crate::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
 use std::cmp::min;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use miette::Result;
 use smartstring::{LazyCompact, SmartString};
 
 use crate::data::expr::Expr;
