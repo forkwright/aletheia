@@ -51,18 +51,15 @@ impl ToolRegistry {
     }
 
     /// Register a tool. Fails if a tool with the same name already exists.
-    pub fn register(
-        &mut self,
-        def: ToolDef,
-        executor: Box<dyn ToolExecutor>,
-    ) -> Result<()> {
+    pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         ensure!(
             !self.tools.contains_key(&def.name),
             error::DuplicateToolSnafu {
                 name: def.name.clone()
             }
         );
-        self.tools.insert(def.name.clone(), RegisteredTool { def, executor });
+        self.tools
+            .insert(def.name.clone(), RegisteredTool { def, executor });
         Ok(())
     }
 
@@ -73,11 +70,7 @@ impl ToolRegistry {
     }
 
     /// Execute a tool by name.
-    pub async fn execute(
-        &self,
-        input: &ToolInput,
-        ctx: &ToolContext,
-    ) -> Result<ToolResult> {
+    pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {
                 name: input.name.clone(),
@@ -306,7 +299,10 @@ mod tests {
         assert_eq!(tools[0].name, "read");
         assert_eq!(tools[0].description, "Read a file");
         assert_eq!(tools[0].input_schema["type"], "object");
-        assert_eq!(tools[0].input_schema["properties"]["path"]["type"], "string");
+        assert_eq!(
+            tools[0].input_schema["properties"]["path"]["type"],
+            "string"
+        );
     }
 
     #[tokio::test]

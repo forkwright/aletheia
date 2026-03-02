@@ -1,6 +1,8 @@
 //! Integration: knowledge types flow into recall scoring.
 
-use aletheia_mneme::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, RecallResult, Relationship};
+use aletheia_mneme::knowledge::{
+    EmbeddedChunk, Entity, EpistemicTier, Fact, RecallResult, Relationship,
+};
 use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
 fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> ScoredResult {

@@ -146,10 +146,7 @@ mod tests {
 
     #[test]
     fn exact_group_binding_matches() {
-        let router = MessageRouter::new(
-            vec![binding("signal", "group-abc", "syn")],
-            None,
-        );
+        let router = MessageRouter::new(vec![binding("signal", "group-abc", "syn")], None);
         let msg = group_message("+1234567890", "group-abc");
         let decision = router.resolve(&msg).expect("should match");
         assert_eq!(decision.nous_id, "syn");
@@ -158,10 +155,7 @@ mod tests {
 
     #[test]
     fn exact_source_binding_matches() {
-        let router = MessageRouter::new(
-            vec![binding("signal", "+1234567890", "cody")],
-            None,
-        );
+        let router = MessageRouter::new(vec![binding("signal", "+1234567890", "cody")], None);
         let msg = dm_message("+1234567890");
         let decision = router.resolve(&msg).expect("should match");
         assert_eq!(decision.nous_id, "cody");
@@ -170,10 +164,7 @@ mod tests {
 
     #[test]
     fn channel_default_matches() {
-        let router = MessageRouter::new(
-            vec![binding("signal", "*", "default-nous")],
-            None,
-        );
+        let router = MessageRouter::new(vec![binding("signal", "*", "default-nous")], None);
         let msg = dm_message("+9999999999");
         let decision = router.resolve(&msg).expect("should match");
         assert_eq!(decision.nous_id, "default-nous");
@@ -263,10 +254,7 @@ mod tests {
 
     #[test]
     fn wrong_channel_does_not_match() {
-        let router = MessageRouter::new(
-            vec![binding("slack", "+1234567890", "syn")],
-            None,
-        );
+        let router = MessageRouter::new(vec![binding("slack", "+1234567890", "syn")], None);
         let msg = dm_message("+1234567890");
         assert!(router.resolve(&msg).is_none());
     }

@@ -134,7 +134,11 @@ mod tests {
 
     #[test]
     fn epistemic_tier_serde_roundtrip() {
-        for tier in [EpistemicTier::Verified, EpistemicTier::Inferred, EpistemicTier::Assumed] {
+        for tier in [
+            EpistemicTier::Verified,
+            EpistemicTier::Inferred,
+            EpistemicTier::Assumed,
+        ] {
             let json = serde_json::to_string(&tier).unwrap();
             let back: EpistemicTier = serde_json::from_str(&json).unwrap();
             assert_eq!(tier, back);
@@ -286,7 +290,11 @@ mod tests {
 
     #[test]
     fn epistemic_tier_as_str_matches_serde() {
-        for tier in [EpistemicTier::Verified, EpistemicTier::Inferred, EpistemicTier::Assumed] {
+        for tier in [
+            EpistemicTier::Verified,
+            EpistemicTier::Inferred,
+            EpistemicTier::Assumed,
+        ] {
             let json = serde_json::to_string(&tier).unwrap();
             let expected = format!("\"{}\"", tier.as_str());
             assert_eq!(json, expected);

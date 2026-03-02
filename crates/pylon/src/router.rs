@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::routing::{get, post};
 use axum::Router;
+use axum::routing::{get, post};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -20,10 +20,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/sessions/{id}",
             get(sessions::get_session).delete(sessions::close),
         )
-        .route(
-            "/api/sessions/{id}/messages",
-            post(sessions::send_message),
-        )
+        .route("/api/sessions/{id}/messages", post(sessions::send_message))
         .route("/api/sessions/{id}/history", get(sessions::history))
         .route("/api/nous", get(nous::list))
         .route("/api/nous/{id}", get(nous::get_status))

@@ -1,7 +1,7 @@
 //! Figment-based configuration loading with YAML cascade.
 
-use figment::providers::{Env, Format, Serialized, Yaml};
 use figment::Figment;
+use figment::providers::{Env, Format, Serialized, Yaml};
 use snafu::ResultExt;
 
 use crate::config::AletheiaConfig;
@@ -14,7 +14,10 @@ use crate::oikos::Oikos;
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
 /// 2. `{oikos.config()}/aletheia.yaml` (if it exists)
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
-#[expect(clippy::result_large_err, reason = "figment::Error is inherently large")]
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Error is inherently large"
+)]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     let yaml_path = oikos.config().join("aletheia.yaml");
 
@@ -51,8 +54,7 @@ mod tests {
     #[test]
     fn load_from_yaml_file() {
         figment::Jail::expect_with(|jail| {
-            std::fs::create_dir_all(jail.directory().join("config"))
-                .map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
             jail.create_file(
                 "config/aletheia.yaml",
                 "gateway:\n  port: 9999\nagents:\n  defaults:\n    contextTokens: 100000\n",
@@ -71,12 +73,8 @@ mod tests {
     #[test]
     fn env_overrides_yaml() {
         figment::Jail::expect_with(|jail| {
-            std::fs::create_dir_all(jail.directory().join("config"))
-                .map_err(|e| e.to_string())?;
-            jail.create_file(
-                "config/aletheia.yaml",
-                "gateway:\n  port: 9999\n",
-            )?;
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+            jail.create_file("config/aletheia.yaml", "gateway:\n  port: 9999\n")?;
             jail.set_env("ALETHEIA_GATEWAY__PORT", "7777");
 
             let oikos = Oikos::from_root(jail.directory());

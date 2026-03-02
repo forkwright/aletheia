@@ -20,21 +20,3 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-  verify-build:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: infrastructure/runtime/package-lock.json
-
-      - run: cd infrastructure/runtime && npm ci
-      - run: cd infrastructure/runtime && npm run typecheck
-      - run: cd infrastructure/runtime && npm run lint:check
-      - run: cd infrastructure/runtime && npm run build

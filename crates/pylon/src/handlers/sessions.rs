@@ -4,21 +4,23 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{info, instrument, warn};
 
 use aletheia_mneme::types::SessionStatus;
 use aletheia_nous::pipeline::TurnResult;
 
-use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu};
+use crate::error::{
+    ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu,
+};
 use crate::extract::Claims;
 use crate::state::AppState;
 use crate::stream::{SseEvent, UsageData};
@@ -33,8 +35,12 @@ pub async fn create(
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
-    let config = state.nous_manager.get_config(&nous_id)
-        .ok_or_else(|| NousNotFoundSnafu { id: nous_id.clone() }.build())?;
+    let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
+        NousNotFoundSnafu {
+            id: nous_id.clone(),
+        }
+        .build()
+    })?;
 
     let id = ulid::Ulid::new().to_string();
     let model = config.model.clone();
@@ -52,7 +58,10 @@ pub async fn create(
 
     info!(session_id = %session.id, nous_id, "session created");
 
-    Ok((StatusCode::CREATED, Json(SessionResponse::from_mneme(&session))))
+    Ok((
+        StatusCode::CREATED,
+        Json(SessionResponse::from_mneme(&session)),
+    ))
 }
 
 /// GET /api/sessions/{id} — get session state.
@@ -144,7 +153,14 @@ pub async fn send_message(
     }
 
     // Store the user message
-    store_message(&state, &session_id, aletheia_mneme::types::Role::User, &content, 0).await?;
+    store_message(
+        &state,
+        &session_id,
+        aletheia_mneme::types::Role::User,
+        &content,
+        0,
+    )
+    .await?;
 
     // Resolve the nous actor
     let nous_id = &session.nous_id;
@@ -161,7 +177,11 @@ pub async fn send_message(
 
     // Pre-flight: verify provider exists for the model
     if let Some(config) = state.nous_manager.get_config(nous_id) {
-        if state.provider_registry.find_provider(&config.model).is_none() {
+        if state
+            .provider_registry
+            .find_provider(&config.model)
+            .is_none()
+        {
             return Err(InternalSnafu {
                 message: format!("no provider for model {}", config.model),
             }
@@ -285,12 +305,7 @@ async fn find_session(
     })
     .await??;
 
-    session.ok_or_else(|| {
-        SessionNotFoundSnafu {
-            id: id_for_error,
-        }
-        .build()
-    })
+    session.ok_or_else(|| SessionNotFoundSnafu { id: id_for_error }.build())
 }
 
 // --- Request/Response types ---

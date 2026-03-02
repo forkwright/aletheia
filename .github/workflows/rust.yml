@@ -16,20 +16,44 @@ on:
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
 
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
-  test:
+  check:
+    name: Format + Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Test
-        run: cargo test --workspace
+      - name: Format
+        run: |
+          # Per-package — mneme-engine has vendored code rustfmt can't parse
+          for pkg in aletheia aletheia-agora aletheia-graph-builder \
+                     aletheia-hermeneus aletheia-integration-tests \
+                     aletheia-koina aletheia-melete aletheia-mneme \
+                     aletheia-nous aletheia-organon aletheia-pylon \
+                     aletheia-symbolon aletheia-taxis; do
+            cargo fmt -p "$pkg" -- --check
+          done
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --exclude aletheia-mneme-engine --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit + integration tests
+        run: cargo test --workspace
+      - name: Doc tests
+        run: cargo test --workspace --doc

@@ -18,8 +18,8 @@ pub mod types;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
-    use static_assertions::assert_impl_all;
     use super::store::SessionStore;
+    use static_assertions::assert_impl_all;
 
     assert_impl_all!(SessionStore: Send);
 }

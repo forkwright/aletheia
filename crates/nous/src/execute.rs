@@ -128,7 +128,10 @@ async fn dispatch_tools(
             Err(e) => (format!("Tool error: {e}"), true),
         };
 
-        debug!(tool = tool_name.as_str(), duration_ms, is_error, "tool executed");
+        debug!(
+            tool = tool_name.as_str(),
+            duration_ms, is_error, "tool executed"
+        );
 
         all_tool_calls.push(ToolCall {
             id: tool_id.clone(),
@@ -565,8 +568,7 @@ mod tests {
     #[tokio::test]
     async fn loop_detection_triggers() {
         let mut providers = ProviderRegistry::new();
-        let response =
-            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
+        let response = make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
         providers.register(Box::new(MockProvider::with_responses(vec![
             response.clone(),
             response.clone(),
@@ -595,9 +597,7 @@ mod tests {
     async fn max_iterations_respected() {
         let mut providers = ProviderRegistry::new();
         let responses: Vec<CompletionResponse> = (0..10)
-            .map(|i| {
-                make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i}))
-            })
+            .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
             .collect();
         providers.register(Box::new(MockProvider::with_responses(responses)));
 

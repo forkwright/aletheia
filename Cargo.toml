@@ -17,6 +17,7 @@ members = [
     "crates/taxis",
 ]
 exclude = [
+    "tui",
     "crates/mneme-bench",
 ]
 

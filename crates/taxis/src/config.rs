@@ -198,7 +198,10 @@ impl Default for SignalConfig {
 }
 
 /// Configuration for a single Signal account.
-#[expect(clippy::struct_excessive_bools, reason = "mirrors TS config schema 1:1")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "mirrors TS config schema 1:1"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

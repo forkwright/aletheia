@@ -41,8 +41,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 fn mem0_search_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("mem0_search").expect("valid tool name"),
-        description: "Search long-term memory for facts, preferences, and relationships"
-            .to_owned(),
+        description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -213,7 +212,11 @@ mod tests {
         };
         let result = reg.execute(&input, &test_ctx()).await.expect("execute");
         assert!(!result.is_error);
-        assert!(result.content.contains("stub"), "expected stub response: {}", result.content);
+        assert!(
+            result.content.contains("stub"),
+            "expected stub response: {}",
+            result.content
+        );
     }
 
     #[tokio::test]

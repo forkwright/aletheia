@@ -134,11 +134,7 @@ impl LoopDetector {
         let all_same = recent.clone().count() >= self.threshold as usize
             && recent.clone().all(|s| *s == signature);
 
-        if all_same {
-            Some(signature)
-        } else {
-            None
-        }
+        if all_same { Some(signature) } else { None }
     }
 
     /// Reset the detector (e.g. on new turn).
@@ -256,7 +252,10 @@ pub fn assemble_context(
     let result = assembler.assemble(&nous_config.id, &mut budget)?;
 
     ctx.system_prompt = Some(result.system_prompt);
-    #[expect(clippy::cast_possible_wrap, reason = "budget fits in i64 for practical context windows")]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "budget fits in i64 for practical context windows"
+    )]
     {
         ctx.remaining_tokens = budget.remaining() as i64;
         ctx.history_budget = budget.history_budget() as i64;
@@ -277,7 +276,14 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
 ///
 /// Stages: context → recall → history → guard → execute → finalize.
 /// Resolve (stage 4) is future work.
-#[expect(clippy::too_many_arguments, reason = "pipeline threading requires all dependencies until config struct refactor")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "pipeline threading requires all dependencies until config struct refactor"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "pipeline orchestrator — sequential stages are clearer inline"
+)]
 #[instrument(skip_all, fields(nous_id = %config.id))]
 pub async fn run_pipeline(
     input: PipelineInput,
@@ -299,7 +305,10 @@ pub async fn run_pipeline(
     if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_config = crate::recall::RecallConfig::default();
         let recall_stage = crate::recall::RecallStage::new(recall_config);
-        #[expect(clippy::cast_sign_loss, reason = "remaining_tokens is positive after context assembly")]
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "remaining_tokens is positive after context assembly"
+        )]
         let budget = ctx.remaining_tokens.max(0) as u64;
         match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
             Ok(recall_result) => {
@@ -309,7 +318,9 @@ pub async fn run_pipeline(
                         prompt.push_str(section);
                     }
                     #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
-                    { ctx.remaining_tokens -= recall_result.tokens_consumed as i64; }
+                    {
+                        ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                    }
                 }
                 ctx.recall_result = Some(recall_result);
             }
@@ -377,7 +388,13 @@ pub async fn run_pipeline(
     if let Some(store_mutex) = session_store {
         let store = store_mutex.lock().expect("session store lock");
         let finalize_config = crate::finalize::FinalizeConfig::default();
-        match crate::finalize::finalize(&store, &input.session, &input.content, &result, &finalize_config) {
+        match crate::finalize::finalize(
+            &store,
+            &input.session,
+            &input.content,
+            &result,
+            &finalize_config,
+        ) {
             Ok(fr) => {
                 debug!(
                     messages = fr.messages_persisted,
@@ -503,7 +520,9 @@ mod tests {
 
     #[test]
     fn guard_result_rate_limited() {
-        let g = GuardResult::RateLimited { retry_after_ms: 5000 };
+        let g = GuardResult::RateLimited {
+            retry_after_ms: 5000,
+        };
         assert_ne!(g, GuardResult::Allow);
         match g {
             GuardResult::RateLimited { retry_after_ms } => assert_eq!(retry_after_ms, 5000),
@@ -513,7 +532,9 @@ mod tests {
 
     #[test]
     fn guard_result_loop_detected() {
-        let g = GuardResult::LoopDetected { pattern: "exec:abc".to_owned() };
+        let g = GuardResult::LoopDetected {
+            pattern: "exec:abc".to_owned(),
+        };
         match g {
             GuardResult::LoopDetected { pattern } => assert_eq!(pattern, "exec:abc"),
             _ => panic!("wrong variant"),
@@ -522,7 +543,9 @@ mod tests {
 
     #[test]
     fn guard_result_rejected() {
-        let g = GuardResult::Rejected { reason: "unsafe content".to_owned() };
+        let g = GuardResult::Rejected {
+            reason: "unsafe content".to_owned(),
+        };
         match g {
             GuardResult::Rejected { reason } => assert!(reason.contains("unsafe")),
             _ => panic!("wrong variant"),
@@ -710,7 +733,11 @@ mod tests {
             allowed_roots: vec![PathBuf::from("/tmp")],
         };
 
-        let session = crate::session::SessionState::new("test-session".to_owned(), "main".to_owned(), &nous_config);
+        let session = crate::session::SessionState::new(
+            "test-session".to_owned(),
+            "main".to_owned(),
+            &nous_config,
+        );
         let input = PipelineInput {
             content: "Hello".to_owned(),
             session,

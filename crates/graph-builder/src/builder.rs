@@ -1,11 +1,11 @@
 use std::{convert::TryFrom, marker::PhantomData};
 
 use crate::{
+    Error,
     graph::csr::{CsrLayout, NodeValues},
     index::Idx,
-    input::{edgelist::EdgeList, InputCapabilities, InputPath},
+    input::{InputCapabilities, InputPath, edgelist::EdgeList},
     prelude::edgelist::{EdgeIterator, EdgeWithValueIterator},
-    Error,
 };
 use std::path::Path as StdPath;
 

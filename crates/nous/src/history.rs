@@ -252,8 +252,7 @@ mod tests {
         append(&store, Role::Assistant, "fourth", 50);
 
         let config = HistoryConfig::default();
-        let (messages, _) =
-            load_history(&store, "ses-1", 100_000, &config, "fifth").expect("load");
+        let (messages, _) = load_history(&store, "ses-1", 100_000, &config, "fifth").expect("load");
 
         assert_eq!(messages[0].content, "first");
         assert_eq!(messages[1].content, "second");
@@ -275,8 +274,7 @@ mod tests {
         };
 
         // Tight budget: only fits a few of 10 messages
-        let (_, result) =
-            load_history(&store, "ses-1", 500, &config, "current").expect("load");
+        let (_, result) = load_history(&store, "ses-1", 500, &config, "current").expect("load");
 
         assert!(result.truncated);
         assert!(result.messages_loaded < 10);

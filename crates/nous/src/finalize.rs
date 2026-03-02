@@ -62,7 +62,14 @@ pub fn finalize(
         #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
         let input_token_estimate = input_content.len() as i64 / 4;
         store
-            .append_message(&session.id, Role::User, input_content, None, None, input_token_estimate)
+            .append_message(
+                &session.id,
+                Role::User,
+                input_content,
+                None,
+                None,
+                input_token_estimate,
+            )
             .context(error::StoreSnafu)?;
         messages_persisted += 1;
 
@@ -98,7 +105,14 @@ pub fn finalize(
         // Assistant response
         let output_tokens = i64::try_from(result.usage.output_tokens).unwrap_or(0);
         store
-            .append_message(&session.id, Role::Assistant, &result.content, None, None, output_tokens)
+            .append_message(
+                &session.id,
+                Role::Assistant,
+                &result.content,
+                None,
+                None,
+                output_tokens,
+            )
             .context(error::StoreSnafu)?;
         messages_persisted += 1;
     }

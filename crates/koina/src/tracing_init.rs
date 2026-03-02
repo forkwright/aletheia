@@ -3,7 +3,7 @@
 //! Sets up structured logging via `tracing-subscriber`. Supports JSON output
 //! for production and human-readable output for development.
 
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// Initialize tracing with sensible defaults.
 ///
@@ -13,9 +13,8 @@ use tracing_subscriber::{fmt, EnvFilter};
 /// # Panics
 /// Panics if the subscriber cannot be set (should only happen if called twice).
 pub fn init() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("aletheia=info,warn")
-    });
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));
 
     fmt()
         .with_env_filter(filter)
@@ -31,9 +30,8 @@ pub fn init() {
 /// # Panics
 /// Panics if the subscriber cannot be set.
 pub fn init_json() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("aletheia=info,warn")
-    });
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));
 
     fmt()
         .with_env_filter(filter)

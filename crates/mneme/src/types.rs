@@ -159,14 +159,17 @@ pub struct AgentNote {
     pub created_at: String,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn session_status_serde_roundtrip() {
-        for status in [SessionStatus::Active, SessionStatus::Archived, SessionStatus::Distilled] {
+        for status in [
+            SessionStatus::Active,
+            SessionStatus::Archived,
+            SessionStatus::Distilled,
+        ] {
             let json = serde_json::to_string(&status).unwrap();
             let back: SessionStatus = serde_json::from_str(&json).unwrap();
             assert_eq!(status, back);
@@ -175,7 +178,11 @@ mod tests {
 
     #[test]
     fn session_type_serde_roundtrip() {
-        for stype in [SessionType::Primary, SessionType::Background, SessionType::Ephemeral] {
+        for stype in [
+            SessionType::Primary,
+            SessionType::Background,
+            SessionType::Ephemeral,
+        ] {
             let json = serde_json::to_string(&stype).unwrap();
             let back: SessionType = serde_json::from_str(&json).unwrap();
             assert_eq!(stype, back);
@@ -194,11 +201,23 @@ mod tests {
     #[test]
     fn session_type_from_key() {
         assert_eq!(SessionType::from_key("main"), SessionType::Primary);
-        assert_eq!(SessionType::from_key("prosoche-wake"), SessionType::Background);
-        assert_eq!(SessionType::from_key("ask:demiurge"), SessionType::Ephemeral);
+        assert_eq!(
+            SessionType::from_key("prosoche-wake"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key("ask:demiurge"),
+            SessionType::Ephemeral
+        );
         assert_eq!(SessionType::from_key("spawn:coder"), SessionType::Ephemeral);
-        assert_eq!(SessionType::from_key("dispatch:task"), SessionType::Ephemeral);
-        assert_eq!(SessionType::from_key("ephemeral:one-off"), SessionType::Ephemeral);
+        assert_eq!(
+            SessionType::from_key("dispatch:task"),
+            SessionType::Ephemeral
+        );
+        assert_eq!(
+            SessionType::from_key("ephemeral:one-off"),
+            SessionType::Ephemeral
+        );
         assert_eq!(SessionType::from_key("signal-group"), SessionType::Primary);
     }
 

@@ -147,7 +147,7 @@ pub mod queries {
     ";
 
     /// Supersede a fact (close old, insert new).
-    #[allow(clippy::needless_raw_string_hashes)]  // contains inner quotes
+    #[allow(clippy::needless_raw_string_hashes)] // contains inner quotes
     pub const SUPERSEDE_FACT: &str = r#"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
           superseded_by, source_session_id, recorded_at] <- [
@@ -295,9 +295,16 @@ impl KnowledgeStore {
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
-        let db = aletheia_mneme_engine::Db::open_mem()
-            .map_err(|e| crate::error::EngineInitSnafu { message: e.to_string() }.build())?;
-        let store = Self { db: std::sync::Arc::new(db), dim: config.dim };
+        let db = aletheia_mneme_engine::Db::open_mem().map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        let store = Self {
+            db: std::sync::Arc::new(db),
+            dim: config.dim,
+        };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))
     }
@@ -309,23 +316,43 @@ impl KnowledgeStore {
         for ddl in KNOWLEDGE_DDL {
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
-                .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
         }
 
         let emb_ddl = embeddings_ddl(self.dim);
         self.db
             .run(&emb_ddl, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         let hnsw = hnsw_ddl(self.dim);
         self.db
             .run(&hnsw, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         let fts = fts_ddl();
         self.db
             .run(fts, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
         // relations only in temp_store_tx which does not persist across run() calls).
@@ -335,7 +362,12 @@ impl KnowledgeStore {
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         // Insert initial version
         let mut params = BTreeMap::new();
@@ -353,7 +385,12 @@ impl KnowledgeStore {
                 params,
                 ScriptMutability::Mutable,
             )
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         Ok(())
     }
@@ -467,10 +504,7 @@ impl KnowledgeStore {
 
         let mut params = BTreeMap::new();
         params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        let rows = self.run_read(
-            r"?[version] := *schema_version{key: $key, version}",
-            params,
-        )?;
+        let rows = self.run_read(r"?[version] := *schema_version{key: $key, version}", params)?;
         let row = rows.rows.into_iter().next().ok_or_else(|| {
             crate::error::EngineQuerySnafu {
                 message: "schema version record missing",
@@ -537,22 +571,27 @@ impl KnowledgeStore {
         use aletheia_mneme_engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
     ///
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
-    pub fn search_hybrid(
-        &self,
-        q: &HybridQuery,
-    ) -> crate::error::Result<Vec<HybridResult>> {
+    pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use aletheia_mneme_engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("query_text".to_owned(), DataValue::Str(q.text.as_str().into()));
+        params.insert(
+            "query_text".to_owned(),
+            DataValue::Str(q.text.as_str().into()),
+        );
         params.insert(
             "query_vec".to_owned(),
             DataValue::Vec(Vector::F32(Array1::from(q.embedding.clone()))),
@@ -634,7 +673,12 @@ impl KnowledgeStore {
         self.db
             .run(script, params, ScriptMutability::Mutable)
             .map(|_| ())
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 
     fn run_read(
@@ -645,7 +689,12 @@ impl KnowledgeStore {
         use aletheia_mneme_engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Immutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 }
 
@@ -684,14 +733,8 @@ fn fact_to_params(
         "nous_id".to_owned(),
         DataValue::Str(fact.nous_id.as_str().into()),
     );
-    p.insert(
-        "confidence".to_owned(),
-        DataValue::from(fact.confidence),
-    );
-    p.insert(
-        "tier".to_owned(),
-        DataValue::Str(fact.tier.as_str().into()),
-    );
+    p.insert("confidence".to_owned(), DataValue::from(fact.confidence));
+    p.insert("tier".to_owned(), DataValue::Str(fact.tier.as_str().into()));
     p.insert(
         "valid_to".to_owned(),
         DataValue::Str(fact.valid_to.as_str().into()),
@@ -1059,11 +1102,21 @@ fn rows_to_hybrid_results(
             }
             .build()
         })?)?);
-        out.push(HybridResult { id, rrf_score, bm25_rank, vec_rank, graph_rank });
+        out.push(HybridResult {
+            id,
+            rrf_score,
+            bm25_rank,
+            vec_rank,
+            graph_rank,
+        });
     }
     // Sort by rrf_score descending (RRF output is unordered since it comes through :order in Datalog,
     // but :order is applied by the engine — this is a safety sort for correctness)
-    out.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.rrf_score
+            .partial_cmp(&a.rrf_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(out)
 }
 
@@ -1136,8 +1189,8 @@ fn parse_epistemic_tier(s: &str) -> crate::error::Result<crate::knowledge::Epist
 
 #[cfg(all(test, feature = "mneme-engine"))]
 mod engine_assertions {
-    use static_assertions::assert_impl_all;
     use super::KnowledgeStore;
+    use static_assertions::assert_impl_all;
     assert_impl_all!(KnowledgeStore: Send, Sync);
 }
 
@@ -1149,8 +1202,8 @@ mod timeout_tests {
 
     #[test]
     fn query_timeout_returns_typed_error() {
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-            .expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
         // Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
         // fixpoint epochs. Each epoch checks the Poison flag. With N=2000 and timeout=50ms
@@ -1178,14 +1231,10 @@ reach[a, c] := reach[a, b], edge[b, c]
 
     #[test]
     fn query_without_timeout_succeeds() {
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-            .expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
-        let result = store.run_query_with_timeout(
-            "?[x] := x = 42",
-            BTreeMap::new(),
-            None,
-        );
+        let result = store.run_query_with_timeout("?[x] := x = 42", BTreeMap::new(), None);
 
         assert!(result.is_ok(), "query without timeout should succeed");
         let rows = result.unwrap();
@@ -1234,7 +1283,10 @@ mod tests {
             ef: 20,
         };
         let script = build_hybrid_query(&q);
-        assert!(script.contains("graph[id, score] <- []"), "empty seeds must produce empty graph relation");
+        assert!(
+            script.contains("graph[id, score] <- []"),
+            "empty seeds must produce empty graph relation"
+        );
         assert!(script.contains("ReciprocalRankFusion"));
     }
 
@@ -1249,12 +1301,21 @@ mod tests {
             ef: 20,
         };
         let script = build_hybrid_query(&q);
-        assert!(script.contains("seed_list"), "non-empty seeds must produce seed_list relation");
+        assert!(
+            script.contains("seed_list"),
+            "non-empty seeds must produce seed_list relation"
+        );
         assert!(script.contains("e-rust"));
         assert!(script.contains("e-python"));
         assert!(script.contains("*relationships"));
-        assert!(script.contains("graph_raw"), "must use graph_raw intermediate for aggregation");
-        assert!(script.contains("sum(score)"), "must aggregate scores per entity");
+        assert!(
+            script.contains("graph_raw"),
+            "must use graph_raw intermediate for aggregation"
+        );
+        assert!(
+            script.contains("sum(score)"),
+            "must aggregate scores per entity"
+        );
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -1263,7 +1324,8 @@ mod tests {
         use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
 
         let dim = 4;
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
         let fact = Fact {
             id: "f1".to_owned(),
@@ -1300,9 +1362,15 @@ mod tests {
             })
             .expect("hybrid search with empty seeds");
 
-        assert!(!results.is_empty(), "empty seeds must still return BM25+vec results");
+        assert!(
+            !results.is_empty(),
+            "empty seeds must still return BM25+vec results"
+        );
         for r in &results {
-            assert_eq!(r.graph_rank, -1, "graph_rank must be -1 when seeds are empty");
+            assert_eq!(
+                r.graph_rank, -1,
+                "graph_rank must be -1 when seeds are empty"
+            );
         }
     }
 
@@ -1312,7 +1380,8 @@ mod tests {
         use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
 
         let dim = 4;
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
         let fact = Fact {
             id: "f1".to_owned(),
@@ -1374,8 +1443,15 @@ mod tests {
 
         // f1 must appear exactly once (aggregated, not duplicated)
         let f1_hits: Vec<_> = results.iter().filter(|r| r.id == "f1").collect();
-        assert_eq!(f1_hits.len(), 1, "entity reachable via multiple paths must appear once");
-        assert!(f1_hits[0].graph_rank > 0, "f1 must have a positive graph rank");
+        assert_eq!(
+            f1_hits.len(),
+            1,
+            "entity reachable via multiple paths must appear once"
+        );
+        assert!(
+            f1_hits[0].graph_rank > 0,
+            "f1 must have a positive graph rank"
+        );
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -1384,7 +1460,8 @@ mod tests {
         use crate::knowledge::{EpistemicTier, Fact};
 
         let dim = 4;
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
         // Insert a fact but no embedding and no graph edges
         let fact = Fact {

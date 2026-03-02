@@ -16,9 +16,7 @@ pub enum NousMessage {
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Query current lifecycle state.
-    Status {
-        reply: oneshot::Sender<NousStatus>,
-    },
+    Status { reply: oneshot::Sender<NousStatus> },
     /// Transition to dormant (sleep).
     Sleep,
     /// Wake from dormant.

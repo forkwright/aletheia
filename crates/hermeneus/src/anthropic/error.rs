@@ -90,7 +90,13 @@ mod tests {
         };
         let err = map_sse_error(detail);
         assert!(
-            matches!(err, Error::RateLimited { retry_after_ms: 1000, .. }),
+            matches!(
+                err,
+                Error::RateLimited {
+                    retry_after_ms: 1000,
+                    ..
+                }
+            ),
             "expected RateLimited, got: {err:?}"
         );
     }

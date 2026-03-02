@@ -78,7 +78,12 @@ impl SessionManager {
     /// Create a new session state.
     #[instrument(skip(self))]
     pub fn create_session(&self, id: &str, session_key: &str) -> SessionState {
-        info!(id, session_key, nous_id = self.config.id, "creating session");
+        info!(
+            id,
+            session_key,
+            nous_id = self.config.id,
+            "creating session"
+        );
         SessionState::new(id.to_owned(), session_key.to_owned(), &self.config)
     }
 

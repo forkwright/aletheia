@@ -5,9 +5,7 @@ use std::io::BufRead;
 use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
-use super::wire::{
-    WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage,
-};
+use super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
 
 /// Event emitted during streaming completion.
 #[derive(Debug, Clone)]
@@ -130,8 +128,7 @@ impl StreamAccumulator {
                         }
                         WireDelta::InputJsonDelta { partial_json } => {
                             if let BlockBuilder::ToolUse {
-                                ref mut input_json,
-                                ..
+                                ref mut input_json, ..
                             } = self.blocks[idx]
                             {
                                 input_json.push_str(&partial_json);
@@ -228,13 +225,12 @@ pub(crate) fn parse_sse_stream(
         if line.is_empty() {
             // Empty line = end of event. Dispatch if we have data.
             if !current_data.is_empty() && current_event_type != "ping" {
-                let event: WireStreamEvent = serde_json::from_str(&current_data)
-                    .map_err(|e| {
-                        error::ApiRequestSnafu {
-                            message: format!("stream parse error: {e}"),
-                        }
-                        .build()
-                    })?;
+                let event: WireStreamEvent = serde_json::from_str(&current_data).map_err(|e| {
+                    error::ApiRequestSnafu {
+                        message: format!("stream parse error: {e}"),
+                    }
+                    .build()
+                })?;
                 accumulator.process_event(event, on_event)?;
             }
             current_event_type.clear();
@@ -311,8 +307,16 @@ data: {\"type\":\"message_stop\"}\n\
 
         let (events, response) = collect_events(sse);
 
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello")));
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::TextDelta { text } if text == " world")));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello"))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == " world"))
+        );
         assert_eq!(response.id, "msg_1");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
         assert_eq!(response.content.len(), 1);
@@ -477,7 +481,10 @@ data: this is not valid json\n\
         let reader = std::io::Cursor::new(sse);
         let mut acc = StreamAccumulator::new();
         let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
-        assert!(result.is_err(), "malformed JSON data should produce an error");
+        assert!(
+            result.is_err(),
+            "malformed JSON data should produce an error"
+        );
     }
 
     #[test]
@@ -506,4 +513,3 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"messag
         assert!(response.content.is_empty());
     }
 }
-

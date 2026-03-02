@@ -66,13 +66,14 @@ impl JwtManager {
 
     /// Issue an access token.
     #[instrument(skip(self), fields(kind = "access"))]
-    pub fn issue_access(
-        &self,
-        sub: &str,
-        role: Role,
-        nous_id: Option<&str>,
-    ) -> Result<String> {
-        self.issue(sub, role, nous_id, TokenKind::Access, self.config.access_ttl)
+    pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
+        self.issue(
+            sub,
+            role,
+            nous_id,
+            TokenKind::Access,
+            self.config.access_ttl,
+        )
     }
 
     /// Issue a refresh token.
@@ -172,9 +173,7 @@ mod tests {
     #[test]
     fn issue_and_validate_access_token() {
         let mgr = test_manager();
-        let token = mgr
-            .issue_access("user-1", Role::Operator, None)
-            .unwrap();
+        let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let claims = mgr.validate(&token).unwrap();
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.role, Role::Operator);
@@ -210,9 +209,7 @@ mod tests {
             ..JwtConfig::default()
         });
 
-        let token = mgr1
-            .issue_access("user-1", Role::Operator, None)
-            .unwrap();
+        let token = mgr1.issue_access("user-1", Role::Operator, None).unwrap();
         assert!(mgr2.validate(&token).is_err());
     }
 
@@ -259,9 +256,7 @@ mod tests {
     #[test]
     fn refresh_with_access_token_rejected() {
         let mgr = test_manager();
-        let access = mgr
-            .issue_access("user-1", Role::Operator, None)
-            .unwrap();
+        let access = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let result = mgr.refresh(&access);
         assert!(result.is_err());
     }
@@ -269,12 +264,8 @@ mod tests {
     #[test]
     fn claims_jti_is_unique() {
         let mgr = test_manager();
-        let t1 = mgr
-            .issue_access("user-1", Role::Operator, None)
-            .unwrap();
-        let t2 = mgr
-            .issue_access("user-1", Role::Operator, None)
-            .unwrap();
+        let t1 = mgr.issue_access("user-1", Role::Operator, None).unwrap();
+        let t2 = mgr.issue_access("user-1", Role::Operator, None).unwrap();
         let c1 = mgr.validate(&t1).unwrap();
         let c2 = mgr.validate(&t2).unwrap();
         assert_ne!(c1.jti, c2.jti);

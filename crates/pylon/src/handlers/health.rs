@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Serialize;
 
 use crate::state::AppState;
@@ -15,9 +15,10 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let mut checks = Vec::new();
 
     // Check session store connectivity
-    let store_ok = state.session_store.lock().is_ok_and(|store| {
-        store.list_sessions(None).is_ok()
-    });
+    let store_ok = state
+        .session_store
+        .lock()
+        .is_ok_and(|store| store.list_sessions(None).is_ok());
     checks.push(HealthCheck {
         name: "session_store",
         status: if store_ok { "pass" } else { "fail" },

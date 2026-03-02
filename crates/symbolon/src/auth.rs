@@ -6,12 +6,12 @@ use std::time::Duration;
 use secrecy::SecretString;
 use tracing::instrument;
 
+use crate::api_key;
 use crate::error::{self, Result};
 use crate::jwt::{JwtConfig, JwtManager};
 use crate::password;
 use crate::store::AuthStore;
 use crate::types::{Action, ApiKeyRecord, Claims, Role, TokenKind, TokenPair};
-use crate::{api_key};
 
 /// Configuration for the auth service.
 #[derive(Default)]
@@ -187,10 +187,7 @@ fn is_authorized(claims: &Claims, action: &Action) -> bool {
         Role::Operator => true,
         Role::Agent => match action {
             Action::ReadSession { nous_id } | Action::WriteSession { nous_id } => {
-                claims
-                    .nous_id
-                    .as_ref()
-                    .is_some_and(|own| own == nous_id)
+                claims.nous_id.as_ref().is_some_and(|own| own == nous_id)
             }
             Action::ReadDashboard => true,
             Action::ManageAgents | Action::ManageUsers => false,
@@ -214,7 +211,8 @@ fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
     let z = days_since_epoch + 719_468;
     let era = z / 146_097;
     let day_of_era = z - era * 146_097;
-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146_096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146_096) / 365;
     let y = year_of_era + era * 400;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let mp = (5 * day_of_year + 2) / 153;
@@ -350,8 +348,20 @@ mod tests {
         };
 
         let svc = test_service();
-        svc.authorize(&claims, &Action::ReadSession { nous_id: "syn".to_owned() }).unwrap();
-        svc.authorize(&claims, &Action::WriteSession { nous_id: "syn".to_owned() }).unwrap();
+        svc.authorize(
+            &claims,
+            &Action::ReadSession {
+                nous_id: "syn".to_owned(),
+            },
+        )
+        .unwrap();
+        svc.authorize(
+            &claims,
+            &Action::WriteSession {
+                nous_id: "syn".to_owned(),
+            },
+        )
+        .unwrap();
         svc.authorize(&claims, &Action::ManageAgents).unwrap();
         svc.authorize(&claims, &Action::ManageUsers).unwrap();
         svc.authorize(&claims, &Action::ReadDashboard).unwrap();
@@ -373,12 +383,40 @@ mod tests {
         let svc = test_service();
 
         // Can access own sessions
-        svc.authorize(&claims, &Action::ReadSession { nous_id: "syn".to_owned() }).unwrap();
-        svc.authorize(&claims, &Action::WriteSession { nous_id: "syn".to_owned() }).unwrap();
+        svc.authorize(
+            &claims,
+            &Action::ReadSession {
+                nous_id: "syn".to_owned(),
+            },
+        )
+        .unwrap();
+        svc.authorize(
+            &claims,
+            &Action::WriteSession {
+                nous_id: "syn".to_owned(),
+            },
+        )
+        .unwrap();
 
         // Cannot access other agent's sessions
-        assert!(svc.authorize(&claims, &Action::ReadSession { nous_id: "demiurge".to_owned() }).is_err());
-        assert!(svc.authorize(&claims, &Action::WriteSession { nous_id: "demiurge".to_owned() }).is_err());
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::ReadSession {
+                    nous_id: "demiurge".to_owned()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::WriteSession {
+                    nous_id: "demiurge".to_owned()
+                }
+            )
+            .is_err()
+        );
 
         // Cannot manage
         assert!(svc.authorize(&claims, &Action::ManageAgents).is_err());
@@ -405,8 +443,24 @@ mod tests {
 
         svc.authorize(&claims, &Action::ReadDashboard).unwrap();
 
-        assert!(svc.authorize(&claims, &Action::ReadSession { nous_id: "syn".to_owned() }).is_err());
-        assert!(svc.authorize(&claims, &Action::WriteSession { nous_id: "syn".to_owned() }).is_err());
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::ReadSession {
+                    nous_id: "syn".to_owned()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::WriteSession {
+                    nous_id: "syn".to_owned()
+                }
+            )
+            .is_err()
+        );
         assert!(svc.authorize(&claims, &Action::ManageAgents).is_err());
         assert!(svc.authorize(&claims, &Action::ManageUsers).is_err());
     }
@@ -425,7 +479,15 @@ mod tests {
         };
 
         let svc = test_service();
-        assert!(svc.authorize(&claims, &Action::ReadSession { nous_id: "syn".to_owned() }).is_err());
+        assert!(
+            svc.authorize(
+                &claims,
+                &Action::ReadSession {
+                    nous_id: "syn".to_owned()
+                }
+            )
+            .is_err()
+        );
     }
 
     // --- SQL injection safety ---

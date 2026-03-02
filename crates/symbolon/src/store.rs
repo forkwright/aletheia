@@ -117,14 +117,13 @@ impl AuthStore {
             })?;
 
         info!(id, username, %role, "created user");
-        self.find_user_by_username(username)?
-            .ok_or_else(|| {
-                error::NotFoundSnafu {
-                    entity: "user".to_owned(),
-                    id: username.to_owned(),
-                }
-                .build()
-            })
+        self.find_user_by_username(username)?.ok_or_else(|| {
+            error::NotFoundSnafu {
+                entity: "user".to_owned(),
+                id: username.to_owned(),
+            }
+            .build()
+        })
     }
 
     /// Find a user by username.

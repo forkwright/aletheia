@@ -6,67 +6,58 @@ on:
   workflow_dispatch:
 
 jobs:
-  full-suite:
+  # --- Rust full suite (all features, all targets) ---
+  rust-full:
     runs-on: ubuntu-latest
-    env:
-      VITEST_MAX_FORKS: 4
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: infrastructure/runtime/package-lock.json
-      - run: cd infrastructure/runtime && npm ci
-      - name: Install system tools
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -yqq ripgrep fd-find
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - name: Full tests with coverage
-        run: cd infrastructure/runtime && npm run test:coverage
-      - name: Integration tests
-        run: cd infrastructure/runtime && npm run test:integration
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: nightly-coverage
-          path: infrastructure/runtime/coverage/
-          retention-days: 30
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
 
-  dead-code:
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy (all features)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test (default features)
+        run: cargo test --workspace
+
+      - name: Test (all features)
+        run: cargo test --workspace --all-features
+
+      - name: Audit dependencies
+        run: |
+          cargo install cargo-audit --locked 2>/dev/null || true
+          cargo audit
+
+  # --- UI build verification ---
+  ui:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: infrastructure/runtime/package-lock.json
-      - run: cd infrastructure/runtime && npm ci
-      - name: Detect unused exports
-        run: |
-          cd infrastructure/runtime
-          npx knip --reporter json > dead-code.json 2>&1 || true
-          node -e "
-            const fs = require('fs');
-            try {
-              const report = JSON.parse(fs.readFileSync('dead-code.json', 'utf8'));
-              const files = report.files?.length || 0;
-              const exports = report.exports?.length || 0;
-              console.log('Dead code — unused files: ' + files + ', exports: ' + exports);
-              if (files > 10) {
-                console.error('::error::' + files + ' unused files detected — exceeds threshold of 10');
-                process.exit(1);
-              }
-              if (exports > 25) {
-                console.error('::error::' + exports + ' unused exports detected — exceeds threshold of 25');
-                process.exit(1);
-              }
-            } catch { console.log('No dead code report generated'); }
-          "
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - run: cd ui && npm ci
+      - run: cd ui && npm run typecheck
+      - run: cd ui && npm run build
+
+  # --- Sidecar lint ---
+  sidecar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          name: nightly-dead-code
-          path: infrastructure/runtime/dead-code.json
-          retention-days: 30
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: infrastructure/memory/sidecar/pyproject.toml
+      - run: |
+          cd infrastructure/memory/sidecar
+          pip install -e ".[dev]" 2>/dev/null || pip install -e .
+          pip install ruff pyright
+      - run: cd infrastructure/memory/sidecar && ruff check .
+      - run: cd infrastructure/memory/sidecar && pyright

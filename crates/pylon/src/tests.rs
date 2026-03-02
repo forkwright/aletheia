@@ -47,7 +47,10 @@ impl MockProvider {
 }
 
 impl LlmProvider for MockProvider {
-    fn complete(&self, _request: &CompletionRequest) -> aletheia_hermeneus::error::Result<CompletionResponse> {
+    fn complete(
+        &self,
+        _request: &CompletionRequest,
+    ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
         Ok(self.response.clone())
     }
 
@@ -92,7 +95,8 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
-    std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.").expect("write SOUL.md");
+    std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
+        .expect("write SOUL.md");
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
     let oikos = Arc::new(Oikos::from_root(root));
@@ -118,7 +122,9 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         model: "mock-model".to_owned(),
         ..NousConfig::default()
     };
-    nous_manager.spawn(nous_config, PipelineConfig::default()).await;
+    nous_manager
+        .spawn(nous_config, PipelineConfig::default())
+        .await;
 
     let jwt_manager = test_jwt_manager();
 
@@ -572,9 +578,18 @@ async fn send_message_stream_contains_events() {
     let resp = router.clone().oneshot(req).await.unwrap();
     let body = body_string(resp).await;
 
-    assert!(body.contains("event: text_delta"), "should contain text_delta event");
-    assert!(body.contains("Hello from mock!"), "should contain mock response text");
-    assert!(body.contains("event: message_complete"), "should contain message_complete event");
+    assert!(
+        body.contains("event: text_delta"),
+        "should contain text_delta event"
+    );
+    assert!(
+        body.contains("Hello from mock!"),
+        "should contain mock response text"
+    );
+    assert!(
+        body.contains("event: message_complete"),
+        "should contain message_complete event"
+    );
 }
 
 #[tokio::test]
@@ -697,10 +712,7 @@ async fn malformed_send_body_returns_error() {
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(authed_get("/api/nous"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/api/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -712,10 +724,7 @@ async fn list_nous_returns_agents() {
 #[tokio::test]
 async fn get_nous_status() {
     let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(authed_get("/api/nous/syn"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/api/nous/syn")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -818,8 +827,14 @@ async fn send_message_routes_through_actor() {
     let body = body_string(resp).await;
 
     assert!(body.contains("event: text_delta"), "should have text_delta");
-    assert!(body.contains("Hello from mock!"), "should contain mock response");
-    assert!(body.contains("event: message_complete"), "should have message_complete");
+    assert!(
+        body.contains("Hello from mock!"),
+        "should contain mock response"
+    );
+    assert!(
+        body.contains("event: message_complete"),
+        "should have message_complete"
+    );
     assert!(body.contains("end_turn"), "stop_reason should be end_turn");
 }
 
@@ -828,10 +843,7 @@ async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state));
 
-    let resp = router
-        .oneshot(authed_get("/api/nous"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(authed_get("/api/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;

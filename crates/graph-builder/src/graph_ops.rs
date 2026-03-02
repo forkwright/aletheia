@@ -1,8 +1,8 @@
 use log::info;
 use rayon::prelude::*;
 
-use crate::graph::csr::{prefix_sum, Csr, SwapCsr};
 use crate::graph::Target;
+use crate::graph::csr::{Csr, SwapCsr, prefix_sum};
 use crate::index::Idx;
 use crate::{
     CsrLayout, DirectedDegrees, DirectedNeighborsWithValues, Error, Graph, SharedMut,
@@ -642,8 +642,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        builder::GraphBuilder, graph::csr::UndirectedCsrGraph, graph_ops::unzip_degrees_and_nodes,
-        UndirectedNeighbors,
+        UndirectedNeighbors, builder::GraphBuilder, graph::csr::UndirectedCsrGraph,
+        graph_ops::unzip_degrees_and_nodes,
     };
 
     use super::*;

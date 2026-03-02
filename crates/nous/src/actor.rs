@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use aletheia_mneme::store::SessionStore;
 
 use tokio::sync::mpsc;
-use tracing::{debug, info, instrument, warn, Instrument};
+use tracing::{Instrument, debug, info, instrument, warn};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::id::{NousId, SessionId};
@@ -47,7 +47,10 @@ pub struct NousActor {
 impl NousActor {
     /// Create a new actor. Use [`NousManager::spawn`](crate::manager::NousManager::spawn)
     /// or [`spawn`] to start it.
-    #[expect(clippy::too_many_arguments, reason = "actor requires all runtime dependencies")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "actor requires all runtime dependencies"
+    )]
     pub(crate) fn new(
         id: String,
         config: NousConfig,
@@ -226,7 +229,10 @@ impl NousActor {
 ///
 /// Creates a bounded channel with [`DEFAULT_INBOX_CAPACITY`], builds the actor,
 /// and starts it on the Tokio runtime.
-#[expect(clippy::too_many_arguments, reason = "actor spawn requires all runtime dependencies")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "actor spawn requires all runtime dependencies"
+)]
 pub fn spawn(
     config: NousConfig,
     pipeline_config: PipelineConfig,
@@ -241,7 +247,18 @@ pub fn spawn(
     let id = config.id.clone();
     let handle = NousHandle::new(id.clone(), tx);
 
-    let actor = NousActor::new(id.clone(), config, pipeline_config, rx, providers, tools, oikos, embedding_provider, vector_search, session_store);
+    let actor = NousActor::new(
+        id.clone(),
+        config,
+        pipeline_config,
+        rx,
+        providers,
+        tools,
+        oikos,
+        embedding_provider,
+        vector_search,
+        session_store,
+    );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
     let join_handle = tokio::spawn(async move { actor.run().await }.instrument(span));
@@ -323,18 +340,23 @@ mod tests {
         Arc::new(providers)
     }
 
-    fn spawn_test_actor() -> (
-        NousHandle,
-        tokio::task::JoinHandle<()>,
-        tempfile::TempDir,
-    ) {
+    fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
         let (dir, oikos) = test_oikos();
         let providers = test_providers();
         let tools = Arc::new(ToolRegistry::new());
         let config = test_config();
         let pipeline_config = PipelineConfig::default();
 
-        let (handle, join) = spawn(config, pipeline_config, providers, tools, oikos, None, None, None);
+        let (handle, join) = spawn(
+            config,
+            pipeline_config,
+            providers,
+            tools,
+            oikos,
+            None,
+            None,
+            None,
+        );
         (handle, join, dir)
     }
 

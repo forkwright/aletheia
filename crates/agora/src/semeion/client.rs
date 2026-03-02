@@ -96,8 +96,7 @@ impl SignalClient {
             return Ok(None);
         }
 
-        let rpc_response: RpcResponse =
-            response.json().await.context(error::HttpSnafu)?;
+        let rpc_response: RpcResponse = response.json().await.context(error::HttpSnafu)?;
 
         if let Some(err) = rpc_response.error {
             return Err(error::RpcSnafu {
@@ -115,10 +114,7 @@ impl SignalClient {
     /// Retries up to 2 times with 500ms, 1000ms backoff.
     /// Does NOT retry JSON-RPC application errors (only transport failures).
     #[instrument(skip(self, params))]
-    pub async fn send_message(
-        &self,
-        params: &SendParams,
-    ) -> Result<Option<serde_json::Value>> {
+    pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
         let rpc_params = params.to_rpc_value();
         let backoffs = [500u64, 1000];
         let mut last_err = None;
@@ -137,10 +133,7 @@ impl SignalClient {
                             backoff_ms = backoffs[attempt],
                             "signal send attempt failed, retrying"
                         );
-                        tokio::time::sleep(Duration::from_millis(
-                            backoffs[attempt],
-                        ))
-                        .await;
+                        tokio::time::sleep(Duration::from_millis(backoffs[attempt])).await;
                     }
                 }
             }
@@ -166,10 +159,7 @@ impl SignalClient {
     /// that have accumulated since the last call. Uses a longer timeout than
     /// standard RPC calls since receive may block briefly.
     #[instrument(skip(self))]
-    pub async fn receive(
-        &self,
-        account: Option<&str>,
-    ) -> Result<Vec<SignalEnvelope>> {
+    pub async fn receive(&self, account: Option<&str>) -> Result<Vec<SignalEnvelope>> {
         let mut params = serde_json::Map::new();
         if let Some(acct) = account {
             params.insert(
@@ -186,8 +176,7 @@ impl SignalClient {
             id,
         };
 
-        let body =
-            serde_json::to_string(&request).context(error::JsonSnafu)?;
+        let body = serde_json::to_string(&request).context(error::JsonSnafu)?;
 
         let response = self
             .client
@@ -203,8 +192,7 @@ impl SignalClient {
             return Ok(Vec::new());
         }
 
-        let rpc_response: RpcResponse =
-            response.json().await.context(error::HttpSnafu)?;
+        let rpc_response: RpcResponse = response.json().await.context(error::HttpSnafu)?;
 
         if let Some(err) = rpc_response.error {
             return Err(error::RpcSnafu {
@@ -218,10 +206,7 @@ impl SignalClient {
             Some(serde_json::Value::Array(items)) => {
                 let mut envelopes = Vec::with_capacity(items.len());
                 for item in items {
-                    let env_value = item
-                        .get("envelope")
-                        .cloned()
-                        .unwrap_or(item.clone());
+                    let env_value = item.get("envelope").cloned().unwrap_or(item.clone());
 
                     match serde_json::from_value::<SignalEnvelope>(env_value) {
                         Ok(env) => envelopes.push(env),
@@ -278,31 +263,20 @@ impl SendParams {
         let mut map = serde_json::Map::new();
 
         if let Some(ref msg) = self.message {
-            map.insert(
-                "message".to_owned(),
-                serde_json::Value::String(msg.clone()),
-            );
+            map.insert("message".to_owned(), serde_json::Value::String(msg.clone()));
         }
         if let Some(ref r) = self.recipient {
             // signal-cli expects recipient as an array
             map.insert(
                 "recipient".to_owned(),
-                serde_json::Value::Array(vec![serde_json::Value::String(
-                    r.clone(),
-                )]),
+                serde_json::Value::Array(vec![serde_json::Value::String(r.clone())]),
             );
         }
         if let Some(ref g) = self.group_id {
-            map.insert(
-                "groupId".to_owned(),
-                serde_json::Value::String(g.clone()),
-            );
+            map.insert("groupId".to_owned(), serde_json::Value::String(g.clone()));
         }
         if let Some(ref a) = self.account {
-            map.insert(
-                "account".to_owned(),
-                serde_json::Value::String(a.clone()),
-            );
+            map.insert("account".to_owned(), serde_json::Value::String(a.clone()));
         }
         if let Some(ref att) = self.attachments {
             map.insert(
@@ -359,10 +333,7 @@ mod tests {
         let value = params.to_rpc_value();
         assert_eq!(value["message"], "hello");
         // recipient is wrapped in an array
-        assert_eq!(
-            value["recipient"],
-            serde_json::json!(["+1234567890"])
-        );
+        assert_eq!(value["recipient"], serde_json::json!(["+1234567890"]));
         assert_eq!(value["account"], "+0987654321");
         assert!(value.get("groupId").is_none());
         assert!(value.get("attachments").is_none());
@@ -383,10 +354,7 @@ mod tests {
         assert!(value.get("recipient").is_none());
         // group_id mapped to camelCase groupId
         assert_eq!(value["groupId"], "YWJjMTIz");
-        assert_eq!(
-            value["attachments"],
-            serde_json::json!(["/tmp/photo.jpg"])
-        );
+        assert_eq!(value["attachments"], serde_json::json!(["/tmp/photo.jpg"]));
     }
 
     #[test]
@@ -420,10 +388,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
@@ -431,10 +396,7 @@ mod tests {
         let envelopes = client.receive(None).await.expect("receive");
 
         assert_eq!(envelopes.len(), 1);
-        assert_eq!(
-            envelopes[0].source_number.as_deref(),
-            Some("+1234567890")
-        );
+        assert_eq!(envelopes[0].source_number.as_deref(), Some("+1234567890"));
         assert_eq!(
             envelopes[0]
                 .data_message
@@ -456,10 +418,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
@@ -480,10 +439,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
@@ -521,10 +477,7 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
@@ -532,13 +485,7 @@ mod tests {
         let envelopes = client.receive(None).await.expect("receive");
 
         assert_eq!(envelopes.len(), 2);
-        assert_eq!(
-            envelopes[0].source_number.as_deref(),
-            Some("+1111111111")
-        );
-        assert_eq!(
-            envelopes[1].source_number.as_deref(),
-            Some("+2222222222")
-        );
+        assert_eq!(envelopes[0].source_number.as_deref(), Some("+1111111111"));
+        assert_eq!(envelopes[1].source_number.as_deref(), Some("+2222222222"));
     }
 }

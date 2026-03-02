@@ -9,13 +9,13 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::{info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 use aletheia_agora::listener::ChannelListener;
 use aletheia_agora::registry::ChannelRegistry;
 use aletheia_agora::router::MessageRouter;
-use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::semeion::SignalProvider;
+use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
@@ -156,8 +156,7 @@ async fn serve(cli: Cli) -> Result<()> {
     let nous_manager = Arc::new(nous_manager);
 
     // Channel registry + inbound dispatch
-    let (_channel_registry, _dispatch_handle) =
-        start_inbound_dispatch(&config, &nous_manager);
+    let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(&config, &nous_manager);
 
     // Pylon HTTP gateway — shares registries with NousManager
     let state = Arc::new(AppState {
@@ -250,10 +249,7 @@ fn start_inbound_dispatch(
             .find(|a| a.default)
             .or_else(|| config.agents.list.first())
             .map(|a| a.id.clone());
-        let router = Arc::new(MessageRouter::new(
-            config.bindings.clone(),
-            default_nous_id,
-        ));
+        let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
 
         Some(dispatch::spawn_dispatcher(
             rx,
@@ -286,10 +282,7 @@ fn build_signal_provider(
         if !account_cfg.enabled {
             continue;
         }
-        let base_url = format!(
-            "http://{}:{}",
-            account_cfg.http_host, account_cfg.http_port
-        );
+        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
         match SignalClient::new(&base_url) {
             Ok(client) => {
                 provider.add_account(account_id.clone(), client);
@@ -305,12 +298,15 @@ fn build_signal_provider(
 }
 
 fn init_tracing(log_level: &str, json: bool) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(format!("aletheia={log_level},{log_level}"))
-    });
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("aletheia={log_level},{log_level}")));
 
     if json {
-        fmt().with_env_filter(filter).json().with_target(true).init();
+        fmt()
+            .with_env_filter(filter)
+            .json()
+            .with_target(true)
+            .init();
     } else {
         fmt()
             .with_env_filter(filter)

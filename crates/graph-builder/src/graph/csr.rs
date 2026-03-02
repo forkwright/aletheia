@@ -15,12 +15,12 @@ use std::{
 use rayon::prelude::*;
 
 use crate::{
-    graph_ops::{DeserializeGraphOp, SerializeGraphOp, ToUndirectedOp},
-    index::Idx,
-    input::{edgelist::Edges, Direction},
     DirectedDegrees, DirectedNeighbors, DirectedNeighborsWithValues, Error, Graph,
     NodeValues as NodeValuesTrait, SharedMut, Target, UndirectedDegrees, UndirectedNeighbors,
     UndirectedNeighborsWithValues,
+    graph_ops::{DeserializeGraphOp, SerializeGraphOp, ToUndirectedOp},
+    index::Idx,
+    input::{Direction, edgelist::Edges},
 };
 
 #[cfg(feature = "dotgraph")]

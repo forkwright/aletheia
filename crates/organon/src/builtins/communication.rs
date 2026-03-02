@@ -157,7 +157,11 @@ mod tests {
         };
         let result = reg.execute(&input, &test_ctx()).await.expect("execute");
         assert!(!result.is_error);
-        assert!(result.content.contains("stub"), "expected stub: {}", result.content);
+        assert!(
+            result.content.contains("stub"),
+            "expected stub: {}",
+            result.content
+        );
     }
 
     #[tokio::test]

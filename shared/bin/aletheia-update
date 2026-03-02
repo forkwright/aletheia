@@ -132,7 +132,8 @@ health_check() {
 backup_state() {
   local commit="$1"
   mkdir -p "$BACKUP_DIR"
-  local name="pre-update-$(date +%Y%m%d-%H%M%S)-$commit"
+  local name
+  name="pre-update-$(date +%Y%m%d-%H%M%S)-$commit"
   echo "$commit" > "$BACKUP_DIR/$name.ref"
   cp "$RUNTIME_DIR/package.json" "$BACKUP_DIR/$name.package.json"
   log "Backup: $name"
@@ -149,7 +150,8 @@ do_rollback() {
 
   local prev_commit
   prev_commit=$(cat "$ref_file")
-  local cur=$(current_commit)
+  local cur
+  cur=$(current_commit)
 
   if [ "$prev_commit" = "$cur" ]; then
     log "Already at backup commit ($prev_commit). Nothing to rollback."

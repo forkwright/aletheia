@@ -451,7 +451,8 @@ fn edit_def() -> ToolDef {
 fn exec_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("exec").expect("valid tool name"),
-        description: "Execute a shell command in your workspace and return stdout/stderr".to_owned(),
+        description: "Execute a shell command in your workspace and return stdout/stderr"
+            .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -574,8 +575,7 @@ mod tests {
         );
         let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error);
-        let on_disk =
-            std::fs::read_to_string(dir.path().join("sub/deep/file.txt")).expect("read");
+        let on_disk = std::fs::read_to_string(dir.path().join("sub/deep/file.txt")).expect("read");
         assert_eq!(on_disk, "nested");
     }
 
@@ -688,10 +688,7 @@ mod tests {
     async fn path_traversal_blocked() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
-        let input = tool_input(
-            "read",
-            serde_json::json!({ "path": "../../etc/passwd" }),
-        );
+        let input = tool_input("read", serde_json::json!({ "path": "../../etc/passwd" }));
         let err = ReadExecutor
             .execute(&input, &ctx)
             .await

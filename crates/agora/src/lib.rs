@@ -18,8 +18,8 @@ mod assertions {
     use super::listener::ChannelListener;
     use super::registry::ChannelRegistry;
     use super::router::MessageRouter;
-    use super::semeion::client::SignalClient;
     use super::semeion::SignalProvider;
+    use super::semeion::client::SignalClient;
     use super::types::InboundMessage;
 
     assert_impl_all!(ChannelRegistry: Send, Sync);

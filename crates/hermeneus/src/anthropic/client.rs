@@ -12,7 +12,7 @@ use crate::error::{self, Result};
 use crate::provider::{LlmProvider, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
 
-use super::stream::{parse_sse_stream, StreamAccumulator, StreamEvent};
+use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
 use super::wire::WireRequest;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -160,9 +160,7 @@ impl AnthropicProvider {
                     // If content was already streamed, we can't retry — it would
                     // produce duplicates. Propagate immediately.
                     if content_started {
-                        tracing::error!(
-                            "SSE error after content started streaming — cannot retry"
-                        );
+                        tracing::error!("SSE error after content started streaming — cannot retry");
                         return Err(e);
                     }
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
@@ -282,10 +280,7 @@ impl LlmProvider for AnthropicProvider {
 }
 
 pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {
-    if let Some(error::Error::RateLimited {
-        retry_after_ms, ..
-    }) = last_error
-    {
+    if let Some(error::Error::RateLimited { retry_after_ms, .. }) = last_error {
         return Duration::from_millis(*retry_after_ms);
     }
 
@@ -326,10 +321,10 @@ mod tests {
     use crate::provider::{LlmProvider, ProviderConfig};
     use crate::types::{CompletionRequest, CompletionResponse, Content, Message, Role};
 
-    /// Build a provider and call complete() on a blocking thread.
+    /// Build a provider and call `complete()` on a blocking thread.
     ///
-    /// reqwest::blocking::Client panics if constructed or used inside a tokio
-    /// async context, so wiremock tests dispatch everything to spawn_blocking.
+    /// `reqwest::blocking::Client` panics if constructed or used inside a tokio
+    /// async context, so wiremock tests dispatch everything to `spawn_blocking`.
     async fn complete_on_blocking_thread(
         config: ProviderConfig,
         request: CompletionRequest,
@@ -431,9 +426,7 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(valid_wire_response_json()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
             .expect(1)
             .mount(&server)
             .await;

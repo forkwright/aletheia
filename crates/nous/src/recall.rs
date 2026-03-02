@@ -192,12 +192,11 @@ impl RecallStage {
             .collect()
     }
 
-    #[expect(clippy::unused_self, reason = "will use config fields when budget strategy is extended")]
-    fn format_within_budget(
-        &self,
-        results: &[ScoredResult],
-        budget: u64,
-    ) -> (usize, String, u64) {
+    #[expect(
+        clippy::unused_self,
+        reason = "will use config fields when budget strategy is extended"
+    )]
+    fn format_within_budget(&self, results: &[ScoredResult], budget: u64) -> (usize, String, u64) {
         let mut included = Vec::with_capacity(results.len());
 
         for result in results {
@@ -306,7 +305,13 @@ mod tests {
         };
         let stage = RecallStage::new(config);
         let result = stage
-            .run("query", "syn", &mock_embed(), &MockVectorSearch::empty(), 10000)
+            .run(
+                "query",
+                "syn",
+                &mock_embed(),
+                &MockVectorSearch::empty(),
+                10000,
+            )
             .unwrap();
         assert_eq!(result.candidates_found, 0);
         assert_eq!(result.results_injected, 0);
@@ -318,7 +323,13 @@ mod tests {
         let config = RecallConfig::default();
         let stage = RecallStage::new(config);
         let result = stage
-            .run("query", "syn", &mock_embed(), &MockVectorSearch::empty(), 10000)
+            .run(
+                "query",
+                "syn",
+                &mock_embed(),
+                &MockVectorSearch::empty(),
+                10000,
+            )
             .unwrap();
         assert_eq!(result.candidates_found, 0);
         assert!(result.recall_section.is_none());
@@ -349,7 +360,13 @@ mod tests {
         };
         let stage = RecallStage::new(config);
         let result = stage
-            .run("query", "syn", &mock_embed(), &MockVectorSearch::new(results), 10000)
+            .run(
+                "query",
+                "syn",
+                &mock_embed(),
+                &MockVectorSearch::new(results),
+                10000,
+            )
             .unwrap();
 
         assert_eq!(result.candidates_found, 3);
@@ -371,7 +388,13 @@ mod tests {
         };
         let stage = RecallStage::new(config);
         let result = stage
-            .run("query", "syn", &mock_embed(), &MockVectorSearch::new(results), 50000)
+            .run(
+                "query",
+                "syn",
+                &mock_embed(),
+                &MockVectorSearch::new(results),
+                50000,
+            )
             .unwrap();
 
         assert_eq!(result.candidates_found, 10);
@@ -392,7 +415,13 @@ mod tests {
         };
         let stage = RecallStage::new(config);
         let result = stage
-            .run("query", "syn", &mock_embed(), &MockVectorSearch::new(results), 200)
+            .run(
+                "query",
+                "syn",
+                &mock_embed(),
+                &MockVectorSearch::new(results),
+                200,
+            )
             .unwrap();
 
         assert!(result.tokens_consumed <= 200);

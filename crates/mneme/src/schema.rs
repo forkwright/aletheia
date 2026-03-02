@@ -162,7 +162,13 @@ mod tests {
         initialize(&conn).unwrap();
 
         // Verify key tables exist
-        for table in &["sessions", "messages", "usage", "distillations", "agent_notes"] {
+        for table in &[
+            "sessions",
+            "messages",
+            "usage",
+            "distillations",
+            "agent_notes",
+        ] {
             let exists: bool = conn
                 .query_row(
                     "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",

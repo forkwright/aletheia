@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::{info, warn, Instrument};
+use tracing::{Instrument, info, warn};
 
 use aletheia_agora::registry::ChannelRegistry;
-use aletheia_agora::router::{reply_target, MessageRouter};
+use aletheia_agora::router::{MessageRouter, reply_target};
 use aletheia_agora::types::{InboundMessage, SendParams};
 use aletheia_nous::manager::NousManager;
 

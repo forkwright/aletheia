@@ -64,7 +64,10 @@ pub(crate) struct WireResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[expect(clippy::struct_field_names, reason = "field names match Anthropic API wire format")]
+#[expect(
+    clippy::struct_field_names,
+    reason = "field names match Anthropic API wire format"
+)]
 pub(crate) struct WireUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -88,7 +91,10 @@ pub(crate) enum WireContentBlock {
     #[serde(rename = "thinking")]
     Thinking {
         thinking: String,
-        #[expect(dead_code, reason = "captured from API but not exposed in public types until M2")]
+        #[expect(
+            dead_code,
+            reason = "captured from API but not exposed in public types until M2"
+        )]
         signature: String,
     },
 }
@@ -116,26 +122,23 @@ pub(crate) struct WireErrorDetail {
 impl<'a> WireRequest<'a> {
     pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Self {
         // Extract system prompt from messages (Anthropic wants it as a top-level field).
-        let system = req
-            .system
-            .clone()
-            .or_else(|| {
-                let system_texts: Vec<&str> = req
-                    .messages
-                    .iter()
-                    .filter(|m| m.role == Role::System)
-                    .map(|m| match &m.content {
-                        Content::Text(s) => s.as_str(),
-                        Content::Blocks(_) => "",
-                    })
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if system_texts.is_empty() {
-                    None
-                } else {
-                    Some(system_texts.join("\n\n"))
-                }
-            });
+        let system = req.system.clone().or_else(|| {
+            let system_texts: Vec<&str> = req
+                .messages
+                .iter()
+                .filter(|m| m.role == Role::System)
+                .map(|m| match &m.content {
+                    Content::Text(s) => s.as_str(),
+                    Content::Blocks(_) => "",
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+            if system_texts.is_empty() {
+                None
+            } else {
+                Some(system_texts.join("\n\n"))
+            }
+        });
 
         let messages: Vec<WireMessage<'a>> = req
             .messages
@@ -295,7 +298,10 @@ pub(crate) enum WireContentBlockStart {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
-#[expect(clippy::enum_variant_names, reason = "variant names match Anthropic SSE delta types")]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "variant names match Anthropic SSE delta types"
+)]
 pub(crate) enum WireDelta {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },

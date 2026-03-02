@@ -139,8 +139,7 @@ impl TestHarness {
         std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
         std::fs::write(root.join("nous/test-nous/SOUL.md"), "You are a test agent.")
             .expect("write SOUL.md");
-        std::fs::write(root.join("theke/USER.md"), "Test user.")
-            .expect("write USER.md");
+        std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
 
         let oikos = Arc::new(Oikos::from_root(root));
         let store = SessionStore::open_in_memory().expect("in-memory store");
@@ -305,7 +304,8 @@ async fn http_create_session_send_message_get_history() {
     let messages = history["messages"].as_array().expect("messages array");
     assert!(
         messages.len() >= 2,
-        "history should contain user + assistant messages, got {}", messages.len()
+        "history should contain user + assistant messages, got {}",
+        messages.len()
     );
     assert_eq!(messages[0]["role"], "user");
     assert_eq!(messages[0]["content"], "hello");
@@ -455,13 +455,20 @@ async fn health_returns_status() {
     let router = harness.router();
 
     let resp = router
-        .oneshot(Request::get("/api/health").body(Body::empty()).expect("request"))
+        .oneshot(
+            Request::get("/api/health")
+                .body(Body::empty())
+                .expect("request"),
+        )
         .await
         .expect("health check");
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = body_json(resp).await;
-    assert!(body["status"].is_string(), "health response should have status field");
+    assert!(
+        body["status"].is_string(),
+        "health response should have status field"
+    );
     assert_eq!(body["status"], "healthy");
 }
 
