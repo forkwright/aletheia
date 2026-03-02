@@ -132,6 +132,49 @@ export class AnthropicProvider {
     }
   }
 
+  // Convert APIError to typed ProviderError for retry/failover.
+  // Handles both HTTP-level errors (status set) and mid-stream SSE errors
+  // (status may be undefined — infer from error body).
+  private toProviderError(error: APIError, model: string): ProviderError {
+    let status = error.status;
+
+    // Mid-stream SSE errors arrive with status=undefined. Parse error body to infer status.
+    if (status === undefined) {
+      const body = error as unknown as { error?: { type?: string } };
+      const errorType = body.error?.type;
+      if (errorType === "overloaded_error") status = 529;
+      else if (errorType === "rate_limit_error") status = 429;
+      else if (errorType === "authentication_error") status = 401;
+      else if (errorType === "api_error" || errorType === "internal_server_error") status = 500;
+    }
+
+    log.error(`Anthropic API ${status ?? "unknown"}: ${error.message}`);
+
+    const isExpiredToken = status === 401
+      && error.message.includes("OAuth token has expired");
+
+    const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
+      : status === 529 ? "PROVIDER_OVERLOADED" as const
+      : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
+      : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
+      : "PROVIDER_INVALID_RESPONSE" as const;
+
+    const recoverable = status === 429 || status === 529
+      || (status !== undefined && status >= 500) || isExpiredToken
+      || status === undefined;
+
+    return new ProviderError(
+      `Anthropic API error: ${status ?? "stream"} ${error.message}`,
+      {
+        cause: error,
+        code,
+        recoverable,
+        ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
+        context: { status, model },
+      },
+    );
+  }
+
   // Build anthropic-beta header — merges OAuth beta with any feature betas.
   // Per-request headers override defaultHeaders, so we must include oauth
   // beta explicitly whenever we set per-request headers.
@@ -227,31 +270,7 @@ export class AnthropicProvider {
         credentialLabel: this.label,
       };
     } catch (error) {
-      if (error instanceof APIError) {
-        const status = error.status;
-        log.error(`Anthropic API ${status}: ${error.message}`);
-
-        const isExpiredToken = status === 401
-          && error.message.includes("OAuth token has expired");
-
-        const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
-          : status === 529 ? "PROVIDER_OVERLOADED" as const
-          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
-          : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
-          : "PROVIDER_INVALID_RESPONSE" as const;
-
-        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
-        throw new ProviderError(
-          `Anthropic API error: ${status} ${error.message}`,
-          {
-            cause: error,
-            code,
-            recoverable,
-            ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
-            context: { status, model },
-          },
-        );
-      }
+      if (error instanceof APIError) throw this.toProviderError(error, model);
       const msg = error instanceof Error ? error.message : String(error);
       log.error(`Anthropic request failed: ${msg}`);
       throw new ProviderError(`Anthropic request failed: ${msg}`, {
@@ -287,24 +306,7 @@ export class AnthropicProvider {
         ...(betaHeader ? { headers: { "anthropic-beta": betaHeader } } : {}),
       });
     } catch (error) {
-      if (error instanceof APIError) {
-        const status = error.status;
-        log.error(`Anthropic API ${status}: ${error.message}`);
-        const isExpiredToken = status === 401
-          && error.message.includes("OAuth token has expired");
-
-        const code = status === 429 ? "PROVIDER_RATE_LIMITED" as const
-          : status === 529 ? "PROVIDER_OVERLOADED" as const
-          : isExpiredToken ? "PROVIDER_TOKEN_EXPIRED" as const
-          : (status === 401 || status === 403) ? "PROVIDER_AUTH_FAILED" as const
-          : "PROVIDER_INVALID_RESPONSE" as const;
-        const recoverable = status === 429 || status === 529 || status >= 500 || isExpiredToken;
-        throw new ProviderError(`Anthropic API error: ${status} ${error.message}`, {
-          cause: error, code, recoverable,
-          ...(status === 429 ? { retryAfterMs: 60_000 } : status === 529 ? { retryAfterMs: 30_000 } : {}),
-          context: { status, model },
-        });
-      }
+      if (error instanceof APIError) throw this.toProviderError(error, model);
       throw error;
     }
 
@@ -403,17 +405,15 @@ export class AnthropicProvider {
           }
         }
       }
-    } catch (iterError) {
-      if (iterError instanceof ProviderError) throw iterError;
-      const msg = iterError instanceof Error ? iterError.message : String(iterError);
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
+      if (error instanceof APIError) throw this.toProviderError(error, model);
+      const msg = error instanceof Error ? error.message : String(error);
       log.error(`Stream iteration error: ${msg}`);
-      const overloaded = msg.includes("overloaded_error");
-      const code = overloaded ? "PROVIDER_OVERLOADED" as const : "PROVIDER_INVALID_RESPONSE" as const;
       throw new ProviderError(`Anthropic stream error: ${msg}`, {
-        cause: iterError,
-        code,
+        cause: error,
+        code: "PROVIDER_INVALID_RESPONSE",
         recoverable: true,
-        ...(overloaded ? { retryAfterMs: 30_000 } : {}),
         context: { model, phase: "stream_iteration" },
       });
     }
