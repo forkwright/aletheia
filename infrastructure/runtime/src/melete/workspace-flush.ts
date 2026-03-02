@@ -49,9 +49,7 @@ export function flushToWorkspace(opts: WorkspaceFlushOpts): WorkspaceFlushResult
   const filePath = join(memoryDir, `${dateStr}.md`);
 
   try {
-    if (!existsSync(memoryDir)) {
-      mkdirSync(memoryDir, { recursive: true });
-    }
+    mkdirSync(memoryDir, { recursive: true });
 
     const sections: string[] = [];
 

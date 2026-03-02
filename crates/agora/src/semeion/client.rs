@@ -7,10 +7,12 @@ use snafu::ResultExt;
 use tracing::instrument;
 use uuid::Uuid;
 
+use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Serialize)]
 struct RpcRequest<'a> {
@@ -37,6 +39,7 @@ struct RpcError {
 }
 
 /// Async JSON-RPC client for a single signal-cli HTTP daemon instance.
+#[derive(Clone)]
 pub struct SignalClient {
     client: reqwest::Client,
     rpc_url: String,
@@ -155,6 +158,85 @@ impl SignalClient {
             .send()
             .await;
         matches!(result, Ok(r) if r.status().is_success())
+    }
+
+    /// Poll for accumulated inbound messages.
+    ///
+    /// Calls the signal-cli `receive` RPC method, which returns all messages
+    /// that have accumulated since the last call. Uses a longer timeout than
+    /// standard RPC calls since receive may block briefly.
+    #[instrument(skip(self))]
+    pub async fn receive(
+        &self,
+        account: Option<&str>,
+    ) -> Result<Vec<SignalEnvelope>> {
+        let mut params = serde_json::Map::new();
+        if let Some(acct) = account {
+            params.insert(
+                "account".to_owned(),
+                serde_json::Value::String(acct.to_owned()),
+            );
+        }
+
+        let id = Uuid::new_v4().to_string();
+        let request = RpcRequest {
+            jsonrpc: "2.0",
+            method: "receive",
+            params: serde_json::Value::Object(params),
+            id,
+        };
+
+        let body =
+            serde_json::to_string(&request).context(error::JsonSnafu)?;
+
+        let response = self
+            .client
+            .post(&self.rpc_url)
+            .header("content-type", "application/json")
+            .timeout(RECEIVE_TIMEOUT)
+            .body(body)
+            .send()
+            .await
+            .context(error::HttpSnafu)?;
+
+        if response.status().as_u16() == 201 {
+            return Ok(Vec::new());
+        }
+
+        let rpc_response: RpcResponse =
+            response.json().await.context(error::HttpSnafu)?;
+
+        if let Some(err) = rpc_response.error {
+            return Err(error::RpcSnafu {
+                code: err.code,
+                message: err.message,
+            }
+            .build());
+        }
+
+        match rpc_response.result {
+            Some(serde_json::Value::Array(items)) => {
+                let mut envelopes = Vec::with_capacity(items.len());
+                for item in items {
+                    let env_value = item
+                        .get("envelope")
+                        .cloned()
+                        .unwrap_or(item.clone());
+
+                    match serde_json::from_value::<SignalEnvelope>(env_value) {
+                        Ok(env) => envelopes.push(env),
+                        Err(e) => {
+                            tracing::debug!(
+                                error = %e,
+                                "skipping unparseable envelope"
+                            );
+                        }
+                    }
+                }
+                Ok(envelopes)
+            }
+            Some(_) | None => Ok(Vec::new()),
+        }
     }
 
     /// The base RPC URL this client targets.
@@ -311,5 +393,152 @@ mod tests {
     fn client_creation() {
         let client = SignalClient::new("localhost:8080").expect("create client");
         assert_eq!(client.rpc_url(), "http://localhost:8080/api/v1/rpc");
+    }
+
+    #[tokio::test]
+    async fn receive_returns_envelopes() {
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [
+                {
+                    "envelope": {
+                        "sourceNumber": "+1234567890",
+                        "sourceName": "Alice",
+                        "timestamp": 1_709_312_345_678_u64,
+                        "dataMessage": {
+                            "timestamp": 1_709_312_345_678_u64,
+                            "message": "hello"
+                        }
+                    },
+                    "account": "+0000000000"
+                }
+            ],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let client = SignalClient::new(&server.uri()).expect("create client");
+        let envelopes = client.receive(None).await.expect("receive");
+
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(
+            envelopes[0].source_number.as_deref(),
+            Some("+1234567890")
+        );
+        assert_eq!(
+            envelopes[0]
+                .data_message
+                .as_ref()
+                .and_then(|d| d.message.as_deref()),
+            Some("hello")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_empty_result() {
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let client = SignalClient::new(&server.uri()).expect("create client");
+        let envelopes = client.receive(None).await.expect("receive");
+        assert!(envelopes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn receive_rpc_error() {
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "error": {"code": -32601, "message": "method not found"},
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let client = SignalClient::new(&server.uri()).expect("create client");
+        let err = client.receive(None).await.expect_err("should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("method not found"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn receive_skips_malformed_envelopes() {
+        let server = wiremock::MockServer::start().await;
+
+        let rpc_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": [
+                {
+                    "envelope": {
+                        "sourceNumber": "+1111111111",
+                        "dataMessage": {"message": "good"}
+                    }
+                },
+                {
+                    "envelope": "not-an-object"
+                },
+                {
+                    "envelope": {
+                        "sourceNumber": "+2222222222",
+                        "dataMessage": {"message": "also good"}
+                    }
+                }
+            ],
+            "id": "test"
+        });
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&rpc_response),
+            )
+            .mount(&server)
+            .await;
+
+        let client = SignalClient::new(&server.uri()).expect("create client");
+        let envelopes = client.receive(None).await.expect("receive");
+
+        assert_eq!(envelopes.len(), 2);
+        assert_eq!(
+            envelopes[0].source_number.as_deref(),
+            Some("+1111111111")
+        );
+        assert_eq!(
+            envelopes[1].source_number.as_deref(),
+            Some("+2222222222")
+        );
     }
 }

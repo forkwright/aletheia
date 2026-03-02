@@ -2,6 +2,16 @@
 
 ## Prerequisites
 
+### Rust (crate workspace)
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Rust | 1.85+ (2024 edition) | Compiler |
+| cargo | (bundled) | Build system, package manager |
+| clippy | (bundled) | Linting (zero warnings policy) |
+
+### TypeScript (current runtime)
+
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Node.js | >= 22.12 | Runtime |
@@ -15,6 +25,20 @@ Optional: Docker (Qdrant, Neo4j, Langfuse), signal-cli, Chromium (browser tool).
 
 ## Building
 
+### Rust
+
+```bash
+cargo build                     # debug build
+cargo build --release           # release build (LTO, stripped)
+cargo clippy --workspace        # lint (must be zero warnings)
+```
+
+The workspace uses pedantic clippy lints with select allows (`missing_errors_doc`, `module_name_repetitions`, `must_use_candidate`). `dbg!`, `todo!`, and `unimplemented!` are denied. `unsafe` is denied workspace-wide.
+
+Release profile: thin LTO, single codegen unit, symbols stripped.
+
+### TypeScript
+
 ```bash
 cd infrastructure/runtime && npm install && npx tsdown
 ```
@@ -27,7 +51,28 @@ For dev without building: `npm run dev` (tsx).
 
 ## Module Architecture
 
-Initialization order: `taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon` (semeion + pylon wired at runtime start)
+### Rust Crate Dependency Graph
+
+```
+                        pylon
+                     /  | |  \  \
+                   /    | |   \   \
+                nous  symbolon  |   |
+              / | | \         mneme |
+            /   |  \  \        |    |
+       taxis organon melete    |    |
+          |     |      |       |    |
+        koina  hermeneus    mneme-engine
+                                    agora
+                                   /    \
+                                taxis  koina
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency rules and trait boundaries.
+
+### TypeScript Initialization Order
+
+`taxis -> mneme -> hermeneus -> organon -> nous -> dianoia -> prostheke -> daemon` (semeion + pylon wired at runtime start)
 
 | Module | Domain | Key Files |
 |--------|--------|-----------|
@@ -37,8 +82,8 @@ Initialization order: `taxis → mneme → hermeneus → organon → nous → di
 | `hermeneus` | Anthropic SDK, provider router, token counting | `anthropic.ts`, `router.ts`, `complexity.ts`, `pricing.ts` |
 | `organon` | 48 built-in tools, skills, self-authoring | `registry.ts`, `skills.ts`, `built-in/*.ts` |
 | `nous` | Agent bootstrap, turn pipeline, working state | `manager.ts`, `bootstrap.ts`, `working-state.ts`, `pipeline/` |
-| `melete` | Disciplined practice — distillation, reflection | `pipeline.ts`, `extract.ts`, `reflect.ts`, `summarize.ts` |
-| `symbolon` | Split-token authentication — JWT, sessions, RBAC | `tokens.ts`, `passwords.ts`, `sessions.ts`, `rbac.ts` |
+| `melete` | Distillation, reflection, memory flush | `pipeline.ts`, `extract.ts`, `reflect.ts`, `summarize.ts` |
+| `symbolon` | Split-token authentication, JWT, sessions, RBAC | `tokens.ts`, `passwords.ts`, `sessions.ts`, `rbac.ts` |
 | `dianoia` | Multi-phase planning orchestrator | `orchestrator.ts`, `store.ts`, `execution.ts`, `verifier.ts` |
 | `semeion` | Signal client, listener, commands, TTS | `client.ts`, `listener.ts`, `commands.ts` |
 | `pylon` | Hono HTTP gateway, MCP, Web UI | `server.ts`, `mcp.ts`, `ui.ts` |
@@ -50,11 +95,24 @@ Initialization order: `taxis → mneme → hermeneus → organon → nous → di
 
 ## Testing
 
+### Rust
+
 ```bash
-npm test                    # Unit tests
-npm run test:watch          # Watch mode
-npm run test:coverage       # Coverage (thresholds enforced)
-npm run test:integration    # Integration (30s timeout)
+cargo test --workspace                          # all tests
+cargo test -p aletheia-nous                     # single crate
+cargo test -p aletheia-nous -- actor            # filter by name
+cargo test -p aletheia-integration-tests        # cross-crate integration tests
+```
+
+Tests live alongside source in `#[cfg(test)] mod tests` blocks. Integration tests are in `crates/integration-tests/`.
+
+### TypeScript
+
+```bash
+npm test                    # unit tests
+npm run test:watch          # watch mode
+npm run test:coverage       # coverage (thresholds enforced)
+npm run test:integration    # integration (30s timeout)
 ```
 
 Tests live alongside source as `*.test.ts`. Integration tests use `.integration.test.ts`.
@@ -65,17 +123,39 @@ Coverage thresholds: 80% statements, 78% branches, 90% functions, 80% lines.
 
 ## Code Style
 
-Full conventions in [CONTRIBUTING.md](../CONTRIBUTING.md#code-standards). Key rules:
+Full conventions in [STANDARDS.md](STANDARDS.md). Key rules by language:
+
+### Rust
+
+- Edition 2024, `unsafe` denied, pedantic clippy
+- Errors via `snafu` with context selectors, not `anyhow`
+- `pub(crate)` by default, minimize public surface
+- `expect("invariant description")` over bare `unwrap()`
+- File headers: `//!` module doc, one line
+- Property-based testing with `proptest` where applicable
 
 ### TypeScript
 
 Strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`. Bracket notation for index access: `record["key"]`.
 
-### File Headers
+### Both Languages
 
-One-line comment per file: `// Pipeline runner — composes stages for streaming and non-streaming turn execution`
+- File headers: one-line comment describing purpose
+- No inline comments except genuinely non-obvious *why* explanations
+- No creation dates, author info, or AI generation indicators
+- Conventional commits: `feat(crate):`, `fix(crate):`, `chore(crate):`
 
-### Import Order
+### File and Code Naming
+
+| Context | Convention | Example |
+|---------|-----------|---------|
+| Files | `kebab-case` | `session-store.rs`, `event-bus.ts` |
+| Types / Traits | `PascalCase` | `SessionStore`, `EmbeddingProvider` |
+| Functions | `camelCase` (TS) / `snake_case` (Rust) | `loadConfig` / `load_config` |
+| Constants | `UPPER_SNAKE` | `MAX_TURNS`, `DEFAULT_PORT` |
+| Events | `noun:verb` | `turn:before`, `tool:called` |
+
+### Import Order (TypeScript)
 
 ```typescript
 import { join } from "node:path";           // 1. Node builtins
@@ -84,7 +164,7 @@ import { createLogger } from "../koina/logger.js";  // 3. Internal
 import type { TurnState } from "./types.js";        // 4. Local
 ```
 
-### Error Handling
+### Error Handling (TypeScript)
 
 ```typescript
 // Typed errors
@@ -93,10 +173,6 @@ throw new PipelineError("Stage failed", { code: "PIPELINE_STAGE_FAILED", context
 // Non-critical operations
 const result = trySafe("skill extraction", () => extractSkill(data), null);
 ```
-
-### Naming
-
-Files `kebab-case`, classes `PascalCase`, functions `camelCase` verb-first, constants `UPPER_SNAKE`, events `noun:verb`, booleans `is`/`has`/`should` prefix.
 
 ---
 

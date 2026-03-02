@@ -100,12 +100,11 @@ export function workspaceRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     if (!resolved) return c.json({ error: "Invalid path" }, 400);
 
     try {
-      const stat = statSync(resolved);
-      if (stat.isDirectory()) return c.json({ error: "Path is a directory" }, 400);
-      if (stat.size > 1_048_576) return c.json({ error: "File too large (>1MB)" }, 400);
-
       const content = readFileSync(resolved, "utf-8");
-      return c.json({ path: filePath, size: stat.size, content });
+      const size = Buffer.byteLength(content);
+      if (size > 1_048_576) return c.json({ error: "File too large (>1MB)" }, 400);
+
+      return c.json({ path: filePath, size, content });
     } catch (error) {
       if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
         return c.json({ error: "File not found" }, 404);

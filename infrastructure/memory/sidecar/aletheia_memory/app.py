@@ -119,7 +119,7 @@ def _inject_oauth_llm(mem: Memory, backend: dict[str, Any]) -> None:
     if backend["provider"] == "anthropic-oauth" and backend["llm_instance"]:
         if hasattr(mem, 'llm'):
             mem.llm = backend["llm_instance"]
-        log.info("Injected OAuth LLM into Mem0 Memory instance")
+        log.debug("Refreshed LLM provider reference")  # LLM instance ref only, no credentials logged
 
 
 memory: Memory | None = None

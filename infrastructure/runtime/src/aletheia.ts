@@ -132,17 +132,16 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
 
   // INDX-01/INDX-05: Wire theke/ as default indexed path — background build at startup
   trySafe("workspace-index:startup", () => {
-    if (existsSync(paths.theke)) {
-      void (async () => {
-        try {
-          const index = await rebuildWorkspaceIndex(paths.theke);
-          setSharedIndex(index);
-          log.debug("Workspace index background build complete", { fileCount: index.files.length });
-        } catch (error: unknown) {
-          log.warn("Workspace index startup build failed", { err: error instanceof Error ? error.message : error });
-        }
-      })();
-    }
+    void (async () => {
+      try {
+        const index = await rebuildWorkspaceIndex(paths.theke);
+        setSharedIndex(index);
+        log.debug("Workspace index background build complete", { fileCount: index.files.length });
+      } catch (error: unknown) {
+        // Expected on first run before instance is initialized
+        log.debug("Workspace index startup skipped", { err: error instanceof Error ? error.message : error });
+      }
+    })();
   }, undefined);
 
   const plansDb = openPlansDb(paths.planningDb());

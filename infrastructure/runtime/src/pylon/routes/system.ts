@@ -1,6 +1,7 @@
 // System routes — health, status, update, config reload
 import { Hono } from "hono";
 import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../../koina/logger.js";
 import { tryReloadConfig } from "../../taxis/loader.js";
@@ -47,6 +48,10 @@ export function systemRoutes(deps: RouteDeps, _refs: RouteRefs): Hono {
     const { execFileSync } = await import("node:child_process");
     const root = paths.repoRoot;
     try {
+      // Validate root is a git repository (mitigates command injection via cwd)
+      if (!existsSync(join(root, ".git"))) {
+        return c.json({ ok: false, message: "Invalid repository root" }, 500);
+      }
       const gitOutput = execFileSync("git", ["pull", "origin", "main"], {
         cwd: root, timeout: 60_000, encoding: "utf-8",
       });

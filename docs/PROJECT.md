@@ -2,7 +2,7 @@
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
 > For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
-> Last updated: 2026-03-03 — M0a/M0b/M1 complete, M2 core + M3.1 complete, CozoDB absorption in progress (GSD). 332 tests across 9 crates, ~13.4K lines Rust.
+> Last updated: 2026-03-01 — M0a/M0b/M1 complete, M2 core + M3 complete. 718 tests across 14 crates, ~21K lines Rust.
 
 ---
 
@@ -497,7 +497,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
-Last updated: 2026-03-03
+Last updated: 2026-03-01
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
@@ -515,16 +515,21 @@ Last updated: 2026-03-03
 | M2.1c | ✅ **Complete** | CozoDB absorption analysis — research doc: module deps, FTS feasibility, graph algo inventory, 42 unsafe sites, integration plan. PR #364. |
 | M2.1d | ✅ **Complete** | Test expansion — 79 new tests across koina, mneme, nous, taxis + integration tests. PR #365. |
 | M2.2 | ✅ **Complete** | Context bootstrap — BootstrapAssembler (oikos cascade), TokenBudget (system/history/turn zones), CharEstimator, SectionPriority (Required > Important > Flexible > Optional), section-aware truncation, tool summary tiers. 14 tests. PR #369. |
-| M2.3 | **Next** | CozoDB absorption — fork, patch 3 compile bugs, strip bindings + unused backends, integrate as mneme-engine. GSD in progress (prompt 05). |
-| M2.4+ | Not started | Execute stage, tool iteration, distillation, workspace files |
+| M2.3 | ⚙️ **In progress** | CozoDB absorption — mneme-engine crate with forked CozoDB, 3 compile bugs patched, unsafe sites isolated in graph-builder. Phases 1-3 complete (PR #378, 252 tests). Phases 4-6 remaining (GSD prompt 05). |
+| M2.4 | ✅ **Complete** | taxis config loading — figment-based YAML cascade, AletheiaConfig structs, resolve_nous() merger, env overrides, camelCase compat. 37 tests. PR #379. |
+| M2.5 | ✅ **Complete** | nous execute stage — core LLM call + tool dispatch loop, LoopDetector integration, signal classification, `run_pipeline` entry point. ThinkingConfig in hermeneus. 78 tests. PR #381. |
 | M3.1a | ✅ **Complete** | symbolon (auth) — JWT sessions (access+refresh), API keys (ale_ format, blake3), argon2id passwords, RBAC (Operator/Agent/Readonly), AuthStore (SQLite), 50 tests. PR #368. |
 | M3.1b | ✅ **Complete** | pylon (Axum gateway) — session CRUD, SSE streaming, health check, JWT auth middleware via symbolon (Bearer required except /health), claims extraction. 25 tests. PRs #370, #376. |
-| M3.2+ | Not started | agora channels (Signal, Slack), delivery reliability |
-| M4 | Not started | Blocked on M3 |
-| M5 | Not started | Blocked on M4 |
+| M3.2 | ✅ **Complete** | agora channel registry — ChannelProvider trait, ChannelRegistry with typed routing, Signal JSON-RPC client (SignalClient), SignalProvider implementation. 19 tests. PR #380. |
+| M3.3a | ✅ **Complete** | nous NousActor — Tokio actor model with inbox, lifecycle states (Active/Idle/Dormant), NousManager, message dispatch. 33 tests. PR #382. |
+| M3.3b | ✅ **Complete** | melete distillation — context distillation engine, compression strategies, token budget management, session continuity. 34 tests. PR #383. |
+| M3.3c | ✅ **Complete** | agora Signal listener — inbound message routing, SignalListener with JSON-RPC subscribe, message-to-nous dispatch. 41 tests. PR #384. |
+| M3.4+ | Not started | Delivery reliability, cross-nous message routing, end-to-end pipeline integration |
+| M4 | Not started | Multi-nous, roles, daemon, melete, dianoia |
+| M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 9 Rust crates (+ integration-tests + mneme-bench), 332 workspace tests, ~13,400 lines of Rust.
+**Totals:** 14 Rust crates (+ integration-tests + mneme-bench + graph-builder), 718 workspace tests, ~21K lines of Rust (+ 42K absorbed CozoDB in mneme-engine).
 
 ---
 
