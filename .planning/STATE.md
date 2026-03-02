@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-02T17:16:29.109Z"
+status: complete
+last_updated: "2026-03-02T18:05:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 12
+  completed_phases: 8
+  total_plans: 15
+  completed_plans: 15
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 7 of 8 (Integrate Hybrid Retrieval) -- IN PROGRESS
-Plan: 1 of 1 in current phase (07-01 complete)
-Status: Phase 7 Plan 01 complete -- BM25, RRF, search_hybrid() landed on main (f33f05e7)
-Last activity: 2026-03-02 -- 07-01 complete: hybrid retrieval integrated via cherry-pick, all tests pass
+Phase: 8 of 8 (Integrate Idiom Migration) -- COMPLETE
+Plan: 1 of 1 in current phase (08-01 complete)
+Status: Phase 8 Plan 01 complete -- snafu, tracing, LazyLock, unwrap audit, ABSORPTION.md landed on main (f9f7b8bb)
+Last activity: 2026-03-02 -- 08-01 complete: all idiom migrations integrated, 173 mneme-engine tests pass, milestone v1.0 COMPLETE
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Milestone: v1.0 CozoDB Absorption
 
@@ -38,9 +38,9 @@ Progress: [████████░░] 80%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 32 min
-- Total execution time: ~2.1 hours
+- Total plans completed: 15
+- Average duration: ~20 min
+- Total execution time: ~2.5 hours
 
 **By Phase:**
 
@@ -50,9 +50,10 @@ Progress: [████████░░] 80%
 | 02-critical-safety | 2/2 | ~60 min | ~30 min |
 | 03-wire-into-mneme | 2/2 | 15 min | 7.5 min |
 | 07-integrate-hybrid-retrieval | 1/1 | 7 min | 7 min |
+| 08-integrate-idiom-migration | 1/1 | ~10 min | ~10 min |
 
 **Recent Trend:**
-- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min, 7 min
+- Last 5 plans: 75 min, 14 min, 25 min, 10 min, 5 min, 7 min, ~10 min
 - Trend: integration work fast when interfaces are well-specified
 
 *Updated after each plan completion*
@@ -88,6 +89,8 @@ Recent decisions affecting current work:
 - AD-22 (03-02): schema_version not _schema_version -- CozoDB temp_store_tx (underscore prefix) is per-run; persistent store_tx requires no-underscore name
 - [Phase 07-integrate-hybrid-retrieval]: Squashed all Phase 4 cherry-picks into single commit — reset --soft main staged all changes together; cleaner than forcing split
 - [Phase 07-integrate-hybrid-retrieval]: knowledge_store.rs conflict resolved additively: Phase 6 run_query_with_timeout() and Phase 4 search_hybrid() both kept, Phase 6 block first
+- [Phase 08-integrate-idiom-migration]: Cherry-picked 8 of 9 p5 commits (skipped daa1024e docs-only), squashed to single commit on main
+- [Phase 08-integrate-idiom-migration]: rrf.rs required manual fix (miette->snafu) since Phase 7 added this file after Phase 5 was implemented — only file p5 couldn't reach
 
 ### Pending Todos
 
@@ -102,8 +105,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 07-integrate-hybrid-retrieval/07-01-PLAN.md -- Phase 7 Plan 01 done (BM25, RRF, search_hybrid on main)
-Resume file: (continue with next phase)
+Stopped at: Completed 08-integrate-idiom-migration/08-01-PLAN.md -- Phase 8 Plan 01 done (snafu, tracing, LazyLock, ABSORPTION.md on main) -- MILESTONE COMPLETE
+Resume file: (milestone v1.0 complete — all 53 requirements satisfied)
 
 ---
-*Last updated: 2026-03-02 -- 07-01 complete (173 mneme-engine tests, 66 mneme tests, 9+ integration tests, clippy clean)*
+*Last updated: 2026-03-02 -- 08-01 complete (173 mneme-engine tests, 86 mneme tests, 5 integration tests, clippy clean) -- v1.0 CozoDB Absorption milestone COMPLETE*

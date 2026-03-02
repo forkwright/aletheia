@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Error + Idiom Migration** - miette to snafu, log to tracing, lazy_static to LazyLock, systematic unwrap audit (completed 2026-03-02)
 - [x] **Phase 6: Performance** - Query timeout via cancellation token, ndarray fused distance computation (completed 2026-03-02)
 - [x] **Phase 7: Integrate Hybrid Retrieval** - Rebase feat/mneme-engine-p4 onto main, resolve conflicts with Phase 6, verify tests (gap closure) (completed 2026-03-02)
-- [ ] **Phase 8: Integrate Idiom Migration** - Rebase feat/mneme-engine-p5 onto integrated branch, resolve conflicts, update tracking docs (gap closure)
+- [x] **Phase 8: Integrate Idiom Migration** - Rebase feat/mneme-engine-p5 onto integrated branch, resolve conflicts, update tracking docs (gap closure) (completed 2026-03-02)
 
 ## Phase Details
 
@@ -83,8 +83,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [x] 04-01: BM25 fixed rule, RRF fixed rule, search_hybrid() (integrated via Phase 7)
+- [x] 04-02: Integration tests — hybrid retrieval end-to-end (integrated via Phase 7)
 
 ### Phase 5: Error + Idiom Migration
 **Goal**: Absorbed CozoDB code follows Aletheia conventions -- snafu errors, tracing instrumentation, LazyLock statics, and unwraps in public-reachable paths replaced with typed errors
@@ -99,8 +99,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [x] 05-01: log->tracing, lazy_static->LazyLock, env_logger->tracing-subscriber (integrated via Phase 8)
+- [x] 05-02: miette->snafu migration (61 files), error.rs, unwrap audit (integrated via Phase 8)
 
 ### Phase 6: Performance
 **Goal**: Query execution is cancellable via timeout and vector distance computation uses fused ndarray operations
@@ -112,7 +112,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 06-01: TBD
+- [x] 06-01: Query timeout via cancellation token, ndarray fused distance computation (integrated via Phase 7)
 
 ### Phase 7: Integrate Hybrid Retrieval
 **Goal**: Rebase the 6 `feat/mneme-engine-p4` commits onto current main so hybrid retrieval is available on the integration branch -- BM25, RRF, search_hybrid, and all Phase 4 tests land on main
@@ -127,7 +127,7 @@ Plans:
 **Plans**: 1 plan, 1 wave (sequential)
 
 Plans:
-- [ ] 07-01: Cherry-pick Phase 4 code commits, resolve knowledge_store.rs conflict, squash, verify (Wave 1)
+- [x] 07-01: Cherry-pick Phase 4 code commits, resolve knowledge_store.rs conflict, squash, verify (Wave 1)
 
 ### Phase 8: Integrate Idiom Migration
 **Goal**: Rebase the 9 `feat/mneme-engine-p5` commits onto the Phase 7 result so all idiom migrations land -- snafu errors, tracing, LazyLock, unwrap audit, and ABSORPTION.md
@@ -142,10 +142,10 @@ Plans:
   5. `cargo test -p aletheia-mneme-engine` passes with all migrations applied
   6. ABSORPTION.md present in crate docs
   7. ROADMAP.md, REQUIREMENTS.md, STATE.md fully reconciled
-**Plans**: TBD
+**Plans**: 1 plan, 1 wave (sequential)
 
 Plans:
-- [ ] 08-01: TBD
+- [x] 08-01: Cherry-pick p5 commits, fix rrf.rs, squash, verify (Wave 1)
 
 ## Progress
 
@@ -161,4 +161,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Error + Idiom Migration | 3/3 | Complete   | 2026-03-02 |
 | 6. Performance | 1/1 | Complete   | 2026-03-02 |
 | 7. Integrate Hybrid Retrieval | 1/1 | Complete   | 2026-03-02 |
-| 8. Integrate Idiom Migration | 0/1 | Not started | — |
+| 8. Integrate Idiom Migration | 1/1 | Complete | 2026-03-02 |

@@ -63,11 +63,11 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 
 ### Error and Idiom Migration
 
-- [ ] **IDIOM-01**: miette error types migrated to snafu pattern
-- [ ] **IDIOM-02**: log macros replaced with tracing macros
-- [ ] **IDIOM-03**: lazy_static replaced with LazyLock
-- [ ] **IDIOM-04**: Systematic unwrap audit — unwraps in paths reachable from public API converted to typed errors
-- [ ] **IDIOM-05**: env_logger fully removed (replaced by tracing subscriber in test harness)
+- [x] **IDIOM-01**: miette error types migrated to snafu pattern
+- [x] **IDIOM-02**: log macros replaced with tracing macros
+- [x] **IDIOM-03**: lazy_static replaced with LazyLock
+- [x] **IDIOM-04**: Systematic unwrap audit — unwraps in paths reachable from public API converted to typed errors
+- [x] **IDIOM-05**: env_logger fully removed (replaced by tracing subscriber in test harness)
 
 ### Performance
 
@@ -86,7 +86,7 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 
 ### Documentation
 
-- [ ] **DOCS-01**: ABSORPTION.md documents lines removed (before/after), unsafe sites carried, unwraps carried, remaining cleanup
+- [x] **DOCS-01**: ABSORPTION.md documents lines removed (before/after), unsafe sites carried, unwraps carried, remaining cleanup
 - [x] **DOCS-02**: UPSTREAM-REVIEW.md documents reviewed PRs/issues/branches with disposition
 - [x] **DOCS-03**: VENDORED.md documents source origin, version, copyright headers preserved
 
@@ -151,11 +151,11 @@ Deferred beyond this milestone.
 | RETR-02 | Phase 7 (gap closure) | Complete |
 | RETR-03 | Phase 7 (gap closure) | Complete |
 | RETR-04 | Phase 7 (gap closure) | Complete |
-| IDIOM-01 | Phase 8 (gap closure) | Pending |
-| IDIOM-02 | Phase 8 (gap closure) | Pending |
-| IDIOM-03 | Phase 8 (gap closure) | Pending |
-| IDIOM-04 | Phase 8 (gap closure) | Pending |
-| IDIOM-05 | Phase 8 (gap closure) | Pending |
+| IDIOM-01 | Phase 8 (gap closure) | Complete |
+| IDIOM-02 | Phase 8 (gap closure) | Complete |
+| IDIOM-03 | Phase 8 (gap closure) | Complete |
+| IDIOM-04 | Phase 8 (gap closure) | Complete |
+| IDIOM-05 | Phase 8 (gap closure) | Complete |
 | PERF-01 | Phase 7 (gap closure) | Complete |
 | PERF-02 | Phase 6 | Complete |
 | PERF-03 | Phase 6 | Complete |
@@ -165,14 +165,14 @@ Deferred beyond this milestone.
 | TEST-04 | Phase 7 (gap closure) | Complete |
 | TEST-05 | Phase 1 | Complete |
 | TEST-06 | Phase 7 (gap closure) | Complete |
-| DOCS-01 | Phase 8 (gap closure) | Pending |
+| DOCS-01 | Phase 8 (gap closure) | Complete |
 | DOCS-02 | Phase 1 | Complete |
 | DOCS-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 53 total
-- Satisfied on main: 40
-- Pending integration: 13 (gap closure phases 7-8)
+- Satisfied on main: 53
+- Pending integration: 0
 - Unmapped: 0
 
 **Per-phase breakdown:**
@@ -187,4 +187,4 @@ Deferred beyond this milestone.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 -- 01-02 complete: CRATE-05, STRIP-01..08, API-01..08 marked complete*
+*Last updated: 2026-03-02 -- 08-01 complete: IDIOM-01..05, DOCS-01 marked complete — all 53 v1 requirements satisfied*
