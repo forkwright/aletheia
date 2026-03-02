@@ -316,91 +316,106 @@ export class AnthropicProvider {
     // Track in-progress content blocks by index
     const blockState = new Map<number, { type: string; id?: string; name?: string; text?: string; jsonParts?: string[]; signature?: string }>();
 
-    for await (const event of stream) {
-      switch (event.type) {
-        case "message_start": {
-          const msg = event.message;
-          responseModel = msg.model;
-          const u = msg.usage;
-          usage.inputTokens = u.input_tokens;
-          usage.outputTokens = u.output_tokens;
-          usage.cacheReadTokens = (u as unknown as Record<string, number>)["cache_read_input_tokens"] ?? 0;
-          usage.cacheWriteTokens = (u as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0;
-          break;
-        }
-
-        case "content_block_start": {
-          const block = event.content_block;
-          if (block.type === "text") {
-            blockState.set(event.index, { type: "text", text: "" });
-          } else if (block.type === "tool_use") {
-            blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
-            yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
-          } else if (block.type === "thinking") {
-            blockState.set(event.index, { type: "thinking", text: "" });
+    try {
+      for await (const event of stream) {
+        switch (event.type) {
+          case "message_start": {
+            const msg = event.message;
+            responseModel = msg.model;
+            const u = msg.usage;
+            usage.inputTokens = u.input_tokens;
+            usage.outputTokens = u.output_tokens;
+            usage.cacheReadTokens = (u as unknown as Record<string, number>)["cache_read_input_tokens"] ?? 0;
+            usage.cacheWriteTokens = (u as unknown as Record<string, number>)["cache_creation_input_tokens"] ?? 0;
+            break;
           }
-          break;
-        }
 
-        case "content_block_delta": {
-          const delta = event.delta;
-          if (delta.type === "text_delta") {
-            const state = blockState.get(event.index);
-            if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
-            yield { type: "text_delta", text: delta.text };
-          } else if (delta.type === "thinking_delta") {
-            const state = blockState.get(event.index);
-            if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
-            yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
-          } else if (delta.type === "signature_delta") {
+          case "content_block_start": {
+            const block = event.content_block;
+            if (block.type === "text") {
+              blockState.set(event.index, { type: "text", text: "" });
+            } else if (block.type === "tool_use") {
+              blockState.set(event.index, { type: "tool_use", id: block.id, name: block.name, jsonParts: [] });
+              yield { type: "tool_use_start", index: event.index, id: block.id, name: block.name };
+            } else if (block.type === "thinking") {
+              blockState.set(event.index, { type: "thinking", text: "" });
+            }
+            break;
+          }
+
+          case "content_block_delta": {
+            const delta = event.delta;
+            if (delta.type === "text_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "text") state.text = (state.text ?? "") + delta.text;
+              yield { type: "text_delta", text: delta.text };
+            } else if (delta.type === "thinking_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "thinking") state.text = (state.text ?? "") + (delta as unknown as { thinking: string }).thinking;
+              yield { type: "thinking_delta", text: (delta as unknown as { thinking: string }).thinking };
+            } else if (delta.type === "signature_delta") {
+              const state = blockState.get(event.index);
+              if (state?.type === "thinking") {
+                state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+              }
+            } else if (delta.type === "input_json_delta") {
+              const state = blockState.get(event.index);
+              if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
+            }
+            break;
+          }
+
+          case "content_block_stop": {
             const state = blockState.get(event.index);
             if (state?.type === "thinking") {
-              state.signature = (state.signature ?? "") + (delta as unknown as { signature: string }).signature;
+              contentBlocks.push({
+                type: "thinking",
+                thinking: state.text ?? "",
+                ...(state.signature ? { signature: state.signature } : {}),
+              });
+            } else if (state?.type === "text") {
+              contentBlocks.push({ type: "text", text: state.text ?? "" });
+            } else if (state?.type === "tool_use") {
+              let input: Record<string, unknown> = {};
+              try {
+                input = JSON.parse(state.jsonParts?.join("") ?? "{}");
+              } catch { /* stream abort cleanup */
+                log.warn("Failed to parse tool_use input JSON from stream");
+              }
+              contentBlocks.push({
+                type: "tool_use",
+                id: state.id!,
+                name: state.name!,
+                input,
+              });
+              yield { type: "tool_use_end", index: event.index };
             }
-          } else if (delta.type === "input_json_delta") {
-            const state = blockState.get(event.index);
-            if (state?.jsonParts) state.jsonParts.push(delta.partial_json);
+            break;
           }
-          break;
-        }
 
-        case "content_block_stop": {
-          const state = blockState.get(event.index);
-          if (state?.type === "thinking") {
-            contentBlocks.push({
-              type: "thinking",
-              thinking: state.text ?? "",
-              ...(state.signature ? { signature: state.signature } : {}),
-            });
-          } else if (state?.type === "text") {
-            contentBlocks.push({ type: "text", text: state.text ?? "" });
-          } else if (state?.type === "tool_use") {
-            let input: Record<string, unknown> = {};
-            try {
-              input = JSON.parse(state.jsonParts?.join("") ?? "{}");
-            } catch { /* stream abort cleanup */
-              log.warn("Failed to parse tool_use input JSON from stream");
+          case "message_delta": {
+            stopReason = event.delta.stop_reason ?? "end_turn";
+            const deltaUsage = event.usage as unknown as Record<string, number> | undefined;
+            if (deltaUsage?.["output_tokens"]) {
+              usage.outputTokens = deltaUsage["output_tokens"];
             }
-            contentBlocks.push({
-              type: "tool_use",
-              id: state.id!,
-              name: state.name!,
-              input,
-            });
-            yield { type: "tool_use_end", index: event.index };
+            break;
           }
-          break;
-        }
-
-        case "message_delta": {
-          stopReason = event.delta.stop_reason ?? "end_turn";
-          const deltaUsage = event.usage as unknown as Record<string, number> | undefined;
-          if (deltaUsage?.["output_tokens"]) {
-            usage.outputTokens = deltaUsage["output_tokens"];
-          }
-          break;
         }
       }
+    } catch (iterError) {
+      if (iterError instanceof ProviderError) throw iterError;
+      const msg = iterError instanceof Error ? iterError.message : String(iterError);
+      log.error(`Stream iteration error: ${msg}`);
+      const overloaded = msg.includes("overloaded_error");
+      const code = overloaded ? "PROVIDER_OVERLOADED" as const : "PROVIDER_INVALID_RESPONSE" as const;
+      throw new ProviderError(`Anthropic stream error: ${msg}`, {
+        cause: iterError,
+        code,
+        recoverable: true,
+        ...(overloaded ? { retryAfterMs: 30_000 } : {}),
+        context: { model, phase: "stream_iteration" },
+      });
     }
 
     yield {
