@@ -48,8 +48,8 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 ### Integration
 
 - [x] **INTG-01**: mneme-engine is a dependency of aletheia-mneme
-- [ ] **INTG-02**: KnowledgeStore uses mneme-engine for fact storage (insert + query round-trip works)
-- [ ] **INTG-03**: KnowledgeStore uses mneme-engine for HNSW vector search (insert + knn works)
+- [x] **INTG-02**: KnowledgeStore uses mneme-engine for fact storage (insert + query round-trip works)
+- [x] **INTG-03**: KnowledgeStore uses mneme-engine for HNSW vector search (insert + knn works)
 - [x] **INTG-04**: Graph algorithm calls wrapped in `spawn_blocking` to prevent rayon+Tokio deadlock
 - [x] **INTG-05**: Schema version tracking implemented in mneme wrapper
 - [x] **INTG-06**: `vendor/cozo/` and `vendor/graph_builder/` deletable after absorption (all code in crates/)
@@ -72,14 +72,14 @@ Requirements for the full CozoDB absorption into mneme-engine. Covers compile, s
 ### Performance
 
 - [ ] **PERF-01**: HNSW connectivity verification test exists to detect recall degradation
-- [ ] **PERF-02**: Query timeout via cancellation token in eval loop
-- [ ] **PERF-03**: ndarray fused operations for distance computation where applicable
+- [x] **PERF-02**: Query timeout via cancellation token in eval loop
+- [x] **PERF-03**: ndarray fused operations for distance computation where applicable
 
 ### Testing
 
 - [x] **TEST-01**: CozoDB's own test suite (`runtime/tests.rs`) passes under mneme-engine
-- [ ] **TEST-02**: Integration test: create DB, insert fact, query fact, verify round-trip
-- [ ] **TEST-03**: Integration test: create DB, insert vectors, HNSW knn search, verify results
+- [x] **TEST-02**: Integration test: create DB, insert fact, query fact, verify round-trip
+- [x] **TEST-03**: Integration test: create DB, insert vectors, HNSW knn search, verify results
 - [ ] **TEST-04**: Integration test: hybrid retrieval (BM25 + HNSW + graph) end-to-end
 - [x] **TEST-05**: `cargo clippy --workspace` clean (crate-level `#[expect]` for inherited CozoDB warnings)
 - [ ] **TEST-06**: HNSW soft-deletion connectivity test (verify <5% degradation after N cycles)
@@ -142,45 +142,48 @@ Deferred beyond this milestone.
 | SAFE-04 | Phase 1 | Complete |
 | SAFE-05 | Phase 2 | Complete |
 | INTG-01 | Phase 3 (03-01) | Complete |
-| INTG-02 | Phase 3 (03-02) | Pending |
-| INTG-03 | Phase 3 (03-02) | Pending |
+| INTG-02 | Phase 3 (03-02) | Complete |
+| INTG-03 | Phase 3 (03-02) | Complete |
 | INTG-04 | Phase 3 (03-01) | Complete |
 | INTG-05 | Phase 3 (03-01) | Complete |
 | INTG-06 | Phase 1 | Complete |
-| RETR-01 | Phase 4 | Pending |
-| RETR-02 | Phase 4 | Pending |
-| RETR-03 | Phase 4 | Pending |
-| RETR-04 | Phase 4 | Pending |
-| IDIOM-01 | Phase 5 | Pending |
-| IDIOM-02 | Phase 5 | Pending |
-| IDIOM-03 | Phase 5 | Pending |
-| IDIOM-04 | Phase 5 | Pending |
-| IDIOM-05 | Phase 5 | Pending |
-| PERF-01 | Phase 4 | Pending |
-| PERF-02 | Phase 6 | Pending |
-| PERF-03 | Phase 6 | Pending |
+| RETR-01 | Phase 7 (gap closure) | Pending |
+| RETR-02 | Phase 7 (gap closure) | Pending |
+| RETR-03 | Phase 7 (gap closure) | Pending |
+| RETR-04 | Phase 7 (gap closure) | Pending |
+| IDIOM-01 | Phase 8 (gap closure) | Pending |
+| IDIOM-02 | Phase 8 (gap closure) | Pending |
+| IDIOM-03 | Phase 8 (gap closure) | Pending |
+| IDIOM-04 | Phase 8 (gap closure) | Pending |
+| IDIOM-05 | Phase 8 (gap closure) | Pending |
+| PERF-01 | Phase 7 (gap closure) | Pending |
+| PERF-02 | Phase 6 | Complete |
+| PERF-03 | Phase 6 | Complete |
 | TEST-01 | Phase 1 | Complete |
-| TEST-02 | Phase 3 | Pending |
-| TEST-03 | Phase 3 | Pending |
-| TEST-04 | Phase 4 | Pending |
+| TEST-02 | Phase 3 | Complete |
+| TEST-03 | Phase 3 | Complete |
+| TEST-04 | Phase 7 (gap closure) | Pending |
 | TEST-05 | Phase 1 | Complete |
-| TEST-06 | Phase 4 | Pending |
-| DOCS-01 | Phase 5 | Pending |
+| TEST-06 | Phase 7 (gap closure) | Pending |
+| DOCS-01 | Phase 8 (gap closure) | Pending |
 | DOCS-02 | Phase 1 | Complete |
 | DOCS-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 53 total
-- Mapped to phases: 53
+- Satisfied on main: 40
+- Pending integration: 13 (gap closure phases 7-8)
 - Unmapped: 0
 
 **Per-phase breakdown:**
 - Phase 1 (Copy + Compile): 27 requirements
 - Phase 2 (Critical Safety): 4 requirements
 - Phase 3 (Wire into mneme): 7 requirements
-- Phase 4 (Hybrid Retrieval): 7 requirements
-- Phase 5 (Error + Idiom Migration): 6 requirements
+- Phase 4 (Hybrid Retrieval): 0 requirements (reassigned to Phase 7)
+- Phase 5 (Error + Idiom Migration): 0 requirements (reassigned to Phase 8)
 - Phase 6 (Performance): 2 requirements
+- Phase 7 (Integrate Hybrid Retrieval): 7 requirements (gap closure)
+- Phase 8 (Integrate Idiom Migration): 6 requirements (gap closure)
 
 ---
 *Requirements defined: 2026-03-01*
