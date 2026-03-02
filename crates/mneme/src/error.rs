@@ -70,6 +70,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Query exceeded the configured timeout duration.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("query timed out after {secs:.1}s"))]
+    QueryTimeout {
+        secs: f64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Schema version mismatch.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("schema version mismatch: expected {expected}, found {found}"))]

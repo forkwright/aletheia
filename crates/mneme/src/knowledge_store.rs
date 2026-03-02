@@ -429,6 +429,39 @@ impl KnowledgeStore {
         self.run_read(script, params)
     }
 
+    /// Run a custom Datalog query with an optional timeout.
+    ///
+    /// If the query exceeds the timeout, returns `Error::QueryTimeout`.
+    /// The `:timeout` directive is injected into the script — callers should not include it.
+    ///
+    /// Note: timeout detection relies on the engine error containing "killed before completion"
+    /// (from CozoDB's internal `ProcessKilled` error). This is a known fragile dependency.
+    pub fn run_query_with_timeout(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+        timeout: Option<std::time::Duration>,
+    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        use aletheia_mneme_engine::ScriptMutability;
+        let script_with_timeout = match timeout {
+            Some(d) => format!("{script}\n:timeout {}", d.as_secs_f64()),
+            None => script.to_owned(),
+        };
+        self.db
+            .run(&script_with_timeout, params, ScriptMutability::Immutable)
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("killed before completion") {
+                    crate::error::QueryTimeoutSnafu {
+                        secs: timeout.map(|d| d.as_secs_f64()).unwrap_or(0.0),
+                    }
+                    .build()
+                } else {
+                    crate::error::EngineQuerySnafu { message: msg }.build()
+                }
+            })
+    }
+
     // --- Async wrappers ---
 
     /// Async `insert_fact` — wraps sync call in `spawn_blocking`.
@@ -909,6 +942,58 @@ mod engine_assertions {
     use static_assertions::assert_impl_all;
     use super::KnowledgeStore;
     assert_impl_all!(KnowledgeStore: Send, Sync);
+}
+
+#[cfg(all(test, feature = "mneme-engine"))]
+mod timeout_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    #[test]
+    fn query_timeout_returns_typed_error() {
+        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
+            .expect("open_mem");
+
+        // Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
+        // fixpoint epochs. Each epoch checks the Poison flag. With N=2000 and timeout=50ms
+        // the engine will hit the Poison kill well before all epochs complete.
+        let result = store.run_query_with_timeout(
+            r"
+edge[a, b] := a in int_range(2000), b = a + 1
+reach[a, b] := edge[a, b]
+reach[a, c] := reach[a, b], edge[b, c]
+?[a, c] := reach[a, c]
+",
+            BTreeMap::new(),
+            Some(Duration::from_millis(50)),
+        );
+
+        assert!(result.is_err(), "expected timeout error");
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timed out"),
+            "error should mention timeout, got: {msg}"
+        );
+        assert!(matches!(err, crate::error::Error::QueryTimeout { .. }));
+    }
+
+    #[test]
+    fn query_without_timeout_succeeds() {
+        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
+            .expect("open_mem");
+
+        let result = store.run_query_with_timeout(
+            "?[x] := x = 42",
+            BTreeMap::new(),
+            None,
+        );
+
+        assert!(result.is_ok(), "query without timeout should succeed");
+        let rows = result.unwrap();
+        assert_eq!(rows.rows.len(), 1);
+    }
 }
 
 #[cfg(test)]
