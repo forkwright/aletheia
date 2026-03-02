@@ -168,11 +168,7 @@ impl StreamAccumulator {
                 // Final event or keepalive — nothing to accumulate.
             }
             WireStreamEvent::Error { error } => {
-                return Err(error::ApiSnafu {
-                    status: 0_u16,
-                    message: error.message,
-                }
-                .build());
+                return Err(super::error::map_sse_error(error));
             }
         }
         Ok(())
@@ -451,4 +447,24 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\
         let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
         assert!(result.is_err());
     }
+
+    #[test]
+    fn overloaded_sse_error_is_rate_limited() {
+        use crate::error::Error;
+
+        let sse = "\
+event: error\n\
+data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\
+\n";
+
+        let reader = std::io::Cursor::new(sse);
+        let mut acc = StreamAccumulator::new();
+        let result = parse_sse_stream(reader, &mut acc, &mut |_| {});
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::RateLimited { .. }),
+            "expected RateLimited, got: {err:?}"
+        );
+    }
 }
+

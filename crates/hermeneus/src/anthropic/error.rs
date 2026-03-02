@@ -53,3 +53,68 @@ fn extract_retry_after(response: &Response) -> Option<u64> {
         .and_then(|v| v.parse::<u64>().ok())
         .map(|secs| secs * 1000)
 }
+
+/// Default backoff for SSE overload/rate-limit errors (no retry-after header available).
+const SSE_DEFAULT_RETRY_MS: u64 = 1000;
+
+/// Map an SSE stream error event to a hermeneus error.
+///
+/// Unlike HTTP errors, SSE errors arrive inside a 200 response body.
+/// The error type string determines retryability:
+/// - `overloaded_error` / `rate_limit_error` → `RateLimited` (retryable)
+/// - Everything else → `ApiError` (not retried)
+pub(crate) fn map_sse_error(detail: super::wire::WireErrorDetail) -> crate::error::Error {
+    match detail.error_type.as_str() {
+        "overloaded_error" | "rate_limit_error" => crate::error::RateLimitedSnafu {
+            retry_after_ms: SSE_DEFAULT_RETRY_MS,
+        }
+        .build(),
+        _ => crate::error::ApiSnafu {
+            status: 0_u16,
+            message: detail.message,
+        }
+        .build(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+
+    #[test]
+    fn overloaded_error_maps_to_rate_limited() {
+        let detail = super::super::wire::WireErrorDetail {
+            error_type: "overloaded_error".to_owned(),
+            message: "Overloaded".to_owned(),
+        };
+        let err = map_sse_error(detail);
+        assert!(
+            matches!(err, Error::RateLimited { retry_after_ms: 1000, .. }),
+            "expected RateLimited, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn rate_limit_error_maps_to_rate_limited() {
+        let detail = super::super::wire::WireErrorDetail {
+            error_type: "rate_limit_error".to_owned(),
+            message: "Rate limited".to_owned(),
+        };
+        let err = map_sse_error(detail);
+        assert!(matches!(err, Error::RateLimited { .. }));
+    }
+
+    #[test]
+    fn unknown_error_maps_to_api_error() {
+        let detail = super::super::wire::WireErrorDetail {
+            error_type: "invalid_request_error".to_owned(),
+            message: "bad input".to_owned(),
+        };
+        let err = map_sse_error(detail);
+        assert!(
+            matches!(err, Error::ApiError { status: 0, .. }),
+            "expected ApiError, got: {err:?}"
+        );
+    }
+}

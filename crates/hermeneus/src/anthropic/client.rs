@@ -24,6 +24,7 @@ const BACKOFF_FACTOR: u64 = 2;
 const BACKOFF_MAX_MS: u64 = 30_000;
 
 static SUPPORTED_MODELS: &[&str] = &[
+    "claude-opus-4-6",
     "claude-opus-4-20250514",
     "claude-sonnet-4-20250514",
     "claude-haiku-4-5-20251001",
@@ -80,6 +81,11 @@ impl AnthropicProvider {
     /// Streaming completion — accumulates into a final `CompletionResponse`
     /// while emitting deltas to the callback.
     ///
+    /// Retries on transient errors (overloaded, rate-limited) with exponential
+    /// backoff, but **only if no content has been emitted** to the callback yet.
+    /// Once deltas have been streamed, a retry would produce duplicate/corrupt
+    /// output, so mid-content errors propagate immediately.
+    ///
     /// This is an `AnthropicProvider`-specific method. The sync `LlmProvider`
     /// trait only exposes `complete()`. When the trait goes async in M2, this
     /// will become the primary implementation.
@@ -91,24 +97,91 @@ impl AnthropicProvider {
     ) -> Result<CompletionResponse> {
         let wire = WireRequest::from_request(request, Some(true));
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
+        let headers = self.build_headers();
 
-        let response = self
-            .client
-            .post(format!("{}/v1/messages", self.base_url))
-            .headers(self.build_headers())
-            .body(body)
-            .send()
-            .map_err(|e| super::error::map_request_error(&e))?;
+        let mut last_error = None;
 
-        if !response.status().is_success() {
-            return Err(super::error::map_error_response(response));
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                tracing::warn!(
+                    attempt,
+                    max = self.max_retries,
+                    "retrying streaming request after transient error"
+                );
+                std::thread::sleep(backoff_delay(attempt, last_error.as_ref()));
+            }
+
+            // HTTP-level errors (connection, non-200 status)
+            let response = match self
+                .client
+                .post(format!("{}/v1/messages", self.base_url))
+                .headers(headers.clone())
+                .body(body.clone())
+                .send()
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = Some(super::error::map_request_error(&e));
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status().as_u16();
+                let err = super::error::map_error_response(response);
+                // Non-retryable HTTP status: 401, 400-level (except 429)
+                if status == 401 || ((400..500).contains(&status) && status != 429) {
+                    return Err(err);
+                }
+                last_error = Some(err);
+                continue;
+            }
+
+            // SSE stream — track whether content has been emitted
+            let reader = std::io::BufReader::new(response);
+            let mut accumulator = StreamAccumulator::new();
+            let mut content_started = false;
+
+            let stream_result = parse_sse_stream(reader, &mut accumulator, &mut |event| {
+                if matches!(
+                    event,
+                    StreamEvent::TextDelta { .. }
+                        | StreamEvent::ThinkingDelta { .. }
+                        | StreamEvent::InputJsonDelta { .. }
+                ) {
+                    content_started = true;
+                }
+                on_event(event);
+            });
+
+            match stream_result {
+                Ok(()) => return Ok(accumulator.finish()),
+                Err(e) => {
+                    // If content was already streamed, we can't retry — it would
+                    // produce duplicates. Propagate immediately.
+                    if content_started {
+                        tracing::error!(
+                            "SSE error after content started streaming — cannot retry"
+                        );
+                        return Err(e);
+                    }
+                    // Only retry RateLimited (overloaded/429); other errors are terminal.
+                    if matches!(e, error::Error::RateLimited { .. }) {
+                        tracing::warn!("SSE stream returned retryable error before content");
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
         }
 
-        let reader = std::io::BufReader::new(response);
-        let mut accumulator = StreamAccumulator::new();
-        parse_sse_stream(reader, &mut accumulator, &mut on_event)?;
-
-        Ok(accumulator.finish())
+        Err(last_error.unwrap_or_else(|| {
+            error::ApiRequestSnafu {
+                message: "streaming request failed after all retries".to_owned(),
+            }
+            .build()
+        }))
     }
 
     fn build_headers(&self) -> HeaderMap {

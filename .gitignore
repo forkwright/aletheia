@@ -125,3 +125,6 @@ tui/target/
 vendor/cozo/target/
 vendor/graph_builder/target/
 crates/mneme-bench/target/
+-e 
+# Cargo build output
+/target/

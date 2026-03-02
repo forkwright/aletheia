@@ -105,7 +105,7 @@ pub(crate) struct WireErrorResponse {
 #[derive(Debug, Deserialize)]
 pub(crate) struct WireErrorDetail {
     #[serde(rename = "type")]
-    pub _error_type: String,
+    pub error_type: String,
     pub message: String,
 }
 
