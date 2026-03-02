@@ -108,6 +108,8 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos),
+        None,
+        None,
     );
 
     let nous_config = NousConfig {

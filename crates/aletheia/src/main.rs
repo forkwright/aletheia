@@ -17,7 +17,6 @@ use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
-use aletheia_nous::session::SessionManager;
 use aletheia_organon::builtins;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_pylon::router::build_router;
@@ -108,16 +107,18 @@ async fn serve(cli: Cli) -> Result<()> {
     // JWT manager
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
-    // Build registries for nous actors (NousManager takes Arc ownership)
-    let nous_providers = Arc::new(build_provider_registry());
-    let nous_tools = Arc::new(build_tool_registry()?);
+    // Build shared registries — single instances used by both NousManager and AppState
+    let provider_registry = Arc::new(build_provider_registry());
+    let tool_registry = Arc::new(build_tool_registry()?);
     let oikos_arc = Arc::new(oikos);
 
     // Spawn nous actors
     let mut nous_manager = NousManager::new(
-        Arc::clone(&nous_providers),
-        Arc::clone(&nous_tools),
+        Arc::clone(&provider_registry),
+        Arc::clone(&tool_registry),
         Arc::clone(&oikos_arc),
+        None,
+        None,
     );
 
     if config.agents.list.is_empty() {
@@ -146,18 +147,18 @@ async fn serve(cli: Cli) -> Result<()> {
     // Signal channel listener (optional)
     let _listener = start_signal_listener(&config.channels.signal);
 
-    // Pylon HTTP gateway — separate registries since AppState takes owned values
+    // Pylon HTTP gateway — shares registries with NousManager, owns the manager
     let state = Arc::new(AppState {
         session_store: Mutex::new(session_store),
-        session_manager: SessionManager::new(NousConfig::default()),
-        provider_registry: build_provider_registry(),
-        tool_registry: build_tool_registry()?,
-        oikos: (*oikos_arc).clone(),
+        nous_manager,
+        provider_registry,
+        tool_registry,
+        oikos: oikos_arc,
         jwt_manager: Arc::new(jwt_manager),
         start_time: Instant::now(),
     });
 
-    let app = build_router(state);
+    let app = build_router(state.clone());
 
     let bind_addr = format!("{}:{}", cli.bind, cli.port);
     let listener = tokio::net::TcpListener::bind(&bind_addr)
@@ -172,7 +173,7 @@ async fn serve(cli: Cli) -> Result<()> {
         .context("server error")?;
 
     info!("shutting down");
-    nous_manager.shutdown_all().await;
+    state.nous_manager.shutdown_readonly().await;
     info!("shutdown complete");
 
     Ok(())

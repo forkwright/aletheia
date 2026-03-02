@@ -58,6 +58,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos),
+        None,
+        None,
     );
     let nous_config = NousConfig::default();
     nous_manager.spawn(nous_config, PipelineConfig::default()).await;
