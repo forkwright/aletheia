@@ -1,8 +1,8 @@
 # Aletheia — Project Plan
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
-> For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
-> Last updated: 2026-03-02 — M0a/M0b/M1 complete, M2 core + M3 complete. 745 tests across 15 crates, ~21K lines Rust (+42K vendored mneme-engine).
+> For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `.planning/DISPOSITION.md` (local).
+> Last updated: 2026-03-03 — M0a/M0b/M1 complete, M2 core + M3 complete. 745+ tests across 15 crates, ~21K lines Rust. mneme v2 vision added.
 
 ---
 
@@ -240,6 +240,23 @@ CozoDB provides all three storage layers:
 - **Relations:** Stored relations for entity metadata, bi-temporal facts.
 
 Custom (first principles): bi-temporal knowledge graph, graph extraction, entity resolution, 6-factor recall scoring, cross-nous scoring, recollection-as-memory.
+
+#### mneme v2: The Transformation Arc
+
+v1 absorbed CozoDB into the workspace as `mneme-engine` — it compiles, tests pass, hybrid retrieval works. v2 transforms it from "CozoDB that we absorbed" into Aletheia's memory engine.
+
+Three movements:
+
+1. **Integration (current)** — Bug fixes, recall pipeline, typed query builder. The engine connects to agent cognition.
+2. **Transformation** — Crate consolidation (`mneme-engine` + `graph-builder` → `mneme`), API reshaped around knowledge and memory (Fact, Association, Confidence, TemporalQuery — not DataValue, NamedRows), HNSW rewritten in-memory, CSV/JSON import restored as Rust-native, C/C++ dependencies evaluated for pure-Rust replacement.
+3. **Intelligence** — Knowledge extraction from conversations, conflict resolution on write, temporal decay, Louvain-based consolidation. The engine doesn't just store — it learns.
+
+Design principles:
+- **Reshape, don't shrink.** The 30+ graph algorithms, bi-temporal reasoning, Datalog optimizer, BM25 — all stay. We use 15% today but the roadmap reaches into the rest. Strip dead code (removed platform backends, FFI shims), not dormant capability.
+- **Rust-native where possible.** Evaluate pure-Rust alternatives for every C/C++ dependency without sacrificing quality. RocksDB → redb/fjall if benchmarks hold.
+- **API speaks our language.** The public surface thinks in knowledge, memory, recall, and confidence — not generic Datalog relations.
+
+Detailed phase plans and requirements in `.planning/` (local-only, not tracked in repo).
 
 ### Anthropic Client (hermeneus)
 
@@ -541,7 +558,7 @@ Last updated: 2026-03-01
 | `docs/STANDARDS.md` | Code standards + project governance (commit, deviation, research rules) |
 | `docs/decisions/` | Architecture Decision Records — G-01 through G-20, gnomon audit, CozoDB absorption |
 | `docs/LESSONS.md` | Operational lessons learned (16 rules earned through failure) |
-| `docs/DISPOSITION.md` | Spec & issue triage record — what was absorbed, retained, or closed |
+| `.planning/DISPOSITION.md` | Spec & issue triage record (local-only) — what was absorbed, retained, or closed |
 | `docs/gnomon.md` | Naming system and philosophy |
 | `docs/specs/44_oikos.md` | Detailed oikos spec (directory structure, resolution rules, migration plan) |
 | `docs/specs/40_testing-strategy.md` | Testing targets and patterns |
