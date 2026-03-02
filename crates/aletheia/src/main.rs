@@ -1,5 +1,7 @@
 //! Aletheia cognitive agent runtime — binary entrypoint.
 
+mod dispatch;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -10,8 +12,11 @@ use tracing::{info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use aletheia_agora::listener::ChannelListener;
+use aletheia_agora::registry::ChannelRegistry;
+use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::semeion::SignalProvider;
+use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_mneme::store::SessionStore;
@@ -147,13 +152,17 @@ async fn serve(cli: Cli) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
-    // Signal channel listener (optional)
-    let _listener = start_signal_listener(&config.channels.signal);
+    // Wrap in Arc — shared between dispatcher and AppState
+    let nous_manager = Arc::new(nous_manager);
 
-    // Pylon HTTP gateway — shares registries with NousManager, owns the manager
+    // Channel registry + inbound dispatch
+    let (_channel_registry, _dispatch_handle) =
+        start_inbound_dispatch(&config, &nous_manager);
+
+    // Pylon HTTP gateway — shares registries with NousManager
     let state = Arc::new(AppState {
         session_store,
-        nous_manager,
+        nous_manager: Arc::clone(&nous_manager),
         provider_registry,
         tool_registry,
         oikos: oikos_arc,
@@ -214,9 +223,54 @@ fn build_tool_registry() -> Result<ToolRegistry> {
     Ok(registry)
 }
 
-fn start_signal_listener(
+/// Build channel registry, start inbound listener, and spawn dispatch loop.
+fn start_inbound_dispatch(
+    config: &aletheia_taxis::config::AletheiaConfig,
+    nous_manager: &Arc<NousManager>,
+) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
+    let mut channel_registry = ChannelRegistry::new();
+
+    let signal_provider = build_signal_provider(&config.channels.signal);
+    if let Some(ref provider) = signal_provider {
+        channel_registry
+            .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
+            .expect("register signal provider");
+    }
+    let channel_registry = Arc::new(channel_registry);
+
+    let handle = if let Some(ref provider) = signal_provider {
+        let listener = ChannelListener::start(provider, None);
+        info!("signal channel listener started");
+        let rx = listener.into_receiver();
+
+        let default_nous_id = config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.default)
+            .or_else(|| config.agents.list.first())
+            .map(|a| a.id.clone());
+        let router = Arc::new(MessageRouter::new(
+            config.bindings.clone(),
+            default_nous_id,
+        ));
+
+        Some(dispatch::spawn_dispatcher(
+            rx,
+            router,
+            Arc::clone(nous_manager),
+            Arc::clone(&channel_registry),
+        ))
+    } else {
+        None
+    };
+
+    (channel_registry, handle)
+}
+
+fn build_signal_provider(
     signal_config: &aletheia_taxis::config::SignalConfig,
-) -> Option<ChannelListener> {
+) -> Option<Arc<SignalProvider>> {
     if !signal_config.enabled {
         info!("signal channel disabled");
         return None;
@@ -247,9 +301,7 @@ fn start_signal_listener(
         }
     }
 
-    let listener = ChannelListener::start(&provider, None);
-    info!("signal channel listener started");
-    Some(listener)
+    Some(Arc::new(provider))
 }
 
 fn init_tracing(log_level: &str, json: bool) {

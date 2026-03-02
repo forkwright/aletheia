@@ -13,7 +13,7 @@ use aletheia_taxis::oikos::Oikos;
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
 pub struct AppState {
     pub session_store: Arc<Mutex<SessionStore>>,
-    pub nous_manager: NousManager,
+    pub nous_manager: Arc<NousManager>,
     pub provider_registry: Arc<ProviderRegistry>,
     pub tool_registry: Arc<ToolRegistry>,
     pub oikos: Arc<Oikos>,

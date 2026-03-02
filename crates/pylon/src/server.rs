@@ -67,7 +67,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let state = Arc::new(AppState {
         session_store: Arc::new(Mutex::new(session_store)),
-        nous_manager,
+        nous_manager: Arc::new(nous_manager),
         provider_registry,
         tool_registry,
         oikos,

@@ -124,7 +124,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
 
     let state = Arc::new(AppState {
         session_store: Arc::new(Mutex::new(store)),
-        nous_manager,
+        nous_manager: Arc::new(nous_manager),
         provider_registry,
         tool_registry,
         oikos,

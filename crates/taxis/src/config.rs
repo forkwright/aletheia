@@ -12,6 +12,26 @@ pub struct AletheiaConfig {
     pub agents: AgentsConfig,
     pub gateway: GatewayConfig,
     pub channels: ChannelsConfig,
+    pub bindings: Vec<ChannelBinding>,
+}
+
+/// Maps a channel source to a nous agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelBinding {
+    /// Channel type (e.g., "signal").
+    pub channel: String,
+    /// Source pattern — phone number, group ID, or "*" for default.
+    pub source: String,
+    /// Nous ID to route to.
+    pub nous_id: String,
+    /// Session key pattern. Supports `{source}` and `{group}` placeholders.
+    #[serde(default = "default_session_pattern")]
+    pub session_key: String,
+}
+
+fn default_session_pattern() -> String {
+    "{source}".to_owned()
 }
 
 /// Agent configuration: shared defaults and per-agent definitions.
@@ -317,6 +337,7 @@ mod tests {
         assert_eq!(config.gateway.auth.mode, "token");
         assert!(config.channels.signal.enabled);
         assert!(config.channels.signal.accounts.is_empty());
+        assert!(config.bindings.is_empty());
     }
 
     #[test]
@@ -449,5 +470,25 @@ mod tests {
         assert!(account.require_mention);
         assert!(account.send_read_receipts);
         assert_eq!(account.text_chunk_limit, 2000);
+    }
+
+    #[test]
+    fn channel_binding_serde_roundtrip() {
+        let json = r#"{
+            "channel": "signal",
+            "source": "+1234567890",
+            "nousId": "syn"
+        }"#;
+        let binding: ChannelBinding = serde_json::from_str(json).expect("parse binding");
+        assert_eq!(binding.channel, "signal");
+        assert_eq!(binding.source, "+1234567890");
+        assert_eq!(binding.nous_id, "syn");
+        assert_eq!(binding.session_key, "{source}");
+    }
+
+    #[test]
+    fn bindings_in_config_default_empty() {
+        let config = AletheiaConfig::default();
+        assert!(config.bindings.is_empty());
     }
 }
