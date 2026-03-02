@@ -264,11 +264,11 @@ pub struct HybridResult {
     pub id: String,
     /// Fused RRF score (higher = more relevant).
     pub rrf_score: f64,
-    /// Rank in BM25 signal (0 = not in BM25 results).
+    /// Rank in BM25 signal (-1 = absent, 1+ = rank where 1 is best).
     pub bm25_rank: i64,
-    /// Rank in vector search signal (0 = not in vector results).
+    /// Rank in vector search signal (-1 = absent, 1+ = rank).
     pub vec_rank: i64,
-    /// Rank in graph neighborhood signal (0 = no graph contribution).
+    /// Rank in graph neighborhood signal (-1 = absent, 1+ = rank).
     pub graph_rank: i64,
 }
 
@@ -500,7 +500,7 @@ impl KnowledgeStore {
     /// The `:timeout` directive is injected into the script — callers should not include it.
     ///
     /// Note: timeout detection relies on the engine error containing "killed before completion"
-    /// (from CozoDB's internal `ProcessKilled` error). This is a known fragile dependency.
+    /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
     pub fn run_query_with_timeout(
         &self,
         script: &str,
@@ -518,7 +518,7 @@ impl KnowledgeStore {
                 let msg = e.to_string();
                 if msg.contains("killed before completion") {
                     crate::error::QueryTimeoutSnafu {
-                        secs: timeout.map(|d| d.as_secs_f64()).unwrap_or(0.0),
+                        secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
                     }
                     .build()
                 } else {
@@ -1012,9 +1012,10 @@ fn build_hybrid_query(q: &HybridQuery) -> String {
         let seeds_inline = seed_data.join(", ");
         format!(
             "seed_list[e] <- [{seeds_inline}]\n        \
-             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
-             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
-             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5"
+             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
+             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
+             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5\n        \
+             graph[id, sum(score)] := graph_raw[id, score]"
         )
     };
     queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
@@ -1040,30 +1041,36 @@ fn rows_to_hybrid_results(
             }
             .build()
         })?)?;
-        let bm25_rank = extract_int(row.get(2).ok_or_else(|| {
+        let bm25_rank = remap_absent_rank(extract_int(row.get(2).ok_or_else(|| {
             crate::error::ConversionSnafu {
                 message: "hybrid row: missing bm25_rank",
             }
             .build()
-        })?)?;
-        let vec_rank = extract_int(row.get(3).ok_or_else(|| {
+        })?)?);
+        let vec_rank = remap_absent_rank(extract_int(row.get(3).ok_or_else(|| {
             crate::error::ConversionSnafu {
                 message: "hybrid row: missing vec_rank",
             }
             .build()
-        })?)?;
-        let graph_rank = extract_int(row.get(4).ok_or_else(|| {
+        })?)?);
+        let graph_rank = remap_absent_rank(extract_int(row.get(4).ok_or_else(|| {
             crate::error::ConversionSnafu {
                 message: "hybrid row: missing graph_rank",
             }
             .build()
-        })?)?;
+        })?)?);
         out.push(HybridResult { id, rrf_score, bm25_rank, vec_rank, graph_rank });
     }
     // Sort by rrf_score descending (RRF output is unordered since it comes through :order in Datalog,
     // but :order is applied by the engine — this is a safety sort for correctness)
     out.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
     Ok(out)
+}
+
+// RRF engine uses 0 for absent signals (1-based ranking); remap to -1 for API clarity.
+#[cfg(feature = "mneme-engine")]
+fn remap_absent_rank(rank: i64) -> i64 {
+    if rank == 0 { -1 } else { rank }
 }
 
 // --- DataValue extraction utilities ---
@@ -1246,5 +1253,169 @@ mod tests {
         assert!(script.contains("e-rust"));
         assert!(script.contains("e-python"));
         assert!(script.contains("*relationships"));
+        assert!(script.contains("graph_raw"), "must use graph_raw intermediate for aggregation");
+        assert!(script.contains("sum(score)"), "must aggregate scores per entity");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_empty_seeds_returns_results() {
+        use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
+
+        let dim = 4;
+        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        let fact = Fact {
+            id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        let chunk = EmbeddedChunk {
+            id: "f1".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            embedding: vec![0.9, 0.1, 0.1, 0.1],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_embedding(&chunk).expect("insert embedding");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "Rust programming".to_owned(),
+                embedding: vec![0.9, 0.1, 0.1, 0.1],
+                seed_entities: vec![],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search with empty seeds");
+
+        assert!(!results.is_empty(), "empty seeds must still return BM25+vec results");
+        for r in &results {
+            assert_eq!(r.graph_rank, -1, "graph_rank must be -1 when seeds are empty");
+        }
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_graph_aggregation() {
+        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
+
+        let dim = 4;
+        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        let fact = Fact {
+            id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        let chunk = EmbeddedChunk {
+            id: "f1".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            embedding: vec![0.9, 0.1, 0.1, 0.1],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_embedding(&chunk).expect("insert embedding");
+
+        // Two seed entities, both connected to f1
+        for (id, name) in [("s1", "Seed1"), ("s2", "Seed2")] {
+            store
+                .insert_entity(&Entity {
+                    id: id.to_owned(),
+                    name: name.to_owned(),
+                    entity_type: "concept".to_owned(),
+                    aliases: vec![],
+                    created_at: "2026-03-01T00:00:00Z".to_owned(),
+                    updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                })
+                .expect("insert entity");
+            store
+                .insert_relationship(&Relationship {
+                    src: id.to_owned(),
+                    dst: "f1".to_owned(),
+                    relation: "describes".to_owned(),
+                    weight: 0.7,
+                    created_at: "2026-03-01T00:00:00Z".to_owned(),
+                })
+                .expect("insert relationship");
+        }
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "Rust programming".to_owned(),
+                embedding: vec![0.9, 0.1, 0.1, 0.1],
+                seed_entities: vec!["s1".to_owned(), "s2".to_owned()],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search with two seeds");
+
+        // f1 must appear exactly once (aggregated, not duplicated)
+        let f1_hits: Vec<_> = results.iter().filter(|r| r.id == "f1").collect();
+        assert_eq!(f1_hits.len(), 1, "entity reachable via multiple paths must appear once");
+        assert!(f1_hits[0].graph_rank > 0, "f1 must have a positive graph rank");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_absent_signal_rank_is_negative_one() {
+        use crate::knowledge::{EpistemicTier, Fact};
+
+        let dim = 4;
+        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        // Insert a fact but no embedding and no graph edges
+        let fact = Fact {
+            id: "f-bm25-only".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "unique xylophone testing keyword".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "xylophone testing".to_owned(),
+                embedding: vec![0.5, 0.5, 0.5, 0.5],
+                seed_entities: vec![],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search bm25-only");
+
+        let hit = results.iter().find(|r| r.id == "f-bm25-only");
+        assert!(hit.is_some(), "BM25-only fact must appear in results");
+        let hit = hit.unwrap();
+        assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
+        assert_eq!(hit.vec_rank, -1, "absent from vector signal must be -1");
+        assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
     }
 }

@@ -125,10 +125,16 @@ dependencies = [
  "aletheia-koina",
  "aletheia-mneme",
  "aletheia-nous",
+ "aletheia-organon",
+ "aletheia-pylon",
+ "aletheia-symbolon",
  "aletheia-taxis",
+ "axum",
+ "secrecy",
  "serde_json",
  "tempfile",
  "tokio",
+ "tower",
 ]
 
 [[package]]

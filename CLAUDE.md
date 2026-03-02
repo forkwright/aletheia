@@ -59,7 +59,7 @@ Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, 
 ```bash
 cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # All tests (745 across 15 crates)
+cargo test --workspace                 # All tests (781 across 15 crates)
 cargo test -p aletheia-hermeneus       # Single crate
 cargo clippy --workspace               # Lint (zero warnings policy)
 ```

@@ -179,6 +179,7 @@ pub async fn send_message(
             Ok(result) => {
                 emit_turn_result_events(&tx, &result).await;
 
+                // TODO: Remove after finalize stage handles persistence
                 // Store assistant response
                 let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
                 let _ = store_message(

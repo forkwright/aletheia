@@ -7,6 +7,7 @@
 pub mod error;
 pub mod listener;
 pub mod registry;
+pub mod router;
 pub mod semeion;
 pub mod types;
 
@@ -16,6 +17,7 @@ mod assertions {
 
     use super::listener::ChannelListener;
     use super::registry::ChannelRegistry;
+    use super::router::MessageRouter;
     use super::semeion::client::SignalClient;
     use super::semeion::SignalProvider;
     use super::types::InboundMessage;
@@ -23,6 +25,7 @@ mod assertions {
     assert_impl_all!(ChannelRegistry: Send, Sync);
     assert_impl_all!(ChannelListener: Send);
     assert_impl_all!(InboundMessage: Send, Sync);
+    assert_impl_all!(MessageRouter: Send, Sync);
     assert_impl_all!(SignalClient: Send, Sync);
     assert_impl_all!(SignalProvider: Send, Sync);
 }

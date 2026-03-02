@@ -2,7 +2,7 @@
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
 > For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `.planning/DISPOSITION.md` (local).
-> Last updated: 2026-03-03 — M0a/M0b/M1 complete, M2 core + M3 complete. 745+ tests across 15 crates, ~21K lines Rust. mneme v2 vision added.
+> Last updated: 2026-03-04 — M0a/M0b/M1 complete, M2 core + M3 complete, pipeline wired end-to-end. 781 tests across 15 crates, ~24K lines Rust. mneme v2 Phase 9 done.
 
 ---
 
@@ -514,7 +514,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
-Last updated: 2026-03-01
+Last updated: 2026-03-04
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
@@ -541,12 +541,17 @@ Last updated: 2026-03-01
 | M3.3a | ✅ **Complete** | nous NousActor — Tokio actor model with inbox, lifecycle states (Active/Idle/Dormant), NousManager, message dispatch. 33 tests. PR #382. |
 | M3.3b | ✅ **Complete** | melete distillation — context distillation engine, compression strategies, token budget management, session continuity. 34 tests. PR #383. |
 | M3.3c | ✅ **Complete** | agora Signal listener — inbound message routing, SignalListener with JSON-RPC subscribe, message-to-nous dispatch. 41 tests. PR #384. |
-| M3.4+ | Not started | Delivery reliability, cross-nous message routing, end-to-end pipeline integration |
+| M3.4a | ✅ **Complete** | nous history stage — budget-aware conversation history loading, system/tool message filtering, truncation marking. 7 tests. PR #419. |
+| M3.4b | ✅ **Complete** | nous finalize stage — persist user/assistant/tool messages, token usage recording, non-fatal error handling. 6 tests. PR #420. |
+| M3.4c | ✅ **Complete** | agora inbound routing — MessageRouter with 5-priority binding resolution (group→source→channel→global→none), session key template expansion, background dispatch task. PR #421. |
+| M3.4d | ✅ **Complete** | End-to-end integration tests — HTTP→pipeline→provider→persistence round-trip with mock providers, JWT auth validation, bootstrap assembly verification. 7 tests. PR #418. |
+| M3.4e | ✅ **Complete** | mneme hybrid search bug fixes — graph score aggregation (`graph_raw` + `sum()`), RRF rank encoding (0→-1), empty seed_entities handling. 4 tests. PR #422. (Completes mneme v2 Phase 9.) |
+| M3.5+ | Not started | Delivery reliability, cross-nous sessions, recall pipeline wiring (mneme v2 Phase 10) |
 | M4 | Not started | Multi-nous, roles, daemon, melete, dianoia |
 | M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 745 tests (`#[test]` + `#[tokio::test]`), ~21K lines of Rust (+42K vendored CozoDB in mneme-engine).
+**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 781 tests (`#[test]` + `#[tokio::test]`), ~24K lines of Rust (+42K vendored CozoDB in mneme-engine).
 
 ---
 
