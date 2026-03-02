@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/aletheia",
     "crates/graph-builder",
     "crates/agora",
     "crates/hermeneus",
