@@ -23,6 +23,7 @@ import type {
 } from "../types.js";
 import { truncateToolResult } from "./truncate.js";
 import { loadPipelineConfig } from "../../pipeline-config.js";
+import { resolveFallbackModels } from "../../../taxis/loader.js";
 
 /** Resolve per-agent maxOutputTokens: agent params → global defaults. */
 function resolveMaxTokens(state: TurnState, services: RuntimeServices): number {
@@ -140,6 +141,7 @@ export async function* executeStreaming(
     const contextManagement = buildContextManagement(contextTokens, useThinking);
 
     const effectiveTemp = resolveTemperature(state);
+    const fallbackModels = resolveFallbackModels(services.config, state.nous);
     for await (const streamEvent of services.router.completeStreaming({
       model,
       system: systemPrompt,
@@ -150,7 +152,7 @@ export async function* executeStreaming(
       ...(abortSignal ? { signal: abortSignal } : {}),
       ...(useThinking ? { thinking: { type: "enabled" as const, budget_tokens: computeThinkingBudget(currentMessages, totalToolCalls, baseThinkingBudget) } } : {}),
       ...(contextManagement ? { contextManagement } : {}),
-    })) {
+    }, fallbackModels)) {
       switch (streamEvent.type) {
         case "text_delta":
           accumulatedText += streamEvent.text;

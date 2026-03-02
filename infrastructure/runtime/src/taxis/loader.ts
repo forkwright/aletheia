@@ -162,6 +162,13 @@ export function resolveModel(config: AletheiaConfig, nous?: NousConfig): string 
   return config.agents.defaults.model.primary;
 }
 
+export function resolveFallbackModels(config: AletheiaConfig, nous?: NousConfig): string[] {
+  if (nous?.model && typeof nous.model === "object" && nous.model.fallbacks) {
+    return nous.model.fallbacks;
+  }
+  return config.agents.defaults.model.fallbacks ?? [];
+}
+
 export function resolveWorkspace(
   config: AletheiaConfig,
   nous: NousConfig,
