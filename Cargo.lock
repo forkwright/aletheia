@@ -174,7 +174,7 @@ dependencies = [
  "aletheia-mneme-engine",
  "fastembed",
  "miette",
- "ndarray 0.15.6",
+ "ndarray",
  "rusqlite",
  "serde",
  "serde_json",
@@ -201,7 +201,7 @@ dependencies = [
  "either",
  "graph",
  "itertools 0.12.1",
- "ndarray 0.15.6",
+ "ndarray",
  "num-traits",
  "ordered-float",
  "pest",
@@ -1545,7 +1545,7 @@ dependencies = [
  "anyhow",
  "hf-hub",
  "image",
- "ndarray 0.16.1",
+ "ndarray",
  "ort",
  "ort-sys",
  "rayon",
@@ -2867,20 +2867,6 @@ dependencies = [
 
 [[package]]
 name = "ndarray"
-version = "0.15.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb12d4e967ec485a5f71c6311fe28158e9d6f4bc4a447b474184d0f91a8fa32"
-dependencies = [
- "matrixmultiply",
- "num-complex",
- "num-integer",
- "num-traits",
- "rawpointer",
- "serde",
-]
-
-[[package]]
-name = "ndarray"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
@@ -2892,6 +2878,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "serde",
 ]
 
 [[package]]
@@ -3166,7 +3153,7 @@ version = "2.0.0-rc.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52afb44b6b0cffa9bf45e4d37e5a4935b0334a51570658e279e9e3e6cf324aa5"
 dependencies = [
- "ndarray 0.16.1",
+ "ndarray",
  "ort-sys",
  "tracing",
 ]
