@@ -44,7 +44,7 @@ All commits use the operator's author identity. Agents are tooling, not contribu
 
 ```
 git config user.name "forkwright"
-git config user.email "cody.kickertz@pm.me"
+git config user.email "forkwright@users.noreply.github.com"
 ```
 
 ### Branches

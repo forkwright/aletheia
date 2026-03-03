@@ -157,10 +157,10 @@ mod tests {
 
     #[test]
     fn exact_source_binding_matches() {
-        let router = MessageRouter::new(vec![binding("signal", "+1234567890", "cody")], None);
+        let router = MessageRouter::new(vec![binding("signal", "+1234567890", "alice")], None);
         let msg = dm_message("+1234567890");
         let decision = router.resolve(&msg).expect("should match");
-        assert_eq!(decision.nous_id, "cody");
+        assert_eq!(decision.nous_id, "alice");
         assert_eq!(decision.matched_by, MatchReason::SourceBinding);
     }
 

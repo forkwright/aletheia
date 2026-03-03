@@ -152,7 +152,7 @@ def test_dedup_batch_no_duplicates(client: TestClient) -> None:
         mock_embed.return_value = [vec_a, vec_b]
         resp = client.post(
             "/dedup/batch",
-            json={"texts": ["User prefers Python over JavaScript", "Baby #2 due October 2026"]},
+            json={"texts": ["User prefers Python over JavaScript", "Project Alpha deadline is March 2026"]},
         )
 
     assert resp.status_code == 200
@@ -172,8 +172,8 @@ def test_dedup_batch_removes_near_duplicates(client: TestClient) -> None:
             "/dedup/batch",
             json={
                 "texts": [
-                    "User prefers chrome-tanned leather for belts",
-                    "User strongly prefers chrome-tanned leather for belts",
+                    "User prefers high-grade polymer for cases",
+                    "User strongly prefers high-grade polymer for cases",
                 ]
             },
         )
@@ -183,7 +183,7 @@ def test_dedup_batch_removes_near_duplicates(client: TestClient) -> None:
     assert data["removed"] == 1
     assert len(data["deduplicated"]) == 1
     # The first text (original order) is retained
-    assert data["deduplicated"][0] == "User prefers chrome-tanned leather for belts"
+    assert data["deduplicated"][0] == "User prefers high-grade polymer for cases"
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ def test_noise_filter_penalizes_noisy_results() -> None:
     """Noisy results get 0.3x score penalty, not removed."""
     results: list[dict[str, Any]] = [
         {"memory": "Session started with session id abc123", "score": 1.0},
-        {"memory": "Baby #2 due October 2026", "score": 0.9},
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.9},
     ]
     filtered = _filter_noisy_results(results)
 
@@ -207,14 +207,14 @@ def test_noise_filter_penalizes_noisy_results() -> None:
     assert abs(noisy["score"] - 0.3) < 1e-9
 
     # Clean result passes through unchanged
-    clean = next(r for r in filtered if "Baby" in r["memory"])
+    clean = next(r for r in filtered if "Project Alpha" in r["memory"])
     assert abs(clean["score"] - 0.9) < 1e-9
 
 
 def test_noise_filter_passes_clean_results_unchanged() -> None:
     """Clean results with no noise patterns have scores unchanged."""
     results: list[dict[str, Any]] = [
-        {"memory": "Pitman arm torque spec is 185 ft-lbs per service manual", "score": 0.95},
+        {"memory": "Widget torque spec is 42 Nm per service manual", "score": 0.95},
         {"memory": "ALETHEIA_MEMORY_USER must be set in aletheia.env", "score": 0.88},
     ]
     filtered = _filter_noisy_results(results)
@@ -228,7 +228,7 @@ def test_noise_filter_penalizes_short_memories() -> None:
     """Memories shorter than the minimum length threshold get score penalty."""
     results: list[dict[str, Any]] = [
         {"memory": "ok", "score": 0.8},  # Too short — noise
-        {"memory": "Baby #2 due October 2026", "score": 0.7},  # Clean
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.7},  # Clean
     ]
     filtered = _filter_noisy_results(results)
 
@@ -237,7 +237,7 @@ def test_noise_filter_penalizes_short_memories() -> None:
     short = next(r for r in filtered if r["memory"] == "ok")
     assert abs(short["score"] - 0.8 * 0.3) < 1e-9
 
-    clean = next(r for r in filtered if "Baby" in r["memory"])
+    clean = next(r for r in filtered if "Project Alpha" in r["memory"])
     assert abs(clean["score"] - 0.7) < 1e-9
 
 
@@ -262,12 +262,12 @@ def test_noise_filter_sorts_by_score_after_penalty() -> None:
     """After applying penalties, results are re-sorted by score descending."""
     results: list[dict[str, Any]] = [
         {"memory": "Session started conversation id abc", "score": 1.0},  # noisy → 0.3
-        {"memory": "Baby #2 due October 2026", "score": 0.5},  # clean → 0.5
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.5},  # clean → 0.5
     ]
     filtered = _filter_noisy_results(results)
 
     # Clean result should come first after re-sort
-    assert filtered[0]["memory"] == "Baby #2 due October 2026"
+    assert filtered[0]["memory"] == "Project Alpha deadline is March 2026"
     assert filtered[1]["memory"] == "Session started conversation id abc"
 
 
@@ -287,7 +287,7 @@ def test_dedup_batch_respects_threshold(client: TestClient) -> None:
         mock_embed.return_value = [vec_a, vec_b]
         resp_default = client.post(
             "/dedup/batch",
-            json={"texts": ["fact about leather belts", "fact about chrome leather belts"]},
+            json={"texts": ["fact about wooden boxes", "fact about carved wooden boxes"]},
         )
         assert resp_default.status_code == 200
         assert resp_default.json()["removed"] == 1, f"Expected 1 removed at default threshold (sim={sim:.3f})"
@@ -297,7 +297,7 @@ def test_dedup_batch_respects_threshold(client: TestClient) -> None:
         resp_strict = client.post(
             "/dedup/batch",
             json={
-                "texts": ["fact about leather belts", "fact about chrome leather belts"],
+                "texts": ["fact about wooden boxes", "fact about carved wooden boxes"],
                 "threshold": 0.99,
             },
         )
@@ -599,39 +599,39 @@ def test_graph_enhanced_search_expanded_query_uses_neo4j_neighbors(client: TestC
 
 def test_domain_relevance_score_returns_in_valid_range() -> None:
     """_domain_relevance_score always returns a value in [min_factor, 1.0]."""
-    score = _domain_relevance_score("vehicle oil change schedule", "Thread context: leather crafting tools")
+    score = _domain_relevance_score("vehicle oil change schedule", "Thread context: woodworking routing tools")
     assert 0.6 <= score <= 1.0
 
 
 def test_domain_relevance_score_min_factor_prevents_full_exclusion() -> None:
     """Completely off-domain memory still gets min_factor multiplier (0.6), not zero."""
     # Totally disjoint vocabulary (after stop word removal)
-    score = _domain_relevance_score("zzz123 qqqfoo barrrr", "Thread context: leather crafting saddle stitching")
+    score = _domain_relevance_score("zzz123 qqqfoo barrrr", "Thread context: woodworking joinery routing planing")
     assert abs(score - 0.6) < 1e-9
 
 
 def test_domain_relevance_score_full_overlap() -> None:
     """When memory contains all query tokens, score reaches 1.0."""
-    # Query without stop words: {"leather", "crafting", "saddle", "stitching"}
+    # Query without stop words: {"woodworking", "joinery", "routing", "planing"}
     # Memory contains all those tokens → overlap = 1.0 → score = 0.6 + 1.0 * 0.4 = 1.0
-    context = "leather crafting saddle stitching"  # no "Thread context:" prefix so tokens are pure domain words
-    memory = "leather crafting saddle stitching"
+    context = "woodworking joinery routing planing"  # no "Thread context:" prefix so tokens are pure domain words
+    memory = "woodworking joinery routing planing"
     score = _domain_relevance_score(memory, context)
     assert abs(score - 1.0) < 1e-6
 
 
 def test_domain_relevance_score_stop_words_excluded() -> None:
     """Stop words are not counted toward relevance — they are filtered before matching."""
-    # Memory only has stop words; query has "leather" (non-stop) + stop words.
-    # After filtering: query_tokens = {"leather"}, memory_tokens = {}.
+    # Memory only has stop words; query has "woodworking" (non-stop) + stop words.
+    # After filtering: query_tokens = {"woodworking"}, memory_tokens = {}.
     # Overlap = 0/1 = 0.0 → score = max(0.6, 0.6 + 0.0 * 0.4) = 0.6 (min factor).
-    score = _domain_relevance_score("the is in of and", "leather the is in of and")
+    score = _domain_relevance_score("the is in of and", "woodworking the is in of and")
     assert abs(score - 0.6) < 1e-9
 
 
 def test_domain_relevance_score_empty_context_returns_one() -> None:
     """Empty query context (empty string) returns 1.0 — no signal, no penalty."""
-    score = _domain_relevance_score("leather saddle crafting", "")
+    score = _domain_relevance_score("woodworking joinery routing", "")
     assert score == 1.0  # empty query_tokens → no penalty applied
 
 
@@ -639,7 +639,7 @@ def test_apply_domain_reranking_skips_when_no_thread_context() -> None:
     """When query has no 'Thread context:' marker, scores are unchanged."""
     results: list[dict[str, Any]] = [
         {"memory": "vehicle oil change", "score": 0.9},
-        {"memory": "leather belt crafting", "score": 0.8},
+        {"memory": "wooden box crafting", "score": 0.8},
     ]
     original_scores = [r["score"] for r in results]
     reranked = _apply_domain_reranking(results, "tools and maintenance")
@@ -648,33 +648,33 @@ def test_apply_domain_reranking_skips_when_no_thread_context() -> None:
 
 
 def test_apply_domain_reranking_penalizes_cross_domain_results() -> None:
-    """In leatherwork context, vehicle memories score lower than craft memories."""
+    """In woodworking context, vehicle memories score lower than hobby memories."""
     results: list[dict[str, Any]] = [
         {"memory": "vehicle tools oil wrench maintenance", "score": 1.0, "id": "vehicle"},
-        {"memory": "leather craft tools awl stitching saddle", "score": 1.0, "id": "craft"},
+        {"memory": "woodworking bench tools router joinery plane", "score": 1.0, "id": "hobby"},
     ]
-    query = "Thread context: leatherwork crafting saddle awl stitching"
+    query = "Thread context: woodworking joinery routing chisel planing"
     reranked = _apply_domain_reranking(results, query)
 
-    craft = next(r for r in reranked if r["id"] == "craft")
+    hobby = next(r for r in reranked if r["id"] == "hobby")
     vehicle = next(r for r in reranked if r["id"] == "vehicle")
 
-    # Craft memory should score higher than vehicle memory in leatherwork context
-    assert craft["score"] > vehicle["score"]
+    # Hobby memory should score higher than vehicle memory in woodworking context
+    assert hobby["score"] > vehicle["score"]
 
 
 def test_apply_domain_reranking_cross_domain_results_present() -> None:
     """Cross-domain results are penalized but NOT excluded from output (soft boundaries)."""
     results: list[dict[str, Any]] = [
         {"memory": "vehicle oil change wrench socket", "score": 0.9, "id": "vehicle"},
-        {"memory": "leather awl saddle stitch punch", "score": 0.8, "id": "craft"},
+        {"memory": "woodworking chisel router plane dovetail", "score": 0.8, "id": "hobby"},
     ]
-    query = "Thread context: leather crafting saddle tools"
+    query = "Thread context: woodworking joinery routing tools"
     reranked = _apply_domain_reranking(results, query)
 
     ids = {r["id"] for r in reranked}
     assert "vehicle" in ids
-    assert "craft" in ids
+    assert "hobby" in ids
     assert len(reranked) == 2
 
 
@@ -682,9 +682,9 @@ def test_apply_domain_reranking_sorted_by_score_after_reranking() -> None:
     """After re-ranking, results are sorted by score descending."""
     results: list[dict[str, Any]] = [
         {"memory": "completely unrelated topic zzzz", "score": 1.0},
-        {"memory": "leather saddle crafting stitch", "score": 0.5},
+        {"memory": "woodworking joinery routing dovetail", "score": 0.5},
     ]
-    query = "Thread context: leather saddle crafting stitch"
+    query = "Thread context: woodworking joinery routing dovetail"
     reranked = _apply_domain_reranking(results, query)
     scores = [r["score"] for r in reranked]
     assert scores == sorted(scores, reverse=True)

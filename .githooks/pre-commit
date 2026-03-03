@@ -40,3 +40,21 @@ if sidecar_changed; then
     }
   fi
 fi
+
+# PII scanner — reject staged diffs containing personal data patterns
+PII_PATTERNS="$ROOT/.github/pii-patterns.txt"
+if [ -f "$PII_PATTERNS" ]; then
+  PII_REGEX=$(grep -v '^#' "$PII_PATTERNS" | grep -v '^$' | paste -sd'|')
+  if [ -n "$PII_REGEX" ]; then
+    PII_HITS=$(git diff --cached -U0 | grep -E "^\+" | grep -v "^+++" | \
+      grep -v 'scrub-callback' | grep -v 'pii-patterns' | \
+      grep -iE "$PII_REGEX" || true)
+    if [ -n "$PII_HITS" ]; then
+      echo "PII detected in staged changes:"
+      echo "$PII_HITS"
+      echo ""
+      echo "Remove personal data before committing. Bypass with --no-verify if intentional."
+      exit 1
+    fi
+  fi
+fi

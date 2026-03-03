@@ -138,13 +138,13 @@ describe("createMessageTool — agora routing", () => {
     const registry = makeRegistry(slack);
     const tool = createMessageTool({ registry });
 
-    const result = await tool.execute({ to: "slack:@cody", text: "hey" });
+    const result = await tool.execute({ to: "slack:@alice", text: "hey" });
     const parsed = JSON.parse(result);
 
     expect(parsed.sent).toBe(true);
     expect(parsed.channel).toBe("slack");
     expect(slack.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "@cody" }),
+      expect.objectContaining({ to: "@alice" }),
     );
   });
 

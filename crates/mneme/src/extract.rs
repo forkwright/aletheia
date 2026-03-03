@@ -628,10 +628,10 @@ mod tests {
         assert_eq!(result.facts_inserted, 1);
 
         // Verify entities are queryable via entity_neighborhood.
-        let neighborhood = store.entity_neighborhood("cody").unwrap();
+        let neighborhood = store.entity_neighborhood("alice").unwrap();
         assert!(
             !neighborhood.rows.is_empty(),
-            "cody entity should be reachable in the graph"
+            "alice entity should be reachable in the graph"
         );
 
         // query_facts filters: valid_from <= now AND valid_to > now

@@ -84,11 +84,11 @@ describe("message queue", () => {
   it("stores sender when provided", () => {
     const session = store.findOrCreateSession("test-nous", "main");
 
-    store.queueMessage(session.id, "with sender", "cody");
+    store.queueMessage(session.id, "with sender", "alice");
     store.queueMessage(session.id, "without sender");
 
     const msgs = store.drainQueue(session.id);
-    expect(msgs[0]!.sender).toBe("cody");
+    expect(msgs[0]!.sender).toBe("alice");
     expect(msgs[1]!.sender).toBeNull();
   });
 });

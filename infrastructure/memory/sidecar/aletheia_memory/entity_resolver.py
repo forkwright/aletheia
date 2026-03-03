@@ -19,6 +19,11 @@ KNOWN_ALIASES: dict[str, str] = {
     "aletheia_system": "aletheia",
     "aletheia system": "aletheia",
     "the aletheia system": "aletheia",
+    "alice_johnson": "alice",
+    "alice dev": "alice",
+    "aj": "alice",
+    "acme_truck": "acme truck",
+    "acme vehicle": "acme truck",
 }
 
 # Stopword entities — never create nodes for these

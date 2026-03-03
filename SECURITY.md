@@ -15,7 +15,7 @@
 Report privately via GitHub's built-in security advisory system:
 → https://github.com/forkwright/aletheia/security/advisories/new
 
-Or email: cody.kickertz@pm.me
+Or use the GitHub Security Advisory link above.
 
 Include:
 - Description of the vulnerability

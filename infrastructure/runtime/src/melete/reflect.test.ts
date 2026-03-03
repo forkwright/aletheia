@@ -87,7 +87,7 @@ describe("reflectOnAgent", () => {
     const findings = {
       patterns: ["[HIGH] User prefers tables for data display"],
       contradictions: [],
-      corrections: ["[MEDIUM] Torque spec corrected from 225 to 185 ft-lbs"],
+      corrections: ["[MEDIUM] Torque spec corrected from 50 to 42 Nm"],
       implicit_preferences: ["[HIGH] User values directness over politeness"],
       relationships: ["[HIGH] (Alice, works_at, Acme)"],
       unresolved_threads: ["[LOW] Question about Neo4j indexing never answered"],

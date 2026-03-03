@@ -29,7 +29,7 @@ describe("mmrSelect", () => {
     const items = [
       hit("the truck needs new brake pads installed soon", 0.95),
       hit("the truck needs new brake pads replaced soon", 0.90),
-      hit("cody prefers dark roast coffee in the morning", 0.85),
+      hit("alice prefers dark roast coffee in the morning", 0.85),
     ];
     const result = mmrSelect(items, 2);
     // Should pick top scorer + the diverse one, not top scorer + near-duplicate

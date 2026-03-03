@@ -25,7 +25,7 @@ describe("PII detection", () => {
     });
 
     it("does NOT match IPv4 addresses", () => {
-      const r = scanText("Server at 192.168.0.29 is down", mask);
+      const r = scanText("Server at 192.168.1.100 is down", mask);
       expect(r.redacted).toBe(0);
     });
 

@@ -69,7 +69,7 @@ describe("read path: vector recall (recallMemories → /search)", () => {
     const fetchMock = makeFetch([makeSearchResponse(hits)]);
     vi.stubGlobal("fetch", fetchMock);
 
-    await recallMemories("What is the pitman arm torque spec?", "syn");
+    await recallMemories("What is the widget torque spec?", "syn");
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -80,7 +80,7 @@ describe("read path: vector recall (recallMemories → /search)", () => {
     expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
 
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
-    expect(body["query"]).toContain("pitman arm torque");
+    expect(body["query"]).toContain("widget torque spec");
     expect(body["agent_id"]).toBe("syn");
     expect(body["user_id"]).toBe("test-user");
     expect(typeof body["limit"]).toBe("number");
@@ -93,7 +93,7 @@ describe("read path: vector recall (recallMemories → /search)", () => {
     const fetchMock = makeFetch([makeSearchResponse(hits)]);
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await recallMemories("vehicle maintenance torque specs", "syn");
+    const result = await recallMemories("device maintenance torque specs", "syn");
 
     expect(result).toHaveProperty("count");
     expect(result).toHaveProperty("durationMs");
@@ -158,14 +158,14 @@ describe("read path: vector recall (recallMemories → /search)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await recallMemories("current topic", "syn", {
-      threadSummary: "We have been discussing vehicle maintenance and torque specifications",
+      threadSummary: "We have been discussing device maintenance and torque specifications",
       sufficiencyThreshold: 0.70,
       sufficiencyMinHits: 1,
     });
 
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
     expect(body["query"] as string).toContain("Thread context");
-    expect(body["query"] as string).toContain("vehicle maintenance");
+    expect(body["query"] as string).toContain("device maintenance");
   });
 });
 
@@ -354,7 +354,7 @@ describe("read path: tiered fallback behavior", () => {
     const duplicateHits: MemoryHit[] = [
       { id: "mem_1", memory: "ALETHEIA_MEMORY_USER must be set in aletheia.env", score: 0.90 },
       { id: "mem_2", memory: "ALETHEIA_MEMORY_USER must be set in aletheia.env", score: 0.85 }, // exact duplicate
-      { id: "mem_3", memory: "Baby #2 due October 2026", score: 0.82 },
+      { id: "mem_3", memory: "Project Alpha deadline is March 2026", score: 0.82 },
     ];
 
     const fetchMock = makeFetch([makeSearchResponse(duplicateHits)]);
@@ -377,29 +377,29 @@ describe("read path: tiered fallback behavior", () => {
 
     // All hits about the same topic — MMR should prefer diversity
     const redundantHits: MemoryHit[] = [
-      { id: "m1", memory: "Pitman arm torque spec is 185 ft-lbs per service manual", score: 0.95 },
-      { id: "m2", memory: "Pitman arm torque specification is 185 ft-lbs according to manual", score: 0.93 },
-      { id: "m3", memory: "The torque for pitman arm is 185 ft-lbs as stated in manual", score: 0.91 },
-      { id: "m4", memory: "Baby #2 due October 2026", score: 0.88 },
-      { id: "m5", memory: "MBA final project deadline is March 15", score: 0.84 },
+      { id: "m1", memory: "Widget torque spec is 42 Nm per service manual", score: 0.95 },
+      { id: "m2", memory: "Widget torque specification is 42 Nm according to manual", score: 0.93 },
+      { id: "m3", memory: "The torque for widget is 42 Nm as stated in manual", score: 0.91 },
+      { id: "m4", memory: "Project Alpha deadline is March 2026", score: 0.88 },
+      { id: "m5", memory: "Final project deadline is March 15", score: 0.84 },
     ];
 
     const fetchMock = makeFetch([makeSearchResponse(redundantHits)]);
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await recallMemories("pitman arm maintenance", "syn", {
+    const result = await recallMemories("widget torque maintenance", "syn", {
       limit: 3,
       sufficiencyThreshold: 0.70,
       sufficiencyMinHits: 1,
     });
 
-    // MMR should select diverse results — the diverse items (Baby #2, MBA) should appear
-    // alongside the top pitman arm result
+    // MMR should select diverse results — the diverse items (Project Alpha, Final project) should appear
+    // alongside the top widget torque result
     expect(result.count).toBeLessThanOrEqual(3);
     expect(result.count).toBeGreaterThan(0);
     const text = result.block?.text ?? "";
     // At least one of the diverse items should appear
-    const hasDiversity = text.includes("Baby") || text.includes("MBA");
+    const hasDiversity = text.includes("Project Alpha") || text.includes("Final project");
     expect(hasDiversity).toBe(true);
   });
 });

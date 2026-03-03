@@ -117,6 +117,8 @@ shared/traces/
 # === Config with tokens ===
 nous/*/config/
 shared/competence/model.json
+shared/config/tools.yaml
+shared/prosoche/activity_model.json
 tui/target/
 
 # Deploy backups

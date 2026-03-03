@@ -14,16 +14,16 @@ function mockRouter(response: string) {
 
 describe("extractTurnFacts", () => {
   it("extracts facts from a substantive response", async () => {
-    const router = mockRouter('["Pitman arm torque spec is 185 ft-lbs", "Decision: use chrome-tanned leather for belt project"]');
+    const router = mockRouter('["Widget torque spec is 42 Nm", "Decision: use high-grade polymer for case project"]');
     const result = await extractTurnFacts(
       router,
-      "Based on the manual, the pitman arm torque spec is 185 ft-lbs. I also decided to go with chrome-tanned leather for the belt project because of its durability advantages over veg-tan for this particular use case. The grain structure holds up better under daily wear.",
+      "Based on the manual, the widget torque spec is 42 Nm. I also decided to go with high-grade polymer for the case project because of its durability advantages over standard composite for this particular use case. The tensile strength holds up better under daily wear.",
       "",
       "test-model",
     );
     expect(result.facts).toHaveLength(2);
-    expect(result.facts[0]).toContain("185 ft-lbs");
-    expect(result.facts[1]).toContain("chrome-tanned");
+    expect(result.facts[0]).toContain("42 Nm");
+    expect(result.facts[1]).toContain("high-grade polymer");
   });
 
   it("returns empty for short responses", async () => {
@@ -91,16 +91,16 @@ describe("extractTurnFacts", () => {
   });
 
   it("includes tool summary in extraction context", async () => {
-    const router = mockRouter('["Steering box replacement requires 185 ft-lbs torque on the pitman arm"]');
+    const router = mockRouter('["Motor mount replacement requires 42 Nm torque on the bracket"]');
     await extractTurnFacts(
       router,
       "x".repeat(200),
-      'exec(grep "pitman" manual.txt) → Pitman arm: 185 ft-lbs',
+      'exec(grep "widget" manual.txt) → Widget: 42 Nm',
       "test-model",
     );
     // Verify tool summary was passed to the router
     const callArgs = router.complete.mock.calls[0][0];
     expect(callArgs.messages[0].content).toContain("Tool Results");
-    expect(callArgs.messages[0].content).toContain("pitman");
+    expect(callArgs.messages[0].content).toContain("widget");
   });
 });

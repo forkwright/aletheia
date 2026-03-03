@@ -5,15 +5,12 @@
  * Typography: IBM Plex Mono (precision), Cormorant Garamond (display), system sans (fallback)
  * Type scale: 1.2 minor third, 14px base
  * Spacing: 4px base unit
- * Palette: warm dark ground, Ardent dye accents, muted earth status
- *
- * Shares material identity with Ardent Leatherworks (ardentleatherworks.com).
- * Same dye palette, same type scale ratio, same font families — dark context.
+ * Palette: warm dark ground, earth-dye accents, muted earth status
  */
 
 :root {
   /* === TYPE SCALE === */
-  /* 1.2 minor third — same ratio as Ardent, different voice */
+  /* 1.2 minor third */
   --text-2xs: 0.694rem;   /* ~10px — badges, counts */
   --text-xs: 0.75rem;     /* ~11px — metadata, timestamps (was 10-11px scattered) */
   --text-sm: 0.833rem;    /* ~12px — secondary UI text */
@@ -36,7 +33,7 @@
 
   /* === BACKGROUNDS === */
   /* Warm dark — brown-shifted, not cold blue-black */
-  /* Same material family as Ardent's #F7F3E8, inverted for dark context */
+  /* Warm dark inversion of #F7F3E8 parchment */
   --bg: #12110f;
   --bg-elevated: #1a1816;
   --surface: #22201d;
@@ -59,8 +56,8 @@
   --accent-muted: rgba(154, 123, 79, 0.15);
   --accent-border: rgba(154, 123, 79, 0.4);
 
-  /* === ARDENT DYE PALETTE === */
-  /* Iron-mordanted botanical dyes — shared with ardentleatherworks.com */
+  /* === DYE PALETTE === */
+  /* Iron-mordanted botanical dyes */
   --aima: #581523;            /* Αἷμα — blood, cost of continuity */
   --aima-light: #7a2838;      /* lightened for dark-bg legibility */
   --thanatochromia: #2C1B3A;  /* Θανατοχρωμία — color death leaves behind */
@@ -96,7 +93,7 @@
   --syntax-inserted: #4a9a5b;  /* matches --status-success */
 
   /* === TYPOGRAPHY === */
-  /* Shared with Ardent: IBM Plex Mono (precision), Cormorant Garamond (display) */
+  /* IBM Plex Mono (precision), Cormorant Garamond (display) */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-display: "Cormorant Garamond", Garamond, Georgia, serif;
@@ -152,7 +149,7 @@
 }
 
 /* === LIGHT THEME === */
-/* Warm parchment — same material family as Ardent Leatherworks (#F7F3E8) */
+/* Warm parchment — #F7F3E8 base */
 [data-theme="light"] {
   /* Backgrounds — warm parchment, not clinical white */
   --bg: #F7F3E8;

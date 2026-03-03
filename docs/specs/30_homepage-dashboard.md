@@ -125,7 +125,7 @@ When an agent completes a task (via `task_complete` tool):
 
 Agents can create tasks for other agents or the human:
 - `task_create("Update trailer wiring diagram", assignee: "akron", priority: "medium")`
-- `task_create("Review Ardent pricing", assignee: "human", priority: "high")`
+- `task_create("Review vendor pricing", assignee: "human", priority: "high")`
 
 The human creates tasks from the homepage UI — type title, pick assignee, optional priority/context.
 
