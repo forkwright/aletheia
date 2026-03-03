@@ -89,7 +89,7 @@ describe("reflectOnAgent", () => {
       contradictions: [],
       corrections: ["[MEDIUM] Torque spec corrected from 225 to 185 ft-lbs"],
       implicit_preferences: ["[HIGH] User values directness over politeness"],
-      relationships: ["[HIGH] (Cody, works_at, Summus)"],
+      relationships: ["[HIGH] (Alice, works_at, Acme)"],
       unresolved_threads: ["[LOW] Question about Neo4j indexing never answered"],
     };
 
@@ -195,11 +195,11 @@ describe("reflectOnAgent", () => {
 
     await reflectOnAgent(store, router, "syn", {
       ...defaultOpts(),
-      existingMemories: ["Cody prefers tables", "Aletheia uses SQLite"],
+      existingMemories: ["Alice prefers tables", "Aletheia uses SQLite"],
     });
 
     const call = (router.complete as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-    expect(call.system).toContain("Cody prefers tables");
+    expect(call.system).toContain("Alice prefers tables");
     expect(call.system).toContain("Aletheia uses SQLite");
   });
 

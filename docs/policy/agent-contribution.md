@@ -37,7 +37,7 @@ All agent PRs must pass:
 
 ## Rule 5: Attribution
 
-All commits use the operator's identity (`Cody Kickertz <cody.kickertz@pm.me>`). No `Co-authored-by: Claude` or agent attribution in public history. Agents are tools, not authors.
+All commits use the operator's identity (`forkwright <cody.kickertz@pm.me>`). No `Co-authored-by: Claude` or agent attribution in public history. Agents are tools, not authors.
 
 ## Rule 6: Branching
 

@@ -79,9 +79,9 @@ fn knowledge_types_all_serialize() {
     let fact = sample_fact("f-1", "syn", EpistemicTier::Verified);
     let entity = Entity {
         id: "e-1".to_owned(),
-        name: "Cody".to_owned(),
+        name: "Alice".to_owned(),
         entity_type: "person".to_owned(),
-        aliases: vec!["CK".to_owned()],
+        aliases: vec!["A".to_owned()],
         created_at: "2026-01-01T00:00:00Z".to_owned(),
         updated_at: "2026-03-01T00:00:00Z".to_owned(),
     };

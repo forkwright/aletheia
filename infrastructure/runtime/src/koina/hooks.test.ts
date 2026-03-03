@@ -43,9 +43,9 @@ describe("substituteTemplateVars", () => {
   it("replaces missing variables with empty string", () => {
     const result = substituteTemplateVars(
       "Hello {{name}}, your {{missing}} is ready",
-      { name: "Cody" },
+      { name: "Alice" },
     );
-    expect(result).toBe("Hello Cody, your  is ready");
+    expect(result).toBe("Hello Alice, your  is ready");
   });
 
   it("serializes object values as JSON", () => {

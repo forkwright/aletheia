@@ -52,7 +52,7 @@ describe("extractTurnFacts", () => {
   });
 
   it("filters facts that are too short", async () => {
-    const router = mockRouter('["ok", "yes", "Cody uses Aletheia for distributed cognition across 6 agents"]');
+    const router = mockRouter('["ok", "yes", "Alice uses Aletheia for distributed cognition across 6 agents"]');
     const result = await extractTurnFacts(router, "x".repeat(200), "", "test-model");
     expect(result.facts).toHaveLength(1);
     expect(result.facts[0]).toContain("distributed cognition");

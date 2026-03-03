@@ -38,6 +38,7 @@ infrastructure/signal-cli/
 infrastructure/repos/
 infrastructure/data/
 infrastructure/syncthing/
+infrastructure/prosoche/config.yaml
 
 # === Runtime ===
 node_modules/

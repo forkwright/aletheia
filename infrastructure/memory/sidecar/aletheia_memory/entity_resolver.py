@@ -19,18 +19,6 @@ KNOWN_ALIASES: dict[str, str] = {
     "aletheia_system": "aletheia",
     "aletheia system": "aletheia",
     "the aletheia system": "aletheia",
-    "cody kickertz": "cody",
-    "cody craft": "cody",
-    "ck": "cody",
-    "kendall_identity": "kendall",
-    "1997_ram_2500": "1997 ram 2500",
-    "1997 dodge ram": "1997 ram 2500",
-    "ram 2500": "1997 ram 2500",
-    "ut_mccombs": "ut mccombs",
-    "ut austin": "ut mccombs",
-    "mccombs": "ut mccombs",
-    "ardent_llc": "ardent",
-    "ardent llc": "ardent",
 }
 
 # Stopword entities — never create nodes for these

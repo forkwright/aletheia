@@ -190,9 +190,9 @@ describe("allowlist", () => {
   });
 
   it("supports wildcard patterns", () => {
-    const r = scanText("Email: cody.kickertz@gmail.com", {
+    const r = scanText("Email: alice.example@gmail.com", {
       mode: "mask",
-      allowlist: ["cody.kickertz@*"],
+      allowlist: ["alice.example@*"],
     });
     expect(r.redacted).toBe(0);
   });

@@ -125,7 +125,7 @@ Rules:
 
 #### Authorship
 
-All commits use Cody's identity. Agents are tooling, not contributors.
+All commits use the operator's identity. Agents are tooling, not contributors.
 
 #### Branches
 

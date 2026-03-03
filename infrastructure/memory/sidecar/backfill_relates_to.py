@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 NEO4J_URL = os.environ.get("NEO4J_URL", "neo4j://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", os.environ.get("NEO4J_PASS", "chiron-memory"))
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", os.environ.get("NEO4J_PASS", ""))
 
 SIDECAR_DIR = Path(__file__).resolve().parent
 CHECKPOINT_FILE = SIDECAR_DIR / "backfill_state.json"

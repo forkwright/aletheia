@@ -110,7 +110,7 @@ def test_unclassifiable_edge_deleted(tmp_path: Path) -> None:
         return_value=MagicMock(content=[MagicMock(text="DELETE")])
     )
 
-    edge = _make_edge(99, "Cody", "Unknown")
+    edge = _make_edge(99, "Alice", "Unknown")
 
     async def _run() -> set[int]:
         processed: set[int] = set()

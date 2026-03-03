@@ -64,7 +64,7 @@ def test_add_direct_valid_metadata_reaches_processing(client: TestClient) -> Non
         resp = client.post(
             "/add_direct",
             json={
-                "text": "Cody prefers Python over JavaScript",
+                "text": "Alice prefers Python over JavaScript",
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "direct",
@@ -141,7 +141,7 @@ def test_add_batch_valid_metadata_reaches_processing(client: TestClient) -> None
         resp = client.post(
             "/add_batch",
             json={
-                "texts": ["Cody is building Aletheia"],
+                "texts": ["Alice is building Aletheia"],
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "distillation",

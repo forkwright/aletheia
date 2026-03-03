@@ -23,7 +23,7 @@ The current UI has structural inefficiencies and unfinished areas:
 
 4. **Metrics and Settings overlap.** MetricsView shows: uptime, tokens, cache hit rate, turns, total cost, services health, agent table (sessions/messages/last activity/tokens/turns/cost), cron jobs, usage chart. SettingsView shows: instance name, uptime (duplicate), status (duplicate), agent list with models, theme toggle, font size, auth config, usage stats (duplicate: turns/tokens/cache), cost dashboard (duplicate), services (duplicate). Five categories of data appear in both views.
 
-5. **Light mode doesn't exist.** The theme toggle in Settings switches `data-theme` to `"light"` but `:root` has no `[data-theme="light"]` override block. Selecting "Light" produces an unstyled mess. The Ardent site (`ardentleatherworks.com`) uses a warm light palette (`#F7F3E8` background, `#2A2725` text, same dye accents) that should be the reference.
+5. **Light mode doesn't exist.** The theme toggle in Settings switches `data-theme` to `"light"` but `:root` has no `[data-theme="light"]` override block. Selecting "Light" produces an unstyled mess. A warm light palette (`#F7F3E8` background, `#2A2725` text, same dye accents) should be the reference.
 
 ---
 
@@ -193,7 +193,7 @@ This alone eliminates the per-character re-parse without any structural changes 
 
 ### Phase 4 — Light Theme
 
-**Reference:** Ardent Leatherworks site. Warm parchment, not cold white. Same dye accents, same font families, inverted luminance.
+**Reference:** Warm parchment, not cold white. Same dye accents, same font families, inverted luminance.
 
 **Add to `global.css`:**
 

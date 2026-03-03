@@ -179,10 +179,10 @@ def test_extract_graph_returns_ok() -> None:
         mock_pipeline.run_async = AsyncMock(return_value=None)
 
         with patch.object(ge_module, "_pipeline", mock_pipeline):
-            result: dict[str, Any] = await extract_graph("Cody uses Python for data analysis.")
+            result: dict[str, Any] = await extract_graph("Alice uses Python for data analysis.")
 
         assert result == {"ok": True}
-        mock_pipeline.run_async.assert_called_once_with(text="Cody uses Python for data analysis.")
+        mock_pipeline.run_async.assert_called_once_with(text="Alice uses Python for data analysis.")
 
     asyncio.run(_run())
 

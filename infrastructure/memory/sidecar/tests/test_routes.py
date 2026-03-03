@@ -71,7 +71,7 @@ def test_add_batch_never_calls_mem_add(client: TestClient) -> None:
         resp = client.post(
             "/add_batch",
             json={
-                "texts": ["Cody is building Aletheia"],
+                "texts": ["Alice is building Aletheia"],
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "distillation",
@@ -110,7 +110,7 @@ def test_add_direct_never_calls_mem_add(client: TestClient) -> None:
         resp = client.post(
             "/add_direct",
             json={
-                "text": "Cody prefers Python over JavaScript",
+                "text": "Alice prefers Python over JavaScript",
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "direct",
@@ -372,7 +372,7 @@ def test_qdrant_search_direct_returns_scored_results() -> None:
     mock_point = MagicMock()
     mock_point.id = "abc-123"
     mock_point.score = 0.85
-    mock_point.payload = {"memory": "Cody prefers Python", "user_id": "default"}
+    mock_point.payload = {"memory": "Alice prefers Python", "user_id": "default"}
 
     mock_results = MagicMock()
     mock_results.points = [mock_point]
@@ -393,7 +393,7 @@ def test_qdrant_search_direct_returns_scored_results() -> None:
     assert len(results) == 1
     assert results[0]["id"] == "abc-123"
     assert results[0]["score"] == 0.85
-    assert results[0]["memory"] == "Cody prefers Python"
+    assert results[0]["memory"] == "Alice prefers Python"
 
 
 def test_qdrant_search_direct_filters_by_min_score() -> None:
