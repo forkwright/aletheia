@@ -14,7 +14,7 @@ const MANIFEST_FILENAME: &str = "pack.yaml";
 /// A parsed and validated domain pack manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackManifest {
-    /// Pack name (e.g. "summus-analytics").
+    /// Pack name (e.g. "acme-analytics").
     pub name: String,
     /// Semantic version string.
     pub version: String,
@@ -204,9 +204,9 @@ mod tests {
     #[test]
     fn load_full_manifest() {
         let yaml = r#"
-name: summus-analytics
+name: acme-analytics
 version: "1.0"
-description: Summus Healthcare analytics domain pack
+description: Acme Corp analytics domain pack
 
 context:
   - path: context/BUSINESS_LOGIC.md
@@ -231,7 +231,7 @@ overlays:
         ]);
 
         let manifest = load_manifest(dir.path()).unwrap();
-        assert_eq!(manifest.name, "summus-analytics");
+        assert_eq!(manifest.name, "acme-analytics");
         assert_eq!(manifest.context.len(), 3);
         assert_eq!(manifest.context[0].priority, Priority::Important);
         assert_eq!(manifest.context[0].agents, vec!["chiron"]);
