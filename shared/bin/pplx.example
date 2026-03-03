@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# pplx — operator-specific tool
+# Copy to instance/shared/bin/pplx and configure for your deployment.
+# See instance.example/README.md for setup instructions.
+echo "pplx: not configured. Copy pplx.example and edit."
+exit 1

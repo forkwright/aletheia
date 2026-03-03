@@ -132,3 +132,32 @@ crates/mneme-bench/target/
 -e 
 # Cargo build output
 /target/
+
+# === Operator-specific content (instance boundary) ===
+# Config — live versions (examples are tracked)
+shared/config/tools.yaml
+shared/config/provider-failover.json
+shared/config/changelog/*
+!shared/config/changelog/.gitkeep
+shared/prosoche/activity_model.json
+.mailmap
+
+# Evaluation config
+infrastructure/evaluation/triggers.json
+
+# Runtime data
+infrastructure/memory/sidecar/data/
+
+# Learned skills (operator-generated, _examples tracked)
+shared/skills/*/
+!shared/skills/_examples/
+
+# Operator-specific scripts (*.example stubs tracked)
+shared/bin/gcal
+shared/bin/pplx
+shared/bin/browse
+shared/bin/credential-refresh
+shared/bin/ingest-doc
+shared/bin/scholar
+shared/bin/transcribe
+shared/bin/wiki

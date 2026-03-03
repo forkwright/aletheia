@@ -1,0 +1,6 @@
+# .mailmap — maps source identities to canonical authors
+# Format: Canonical Name <canonical@email> Commit Name <commit@email>
+# See: https://git-scm.com/docs/gitmailmap
+#
+# Example:
+# yourname <you@example.com> Agent <agent@aletheia.local>

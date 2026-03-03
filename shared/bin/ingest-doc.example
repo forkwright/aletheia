@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# ingest-doc — operator-specific tool
+# Copy to instance/shared/bin/ingest-doc and configure for your deployment.
+# See instance.example/README.md for setup instructions.
+echo "ingest-doc: not configured. Copy ingest-doc.example and edit."
+exit 1
