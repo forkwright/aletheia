@@ -1,12 +1,16 @@
 mod api;
 mod app;
 mod clipboard;
+mod command;
 mod config;
 mod events;
 mod highlight;
+mod keybindings;
 mod markdown;
 mod msg;
+mod state;
 mod theme;
+mod update;
 mod view;
 
 use anyhow::Result;

@@ -206,7 +206,7 @@ mod tests {
         let yaml = r#"
 name: acme-analytics
 version: "1.0"
-description: Acme Healthcare analytics domain pack
+description: Acme Corp analytics domain pack
 
 context:
   - path: context/BUSINESS_LOGIC.md

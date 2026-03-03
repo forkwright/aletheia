@@ -20,8 +20,11 @@ message = re.sub(rb'(?i)((?:token|password|api_key|secret|bearer)\s*[=:]\s*)\S+'
 # Remove common token prefixes (sk-..., ghp_..., gho_...)
 message = re.sub(rb'(?:sk-|ghp_|gho_)[A-Za-z0-9_-]+', b'[redacted]', message)
 
-# Location details scan: no city names, zip codes, or addresses found in commit history
-# (grep -iE "columbus|westerville|ohio|43081|43082" returned clean — 2026-02-28)
+# Location details
+message = re.sub(rb'(?i)\bSpringfield\b', b'[location]', message)
+
+# Personal email in message bodies
+message = re.sub(rb'\bcody\.johnson@gmail\.com\b', b'[redacted]', message)
 
 # Normalize trailing blank lines (Pitfall 7: removals leave orphaned blank lines)
 message = re.sub(rb'\n{3,}', b'\n\n', message)

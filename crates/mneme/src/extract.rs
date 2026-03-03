@@ -174,7 +174,7 @@ Rules:
 - Extract relationships between entities as verb phrases ("works on", "depends on", "created by").
 - Extract factual claims as subject-predicate-object triples.
 - Assign confidence: 1.0 for explicit statements, 0.5-0.8 for inferences, below 0.5 for weak signals.
-- Normalize entity names: use proper nouns ("Alice" not "he", "Aletheia" not "the project").
+- Normalize entity names: use proper nouns ("Alice" not "she", "Aletheia" not "the project").
 - Skip greetings, small talk, and meta-conversation ("let me think about that").
 - Maximum {max_entities} entities, {max_relationships} relationships.
 - If the conversation contains no extractable knowledge, return empty arrays."#,
@@ -513,7 +513,7 @@ mod tests {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let messages = vec![ConversationMessage {
             role: "user".to_owned(),
-            content: "Alice lives in Springfield, Illinois and works on AI memory systems every day."
+            content: "Alice lives in Springfield, Oregon and works on AI memory systems every day."
                 .to_owned(),
         }];
 

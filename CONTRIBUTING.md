@@ -40,11 +40,11 @@ npx vitest run src/path/to/specific.test.ts
 
 ### Authorship
 
-All commits use Alice's author identity. Agents are tooling, not contributors.
+All commits use the operator's author identity. Agents are tooling, not contributors.
 
 ```
-git config user.name "Alice Johnson"
-git config user.email "alice@example.com"
+git config user.name "forkwright"
+git config user.email "forkwright@users.noreply.github.com"
 ```
 
 ### Branches

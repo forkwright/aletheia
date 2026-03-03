@@ -15,7 +15,7 @@
 
 The UI opens directly into the last-used agent's chat. There's no overview of what needs doing across the system. Each agent operates in its own silo — no shared visibility into pending work, priorities, or who owns what. The human has to remember context across sessions and manually route tasks.
 
-The current workflow: Alice thinks of something, opens the right agent, types it. If it's for a different agent, he switches. If it's for himself, he writes it down somewhere else. There's no single surface where "merge those PRs" (Syn), "respond to James" (Alice), and "dig into inventory" (Demi) all live together.
+The current workflow: the operator thinks of something, opens the right agent, types it. If it's for a different agent, they switch. If it's for themselves, they write it down somewhere else. There's no single surface where "merge those PRs" (Syn), "respond to James" (operator), and "dig into inventory" (Demi) all live together.
 
 ---
 
@@ -28,14 +28,14 @@ A homepage that's the first thing you see. A shared task board where tasks belon
 │ Aletheia  ●Syn Idle  ◉Demi Working  ●Syl Idle     Files ... │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Good evening, Alice.                        Feb 22, 5:45 PM │
+│  Good evening.                               Feb 22, 5:45 PM │
 │                                                              │
 │  ┌─ Tasks ──────────────────────────────────────────────┐    │
 │  │                                                      │    │
 │  │  ☐ Merge open PRs and clean branches       → Syn     │    │
-│  │  ☐ Respond to James about Q3 timeline      → Alice    │    │
-│  │  ☐ Dig into inventory details for Ardent   → Demi    │    │
-│  │  ☐ Update trailer wiring diagram           → Akron   │    │
+│  │  ☐ Respond to Jamie about Q3 timeline      → Syn     │    │
+│  │  ☐ Dig into inventory details for vendor   → Demi    │    │
+│  │  ☐ Update wiring diagram for project       → Akron   │    │
 │  │                                                      │    │
 │  │  [+ Add task]                                        │    │
 │  └──────────────────────────────────────────────────────┘    │
@@ -98,7 +98,7 @@ interface Task {
 
 **Sections:**
 
-1. **Greeting** — Time-aware ("Good morning/afternoon/evening, Alice"), current date/time
+1. **Greeting** — Time-aware ("Good morning/afternoon/evening"), current date/time
 2. **Task Board** — Open tasks grouped or sorted by assignee. Inline add, checkbox to complete, drag to reorder (stretch), click to expand context. Assignee selector dropdown (list of agents + "Me").
 3. **Recent Activity** — Last N events from the event bus (turns completed, tools called, sessions created). Condensed timeline.
 4. **System Summary** — Compact metrics cards: uptime, token usage, cost, agent count, services health. Links to full Metrics view.
@@ -125,7 +125,7 @@ When an agent completes a task (via `task_complete` tool):
 
 Agents can create tasks for other agents or the human:
 - `task_create("Update trailer wiring diagram", assignee: "akron", priority: "medium")`
-- `task_create("Review Ardent pricing", assignee: "human", priority: "high")`
+- `task_create("Review vendor pricing", assignee: "human", priority: "high")`
 
 The human creates tasks from the homepage UI — type title, pick assignee, optional priority/context.
 

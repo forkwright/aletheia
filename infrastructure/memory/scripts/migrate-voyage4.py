@@ -195,7 +195,7 @@ def migrate(dry_run: bool = False, verify: bool = True):
                 log.warning(f"  Point {p.id}: unexpected vector type {type(vec)}")
 
         # Test retrieval quality
-        test_text = "What leather does Ardent use?"
+        test_text = "What material does Acme use?"
         test_vec = embed_batch(voyage, [test_text], TARGET_MODEL)[0]
         results = qdrant.query_points(
             collection_name=COLLECTION,

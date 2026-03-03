@@ -4,7 +4,7 @@
 **Author:** Syn
 **Date:** 2026-02-27
 **Spec:** 44
-**Origin:** Design discussion (Alice + Syn, 2026-02-27)
+**Origin:** Design discussion (operator + Syn, 2026-02-27)
 **Related:** Spec 36 (Config Taxis — superseded in scope), Spec 37 (Metadata Architecture), Spec 43 (Rust Rewrite)
 
 ---
@@ -29,7 +29,7 @@ One bad `git add -A` exposes everything. The gitignore is the only defense.
 
 ### No collaborative workspace
 
-Alice and the nous team share work products — research, deliberations, domain references, school work — but there's no declared space for human + nous collaboration. These files accumulate in `nous/syn/` by default because Syn is the catch-all.
+The operator and the nous team share work products — research, deliberations, domain references, school work — but there's no declared space for human + nous collaboration. These files accumulate in `nous/syn/` by default because Syn is the catch-all.
 
 The concept of **theke** (θήκη — a place where things are deposited, a repository/storehouse) was used informally early on but never made structural. It should be.
 
@@ -641,7 +641,7 @@ GOALS.md → TELOS.md and MEMORY.md → MNEME.md (Spec 33 Phase 2) are assumed c
 
 ## References
 
-- Design discussion: Alice + Syn, 2026-02-27 (origin of theke concept and hierarchy)
+- Design discussion: operator + Syn, 2026-02-27 (origin of theke concept and hierarchy)
 - Spec 36: Config Taxis (predecessor, partially superseded)
 - Spec 37: Metadata Architecture (philosophical alignment)
 - Spec 43: Rust Rewrite (implementation vehicle)

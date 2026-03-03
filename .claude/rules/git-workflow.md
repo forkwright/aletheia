@@ -104,4 +104,4 @@ When Syn dispatches sub-agents for development tasks:
 4. **Syn reviews** (or dispatches a reviewer sub-agent). Merge happens after review.
 5. **Cleanup** — worktree removal and branch deletion — happens post-merge.
 
-This mirrors the current "Syn writes prompts, Alice runs via Claude Code" workflow but with agents managing their own execution.
+This mirrors the current "Syn writes prompts, the operator runs via Claude Code" workflow but with agents managing their own execution.

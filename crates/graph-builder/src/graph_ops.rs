@@ -203,7 +203,7 @@ pub trait ToUndirectedOp {
     /// ```
     ///
     /// This method accepts an optional [`CsrLayout`] as second parameter,
-    /// which has the same effect as described in [`GraphBuilder::csr_layout`]
+    /// which has the same effect as described in [`crate::GraphBuilder::csr_layout`]
     ///
     /// # Example
     ///

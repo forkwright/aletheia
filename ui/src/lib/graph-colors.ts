@@ -1,5 +1,5 @@
 // Canonical graph color palette — single source of truth for community/agent colors.
-// Ardent dye palette leads (aima, thanatochromia, aporia), earth tones follow.
+// Dye palette leads (aima, thanatochromia, aporia), earth tones follow.
 
 export const COMMUNITY_PALETTE = [
   "#7a2838", "#4a3860", "#5C8E63", "#9A7B4F", "#a06e3a",

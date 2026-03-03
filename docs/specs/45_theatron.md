@@ -25,7 +25,7 @@ The theatron composes naturally with the existing topology. Pylon (the gate) ser
 
 ## Problem
 
-The human-agent interaction model is serial messaging through a slot in a wall. Alice sends a message, waits, reads a response. No shared visible state. No mutual awareness. No ability to see what agents are thinking about, what's healthy, what's burning money, or what needs attention -- without explicitly asking.
+The human-agent interaction model is serial messaging through a slot in a wall. The operator sends a message, waits, reads a response. No shared visible state. No mutual awareness. No ability to see what agents are thinking about, what's healthy, what's burning money, or what needs attention -- without explicitly asking.
 
 This creates three concrete failures:
 
@@ -33,7 +33,7 @@ This creates three concrete failures:
 
 2. **Invisible operations.** Prosoche is scoring signals. Daemon crons are running. Phases are executing. Cost is accumulating. Sessions are active. None of this is visible unless you ask or grep logs. Failures surface as symptoms ("why did that take so long?"), not as live indicators.
 
-3. **No shared work surface.** When Alice adds a task, he types it in Signal. When an agent finishes work, it reports in chat. There is no single surface where both parties see pending work, check items off, and share awareness of what is done and what remains.
+3. **No shared work surface.** When the operator adds a task, they type it in Signal. When an agent finishes work, it reports in chat. There is no single surface where both parties see pending work, check items off, and share awareness of what is done and what remains.
 
 Signal is a communication *method* -- a pipe. What is missing is a communication *manner* -- a shared room where human and agents cowork with mutual visibility.
 
@@ -278,11 +278,11 @@ The default view. What you see when you sit down at the desk. Scope: `global`.
 │  Aletheia  ●Syn Idle  ◉Demi Working  ●Syl Idle  ●Akron Idle │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Evening, Alice.                            Mar 1, 8:30 PM   │
+│  Evening.                                  Mar 1, 8:30 PM   │
 │                                                              │
 │  ┌─ Tasks ──────────────────────────────────────────────┐   │
 │  │  ☐ Review pylon auth tests              → Syn        │   │
-│  │  ☐ Respond to James re Q3               → Alice       │   │
+│  │  ☐ Respond to James re Q3               → Operator       │   │
 │  │  ☐ Research dashboard projects           → Syn    ✓   │   │
 │  │  ☑ Merge PRs #387-389                   → Syn        │   │
 │  │  [+ Add task]                                        │   │
@@ -480,7 +480,7 @@ These are ideas that may not make v1 but belong in the design space. They repres
 
 #### Shared Cursor / Presence
 
-When Alice is looking at the Projects view, agents can see "operator is viewing Phase 2." When an agent is actively executing, the theatron shows which file or tool the agent is touching. Mutual awareness of attention. Inspiration: multiplayer cursors in Figma, but asymmetric -- one human, many agents.
+When the operator is looking at the Projects view, agents can see "operator is viewing Phase 2." When an agent is actively executing, the theatron shows which file or tool the agent is touching. Mutual awareness of attention. Inspiration: multiplayer cursors in Figma, but asymmetric -- one human, many agents.
 
 #### Voice Notes
 
@@ -564,7 +564,7 @@ Periodically snapshot agent performance on standard tasks. Track quality over ti
 
 #### Export / Reporting
 
-Generate a PDF or markdown summary of work completed this week/month. Tasks done, cost incurred, phases advanced, sessions run. Useful for Alice's own accountability and for sharing with collaborators who don't have workspace access.
+Generate a PDF or markdown summary of work completed this week/month. Tasks done, cost incurred, phases advanced, sessions run. Useful for the operator's own accountability and for sharing with collaborators who don't have workspace access.
 
 ### Platform
 

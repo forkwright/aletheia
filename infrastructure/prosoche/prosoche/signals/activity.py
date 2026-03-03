@@ -182,7 +182,7 @@ def _get_active_window_macos() -> dict | None:
 
 def get_active_window() -> dict | None:
     """Try platform-appropriate methods in order."""
-    # Try GNOME/Wayland first (Alice's primary: Fedora 42)
+    # Try GNOME/Wayland first (default: Fedora 42)
     result = _get_active_window_gnome()
     if result:
         return result

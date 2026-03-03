@@ -658,9 +658,9 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getThreadForSession returns the thread linked to a session", () => {
-    const session = store.createSession("syn", "signal:cody123");
+    const session = store.createSession("syn", "signal:alice123");
     const thread = store.resolveThread("syn", "alice");
-    store.resolveBinding(thread.id, "signal", "signal:cody123");
+    store.resolveBinding(thread.id, "signal", "signal:alice123");
     store.linkSessionToThread(session.id, thread.id, "signal");
 
     const found = store.getThreadForSession(session.id);
@@ -674,7 +674,7 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getSessionsByThread returns sessions in the thread", () => {
-    const session = store.createSession("syn", "signal:cody123");
+    const session = store.createSession("syn", "signal:alice123");
     const thread = store.resolveThread("syn", "alice");
     store.linkSessionToThread(session.id, thread.id, "signal");
 
@@ -684,8 +684,8 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getThreadHistory returns messages across all sessions in thread", () => {
-    const s1 = store.createSession("syn", "signal:cody123");
-    const s2 = store.createSession("syn", "signal:cody456");
+    const s1 = store.createSession("syn", "signal:alice123");
+    const s2 = store.createSession("syn", "signal:alice456");
     const thread = store.resolveThread("syn", "alice");
     store.linkSessionToThread(s1.id, thread.id, "signal");
     store.linkSessionToThread(s2.id, thread.id, "signal");
@@ -703,7 +703,7 @@ describe("thread summary (Phase 3)", () => {
 
   it("listThreads returns threads with session and message counts", () => {
     const thread = store.resolveThread("syn", "alice");
-    const session = store.createSession("syn", "signal:cody123");
+    const session = store.createSession("syn", "signal:alice123");
     store.linkSessionToThread(session.id, thread.id, "signal");
     store.appendMessage(session.id, "user", "hello", { tokenEstimate: 5 });
 

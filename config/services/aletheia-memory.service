@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=__ALETHEIA_HOME__/infrastructure/memory/sidecar
-Environment=NEO4J_PASSWORD=chiron-memory
-Environment=NEO4J_AUTH=neo4j/chiron-memory
+Environment=NEO4J_PASSWORD=__NEO4J_PASSWORD__
+Environment=NEO4J_AUTH=neo4j/__NEO4J_PASSWORD__
 EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env
 ExecStartPre=__COMPOSE_CMD__ \
   --project-directory __ALETHEIA_HOME__/infrastructure/memory \

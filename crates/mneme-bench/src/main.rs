@@ -323,7 +323,7 @@ fn test_bi_temporal(db: &DbInstance) {
     // Insert a fact, then supersede it
     db.run_default(
         r#"?[id, valid_from, content, valid_to, recorded_at, superseded_by] <- [
-            ["fact-1", "2026-01-01", "Alice lives in Austin", "9999-12-31", "2026-01-01T00:00:00Z", null]
+            ["fact-1", "2026-01-01", "Alice lives in Portland", "9999-12-31", "2026-01-01T00:00:00Z", null]
         ]
         :put facts {id, valid_from => content, valid_to, recorded_at, superseded_by}"#,
     )
@@ -332,7 +332,7 @@ fn test_bi_temporal(db: &DbInstance) {
     // Supersede with updated fact
     db.run_default(
         r#"?[id, valid_from, content, valid_to, recorded_at, superseded_by] <- [
-            ["fact-1", "2026-01-01", "Alice lives in Austin", "2026-02-01", "2026-02-01T00:00:00Z", "fact-1-v2"],
+            ["fact-1", "2026-01-01", "Alice lives in Portland", "2026-02-01", "2026-02-01T00:00:00Z", "fact-1-v2"],
             ["fact-1-v2", "2026-02-01", "Alice lives in Springfield", "9999-12-31", "2026-02-01T00:00:00Z", null]
         ]
         :put facts {id, valid_from => content, valid_to, recorded_at, superseded_by}"#,
@@ -349,7 +349,7 @@ fn test_bi_temporal(db: &DbInstance) {
 
     assert_eq!(result.rows.len(), 1);
     let content = result.rows[0][1].get_str().unwrap_or("");
-    assert_eq!(content, "Alice lives in Austin");
+    assert_eq!(content, "Alice lives in Portland");
 
     // Query: what is true now (2026-02-28)? Find non-superseded facts.
     let result = db

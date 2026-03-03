@@ -191,9 +191,9 @@ Router auto-failover handles 429/5xx across configured providers, but expired OA
 ### NAS SSH refused
 
 ```bash
-ping -c 1 192.168.0.120     # Should succeed (NAS is up)
-ssh nas                      # Port 22 refused = SSH service disabled in Synology DSM
-# Fix: Enable SSH in DSM → Control Panel → Terminal & SNMP → Enable SSH
+ping -c 1 <NAS_IP>           # Should succeed (NAS is up)
+ssh nas                      # Port 22 refused = SSH service may be disabled
+# Fix: Enable SSH in NAS admin UI → Terminal settings → Enable SSH
 ```
 
 ## Log Locations

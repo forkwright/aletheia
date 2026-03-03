@@ -79,7 +79,7 @@ async def build_morning_digest(config: dict) -> Signal | None:
 async def _get_weather() -> str | None:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-s", "--max-time", "5", "wttr.in/Springfield+TX?format=%c+%t+%h+%w",
+            "curl", "-s", "--max-time", "5", f"wttr.in/{config.get('weather_location', 'Austin+TX')}?format=%c+%t+%h+%w",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

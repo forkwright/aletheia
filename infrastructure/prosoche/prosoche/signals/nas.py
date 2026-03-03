@@ -14,9 +14,9 @@ async def collect(config: dict) -> list[Signal]:
     if not nas_config.get("enabled"):
         return []
 
-    host = nas_config.get("host", "192.168.0.120")
+    host = nas_config.get("host", "192.168.1.100")
     ssh_port = nas_config.get("ssh_port", 22)
-    mounts = nas_config.get("mounts", ["/mnt/nas/Media", "/mnt/nas/docker", "/mnt/nas/photos"])
+    mounts = nas_config.get("mounts", ["/mnt/nas/media", "/mnt/nas/docker", "/mnt/nas/photos"])
     signals: list[Signal] = []
 
     # Ping check

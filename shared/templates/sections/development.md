@@ -18,7 +18,7 @@ npx vitest run src/path/to/specific.test.ts
 
 ### Git Rules
 
-- **Author:** `Alice Johnson <alice@example.com>` (always)
+- **Author:** `forkwright <forkwright@users.noreply.github.com>` (always)
 - **Branch from main:** `git checkout -b <type>/<description> main`
 - **Rebase before push:** `git pull --rebase origin main`
 - **Commit format:** `<type>: <description>` — types: feat, fix, refactor, docs, test, chore, ci, perf

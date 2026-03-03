@@ -36,7 +36,7 @@ Established `AletheiaError` hierarchy, `trySafe`/`trySafeAsync` boundary helpers
 
 Branch conventions, commit standards, PR workflow, CI policy, versioning.
 
-- **All git authorship as Alice Johnson** — no `Co-authored-by: Claude` (rejected agent attribution for public repo credibility)
+- **All git authorship as forkwright** — no `Co-authored-by: Claude` (rejected agent attribution for public repo credibility)
 - **Always squash merge** — rejected mixed strategies
 - **Agents never run full test suite locally** — CI is the authority
 - **Zero broken windows:** pre-existing test failures must be fixed or deleted, never ignored. `test.skip()` requires a linked GitHub issue.

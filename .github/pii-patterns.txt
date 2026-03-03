@@ -1,0 +1,14 @@
+# PII detection patterns — one extended regex per line
+alice\.johnson
+forkwright
+[Kk]ickertz
+acme-corp
+Springfield
+Baby #[0-9]
+Widget
+due October 2026
+192\.168\.0\.
+\+1512[0-9]{7}
+acme-workshop
+Acme Workshop LLC
+Kendall.s birthday

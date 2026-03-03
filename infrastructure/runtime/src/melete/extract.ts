@@ -33,11 +33,11 @@ Detect the conversation type and extract accordingly:
 
 **Discussion turns** — extract OPINIONS, PREFERENCES, and DECISIONS.
   - Bad: "User and agent discussed leather options"
-  - Good: "User prefers polymer leather for belts due to durability; rejects veg-tan for this use case"
+  - Good: "User prefers high-grade polymer for cases due to durability; rejects standard composite for this use case"
 
 **Planning turns** — extract PLANS, TIMELINES, and COMMITMENTS.
   - Bad: "User asked about schedule"
-  - Good: "MBA final project due March 15, needs 3 weeks of work, starting after midterms"
+  - Good: "Final project due March 15, needs 3 weeks of work, starting after midterms"
 
 **Debugging turns** — extract ROOT CAUSES and FIXES, not the investigation steps.
   - Bad: "Checked logs, found error, restarted service"
@@ -45,12 +45,12 @@ Detect the conversation type and extract accordingly:
 
 **Correction turns** — extract the CORRECTED fact, flag the old one.
   - Bad: "User said the previous answer was wrong"
-  - Good: "CORRECTION: Widget torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+  - Good: "CORRECTION: Widget torque is actually 42 Nm, not 50 as stated before"
 
 ## Quality Filters
 - Skip facts obvious from context (e.g., "The user asked a question")
 - Skip purely temporal facts ("We discussed this at 3pm")
-- Prefer specific over vague: "Honda Passport needs brake pads replaced" > "vehicle maintenance discussed"
+- Prefer specific over vague: "Model X device needs firmware update" > "device maintenance discussed"
 - Prefix uncertain facts with [UNCERTAIN]
 - For CORRECTIONS: include both the wrong and right versions
 
@@ -73,10 +73,10 @@ BAD (actual noise that was extracted — don't produce these):
 
 GOOD (actual high-value extractions):
 - "ALETHEIA_MEMORY_USER must be set in aletheia.env or all extractions default to user_id='default'"
-- "Prefers polymer leather for belts; rejects veg-tan for durability reasons"
-- "CORRECTION: Widget torque is 185 ft-lbs (was incorrectly stated as 225 ft-lbs)"
+- "Prefers high-grade polymer for cases; rejects standard composite for durability reasons"
+- "CORRECTION: Widget torque is actually 42 Nm, not 50 as stated before"
 - "Prosoche dedup window set to 8 hours to reduce alert fatigue from static overdue tasks"
-- "Project Alpha due October 2026"
+- "Project Alpha deadline is March 2026"
 - "memoryTarget interface exists in hooks.ts but was never wired — distillation drops all extracted facts"
 
 Return ONLY valid JSON:

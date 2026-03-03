@@ -89,6 +89,25 @@ Property-based testing:
 
 No coverage targets. Coverage is a vanity metric. Test the behavior that matters.
 
+### Test Data Policy
+
+All test data MUST be synthetic. No real personal information in test fixtures, assertions, or example data.
+
+**Standard test identities:**
+- Users: `alice`, `bob`, `charlie`
+- Emails: `alice@example.com`, `bob@acme.corp`
+- IPs: `192.168.1.100`, `10.0.0.1`
+- Domains: `example.com`, `acme.corp`
+- Facts: Use invented specs ("Widget torque 42 Nm"), generic projects ("Project Alpha"), fictional deadlines
+
+**Never use in test code:**
+- Real names, emails, or usernames
+- Real internal IPs or hostnames
+- Real personal facts (health, family, education, employment)
+- Real credentials or API keys
+
+The pre-commit hook and CI pipeline reject PRs containing known PII patterns.
+
 ### Module Boundaries
 
 Imports flow from higher layers to lower layers only. Never create cycles. Adding a cross-module import requires verifying the dependency graph.
@@ -125,7 +144,7 @@ Rules:
 
 #### Authorship
 
-All commits use Alice's identity. Agents are tooling, not contributors.
+All commits use the operator's identity. Agents are tooling, not contributors.
 
 #### Branches
 
@@ -171,7 +190,7 @@ pub enum ConfigError {
     },
     #[snafu(display("failed to parse config"))]
     ParseConfig {
-        source: serde_yml::Error,
+        source: serde_yaml::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -180,7 +199,7 @@ pub enum ConfigError {
 fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let contents = std::fs::read_to_string(path)
         .context(ReadConfigSnafu { path: path.display().to_string() })?;
-    let config: Config = serde_yml::from_str(&contents)
+    let config: Config = serde_yaml::from_str(&contents)
         .context(ParseConfigSnafu)?;
     Ok(config)
 }
@@ -1070,7 +1089,7 @@ Known-wrong patterns do not carry forward: per-request DB connections, `execSync
 <what and why, wrapped at 72 chars>
 ```
 
-Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`. Scopes: crate names + `ui`, `tui`, `cli`, `specs`, `ci`. Single author: `forkwright <alice@example.com>`. No `Co-authored-by` lines. No agent attribution.
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`. Scopes: crate names + `ui`, `tui`, `cli`, `specs`, `ci`. Single author: `forkwright <forkwright@users.noreply.github.com>`. No `Co-authored-by` lines. No agent attribution.
 
 ### Deviation Rules
 

@@ -1,7 +1,7 @@
 # Spec 35: Context Engineering
 
 **Status:** In Progress — cache-group bootstrap + interaction classifier wired; skill relevance filtering + turn bypass pending
-**Author:** Alice
+**Author:** forkwright
 **Date:** 2026-02-23
 **Spec:** 31
 

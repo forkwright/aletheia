@@ -171,7 +171,7 @@ mod tests {
             id: "e-1".to_owned(),
             name: "Alice".to_owned(),
             entity_type: "person".to_owned(),
-            aliases: vec!["forkwright".to_owned(), "forkwright".to_owned()],
+            aliases: vec!["acme_user".to_owned(), "forkwright".to_owned()],
             created_at: "2026-01-28T00:00:00Z".to_owned(),
             updated_at: "2026-02-28T00:00:00Z".to_owned(),
         };
