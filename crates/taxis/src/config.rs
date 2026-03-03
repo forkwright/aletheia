@@ -13,6 +13,7 @@ pub struct AletheiaConfig {
     pub gateway: GatewayConfig,
     pub channels: ChannelsConfig,
     pub bindings: Vec<ChannelBinding>,
+    pub embedding: EmbeddingSettings,
 }
 
 /// Maps a channel source to a nous agent.
@@ -167,6 +168,29 @@ impl Default for GatewayAuthConfig {
     fn default() -> Self {
         Self {
             mode: "token".to_owned(),
+        }
+    }
+}
+
+/// Embedding provider configuration for recall pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct EmbeddingSettings {
+    /// Provider type: "mock", "fastembed".
+    pub provider: String,
+    /// Provider-specific model name.
+    pub model: Option<String>,
+    /// Output vector dimension (must match knowledge store HNSW index).
+    pub dimension: usize,
+}
+
+impl Default for EmbeddingSettings {
+    fn default() -> Self {
+        Self {
+            provider: "mock".to_owned(),
+            model: None,
+            dimension: 384,
         }
     }
 }
@@ -341,6 +365,9 @@ mod tests {
         assert!(config.channels.signal.enabled);
         assert!(config.channels.signal.accounts.is_empty());
         assert!(config.bindings.is_empty());
+        assert_eq!(config.embedding.provider, "mock");
+        assert!(config.embedding.model.is_none());
+        assert_eq!(config.embedding.dimension, 384);
     }
 
     #[test]
@@ -351,6 +378,8 @@ mod tests {
         assert_eq!(back.agents.defaults.context_tokens, 200_000);
         assert_eq!(back.gateway.port, 18789);
         assert!(back.channels.signal.enabled);
+        assert_eq!(back.embedding.provider, "mock");
+        assert_eq!(back.embedding.dimension, 384);
     }
 
     #[test]
@@ -487,6 +516,24 @@ mod tests {
         assert_eq!(binding.source, "+1234567890");
         assert_eq!(binding.nous_id, "syn");
         assert_eq!(binding.session_key, "{source}");
+    }
+
+    #[test]
+    fn embedding_override_from_json() {
+        let json = r#"{
+            "embedding": {
+                "provider": "fastembed",
+                "model": "BAAI/bge-small-en-v1.5",
+                "dimension": 512
+            }
+        }"#;
+        let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+        assert_eq!(config.embedding.provider, "fastembed");
+        assert_eq!(
+            config.embedding.model,
+            Some("BAAI/bge-small-en-v1.5".to_owned())
+        );
+        assert_eq!(config.embedding.dimension, 512);
     }
 
     #[test]

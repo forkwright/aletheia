@@ -19,6 +19,7 @@ use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
@@ -119,12 +120,29 @@ async fn serve(cli: Cli) -> Result<()> {
     let tool_registry = Arc::new(build_tool_registry()?);
     let oikos_arc = Arc::new(oikos);
 
+    // Embedding provider — drives recall query embedding
+    let embedding_config = EmbeddingConfig {
+        provider: config.embedding.provider.clone(),
+        model: config.embedding.model.clone(),
+        dimension: Some(config.embedding.dimension),
+        api_key: None,
+    };
+    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::from(
+        create_provider(&embedding_config).context("failed to create embedding provider")?,
+    );
+    info!(
+        provider = %config.embedding.provider,
+        dim = config.embedding.dimension,
+        "embedding provider created"
+    );
+
     // Spawn nous actors
+    // vector_search is None until Phase 2 (prompt 28) lands KnowledgeVectorSearch
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos_arc),
-        None,
+        Some(embedding_provider),
         None,
         Some(Arc::clone(&session_store)),
     );
