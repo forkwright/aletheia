@@ -9,11 +9,35 @@ rust-version = "1.85"
 publish = false
 
 [lints.rust]
+# Workspace-equivalent (excluded from workspace — sqlite3 link conflict)
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
+rust_2018_idioms = { level = "warn", priority = -1 }
+unsafe_code = "deny"
 
 [lints.clippy]
+# Workspace-equivalent
 pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+await_holding_lock = "warn"
+explicit_into_iter_loop = "warn"
+fallible_impl_from = "warn"
+fn_params_excessive_bools = "warn"
+implicit_clone = "warn"
+large_types_passed_by_value = "warn"
+map_err_ignore = "warn"
+match_wildcard_for_single_variants = "warn"
+needless_for_each = "warn"
+rc_mutex = "warn"
+string_add = "warn"
+trait_duplication_in_bounds = "warn"
+unused_self = "warn"
 
 [dependencies]
 # Standalone binary — excluded from workspace to avoid sqlite3 link conflict
