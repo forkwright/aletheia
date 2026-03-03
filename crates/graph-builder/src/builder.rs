@@ -57,6 +57,12 @@ where
     _node: PhantomData<NI>,
 }
 
+/// Typestate marker: build a graph from a GDL format string.
+///
+/// GDL (Graph Definition Language) encodes nodes and edges inline, e.g.
+/// `"(a)-[r]->(b)"`. Reached via [`GraphBuilder::gdl`] when the `gdl` feature
+/// is enabled. Calling `build()` parses the string and produces a
+/// [`DirectedCsrGraph`] or [`UndirectedCsrGraph`].
 #[cfg(feature = "gdl")]
 #[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
 pub struct FromGdlString<NI>
@@ -68,6 +74,11 @@ where
     _node: PhantomData<NI>,
 }
 
+/// Typestate marker: build a graph from a borrowed [`gdl::Graph`] object.
+///
+/// Use this when a GDL graph has already been parsed elsewhere and you want to
+/// construct a CSR graph from it without re-parsing. Reached via
+/// [`GraphBuilder::gdl_graph`] when the `gdl` feature is enabled.
 #[cfg(feature = "gdl")]
 #[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
 pub struct FromGdlGraph<'a, NI>
@@ -425,7 +436,11 @@ where
         }
     }
 
-    /// Build the graph from the given vec of edges.
+    /// Build the graph from the configured unweighted edge set.
+    ///
+    /// The type parameter `Graph` determines the output — typically
+    /// [`DirectedCsrGraph`](crate::prelude::DirectedCsrGraph) or
+    /// [`UndirectedCsrGraph`](crate::prelude::UndirectedCsrGraph).
     pub fn build<Graph>(self) -> Graph
     where
         Graph: From<(EdgeList<NI, ()>, CsrLayout)>,
@@ -478,6 +493,11 @@ where
 }
 
 impl<NI: Idx, NV, EV> GraphBuilder<FromEdgeListAndNodeValues<NI, NV, EV>> {
+    /// Build the graph from the configured edge list and per-node values.
+    ///
+    /// Produces a [`DirectedCsrGraph`](crate::prelude::DirectedCsrGraph) or
+    /// [`UndirectedCsrGraph`](crate::prelude::UndirectedCsrGraph) with attached
+    /// node value storage.
     pub fn build<Graph>(self) -> Graph
     where
         Graph: From<(NodeValues<NV>, EdgeList<NI, EV>, CsrLayout)>,

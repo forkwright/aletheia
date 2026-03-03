@@ -26,6 +26,9 @@ use crate::state::AppState;
 use crate::stream::{SseEvent, UsageData};
 
 /// POST /api/sessions — create a new session.
+///
+/// Looks up the nous configuration in [`AppState`] and either returns the
+/// existing active session or creates a new one via the session store.
 #[instrument(skip(state, _claims, body))]
 pub async fn create(
     State(state): State<Arc<AppState>>,

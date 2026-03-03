@@ -9,6 +9,9 @@ use serde::Serialize;
 use crate::state::AppState;
 
 /// GET /api/health — liveness + readiness check.
+///
+/// Probes subsystems accessible via [`AppState`] (session store, provider
+/// registry) and returns an aggregate health status.
 pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let uptime = state.start_time.elapsed().as_secs();
 

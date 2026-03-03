@@ -11,6 +11,9 @@ use crate::extract::Claims;
 use crate::state::AppState;
 
 /// GET /api/nous — list registered nous agents.
+///
+/// Reads the nous configuration registry from [`AppState`] and returns a summary
+/// of every registered agent.
 pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<NousListResponse> {
     let nous: Vec<NousSummary> = state
         .nous_manager
@@ -26,6 +29,9 @@ pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<N
 }
 
 /// GET /api/nous/{id} — get nous status.
+///
+/// Looks up the nous by id in [`AppState`] and queries the live actor for its
+/// current lifecycle status. Returns 404 if the nous id is not registered.
 pub async fn get_status(
     State(state): State<Arc<AppState>>,
     _claims: Claims,

@@ -1,6 +1,7 @@
 //! Message processing pipeline.
 //!
-//! Each inbound message flows through stages:
+//! Invoked by [`crate::actor::NousActor`] for each inbound turn. Each message
+//! flows through stages:
 //! 1. **Context** — assemble bootstrap (SOUL.md, USER.md, etc.)
 //!     - **Recall** — retrieve and inject relevant knowledge
 //! 2. **History** — load conversation history within token budget

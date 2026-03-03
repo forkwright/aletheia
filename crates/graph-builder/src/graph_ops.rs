@@ -145,6 +145,11 @@ pub trait ForEachNodeParallelByPartitionOp<NI: Idx> {
         F: Fn(&Self, NI, &mut T) + Send + Sync;
 }
 
+/// Relabel graph nodes by descending degree order to improve cache locality.
+///
+/// Assigns node 0 to the highest-degree node, node 1 to the next highest, and so on.
+/// Graphs with high-degree hubs benefit most — hot nodes cluster at low indices, which
+/// concentrates memory accesses and improves CPU cache utilization during traversal.
 pub trait RelabelByDegreeOp<NI, EV> {
     /// Creates a new graph by relabeling the node ids of the given graph.
     ///
@@ -186,6 +191,12 @@ pub trait RelabelByDegreeOp<NI, EV> {
     fn make_degree_ordered(&mut self);
 }
 
+/// Convert a directed graph to an undirected representation.
+///
+/// Merges both edge directions — for each directed edge `(u → v)` the undirected
+/// output contains both `(u, v)` and `(v, u)`. The resulting graph has the same
+/// node set but symmetrized adjacency, which doubles the edge count when no
+/// reciprocal edges exist in the input.
 pub trait ToUndirectedOp {
     type Undirected;
 

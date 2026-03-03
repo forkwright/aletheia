@@ -51,6 +51,12 @@ impl<NI: Idx, EV> InputCapabilities<NI> for EdgeListInput<NI, EV> {
     type GraphInput = EdgeList<NI, EV>;
 }
 
+/// Trait for accessing the edge set of a graph input source.
+///
+/// Implementors provide a parallel iterator over `(source, target, value)` triples
+/// and can compute the maximum node id across all edges. CSR construction uses this
+/// trait to allocate degree arrays and populate adjacency lists without knowing the
+/// concrete input type.
 #[allow(clippy::len_without_is_empty)]
 pub trait Edges {
     type NI: Idx;
@@ -96,6 +102,11 @@ fn default_max_node_id<E: Edges + ?Sized>(edges: &E) -> E::NI {
         .reduce(E::NI::zero, E::NI::max)
 }
 
+/// In-memory edge collection backed by a boxed slice of `(source, target, value)` triples.
+///
+/// The maximum node id is computed lazily on first access unless pre-supplied via
+/// [`EdgeList::with_max_node_id`]. Use the lazy form when node count is not known
+/// ahead of time; use the pre-supplied form to avoid a parallel scan when it is.
 #[derive(Debug)]
 pub struct EdgeList<NI: Idx, EV> {
     list: Box<[(NI, NI, EV)]>,
