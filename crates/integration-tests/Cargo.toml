@@ -20,6 +20,7 @@ aletheia-mneme = { path = "../mneme", default-features = false }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon" }
+aletheia-thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-symbolon = { path = "../symbolon" }
 axum = { workspace = true }

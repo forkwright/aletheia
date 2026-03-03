@@ -80,6 +80,7 @@ async fn main() -> Result<()> {
     serve(cli).await
 }
 
+#[expect(clippy::too_many_lines, reason = "binary entrypoint — sequential init steps")]
 async fn serve(cli: Cli) -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
@@ -100,6 +101,10 @@ async fn serve(cli: Cli) -> Result<()> {
         "config loaded"
     );
 
+    // Domain packs — load external knowledge packs declared in config
+    let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
+    let packs = Arc::new(loaded_packs);
+
     // Session store
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
@@ -117,7 +122,15 @@ async fn serve(cli: Cli) -> Result<()> {
 
     // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry());
-    let tool_registry = Arc::new(build_tool_registry()?);
+    let mut tool_registry = build_tool_registry()?;
+
+    // Register domain pack tools alongside builtins
+    let tool_errors = aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+    for err in &tool_errors {
+        warn!(error = %err, "failed to register pack tool");
+    }
+
+    let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
     // Embedding provider — drives recall query embedding
@@ -145,6 +158,7 @@ async fn serve(cli: Cli) -> Result<()> {
         Some(embedding_provider),
         None,
         Some(Arc::clone(&session_store)),
+        Arc::clone(&packs),
     );
 
     if config.agents.list.is_empty() {
@@ -152,6 +166,17 @@ async fn serve(cli: Cli) -> Result<()> {
     } else {
         for agent_def in &config.agents.list {
             let resolved = resolve_nous(&config, &agent_def.id);
+
+            // Merge domains from static config and pack overlays
+            let mut domains = resolved.domains.clone();
+            for pack in packs.iter() {
+                for d in pack.domains_for_agent(&agent_def.id) {
+                    if !domains.contains(&d) {
+                        domains.push(d);
+                    }
+                }
+            }
+
             let nous_config = NousConfig {
                 id: resolved.id,
                 model: resolved.model,
@@ -162,6 +187,7 @@ async fn serve(cli: Cli) -> Result<()> {
                 thinking_budget: resolved.thinking_budget,
                 max_tool_iterations: resolved.max_tool_iterations,
                 loop_detection_threshold: 3,
+                domains,
             };
             nous_manager
                 .spawn(nous_config, PipelineConfig::default())

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use aletheia_mneme::store::SessionStore;
+use aletheia_thesauros::loader::LoadedPack;
 
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -14,6 +15,8 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::actor;
+use crate::bootstrap::pack_sections_to_bootstrap;
+use crate::budget::CharEstimator;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
 use crate::message::NousStatus;
@@ -33,6 +36,7 @@ pub struct NousManager {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    packs: Arc<Vec<LoadedPack>>,
 }
 
 impl NousManager {
@@ -45,6 +49,7 @@ impl NousManager {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
+        packs: Arc<Vec<LoadedPack>>,
     ) -> Self {
         Self {
             actors: HashMap::new(),
@@ -54,6 +59,7 @@ impl NousManager {
             embedding_provider,
             vector_search,
             session_store,
+            packs,
         }
     }
 
@@ -73,6 +79,21 @@ impl NousManager {
             let _ = old.join.await;
         }
 
+        // Filter and convert domain pack sections for this agent (by ID or domain tags)
+        let extra_bootstrap = {
+            let estimator = CharEstimator;
+            let mut sections = Vec::new();
+            for pack in self.packs.iter() {
+                let agent_sections =
+                    pack.sections_for_agent_or_domains(&id, &config.domains);
+                sections.extend(pack_sections_to_bootstrap(&agent_sections, &estimator));
+            }
+            if !sections.is_empty() {
+                info!(nous_id = %id, sections = sections.len(), "domain pack sections resolved");
+            }
+            sections
+        };
+
         let (handle, join_handle) = actor::spawn(
             config.clone(),
             pipeline_config,
@@ -82,6 +103,7 @@ impl NousManager {
             self.embedding_provider.clone(),
             self.vector_search.clone(),
             self.session_store.clone(),
+            extra_bootstrap,
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -248,6 +270,7 @@ mod tests {
             None,
             None,
             None,
+            Arc::new(Vec::new()),
         )
     }
 

@@ -1,0 +1,26 @@
+[package]
+name = "aletheia-daemon"
+version = "0.1.0"
+description = "Per-nous background task runner — cron scheduling, prosoche attention"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+chrono = { workspace = true }
+cron = { workspace = true }
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

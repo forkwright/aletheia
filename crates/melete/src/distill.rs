@@ -6,7 +6,82 @@ use snafu::ResultExt;
 use tracing::instrument;
 
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
-use crate::prompt::{self, DISTILLATION_SYSTEM_PROMPT};
+use crate::prompt;
+
+/// Sections that can appear in a distillation summary.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub enum DistillSection {
+    Summary,
+    TaskContext,
+    CompletedWork,
+    KeyDecisions,
+    CurrentState,
+    OpenThreads,
+    Corrections,
+    /// Custom section with a name and description.
+    Custom { name: String, description: String },
+}
+
+impl DistillSection {
+    /// Markdown heading for this section.
+    pub fn heading(&self) -> String {
+        match self {
+            Self::Summary => "## Summary".to_owned(),
+            Self::TaskContext => "## Task Context".to_owned(),
+            Self::CompletedWork => "## Completed Work".to_owned(),
+            Self::KeyDecisions => "## Key Decisions".to_owned(),
+            Self::CurrentState => "## Current State".to_owned(),
+            Self::OpenThreads => "## Open Threads".to_owned(),
+            Self::Corrections => "## Corrections".to_owned(),
+            Self::Custom { name, .. } => format!("## {name}"),
+        }
+    }
+
+    /// Description text for this section (used in the system prompt).
+    pub fn description(&self) -> &str {
+        match self {
+            Self::Summary => "One sentence describing what this conversation is about.",
+            Self::TaskContext => {
+                "What was being worked on and why. Include the agent/nous identity if relevant."
+            }
+            Self::CompletedWork => {
+                "- Bullet list of concrete actions taken and their outcomes\n\
+                 - Include file paths, function names, and specific details\n\
+                 - Focus on results, not process"
+            }
+            Self::KeyDecisions => {
+                "- Decisions made with their rationale — these MUST be preserved\n\
+                 - Format: \"Decision: X. Reason: Y.\""
+            }
+            Self::CurrentState => {
+                "Where things stand right now. What is done, what is in progress, what is half-finished."
+            }
+            Self::OpenThreads => {
+                "- Unfinished items, pending questions, next steps\n\
+                 - Items deferred for later"
+            }
+            Self::Corrections => {
+                "- Anything that was wrong and corrected\n\
+                 - Mistakes made and how they were fixed\n\
+                 - These prevent repeating errors"
+            }
+            Self::Custom { description, .. } => description,
+        }
+    }
+
+    /// All standard sections in default order.
+    pub fn all_standard() -> Vec<Self> {
+        vec![
+            Self::Summary,
+            Self::TaskContext,
+            Self::CompletedWork,
+            Self::KeyDecisions,
+            Self::CurrentState,
+            Self::OpenThreads,
+            Self::Corrections,
+        ]
+    }
+}
 
 /// Configuration for a distillation run.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19,6 +94,13 @@ pub struct DistillConfig {
     pub min_messages: usize,
     /// Whether to include tool call details in the summary.
     pub include_tool_calls: bool,
+    /// If set, use this model for distillation instead of the primary model.
+    /// Enables cost reduction (e.g., Opus primary -> Sonnet for distillation).
+    pub distillation_model: Option<String>,
+    /// Number of recent messages to preserve verbatim (not summarized).
+    pub verbatim_tail: usize,
+    /// Sections to include in the structured summary.
+    pub sections: Vec<DistillSection>,
 }
 
 impl Default for DistillConfig {
@@ -28,6 +110,9 @@ impl Default for DistillConfig {
             max_output_tokens: 4096,
             min_messages: 6,
             include_tool_calls: true,
+            distillation_model: None,
+            verbatim_tail: 3,
+            sections: DistillSection::all_standard(),
         }
     }
 }
@@ -37,7 +122,7 @@ impl Default for DistillConfig {
 pub struct DistillResult {
     /// The distilled summary text.
     pub summary: String,
-    /// Number of messages that were distilled.
+    /// Number of messages that were distilled (excluding verbatim tail).
     pub messages_distilled: usize,
     /// Estimated tokens before distillation.
     pub tokens_before: u64,
@@ -47,6 +132,8 @@ pub struct DistillResult {
     pub distillation_number: u32,
     /// Timestamp of distillation (ISO 8601).
     pub timestamp: String,
+    /// Messages preserved verbatim (not summarized).
+    pub verbatim_messages: Vec<Message>,
 }
 
 /// The distillation engine.
@@ -63,8 +150,9 @@ impl DistillEngine {
 
     /// Check if the given messages warrant distillation.
     ///
-    /// Returns true when message count meets the minimum AND
-    /// the token estimate exceeds the threshold ratio of the context window.
+    /// Returns true when message count meets the minimum (accounting for
+    /// verbatim tail) AND the token estimate exceeds the threshold ratio
+    /// of the context window.
     pub fn should_distill(
         &self,
         message_count: usize,
@@ -72,7 +160,9 @@ impl DistillEngine {
         context_window: u64,
         threshold: f64,
     ) -> bool {
-        if message_count < self.config.min_messages {
+        // Need enough messages to summarize beyond the verbatim tail.
+        let required = self.config.min_messages + self.config.verbatim_tail;
+        if message_count < required {
             return false;
         }
         if context_window == 0 {
@@ -89,6 +179,14 @@ impl DistillEngine {
     /// Build the distillation prompt for the given messages.
     pub fn build_prompt(&self, messages: &[Message], nous_id: &str) -> CompletionRequest {
         let formatted = prompt::format_messages(messages, self.config.include_tool_calls);
+        let system_prompt = prompt::build_system_prompt(&self.config.sections);
+
+        let model = self
+            .config
+            .distillation_model
+            .as_deref()
+            .unwrap_or(&self.config.model)
+            .to_owned();
 
         let user_content = format!(
             "Distill the following conversation from nous \"{nous_id}\" \
@@ -98,8 +196,8 @@ impl DistillEngine {
         );
 
         CompletionRequest {
-            model: self.config.model.clone(),
-            system: Some(DISTILLATION_SYSTEM_PROMPT.to_owned()),
+            model,
+            system: Some(system_prompt),
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text(user_content),
@@ -113,6 +211,9 @@ impl DistillEngine {
     }
 
     /// Run distillation: call LLM, return the summary.
+    ///
+    /// Splits messages into a summarization group and a verbatim tail.
+    /// Only the summarization group is sent to the LLM.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     pub async fn distill(
         &self,
@@ -125,8 +226,13 @@ impl DistillEngine {
             return NoMessagesSnafu.fail();
         }
 
+        let tail = self.config.verbatim_tail.min(messages.len());
+        let split_at = messages.len() - tail;
+        let to_summarize = &messages[..split_at];
+        let verbatim = &messages[split_at..];
+
         let tokens_before = estimate_tokens(messages);
-        let request = self.build_prompt(messages, nous_id);
+        let request = self.build_prompt(to_summarize, nous_id);
         let response = provider.complete(&request).context(LlmCallSnafu)?;
 
         let summary = extract_summary_text(&response.content);
@@ -139,11 +245,12 @@ impl DistillEngine {
 
         Ok(DistillResult {
             summary,
-            messages_distilled: messages.len(),
+            messages_distilled: to_summarize.len(),
             tokens_before,
             tokens_after,
             distillation_number,
             timestamp,
+            verbatim_messages: verbatim.to_vec(),
         })
     }
 
@@ -331,6 +438,7 @@ Bug is fixed, test passes.
     #[test]
     fn should_distill_at_threshold_returns_true() {
         let engine = default_engine();
+        // 10 >= min_messages(6) + verbatim_tail(3) = 9, tokens at threshold
         assert!(engine.should_distill(10, 160_000, 200_000, 0.8));
     }
 
@@ -343,7 +451,7 @@ Bug is fixed, test passes.
     #[test]
     fn should_distill_too_few_messages_returns_false() {
         let engine = default_engine();
-        // 5 messages < min_messages (6), even though tokens exceed threshold
+        // 5 < min_messages(6) + verbatim_tail(3) = 9
         assert!(!engine.should_distill(5, 190_000, 200_000, 0.8));
     }
 
@@ -354,10 +462,17 @@ Bug is fixed, test passes.
     }
 
     #[test]
-    fn should_distill_exact_min_messages() {
+    fn should_distill_exact_min_plus_tail() {
         let engine = default_engine();
-        // Exactly 6 messages (min_messages) with tokens above threshold
-        assert!(engine.should_distill(6, 180_000, 200_000, 0.8));
+        // Exactly min_messages(6) + verbatim_tail(3) = 9
+        assert!(engine.should_distill(9, 180_000, 200_000, 0.8));
+    }
+
+    #[test]
+    fn should_distill_below_min_plus_tail_returns_false() {
+        let engine = default_engine();
+        // 8 < min_messages(6) + verbatim_tail(3) = 9
+        assert!(!engine.should_distill(8, 190_000, 200_000, 0.8));
     }
 
     // --- build_prompt tests ---
@@ -438,7 +553,9 @@ Bug is fixed, test passes.
 
         let result = result.unwrap();
         assert!(result.summary.contains("Fixed login bug"));
-        assert_eq!(result.messages_distilled, 6);
+        // 6 messages - 3 verbatim_tail = 3 distilled
+        assert_eq!(result.messages_distilled, 3);
+        assert_eq!(result.verbatim_messages.len(), 3);
         assert_eq!(result.distillation_number, 1);
     }
 
@@ -611,5 +728,118 @@ Bug is fixed, test passes.
         }];
         let text = extract_summary_text(&blocks);
         assert_eq!(text, "summary");
+    }
+
+    // --- new config defaults ---
+
+    #[test]
+    fn config_default_sections() {
+        let config = DistillConfig::default();
+        assert_eq!(config.sections.len(), 7);
+        assert_eq!(config.sections[0], DistillSection::Summary);
+        assert_eq!(config.sections[1], DistillSection::TaskContext);
+        assert_eq!(config.sections[2], DistillSection::CompletedWork);
+        assert_eq!(config.sections[3], DistillSection::KeyDecisions);
+        assert_eq!(config.sections[4], DistillSection::CurrentState);
+        assert_eq!(config.sections[5], DistillSection::OpenThreads);
+        assert_eq!(config.sections[6], DistillSection::Corrections);
+    }
+
+    #[test]
+    fn config_default_verbatim_tail() {
+        let config = DistillConfig::default();
+        assert_eq!(config.verbatim_tail, 3);
+    }
+
+    #[test]
+    fn config_default_distillation_model() {
+        let config = DistillConfig::default();
+        assert!(config.distillation_model.is_none());
+    }
+
+    // --- model downshift ---
+
+    #[test]
+    fn build_prompt_uses_distillation_model_when_set() {
+        let config = DistillConfig {
+            distillation_model: Some("claude-haiku-4-5-20251001".to_owned()),
+            ..DistillConfig::default()
+        };
+        let engine = DistillEngine::new(config);
+        let request = engine.build_prompt(&sample_conversation(), "test");
+        assert_eq!(request.model, "claude-haiku-4-5-20251001");
+    }
+
+    #[test]
+    fn build_prompt_falls_back_to_primary_model() {
+        let config = DistillConfig {
+            distillation_model: None,
+            model: "claude-sonnet-4-20250514".to_owned(),
+            ..DistillConfig::default()
+        };
+        let engine = DistillEngine::new(config);
+        let request = engine.build_prompt(&sample_conversation(), "test");
+        assert_eq!(request.model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn build_prompt_uses_dynamic_system_prompt() {
+        let config = DistillConfig {
+            sections: vec![DistillSection::Summary, DistillSection::KeyDecisions],
+            ..DistillConfig::default()
+        };
+        let engine = DistillEngine::new(config);
+        let request = engine.build_prompt(&sample_conversation(), "test");
+        let system = request.system.unwrap();
+        assert!(system.contains("## Summary"));
+        assert!(system.contains("## Key Decisions"));
+        assert!(!system.contains("## Open Threads"));
+    }
+
+    // --- verbatim tail ---
+
+    #[tokio::test]
+    async fn distill_preserves_verbatim_messages() {
+        let config = DistillConfig {
+            verbatim_tail: 2,
+            ..DistillConfig::default()
+        };
+        let engine = DistillEngine::new(config);
+        let messages = sample_conversation(); // 6 messages
+        let provider = MockProvider::success(MOCK_SUMMARY);
+
+        let result = engine
+            .distill(&messages, "test-nous", &provider, 1)
+            .await
+            .unwrap();
+
+        assert_eq!(result.messages_distilled, 4); // 6 - 2
+        assert_eq!(result.verbatim_messages.len(), 2);
+    }
+
+    #[test]
+    fn distill_section_equality() {
+        assert_eq!(DistillSection::Summary, DistillSection::Summary);
+        assert_ne!(DistillSection::Summary, DistillSection::TaskContext);
+        assert_eq!(
+            DistillSection::Custom {
+                name: "Test".to_owned(),
+                description: "desc".to_owned()
+            },
+            DistillSection::Custom {
+                name: "Test".to_owned(),
+                description: "desc".to_owned()
+            }
+        );
+        assert_ne!(
+            DistillSection::Custom {
+                name: "A".to_owned(),
+                description: "desc".to_owned()
+            },
+            DistillSection::Custom {
+                name: "B".to_owned(),
+                description: "desc".to_owned()
+            }
+        );
     }
 }

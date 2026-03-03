@@ -2,7 +2,7 @@
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
 > For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `.planning/DISPOSITION.md` (local).
-> Last updated: 2026-03-05 — M0a/M0b/M1 complete, M2 core + M3 complete, pipeline wired end-to-end. 849 tests across 15 crates, ~27K lines Rust. mneme v2 Phases 9-11 done.
+> Last updated: 2026-03-03 — M0a/M0b/M1/M2/M3 complete, M3.6 + M4.1 scaffolds merged. 924 tests across 17 crates, ~30K lines Rust. 2 new crates: dianoia, daemon.
 
 ---
 
@@ -566,12 +566,16 @@ Last updated: 2026-03-04
 | M3.5c | ✅ **Complete** | Iterative recall — 2-cycle retrieval with terminology discovery, gap detection, `LoopDetector` ring buffer. Tool repetition detection (`ASAFE-01`). 8+ tests. PR #443. (Completes mneme v2 Phase 10.) |
 | M3.5d | ✅ **Complete** | Typed Datalog query builder — field enums, fluent API (`QueryBuilder`/`PutBuilder`/`SelectBuilder`), ~10 queries migrated from string constants. Regression tests. PR #447. (Completes mneme v2 Phase 11.) |
 | M3.5e | ✅ **Complete** | Execution resilience — `StuckDetector` with error pattern normalization, iteration caps, blocker file writing. 5 tests. PR #442. (Dianoia orchestrator.) |
-| M3.6+ | Not started | Delivery reliability, cross-nous sessions, knowledge extraction (mneme v2 Phase 12+) |
-| M4 | Not started | Multi-nous, roles, daemon, melete, dianoia |
+| M3.6a | ✅ **Complete** | Cross-nous sessions — agent-to-agent messaging, delivery tracking, ask/send/reply. PR #451. |
+| M3.6b | ✅ **Complete** | Knowledge extraction — LLM-driven entity/relationship extraction from conversations. PR #452. |
+| M4.1a | ✅ **Complete** | dianoia scaffold — planning state machine, workspace model, 3 operating modes. PR #448. |
+| M4.1b | ✅ **Complete** | daemon scaffold — cron scheduling, task runner, prosoche attention stub. PR #450. |
+| M4.1c | ✅ **Complete** | melete structured distillation — model downshift, section templates, memory flush. PR #449. |
+| M4.2+ | Not started | Multi-nous wiring, roles, integration. Pending scaffold merge + deep review. |
 | M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 849 tests (`#[test]` + `#[tokio::test]`), ~27K lines of Rust (+46K vendored CozoDB in mneme-engine).
+**Totals:** 17 crate directories (13 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 924 tests, ~30K lines of Rust (+46K vendored CozoDB in mneme-engine).
 
 ---
 

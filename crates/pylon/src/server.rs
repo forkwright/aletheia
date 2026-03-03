@@ -62,6 +62,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         None,
         None,
         None,
+        Arc::new(vec![]),
     );
     let nous_config = NousConfig::default();
     nous_manager

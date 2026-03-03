@@ -63,7 +63,8 @@ impl FtsCache {
                         decode_tuple_from_key(&kvec, idx.metadata.keys.len());
                     let doc_key = key_tuple[1..].to_vec();
                     let vals: Vec<DataValue> =
-                        rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..]).unwrap();
+                        rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     let total_length = vals[3].get_int().unwrap_or(0) as u32;
                     doc_lengths
                         .entry(doc_key)
@@ -146,7 +147,8 @@ impl<'a> SessionTx<'a> {
                 break;
             }
 
-            let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..]).unwrap();
+            let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             let froms = vals[0].get_slice().unwrap();
             let tos = vals[1].get_slice().unwrap();
             let positions = vals[2].get_slice().unwrap();

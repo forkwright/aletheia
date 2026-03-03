@@ -9,6 +9,8 @@ use tracing::{debug, info, warn};
 
 use aletheia_taxis::cascade;
 use aletheia_taxis::oikos::Oikos;
+use aletheia_thesauros::loader::PackSection;
+use aletheia_thesauros::manifest::Priority as PackPriority;
 
 use crate::budget::{CharEstimator, TokenBudget, TokenEstimator};
 use crate::error::{self, Result};
@@ -143,7 +145,27 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
     pub fn assemble(&self, nous_id: &str, budget: &mut TokenBudget) -> Result<BootstrapResult> {
+        self.assemble_with_extra(nous_id, budget, Vec::new())
+    }
+
+    /// Assemble the bootstrap system prompt with additional sections from domain packs.
+    ///
+    /// Extra sections participate in the same priority sorting and token budget
+    /// as workspace files. They are appended after workspace files before sorting,
+    /// so sections with the same priority level interleave naturally.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
+    /// missing or unreadable.
+    pub fn assemble_with_extra(
+        &self,
+        nous_id: &str,
+        budget: &mut TokenBudget,
+        extra_sections: Vec<BootstrapSection>,
+    ) -> Result<BootstrapResult> {
         let mut sections = self.resolve_workspace_files(nous_id)?;
+        sections.extend(extra_sections);
 
         // Stable sort preserves declaration order within same priority
         sections.sort_by_key(|s| s.priority);
@@ -203,6 +225,14 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             sections_dropped: dropped_names,
             total_tokens,
         })
+    }
+
+    /// Estimate tokens for a piece of text using this assembler's estimator.
+    ///
+    /// Useful for callers building [`BootstrapSection`] values externally
+    /// (e.g. from domain pack content).
+    pub fn estimate_tokens(&self, text: &str) -> u64 {
+        self.estimator.estimate(text)
     }
 
     /// Resolve workspace files through the cascade and read their contents.
@@ -327,6 +357,35 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             truncatable: section.truncatable,
         }
     }
+}
+
+/// Convert domain pack sections into bootstrap sections.
+///
+/// Maps thesauros [`PackSection`] values to [`BootstrapSection`] values,
+/// computing token estimates for each section's content. Section names
+/// are prefixed with the pack name for traceability.
+pub fn pack_sections_to_bootstrap<E: TokenEstimator>(
+    sections: &[&PackSection],
+    estimator: &E,
+) -> Vec<BootstrapSection> {
+    sections
+        .iter()
+        .map(|s| {
+            let priority = match s.priority {
+                PackPriority::Required => SectionPriority::Required,
+                PackPriority::Important => SectionPriority::Important,
+                PackPriority::Flexible => SectionPriority::Flexible,
+                PackPriority::Optional => SectionPriority::Optional,
+            };
+            BootstrapSection {
+                name: format!("[{}] {}", s.pack_name, s.name),
+                priority,
+                content: s.content.clone(),
+                tokens: estimator.estimate(&s.content),
+                truncatable: s.truncatable,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -609,5 +668,120 @@ mod tests {
         let truncated = assembler.truncate_by_lines(&section, 5);
         assert!(truncated.content.contains("Line one"));
         assert!(truncated.content.contains("[truncated for token budget]"));
+    }
+
+    // --- Pack conversion tests ---
+
+    #[test]
+    fn pack_sections_to_bootstrap_converts_priorities() {
+        let sections = [
+            PackSection {
+                name: "LOGIC.md".to_owned(),
+                content: "Business logic content".to_owned(),
+                priority: PackPriority::Required,
+                truncatable: false,
+                agents: vec![],
+                pack_name: "test-pack".to_owned(),
+            },
+            PackSection {
+                name: "GLOSSARY.md".to_owned(),
+                content: "Term definitions".to_owned(),
+                priority: PackPriority::Flexible,
+                truncatable: true,
+                agents: vec!["chiron".to_owned()],
+                pack_name: "test-pack".to_owned(),
+            },
+        ];
+
+        let refs: Vec<&PackSection> = sections.iter().collect();
+        let result = pack_sections_to_bootstrap(&refs, &CharEstimator);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "[test-pack] LOGIC.md");
+        assert_eq!(result[0].priority, SectionPriority::Required);
+        assert!(!result[0].truncatable);
+        assert_eq!(result[0].content, "Business logic content");
+        assert!(result[0].tokens > 0);
+
+        assert_eq!(result[1].name, "[test-pack] GLOSSARY.md");
+        assert_eq!(result[1].priority, SectionPriority::Flexible);
+        assert!(result[1].truncatable);
+    }
+
+    #[test]
+    fn pack_sections_to_bootstrap_empty_input() {
+        let result = pack_sections_to_bootstrap(&[], &CharEstimator);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn assemble_with_extra_includes_pack_sections() {
+        let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "I am a test agent.")]);
+        let assembler = BootstrapAssembler::new(&oikos);
+        let mut budget = default_budget();
+
+        let extra = vec![BootstrapSection {
+            name: "[pack] LOGIC.md".to_owned(),
+            priority: SectionPriority::Important,
+            content: "Domain logic from pack.".to_owned(),
+            tokens: 6,
+            truncatable: false,
+        }];
+
+        let result = assembler
+            .assemble_with_extra("test", &mut budget, extra)
+            .unwrap();
+        assert!(result.system_prompt.contains("Domain logic from pack."));
+        assert!(result
+            .sections_included
+            .contains(&"[pack] LOGIC.md".to_owned()));
+        assert_eq!(result.sections_included.len(), 2);
+    }
+
+    #[test]
+    fn assemble_with_extra_respects_priority_ordering() {
+        let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
+        let assembler = BootstrapAssembler::new(&oikos);
+        let mut budget = default_budget();
+
+        let extra = vec![
+            BootstrapSection {
+                name: "optional-pack".to_owned(),
+                priority: SectionPriority::Optional,
+                content: "optional".to_owned(),
+                tokens: 2,
+                truncatable: true,
+            },
+            BootstrapSection {
+                name: "important-pack".to_owned(),
+                priority: SectionPriority::Important,
+                content: "important".to_owned(),
+                tokens: 2,
+                truncatable: false,
+            },
+        ];
+
+        let result = assembler
+            .assemble_with_extra("test", &mut budget, extra)
+            .unwrap();
+
+        // SOUL.md (Required) < important-pack (Important) < optional-pack (Optional)
+        let soul_pos = result
+            .sections_included
+            .iter()
+            .position(|s| s == "SOUL.md")
+            .unwrap();
+        let important_pos = result
+            .sections_included
+            .iter()
+            .position(|s| s == "important-pack")
+            .unwrap();
+        let optional_pos = result
+            .sections_included
+            .iter()
+            .position(|s| s == "optional-pack")
+            .unwrap();
+        assert!(soul_pos < important_pos);
+        assert!(important_pos < optional_pos);
     }
 }

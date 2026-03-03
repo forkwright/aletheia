@@ -1,0 +1,27 @@
+[package]
+name = "aletheia-thesauros"
+version = "0.1.0"
+description = "Domain pack loader — external knowledge, tools, and config overlays"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+aletheia-organon = { path = "../organon" }
+indexmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tracing = { workspace = true }
+
+[dependencies.serde_yml]
+version = "0.0.12"
+
+[dev-dependencies]
+futures = "0.3"
+tempfile = "3"

@@ -96,6 +96,39 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Target nous not found in the router.
+    #[snafu(display("nous not found: {nous_id}"))]
+    NousNotFound {
+        nous_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Cross-nous message delivery failed (channel closed).
+    #[snafu(display("delivery to '{nous_id}' failed: channel closed"))]
+    DeliveryFailed {
+        nous_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Cross-nous ask timed out waiting for reply.
+    #[snafu(display("ask to '{nous_id}' timed out after {timeout_secs}s"))]
+    AskTimeout {
+        nous_id: String,
+        timeout_secs: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Reply channel not found (already timed out or consumed).
+    #[snafu(display("reply channel not found for message {message_id}"))]
+    ReplyNotFound {
+        message_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

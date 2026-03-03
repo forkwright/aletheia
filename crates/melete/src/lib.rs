@@ -9,6 +9,7 @@
 
 pub mod distill;
 pub mod error;
+pub mod flush;
 pub mod prompt;
 pub mod types;
 
@@ -16,9 +17,13 @@ pub mod types;
 mod assertions {
     use static_assertions::assert_impl_all;
 
-    use super::distill::{DistillConfig, DistillEngine, DistillResult};
+    use super::distill::{DistillConfig, DistillEngine, DistillResult, DistillSection};
+    use super::flush::{FlushItem, MemoryFlush};
 
     assert_impl_all!(DistillEngine: Send, Sync);
     assert_impl_all!(DistillResult: Send, Sync);
     assert_impl_all!(DistillConfig: Send, Sync);
+    assert_impl_all!(DistillSection: Send, Sync);
+    assert_impl_all!(MemoryFlush: Send, Sync);
+    assert_impl_all!(FlushItem: Send, Sync);
 }

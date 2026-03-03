@@ -2,8 +2,10 @@
 resolver = "2"
 members = [
     "crates/aletheia",
+    "crates/dianoia",
     "crates/graph-builder",
     "crates/agora",
+    "crates/daemon",
     "crates/hermeneus",
     "crates/integration-tests",
     "crates/koina",
@@ -15,6 +17,7 @@ members = [
     "crates/pylon",
     "crates/symbolon",
     "crates/taxis",
+    "crates/thesauros",
 ]
 exclude = [
     "tui",
@@ -96,6 +99,8 @@ indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
 
 # Time
+chrono = "0.4"
+cron = "0.15"
 jiff = "0.2"
 
 # Async

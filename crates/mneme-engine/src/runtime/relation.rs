@@ -524,7 +524,8 @@ pub fn decode_tuple_from_kv(key: &[u8], val: &[u8], size_hint: Option<usize>) ->
 pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
         // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption
-        let vals: Vec<DataValue> = rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..]).unwrap();
+        let vals: Vec<DataValue> = rmp_serde::from_slice(&val[ENCODED_KEY_MIN_LEN..])
+            .expect("INVARIANT: storage layer writes well-formed msgpack tuples");
         key.extend(vals);
     }
 }
