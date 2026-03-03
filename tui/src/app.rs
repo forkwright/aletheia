@@ -118,6 +118,17 @@ pub struct PlanStepApproval {
     pub checked: bool,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[expect(dead_code, reason = "variants used when selection tracking is wired")]
+pub enum SelectionContext {
+    #[default]
+    None,
+    UserMessage,
+    AgentResponse,
+    ToolCall,
+    SessionList,
+}
+
 // --- App ---
 
 pub struct App {
@@ -133,6 +144,10 @@ pub struct App {
     pub messages: Vec<ChatMessage>,
     pub focused_session_id: Option<String>,
     pub daily_cost_cents: u32,
+    pub session_cost_cents: u32,
+    pub active_filter: Option<String>,
+    pub context_usage_pct: Option<u8>,
+    pub selection: SelectionContext,
 
     // Input
     pub input: InputState,
@@ -204,6 +219,10 @@ impl App {
             messages: Vec::new(),
             focused_session_id: None,
             daily_cost_cents: 0,
+            session_cost_cents: 0,
+            active_filter: Option::None,
+            context_usage_pct: Option::None,
+            selection: SelectionContext::default(),
             input: InputState::default(),
             sidebar_visible: true,
             thinking_expanded: false,

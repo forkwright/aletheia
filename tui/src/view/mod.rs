@@ -22,14 +22,14 @@ pub fn render(app: &App, frame: &mut Frame) {
             vec![
                 Constraint::Length(1), // title bar
                 Constraint::Min(5),    // body
-                Constraint::Length(1), // status bar
+                Constraint::Length(2), // status bar
                 Constraint::Length(1), // error toast
             ]
         } else {
             vec![
                 Constraint::Length(1), // title bar
                 Constraint::Min(5),    // body
-                Constraint::Length(1), // status bar
+                Constraint::Length(2), // status bar
             ]
         })
         .split(area);
