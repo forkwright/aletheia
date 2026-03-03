@@ -9,7 +9,7 @@ use snafu::ResultExt;
 use tracing::{debug, info, instrument};
 
 use crate::error::{self, Result};
-use crate::schema;
+use crate::migration;
 use crate::types::{AgentNote, Message, Role, Session, SessionStatus, SessionType, UsageRecord};
 
 /// The session store — wraps a `SQLite` connection.
@@ -34,7 +34,7 @@ impl SessionStore {
         )
         .context(error::DatabaseSnafu)?;
 
-        schema::initialize(&conn)?;
+        migration::run_migrations(&conn)?;
 
         Ok(Self { conn })
     }
@@ -47,7 +47,7 @@ impl SessionStore {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .context(error::DatabaseSnafu)?;
-        schema::initialize(&conn)?;
+        migration::run_migrations(&conn)?;
         Ok(Self { conn })
     }
 
