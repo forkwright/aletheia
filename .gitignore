@@ -103,6 +103,10 @@ ui/node_modules/
 ui/dist/
 *sync-conflict*
 
+# === Learned skills (instance-specific, not shipped) ===
+shared/skills/
+!shared/skills/_examples/
+
 # === Ephemeral state ===
 **/.task/
 **/.taskrc
