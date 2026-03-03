@@ -26,36 +26,47 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 | `hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
 | `organon` | Tool registry, tool definitions, built-in tool set | koina, hermeneus |
 | `symbolon` | JWT tokens, password hashing, RBAC policies | nothing (leaf) |
-| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon |
 | `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
+| `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
+| `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
+| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon |
 | `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | all application crates |
+| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, melete |
+
+**Support crates** (not part of the application dependency graph):
+
+| Crate | Domain | Depends On |
+|-------|--------|------------|
+| `graph-builder` | CSR graph construction for mneme-engine | nothing (standalone) |
+| `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon |
+| `mneme-bench` | CozoDB benchmark harness | nothing (standalone, excluded from workspace) |
 
 ### Dependency Graph
 
 ```
-                        aletheia (binary)
-                    /   /   |   \   \   \
-                  /   /     |    \    \    \
-              pylon nous  agora melete organon ...
-              / | \   |\   / \     |      |
-             /  |  \  | \ /   \    |      |
-      symbolon  |  mneme taxis  hermeneus  koina
-                |    |     |       |
-              organon |   koina   koina
-                |   mneme-engine
-              hermeneus
-                |
-              koina
+                          aletheia (binary)
+                  /   /   / |  \   \    \   \
+                 /   /   /  |   \   \    \   \
+             pylon nous agora melete organon taxis ...
+             /|\ \  |\ \  |\    |      |\     |
+            / | \ \ | \ \ | \   |      | \    |
+  symbolon  | organon |  taxis hermeneus  koina
+            |  |  \   |    |
+            | hermeneus mneme
+            |    |       |
+            koina koina  koina
+                         |
+                    mneme-engine (optional)
 ```
 
 **Layer rules:**
-- **Leaf** (no workspace deps): `koina`, `symbolon`, `mneme-engine`
-- **Low** (leaf deps only): `taxis`, `hermeneus`, `melete`, `organon`, `agora`, `mneme`
-- **Mid**: `nous`
-- **High**: `pylon`
+- **Leaf** (no workspace deps): `koina`, `symbolon`, `mneme-engine`, `graph-builder`
+- **Low** (leaf deps only): `taxis`, `hermeneus`, `melete`, `agora`, `mneme`
+- **Mid**: `organon` (koina + hermeneus), `daemon` (koina), `dianoia` (koina)
+- **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous)
 - **Top**: `aletheia` binary
+- **Support**: `integration-tests`, `mneme-bench`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
@@ -71,8 +82,7 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 | Crate | Domain | Milestone |
 |-------|--------|-----------|
-| `daemon` | Per-nous background tasks, cron, prosoche | M4 |
-| `dianoia` | Multi-phase planning orchestrator | M4 |
+| `thesauros` | Domain pack loader — external knowledge, tools, config overlays | M5 |
 | `prostheke` | WASM plugin host (wasmtime) | M5 |
 | `autarkeia` | Agent export/import | M5 |
 | `theatron` | Composable operations UI | M6 |
@@ -158,4 +168,6 @@ See [docs/PLUGINS.md](PLUGINS.md).
 - **symbolon is zero-dependency** in both stacks. Takes `Database.Database` as constructor argument in TS.
 - **mneme-engine is vendored.** CozoDB absorbed into workspace. Optional dependency of `mneme`.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` — implement the trait, swap the provider.
-- **daemon is high-layer despite the name.** Imports nous and melete for cron/reflection jobs. Must not be imported by other modules.
+- **daemon depends only on koina** — lightweight scheduling, not a high-layer crate. Must not be imported by other application crates.
+- **dianoia depends only on koina** — planning context is decoupled from the agent pipeline. Must not be imported by other application crates.
+- **thesauros (planned) loads domain packs** — knowledge, tools, config overlays bundled as portable extensions.
