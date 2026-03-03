@@ -1,3 +1,13 @@
+//! Typestate graph builder.
+//!
+//! [`GraphBuilder`] uses the typestate pattern to guide callers through graph
+//! construction: the set of available methods changes as the builder accumulates
+//! configuration, ensuring that `build()` is only callable once the graph source
+//! (edges, file path, or GDL string) has been provided.
+//!
+//! The builder typestate types (`Uninitialized`, `FromEdges`, etc.) are public so
+//! that they appear in rustdoc but are not intended for direct construction.
+
 use std::{convert::TryFrom, marker::PhantomData};
 
 use crate::{
@@ -9,10 +19,12 @@ use crate::{
 };
 use std::path::Path as StdPath;
 
+/// Initial builder state — no graph source has been configured yet.
 pub struct Uninitialized {
     csr_layout: CsrLayout,
 }
 
+/// Builder state after [`GraphBuilder::edges`] — holds unweighted edge tuples.
 pub struct FromEdges<NI, Edges>
 where
     NI: Idx,
@@ -23,6 +35,8 @@ where
     _node: PhantomData<NI>,
 }
 
+/// Builder state after [`GraphBuilder::node_values`] with an edge list — holds
+/// both edges and per-node values.
 pub struct FromEdgeListAndNodeValues<NI, NV, EV>
 where
     NI: Idx,
@@ -32,6 +46,7 @@ where
     edge_list: EdgeList<NI, EV>,
 }
 
+/// Builder state after [`GraphBuilder::edges_with_values`] — holds weighted edge triplets.
 pub struct FromEdgesWithValues<NI, Edges, EV>
 where
     NI: Idx,
@@ -64,6 +79,7 @@ where
     _node: PhantomData<NI>,
 }
 
+/// Builder state after [`GraphBuilder::file_format`] — format selected, path not yet set.
 pub struct FromInput<NI, P, Format>
 where
     P: AsRef<StdPath>,
@@ -77,6 +93,7 @@ where
     _format: PhantomData<Format>,
 }
 
+/// Builder state after [`GraphBuilder::path`] — ready to read and build from file.
 pub struct FromPath<NI, P, Format>
 where
     P: AsRef<StdPath>,
@@ -385,6 +402,10 @@ where
     NI: Idx,
     Edges: IntoIterator<Item = (NI, NI)>,
 {
+    /// Attaches per-node values and transitions to the node-values builder state.
+    ///
+    /// `node_values` must yield exactly as many items as there are nodes in the graph.
+    /// Node count is inferred from the maximum node id in the edge list.
     pub fn node_values<NV, I>(
         self,
         node_values: I,
@@ -422,6 +443,9 @@ where
     EV: Sync,
     Edges: IntoIterator<Item = (NI, NI, EV)>,
 {
+    /// Attaches per-node values to a weighted edge builder.
+    ///
+    /// `node_values` must yield exactly as many items as there are nodes.
     pub fn node_values<NV, I>(
         self,
         node_values: I,
@@ -473,6 +497,10 @@ where
     NI: Idx,
 {
     /// Builds the graph from the given GDL string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error`] if the GDL string cannot be parsed.
     pub fn build<Graph>(self) -> Result<Graph, Error>
     where
         Graph: From<(gdl::Graph, CsrLayout)>,
@@ -490,6 +518,10 @@ where
     NI: Idx,
 {
     /// Build the graph from the given GDL graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error`] if graph construction fails (e.g., incompatible index type).
     pub fn build<Graph>(self) -> Result<Graph, Error>
     where
         Graph: From<(&'a gdl::Graph, CsrLayout)>,
@@ -526,7 +558,13 @@ where
     Format::GraphInput: TryFrom<InputPath<Path>>,
     crate::Error: From<<Format::GraphInput as TryFrom<InputPath<Path>>>::Error>,
 {
-    /// Build the graph from the given input format and path.
+    /// Build the graph by reading the configured file in the configured format.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::Error::IoError`] if the file cannot be opened or read.
+    /// - [`crate::Error::InvalidIdType`] if the serialized index type does not match `NI`.
+    /// - Other `Error` variants if the graph format conversion fails.
     pub fn build<Graph>(self) -> Result<Graph, Error>
     where
         Graph: TryFrom<(Format::GraphInput, CsrLayout)>,

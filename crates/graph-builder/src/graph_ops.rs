@@ -1,3 +1,16 @@
+//! Graph operation traits and their blanket implementations.
+//!
+//! Provides higher-level operations on top of the core graph traits:
+//!
+//! - Partitioning: [`DegreePartitionOp`], [`OutDegreePartitionOp`], [`InDegreePartitionOp`]
+//! - Parallel traversal: [`ForEachNodeParallelOp`], [`ForEachNodeParallelByPartitionOp`]
+//! - Structural operations: [`RelabelByDegreeOp`], [`ToUndirectedOp`]
+//! - Serialization: [`SerializeGraphOp`], [`DeserializeGraphOp`]
+//!
+//! All traits are blanket-implemented for any graph type that satisfies the
+//! required trait bounds — no manual impl needed for [`crate::graph::csr::DirectedCsrGraph`]
+//! or [`crate::graph::csr::UndirectedCsrGraph`].
+
 use log::info;
 use rayon::prelude::*;
 
@@ -203,7 +216,7 @@ pub trait ToUndirectedOp {
     /// ```
     ///
     /// This method accepts an optional [`CsrLayout`] as second parameter,
-    /// which has the same effect as described in [`GraphBuilder::csr_layout`]
+    /// which has the same effect as described in [`crate::builder::GraphBuilder`]`.csr_layout()`
     ///
     /// # Example
     ///
@@ -231,11 +244,27 @@ pub trait ToUndirectedOp {
     fn to_undirected(&self, layout: impl Into<Option<CsrLayout>>) -> Self::Undirected;
 }
 
+/// Serializes a graph to a binary writer.
+///
+/// The format is a compact binary encoding of the CSR arrays — not a human-readable format.
+/// Use the corresponding [`DeserializeGraphOp`] to read it back.
 pub trait SerializeGraphOp<W> {
+    /// Writes the graph to `write`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::IoError`] if writing fails.
     fn serialize(&self, write: W) -> Result<(), Error>;
 }
 
+/// Deserializes a graph from a binary reader.
 pub trait DeserializeGraphOp<R, G> {
+    /// Reads a graph from `read`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::Error::IoError`] if reading fails.
+    /// - [`crate::Error::InvalidIdType`] if the serialized index type does not match the expected type.
     fn deserialize(read: R) -> Result<G, Error>;
 }
 

@@ -1,3 +1,10 @@
+//! CSR (Compressed Sparse Row) graph implementations.
+//!
+//! Provides [`DirectedCsrGraph`] and [`UndirectedCsrGraph`] — the two concrete
+//! graph types built by [`crate::builder::GraphBuilder`]. Also defines
+//! [`CsrLayout`] (neighbor ordering), [`NodeValues`] (per-node metadata), and
+//! the internal [`Csr`] data structure.
+
 use atomic::Atomic;
 use byte_slice_cast::{AsByteSlice, AsMutByteSlice, ToByteSlice, ToMutByteSlice};
 use log::info;
@@ -30,7 +37,11 @@ use std::hash::Hash;
 
 /// Defines how the neighbor list of individual nodes are organized within the
 /// CSR target array.
+///
+/// Pass to [`crate::builder::GraphBuilder`]`.csr_layout()` before calling `build()`.
+/// The default is [`CsrLayout::Unsorted`] which minimizes construction time.
 #[derive(Default, Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CsrLayout {
     /// Neighbor lists are sorted and may contain duplicate target ids. This is
     /// the default representation.
@@ -116,7 +127,12 @@ impl<Index: Idx, NI> Csr<Index, NI, ()> {
     }
 }
 
+/// Replaces the internal CSR representation of a graph in place.
+///
+/// Used by [`crate::graph_ops::RelabelByDegreeOp`] to swap in a degree-ordered
+/// CSR after relabeling without allocating a new graph struct.
 pub trait SwapCsr<Index: Idx, NI, EV> {
+    /// Replaces the internal CSR with `csr` and returns `&mut self`.
     fn swap_csr(&mut self, csr: Csr<Index, NI, EV>) -> &mut Self;
 }
 
@@ -327,9 +343,20 @@ where
     }
 }
 
+/// Per-node value storage, indexed by node id.
+///
+/// Stores one value of type `NV` per node. Used with [`DirectedCsrGraph`] and
+/// [`UndirectedCsrGraph`] when graphs carry node-level metadata (e.g., labels,
+/// weights, or feature vectors). Access via
+/// [`crate::NodeValues::node_value`].
 pub struct NodeValues<NV>(pub(crate) Box<[NV]>);
 
 impl<NV> NodeValues<NV> {
+    /// Creates a `NodeValues` container from a `Vec` of per-node values.
+    ///
+    /// The vector must have exactly as many elements as there are nodes in the
+    /// graph — this is not checked at construction time but enforced when the
+    /// graph is built.
     pub fn new(node_values: Vec<NV>) -> Self {
         Self(node_values.into_boxed_slice())
     }
@@ -380,6 +407,22 @@ where
     }
 }
 
+/// A directed graph backed by two CSR structures — one for outgoing, one for incoming edges.
+///
+/// Type parameters:
+/// - `NI` — node index type (e.g. `u32`, `usize`); must implement [`crate::index::Idx`]
+/// - `NV` — per-node value type (default `()`); access via [`crate::NodeValues::node_value`]
+/// - `EV` — per-edge value type (default `()`); access via [`crate::DirectedNeighborsWithValues`]
+///
+/// Build with [`crate::builder::GraphBuilder`]:
+/// ```
+/// use aletheia_graph_builder::prelude::*;
+///
+/// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
+///     .edges(vec![(0, 1), (1, 2)])
+///     .build();
+/// assert_eq!(graph.node_count(), 3);
+/// ```
 pub struct DirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
     node_values: NodeValues<NV>,
     csr_out: Csr<NI, NI, EV>,
@@ -387,6 +430,11 @@ pub struct DirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
 }
 
 impl<NI: Idx, NV, EV> DirectedCsrGraph<NI, NV, EV> {
+    /// Creates a directed graph from pre-built CSR arrays and node values.
+    ///
+    /// Prefer [`crate::builder::GraphBuilder`] for constructing graphs from edge lists.
+    /// This constructor is intended for advanced use cases where the CSR data is
+    /// already available (e.g., after deserialization).
     pub fn new(
         node_values: NodeValues<NV>,
         csr_out: Csr<NI, NI, EV>,
@@ -674,6 +722,27 @@ where
     }
 }
 
+/// An undirected graph backed by a single CSR structure.
+///
+/// Each edge `(u, v)` is stored twice — as `(u, v)` and `(v, u)` — so that
+/// neighbor lookups work symmetrically. [`Graph::edge_count`] returns the
+/// logical edge count (half of the stored target count).
+///
+/// Type parameters:
+/// - `NI` — node index type (e.g. `u32`, `usize`); must implement [`crate::index::Idx`]
+/// - `NV` — per-node value type (default `()`)
+/// - `EV` — per-edge value type (default `()`)
+///
+/// Build with [`crate::builder::GraphBuilder`]:
+/// ```
+/// use aletheia_graph_builder::prelude::*;
+///
+/// let graph: UndirectedCsrGraph<u32> = GraphBuilder::new()
+///     .edges(vec![(0, 1), (1, 2)])
+///     .build();
+/// assert_eq!(graph.node_count(), 3);
+/// assert_eq!(graph.degree(1), 2);
+/// ```
 pub struct UndirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
     node_values: NodeValues<NV>,
     csr: Csr<NI, NI, EV>,
@@ -686,6 +755,9 @@ impl<NI: Idx, EV> From<Csr<NI, NI, EV>> for UndirectedCsrGraph<NI, (), EV> {
 }
 
 impl<NI: Idx, NV, EV> UndirectedCsrGraph<NI, NV, EV> {
+    /// Creates an undirected graph from pre-built CSR arrays and node values.
+    ///
+    /// Prefer [`crate::builder::GraphBuilder`] for constructing graphs from edge lists.
     pub fn new(node_values: NodeValues<NV>, csr: Csr<NI, NI, EV>) -> Self {
         let g = Self { node_values, csr };
         info!(

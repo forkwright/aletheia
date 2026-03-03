@@ -1,3 +1,9 @@
+//! Graph input format abstractions.
+//!
+//! Defines [`InputCapabilities`] and [`ParseValue`] traits for pluggable input formats,
+//! the [`Direction`] enum for edge orientation, and re-exports the built-in
+//! [`EdgeListInput`] / [`EdgeList`] types from the [`edgelist`] submodule.
+
 pub mod edgelist;
 
 pub use edgelist::EdgeList;
@@ -6,16 +12,35 @@ pub use edgelist::Edges;
 
 use crate::index::Idx;
 
+/// Wraps a filesystem path for use as a graph input source.
+///
+/// Passed to [`crate::builder::GraphBuilder::path`] after selecting a file format
+/// via [`crate::builder::GraphBuilder::file_format`].
 pub struct InputPath<P>(pub(crate) P);
 
+/// Implemented by input format types to declare the in-memory representation they produce.
+///
+/// Plug in a custom format by implementing `InputCapabilities<NI>` and the corresponding
+/// `TryFrom<InputPath<P>>` for `Self::GraphInput`.
 pub trait InputCapabilities<NI: Idx> {
+    /// The in-memory graph input produced by this format (e.g., [`crate::input::EdgeList`]).
     type GraphInput;
 }
 
+/// Edge direction used during CSR construction.
+///
+/// Controls which side of each edge is indexed in the degree/offset arrays:
+/// - `Outgoing` — index source nodes (for directed out-neighbor lookups)
+/// - `Incoming` — index target nodes (for directed in-neighbor lookups)
+/// - `Undirected` — index both sides (each edge stored twice)
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum Direction {
+    /// Index source → target edges (out-neighbors).
     Outgoing,
+    /// Index target → source edges (in-neighbors).
     Incoming,
+    /// Index both directions; each edge appears in both neighbor lists.
     Undirected,
 }
 

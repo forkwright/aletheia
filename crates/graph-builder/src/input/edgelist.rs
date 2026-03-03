@@ -1,3 +1,11 @@
+//! Edge list input format.
+//!
+//! Provides [`EdgeListInput`] — a file format where each line encodes one edge as
+//! `source target` (or `source target value` for weighted graphs) — and [`EdgeList`],
+//! the in-memory edge collection used during CSR construction.
+//!
+//! Files are read with `mmap` and parsed in parallel across CPU cores.
+
 use atomic::Atomic;
 use log::info;
 use std::{convert::TryFrom, fs::File, marker::PhantomData, path::Path, sync::Arc};
@@ -95,6 +103,9 @@ pub struct EdgeList<NI: Idx, EV> {
 }
 
 impl<NI: Idx, EV: Sync> EdgeList<NI, EV> {
+    /// Creates an `EdgeList` from a vec of `(source, target, value)` triples.
+    ///
+    /// The maximum node id is computed lazily by scanning all edges when first needed.
     pub fn new(edges: Vec<(NI, NI, EV)>) -> Self {
         Self {
             list: edges.into_boxed_slice(),
@@ -102,6 +113,10 @@ impl<NI: Idx, EV: Sync> EdgeList<NI, EV> {
         }
     }
 
+    /// Creates an `EdgeList` with a pre-computed maximum node id.
+    ///
+    /// Use this when the true node count is known in advance to avoid the
+    /// parallel max-scan on first access.
     pub fn with_max_node_id(edges: Vec<(NI, NI, EV)>, max_node_id: NI) -> Self {
         Self {
             list: edges.into_boxed_slice(),
