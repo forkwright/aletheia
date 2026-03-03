@@ -1,4 +1,5 @@
 mod api;
+mod command;
 mod input;
 mod navigation;
 mod overlay;
@@ -27,6 +28,17 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::Submit => input::handle_submit(app),
         Msg::CopyLastResponse => input::handle_copy_last_response(app),
         Msg::ComposeInEditor => input::handle_compose_in_editor(app),
+
+        // --- Command palette ---
+        Msg::CommandPaletteOpen => command::handle_open(app),
+        Msg::CommandPaletteClose => command::handle_close(app),
+        Msg::CommandPaletteInput(c) => command::handle_input(app, c),
+        Msg::CommandPaletteBackspace => command::handle_backspace(app),
+        Msg::CommandPaletteDeleteWord => command::handle_delete_word(app),
+        Msg::CommandPaletteSelect => command::handle_select(app).await,
+        Msg::CommandPaletteUp => command::handle_up(app),
+        Msg::CommandPaletteDown => command::handle_down(app),
+        Msg::CommandPaletteTab => command::handle_tab(app),
 
         // --- Navigation ---
         Msg::ScrollUp => navigation::handle_scroll_up(app),

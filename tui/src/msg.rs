@@ -21,6 +21,17 @@ pub enum Msg {
     ComposeInEditor,  // Ctrl+E — open $EDITOR for multi-line compose
     Quit,             // Ctrl+C or Ctrl+Q
 
+    // --- Command palette ---
+    CommandPaletteOpen,
+    CommandPaletteClose,
+    CommandPaletteInput(char),
+    CommandPaletteBackspace,
+    CommandPaletteDeleteWord,
+    CommandPaletteSelect,
+    CommandPaletteUp,
+    CommandPaletteDown,
+    CommandPaletteTab,
+
     NewSession, // Ctrl+N — start new topic
 
     // --- Navigation ---
