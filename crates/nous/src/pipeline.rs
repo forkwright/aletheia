@@ -23,7 +23,7 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
-use crate::bootstrap::BootstrapAssembler;
+use crate::bootstrap::{BootstrapAssembler, BootstrapSection};
 use crate::budget::TokenBudget;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
@@ -255,7 +255,8 @@ impl TurnUsage {
 /// This is the "context" stage of the pipeline. It:
 /// 1. Creates a token budget from the nous config
 /// 2. Runs the bootstrap assembler against oikos workspace files
-/// 3. Sets [`PipelineContext::system_prompt`] and [`PipelineContext::remaining_tokens`]
+/// 3. Includes any extra sections (e.g. from domain packs)
+/// 4. Sets [`PipelineContext::system_prompt`] and [`PipelineContext::remaining_tokens`]
 ///
 /// # Errors
 ///
@@ -268,6 +269,18 @@ pub fn assemble_context(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
 ) -> crate::error::Result<()> {
+    assemble_context_with_extra(oikos, nous_config, pipeline_config, ctx, Vec::new())
+}
+
+/// Assemble bootstrap context with extra sections from domain packs.
+#[instrument(skip_all, fields(nous_id = %nous_config.id))]
+pub fn assemble_context_with_extra(
+    oikos: &Oikos,
+    nous_config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    ctx: &mut PipelineContext,
+    extra_sections: Vec<BootstrapSection>,
+) -> crate::error::Result<()> {
     let mut budget = TokenBudget::new(
         u64::from(nous_config.context_window),
         pipeline_config.history_budget_ratio,
@@ -276,7 +289,7 @@ pub fn assemble_context(
     );
 
     let assembler = BootstrapAssembler::new(oikos);
-    let result = assembler.assemble(&nous_config.id, &mut budget)?;
+    let result = assembler.assemble_with_extra(&nous_config.id, &mut budget, extra_sections)?;
 
     ctx.system_prompt = Some(result.system_prompt);
     #[expect(
@@ -323,10 +336,11 @@ pub async fn run_pipeline(
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
     session_store: Option<&Mutex<SessionStore>>,
+    extra_bootstrap: Vec<BootstrapSection>,
 ) -> error::Result<TurnResult> {
-    // Stage 1: Context
+    // Stage 1: Context (with domain pack sections if any)
     let mut ctx = PipelineContext::default();
-    assemble_context(oikos, config, pipeline_config, &mut ctx)?;
+    assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)?;
 
     // Stage 1.5: Recall
     if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
@@ -782,6 +796,7 @@ mod tests {
             None,
             None,
             None,
+            Vec::new(),
         )
         .await
         .expect("pipeline should succeed");

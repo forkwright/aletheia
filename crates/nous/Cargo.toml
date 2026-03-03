@@ -19,6 +19,7 @@ aletheia-koina = { path = "../koina" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-organon = { path = "../organon" }
 aletheia-taxis = { path = "../taxis" }
+aletheia-thesauros = { path = "../thesauros" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

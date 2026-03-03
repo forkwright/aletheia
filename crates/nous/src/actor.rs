@@ -15,6 +15,7 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
 
+use crate::bootstrap::BootstrapSection;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
 use crate::message::{NousLifecycle, NousMessage, NousStatus};
@@ -42,6 +43,7 @@ pub struct NousActor {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    extra_bootstrap: Vec<BootstrapSection>,
 }
 
 impl NousActor {
@@ -62,6 +64,7 @@ impl NousActor {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
+        extra_bootstrap: Vec<BootstrapSection>,
     ) -> Self {
         Self {
             id,
@@ -77,6 +80,7 @@ impl NousActor {
             embedding_provider,
             vector_search,
             session_store,
+            extra_bootstrap,
         }
     }
 
@@ -183,6 +187,7 @@ impl NousActor {
             self.embedding_provider.as_deref(),
             self.vector_search.as_deref(),
             self.session_store.as_deref(),
+            self.extra_bootstrap.clone(),
         )
         .await
     }
@@ -242,6 +247,7 @@ pub fn spawn(
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    extra_bootstrap: Vec<BootstrapSection>,
 ) -> (NousHandle, tokio::task::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.clone();
@@ -258,6 +264,7 @@ pub fn spawn(
         embedding_provider,
         vector_search,
         session_store,
+        extra_bootstrap,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
@@ -356,6 +363,7 @@ mod tests {
             None,
             None,
             None,
+            Vec::new(),
         );
         (handle, join, dir)
     }
