@@ -586,6 +586,7 @@ Last updated: 2026-03-04
 | M4.2-deploy | 📋 **Planned** | Deployment — install guide, config reference, system requirements, instance.example completeness (DEPLOY-01..04). |
 | M4.2-dsov | 📋 **Planned** | Data sovereignty — network call inventory, no-telemetry statement, data flow diagram (DSOV-01..03). |
 | M4.2-contrib | 📋 **Planned** | Contributor experience — CONTRIBUTING.md, code of conduct, architecture walkthrough, good-first-issues (CONTRIB-01..04). |
+| M4.2-maint | 📋 **Planned** | Instance maintenance — trace rotation, structure drift detection, DB size monitoring, retention GC. Programmatic tasks in daemon; LLM-assisted triage deferred to v1.5 (MAINT-01..04). |
 | M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
