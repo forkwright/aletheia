@@ -37,6 +37,7 @@ export interface ToolContext {
   sessionId: string;
   workspace: string;
   allowedRoots?: string[];
+  pathGuard?: boolean;
   depth?: number;
   signal?: AbortSignal;
   sandboxConfig?: import("../taxis/schema.js").SandboxSettings;

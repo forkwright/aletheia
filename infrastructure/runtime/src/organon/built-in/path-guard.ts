@@ -4,10 +4,14 @@ import type { ToolContext } from "../registry.js";
 
 /**
  * Resolve a file path and verify it falls within the workspace or allowedRoots.
- * Throws if the resolved path escapes containment.
+ * When pathGuard is false, resolves only — no containment check.
  */
 export function guardPath(filePath: string, context: ToolContext): string {
   const resolved = normalize(resolve(context.workspace, filePath));
+
+  // When guard is disabled, just resolve the path
+  if (context.pathGuard === false) return resolved;
+
   const workspace = normalize(context.workspace);
   const roots = [workspace, ...(context.allowedRoots ?? [])].map(normalize);
 
