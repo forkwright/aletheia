@@ -14,11 +14,11 @@
 //!
 //! # Initialization
 //!
-//! Call [`tracing_init::init`] or [`tracing_init::init_json`] once at process startup.
+//! Call `tracing_init::init` or `tracing_init::init_json` once at process startup.
 
 pub mod error;
 pub mod id;
-pub mod tracing_init;
+pub(crate) mod tracing_init;
 
 // --- Static assertions: key types are Send + Sync ---
 #[cfg(test)]

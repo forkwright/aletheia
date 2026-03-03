@@ -13,10 +13,10 @@ use crate::error::{self, Result};
 use crate::types::{ApiKeyRecord, Role, User};
 
 /// Current schema version.
-pub const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 1;
 
 /// Base DDL for the auth database.
-pub const DDL: &str = r"
+pub(crate) const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,

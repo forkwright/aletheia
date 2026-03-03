@@ -12,7 +12,8 @@ use tracing_subscriber::{EnvFilter, fmt};
 ///
 /// # Panics
 /// Panics if the subscriber cannot be set (should only happen if called twice).
-pub fn init() {
+#[expect(dead_code, reason = "available for binary crates that depend on koina")]
+pub(crate) fn init() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));
 
@@ -29,7 +30,8 @@ pub fn init() {
 ///
 /// # Panics
 /// Panics if the subscriber cannot be set.
-pub fn init_json() {
+#[expect(dead_code, reason = "available for binary crates that depend on koina")]
+pub(crate) fn init_json() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("aletheia=info,warn"));
 
