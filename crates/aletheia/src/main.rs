@@ -158,7 +158,7 @@ async fn serve(cli: Cli) -> Result<()> {
         Some(embedding_provider),
         None,
         Some(Arc::clone(&session_store)),
-        packs,
+        Arc::clone(&packs),
     );
 
     if config.agents.list.is_empty() {
@@ -166,6 +166,17 @@ async fn serve(cli: Cli) -> Result<()> {
     } else {
         for agent_def in &config.agents.list {
             let resolved = resolve_nous(&config, &agent_def.id);
+
+            // Merge domains from static config and pack overlays
+            let mut domains = resolved.domains.clone();
+            for pack in packs.iter() {
+                for d in pack.domains_for_agent(&agent_def.id) {
+                    if !domains.contains(&d) {
+                        domains.push(d);
+                    }
+                }
+            }
+
             let nous_config = NousConfig {
                 id: resolved.id,
                 model: resolved.model,
@@ -176,6 +187,7 @@ async fn serve(cli: Cli) -> Result<()> {
                 thinking_budget: resolved.thinking_budget,
                 max_tool_iterations: resolved.max_tool_iterations,
                 loop_detection_threshold: 3,
+                domains,
             };
             nous_manager
                 .spawn(nous_config, PipelineConfig::default())

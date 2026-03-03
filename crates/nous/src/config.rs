@@ -23,6 +23,9 @@ pub struct NousConfig {
     pub max_tool_iterations: u32,
     /// Loop detection threshold (identical tool calls).
     pub loop_detection_threshold: u32,
+    /// Domain tags for this agent (static config + pack overlays).
+    #[serde(default)]
+    pub domains: Vec<String>,
 }
 
 impl Default for NousConfig {
@@ -37,6 +40,7 @@ impl Default for NousConfig {
             thinking_budget: 10_000,
             max_tool_iterations: 50,
             loop_detection_threshold: 3,
+            domains: Vec::new(),
         }
     }
 }

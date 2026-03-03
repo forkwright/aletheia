@@ -79,12 +79,13 @@ impl NousManager {
             let _ = old.join.await;
         }
 
-        // Filter and convert domain pack sections for this agent
+        // Filter and convert domain pack sections for this agent (by ID or domain tags)
         let extra_bootstrap = {
             let estimator = CharEstimator;
             let mut sections = Vec::new();
             for pack in self.packs.iter() {
-                let agent_sections = pack.sections_for_agent(&id);
+                let agent_sections =
+                    pack.sections_for_agent_or_domains(&id, &config.domains);
                 sections.extend(pack_sections_to_bootstrap(&agent_sections, &estimator));
             }
             if !sections.is_empty() {

@@ -48,6 +48,25 @@ impl LoadedPack {
             .collect()
     }
 
+    /// Filter sections for an agent by ID or domain tags.
+    ///
+    /// A section matches if its `agents` list is empty (all agents),
+    /// contains the agent ID, or contains any of the agent's domains.
+    pub fn sections_for_agent_or_domains(
+        &self,
+        agent_id: &str,
+        domains: &[String],
+    ) -> Vec<&PackSection> {
+        self.sections
+            .iter()
+            .filter(|s| {
+                s.agents.is_empty()
+                    || s.agents.iter().any(|a| a == agent_id)
+                    || s.agents.iter().any(|a| domains.contains(a))
+            })
+            .collect()
+    }
+
     /// Domain overlays for a specific agent, if any.
     pub fn domains_for_agent(&self, agent_id: &str) -> Vec<String> {
         self.manifest
@@ -269,6 +288,80 @@ overlays:
         let hermes_sections = pack.sections_for_agent("hermes");
         assert_eq!(hermes_sections.len(), 1);
         assert_eq!(hermes_sections[0].name, "GLOSSARY.md");
+    }
+
+    #[test]
+    fn sections_for_agent_or_domains_by_agent() {
+        let dir = setup_pack(&[
+            ("pack.yaml", full_pack_yaml()),
+            ("context/LOGIC.md", "logic"),
+            ("context/GLOSSARY.md", "glossary"),
+        ]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+
+        // chiron matches by agent ID, sees both sections
+        let sections = pack.sections_for_agent_or_domains("chiron", &[]);
+        assert_eq!(sections.len(), 2);
+    }
+
+    #[test]
+    fn sections_for_agent_or_domains_by_domain() {
+        let yaml = r#"
+name: domain-test
+version: "1.0"
+context:
+  - path: general.md
+  - path: healthcare.md
+    agents: [healthcare]
+  - path: sql.md
+    agents: [sql]
+"#;
+        let dir = setup_pack(&[
+            ("pack.yaml", yaml),
+            ("general.md", "general content"),
+            ("healthcare.md", "healthcare content"),
+            ("sql.md", "sql content"),
+        ]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+
+        // hermes has no agent match but has healthcare domain
+        let sections = pack.sections_for_agent_or_domains(
+            "hermes",
+            &["healthcare".to_owned()],
+        );
+        assert_eq!(sections.len(), 2); // general + healthcare
+        let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"general.md"));
+        assert!(names.contains(&"healthcare.md"));
+    }
+
+    #[test]
+    fn sections_for_agent_or_domains_no_match() {
+        let yaml = r#"
+name: filter-test
+version: "1.0"
+context:
+  - path: general.md
+  - path: restricted.md
+    agents: [chiron]
+"#;
+        let dir = setup_pack(&[
+            ("pack.yaml", yaml),
+            ("general.md", "general"),
+            ("restricted.md", "restricted"),
+        ]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+
+        // unknown agent, no matching domains: only general (no filter) section
+        let sections = pack.sections_for_agent_or_domains(
+            "unknown",
+            &["analytics".to_owned()],
+        );
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].name, "general.md");
     }
 
     #[test]
