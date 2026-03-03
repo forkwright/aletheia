@@ -32,7 +32,7 @@ pub(crate) struct ToolExpanded {
 
 /// Generate compact summaries for all registered tools.
 #[must_use]
-#[expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline")]
+#[cfg_attr(not(test), expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline"))]
 pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
     registry
         .definitions()
@@ -68,7 +68,7 @@ pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
 
 /// Format tool summaries as a markdown section for the system prompt.
 #[must_use]
-#[expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline")]
+#[cfg_attr(not(test), expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline"))]
 pub(crate) fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
     if summaries.is_empty() {
         return String::new();
