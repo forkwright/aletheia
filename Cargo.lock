@@ -162,6 +162,7 @@ dependencies = [
  "aletheia-pylon",
  "aletheia-symbolon",
  "aletheia-taxis",
+ "aletheia-thesauros",
  "axum",
  "secrecy",
  "serde_json",

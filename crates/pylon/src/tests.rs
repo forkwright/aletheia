@@ -99,6 +99,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         .expect("write SOUL.md");
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
+    let session_store = Arc::new(Mutex::new(store));
     let oikos = Arc::new(Oikos::from_root(root));
 
     let mut provider_registry = ProviderRegistry::new();
@@ -114,7 +115,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         Arc::clone(&oikos),
         None,
         None,
-        None,
+        Some(Arc::clone(&session_store)),
         Arc::new(vec![]),
     );
 
@@ -130,7 +131,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
     let jwt_manager = test_jwt_manager();
 
     let state = Arc::new(AppState {
-        session_store: Arc::new(Mutex::new(store)),
+        session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
         provider_registry,
         tool_registry,
@@ -636,6 +637,9 @@ async fn send_message_stores_in_history() {
     );
     let resp = router.clone().oneshot(req).await.unwrap();
     let _ = body_string(resp).await;
+
+    // Allow the spawned send_turn task to complete and store assistant message
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let resp = router
         .clone()
