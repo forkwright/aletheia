@@ -7,7 +7,7 @@ use axum::http::request::Parts;
 
 use aletheia_symbolon::types::Role;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, UnauthorizedSnafu};
 use crate::state::AppState;
 
 /// Authenticated user claims extracted from a JWT Bearer token.
@@ -32,16 +32,16 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or_else(|| UnauthorizedSnafu.build())?;
 
         let token = header
             .strip_prefix("Bearer ")
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or_else(|| UnauthorizedSnafu.build())?;
 
         let claims = state
             .jwt_manager
             .validate(token)
-            .map_err(|_err| ApiError::Unauthorized)?;
+            .map_err(|_err| UnauthorizedSnafu.build())?;
 
         Ok(Self {
             sub: claims.sub,
