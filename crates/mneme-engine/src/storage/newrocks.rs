@@ -188,16 +188,6 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
         }
     }
 
-    #[inline]
-    fn par_del(&self, key: &[u8]) -> Result<()> {
-        match self.db_tx {
-            Some(ref db_tx) => db_tx
-                .delete(key)
-                .map_err(|e| crate::error::AdhocError(e.to_string()))
-                .wrap_err_with(|| "Parallel delete failed"),
-            None => Err(crate::error::AdhocError("Transaction already committed".to_string())),
-        }
-    }
 
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self.db_tx {

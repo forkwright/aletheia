@@ -568,7 +568,8 @@ impl<'a> SessionTx<'a> {
                         notice: "key to update does not exist".to_string()
                     })
                 }
-                Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..]).unwrap(),
+                Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..])
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?,
             };
             let mut old_kv = Vec::with_capacity(relation_store.arity());
             old_kv.extend_from_slice(&new_kv);

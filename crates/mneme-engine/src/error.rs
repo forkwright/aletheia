@@ -16,6 +16,16 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A running query was cancelled via poison/timeout.
+    ///
+    /// Replaces fragile string-matching on "killed before completion".
+    /// Consumers can match this variant instead of parsing error messages.
+    #[snafu(display("Running query was killed before completion"))]
+    QueryKilled {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

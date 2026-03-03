@@ -117,17 +117,19 @@ impl VectorCache {
             },
         }
     }
+    // INVARIANT: callers must call ensure_key() before v_dist/k_dist/get_key.
+    // The cache is guaranteed to contain the key after ensure_key succeeds.
     fn v_dist(&self, v: &Vector, key: &CompoundKey) -> f64 {
-        let v2 = self.cache.get(key).unwrap();
+        let v2 = self.cache.get(key).expect("INVARIANT: ensure_key must be called before v_dist");
         self.dist(v, v2)
     }
     fn k_dist(&self, k1: &CompoundKey, k2: &CompoundKey) -> f64 {
-        let v1 = self.cache.get(k1).unwrap();
-        let v2 = self.cache.get(k2).unwrap();
+        let v1 = self.cache.get(k1).expect("INVARIANT: ensure_key must be called before k_dist");
+        let v2 = self.cache.get(k2).expect("INVARIANT: ensure_key must be called before k_dist");
         self.dist(v1, v2)
     }
     fn get_key(&self, key: &CompoundKey) -> &Vector {
-        self.cache.get(key).unwrap()
+        self.cache.get(key).expect("INVARIANT: ensure_key must be called before get_key")
     }
     fn ensure_key(
         &mut self,
@@ -344,7 +346,7 @@ impl<'a> SessionTx<'a> {
                     };
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
-                            .unwrap();
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     let mut target_degree = target_self_val[0].get_float().unwrap() as usize + 1; // INVARIANT: float stored by HNSW insert path
                     if target_degree > m_max {
                         // shrink links
@@ -611,7 +613,7 @@ impl<'a> SessionTx<'a> {
         Ok(idx_handle
             .scan_prefix(self, &start_tuple)
             .filter_map(move |res| {
-                let tuple = res.unwrap();
+                let tuple = res.ok()?;
 
                 let key_idx = tuple[2 * key_len + 3].get_int().unwrap() as usize; // INVARIANT: integer stored by HNSW insert path
                 let key_subidx = tuple[2 * key_len + 4].get_int().unwrap() as i32; // INVARIANT: integer stored by HNSW insert path
