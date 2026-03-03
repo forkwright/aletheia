@@ -115,6 +115,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         None,
         None,
         None,
+        Arc::new(vec![]),
     );
 
     let nous_config = NousConfig {

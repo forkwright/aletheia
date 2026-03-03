@@ -1,6 +1,7 @@
 //! Configuration types for an Aletheia instance.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +15,8 @@ pub struct AletheiaConfig {
     pub channels: ChannelsConfig,
     pub bindings: Vec<ChannelBinding>,
     pub embedding: EmbeddingSettings,
+    /// External domain pack paths (directories containing pack.yaml).
+    pub packs: Vec<PathBuf>,
 }
 
 /// Maps a channel source to a nous agent.

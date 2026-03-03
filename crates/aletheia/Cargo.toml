@@ -28,6 +28,7 @@ aletheia-symbolon = { path = "../symbolon" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
 aletheia-melete = { path = "../melete" }
+aletheia-thesauros = { path = "../thesauros" }
 
 tokio = { workspace = true }
 axum = { workspace = true }

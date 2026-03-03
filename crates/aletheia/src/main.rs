@@ -80,6 +80,7 @@ async fn main() -> Result<()> {
     serve(cli).await
 }
 
+#[expect(clippy::too_many_lines, reason = "binary entrypoint — sequential init steps")]
 async fn serve(cli: Cli) -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
@@ -99,6 +100,10 @@ async fn serve(cli: Cli) -> Result<()> {
         agents = config.agents.list.len(),
         "config loaded"
     );
+
+    // Domain packs — load external knowledge packs declared in config
+    let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
+    let packs = Arc::new(loaded_packs);
 
     // Session store
     let db_path = oikos.sessions_db();
@@ -145,6 +150,7 @@ async fn serve(cli: Cli) -> Result<()> {
         Some(embedding_provider),
         None,
         Some(Arc::clone(&session_store)),
+        packs,
     );
 
     if config.agents.list.is_empty() {
