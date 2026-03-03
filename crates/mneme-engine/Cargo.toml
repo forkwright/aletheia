@@ -62,7 +62,7 @@ snafu = { workspace = true }
 graph = "0.3.1"
 
 # Priority queues and numeric types
-ordered-float = "4.2.0"
+ordered-float = "5.1.0"
 priority-queue = "1.4"
 ndarray = { version = "0.15.6", features = ["serde"] }
 approx = "0.5.1"
