@@ -20,6 +20,8 @@ todo = { level = "allow", priority = 1 }
 unimplemented = { level = "allow", priority = 1 }
 # Vendored graph_builder patterns — hash trait on mutable CSR
 mutable_key_type = { level = "allow", priority = 1 }
+# Vendored Edges trait — len() without is_empty() is intentional (EdgeList always non-empty)
+len_without_is_empty = { level = "allow", priority = 1 }
 
 [dependencies]
 rayon = "=1.10.0"

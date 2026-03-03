@@ -30,11 +30,6 @@ use crate::{
     input::{Direction, edgelist::Edges},
 };
 
-#[cfg(feature = "dotgraph")]
-use crate::input::DotGraph;
-#[cfg(feature = "dotgraph")]
-use std::hash::Hash;
-
 /// Defines how the neighbor list of individual nodes are organized within the
 /// CSR target array.
 ///
@@ -640,36 +635,6 @@ where
     }
 }
 
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for DirectedCsrGraph<NI, ()>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph { edge_list, .. } = dot_graph;
-
-        DirectedCsrGraph::from((edge_list, csr_layout))
-    }
-}
-
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for DirectedCsrGraph<NI, Label>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph {
-            edge_list, labels, ..
-        } = dot_graph;
-
-        let node_values = NodeValues::new(labels);
-
-        DirectedCsrGraph::from((node_values, edge_list, csr_layout))
-    }
-}
-
 impl<W, NI, NV, EV> SerializeGraphOp<W> for DirectedCsrGraph<NI, NV, EV>
 where
     W: Write,
@@ -865,36 +830,6 @@ where
         info!("Created csr in {:?}.", start.elapsed());
 
         UndirectedCsrGraph::new(node_values, csr)
-    }
-}
-
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for UndirectedCsrGraph<NI, ()>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph { edge_list, .. } = dot_graph;
-
-        UndirectedCsrGraph::from((edge_list, csr_layout))
-    }
-}
-
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for UndirectedCsrGraph<NI, Label>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph {
-            edge_list, labels, ..
-        } = dot_graph;
-
-        let node_values = NodeValues::new(labels);
-
-        UndirectedCsrGraph::from((node_values, edge_list, csr_layout))
     }
 }
 
