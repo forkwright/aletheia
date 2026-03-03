@@ -29,7 +29,7 @@ impl TokenEstimator for CharEstimator {
 /// - **History budget**: for conversation history
 /// - **Turn reserve**: for output tokens and extended thinking
 ///
-/// The system budget is capped at `bootstrap_cap` (from [`NousConfig::bootstrap_max_tokens`]).
+/// The system budget is capped at `bootstrap_cap` (from `NousConfig::bootstrap_max_tokens`).
 #[derive(Debug, Clone)]
 pub struct TokenBudget {
     context_window: u64,

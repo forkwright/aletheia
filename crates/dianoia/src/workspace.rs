@@ -23,7 +23,11 @@ pub struct WorkspaceLayout {
 }
 
 impl ProjectWorkspace {
-    /// Create a new workspace at the given path.
+    /// Create a new workspace directory tree at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the directories cannot be created.
     pub fn create(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let layout = Self::build_layout(&root);
@@ -38,6 +42,10 @@ impl ProjectWorkspace {
     }
 
     /// Open an existing workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns a not-found error if the root directory does not exist.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         if !root.exists() {
@@ -47,6 +55,10 @@ impl ProjectWorkspace {
     }
 
     /// Save project state to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O or serialization error if the write fails.
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
@@ -57,6 +69,10 @@ impl ProjectWorkspace {
     }
 
     /// Load project state from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns a not-found, I/O, or deserialization error if the read fails.
     pub fn load_project(&self) -> Result<Project> {
         let layout = self.layout();
         if !layout.project_file.exists() {
@@ -75,6 +91,10 @@ impl ProjectWorkspace {
     }
 
     /// Write a blocker file for stuck detection integration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the file cannot be written.
     pub fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
@@ -93,6 +113,10 @@ impl ProjectWorkspace {
     }
 
     /// Read all blockers for a phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the directory cannot be read.
     pub fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);

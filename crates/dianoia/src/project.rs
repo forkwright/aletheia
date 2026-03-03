@@ -24,6 +24,7 @@ pub struct Project {
 
 /// Operating modes for planning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ProjectMode {
     Full,
     Quick { appetite_minutes: u32 },
@@ -31,6 +32,7 @@ pub enum ProjectMode {
 }
 
 impl Project {
+    /// Create a new project in the `Created` state.
     #[must_use]
     pub fn new(name: String, description: String, mode: ProjectMode, owner: String) -> Self {
         let now = jiff::Timestamp::now();
@@ -49,6 +51,10 @@ impl Project {
     }
 
     /// Advance project state via a transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-transition error if the transition is not valid from the current state.
     pub fn advance(&mut self, transition: Transition) -> Result<()> {
         let current = self.state.clone();
         self.state = current.transition(transition)?;
@@ -56,6 +62,7 @@ impl Project {
         Ok(())
     }
 
+    /// Append a phase to the project.
     pub fn add_phase(&mut self, phase: Phase) {
         self.phases.push(phase);
         self.updated_at = jiff::Timestamp::now();

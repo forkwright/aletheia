@@ -93,6 +93,7 @@ pub struct PipelineMessage {
 
 /// Guard stage result.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GuardResult {
     /// Request is allowed.
     Allow,
