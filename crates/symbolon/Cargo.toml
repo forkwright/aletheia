@@ -15,7 +15,7 @@ argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 rand = "0.8"
-rusqlite = { version = "0.33", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
