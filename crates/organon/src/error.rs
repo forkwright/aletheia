@@ -34,10 +34,10 @@ pub enum Error {
     },
 
     /// Tool execution returned an error.
-    #[snafu(display("tool execution failed: {name}"))]
+    #[snafu(display("tool execution failed: {name}: {message}"))]
     ExecutionFailed {
         name: ToolName,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
