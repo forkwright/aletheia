@@ -58,7 +58,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     }
 
     // Right-align keybinding hints
-    let hints = "^A agents │ ^I status │ ^N new │ ^Q quit";
+    let hints = "^A agents │ ^I status │ ^N new │ : cmd │ ^Q quit";
     let used_width: usize = spans.iter().map(|s| s.content.len()).sum();
     let remaining = area.width as usize - used_width.min(area.width as usize);
     if remaining > hints.len() + 2 {

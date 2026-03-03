@@ -92,6 +92,7 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Line::raw(""),
         help_line("  Enter      ", "Send message", key_style, desc_style),
         help_line("  @agent Tab ", "Mention completion", key_style, desc_style),
+        help_line("  : (empty)  ", "Command palette", key_style, desc_style),
         help_line("  Ctrl+U     ", "Clear input line", key_style, desc_style),
         help_line("  Ctrl+W     ", "Delete word", key_style, desc_style),
         help_line(

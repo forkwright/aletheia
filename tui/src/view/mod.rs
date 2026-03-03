@@ -1,4 +1,5 @@
 mod chat;
+mod command_palette;
 mod input;
 mod overlay;
 mod sidebar;
@@ -14,40 +15,55 @@ pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
     let theme = &app.theme;
 
-    // Top-level vertical split: title bar | body | status bar | (optional toast)
     let has_toast = app.error_toast.is_some();
+    let palette_active = app.command_palette.active;
+
+    // When palette is active, it replaces the status bar with a variable-height area
+    let bottom_height = if palette_active {
+        let suggestion_lines = app.command_palette.suggestions.len().min(8) as u16;
+        (2 + suggestion_lines).max(3) // input + border + suggestions, min 3
+    } else {
+        1 // status bar
+    };
+
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if has_toast {
             vec![
-                Constraint::Length(1), // title bar
-                Constraint::Min(5),    // body
-                Constraint::Length(1), // status bar
-                Constraint::Length(1), // error toast
+                Constraint::Length(1),            // title bar
+                Constraint::Min(5),               // body
+                Constraint::Length(bottom_height), // status bar or command palette
+                Constraint::Length(1),            // error toast
             ]
         } else {
             vec![
-                Constraint::Length(1), // title bar
-                Constraint::Min(5),    // body
-                Constraint::Length(1), // status bar
+                Constraint::Length(1),            // title bar
+                Constraint::Min(5),               // body
+                Constraint::Length(bottom_height), // status bar or command palette
             ]
         })
         .split(area);
 
     title_bar::render(app, frame, vertical[0], theme);
-    status_bar::render(app, frame, vertical[2], theme);
+
+    // Bottom area: command palette or status bar
+    if palette_active {
+        command_palette::render(app, frame, vertical[2], theme);
+    } else {
+        status_bar::render(app, frame, vertical[2], theme);
+    }
 
     // Error toast at bottom
-    if has_toast {
-        if let Some(ref toast) = app.error_toast {
-            let toast_line = ratatui::text::Line::from(vec![
-                ratatui::text::Span::styled(" ✗ ", theme.style_error_bold()),
-                ratatui::text::Span::styled(&toast.message, theme.style_error()),
-            ]);
-            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-                .style(ratatui::style::Style::default().bg(theme.surface_dim));
-            frame.render_widget(toast_widget, vertical[3]);
-        }
+    if has_toast
+        && let Some(ref toast) = app.error_toast
+    {
+        let toast_line = ratatui::text::Line::from(vec![
+            ratatui::text::Span::styled(" ✗ ", theme.style_error_bold()),
+            ratatui::text::Span::styled(&toast.message, theme.style_error()),
+        ]);
+        let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+            .style(ratatui::style::Style::default().bg(theme.surface_dim));
+        frame.render_widget(toast_widget, vertical[3]);
     }
 
     // Responsive: hide sidebar on narrow terminals (< 60 cols)
@@ -66,9 +82,6 @@ pub fn render(app: &App, frame: &mut Frame) {
         sidebar::render(app, frame, horizontal[0], theme);
         render_chat_area(app, frame, horizontal[1], theme);
 
-        // Store sidebar area for mouse click detection (mutable through interior pattern)
-        // We can't mutate app here since view takes &self, so store in a separate mechanism
-        // Actually we'll update sidebar_area before render in the event loop
         SIDEBAR_RECT.store_rect(horizontal[0]);
     } else {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
