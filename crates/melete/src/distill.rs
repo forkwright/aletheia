@@ -227,6 +227,12 @@ impl DistillEngine {
     ///
     /// Splits messages into a summarization group and a verbatim tail.
     /// Only the summarization group is sent to the LLM.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if there are no messages to distill.
+    /// - Returns an error if the LLM call fails.
+    /// - Returns an error if the LLM response produces an empty summary.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     pub async fn distill(
         &self,

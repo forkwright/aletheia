@@ -74,6 +74,10 @@ impl Schedule {
     /// Calculate the next run time from now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if a `Cron` expression cannot be parsed into a valid schedule.
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {

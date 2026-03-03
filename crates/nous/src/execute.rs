@@ -160,6 +160,12 @@ async fn dispatch_tools(
 /// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
 /// 4. Feeds tool results back and re-calls the LLM
 /// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
+///
+/// # Errors
+///
+/// - Returns an error if the LLM call fails or no provider is registered for the configured model.
+/// - Returns an error if a loop is detected (same tool called with identical input N times).
+/// - Returns an error if the iteration limit is exceeded and no final content was produced.
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute(
     ctx: &PipelineContext,

@@ -126,6 +126,10 @@ impl SessionStore {
     }
 
     /// Find or create an active session. Reactivates archived sessions if found.
+    ///
+    /// # Errors
+    ///
+    /// - Returns a database error if the session lookup, reactivation update, or creation query fails.
     pub fn find_or_create_session(
         &self,
         id: &str,
@@ -319,6 +323,10 @@ impl SessionStore {
     }
 
     /// Get message history within a token budget (most recent first, working backward).
+    ///
+    /// # Errors
+    ///
+    /// - Returns a database error if the underlying message query fails.
     pub fn get_history_with_budget(
         &self,
         session_id: &str,
