@@ -19,7 +19,7 @@ pub enum SessionStatus {
 }
 
 impl SessionStatus {
-    /// Returns the lowercase string used in the wire format and SQLite storage.
+    /// Returns the lowercase string used in the wire format and `SQLite` storage.
     ///
     /// Matches `serde(rename_all = "lowercase")`: `"active"`, `"archived"`, or `"distilled"`.
     #[must_use]
@@ -55,7 +55,7 @@ pub enum SessionType {
 }
 
 impl SessionType {
-    /// Returns the lowercase string used in the wire format and SQLite storage.
+    /// Returns the lowercase string used in the wire format and `SQLite` storage.
     ///
     /// Matches `serde(rename_all = "lowercase")`: `"primary"`, `"background"`, or `"ephemeral"`.
     #[must_use]
@@ -110,7 +110,7 @@ pub enum Role {
 }
 
 impl Role {
-    /// Returns the `snake_case` string used in the wire format and SQLite storage.
+    /// Returns the `snake_case` string used in the wire format and `SQLite` storage.
     ///
     /// Matches `serde(rename_all = "snake_case")`: `"system"`, `"user"`,
     /// `"assistant"`, or `"tool_result"`.

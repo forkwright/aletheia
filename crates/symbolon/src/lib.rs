@@ -6,7 +6,7 @@
 //! # Architecture
 //!
 //! - [`auth::AuthService`] — unified facade composing all auth subsystems
-//! - [`store::AuthStore`] — SQLite backend for users, API keys, and token revocation
+//! - [`store::AuthStore`] — `SQLite` backend for users, API keys, and token revocation
 //! - [`jwt::JwtManager`] — HMAC-SHA256 JWT issuance and validation
 //! - [`api_key`] — blake3-hashed API key generation and validation
 //! - [`password`] — Argon2id password hashing and verification

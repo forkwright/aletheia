@@ -47,7 +47,7 @@ impl AuthService {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] if SQLite in-memory initialization fails.
+    /// Returns [`crate::error::Error::Database`] if `SQLite` in-memory initialization fails.
     pub fn in_memory(config: AuthConfig) -> Result<Self> {
         let store = AuthStore::open_in_memory()?;
         let jwt = JwtManager::new(config.jwt);
@@ -84,7 +84,7 @@ impl AuthService {
     /// - [`crate::error::Error::InvalidCredentials`] if the username is not found or
     ///   the password does not match.
     /// - [`crate::error::Error::Hash`] if password verification fails (malformed stored hash).
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     #[instrument(skip(self, password))]
     pub fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
         let user = self
@@ -113,7 +113,7 @@ impl AuthService {
     /// - [`crate::error::Error::InvalidApiKey`] if the key format is malformed.
     /// - [`crate::error::Error::InvalidCredentials`] if the key is not found or has been revoked.
     /// - [`crate::error::Error::ExpiredToken`] if the key has expired.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
         api_key::validate(&self.store, raw_key)
     }
@@ -125,7 +125,7 @@ impl AuthService {
     /// - [`crate::error::Error::TokenDecode`] if the token is malformed or has an invalid signature.
     /// - [`crate::error::Error::ExpiredToken`] if the token has expired.
     /// - [`crate::error::Error::InvalidToken`] if the token appears in the revocation list.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn validate_token(&self, token: &str) -> Result<Claims> {
         let claims = self.jwt.validate(token)?;
 
@@ -147,7 +147,7 @@ impl AuthService {
     ///   has been revoked.
     /// - [`crate::error::Error::TokenDecode`] if the token is malformed or has an invalid signature.
     /// - [`crate::error::Error::ExpiredToken`] if the refresh token has expired.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     #[instrument(skip(self, refresh_token))]
     pub fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.jwt.validate(refresh_token)?;
@@ -186,7 +186,7 @@ impl AuthService {
     ///
     /// - [`crate::error::Error::TokenDecode`] if the token is malformed or has an invalid signature.
     /// - [`crate::error::Error::ExpiredToken`] if the token has already expired.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn logout(&self, token: &str) -> Result<()> {
         let claims = self.jwt.validate(token)?;
         let expires_at = format_unix_iso(claims.exp);
@@ -218,7 +218,7 @@ impl AuthService {
     /// # Errors
     ///
     /// - [`crate::error::Error::NotFound`] if no key with that ID exists.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn revoke_api_key(&self, key_id: &str) -> Result<()> {
         api_key::revoke(&self.store, key_id)
     }
@@ -227,7 +227,7 @@ impl AuthService {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         api_key::list(&self.store)
     }

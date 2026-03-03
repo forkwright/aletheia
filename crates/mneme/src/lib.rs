@@ -2,15 +2,15 @@
 //!
 //! Mneme (Μνήμη) — "memory." Manages sessions, messages, usage tracking, and
 //! structured knowledge. Two embedded storage backends:
-//! - SQLite (`store::SessionStore`) — conversation history, distillation metadata, agent notes
-//! - CozoDB (`knowledge_store::KnowledgeStore`) — fact graph, entity relationships, HNSW vector index
+//! - `SQLite` (`store::SessionStore`) — conversation history, distillation metadata, agent notes
+//! - `CozoDB` (`knowledge_store::KnowledgeStore`) — fact graph, entity relationships, HNSW vector index
 //!
 //! ## Key types
 //!
 //! - [`store::SessionStore`] — open/create sessions, append messages, record distillation
-//! - [`types::Session`] / [`types::Message`] — session and message records from SQLite
+//! - [`types::Session`] / [`types::Message`] — session and message records from `SQLite`
 //! - [`types::SessionStatus`] / [`types::SessionType`] / [`types::Role`] — enum domain types
-//! - [`knowledge::Fact`] / [`knowledge::Entity`] / [`knowledge::Relationship`] — CozoDB domain types
+//! - [`knowledge::Fact`] / [`knowledge::Entity`] / [`knowledge::Relationship`] — `CozoDB` domain types
 //! - [`extract::ExtractionEngine`] — LLM-driven fact/entity extraction from conversations
 //! - [`embedding::EmbeddingProvider`] — text-to-vector interface for semantic recall
 //! - `recall::RecallQuery` — structured semantic + graph recall query

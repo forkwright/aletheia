@@ -102,7 +102,7 @@ pub enum EpistemicTier {
 }
 
 impl EpistemicTier {
-    /// Returns the lowercase string used in the wire format and CozoDB storage.
+    /// Returns the lowercase string used in the wire format and `CozoDB` storage.
     ///
     /// Matches `serde(rename_all = "lowercase")`: `"verified"`, `"inferred"`, or `"assumed"`.
     #[must_use]

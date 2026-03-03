@@ -81,7 +81,7 @@ pub fn generate(
 /// - [`crate::error::Error::InvalidApiKey`] if the key format is malformed.
 /// - [`crate::error::Error::InvalidCredentials`] if the hash is not found or the key is revoked.
 /// - [`crate::error::Error::ExpiredToken`] if the key has passed its expiry timestamp.
-/// - [`crate::error::Error::Database`] on SQLite access failure.
+/// - [`crate::error::Error::Database`] on `SQLite` access failure.
 pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
     let _parts = parse_key(raw_key)?;
     let key_hash = blake3::hash(raw_key.as_bytes()).to_hex().to_string();
@@ -123,7 +123,7 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
 /// # Errors
 ///
 /// - [`crate::error::Error::NotFound`] if no key with that ID exists.
-/// - [`crate::error::Error::Database`] on SQLite access failure.
+/// - [`crate::error::Error::Database`] on `SQLite` access failure.
 pub fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
     store.revoke_api_key(key_id)
 }
@@ -132,7 +132,7 @@ pub fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns [`crate::error::Error::Database`] on SQLite access failure.
+/// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
 pub fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
     store.list_api_keys()
 }

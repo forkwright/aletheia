@@ -6,10 +6,12 @@ use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types as m;
 
 fn convert_role(role: m::Role) -> h::Role {
+    #[expect(clippy::match_same_arms, reason = "wildcard covers future non-exhaustive variants")]
     match role {
         m::Role::System => h::Role::System,
         m::Role::User | m::Role::ToolResult => h::Role::User,
         m::Role::Assistant => h::Role::Assistant,
+        _ => h::Role::User,
     }
 }
 
@@ -102,6 +104,7 @@ fn tool_result_converts_to_content_block() {
             }
         }
         h::Content::Text(t) => panic!("expected Blocks content, got Text({t:?})"),
+        _ => panic!("expected Blocks content, got unknown variant"),
     }
 }
 

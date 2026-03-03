@@ -1,4 +1,4 @@
-//! SQLite auth store for users, API keys, and token revocation.
+//! `SQLite` auth store for users, API keys, and token revocation.
 //!
 //! [`AuthStore`] is the persistence layer for [`crate::auth::AuthService`].
 //! All operations use prepared statements to prevent SQL injection.
@@ -87,7 +87,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] if SQLite initialization fails.
+    /// Returns [`crate::error::Error::Database`] if `SQLite` initialization fails.
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
@@ -145,7 +145,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
         let mut stmt = self
             .conn
@@ -164,7 +164,7 @@ impl AuthStore {
     /// # Errors
     ///
     /// - [`crate::error::Error::NotFound`] if no user with that username exists.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn update_user_role(&self, username: &str, role: Role) -> Result<()> {
         let rows = self
             .conn
@@ -188,7 +188,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn delete_user(&self, username: &str) -> Result<bool> {
         let rows = self
             .conn
@@ -203,7 +203,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn store_api_key(&self, record: &ApiKeyRecord) -> Result<()> {
         self.conn
             .execute(
@@ -228,7 +228,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn find_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRecord>> {
         let mut stmt = self
             .conn
@@ -247,7 +247,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn touch_api_key(&self, id: &str) -> Result<()> {
         self.conn
             .execute(
@@ -263,7 +263,7 @@ impl AuthStore {
     /// # Errors
     ///
     /// - [`crate::error::Error::NotFound`] if no key with that ID exists.
-    /// - [`crate::error::Error::Database`] on SQLite access failure.
+    /// - [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn revoke_api_key(&self, id: &str) -> Result<()> {
         let rows = self
             .conn
@@ -287,7 +287,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         let mut stmt = self
             .conn
@@ -317,7 +317,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn revoke_token(&self, jti: &str, expires_at: &str) -> Result<()> {
         self.conn
             .execute(
@@ -332,7 +332,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn is_token_revoked(&self, jti: &str) -> Result<bool> {
         let mut stmt = self
             .conn
@@ -353,7 +353,7 @@ impl AuthStore {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::error::Error::Database`] on SQLite access failure.
+    /// Returns [`crate::error::Error::Database`] on `SQLite` access failure.
     pub fn cleanup_expired_revocations(&self) -> Result<usize> {
         let rows = self
             .conn
