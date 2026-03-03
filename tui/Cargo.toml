@@ -49,6 +49,9 @@ futures-util = "0.3"
 syntect = "5"
 arboard = "3"
 
+# Fuzzy matching for command palette
+fuzzy-matcher = "0.3"
+
 [profile.release]
 strip = true
 lto = "thin"

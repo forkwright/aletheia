@@ -20,8 +20,9 @@ use crate::view;
 
 #[allow(unused_imports)]
 pub use crate::state::{
-    AgentState, AgentStatus, ChatMessage, InputState, Overlay, PlanApprovalOverlay,
-    PlanStepApproval, TabCompletion, ToolApprovalOverlay, ToolCallInfo,
+    AgentState, AgentStatus, ChatMessage, CommandPaletteState, InputState, Overlay,
+    PlanApprovalOverlay, PlanStepApproval, SelectionContext, TabCompletion,
+    ToolApprovalOverlay, ToolCallInfo,
 };
 use crate::state::SavedScrollState;
 
@@ -83,6 +84,15 @@ pub struct App {
     // Terminal size for responsive layout
     pub terminal_width: u16,
     pub terminal_height: u16,
+
+    // Command palette (`:` mode)
+    pub command_palette: CommandPaletteState,
+
+    // Status bar enhanced fields
+    pub session_cost_cents: u32,
+    pub active_filter: Option<String>,
+    pub context_usage_pct: Option<u8>,
+    pub selection: SelectionContext,
 }
 
 impl App {
@@ -124,6 +134,11 @@ impl App {
             tab_completion: None,
             terminal_width: 120,
             terminal_height: 40,
+            command_palette: CommandPaletteState::default(),
+            session_cost_cents: 0,
+            active_filter: Option::None,
+            context_usage_pct: Option::None,
+            selection: SelectionContext::default(),
         };
 
         app.connect().await?;
@@ -360,6 +375,11 @@ impl App {
             return self.map_overlay_key(key);
         }
 
+        // Command palette intercepts all keys when active
+        if self.command_palette.active {
+            return self.map_palette_key(key);
+        }
+
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
@@ -403,10 +423,40 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
             (KeyModifiers::CONTROL, KeyCode::Char('e')) => Some(Msg::ComposeInEditor),
 
+            // Context-aware help (only when input is empty)
+            (KeyModifiers::NONE, KeyCode::Char('?')) if self.input.text.is_empty() => {
+                Some(Msg::OpenOverlay(OverlayKind::Help))
+            }
+
+            // Command palette:  when input is empty and no overlay
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(':'))
+                if self.input.text.is_empty() =>
+            {
+                Some(Msg::CommandPaletteOpen)
+            }
+
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CharInput(c))
             }
 
+            _ => None,
+        }
+    }
+
+    fn map_palette_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) => Some(Msg::CommandPaletteClose),
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) => Some(Msg::CommandPaletteClose),
+            (_, KeyCode::Enter) => Some(Msg::CommandPaletteSelect),
+            (_, KeyCode::Tab) => Some(Msg::CommandPaletteTab),
+            (_, KeyCode::Up) => Some(Msg::CommandPaletteUp),
+            (_, KeyCode::Down) => Some(Msg::CommandPaletteDown),
+            (_, KeyCode::Backspace) => Some(Msg::CommandPaletteBackspace),
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::CommandPaletteDeleteWord),
+            (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::CommandPaletteClose),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::CommandPaletteInput(c))
+            }
             _ => None,
         }
     }
