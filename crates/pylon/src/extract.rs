@@ -12,9 +12,12 @@ use crate::state::AppState;
 
 /// Authenticated user claims extracted from a JWT Bearer token.
 #[derive(Debug, Clone)]
-pub struct Claims {
+pub(crate) struct Claims {
+    #[expect(dead_code, reason = "reserved for audit logging")]
     pub sub: String,
+    #[expect(dead_code, reason = "reserved for RBAC enforcement")]
     pub role: Role,
+    #[expect(dead_code, reason = "reserved for per-nous scope enforcement")]
     pub nous_id: Option<String>,
 }
 

@@ -3,7 +3,7 @@
 //! Reads workspace files through the taxis cascade, estimates tokens,
 //! and packs sections in priority order within the token budget.
 
-pub mod tools;
+pub(crate) mod tools;
 
 use tracing::{debug, info, warn};
 
