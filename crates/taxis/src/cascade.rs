@@ -16,13 +16,18 @@ use tracing::debug;
 use crate::oikos::Oikos;
 
 /// Which tier a resolved file came from.
+///
+/// Tiers are ordered from most-specific to least-specific:
+/// `Nous` > `Shared` > `Theke`. When the same filename exists in multiple
+/// tiers, the most-specific variant wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Tier {
-    /// Agent-specific (most specific).
+    /// Agent-specific (most specific) — `instance/nous/{id}/`.
     Nous,
-    /// Shared across all agents.
+    /// Shared across all agents — `instance/shared/`.
     Shared,
-    /// Human + agent collaborative (least specific).
+    /// Human + agent collaborative (least specific) — `instance/theke/`.
     Theke,
 }
 

@@ -86,9 +86,12 @@ pub struct EmbeddedChunk {
     pub created_at: String,
 }
 
-/// Epistemic confidence tier.
+/// Epistemic confidence tier for a [`Fact`].
+///
+/// Indicates how well-established the fact is. Used for ranking and display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum EpistemicTier {
     /// Checked against ground truth.
     Verified,
@@ -99,6 +102,9 @@ pub enum EpistemicTier {
 }
 
 impl EpistemicTier {
+    /// Returns the lowercase string used in the wire format and `CozoDB` storage.
+    ///
+    /// Matches `serde(rename_all = "lowercase")`: `"verified"`, `"inferred"`, or `"assumed"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

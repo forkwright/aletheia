@@ -5,11 +5,13 @@ use serde::Serialize;
 /// SSE event emitted to the client during message streaming.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-pub enum SseEvent {
+#[non_exhaustive]
+pub(crate) enum SseEvent {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
 
     #[serde(rename = "thinking_delta")]
+    #[expect(dead_code, reason = "reserved for extended thinking streaming")]
     ThinkingDelta { thinking: String },
 
     #[serde(rename = "tool_use")]
@@ -38,7 +40,7 @@ pub enum SseEvent {
 
 /// Token usage summary sent with `message_complete`.
 #[derive(Debug, Clone, Serialize)]
-pub struct UsageData {
+pub(crate) struct UsageData {
     pub input_tokens: u64,
     pub output_tokens: u64,
 }

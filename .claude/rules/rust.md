@@ -29,7 +29,7 @@ pub enum ConfigError {
     },
     #[snafu(display("failed to parse config"))]
     ParseConfig {
-        source: serde_yml::Error,
+        source: serde_yaml::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -38,7 +38,7 @@ pub enum ConfigError {
 fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let contents = std::fs::read_to_string(path)
         .context(ReadConfigSnafu { path: path.display().to_string() })?;
-    let config: Config = serde_yml::from_str(&contents)
+    let config: Config = serde_yaml::from_str(&contents)
         .context(ParseConfigSnafu)?;
     Ok(config)
 }
@@ -464,7 +464,7 @@ Things Claude tends to do wrong in Rust. Watch for and correct:
 - Prefer std when adequate
 - Each new dependency must justify itself
 - Pin unstable crates (pre-1.0) to exact versions, wrap in traits
-- `serde_yaml` is deprecated — use `serde_yml`
+- `serde_yml` is banned (unsound unsafe) — use `serde_yaml` if YAML parsing is needed
 - `thiserror` replaced by `snafu` for library crates
 - `async-trait` unnecessary — use native async fn in trait
 

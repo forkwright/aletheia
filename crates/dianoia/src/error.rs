@@ -1,7 +1,8 @@
 //! Dianoia-specific errors.
 
-use snafu::Snafu;
 use std::path::PathBuf;
+
+use snafu::Snafu;
 
 /// Errors from planning and project orchestration.
 #[derive(Debug, Snafu)]

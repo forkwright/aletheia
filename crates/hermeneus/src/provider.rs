@@ -1,8 +1,8 @@
 //! LLM provider trait.
 //!
 //! Defines the interface that all providers (Anthropic, `OpenAI`, Ollama)
-//! must implement. Designed for the current sync-first approach with
-//! async streaming planned for M2.
+//! must implement. The primary implementation is [`crate::anthropic::AnthropicProvider`].
+//! Designed for the current sync-first approach with async streaming planned for M2.
 
 use crate::error::Result;
 use crate::types::{CompletionRequest, CompletionResponse};
@@ -151,7 +151,7 @@ mod tests {
             &self.models
         }
 
-        #[allow(clippy::unnecessary_literal_bound)]
+        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
         fn name(&self) -> &str {
             "mock"
         }

@@ -2,6 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
+#[cfg(feature = "knowledge-store")]
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
@@ -9,14 +11,10 @@ use tracing::{debug, instrument};
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
 use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
-
-#[cfg(feature = "knowledge-store")]
-use std::sync::Arc;
-
-use crate::error;
-
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
+
+use crate::error;
 
 /// Abstracts vector knowledge search.
 ///

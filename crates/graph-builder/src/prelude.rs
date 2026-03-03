@@ -1,3 +1,9 @@
+//! Convenience re-exports for common graph types and traits.
+//!
+//! Import with `use aletheia_graph_builder::prelude::*;` to get access to
+//! [`GraphBuilder`], [`DirectedCsrGraph`], [`UndirectedCsrGraph`], [`CsrLayout`],
+//! [`Target`], all graph trait types, and the [`Idx`] bound.
+
 pub use crate::builder::GraphBuilder;
 
 pub use crate::graph::Target;

@@ -156,7 +156,7 @@ Three-tier cascading resolution: nous/{id} → shared → theke. Most specific w
 - **Never vendor** unless forced by platform issues. Cargo.lock suffices.
 
 **Corrections from audit:**
-- `serde_yaml` is deprecated — use `serde_yml` (maintained fork)
+- `serde_yml` is banned (unsound unsafe) — use `serde_yaml` if YAML parsing is needed
 - `async-trait` crate is unnecessary — use native `async fn in trait` (Rust 1.75+)
 - `thiserror` replaced by `snafu` for library crates (GreptimeDB pattern)
 
@@ -171,7 +171,7 @@ Three-tier cascading resolution: nous/{id} → shared → theke. Most specific w
 | Crate | Key Dependencies |
 |-------|-----------------|
 | **koina** | snafu, tracing, tracing-subscriber, miette |
-| **taxis** | koina, figment, serde, serde_yml, validator, secrecy, dirs |
+| **taxis** | koina, figment, serde, serde_json, snafu, tracing |
 | **mneme** | koina, taxis, cozo, fastembed, reqwest (HTTP embedding), ulid, blake3 |
 | **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, sonic-rs, tokio, secrecy |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |

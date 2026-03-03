@@ -32,7 +32,7 @@ cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
 cargo test --workspace                 # All tests
 cargo test -p aletheia-hermeneus       # Single crate
-cargo clippy --workspace               # Lint (zero warnings policy)
+cargo clippy --workspace --exclude aletheia-mneme-engine  # Lint (zero warnings; mneme-engine excluded — vendored CozoDB)
 ```
 
 ### TypeScript
@@ -57,6 +57,8 @@ aletheia doctor                        # Validate config
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** figment YAML cascade in `taxis`
+- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` — every suppression justified
+- **Visibility:** `pub(crate)` by default — `pub` only for cross-crate API surface
 
 ### TypeScript
 
@@ -76,15 +78,24 @@ aletheia doctor                        # Validate config
 
 ### Rust
 1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace` — zero warnings
+2. `cargo clippy --workspace --exclude aletheia-mneme-engine` — zero warnings
 3. No `unwrap()` in library code
 4. New errors use snafu with context
+5. All lint suppressions use `#[expect]` with reason, not `#[allow]`
 
 ### TypeScript
 1. Tests pass for affected files
 2. No new empty catch blocks
 3. New errors use typed error classes
 4. `npx tsc --noEmit` clean
+
+## Test Data & Instance Boundary
+
+- All test data MUST use synthetic identities (alice, bob, acme.corp, 192.168.1.100)
+- NEVER use real personal information in test fixtures or example data
+- Operator-specific config belongs in `instance/` (gitignored), not `shared/` or repo root
+- `instance.example/` shows the expected structure for fresh clones
+- The CI PII scanner will reject commits containing personal data patterns (`.github/pii-patterns.txt`)
 
 ## Dianoia Gotchas
 

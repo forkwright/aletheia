@@ -2,6 +2,7 @@
 
 use snafu::Snafu;
 
+/// Channel-level errors for the agora crate.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -40,4 +41,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for agora results.
 pub type Result<T> = std::result::Result<T, Error>;

@@ -2,6 +2,7 @@
 
 use snafu::Snafu;
 
+/// Signal-specific error variants.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -40,4 +41,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for signal client results.
 pub type Result<T> = std::result::Result<T, Error>;

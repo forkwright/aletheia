@@ -47,6 +47,10 @@ pub struct FinalizeResult {
 ///
 /// Errors from the store are propagated but callers should treat them as
 /// non-fatal — the user already has their response.
+///
+/// # Errors
+///
+/// - Returns a store error if persisting messages, recording usage, or updating session state fails.
 #[instrument(skip_all, fields(session_id = %session.id))]
 pub fn finalize(
     store: &SessionStore,

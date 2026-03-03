@@ -22,6 +22,7 @@ const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SignalTarget {
     Phone(String),
     Group(String),

@@ -106,10 +106,12 @@ pub fn load_history(
             _ => {}
         }
 
+        #[expect(clippy::match_same_arms, reason = "wildcard covers future non-exhaustive variants")]
         let role = match msg.role {
             Role::User | Role::ToolResult => "user",
             Role::Assistant => "assistant",
             Role::System => unreachable!(),
+            _ => "user",
         };
 
         messages.push(PipelineMessage {

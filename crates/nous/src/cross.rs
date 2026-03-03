@@ -40,6 +40,7 @@ pub struct CrossNousMessage {
 }
 
 impl CrossNousMessage {
+    /// Create a fire-and-forget message from one nous to another.
     #[must_use]
     pub fn new(
         from: impl Into<String>,
@@ -59,12 +60,14 @@ impl CrossNousMessage {
         }
     }
 
+    /// Override the target session key (default: `"main"`).
     #[must_use]
     pub fn with_target_session(mut self, session: impl Into<String>) -> Self {
         self.target_session = session.into();
         self
     }
 
+    /// Enable request-response mode with the given reply timeout.
     #[must_use]
     pub fn with_reply(mut self, timeout: Duration) -> Self {
         self.expects_reply = true;
@@ -114,6 +117,7 @@ impl Default for CrossNousRouter {
 }
 
 impl CrossNousRouter {
+    /// Create a router with a delivery log capped at `max_log_entries`.
     #[must_use]
     pub fn new(max_log_entries: usize) -> Self {
         Self {
@@ -299,6 +303,7 @@ pub struct DeliveryLog {
 }
 
 impl DeliveryLog {
+    /// Create a ring-buffer delivery log with the given capacity.
     #[must_use]
     pub fn new(max_entries: usize) -> Self {
         Self {
@@ -307,6 +312,7 @@ impl DeliveryLog {
         }
     }
 
+    /// Record a delivery entry, evicting the oldest if at capacity.
     pub fn record(&mut self, entry: DeliveryEntry) {
         if self.entries.len() >= self.max_entries {
             self.entries.pop_front();
@@ -314,11 +320,13 @@ impl DeliveryLog {
         self.entries.push_back(entry);
     }
 
+    /// Return the most recent `limit` entries, newest first.
     #[must_use]
     pub fn recent(&self, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries.iter().rev().take(limit).collect()
     }
 
+    /// Return the most recent `limit` entries involving `nous_id` as sender or recipient.
     #[must_use]
     pub fn for_nous(&self, nous_id: &str, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries

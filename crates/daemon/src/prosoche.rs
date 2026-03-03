@@ -26,6 +26,7 @@ pub struct AttentionItem {
 
 /// Categories of attention items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum AttentionCategory {
     Calendar,
     Task,
@@ -35,6 +36,7 @@ pub enum AttentionCategory {
 
 /// Urgency level for attention items.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum Urgency {
     Low,
     Medium,
@@ -43,6 +45,7 @@ pub enum Urgency {
 }
 
 impl ProsocheCheck {
+    /// Create a new prosoche check for the given nous.
     pub fn new(nous_id: impl Into<String>) -> Self {
         Self {
             nous_id: nous_id.into(),

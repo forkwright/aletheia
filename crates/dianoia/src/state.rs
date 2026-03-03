@@ -7,6 +7,7 @@ use crate::error::{self, Result};
 
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ProjectState {
     Created,
     Questioning,
@@ -25,6 +26,7 @@ pub enum ProjectState {
 
 /// Valid transitions between project states.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Transition {
     StartQuestioning,
     SkipToResearch,
@@ -43,8 +45,11 @@ pub enum Transition {
 }
 
 impl ProjectState {
-    /// Attempt a state transition. Returns the new state or an error
-    /// if the transition is invalid from the current state.
+    /// Attempt a state transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-transition error if `t` is not valid from the current state.
     pub fn transition(self, t: Transition) -> Result<Self> {
         match (&self, &t) {
             // Unique forward transitions

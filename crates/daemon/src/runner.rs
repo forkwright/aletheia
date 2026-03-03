@@ -33,6 +33,7 @@ pub struct ExecutionResult {
 }
 
 impl TaskRunner {
+    /// Create a task runner for a nous. The runner stops when `shutdown` emits `true`.
     pub fn new(nous_id: impl Into<String>, shutdown: watch::Receiver<bool>) -> Self {
         Self {
             nous_id: nous_id.into(),

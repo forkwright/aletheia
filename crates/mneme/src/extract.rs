@@ -7,8 +7,12 @@ use snafu::{ResultExt, Snafu};
 // Error
 // ---------------------------------------------------------------------------
 
+/// Errors from the knowledge extraction pipeline.
+///
+/// Returned by [`ExtractionEngine::parse_response`] and [`ExtractionEngine::extract`].
 #[derive(Debug, Snafu)]
-pub enum ExtractionError {
+#[non_exhaustive]
+pub(crate) enum ExtractionError {
     #[snafu(display("failed to parse extraction response"))]
     ParseResponse {
         source: serde_json::Error,
@@ -34,53 +38,76 @@ pub enum ExtractionError {
 // ---------------------------------------------------------------------------
 
 /// Extracted knowledge from a conversation segment.
+///
+/// Returned by [`ExtractionEngine::parse_response`] and [`ExtractionEngine::extract`].
+/// Contains entities, relationships, and facts parsed from LLM JSON output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Extraction {
-    pub entities: Vec<ExtractedEntity>,
-    pub relationships: Vec<ExtractedRelationship>,
-    pub facts: Vec<ExtractedFact>,
+pub(crate) struct Extraction {
+    /// Named entities identified in the conversation.
+    pub(crate) entities: Vec<ExtractedEntity>,
+    /// Relationships between entities.
+    pub(crate) relationships: Vec<ExtractedRelationship>,
+    /// Subject-predicate-object fact triples.
+    pub(crate) facts: Vec<ExtractedFact>,
 }
 
+/// An entity extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtractedEntity {
-    pub name: String,
-    /// person, project, concept, tool, location
-    pub entity_type: String,
-    pub description: String,
+pub(crate) struct ExtractedEntity {
+    /// Display name (normalized to proper noun form).
+    pub(crate) name: String,
+    /// Category: `person`, `project`, `concept`, `tool`, or `location`.
+    pub(crate) entity_type: String,
+    /// Brief description of the entity.
+    pub(crate) description: String,
 }
 
+/// A relationship between two extracted entities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtractedRelationship {
-    /// Entity name (source).
-    pub source: String,
-    /// Verb phrase: "works on", "depends on", "created by".
-    pub relation: String,
-    /// Entity name (target).
-    pub target: String,
-    /// 0.0–1.0.
-    pub confidence: f64,
+pub(crate) struct ExtractedRelationship {
+    /// Source entity name.
+    pub(crate) source: String,
+    /// Verb phrase describing the relationship (e.g., `"works on"`, `"depends on"`).
+    pub(crate) relation: String,
+    /// Target entity name.
+    pub(crate) target: String,
+    /// Confidence score (0.0–1.0).
+    pub(crate) confidence: f64,
 }
 
+/// A factual claim extracted as a subject-predicate-object triple.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtractedFact {
-    pub subject: String,
-    pub predicate: String,
-    pub object: String,
-    /// 0.0–1.0.
-    pub confidence: f64,
+pub(crate) struct ExtractedFact {
+    /// Subject of the claim.
+    pub(crate) subject: String,
+    /// Predicate (verb phrase).
+    pub(crate) predicate: String,
+    /// Object of the claim.
+    pub(crate) object: String,
+    /// Confidence score (0.0–1.0).
+    pub(crate) confidence: f64,
 }
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
+/// Configuration for the knowledge extraction engine.
+///
+/// Controls which model is used, minimum conversation size before extraction
+/// runs, and limits on output size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtractionConfig {
-    pub model: String,
-    pub min_message_length: usize,
-    pub max_entities: usize,
-    pub max_relationships: usize,
-    pub enabled: bool,
+pub(crate) struct ExtractionConfig {
+    /// Model to call for extraction (default: `"claude-haiku-4-5-20251001"`).
+    pub(crate) model: String,
+    /// Minimum total message length (in characters) before extraction runs.
+    pub(crate) min_message_length: usize,
+    /// Maximum number of entities to extract.
+    pub(crate) max_entities: usize,
+    /// Maximum number of relationships to extract.
+    pub(crate) max_relationships: usize,
+    /// Whether extraction is enabled at all.
+    pub(crate) enabled: bool,
 }
 
 impl Default for ExtractionConfig {
@@ -103,7 +130,7 @@ impl Default for ExtractionConfig {
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
-pub trait ExtractionProvider: Send + Sync {
+pub(crate) trait ExtractionProvider: Send + Sync {
     fn complete(
         &self,
         system: &str,
@@ -115,44 +142,55 @@ pub trait ExtractionProvider: Send + Sync {
 // Conversation message (local lightweight type)
 // ---------------------------------------------------------------------------
 
+/// A single message in a conversation to be analyzed for extraction.
+///
+/// Lightweight local type that keeps `mneme` independent of `hermeneus`.
+/// The nous layer converts `hermeneus::types::Message` into this type before
+/// calling the extraction engine.
 #[derive(Debug, Clone)]
-pub struct ConversationMessage {
-    pub role: String,
-    pub content: String,
+pub(crate) struct ConversationMessage {
+    /// Role string: `"user"`, `"assistant"`, etc.
+    pub(crate) role: String,
+    /// Message text content.
+    pub(crate) content: String,
 }
 
 // ---------------------------------------------------------------------------
 // Prompt output
 // ---------------------------------------------------------------------------
 
+/// System prompt and user message assembled by [`ExtractionEngine::build_prompt`].
 #[derive(Debug, Clone)]
-pub struct ExtractionPrompt {
-    pub system: String,
-    pub user_message: String,
+pub(crate) struct ExtractionPrompt {
+    /// System instruction for the LLM.
+    pub(crate) system: String,
+    /// Formatted conversation text to analyze.
+    pub(crate) user_message: String,
 }
 
 // ---------------------------------------------------------------------------
 // Engine
 // ---------------------------------------------------------------------------
 
-pub struct ExtractionEngine {
+/// Knowledge extraction engine — converts conversation text into structured facts.
+///
+/// Call [`ExtractionEngine::extract`] with a list of [`ConversationMessage`]s
+/// and an [`ExtractionProvider`] to get an [`Extraction`] containing
+/// [`ExtractedEntity`], [`ExtractedRelationship`], and [`ExtractedFact`] items.
+pub(crate) struct ExtractionEngine {
     config: ExtractionConfig,
 }
 
 impl ExtractionEngine {
+    /// Create a new extraction engine with the given configuration.
     #[must_use]
-    pub fn new(config: ExtractionConfig) -> Self {
+    pub(crate) fn new(config: ExtractionConfig) -> Self {
         Self { config }
-    }
-
-    #[must_use]
-    pub fn config(&self) -> &ExtractionConfig {
-        &self.config
     }
 
     /// Build the system prompt and user message for knowledge extraction.
     #[must_use]
-    pub fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
+    pub(crate) fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
         let system = format!(
             r#"You are a knowledge extraction engine. Analyze the conversation and extract structured knowledge.
 
@@ -198,14 +236,18 @@ Rules:
 
     /// Parse a JSON extraction response from the LLM.
     ///
-    /// Strips markdown code fences if present.
-    pub fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
+    /// Strips markdown code fences (`` ` ``json...`` ` ``) if present before parsing.
+    ///
+    /// # Errors
+    /// Returns [`ExtractionError::ParseResponse`] if the JSON is malformed or
+    /// does not match the [`Extraction`] schema.
+    pub(crate) fn parse_response(response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
         serde_json::from_str(trimmed).context(ParseResponseSnafu)
     }
 
     /// Run extraction end-to-end: build prompt, call provider, parse response.
-    pub fn extract(
+    pub(crate) fn extract(
         &self,
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
@@ -221,12 +263,12 @@ Rules:
 
         let prompt = self.build_prompt(messages);
         let response = provider.complete(&prompt.system, &prompt.user_message)?;
-        self.parse_response(&response)
+        Self::parse_response(&response)
     }
 
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
-    pub fn persist(
+    pub(crate) fn persist(
         &self,
         extraction: &Extraction,
         store: &crate::knowledge_store::KnowledgeStore,
@@ -312,11 +354,18 @@ Rules:
 // Persist result
 // ---------------------------------------------------------------------------
 
+/// Counts from a single `ExtractionEngine::persist` call (requires `mneme-engine` feature).
+///
+/// Returned after writing an [`Extraction`] to the knowledge store.
+#[cfg(feature = "mneme-engine")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PersistResult {
-    pub entities_inserted: usize,
-    pub relationships_inserted: usize,
-    pub facts_inserted: usize,
+pub(crate) struct PersistResult {
+    /// Number of [`crate::knowledge::Entity`] rows inserted or updated.
+    pub(crate) entities_inserted: usize,
+    /// Number of [`crate::knowledge::Relationship`] rows inserted or updated.
+    pub(crate) relationships_inserted: usize,
+    /// Number of [`crate::knowledge::Fact`] rows inserted.
+    pub(crate) facts_inserted: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -430,7 +479,6 @@ mod tests {
 
     #[test]
     fn parse_valid_response() {
-        let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"{
             "entities": [
                 { "name": "Alice", "entity_type": "person", "description": "Developer of Aletheia" },
@@ -444,7 +492,7 @@ mod tests {
             ]
         }"#;
 
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = ExtractionEngine::parse_response(json).unwrap();
         assert_eq!(extraction.entities.len(), 2);
         assert_eq!(extraction.entities[0].name, "Alice");
         assert_eq!(extraction.entities[1].entity_type, "project");
@@ -457,7 +505,6 @@ mod tests {
 
     #[test]
     fn parse_response_with_code_fences() {
-        let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"```json
 {
     "entities": [
@@ -468,15 +515,14 @@ mod tests {
 }
 ```"#;
 
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = ExtractionEngine::parse_response(json).unwrap();
         assert_eq!(extraction.entities.len(), 1);
         assert_eq!(extraction.entities[0].name, "Rust");
     }
 
     #[test]
     fn parse_invalid_response() {
-        let engine = ExtractionEngine::new(ExtractionConfig::default());
-        let result = engine.parse_response("this is not json at all");
+        let result = ExtractionEngine::parse_response("this is not json at all");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, ExtractionError::ParseResponse { .. }));

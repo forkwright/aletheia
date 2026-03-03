@@ -30,7 +30,12 @@ impl ToolExecutor for Stub {
     }
 }
 
-/// Register communication tool stubs.
+/// Register communication tool stubs into the given [`ToolRegistry`].
+///
+/// Registers `message` and `sessions_ask` tools with their full input schemas.
+///
+/// # Errors
+/// Returns `Error::DuplicateTool` if either tool name is already registered.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(message_def(), Box::new(Stub))?;
     registry.register(sessions_ask_def(), Box::new(Stub))?;

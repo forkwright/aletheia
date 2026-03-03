@@ -11,7 +11,7 @@ use aletheia_organon::types::ToolDef;
 ///
 /// One-liner is the first sentence of the tool description, capped at 80 characters.
 #[derive(Debug, Clone)]
-pub struct ToolSummary {
+pub(crate) struct ToolSummary {
     /// Tool name.
     pub name: String,
     /// One-line description (max 80 chars).
@@ -20,7 +20,8 @@ pub struct ToolSummary {
 
 /// Expanded tool description for on-demand loading.
 #[derive(Debug, Clone)]
-pub struct ToolExpanded {
+#[expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline")]
+pub(crate) struct ToolExpanded {
     /// Tool name.
     pub name: String,
     /// Full description text.
@@ -31,7 +32,8 @@ pub struct ToolExpanded {
 
 /// Generate compact summaries for all registered tools.
 #[must_use]
-pub fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
+#[cfg_attr(not(test), expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline"))]
+pub(crate) fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
     registry
         .definitions()
         .iter()
@@ -44,7 +46,8 @@ pub fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
 
 /// Generate expanded descriptions for selected tool definitions.
 #[must_use]
-pub fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
+#[expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline")]
+pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
     defs.iter()
         .map(|def| ToolExpanded {
             name: def.name.as_str().to_owned(),
@@ -65,7 +68,8 @@ pub fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
 
 /// Format tool summaries as a markdown section for the system prompt.
 #[must_use]
-pub fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
+#[cfg_attr(not(test), expect(dead_code, reason = "tool bootstrap injection not yet wired into pipeline"))]
+pub(crate) fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
     if summaries.is_empty() {
         return String::new();
     }

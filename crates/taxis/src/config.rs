@@ -224,7 +224,11 @@ impl Default for SignalConfig {
     }
 }
 
-/// Configuration for a single Signal account.
+/// Configuration for a single Signal account used as a messaging channel.
+///
+/// Each account maps to a registered Signal phone number. Multiple accounts
+/// can be configured (e.g., one per nous agent) and are keyed by an
+/// arbitrary name in [`SignalConfig::accounts`].
 #[expect(
     clippy::struct_excessive_bools,
     reason = "mirrors TS config schema 1:1"
@@ -233,17 +237,29 @@ impl Default for SignalConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SignalAccountConfig {
+    /// Human-readable label for this account (optional).
     pub name: Option<String>,
+    /// Whether this account is active. Defaults to `true`.
     pub enabled: bool,
+    /// The Signal phone number for this account (e.g., `"+15551234567"`).
     pub account: Option<String>,
+    /// Hostname of the signal-cli HTTP server. Defaults to `"localhost"`.
     pub http_host: String,
+    /// Port of the signal-cli HTTP server. Defaults to `8080`.
     pub http_port: u16,
+    /// Path to the `signal-cli` binary (optional, uses `$PATH` if absent).
     pub cli_path: Option<String>,
+    /// Automatically start signal-cli if not running. Defaults to `true`.
     pub auto_start: bool,
+    /// DM policy: `"open"` (accept all) or `"allowlist"`. Defaults to `"open"`.
     pub dm_policy: String,
+    /// Group policy: `"open"` or `"allowlist"`. Defaults to `"allowlist"`.
     pub group_policy: String,
+    /// Only respond when the agent is @-mentioned in group chats.
     pub require_mention: bool,
+    /// Send read receipts after processing a message.
     pub send_read_receipts: bool,
+    /// Maximum characters per outbound Signal message before splitting.
     pub text_chunk_limit: u32,
 }
 

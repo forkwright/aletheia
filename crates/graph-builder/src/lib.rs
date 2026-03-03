@@ -215,39 +215,84 @@ pub use crate::graph::csr::CsrLayout;
 pub use crate::graph::csr::DirectedCsrGraph;
 pub use crate::graph::csr::UndirectedCsrGraph;
 
-use std::convert::Infallible;
-
 use crate::graph::Target;
 use crate::index::Idx;
-use thiserror::Error;
+use snafu::Snafu;
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("error while loading graph")]
-    IoError {
-        #[from]
-        source: std::io::Error,
-    },
-    #[error("incompatible index type")]
-    IdxError {
-        #[from]
-        source: std::num::TryFromIntError,
-    },
-    #[error("invalid partitioning")]
-    InvalidPartitioning,
-    #[error("number of node values must be the same as node count")]
-    InvalidNodeValues,
-    #[error("invalid id size, expected {expected:?} bytes, got {actual:?} bytes")]
-    InvalidIdType { expected: String, actual: String },
-
-    #[error("node {node:?} does not exist in the graph")]
-    MissingNode { node: String },
+// Manual From impls for absorbed crate compatibility — many internal call sites use `?`
+// directly on io::Error and TryFromIntError. The standard snafu .context() pattern would
+// require updating 20+ call sites in vendored code. These From impls preserve the absorbed
+// crate's error conversion semantics while using snafu for the enum definition.
+impl From<std::io::Error> for Error {
+    fn from(source: std::io::Error) -> Self {
+        Error::IoError {
+            source,
+            location: snafu::location!(),
+        }
+    }
 }
 
-impl From<Infallible> for Error {
-    fn from(_: Infallible) -> Self {
+impl From<std::num::TryFromIntError> for Error {
+    fn from(source: std::num::TryFromIntError) -> Self {
+        Error::IdxError {
+            source,
+            location: snafu::location!(),
+        }
+    }
+}
+
+// Required by GraphBuilder::build where Graph::Error = Infallible (non-file graph construction).
+impl From<std::convert::Infallible> for Error {
+    fn from(_: std::convert::Infallible) -> Self {
         unreachable!()
     }
+}
+
+/// Errors produced by graph construction and graph operations.
+#[derive(Debug, Snafu)]
+#[non_exhaustive]
+pub enum Error {
+    /// I/O failure while reading or writing a graph file.
+    #[snafu(display("error while loading graph: {source}"))]
+    IoError {
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    /// Node index type is too narrow for the actual node count.
+    #[snafu(display("incompatible index type: {source}"))]
+    IdxError {
+        source: std::num::TryFromIntError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    /// The provided partition does not cover all nodes exactly once.
+    #[snafu(display("invalid partitioning"))]
+    InvalidPartitioning {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    /// Node value slice length does not match the graph's node count.
+    #[snafu(display("number of node values must be the same as node count"))]
+    InvalidNodeValues {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    /// Serialized graph used a different index type than the deserializer expects.
+    #[snafu(display("invalid id size, expected {expected:?} bytes, got {actual:?} bytes"))]
+    InvalidIdType {
+        expected: String,
+        actual: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    /// The referenced node does not exist in the graph.
+    #[snafu(display("node {node:?} does not exist in the graph"))]
+    MissingNode {
+        node: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// A graph is a tuple `(N, E)`, where `N` is a set of nodes and `E` a set of
@@ -268,6 +313,7 @@ pub trait NodeValues<NI: Idx, NV> {
     fn node_value(&self, node: NI) -> &NV;
 }
 
+/// Returns the degree of a node in an undirected graph.
 pub trait UndirectedDegrees<NI: Idx> {
     /// Returns the number of edges connected to the given node.
     fn degree(&self, node: NI) -> NI;
@@ -299,6 +345,7 @@ pub trait UndirectedNeighborsWithValues<NI: Idx, EV> {
     fn neighbors_with_values(&self, node: NI) -> Self::NeighborsIterator<'_>;
 }
 
+/// Returns the out-degree and in-degree of a node in a directed graph.
 pub trait DirectedDegrees<NI: Idx> {
     /// Returns the number of edges where the given node is a source node.
     fn out_degree(&self, node: NI) -> NI;
@@ -398,6 +445,11 @@ pub trait EdgeMutationWithValues<NI: Idx, EV> {
     fn add_edge_with_value_mut(&mut self, source: NI, target: NI, value: EV) -> Result<(), Error>;
 }
 
+/// A transparent wrapper over `*mut T` that is `Send + Sync` when `T: Send + Sync`.
+///
+/// Used internally to share a raw pointer across rayon threads during parallel
+/// CSR construction. Callers must guarantee disjoint write ranges to avoid
+/// data races — no runtime enforcement is performed.
 #[repr(transparent)]
 pub struct SharedMut<T>(*mut T);
 // SAFETY: SharedMut<T> is a #[repr(transparent)] newtype over *mut T. Raw pointers are
@@ -411,6 +463,12 @@ unsafe impl<T: Send> Send for SharedMut<T> {}
 unsafe impl<T: Sync> Sync for SharedMut<T> {}
 
 impl<T> SharedMut<T> {
+    /// Wraps a raw mutable pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that all concurrent accesses through this wrapper
+    /// target disjoint memory ranges for the lifetime of this value.
     pub fn new(ptr: *mut T) -> Self {
         SharedMut(ptr)
     }

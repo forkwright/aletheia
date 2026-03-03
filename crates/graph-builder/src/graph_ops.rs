@@ -1,3 +1,16 @@
+//! Graph operation traits and their blanket implementations.
+//!
+//! Provides higher-level operations on top of the core graph traits:
+//!
+//! - Partitioning: [`DegreePartitionOp`], [`OutDegreePartitionOp`], [`InDegreePartitionOp`]
+//! - Parallel traversal: [`ForEachNodeParallelOp`], [`ForEachNodeParallelByPartitionOp`]
+//! - Structural operations: [`RelabelByDegreeOp`], [`ToUndirectedOp`]
+//! - Serialization: [`SerializeGraphOp`], [`DeserializeGraphOp`]
+//!
+//! All traits are blanket-implemented for any graph type that satisfies the
+//! required trait bounds — no manual impl needed for [`crate::graph::csr::DirectedCsrGraph`]
+//! or [`crate::graph::csr::UndirectedCsrGraph`].
+
 use log::info;
 use rayon::prelude::*;
 
@@ -132,6 +145,11 @@ pub trait ForEachNodeParallelByPartitionOp<NI: Idx> {
         F: Fn(&Self, NI, &mut T) + Send + Sync;
 }
 
+/// Relabel graph nodes by descending degree order to improve cache locality.
+///
+/// Assigns node 0 to the highest-degree node, node 1 to the next highest, and so on.
+/// Graphs with high-degree hubs benefit most — hot nodes cluster at low indices, which
+/// concentrates memory accesses and improves CPU cache utilization during traversal.
 pub trait RelabelByDegreeOp<NI, EV> {
     /// Creates a new graph by relabeling the node ids of the given graph.
     ///
@@ -173,6 +191,12 @@ pub trait RelabelByDegreeOp<NI, EV> {
     fn make_degree_ordered(&mut self);
 }
 
+/// Convert a directed graph to an undirected representation.
+///
+/// Merges both edge directions — for each directed edge `(u → v)` the undirected
+/// output contains both `(u, v)` and `(v, u)`. The resulting graph has the same
+/// node set but symmetrized adjacency, which doubles the edge count when no
+/// reciprocal edges exist in the input.
 pub trait ToUndirectedOp {
     type Undirected;
 
@@ -203,7 +227,7 @@ pub trait ToUndirectedOp {
     /// ```
     ///
     /// This method accepts an optional [`CsrLayout`] as second parameter,
-    /// which has the same effect as described in [`GraphBuilder::csr_layout`]
+    /// which has the same effect as described in [`crate::GraphBuilder::csr_layout`]
     ///
     /// # Example
     ///
@@ -231,11 +255,27 @@ pub trait ToUndirectedOp {
     fn to_undirected(&self, layout: impl Into<Option<CsrLayout>>) -> Self::Undirected;
 }
 
+/// Serializes a graph to a binary writer.
+///
+/// The format is a compact binary encoding of the CSR arrays — not a human-readable format.
+/// Use the corresponding [`DeserializeGraphOp`] to read it back.
 pub trait SerializeGraphOp<W> {
+    /// Writes the graph to `write`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::IoError`] if writing fails.
     fn serialize(&self, write: W) -> Result<(), Error>;
 }
 
+/// Deserializes a graph from a binary reader.
 pub trait DeserializeGraphOp<R, G> {
+    /// Reads a graph from `read`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::Error::IoError`] if reading fails.
+    /// - [`crate::Error::InvalidIdType`] if the serialized index type does not match the expected type.
     fn deserialize(read: R) -> Result<G, Error>;
 }
 
@@ -270,7 +310,9 @@ where
         F: Fn(&Self, NI, &mut T) + Send + Sync,
     {
         if node_values.len() != self.node_count().index() {
-            return Err(Error::InvalidNodeValues);
+            return Err(Error::InvalidNodeValues {
+                location: snafu::location!(),
+            });
         }
 
         let node_fn = Arc::new(node_fn);
@@ -305,11 +347,15 @@ where
         F: Fn(&Self, NI, &mut T) + Send + Sync,
     {
         if node_values.len() != self.node_count().index() {
-            return Err(Error::InvalidNodeValues);
+            return Err(Error::InvalidNodeValues {
+                location: snafu::location!(),
+            });
         }
 
         if partition.iter().map(|r| r.end - r.start).sum::<NI>() != self.node_count() {
-            return Err(Error::InvalidPartitioning);
+            return Err(Error::InvalidPartitioning {
+                location: snafu::location!(),
+            });
         }
 
         let node_fn = Arc::new(node_fn);

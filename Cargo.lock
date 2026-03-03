@@ -44,7 +44,6 @@ dependencies = [
  "aletheia-agora",
  "aletheia-hermeneus",
  "aletheia-koina",
- "aletheia-melete",
  "aletheia-mneme",
  "aletheia-nous",
  "aletheia-organon",
@@ -123,15 +122,14 @@ dependencies = [
  "byte-slice-cast",
  "delegate",
  "fast-float2",
- "graph",
  "log",
  "memmap2",
  "num_cpus",
  "page_size 0.6.0",
  "parking_lot",
  "rayon",
+ "snafu",
  "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -179,7 +177,6 @@ dependencies = [
  "serde_json",
  "snafu",
  "static_assertions",
- "tracing",
  "tracing-subscriber",
  "ulid",
 ]
@@ -345,7 +342,6 @@ dependencies = [
  "rusqlite",
  "secrecy",
  "serde",
- "serde_json",
  "snafu",
  "static_assertions",
  "tracing",

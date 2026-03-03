@@ -17,6 +17,7 @@ pub struct Message {
 /// Message role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Role {
     /// System prompt (Anthropic: separate field, `OpenAI`: system message).
     System,
@@ -27,6 +28,10 @@ pub enum Role {
 }
 
 impl Role {
+    /// Returns the lowercase string representation used in the wire format.
+    ///
+    /// Matches `serde(rename_all = "lowercase")`: `"system"`, `"user"`, or `"assistant"`.
+    /// Used when manually serializing role into non-JSON contexts (e.g., prompt formatting).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -43,9 +48,10 @@ impl std::fmt::Display for Role {
     }
 }
 
-/// Message content — either plain text or structured blocks.
+/// Message content — either plain text or structured [`ContentBlock`]s.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum Content {
     /// Plain text content.
     Text(String),
@@ -174,6 +180,11 @@ pub enum StopReason {
 }
 
 impl StopReason {
+    /// Returns the `snake_case` string used in the wire format.
+    ///
+    /// Matches `serde(rename_all = "snake_case")`: `"end_turn"`, `"tool_use"`,
+    /// `"max_tokens"`, or `"stop_sequence"`. Useful for logging and display without
+    /// JSON serialization overhead.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

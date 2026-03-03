@@ -1,7 +1,8 @@
 //! Taxis-specific errors.
 
-use snafu::Snafu;
 use std::path::PathBuf;
+
+use snafu::Snafu;
 
 /// Errors from configuration and path resolution.
 #[derive(Debug, Snafu)]

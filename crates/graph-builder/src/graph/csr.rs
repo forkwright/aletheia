@@ -1,3 +1,10 @@
+//! CSR (Compressed Sparse Row) graph implementations.
+//!
+//! Provides [`DirectedCsrGraph`] and [`UndirectedCsrGraph`] — the two concrete
+//! graph types built by [`crate::builder::GraphBuilder`]. Also defines
+//! [`CsrLayout`] (neighbor ordering), [`NodeValues`] (per-node metadata), and
+//! the internal [`Csr`] data structure.
+
 use atomic::Atomic;
 use byte_slice_cast::{AsByteSlice, AsMutByteSlice, ToByteSlice, ToMutByteSlice};
 use log::info;
@@ -23,14 +30,13 @@ use crate::{
     input::{Direction, edgelist::Edges},
 };
 
-#[cfg(feature = "dotgraph")]
-use crate::input::DotGraph;
-#[cfg(feature = "dotgraph")]
-use std::hash::Hash;
-
 /// Defines how the neighbor list of individual nodes are organized within the
 /// CSR target array.
+///
+/// Pass to [`crate::builder::GraphBuilder`]`.csr_layout()` before calling `build()`.
+/// The default is [`CsrLayout::Unsorted`] which minimizes construction time.
 #[derive(Default, Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CsrLayout {
     /// Neighbor lists are sorted and may contain duplicate target ids. This is
     /// the default representation.
@@ -116,7 +122,12 @@ impl<Index: Idx, NI> Csr<Index, NI, ()> {
     }
 }
 
+/// Replaces the internal CSR representation of a graph in place.
+///
+/// Used by [`crate::graph_ops::RelabelByDegreeOp`] to swap in a degree-ordered
+/// CSR after relabeling without allocating a new graph struct.
 pub trait SwapCsr<Index: Idx, NI, EV> {
+    /// Replaces the internal CSR with `csr` and returns `&mut self`.
     fn swap_csr(&mut self, csr: Csr<Index, NI, EV>) -> &mut Self;
 }
 
@@ -292,6 +303,7 @@ where
             return Err(Error::InvalidIdType {
                 expected: expected_type_name,
                 actual: type_name,
+                location: snafu::location!(),
             });
         }
 
@@ -327,9 +339,20 @@ where
     }
 }
 
+/// Per-node value storage, indexed by node id.
+///
+/// Stores one value of type `NV` per node. Used with [`DirectedCsrGraph`] and
+/// [`UndirectedCsrGraph`] when graphs carry node-level metadata (e.g., labels,
+/// weights, or feature vectors). Access via
+/// [`crate::NodeValues::node_value`].
 pub struct NodeValues<NV>(pub(crate) Box<[NV]>);
 
 impl<NV> NodeValues<NV> {
+    /// Creates a `NodeValues` container from a `Vec` of per-node values.
+    ///
+    /// The vector must have exactly as many elements as there are nodes in the
+    /// graph — this is not checked at construction time but enforced when the
+    /// graph is built.
     pub fn new(node_values: Vec<NV>) -> Self {
         Self(node_values.into_boxed_slice())
     }
@@ -380,6 +403,22 @@ where
     }
 }
 
+/// A directed graph backed by two CSR structures — one for outgoing, one for incoming edges.
+///
+/// Type parameters:
+/// - `NI` — node index type (e.g. `u32`, `usize`); must implement [`crate::index::Idx`]
+/// - `NV` — per-node value type (default `()`); access via [`crate::NodeValues::node_value`]
+/// - `EV` — per-edge value type (default `()`); access via [`crate::DirectedNeighborsWithValues`]
+///
+/// Build with [`crate::builder::GraphBuilder`]:
+/// ```
+/// use aletheia_graph_builder::prelude::*;
+///
+/// let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
+///     .edges(vec![(0, 1), (1, 2)])
+///     .build();
+/// assert_eq!(graph.node_count(), 3);
+/// ```
 pub struct DirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
     node_values: NodeValues<NV>,
     csr_out: Csr<NI, NI, EV>,
@@ -387,6 +426,11 @@ pub struct DirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
 }
 
 impl<NI: Idx, NV, EV> DirectedCsrGraph<NI, NV, EV> {
+    /// Creates a directed graph from pre-built CSR arrays and node values.
+    ///
+    /// Prefer [`crate::builder::GraphBuilder`] for constructing graphs from edge lists.
+    /// This constructor is intended for advanced use cases where the CSR data is
+    /// already available (e.g., after deserialization).
     pub fn new(
         node_values: NodeValues<NV>,
         csr_out: Csr<NI, NI, EV>,
@@ -453,7 +497,7 @@ where
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        unimplemented!("This type is not used in tests")
+        panic!("ToUndirectedEdges is not used in test contexts that call len()")
     }
 }
 
@@ -592,36 +636,6 @@ where
     }
 }
 
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for DirectedCsrGraph<NI, ()>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph { edge_list, .. } = dot_graph;
-
-        DirectedCsrGraph::from((edge_list, csr_layout))
-    }
-}
-
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for DirectedCsrGraph<NI, Label>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph {
-            edge_list, labels, ..
-        } = dot_graph;
-
-        let node_values = NodeValues::new(labels);
-
-        DirectedCsrGraph::from((node_values, edge_list, csr_layout))
-    }
-}
-
 impl<W, NI, NV, EV> SerializeGraphOp<W> for DirectedCsrGraph<NI, NV, EV>
 where
     W: Write,
@@ -674,6 +688,27 @@ where
     }
 }
 
+/// An undirected graph backed by a single CSR structure.
+///
+/// Each edge `(u, v)` is stored twice — as `(u, v)` and `(v, u)` — so that
+/// neighbor lookups work symmetrically. [`Graph::edge_count`] returns the
+/// logical edge count (half of the stored target count).
+///
+/// Type parameters:
+/// - `NI` — node index type (e.g. `u32`, `usize`); must implement [`crate::index::Idx`]
+/// - `NV` — per-node value type (default `()`)
+/// - `EV` — per-edge value type (default `()`)
+///
+/// Build with [`crate::builder::GraphBuilder`]:
+/// ```
+/// use aletheia_graph_builder::prelude::*;
+///
+/// let graph: UndirectedCsrGraph<u32> = GraphBuilder::new()
+///     .edges(vec![(0, 1), (1, 2)])
+///     .build();
+/// assert_eq!(graph.node_count(), 3);
+/// assert_eq!(graph.degree(1), 2);
+/// ```
 pub struct UndirectedCsrGraph<NI: Idx, NV = (), EV = ()> {
     node_values: NodeValues<NV>,
     csr: Csr<NI, NI, EV>,
@@ -686,6 +721,9 @@ impl<NI: Idx, EV> From<Csr<NI, NI, EV>> for UndirectedCsrGraph<NI, (), EV> {
 }
 
 impl<NI: Idx, NV, EV> UndirectedCsrGraph<NI, NV, EV> {
+    /// Creates an undirected graph from pre-built CSR arrays and node values.
+    ///
+    /// Prefer [`crate::builder::GraphBuilder`] for constructing graphs from edge lists.
     pub fn new(node_values: NodeValues<NV>, csr: Csr<NI, NI, EV>) -> Self {
         let g = Self { node_values, csr };
         info!(
@@ -796,36 +834,6 @@ where
     }
 }
 
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for UndirectedCsrGraph<NI, ()>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph { edge_list, .. } = dot_graph;
-
-        UndirectedCsrGraph::from((edge_list, csr_layout))
-    }
-}
-
-#[cfg(feature = "dotgraph")]
-impl<NI, Label> From<(DotGraph<NI, Label>, CsrLayout)> for UndirectedCsrGraph<NI, Label>
-where
-    NI: Idx,
-    Label: Idx + Hash,
-{
-    fn from((dot_graph, csr_layout): (DotGraph<NI, Label>, CsrLayout)) -> Self {
-        let DotGraph {
-            edge_list, labels, ..
-        } = dot_graph;
-
-        let node_values = NodeValues::new(labels);
-
-        UndirectedCsrGraph::from((node_values, edge_list, csr_layout))
-    }
-}
-
 impl<W, NI, NV, EV> SerializeGraphOp<W> for UndirectedCsrGraph<NI, NV, EV>
 where
     W: Write,
@@ -871,7 +879,10 @@ where
 }
 
 fn prefix_sum_atomic<NI: Idx>(degrees: Vec<Atomic<NI>>) -> Vec<Atomic<NI>> {
-    let mut last = degrees.last().unwrap().load(Acquire);
+    let mut last = degrees
+        .last()
+        .expect("invariant: prefix_sum_atomic called with non-empty degree vec")
+        .load(Acquire);
     let mut sums = degrees
         .into_iter()
         .scan(NI::zero(), |total, degree| {
@@ -881,14 +892,19 @@ fn prefix_sum_atomic<NI: Idx>(degrees: Vec<Atomic<NI>>) -> Vec<Atomic<NI>> {
         })
         .collect::<Vec<_>>();
 
-    last += sums.last().unwrap().load(Acquire);
+    last += sums
+        .last()
+        .expect("invariant: sums is non-empty after scanning non-empty degrees")
+        .load(Acquire);
     sums.push(Atomic::new(last));
 
     sums
 }
 
 pub(crate) fn prefix_sum<NI: Idx>(degrees: Vec<NI>) -> Vec<NI> {
-    let mut last = *degrees.last().unwrap();
+    let mut last = *degrees
+        .last()
+        .expect("invariant: prefix_sum called with non-empty degree vec");
     let mut sums = degrees
         .into_iter()
         .scan(NI::zero(), |total, degree| {
@@ -897,7 +913,9 @@ pub(crate) fn prefix_sum<NI: Idx>(degrees: Vec<NI>) -> Vec<NI> {
             Some(value)
         })
         .collect::<Vec<_>>();
-    last += *sums.last().unwrap();
+    last += *sums
+        .last()
+        .expect("invariant: sums is non-empty after scanning non-empty degrees");
     sums.push(last);
     sums
 }
@@ -1240,12 +1258,7 @@ mod tests {
 
         assert!(res.is_err());
 
-        let _expected = Error::InvalidIdType {
-            expected: String::from("usize"),
-            actual: String::from("u32"),
-        };
-
-        assert!(matches!(res, _expected));
+        assert!(matches!(res, Err(Error::InvalidIdType { .. })));
     }
 
     #[test]

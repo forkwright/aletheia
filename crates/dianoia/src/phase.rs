@@ -19,6 +19,7 @@ pub struct Phase {
 
 /// Phase lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PhaseState {
     Pending,
     Active,
@@ -29,6 +30,7 @@ pub enum PhaseState {
 }
 
 impl Phase {
+    /// Create a new phase with a display name, goal description, and sort order.
     #[must_use]
     pub fn new(name: String, goal: String, order: u32) -> Self {
         Self {
@@ -42,10 +44,12 @@ impl Phase {
         }
     }
 
+    /// Append a plan to this phase.
     pub fn add_plan(&mut self, plan: Plan) {
         self.plans.push(plan);
     }
 
+    /// Whether this phase has reached the `Complete` state.
     #[must_use]
     pub fn is_complete(&self) -> bool {
         self.state == PhaseState::Complete

@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS schema_version (
 ";
 
 /// Initialize the database: apply base DDL or run pending migrations.
+///
+/// Idempotent — safe to call on an already-initialized database.
+///
+/// # Errors
+/// Returns an error if the DDL execution or schema version INSERT fails.
 pub fn initialize(conn: &Connection) -> Result<()> {
     let version = get_schema_version(conn);
 

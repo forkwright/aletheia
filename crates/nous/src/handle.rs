@@ -29,6 +29,11 @@ impl NousHandle {
     }
 
     /// Send a turn message and await the result.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the actor inbox is closed (actor has shut down).
+    /// - Returns an error if the response channel is dropped before a reply arrives.
     pub async fn send_turn(
         &self,
         session_key: impl Into<String>,
@@ -57,6 +62,11 @@ impl NousHandle {
     }
 
     /// Query the actor's current status.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the actor inbox is closed.
+    /// - Returns an error if the status response channel is dropped.
     pub async fn status(&self) -> error::Result<NousStatus> {
         let (tx, rx) = oneshot::channel();
         self.sender
@@ -77,6 +87,10 @@ impl NousHandle {
     }
 
     /// Transition the actor to dormant state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor inbox is closed.
     pub async fn sleep(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Sleep)
@@ -90,6 +104,10 @@ impl NousHandle {
     }
 
     /// Wake the actor from dormant state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor inbox is closed.
     pub async fn wake(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Wake)
@@ -103,6 +121,10 @@ impl NousHandle {
     }
 
     /// Request graceful shutdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor inbox is closed.
     pub async fn shutdown(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Shutdown)

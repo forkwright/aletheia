@@ -3,7 +3,7 @@
 //! Reads workspace files through the taxis cascade, estimates tokens,
 //! and packs sections in priority order within the token budget.
 
-pub mod tools;
+pub(crate) mod tools;
 
 use tracing::{debug, info, warn};
 
@@ -20,6 +20,7 @@ use crate::error::{self, Result};
 /// Determines inclusion order and drop/truncation behavior under budget pressure.
 /// Derives `Ord` so sections sort Required-first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum SectionPriority {
     /// Must be included. Missing = error.
     Required = 0,

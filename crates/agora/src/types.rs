@@ -6,19 +6,29 @@ use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
 
-/// What a channel supports.
+/// Capability flags for a channel provider.
+///
+/// Channels vary widely in what they support. Use these flags to guard
+/// features (e.g., skip typing indicators on channels where `typing` is false).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "capability flags are inherently boolean"
 )]
 pub struct ChannelCapabilities {
+    /// Whether threaded replies are supported.
     pub threads: bool,
+    /// Whether emoji reactions are supported.
     pub reactions: bool,
+    /// Whether typing indicators are supported.
     pub typing: bool,
+    /// Whether file/image attachments are supported.
     pub media: bool,
+    /// Whether real-time streaming responses are supported.
     pub streaming: bool,
+    /// Whether markdown or other rich formatting is rendered.
     pub rich_formatting: bool,
+    /// Maximum message length in characters before truncation is required.
     pub max_text_length: usize,
 }
 

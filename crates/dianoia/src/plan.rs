@@ -24,6 +24,7 @@ pub struct Plan {
 
 /// Plan lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PlanState {
     Pending,
     Ready,
@@ -43,6 +44,7 @@ pub struct Blocker {
 }
 
 impl Plan {
+    /// Create a new plan with a title, description, and wave number.
     #[must_use]
     pub fn new(title: String, description: String, wave: u32) -> Self {
         Self {
@@ -65,7 +67,11 @@ impl Plan {
         self.depends_on.iter().all(|dep| completed.contains(dep))
     }
 
-    /// Record an iteration. Returns `Err` if `max_iterations` exceeded.
+    /// Record an iteration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stuck-plan error if the iteration count exceeds `max_iterations`.
     pub fn record_iteration(&mut self) -> Result<()> {
         self.iterations += 1;
         if self.iterations > self.max_iterations {

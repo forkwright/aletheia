@@ -1,4 +1,8 @@
 //! JWT token issuance and validation.
+//!
+//! [`JwtManager`] wraps the `jsonwebtoken` crate with Aletheia-specific defaults:
+//! HMAC-SHA256 signing, typed [`crate::types::Claims`] payloads, and ULID-based `jti`
+//! for per-token revocation.
 
 use std::time::Duration;
 
@@ -64,7 +68,12 @@ impl JwtManager {
         }
     }
 
-    /// Issue an access token.
+    /// Issue an access token with the configured TTL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::TokenEncode`] if JWT encoding fails
+    /// (e.g., invalid key material).
     #[instrument(skip(self), fields(kind = "access"))]
     pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
         self.issue(
@@ -76,13 +85,27 @@ impl JwtManager {
         )
     }
 
-    /// Issue a refresh token.
+    /// Issue a refresh token with the configured TTL. Refresh tokens have no `nous_id` scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::TokenEncode`] if JWT encoding fails.
     #[instrument(skip(self), fields(kind = "refresh"))]
     pub fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
         self.issue(sub, role, None, TokenKind::Refresh, self.config.refresh_ttl)
     }
 
-    /// Validate a token and return its claims.
+    /// Validate a token signature and expiry. Returns the decoded [`crate::types::Claims`].
+    ///
+    /// Verifies the HMAC-SHA256 signature, checks the `iss` claim, and validates
+    /// required spec claims (`exp`, `iss`, `sub`, `iat`). Does not check revocation —
+    /// use [`crate::auth::AuthService::validate_token`] for full validation including
+    /// the revocation list.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::error::Error::ExpiredToken`] if the token has expired.
+    /// - [`crate::error::Error::TokenDecode`] if the signature is invalid or claims are malformed.
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&[&self.config.issuer]);
@@ -99,7 +122,14 @@ impl JwtManager {
         Ok(token_data.claims)
     }
 
-    /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
+    /// Refresh a token pair: validate the refresh token and issue a new access + refresh pair.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::error::Error::InvalidToken`] if the provided token is an access token (not refresh).
+    /// - [`crate::error::Error::ExpiredToken`] if the refresh token has expired.
+    /// - [`crate::error::Error::TokenDecode`] if the token is malformed.
+    /// - [`crate::error::Error::TokenEncode`] if issuing the new tokens fails.
     #[instrument(skip(self, refresh_token))]
     pub fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.validate(refresh_token)?;

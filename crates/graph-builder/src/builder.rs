@@ -1,3 +1,13 @@
+//! Typestate graph builder.
+//!
+//! [`GraphBuilder`] uses the typestate pattern to guide callers through graph
+//! construction: the set of available methods changes as the builder accumulates
+//! configuration, ensuring that `build()` is only callable once the graph source
+//! (edges, file path, or GDL string) has been provided.
+//!
+//! The builder typestate types (`Uninitialized`, `FromEdges`, etc.) are public so
+//! that they appear in rustdoc but are not intended for direct construction.
+
 use std::{convert::TryFrom, marker::PhantomData};
 
 use crate::{
@@ -9,10 +19,12 @@ use crate::{
 };
 use std::path::Path as StdPath;
 
+/// Initial builder state — no graph source has been configured yet.
 pub struct Uninitialized {
     csr_layout: CsrLayout,
 }
 
+/// Builder state after [`GraphBuilder::edges`] — holds unweighted edge tuples.
 pub struct FromEdges<NI, Edges>
 where
     NI: Idx,
@@ -23,6 +35,8 @@ where
     _node: PhantomData<NI>,
 }
 
+/// Builder state after [`GraphBuilder::node_values`] with an edge list — holds
+/// both edges and per-node values.
 pub struct FromEdgeListAndNodeValues<NI, NV, EV>
 where
     NI: Idx,
@@ -32,6 +46,7 @@ where
     edge_list: EdgeList<NI, EV>,
 }
 
+/// Builder state after [`GraphBuilder::edges_with_values`] — holds weighted edge triplets.
 pub struct FromEdgesWithValues<NI, Edges, EV>
 where
     NI: Idx,
@@ -42,28 +57,7 @@ where
     _node: PhantomData<NI>,
 }
 
-#[cfg(feature = "gdl")]
-#[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-pub struct FromGdlString<NI>
-where
-    NI: Idx,
-{
-    csr_layout: CsrLayout,
-    gdl: String,
-    _node: PhantomData<NI>,
-}
-
-#[cfg(feature = "gdl")]
-#[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-pub struct FromGdlGraph<'a, NI>
-where
-    NI: Idx,
-{
-    csr_layout: CsrLayout,
-    gdl_graph: &'a gdl::Graph,
-    _node: PhantomData<NI>,
-}
-
+/// Builder state after [`GraphBuilder::file_format`] — format selected, path not yet set.
 pub struct FromInput<NI, P, Format>
 where
     P: AsRef<StdPath>,
@@ -77,6 +71,7 @@ where
     _format: PhantomData<Format>,
 }
 
+/// Builder state after [`GraphBuilder::path`] — ready to read and build from file.
 pub struct FromPath<NI, P, Format>
 where
     P: AsRef<StdPath>,
@@ -234,107 +229,6 @@ impl GraphBuilder<Uninitialized> {
         }
     }
 
-    /// Creates a graph using Graph Definition Language (GDL).
-    ///
-    /// Creating graphs from GDL is recommended for small graphs only, e.g.,
-    /// during testing. The graph construction is **not** parallelized.
-    ///
-    /// See [GDL on crates.io](https://crates.io/crates/gdl) for more
-    /// information on how to define graphs using GDL.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use aletheia_graph_builder::prelude::*;
-    ///
-    /// let g: UndirectedCsrGraph<usize> = GraphBuilder::new()
-    ///     .gdl_str::<usize, _>("(a)-->(),(a)-->()")
-    ///     .build()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(g.node_count(), 3);
-    /// assert_eq!(g.edge_count(), 2);
-    /// ```
-    ///
-    /// One can also create weighted graphs using GDL. There needs to be exactly
-    /// one edge property with the same type as specified for the edge value.
-    /// The property key is not relevant.
-    ///
-    /// ```
-    /// use aletheia_graph_builder::prelude::*;
-    ///
-    /// let g: UndirectedCsrGraph<usize, (), f32> = GraphBuilder::new()
-    ///     .csr_layout(CsrLayout::Sorted)
-    ///     .gdl_str::<usize, _>("(a)-[{f: 0.42}]->(),(a)-[{f: 13.37}]->()")
-    ///     .build()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(g.node_count(), 3);
-    /// assert_eq!(g.edge_count(), 2);
-    ///
-    /// let mut neighbors = g.neighbors_with_values(0);
-    /// assert_eq!(neighbors.next(), Some(&Target::new(1, 0.42)));
-    /// assert_eq!(neighbors.next(), Some(&Target::new(2, 13.37)));
-    /// assert_eq!(neighbors.next(), None);
-    /// ```
-    #[cfg(feature = "gdl")]
-    #[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-    pub fn gdl_str<NI, S>(self, gdl: S) -> GraphBuilder<FromGdlString<NI>>
-    where
-        NI: Idx,
-        S: Into<String>,
-    {
-        GraphBuilder {
-            state: FromGdlString {
-                csr_layout: self.state.csr_layout,
-                gdl: gdl.into(),
-                _node: PhantomData,
-            },
-        }
-    }
-
-    /// Creates a graph from an already constructed GDL graph.
-    ///
-    /// Creating graphs from GDL is recommended for small graphs only, e.g.,
-    /// during testing. The graph construction is **not** parallelized.
-    ///
-    /// See [GDL on crates.io](https://crates.io/crates/gdl) for more
-    /// information on how to define graphs using GDL.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use aletheia_graph_builder::prelude::*;
-    ///
-    /// let gdl_graph = "(a)-->(),(a)-->()".parse::<::gdl::Graph>().unwrap();
-    ///
-    /// let g: DirectedCsrGraph<usize> = GraphBuilder::new()
-    ///     .gdl_graph::<usize>(&gdl_graph)
-    ///     .build()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(g.node_count(), 3);
-    /// assert_eq!(g.edge_count(), 2);
-    ///
-    /// let id_a = gdl_graph.get_node("a").unwrap().id();
-    ///
-    /// assert_eq!(g.out_neighbors(id_a).len(), 2);
-    /// ```
-    #[cfg(feature = "gdl")]
-    #[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-    pub fn gdl_graph<NI>(self, gdl_graph: &::gdl::Graph) -> GraphBuilder<FromGdlGraph<NI>>
-    where
-        NI: Idx,
-    {
-        GraphBuilder {
-            state: FromGdlGraph {
-                csr_layout: self.state.csr_layout,
-                gdl_graph,
-                _node: PhantomData,
-            },
-        }
-    }
-
     /// Creates a graph by reading it from the given file format.
     ///
     /// # Examples
@@ -385,6 +279,10 @@ where
     NI: Idx,
     Edges: IntoIterator<Item = (NI, NI)>,
 {
+    /// Attaches per-node values and transitions to the node-values builder state.
+    ///
+    /// `node_values` must yield exactly as many items as there are nodes in the graph.
+    /// Node count is inferred from the maximum node id in the edge list.
     pub fn node_values<NV, I>(
         self,
         node_values: I,
@@ -404,7 +302,11 @@ where
         }
     }
 
-    /// Build the graph from the given vec of edges.
+    /// Build the graph from the configured unweighted edge set.
+    ///
+    /// The type parameter `Graph` determines the output — typically
+    /// [`DirectedCsrGraph`](crate::prelude::DirectedCsrGraph) or
+    /// [`UndirectedCsrGraph`](crate::prelude::UndirectedCsrGraph).
     pub fn build<Graph>(self) -> Graph
     where
         Graph: From<(EdgeList<NI, ()>, CsrLayout)>,
@@ -422,6 +324,9 @@ where
     EV: Sync,
     Edges: IntoIterator<Item = (NI, NI, EV)>,
 {
+    /// Attaches per-node values to a weighted edge builder.
+    ///
+    /// `node_values` must yield exactly as many items as there are nodes.
     pub fn node_values<NV, I>(
         self,
         node_values: I,
@@ -454,6 +359,11 @@ where
 }
 
 impl<NI: Idx, NV, EV> GraphBuilder<FromEdgeListAndNodeValues<NI, NV, EV>> {
+    /// Build the graph from the configured edge list and per-node values.
+    ///
+    /// Produces a [`DirectedCsrGraph`](crate::prelude::DirectedCsrGraph) or
+    /// [`UndirectedCsrGraph`](crate::prelude::UndirectedCsrGraph) with attached
+    /// node value storage.
     pub fn build<Graph>(self) -> Graph
     where
         Graph: From<(NodeValues<NV>, EdgeList<NI, EV>, CsrLayout)>,
@@ -463,38 +373,6 @@ impl<NI: Idx, NV, EV> GraphBuilder<FromEdgeListAndNodeValues<NI, NV, EV>> {
             self.state.edge_list,
             self.state.csr_layout,
         ))
-    }
-}
-
-#[cfg(feature = "gdl")]
-#[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-impl<NI> GraphBuilder<FromGdlString<NI>>
-where
-    NI: Idx,
-{
-    /// Builds the graph from the given GDL string.
-    pub fn build<Graph>(self) -> Result<Graph, Error>
-    where
-        Graph: From<(gdl::Graph, CsrLayout)>,
-    {
-        let gdl_graph = self.state.gdl.parse::<gdl::Graph>()?;
-        let graph = Graph::from((gdl_graph, self.state.csr_layout));
-        Ok(graph)
-    }
-}
-
-#[cfg(feature = "gdl")]
-#[cfg_attr(all(feature = "gdl", has_doc_cfg), doc(cfg(feature = "gdl")))]
-impl<'a, NI> GraphBuilder<FromGdlGraph<'a, NI>>
-where
-    NI: Idx,
-{
-    /// Build the graph from the given GDL graph.
-    pub fn build<Graph>(self) -> Result<Graph, Error>
-    where
-        Graph: From<(&'a gdl::Graph, CsrLayout)>,
-    {
-        Ok(Graph::from((self.state.gdl_graph, self.state.csr_layout)))
     }
 }
 
@@ -526,7 +404,13 @@ where
     Format::GraphInput: TryFrom<InputPath<Path>>,
     crate::Error: From<<Format::GraphInput as TryFrom<InputPath<Path>>>::Error>,
 {
-    /// Build the graph from the given input format and path.
+    /// Build the graph by reading the configured file in the configured format.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::Error::IoError`] if the file cannot be opened or read.
+    /// - [`crate::Error::InvalidIdType`] if the serialized index type does not match `NI`.
+    /// - Other `Error` variants if the graph format conversion fails.
     pub fn build<Graph>(self) -> Result<Graph, Error>
     where
         Graph: TryFrom<(Format::GraphInput, CsrLayout)>,

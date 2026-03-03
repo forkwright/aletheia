@@ -7,14 +7,17 @@ use axum::http::request::Parts;
 
 use aletheia_symbolon::types::Role;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, UnauthorizedSnafu};
 use crate::state::AppState;
 
 /// Authenticated user claims extracted from a JWT Bearer token.
 #[derive(Debug, Clone)]
-pub struct Claims {
+pub(crate) struct Claims {
+    #[expect(dead_code, reason = "reserved for audit logging")]
     pub sub: String,
+    #[expect(dead_code, reason = "reserved for RBAC enforcement")]
     pub role: Role,
+    #[expect(dead_code, reason = "reserved for per-nous scope enforcement")]
     pub nous_id: Option<String>,
 }
 
@@ -29,16 +32,16 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or_else(|| UnauthorizedSnafu.build())?;
 
         let token = header
             .strip_prefix("Bearer ")
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or_else(|| UnauthorizedSnafu.build())?;
 
         let claims = state
             .jwt_manager
             .validate(token)
-            .map_err(|_err| ApiError::Unauthorized)?;
+            .map_err(|_err| UnauthorizedSnafu.build())?;
 
         Ok(Self {
             sub: claims.sub,

@@ -10,6 +10,7 @@ use crate::error::{self, Result};
 
 /// When a task should run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Schedule {
     /// Cron expression (e.g., `"0 */45 8-23 * * *"` for every 45min 8am-11pm).
     Cron(String),
@@ -42,6 +43,7 @@ pub struct TaskDef {
 
 /// What a background task does.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum TaskAction {
     /// Execute a shell command.
     Command(String),
@@ -58,6 +60,7 @@ pub enum TaskAction {
 
 /// Built-in maintenance tasks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum BuiltinTask {
     /// Prosoche attention check.
     Prosoche,
@@ -71,6 +74,10 @@ impl Schedule {
     /// Calculate the next run time from now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if a `Cron` expression cannot be parsed into a valid schedule.
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {

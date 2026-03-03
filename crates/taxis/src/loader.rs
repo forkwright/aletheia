@@ -8,12 +8,22 @@ use crate::config::AletheiaConfig;
 use crate::error::{FigmentSnafu, Result};
 use crate::oikos::Oikos;
 
-/// Load configuration with cascade: defaults → YAML → environment.
+/// Load [`AletheiaConfig`] with a three-source cascade: defaults → YAML file → environment.
 ///
-/// Resolution order (later wins):
-/// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.yaml` (if it exists)
-/// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
+/// Resolution order (later entries override earlier ones):
+/// 1. Compiled defaults via [`AletheiaConfig::default()`]
+/// 2. `{oikos.config()}/aletheia.yaml` — merged on top of defaults if the file exists
+/// 3. Environment variables with the `ALETHEIA_` prefix, using `__` as a path separator
+///    (e.g. `ALETHEIA_GATEWAY__PORT=9000` overrides `gateway.port`)
+///
+/// Missing YAML file is not an error — the loader silently falls through to env vars.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Figment`] if:
+/// - The YAML file exists but cannot be parsed
+/// - An environment variable cannot be coerced to the target field type
+/// - Figment deserialization into [`AletheiaConfig`] fails for any reason
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
