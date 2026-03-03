@@ -8,20 +8,16 @@ repository.workspace = true
 rust-version.workspace = true
 
 [lints.rust]
-# Vendored graph_builder code — unsafe required for CSR construction
+# Absorbed graph_builder crate — 42+ unsafe sites, separate cleanup tracked
 unsafe_code = { level = "allow", priority = 1 }
+# Absorbed code predates 2018 edition idiom enforcement
 rust_2018_idioms = { level = "allow", priority = 1 }
-future_incompatible = { level = "warn", priority = -1 }
 
 [lints.clippy]
+# Absorbed graph_builder patterns — pedantic warnings suppressed for absorbed code
 pedantic = { level = "allow", priority = 1 }
-dbg_macro = { level = "allow", priority = 1 }
-todo = { level = "allow", priority = 1 }
-unimplemented = { level = "allow", priority = 1 }
-# Vendored graph_builder patterns — hash trait on mutable CSR
+# Absorbed code uses mutable HashMap keys intentionally in graph construction
 mutable_key_type = { level = "allow", priority = 1 }
-# Vendored Edges trait — len() without is_empty() is intentional (EdgeList always non-empty)
-len_without_is_empty = { level = "allow", priority = 1 }
 
 [dependencies]
 rayon = "=1.10.0"
