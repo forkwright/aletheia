@@ -46,12 +46,17 @@ impl std::str::FromStr for Role {
 }
 
 /// Distinguishes access tokens from refresh tokens.
+///
+/// Included in every [`Claims`] payload. Used by [`crate::auth::AuthService`]
+/// to enforce that refresh endpoints receive [`TokenKind::Refresh`] tokens
+/// and resource endpoints receive [`TokenKind::Access`] tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum TokenKind {
-    /// Short-lived token for API access.
+    /// Short-lived token for API access. Default TTL: 1 hour.
     Access,
-    /// Long-lived token used to obtain new access tokens.
+    /// Long-lived token used to obtain new access tokens. Default TTL: 7 days.
     Refresh,
 }
 
@@ -71,19 +76,27 @@ pub struct Claims {
     pub iat: i64,
     /// Expiration (unix seconds).
     pub exp: i64,
-    /// Unique token ID (for revocation).
+    /// Unique token ID (for revocation). Used by [`crate::store::AuthStore::revoke_token`].
     pub jti: String,
-    /// Access or refresh.
+    /// Access or refresh — see [`TokenKind`].
     pub kind: TokenKind,
 }
 
 /// An access + refresh token pair returned from login or refresh.
+///
+/// Returned by [`crate::auth::AuthService::login`] and
+/// [`crate::auth::AuthService::refresh_token`].
 pub struct TokenPair {
+    /// Short-lived JWT for API access. Pass in the `Authorization: Bearer` header.
     pub access_token: String,
+    /// Long-lived JWT for obtaining new access tokens.
     pub refresh_token: String,
 }
 
 /// Actions that can be authorized via RBAC.
+///
+/// Passed to [`crate::auth::AuthService::authorize`] to check whether
+/// a [`Claims`] principal has permission for the requested operation.
 #[non_exhaustive]
 pub enum Action {
     /// Read a session belonging to a specific nous.
@@ -122,12 +135,17 @@ pub struct User {
 }
 
 /// Stored API key metadata (never includes the secret).
+///
+/// Returned by [`crate::api_key::list`] and [`crate::api_key::generate`].
+/// The raw key is shown to the caller exactly once; only the blake3 hash is persisted.
 #[derive(Debug, Clone)]
 pub struct ApiKeyRecord {
     pub id: String,
     pub prefix: String,
+    /// Blake3 hash of the full `ale_{prefix}_{secret}` key string.
     pub key_hash: String,
     pub role: Role,
+    /// Agent scope — present only for [`Role::Agent`] keys.
     pub nous_id: Option<String>,
     pub created_at: String,
     pub expires_at: Option<String>,

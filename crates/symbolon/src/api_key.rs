@@ -18,7 +18,13 @@ const KEY_PREFIX: &str = "ale";
 
 /// Generate a new API key. Returns `(full_key_string, metadata_record)`.
 ///
-/// The full key string is shown to the user exactly once. Only the hash is stored.
+/// The full key string (`ale_{prefix}_{secret}`) is returned exactly once and must
+/// be delivered to the caller immediately — only the blake3 hash is stored.
+/// Use `prefix` as a human-readable identifier for logs and audit trails.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Database`] if the key cannot be persisted to the store.
 #[instrument(skip(store))]
 pub fn generate(
     store: &AuthStore,
@@ -67,8 +73,15 @@ pub fn generate(
 
 /// Validate an API key string and return claims if valid.
 ///
-/// Parses the key format, hashes with blake3, looks up in the store,
-/// checks revocation and expiry, and updates `last_used_at`.
+/// Parses the `ale_{prefix}_{secret}` format, hashes the full string with blake3,
+/// looks up the hash in the store, checks revocation and expiry, and updates `last_used_at`.
+///
+/// # Errors
+///
+/// - [`crate::error::Error::InvalidApiKey`] if the key format is malformed.
+/// - [`crate::error::Error::InvalidCredentials`] if the hash is not found or the key is revoked.
+/// - [`crate::error::Error::ExpiredToken`] if the key has passed its expiry timestamp.
+/// - [`crate::error::Error::Database`] on SQLite access failure.
 pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
     let _parts = parse_key(raw_key)?;
     let key_hash = blake3::hash(raw_key.as_bytes()).to_hex().to_string();
@@ -105,12 +118,21 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
     })
 }
 
-/// Revoke an API key by its ID.
+/// Revoke an API key by its record ID (not the key string itself).
+///
+/// # Errors
+///
+/// - [`crate::error::Error::NotFound`] if no key with that ID exists.
+/// - [`crate::error::Error::Database`] on SQLite access failure.
 pub fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
     store.revoke_api_key(key_id)
 }
 
-/// List all API keys (metadata only, never the secret).
+/// List all API keys, ordered by creation time descending (metadata only, never the secret).
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Database`] on SQLite access failure.
 pub fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
     store.list_api_keys()
 }

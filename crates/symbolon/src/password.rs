@@ -9,7 +9,13 @@ use crate::error::{self, Result};
 
 /// Hash a password with Argon2id (OWASP-recommended defaults).
 ///
-/// Returns the PHC-formatted hash string suitable for storage.
+/// Generates a random salt via `OsRng` on every call — the same password will
+/// produce a different hash each time. Returns a PHC-formatted string suitable
+/// for storage and later verification with [`verify_password`].
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Hash`] if Argon2 hashing fails (e.g., memory allocation error).
 pub fn hash_password(password: &SecretString) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -28,7 +34,11 @@ pub fn hash_password(password: &SecretString) -> Result<String> {
 /// Verify a password against a stored Argon2id hash.
 ///
 /// Returns `Ok(true)` if the password matches, `Ok(false)` if it does not.
-/// Returns `Err` only if the hash string is malformed.
+/// This is a constant-time comparison to prevent timing attacks.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::Hash`] if the `hash` string is not a valid PHC hash format.
 pub fn verify_password(password: &SecretString, hash: &str) -> Result<bool> {
     let parsed_hash = PasswordHash::new(hash).map_err(|e| {
         error::HashSnafu {

@@ -2,6 +2,22 @@
 //!
 //! Symbolon (σύμβολον — "token, credential") handles JWT sessions,
 //! API key validation, Argon2id password hashing, and RBAC permission checks.
+//!
+//! # Architecture
+//!
+//! - [`auth::AuthService`] — unified facade composing all auth subsystems
+//! - [`store::AuthStore`] — SQLite backend for users, API keys, and token revocation
+//! - [`jwt::JwtManager`] — HMAC-SHA256 JWT issuance and validation
+//! - [`api_key`] — blake3-hashed API key generation and validation
+//! - [`password`] — Argon2id password hashing and verification
+//!
+//! # Key Types
+//!
+//! - [`types::Claims`] — decoded JWT payload with role and nous scope
+//! - [`types::Role`] — RBAC roles: Operator, Agent, Readonly
+//! - [`types::TokenKind`] — distinguishes access from refresh tokens
+//! - [`types::ApiKeyRecord`] — stored API key metadata (never the secret)
+//! - [`types::Action`] — RBAC action descriptors for [`auth::AuthService::authorize`]
 
 pub mod api_key;
 pub mod auth;
