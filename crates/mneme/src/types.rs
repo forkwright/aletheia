@@ -2,16 +2,26 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Session status.
+/// Session status — lifecycle state of a [`Session`].
+///
+/// Persisted as a lowercase string (`"active"`, `"archived"`, `"distilled"`).
+/// See the `status` column constraint in [`crate::schema::DDL`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SessionStatus {
+    /// Session is in use and accepting new messages.
     Active,
+    /// Session has been closed but is preserved in history.
     Archived,
+    /// Session history has been compressed by the distillation engine.
     Distilled,
 }
 
 impl SessionStatus {
+    /// Returns the lowercase string used in the wire format and SQLite storage.
+    ///
+    /// Matches `serde(rename_all = "lowercase")`: `"active"`, `"archived"`, or `"distilled"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -29,15 +39,25 @@ impl std::fmt::Display for SessionStatus {
 }
 
 /// Session type — classifies session lifecycle behavior.
+///
+/// Derived from the session key via [`SessionType::from_key`].
+/// Persisted as a lowercase string in the `session_type` column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SessionType {
+    /// Main agent session (default).
     Primary,
+    /// Background attention task (key contains `"prosoche"`).
     Background,
+    /// Short-lived spawned session (`"ask:"`, `"spawn:"`, `"dispatch:"`, `"ephemeral:"` prefix).
     Ephemeral,
 }
 
 impl SessionType {
+    /// Returns the lowercase string used in the wire format and SQLite storage.
+    ///
+    /// Matches `serde(rename_all = "lowercase")`: `"primary"`, `"background"`, or `"ephemeral"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -70,17 +90,30 @@ impl std::fmt::Display for SessionType {
     }
 }
 
-/// Message role.
+/// Message role for session history storage.
+///
+/// Distinct from `hermeneus::types::Role` — this type includes `ToolResult`
+/// to support storing tool results as first-class messages in the [`Session`]
+/// history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Role {
+    /// System prompt or injected context.
     System,
+    /// Human/caller input.
     User,
+    /// Model response.
     Assistant,
+    /// Tool execution result returned to the model.
     ToolResult,
 }
 
 impl Role {
+    /// Returns the `snake_case` string used in the wire format and SQLite storage.
+    ///
+    /// Matches `serde(rename_all = "snake_case")`: `"system"`, `"user"`,
+    /// `"assistant"`, or `"tool_result"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

@@ -1,9 +1,21 @@
 //! aletheia-mneme — session store and memory engine
 //!
-//! Mneme (Μνήμη) — "memory." Manages sessions, messages, and usage tracking
-//! via embedded `SQLite` (`rusqlite`). Future: `CozoDB` for vectors + graph.
+//! Mneme (Μνήμη) — "memory." Manages sessions, messages, usage tracking, and
+//! structured knowledge. Two embedded storage backends:
+//! - SQLite (`store::SessionStore`) — conversation history, distillation metadata, agent notes
+//! - CozoDB (`knowledge_store::KnowledgeStore`) — fact graph, entity relationships, HNSW vector index
 //!
-//! Depends on `aletheia-koina` for types and errors.
+//! ## Key types
+//!
+//! - [`store::SessionStore`] — open/create sessions, append messages, record distillation
+//! - [`types::Session`] / [`types::Message`] — session and message records from SQLite
+//! - [`types::SessionStatus`] / [`types::SessionType`] / [`types::Role`] — enum domain types
+//! - [`knowledge::Fact`] / [`knowledge::Entity`] / [`knowledge::Relationship`] — CozoDB domain types
+//! - [`extract::ExtractionEngine`] — LLM-driven fact/entity extraction from conversations
+//! - [`embedding::EmbeddingProvider`] — text-to-vector interface for semantic recall
+//! - `recall::RecallQuery` — structured semantic + graph recall query
+//!
+//! Depends on `aletheia-koina` for shared types.
 
 pub mod embedding;
 pub mod error;

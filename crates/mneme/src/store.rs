@@ -77,7 +77,10 @@ impl SessionStore {
         Ok(session)
     }
 
-    /// Find a session by ID (any status).
+    /// Find a session by ID (any [`SessionStatus`]).
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails.
     pub fn find_session_by_id(&self, id: &str) -> Result<Option<Session>> {
         let mut stmt = self
             .conn
@@ -173,6 +176,12 @@ impl SessionStore {
     }
 
     /// List sessions, optionally filtered by nous ID.
+    ///
+    /// Returns all sessions ordered by `updated_at` descending. Pass `nous_id = None`
+    /// to return sessions for every nous.
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails.
     pub fn list_sessions(&self, nous_id: Option<&str>) -> Result<Vec<Session>> {
         let mut sessions = Vec::new();
 
@@ -205,7 +214,10 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    /// Update session status.
+    /// Update session status to the given [`SessionStatus`].
+    ///
+    /// # Errors
+    /// Returns an error if the database UPDATE fails.
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         self.conn
             .execute(
@@ -261,7 +273,15 @@ impl SessionStore {
         Ok(next_seq)
     }
 
-    /// Get message history for a session.
+    /// Get undistilled message history for a session.
+    ///
+    /// Returns messages in chronological order (ascending `seq`). Distilled
+    /// messages (where `is_distilled = true`) are excluded.
+    ///
+    /// When `limit` is `Some(n)`, returns the most recent `n` messages.
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails.
     #[instrument(skip(self))]
     pub fn get_history(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
         let mut messages = Vec::new();
@@ -320,7 +340,14 @@ impl SessionStore {
         Ok(result)
     }
 
-    /// Mark messages as distilled and recalculate session token count.
+    /// Mark the given message sequence numbers as distilled and recalculate session token counts.
+    ///
+    /// Marked messages are excluded from future [`get_history`](SessionStore::get_history) calls.
+    /// The session's `token_count_estimate` and `message_count` are recomputed from the
+    /// remaining undistilled messages.
+    ///
+    /// # Errors
+    /// Returns an error if the transaction or any UPDATE fails.
     #[instrument(skip(self, seqs), fields(count = seqs.len()))]
     pub fn mark_messages_distilled(&self, session_id: &str, seqs: &[i64]) -> Result<()> {
         if seqs.is_empty() {
@@ -373,7 +400,12 @@ impl SessionStore {
 
     // --- Usage ---
 
-    /// Record token usage for a turn.
+    /// Record token usage for a single turn.
+    ///
+    /// Inserts a row into the `usage` table. See [`UsageRecord`] for the fields.
+    ///
+    /// # Errors
+    /// Returns an error if the INSERT fails.
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
         self.conn
             .execute(
@@ -414,7 +446,12 @@ impl SessionStore {
         Ok(id)
     }
 
-    /// Get notes for a session.
+    /// Get all agent notes for a session, ordered by insertion.
+    ///
+    /// Returns [`AgentNote`] records sorted by `id` ascending (insertion order).
+    ///
+    /// # Errors
+    /// Returns an error if the database query fails.
     pub fn get_notes(&self, session_id: &str) -> Result<Vec<AgentNote>> {
         let mut stmt = self
             .conn
@@ -443,7 +480,12 @@ impl SessionStore {
         Ok(notes)
     }
 
-    /// Delete a note by ID.
+    /// Delete an agent note by ID.
+    ///
+    /// Returns `true` if a row was deleted, `false` if the ID was not found.
+    ///
+    /// # Errors
+    /// Returns an error if the DELETE fails.
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         let rows = self
             .conn

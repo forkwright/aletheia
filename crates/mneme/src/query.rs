@@ -9,16 +9,29 @@ pub trait Field: Copy {
     fn name(self) -> &'static str;
 }
 
-/// Knowledge graph relations.
+/// Knowledge graph relations — the top-level CozoDB stored relations.
+///
+/// Used with [`QueryBuilder`] to name the relation in `:put` and `*relation{...}`
+/// expressions. Each variant maps to a CozoDB relation defined in
+/// [`crate::schema::DDL`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Relation {
+    /// Bi-temporal fact store.
     Facts,
+    /// Named entity graph nodes.
     Entities,
+    /// Typed edges between entities.
     Relationships,
+    /// HNSW vector index for semantic recall.
     Embeddings,
 }
 
 impl Relation {
+    /// Returns the CozoDB relation name used in Datalog scripts.
+    ///
+    /// For example, `Relation::Facts.name()` returns `"facts"` — the name
+    /// used in `*facts{...}` pattern clauses.
     pub fn name(self) -> &'static str {
         match self {
             Self::Facts => "facts",
@@ -29,8 +42,11 @@ impl Relation {
     }
 }
 
-/// Fields in the `facts` relation.
+/// Fields in the `facts` CozoDB relation.
+///
+/// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FactsField {
     Id,
     ValidFrom,
@@ -61,8 +77,11 @@ impl Field for FactsField {
     }
 }
 
-/// Fields in the `entities` relation.
+/// Fields in the `entities` CozoDB relation.
+///
+/// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EntitiesField {
     Id,
     Name,
@@ -85,8 +104,11 @@ impl Field for EntitiesField {
     }
 }
 
-/// Fields in the `relationships` relation.
+/// Fields in the `relationships` CozoDB relation.
+///
+/// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RelationshipsField {
     Src,
     Dst,
@@ -107,8 +129,11 @@ impl Field for RelationshipsField {
     }
 }
 
-/// Fields in the `embeddings` relation.
+/// Fields in the `embeddings` CozoDB relation.
+///
+/// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EmbeddingsField {
     Id,
     Content,
@@ -145,6 +170,11 @@ pub struct QueryBuilder {
 }
 
 impl QueryBuilder {
+    /// Create an empty query builder.
+    ///
+    /// Call [`put`](QueryBuilder::put) to start an upsert operation or
+    /// [`scan`](QueryBuilder::scan) to start a query. Use [`build`](QueryBuilder::build)
+    /// or [`build_script`](QueryBuilder::build_script) to finalise.
     pub fn new() -> Self {
         Self {
             lines: Vec::new(),
