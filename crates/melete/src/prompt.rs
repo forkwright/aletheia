@@ -4,6 +4,9 @@ use std::fmt::Write;
 
 use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role};
 
+use crate::distill::DistillSection;
+
+#[deprecated(note = "use build_system_prompt() with configured sections")]
 pub const DISTILLATION_SYSTEM_PROMPT: &str = "\
 You are a context distillation engine. Your task is to compress a conversation \
 history into a structured summary that preserves all essential information for \
@@ -45,6 +48,32 @@ Rules:
 - Preserve names, identifiers, and numbers exactly
 - Target 400-600 words total
 - Every fact in the summary must be traceable to the conversation";
+
+/// Generate the distillation system prompt from configured sections.
+pub fn build_system_prompt(sections: &[DistillSection]) -> String {
+    let mut prompt = String::from(
+        "You are a context distillation engine. Your task is to compress a conversation \
+         history into a structured summary that preserves all essential information for \
+         continuing the work.\n\n\
+         Produce a summary with EXACTLY these sections:\n\n",
+    );
+
+    for section in sections {
+        let _ = writeln!(prompt, "{}\n{}\n", section.heading(), section.description());
+    }
+
+    prompt.push_str(
+        "Rules:\n\
+         - Use first person: \"I was...\", \"I decided...\"\n\
+         - Be specific: file paths, line numbers, function names, exact values\n\
+         - Preserve names, identifiers, and numbers exactly\n\
+         - Target 400-600 words total\n\
+         - Every fact in the summary must be traceable to the conversation\n\
+         - If a section has no content, omit it entirely (don't include empty sections)",
+    );
+
+    prompt
+}
 
 /// Format conversation messages into readable text for the distillation LLM.
 pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String {
@@ -126,7 +155,8 @@ mod tests {
     }
 
     #[test]
-    fn system_prompt_contains_all_sections() {
+    #[expect(deprecated)]
+    fn deprecated_constant_still_exists() {
         let sections = [
             "## Summary",
             "## Task Context",
@@ -142,6 +172,43 @@ mod tests {
                 "missing section: {section}"
             );
         }
+    }
+
+    #[test]
+    fn build_system_prompt_default_sections() {
+        let prompt = build_system_prompt(&DistillSection::all_standard());
+        let expected = [
+            "## Summary",
+            "## Task Context",
+            "## Completed Work",
+            "## Key Decisions",
+            "## Current State",
+            "## Open Threads",
+            "## Corrections",
+        ];
+        for section in expected {
+            assert!(prompt.contains(section), "missing section: {section}");
+        }
+    }
+
+    #[test]
+    fn build_system_prompt_custom_section() {
+        let sections = vec![
+            DistillSection::Summary,
+            DistillSection::Custom {
+                name: "Architecture Notes".to_owned(),
+                description: "Record architectural decisions and their trade-offs.".to_owned(),
+            },
+        ];
+        let prompt = build_system_prompt(&sections);
+        assert!(prompt.contains("## Architecture Notes"));
+        assert!(prompt.contains("Record architectural decisions"));
+    }
+
+    #[test]
+    fn build_system_prompt_contains_omit_rule() {
+        let prompt = build_system_prompt(&DistillSection::all_standard());
+        assert!(prompt.contains("omit it entirely"));
     }
 
     #[test]
