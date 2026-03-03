@@ -1,6 +1,7 @@
 # Aletheia Operational Runbook
 
 Quick reference for starting, stopping, diagnosing, and recovering Aletheia services.
+For initial setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Service Architecture
 
@@ -39,7 +40,7 @@ curl -s http://localhost:8230/health | python3 -m json.tool
 #
 # If down, check: systemctl --user status aletheia-memory
 # Or start manually:
-cd <your-aletheia-root>/infrastructure/memory/sidecar
+cd <repo>/infrastructure/memory/sidecar
 .venv/bin/uvicorn aletheia_memory.app:app --host 0.0.0.0 --port 8230 &
 ```
 
@@ -71,7 +72,7 @@ curl -s http://localhost:18789/api/setup/status | python3 -m json.tool
 ```bash
 ps aux | grep prosoche | grep -v grep
 # If not running:
-cd <your-aletheia-root>/infrastructure/prosoche
+cd <repo>/infrastructure/prosoche
 .venv/bin/python3 -m prosoche.daemon &
 ```
 
@@ -94,7 +95,7 @@ podman stop qdrant neo4j
 ## Deploy / Update
 
 ```bash
-cd <your-aletheia-root>
+cd <repo>
 
 # 1. Pull latest
 git pull origin main
@@ -153,7 +154,7 @@ Check dedup window and fingerprint:
 
 ```bash
 # View current prosoche state
-cat <your-aletheia-root>/nous/syn/PROSOCHE.md
+cat <repo>/nous/syn/PROSOCHE.md
 
 # Check daemon logs
 journalctl --user -u prosoche --since "1 hour ago" 2>/dev/null || \
@@ -170,7 +171,7 @@ aletheia sessions
 aletheia doctor
 
 # Verify workspace is readable
-ls -la <your-aletheia-root>/nous/<agent-id>/SOUL.md
+ls -la <repo>/nous/<agent-id>/SOUL.md
 ```
 
 ### Credential / OAuth token expired
@@ -212,12 +213,12 @@ ssh nas                      # Port 22 refused = SSH service disabled in Synolog
 |------|---------|
 | `~/.aletheia/aletheia.json` | Main config |
 | `~/.aletheia/sessions.db` | SQLite session store |
-| `<your-aletheia-root>/` | Monorepo root |
-| `<your-aletheia-root>/nous/<id>/` | Agent workspaces |
-| `<your-aletheia-root>/infrastructure/runtime/` | TypeScript runtime |
-| `<your-aletheia-root>/infrastructure/memory/sidecar/` | Python memory sidecar |
-| `<your-aletheia-root>/infrastructure/prosoche/` | Prosoche daemon |
-| `<your-aletheia-root>/ui/` | Svelte web UI |
+| `<repo>/` | Monorepo root |
+| `<repo>/nous/<id>/` | Agent workspaces |
+| `<repo>/infrastructure/runtime/` | TypeScript runtime |
+| `<repo>/infrastructure/memory/sidecar/` | Python memory sidecar |
+| `<repo>/infrastructure/prosoche/` | Prosoche daemon |
+| `<repo>/ui/` | Svelte web UI |
 
 ## Validation Before Restart
 
