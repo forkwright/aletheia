@@ -228,7 +228,7 @@
           <input
             type="text"
             class="field-input"
-            placeholder="e.g. cody"
+            placeholder="e.g. alice"
             bind:value={accountUsername}
             bind:this={accountUsernameEl}
             disabled={accountSaving}

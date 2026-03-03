@@ -282,7 +282,7 @@ The default view. What you see when you sit down at the desk. Scope: `global`.
 │                                                              │
 │  ┌─ Tasks ──────────────────────────────────────────────┐   │
 │  │  ☐ Review pylon auth tests              → Syn        │   │
-│  │  ☐ Respond to James re Q3               → Me         │   │
+│  │  ☐ Respond to James re Q3               → Operator       │   │
 │  │  ☐ Research dashboard projects           → Syn    ✓   │   │
 │  │  ☑ Merge PRs #387-389                   → Syn        │   │
 │  │  [+ Add task]                                        │   │

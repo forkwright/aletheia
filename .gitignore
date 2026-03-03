@@ -119,6 +119,7 @@ nous/*/config/
 shared/competence/model.json
 shared/config/tools.yaml
 shared/prosoche/activity_model.json
+infrastructure/prosoche/config.yaml
 tui/target/
 
 # Deploy backups

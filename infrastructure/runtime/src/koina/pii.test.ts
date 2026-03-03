@@ -37,7 +37,7 @@ describe("PII detection", () => {
 
   describe("email detector", () => {
     it("detects email addresses", () => {
-      const r = scanText("Email cody@example.com for info", mask);
+      const r = scanText("Email alice@example.com for info", mask);
       expect(r.redacted).toBe(1);
       expect(r.matches[0]!.type).toBe("email");
       expect(r.text).toContain("[REDACTED:email]");
@@ -182,9 +182,9 @@ describe("redaction modes", () => {
 
 describe("allowlist", () => {
   it("skips allowlisted exact email", () => {
-    const r = scanText("Email: cody@example.com", {
+    const r = scanText("Email: alice@example.com", {
       mode: "mask",
-      allowlist: ["cody@example.com"],
+      allowlist: ["alice@example.com"],
     });
     expect(r.redacted).toBe(0);
   });
@@ -198,13 +198,13 @@ describe("allowlist", () => {
   });
 
   it("still detects non-allowlisted items", () => {
-    const r = scanText("Email: secret@evil.com and cody@safe.com", {
+    const r = scanText("Email: secret@evil.com and alice@safe.com", {
       mode: "mask",
-      allowlist: ["cody@safe.com"],
+      allowlist: ["alice@safe.com"],
     });
     expect(r.redacted).toBe(1);
     expect(r.text).toContain("[REDACTED:email]");
-    expect(r.text).toContain("cody@safe.com");
+    expect(r.text).toContain("alice@safe.com");
   });
 });
 

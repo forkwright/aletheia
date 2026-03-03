@@ -33,9 +33,9 @@ A homepage that's the first thing you see. A shared task board where tasks belon
 │  ┌─ Tasks ──────────────────────────────────────────────┐    │
 │  │                                                      │    │
 │  │  ☐ Merge open PRs and clean branches       → Syn     │    │
-│  │  ☐ Respond to James about Q3 timeline      → Me      │    │
-│  │  ☐ Dig into inventory details              → Demi    │    │
-│  │  ☐ Update trailer wiring diagram           → Akron   │    │
+│  │  ☐ Respond to Jamie about Q3 timeline      → Syn     │    │
+│  │  ☐ Dig into inventory details for vendor   → Demi    │    │
+│  │  ☐ Update wiring diagram for project       → Akron   │    │
 │  │                                                      │    │
 │  │  [+ Add task]                                        │    │
 │  └──────────────────────────────────────────────────────┘    │
