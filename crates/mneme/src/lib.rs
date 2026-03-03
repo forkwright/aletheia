@@ -9,6 +9,8 @@ pub mod embedding;
 pub mod error;
 pub mod knowledge;
 pub mod knowledge_store;
+#[cfg(feature = "mneme-engine")]
+pub mod query;
 pub mod recall;
 #[cfg(feature = "sqlite")]
 pub mod schema;

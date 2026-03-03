@@ -113,116 +113,12 @@ pub fn fts_ddl() -> &'static str {
     }"
 }
 
-/// Query templates for common knowledge operations.
-pub mod queries {
-    /// Insert or update a fact.
-    pub const UPSERT_FACT: &str = r"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [[$id, $valid_from,
-          $content, $nous_id, $confidence, $tier, $valid_to, $superseded_by,
-          $source_session_id, $recorded_at]]
-        :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
-    ";
-
-    /// Query current facts for a nous (not superseded, currently valid).
-    pub const CURRENT_FACTS: &str = r"
-        ?[id, content, confidence, tier, recorded_at] :=
-            *facts{id, valid_from, content, nous_id, confidence, tier,
-                   valid_to, superseded_by, recorded_at},
-            nous_id = $nous_id,
-            valid_from <= $now,
-            valid_to > $now,
-            is_null(superseded_by)
-        :order -confidence
-        :limit $limit
-    ";
-
-    /// Point-in-time fact query.
-    pub const FACTS_AT_TIME: &str = r"
-        ?[id, content, confidence, tier] :=
-            *facts{id, valid_from, content, confidence, tier, valid_to},
-            valid_from <= $time,
-            valid_to > $time
-    ";
-
-    /// Supersede a fact (close old, insert new).
-    #[allow(clippy::needless_raw_string_hashes)] // contains inner quotes
-    pub const SUPERSEDE_FACT: &str = r#"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [
-            [$old_id, $old_valid_from, $old_content, $nous_id, $old_confidence,
-             $old_tier, $now, $new_id, $old_source, $old_recorded],
-            [$new_id, $now, $new_content, $nous_id, $new_confidence,
-             $new_tier, "9999-12-31", null, $source_session_id, $now]
-        ]
-        :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
-    "#;
-
-    /// Insert or update an entity.
-    pub const UPSERT_ENTITY: &str = r"
-        ?[id, name, entity_type, aliases, created_at, updated_at] <- [
-            [$id, $name, $entity_type, $aliases, $created_at, $updated_at]
-        ]
-        :put entities {id => name, entity_type, aliases, created_at, updated_at}
-    ";
-
-    /// Insert a relationship.
-    pub const UPSERT_RELATIONSHIP: &str = r"
-        ?[src, dst, relation, weight, created_at] <- [
-            [$src, $dst, $relation, $weight, $created_at]
-        ]
-        :put relationships {src, dst => relation, weight, created_at}
-    ";
-
-    /// 2-hop entity neighborhood.
-    pub const ENTITY_NEIGHBORHOOD: &str = r"
-        hop1[dst, rel] := *relationships{src: $entity_id, dst, relation: rel}
-        hop2[dst, rel] := hop1[mid, _], *relationships{src: mid, dst, relation: rel}
-        ?[id, name, entity_type, relation, hop] :=
-            hop1[id, relation], *entities{id, name, entity_type}, hop = 1
-        ?[id, name, entity_type, relation, hop] :=
-            hop2[id, relation], *entities{id, name, entity_type}, hop = 2
-        :order hop, name
-    ";
-
-    /// KNN vector search.
-    pub const SEMANTIC_SEARCH: &str = r"
-        ?[id, content, source_type, source_id, dist] :=
-            ~embeddings:semantic_idx {id, content, source_type, source_id |
-                query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
-    ";
-
-    /// Entity search by name or alias (prefix match).
-    pub const SEARCH_ENTITIES: &str = r"
-        ?[id, name, entity_type] :=
-            *entities{id, name, entity_type},
-            starts_with(name, $prefix)
-        ?[id, name, entity_type] :=
-            *entities{id, name, entity_type, aliases},
-            contains(aliases, $prefix)
-        :limit $limit
-    ";
-
-    /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
-    /// Graph sub-rules are injected dynamically by `build_hybrid_query`.
-    pub const HYBRID_SEARCH_BASE: &str = r"
-        bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
-
-        vec[id, score] :=
-            ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},
-            score = 1.0 - raw_dist
-
-        {GRAPH_RULES}
-
-        ?[id, rrf_score, bm25_rank, vec_rank, graph_rank] <~
-            ReciprocalRankFusion(bm25[], vec[], graph[])
-
-        :order -rrf_score
-        :limit $limit
-    ";
-}
+/// Re-export query builder types and pre-built query scripts.
+///
+/// Builder-generated queries (field-safe): `queries::upsert_fact()`, etc.
+/// Raw Datalog constants (multi-rule): `queries::ENTITY_NEIGHBORHOOD`, etc.
+#[cfg(feature = "mneme-engine")]
+use crate::query::queries;
 
 /// Configuration for `KnowledgeStore` initialization.
 #[cfg(feature = "mneme-engine")]
@@ -398,7 +294,7 @@ impl KnowledgeStore {
     /// Insert or update a fact.
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         let params = fact_to_params(fact);
-        self.run_mut(queries::UPSERT_FACT, params)
+        self.run_mut(&queries::upsert_fact(), params)
     }
 
     /// Query current facts for a nous at a given time, up to limit results.
@@ -416,7 +312,7 @@ impl KnowledgeStore {
         params.insert("now".to_owned(), DataValue::Str(now.into()));
         params.insert("limit".to_owned(), DataValue::from(limit));
 
-        let rows = self.run_read(FULL_CURRENT_FACTS, params)?;
+        let rows = self.run_read(&queries::full_current_facts(), params)?;
         rows_to_facts(rows, nous_id)
     }
 
@@ -428,14 +324,14 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert("time".to_owned(), DataValue::Str(time.into()));
 
-        let rows = self.run_read(queries::FACTS_AT_TIME, params)?;
+        let rows = self.run_read(&queries::facts_at_time(), params)?;
         rows_to_facts_partial(rows)
     }
 
     /// Insert or update an entity.
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         let params = entity_to_params(entity);
-        self.run_mut(queries::UPSERT_ENTITY, params)
+        self.run_mut(&queries::upsert_entity(), params)
     }
 
     /// Insert a relationship.
@@ -444,7 +340,7 @@ impl KnowledgeStore {
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()> {
         let params = relationship_to_params(rel);
-        self.run_mut(queries::UPSERT_RELATIONSHIP, params)
+        self.run_mut(&queries::upsert_relationship(), params)
     }
 
     /// Query 2-hop entity neighborhood. Returns raw rows for flexible callers.
@@ -466,13 +362,7 @@ impl KnowledgeStore {
         chunk: &crate::knowledge::EmbeddedChunk,
     ) -> crate::error::Result<()> {
         let params = embedding_to_params(chunk, self.dim);
-        self.run_mut(
-            r"?[id, content, source_type, source_id, nous_id, embedding, created_at] <- [
-                [$id, $content, $source_type, $source_id, $nous_id, $embedding, $created_at]
-              ]
-              :put embeddings { id => content, source_type, source_id, nous_id, embedding, created_at }",
-            params,
-        )
+        self.run_mut(&queries::upsert_embedding(), params)
     }
 
     /// kNN semantic vector search.
@@ -697,20 +587,6 @@ impl KnowledgeStore {
             })
     }
 }
-
-// Extended query that returns all Fact fields (used by query_facts).
-#[cfg(feature = "mneme-engine")]
-const FULL_CURRENT_FACTS: &str = r"
-    ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id] :=
-        *facts{id, valid_from, content, nous_id, confidence, tier,
-               valid_to, superseded_by, source_session_id, recorded_at},
-        nous_id = $nous_id,
-        valid_from <= $now,
-        valid_to > $now,
-        is_null(superseded_by)
-    :order -confidence
-    :limit $limit
-";
 
 // --- Conversion helpers ---
 
@@ -1259,14 +1135,17 @@ mod tests {
         assert!(fts.contains("bm25") || fts.contains("Simple"));
     }
 
+    #[cfg(feature = "mneme-engine")]
     #[test]
     fn query_templates_contain_params() {
-        assert!(queries::CURRENT_FACTS.contains("$nous_id"));
-        assert!(queries::CURRENT_FACTS.contains("$now"));
+        let current = queries::current_facts();
+        assert!(current.contains("$nous_id"));
+        assert!(current.contains("$now"));
         assert!(queries::SEMANTIC_SEARCH.contains("$query_vec"));
         assert!(queries::ENTITY_NEIGHBORHOOD.contains("$entity_id"));
-        assert!(queries::SUPERSEDE_FACT.contains("$old_id"));
-        assert!(queries::SUPERSEDE_FACT.contains("$new_id"));
+        let supersede = queries::supersede_fact();
+        assert!(supersede.contains("$old_id"));
+        assert!(supersede.contains("$new_id"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("$query_text"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("$query_vec"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("ReciprocalRankFusion"));
