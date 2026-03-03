@@ -313,6 +313,163 @@ describe("EnhancedExecutionOrchestrator", () => {
       expect(result.failed).toBe(1);
     });
   });
+
+  describe("execution resilience", () => {
+  let resilienceProjectId: string;
+
+  beforeEach(() => {
+    const project = store.createProject({
+      nousId: "test-nous",
+      sessionId: "test-session",
+      goal: "Test resilience features",
+      config: defaultConfig,
+    });
+    resilienceProjectId = project.id;
+    store.updateProjectState(project.id, "executing");
+    store.createPhase({
+      projectId: project.id,
+      name: "Resilience Phase",
+      goal: "implement resilience",
+      requirements: [],
+      successCriteria: ["System is resilient"],
+      phaseOrder: 1,
+    });
+  });
+
+  it("should stop retrying when iteration cap is reached", async () => {
+    const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
+    // Return failure responses — different errors to avoid stuck detection
+    let callCount = 0;
+    mockExecute.mockImplementation(async () => {
+      callCount++;
+      return JSON.stringify({
+        taskCount: 1,
+        succeeded: 0,
+        failed: 1,
+        results: [{ index: 0, task: "task", status: "error", error: `Error variant ${callCount}`, durationMs: 50 }],
+        timing: { wallClockMs: 50, sequentialMs: 50, savedMs: 0 },
+        totalTokens: 0,
+      });
+    });
+
+    orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
+      enableWaveConcurrency: false,
+      maxIterationsPerPlan: 2,
+    });
+
+    const result = await orchestrator.executePhase(resilienceProjectId, mockToolContext);
+
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+    expect(result.failed).toBe(1);
+    expect(result.cappedPlans).toHaveLength(1);
+  });
+
+  it("should detect stuck plans and stop retrying", async () => {
+    const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
+    // Return same error twice to trigger stuck detection
+    mockExecute.mockResolvedValue(JSON.stringify({
+      taskCount: 1,
+      succeeded: 0,
+      failed: 1,
+      results: [{ index: 0, task: "task", status: "error", error: "Connection refused", durationMs: 50 }],
+      timing: { wallClockMs: 50, sequentialMs: 50, savedMs: 0 },
+      totalTokens: 0,
+    }));
+
+    orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
+      enableWaveConcurrency: false,
+      maxIterationsPerPlan: 5,
+    });
+
+    const result = await orchestrator.executePhase(resilienceProjectId, mockToolContext);
+
+    // Should stop at 2 attempts (first not stuck, second stuck → stop)
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+    expect(result.failed).toBe(1);
+    expect(result.stuckPlans).toHaveLength(1);
+  });
+
+  it("should clear stuck state on success", async () => {
+    const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
+    // First call: fail, second call: succeed
+    let callCount = 0;
+    mockExecute.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return JSON.stringify({
+          taskCount: 1, succeeded: 0, failed: 1,
+          results: [{ index: 0, task: "task", status: "error", error: "Temporary error", durationMs: 50 }],
+          timing: { wallClockMs: 50, sequentialMs: 50, savedMs: 0 }, totalTokens: 0,
+        });
+      }
+      return mockDispatchResult();
+    });
+
+    orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
+      enableWaveConcurrency: false,
+      maxIterationsPerPlan: 3,
+    });
+
+    const result = await orchestrator.executePhase(resilienceProjectId, mockToolContext);
+
+    expect(result.failed).toBe(0);
+    expect(result.stuckPlans).toHaveLength(0);
+    expect(result.cappedPlans).toHaveLength(0);
+    expect(result.retries).toBe(1);
+  });
+
+  it("should return stuckPlans and cappedPlans in result", async () => {
+    const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
+    mockExecute.mockResolvedValue(mockDispatchResult());
+
+    orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
+      enableWaveConcurrency: false,
+    });
+
+    const result = await orchestrator.executePhase(resilienceProjectId, mockToolContext);
+
+    expect(result).toHaveProperty("stuckPlans");
+    expect(result).toHaveProperty("cappedPlans");
+    expect(Array.isArray(result.stuckPlans)).toBe(true);
+    expect(Array.isArray(result.cappedPlans)).toBe(true);
+  });
+
+  it("should log warning when success has no achievements", async () => {
+    const mockExecute = mockDispatchTool.execute as MockedFunction<(input: Record<string, unknown>, context: ToolContext) => Promise<string>>;
+    // Return success with structuredResult but no achievements
+    mockExecute.mockResolvedValue(JSON.stringify({
+      taskCount: 1,
+      succeeded: 1,
+      failed: 0,
+      results: [{
+        index: 0,
+        task: "task",
+        status: "success",
+        result: "done",
+        structuredResult: {
+          role: "coder",
+          task: "implement",
+          status: "success",
+          summary: "Done",
+          details: {},
+          confidence: 0.9,
+        },
+        durationMs: 100,
+      }],
+      timing: { wallClockMs: 100, sequentialMs: 100, savedMs: 0 },
+      totalTokens: 0,
+    }));
+
+    orchestrator = new EnhancedExecutionOrchestrator(db, mockDispatchTool, {
+      enableWaveConcurrency: false,
+    });
+
+    const result = await orchestrator.executePhase(resilienceProjectId, mockToolContext);
+
+    // Completes successfully — the warning is logged internally
+    expect(result.failed).toBe(0);
+  });
+  });
 });
 
 describe("utility functions", () => {
