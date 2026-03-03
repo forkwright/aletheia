@@ -6,7 +6,9 @@ mod events;
 mod highlight;
 mod markdown;
 mod msg;
+mod state;
 mod theme;
+mod update;
 mod view;
 
 use anyhow::Result;
