@@ -69,9 +69,9 @@ impl FixedRule for ReciprocalRankFusion {
             out.put(vec![
                 DataValue::Str(id),
                 DataValue::from(rrf_score),
-                DataValue::from(bm25_rank as i64),
-                DataValue::from(vec_rank as i64),
-                DataValue::from(graph_rank as i64),
+                DataValue::from(rank_to_output(bm25_rank)),
+                DataValue::from(rank_to_output(vec_rank)),
+                DataValue::from(rank_to_output(graph_rank)),
             ]);
             poison.check()?;
         }
@@ -113,4 +113,54 @@ fn assign_ranks(
         .enumerate()
         .map(|(rank, (id, _))| ((*id).clone(), rank + 1))
         .collect()
+}
+
+fn rank_to_output(rank: usize) -> i64 {
+    if rank == 0 { -1 } else { rank as i64 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signal_contribution_absent_is_zero() {
+        assert_eq!(signal_contribution(0), 0.0);
+    }
+
+    #[test]
+    fn signal_contribution_rank_one() {
+        let expected = 1.0 / (60.0 + 1.0);
+        assert!((signal_contribution(1) - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn assign_ranks_sorted_descending() {
+        let mut scores = FxHashMap::default();
+        scores.insert(SmartString::from("low"), 1.0);
+        scores.insert(SmartString::from("high"), 9.0);
+        scores.insert(SmartString::from("mid"), 5.0);
+
+        let ranks = assign_ranks(&scores);
+        assert_eq!(ranks[&SmartString::from("high")], 1);
+        assert_eq!(ranks[&SmartString::from("mid")], 2);
+        assert_eq!(ranks[&SmartString::from("low")], 3);
+    }
+
+    #[test]
+    fn assign_ranks_empty() {
+        let scores = FxHashMap::default();
+        let ranks = assign_ranks(&scores);
+        assert!(ranks.is_empty());
+    }
+
+    #[test]
+    fn rank_to_output_absent() {
+        assert_eq!(rank_to_output(0), -1);
+    }
+
+    #[test]
+    fn rank_to_output_present() {
+        assert_eq!(rank_to_output(5), 5);
+    }
 }
