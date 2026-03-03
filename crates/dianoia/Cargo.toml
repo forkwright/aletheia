@@ -1,0 +1,25 @@
+[package]
+name = "aletheia-dianoia"
+version = "0.1.0"
+description = "Planning and project orchestration — multi-phase state machine with workspace persistence"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+aletheia-koina = { path = "../koina" }
+jiff = { version = "0.2", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+ulid = { workspace = true }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tempfile = "3"

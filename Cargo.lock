@@ -82,6 +82,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "aletheia-dianoia"
+version = "0.1.0"
+dependencies = [
+ "aletheia-koina",
+ "jiff",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "ulid",
+]
+
+[[package]]
 name = "aletheia-graph-builder"
 version = "0.1.0"
 dependencies = [
