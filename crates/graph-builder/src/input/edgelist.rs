@@ -57,7 +57,6 @@ impl<NI: Idx, EV> InputCapabilities<NI> for EdgeListInput<NI, EV> {
 /// and can compute the maximum node id across all edges. CSR construction uses this
 /// trait to allocate degree arrays and populate adjacency lists without knowing the
 /// concrete input type.
-#[allow(clippy::len_without_is_empty)]
 pub trait Edges {
     type NI: Idx;
     type EV;
@@ -93,6 +92,11 @@ pub trait Edges {
 
     #[cfg(test)]
     fn len(&self) -> usize;
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 fn default_max_node_id<E: Edges + ?Sized>(edges: &E) -> E::NI {

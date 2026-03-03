@@ -56,7 +56,7 @@ impl SessionState {
     /// Check if context is nearing capacity.
     #[must_use]
     pub fn needs_distillation(&self, threshold_ratio: f64, context_window: u32) -> bool {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "context window * ratio fits in i64")]
         let threshold = (f64::from(context_window) * threshold_ratio) as i64;
         self.token_estimate >= threshold
     }

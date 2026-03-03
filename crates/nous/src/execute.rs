@@ -345,7 +345,7 @@ mod tests {
             &["test-model"]
         }
 
-        #[allow(clippy::unnecessary_literal_bound)]
+        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
         fn name(&self) -> &str {
             "mock"
         }
