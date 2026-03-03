@@ -111,7 +111,7 @@ pub async fn history(
     let limit = params.limit;
     let messages = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.lock().expect("store lock");
-        store.get_history(&id_clone, limit.map(|l| l as usize))
+        store.get_history(&id_clone, limit.map(i64::from))
     })
     .await??;
 

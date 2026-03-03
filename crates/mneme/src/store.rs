@@ -263,7 +263,7 @@ impl SessionStore {
 
     /// Get message history for a session.
     #[instrument(skip(self))]
-    pub fn get_history(&self, session_id: &str, limit: Option<usize>) -> Result<Vec<Message>> {
+    pub fn get_history(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
         let mut messages = Vec::new();
 
         if let Some(limit) = limit {
