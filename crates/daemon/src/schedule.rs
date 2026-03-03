@@ -65,6 +65,8 @@ pub enum BuiltinTask {
     GraphMaintenance,
     /// Memory consolidation.
     MemoryConsolidation,
+    /// Session retention policy enforcement.
+    SessionRetention,
 }
 
 impl Schedule {

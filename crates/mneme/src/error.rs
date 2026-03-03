@@ -52,6 +52,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Filesystem I/O error (archive, backup).
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("I/O error at {path}: {source}"))]
+    Io {
+        path: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Engine initialization failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine initialization failed: {message}"))]

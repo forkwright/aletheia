@@ -16,6 +16,8 @@ pub mod recall;
 #[cfg(feature = "sqlite")]
 pub mod migration;
 #[cfg(feature = "sqlite")]
+pub mod retention;
+#[cfg(feature = "sqlite")]
 pub mod schema;
 #[cfg(feature = "sqlite")]
 pub mod store;

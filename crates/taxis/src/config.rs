@@ -15,6 +15,7 @@ pub struct AletheiaConfig {
     pub channels: ChannelsConfig,
     pub bindings: Vec<ChannelBinding>,
     pub embedding: EmbeddingSettings,
+    pub data: DataConfig,
     /// External domain pack paths (directories containing pack.yaml).
     pub packs: Vec<PathBuf>,
 }
@@ -262,6 +263,40 @@ impl Default for SignalAccountConfig {
             require_mention: true,
             send_read_receipts: true,
             text_chunk_limit: 2000,
+        }
+    }
+}
+
+/// Data lifecycle configuration.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct DataConfig {
+    pub retention: RetentionConfig,
+}
+
+/// Session retention policy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RetentionConfig {
+    /// Max age for closed sessions (days).
+    pub session_max_age_days: u32,
+    /// Max age for orphaned messages (days).
+    pub orphan_message_max_age_days: u32,
+    /// Max sessions to retain per nous (0 = unlimited).
+    pub max_sessions_per_nous: u32,
+    /// Archive sessions to JSON before deletion.
+    pub archive_before_delete: bool,
+}
+
+impl Default for RetentionConfig {
+    fn default() -> Self {
+        Self {
+            session_max_age_days: 90,
+            orphan_message_max_age_days: 30,
+            max_sessions_per_nous: 0,
+            archive_before_delete: true,
         }
     }
 }

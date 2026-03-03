@@ -253,6 +253,16 @@ async fn execute_builtin(builtin: &BuiltinTask, nous_id: &str) -> Result<Executi
                 output: None,
             })
         }
+        BuiltinTask::SessionRetention => {
+            tracing::info!(
+                nous_id = %nous_id,
+                "session retention not yet wired — requires store access from daemon"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        }
     }
 }
 
