@@ -9,7 +9,12 @@ use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::prompt;
 
 /// Sections that can appear in a distillation summary.
+///
+/// Controls which structured headings appear in the output. Passed via
+/// [`DistillConfig::sections`] to configure the distillation prompt.
+/// Use [`DistillSection::all_standard()`] for the default seven-section layout.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DistillSection {
     Summary,
     TaskContext,
@@ -84,6 +89,11 @@ impl DistillSection {
 }
 
 /// Configuration for a distillation run.
+///
+/// Controls model selection, token budgets, and the structured sections
+/// included in the summary. The [`sections`](DistillConfig::sections) field
+/// accepts any combination of [`DistillSection`] variants to customise the
+/// prompt layout.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DistillConfig {
     /// Model to use for distillation.
@@ -100,6 +110,9 @@ pub struct DistillConfig {
     /// Number of recent messages to preserve verbatim (not summarized).
     pub verbatim_tail: usize,
     /// Sections to include in the structured summary.
+    ///
+    /// Determines the headings and descriptions injected into the system prompt.
+    /// Defaults to [`DistillSection::all_standard()`].
     pub sections: Vec<DistillSection>,
 }
 

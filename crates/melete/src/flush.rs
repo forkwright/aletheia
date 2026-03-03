@@ -16,15 +16,25 @@ pub struct MemoryFlush {
 }
 
 /// A single item to flush to persistent storage.
+///
+/// Collected inside a [`MemoryFlush`] payload. The [`source`](FlushItem::source)
+/// field identifies how the item was detected (see [`FlushSource`]).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FlushItem {
+    /// Content of the item to persist.
     pub content: String,
+    /// ISO 8601 timestamp when the item was recorded.
     pub timestamp: String,
+    /// How the item was identified.
     pub source: FlushSource,
 }
 
 /// How a flush item was identified.
+///
+/// Recorded on each [`FlushItem`] so consumers can distinguish LLM-extracted
+/// items from agent-noted or pattern-detected ones.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub enum FlushSource {
     /// Extracted from conversation by LLM.
     Extracted,
