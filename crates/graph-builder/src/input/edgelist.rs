@@ -283,7 +283,9 @@ where
             }
         });
 
-        let edges = Arc::try_unwrap(all_edges).unwrap().into_inner();
+        let edges = Arc::try_unwrap(all_edges)
+            .expect("invariant: all spawned threads completed; no other Arc references remain")
+            .into_inner();
 
         let elapsed = start.elapsed().as_millis() as f64 / 1000_f64;
 

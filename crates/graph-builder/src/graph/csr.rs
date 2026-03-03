@@ -497,7 +497,7 @@ where
 
     #[cfg(test)]
     fn len(&self) -> usize {
-        unimplemented!("This type is not used in tests")
+        panic!("ToUndirectedEdges is not used in test contexts that call len()")
     }
 }
 
@@ -879,7 +879,10 @@ where
 }
 
 fn prefix_sum_atomic<NI: Idx>(degrees: Vec<Atomic<NI>>) -> Vec<Atomic<NI>> {
-    let mut last = degrees.last().unwrap().load(Acquire);
+    let mut last = degrees
+        .last()
+        .expect("invariant: prefix_sum_atomic called with non-empty degree vec")
+        .load(Acquire);
     let mut sums = degrees
         .into_iter()
         .scan(NI::zero(), |total, degree| {
@@ -889,14 +892,19 @@ fn prefix_sum_atomic<NI: Idx>(degrees: Vec<Atomic<NI>>) -> Vec<Atomic<NI>> {
         })
         .collect::<Vec<_>>();
 
-    last += sums.last().unwrap().load(Acquire);
+    last += sums
+        .last()
+        .expect("invariant: sums is non-empty after scanning non-empty degrees")
+        .load(Acquire);
     sums.push(Atomic::new(last));
 
     sums
 }
 
 pub(crate) fn prefix_sum<NI: Idx>(degrees: Vec<NI>) -> Vec<NI> {
-    let mut last = *degrees.last().unwrap();
+    let mut last = *degrees
+        .last()
+        .expect("invariant: prefix_sum called with non-empty degree vec");
     let mut sums = degrees
         .into_iter()
         .scan(NI::zero(), |total, degree| {
@@ -905,7 +913,9 @@ pub(crate) fn prefix_sum<NI: Idx>(degrees: Vec<NI>) -> Vec<NI> {
             Some(value)
         })
         .collect::<Vec<_>>();
-    last += *sums.last().unwrap();
+    last += *sums
+        .last()
+        .expect("invariant: sums is non-empty after scanning non-empty degrees");
     sums.push(last);
     sums
 }

@@ -8,6 +8,10 @@ repository = "https://github.com/forkwright/aletheia"
 rust-version = "1.85"
 publish = false
 
+[lints.rust]
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 
