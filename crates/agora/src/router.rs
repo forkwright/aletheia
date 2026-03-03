@@ -14,6 +14,7 @@ pub struct RouteDecision {
 
 /// How the routing decision was made.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MatchReason {
     GroupBinding,
     SourceBinding,
@@ -35,6 +36,7 @@ pub struct MessageRouter {
 }
 
 impl MessageRouter {
+    /// Create a router with the given channel bindings and optional global default nous.
     pub fn new(bindings: Vec<ChannelBinding>, default_nous: Option<String>) -> Self {
         Self {
             bindings,

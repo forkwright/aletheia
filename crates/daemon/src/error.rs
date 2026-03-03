@@ -2,6 +2,7 @@
 
 use snafu::Snafu;
 
+/// Daemon-level errors for scheduling and task execution.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -50,4 +51,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for daemon results.
 pub type Result<T> = std::result::Result<T, Error>;

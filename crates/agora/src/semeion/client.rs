@@ -50,6 +50,10 @@ impl SignalClient {
     /// Create a new client targeting the given base URL.
     ///
     /// Normalizes the URL: strips trailing slashes, prepends `http://` if missing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an HTTP error if the underlying HTTP client cannot be constructed.
     pub fn new(base_url: &str) -> Result<Self> {
         let base = normalize_url(base_url);
 
@@ -113,6 +117,11 @@ impl SignalClient {
     ///
     /// Retries up to 2 times with 500ms, 1000ms backoff.
     /// Does NOT retry JSON-RPC application errors (only transport failures).
+    ///
+    /// # Errors
+    ///
+    /// Returns an RPC error for signal-cli application errors, or an HTTP error after
+    /// all retries are exhausted.
     #[instrument(skip(self, params))]
     pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
         let rpc_params = params.to_rpc_value();
@@ -158,6 +167,10 @@ impl SignalClient {
     /// Calls the signal-cli `receive` RPC method, which returns all messages
     /// that have accumulated since the last call. Uses a longer timeout than
     /// standard RPC calls since receive may block briefly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an HTTP error on transport failure or an RPC error on signal-cli error.
     #[instrument(skip(self))]
     pub async fn receive(&self, account: Option<&str>) -> Result<Vec<SignalEnvelope>> {
         let mut params = serde_json::Map::new();
