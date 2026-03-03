@@ -7,7 +7,13 @@ use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
 use aletheia_mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
+#[cfg(feature = "knowledge-store")]
+use std::sync::Arc;
+
 use crate::error;
+
+#[cfg(feature = "knowledge-store")]
+use aletheia_mneme::knowledge_store::KnowledgeStore;
 
 /// Abstracts vector knowledge search.
 ///
@@ -21,6 +27,36 @@ pub trait VectorSearch: Send + Sync {
         k: usize,
         ef: usize,
     ) -> error::Result<Vec<KnowledgeRecallResult>>;
+}
+
+/// Bridges [`KnowledgeStore::search_vectors`] to the [`VectorSearch`] trait.
+#[cfg(feature = "knowledge-store")]
+pub struct KnowledgeVectorSearch {
+    store: Arc<KnowledgeStore>,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl KnowledgeVectorSearch {
+    #[must_use]
+    pub fn new(store: Arc<KnowledgeStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+impl VectorSearch for KnowledgeVectorSearch {
+    fn search_vectors(
+        &self,
+        query_vec: Vec<f32>,
+        k: usize,
+        ef: usize,
+    ) -> error::Result<Vec<KnowledgeRecallResult>> {
+        let k_i64 = i64::try_from(k).unwrap_or(i64::MAX);
+        let ef_i64 = i64::try_from(ef).unwrap_or(i64::MAX);
+        self.store
+            .search_vectors(query_vec, k_i64, ef_i64)
+            .map_err(|e| error::RecallSearchSnafu { message: e.to_string() }.build())
+    }
 }
 
 /// Configuration for the recall stage.
@@ -440,5 +476,94 @@ mod tests {
     #[test]
     fn vector_search_trait_is_object_safe() {
         fn _assert_object_safe(_: &dyn VectorSearch) {}
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    mod knowledge_bridge_tests {
+        use aletheia_mneme::knowledge::EmbeddedChunk;
+        use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+
+        use super::super::*;
+
+        const DIM: usize = 4;
+
+        fn make_store() -> Arc<KnowledgeStore> {
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM })
+                .expect("open in-memory store")
+        }
+
+        fn make_chunk(id: &str, content: &str, embedding: Vec<f32>) -> EmbeddedChunk {
+            EmbeddedChunk {
+                id: id.to_owned(),
+                content: content.to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: format!("fact-{id}"),
+                nous_id: String::new(),
+                embedding,
+                created_at: "2025-01-01T00:00:00Z".to_owned(),
+            }
+        }
+
+        #[test]
+        fn empty_store_returns_empty_vec() {
+            let store = make_store();
+            let search = KnowledgeVectorSearch::new(store);
+            let results = search
+                .search_vectors(vec![0.0; DIM], 5, 10)
+                .expect("search should not error on empty store");
+            assert!(results.is_empty());
+        }
+
+        #[test]
+        fn returns_matching_results() {
+            let store = make_store();
+            let chunk = make_chunk("c1", "Rust is a systems language", vec![1.0, 0.0, 0.0, 0.0]);
+            store.insert_embedding(&chunk).expect("insert embedding");
+
+            let search = KnowledgeVectorSearch::new(Arc::clone(&store));
+            let results = search
+                .search_vectors(vec![1.0, 0.0, 0.0, 0.0], 5, 10)
+                .expect("search");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].content, "Rust is a systems language");
+            assert_eq!(results[0].source_type, "fact");
+        }
+
+        #[test]
+        fn closer_vectors_rank_first() {
+            let store = make_store();
+            let close = make_chunk("c1", "close", vec![1.0, 0.0, 0.0, 0.0]);
+            let far = make_chunk("c2", "far", vec![0.0, 0.0, 0.0, 1.0]);
+            store.insert_embedding(&close).expect("insert close");
+            store.insert_embedding(&far).expect("insert far");
+
+            let search = KnowledgeVectorSearch::new(Arc::clone(&store));
+            let results = search
+                .search_vectors(vec![1.0, 0.0, 0.0, 0.0], 5, 10)
+                .expect("search");
+            assert_eq!(results.len(), 2);
+            assert!(
+                results[0].distance <= results[1].distance,
+                "closer vector should have smaller distance"
+            );
+            assert_eq!(results[0].content, "close");
+        }
+
+        #[test]
+        fn respects_k_limit() {
+            let store = make_store();
+            for i in 0..5 {
+                let mut emb = vec![0.0; DIM];
+                emb[i % DIM] = 1.0;
+                let chunk = make_chunk(&format!("c{i}"), &format!("fact {i}"), emb);
+                store.insert_embedding(&chunk).expect("insert");
+            }
+
+            let search = KnowledgeVectorSearch::new(Arc::clone(&store));
+            let results = search
+                .search_vectors(vec![1.0, 0.0, 0.0, 0.0], 2, 10)
+                .expect("search");
+            assert!(results.len() <= 2, "should return at most k=2 results");
+        }
     }
 }
