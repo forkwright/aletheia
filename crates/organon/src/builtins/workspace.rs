@@ -318,7 +318,13 @@ impl ToolExecutor for ExecExecutor {
 // Tool definitions (schemas unchanged)
 // ---------------------------------------------------------------------------
 
-/// Register workspace tool executors.
+/// Register workspace tool executors into the given [`ToolRegistry`].
+///
+/// Registers `read`, `write`, `edit`, and `exec` tools with full implementations
+/// (not stubs — these tools actually execute filesystem and shell operations).
+///
+/// # Errors
+/// Returns `Error::DuplicateTool` if any tool name is already registered.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
     registry.register(write_def(), Box::new(WriteExecutor))?;

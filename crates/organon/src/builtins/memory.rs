@@ -30,7 +30,12 @@ impl ToolExecutor for Stub {
     }
 }
 
-/// Register memory tool stubs.
+/// Register memory tool stubs into the given [`ToolRegistry`].
+///
+/// Registers `mem0_search`, `note`, and `blackboard` tools with their full input schemas.
+///
+/// # Errors
+/// Returns `Error::DuplicateTool` if any tool name is already registered.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(mem0_search_def(), Box::new(Stub))?;
     registry.register(note_def(), Box::new(Stub))?;

@@ -2,7 +2,17 @@
 //!
 //! Organon (ὄργανον) — "instrument." The formal instruments through which
 //! agent capability expresses. Provides the tool registry, definition types,
-//! and stub implementations for built-in tools.
+//! and built-in tool implementations.
+//!
+//! ## Key types
+//!
+//! - [`registry::ToolRegistry`] — single source of truth for available tools;
+//!   register via [`register`](registry::ToolRegistry::register), dispatch via
+//!   [`execute`](registry::ToolRegistry::execute)
+//! - [`registry::ToolExecutor`] — trait that tool implementations must satisfy
+//! - [`types::ToolDef`] / [`types::ToolInput`] / [`types::ToolResult`] — tool lifecycle types
+//! - [`types::ToolCategory`] / [`types::PropertyType`] — enum classifiers
+//! - [`builtins::register_all`] — register all built-in tools in one call
 //!
 //! Depends on `aletheia-koina` (types) and `aletheia-hermeneus` (LLM wire format).
 

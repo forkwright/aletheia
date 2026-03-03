@@ -50,7 +50,12 @@ impl ToolRegistry {
         }
     }
 
-    /// Register a tool. Fails if a tool with the same name already exists.
+    /// Register a tool. Once registered, the tool is immediately resolvable via
+    /// [`get_def`](ToolRegistry::get_def) and dispatchable via
+    /// [`execute`](ToolRegistry::execute).
+    ///
+    /// # Errors
+    /// Returns `Error::DuplicateTool` if a tool with the same name is already registered.
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         ensure!(
             !self.tools.contains_key(&def.name),
@@ -70,6 +75,12 @@ impl ToolRegistry {
     }
 
     /// Execute a tool by name.
+    ///
+    /// Dispatches to the [`ToolExecutor`] registered for `input.name`.
+    ///
+    /// # Errors
+    /// - Returns `Error::ToolNotFound` if no tool with that name is registered.
+    /// - Returns `Error::ExecutionFailed` if the executor returns an error.
     pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {
