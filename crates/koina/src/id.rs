@@ -3,9 +3,10 @@
 //! Every domain concept gets its own type. No raw `String` or `u64` for identifiers.
 //! Construction validates. The type *is* the documentation.
 
+use std::fmt;
+
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// A nous (agent) identifier. Lowercase alphanumeric + hyphens, 1-64 chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

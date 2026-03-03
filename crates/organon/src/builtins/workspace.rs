@@ -494,9 +494,9 @@ fn exec_def() -> ToolDef {
 
 #[cfg(test)]
 mod tests {
-    use aletheia_koina::id::{NousId, SessionId};
-
     use super::*;
+
+    use aletheia_koina::id::{NousId, SessionId};
 
     fn test_ctx(dir: &Path) -> ToolContext {
         ToolContext {

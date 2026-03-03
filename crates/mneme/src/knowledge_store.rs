@@ -206,8 +206,9 @@ impl KnowledgeStore {
     }
 
     fn init_schema(&self) -> crate::error::Result<()> {
-        use aletheia_mneme_engine::ScriptMutability;
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::ScriptMutability;
 
         for ddl in KNOWLEDGE_DDL {
             self.db
@@ -304,8 +305,9 @@ impl KnowledgeStore {
         now: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use aletheia_mneme_engine::DataValue;
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::DataValue;
 
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
@@ -318,8 +320,9 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use aletheia_mneme_engine::DataValue;
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::DataValue;
 
         let mut params = BTreeMap::new();
         params.insert("time".to_owned(), DataValue::Str(time.into()));
@@ -348,8 +351,9 @@ impl KnowledgeStore {
         &self,
         entity_id: &str,
     ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
-        use aletheia_mneme_engine::DataValue;
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::DataValue;
 
         let mut params = BTreeMap::new();
         params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
@@ -372,8 +376,9 @@ impl KnowledgeStore {
         k: i64,
         ef: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
-        use aletheia_mneme_engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::{Array1, DataValue, Vector};
 
         let mut params = BTreeMap::new();
         params.insert(
@@ -389,8 +394,9 @@ impl KnowledgeStore {
 
     /// Get the current schema version.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
-        use aletheia_mneme_engine::DataValue;
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::DataValue;
 
         let mut params = BTreeMap::new();
         params.insert("key".to_owned(), DataValue::Str("schema".into()));
@@ -474,8 +480,9 @@ impl KnowledgeStore {
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
-        use aletheia_mneme_engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
+
+        use aletheia_mneme_engine::{Array1, DataValue, Vector};
 
         let mut params = BTreeMap::new();
         params.insert(
