@@ -6,6 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::{AgentStatus, App, Overlay};
+use crate::keybindings;
 use crate::theme::ThemePalette;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -20,7 +21,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     frame.render_widget(Clear, popup_area);
 
     match overlay {
-        Overlay::Help => render_help(frame, popup_area, theme),
+        Overlay::Help => render_help(app, frame, popup_area, theme),
         Overlay::AgentPicker { cursor } => {
             render_agent_picker(app, frame, popup_area, *cursor, theme)
         }
@@ -60,94 +61,42 @@ fn overlay_block_accent(
         .style(Style::default().bg(theme.surface))
 }
 
-fn render_help(frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let key_style = Style::default()
         .fg(theme.accent)
         .add_modifier(Modifier::BOLD);
     let desc_style = theme.style_fg();
     let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
 
-    let lines = vec![
-        Line::raw(""),
-        Line::from(Span::styled("  Navigation", section_style)),
-        Line::raw(""),
-        help_line("  Ctrl+A     ", "Switch agent", key_style, desc_style),
-        help_line("  Ctrl+F     ", "Toggle sidebar", key_style, desc_style),
-        help_line(
-            "  Ctrl+T     ",
-            "Toggle thinking blocks",
-            key_style,
-            desc_style,
-        ),
-        help_line("  Ctrl+I     ", "System status", key_style, desc_style),
-        help_line(
-            "  Ctrl+N     ",
-            "New session / topic",
-            key_style,
-            desc_style,
-        ),
-        help_line("  F1         ", "This help screen", key_style, desc_style),
-        Line::raw(""),
-        Line::from(Span::styled("  Input", section_style)),
-        Line::raw(""),
-        help_line("  Enter      ", "Send message", key_style, desc_style),
-        help_line("  @agent Tab ", "Mention completion", key_style, desc_style),
-        help_line("  Ctrl+U     ", "Clear input line", key_style, desc_style),
-        help_line("  Ctrl+W     ", "Delete word", key_style, desc_style),
-        help_line(
-            "  Ctrl+E     ",
-            "Open $EDITOR for compose",
-            key_style,
-            desc_style,
-        ),
-        help_line("  Ctrl+Y     ", "Copy last response", key_style, desc_style),
-        help_line("  Up/Down    ", "Input history", key_style, desc_style),
-        Line::raw(""),
-        Line::from(Span::styled("  Scroll", section_style)),
-        Line::raw(""),
-        help_line("  Shift+Up   ", "Scroll up", key_style, desc_style),
-        help_line("  Shift+Down ", "Scroll down", key_style, desc_style),
-        help_line("  PgUp/PgDn  ", "Page scroll", key_style, desc_style),
-        help_line("  End        ", "Scroll to bottom", key_style, desc_style),
-        help_line(
-            "  Mouse      ",
-            "Scroll / click agent",
-            key_style,
-            desc_style,
-        ),
-        Line::raw(""),
-        Line::from(Span::styled("  During Turns", section_style)),
-        Line::raw(""),
-        help_line(
-            "  A          ",
-            "Approve tool / plan",
-            key_style,
-            desc_style,
-        ),
-        help_line("  D          ", "Deny tool call", key_style, desc_style),
-        help_line("  Space      ", "Toggle plan step", key_style, desc_style),
-        Line::raw(""),
-        help_line("  Ctrl+C/Q   ", "Quit", key_style, desc_style),
-        help_line(
-            "  Esc        ",
-            "Close overlay / cancel",
-            key_style,
-            desc_style,
-        ),
-    ];
+    let contexts = keybindings::current_contexts(app);
+    let groups = keybindings::grouped_keybindings(&contexts);
 
-    let block = overlay_block("Help — F1", theme);
+    let mut lines: Vec<Line> = Vec::new();
+
+    for (section_label, bindings) in &groups {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {section_label}"),
+            section_style,
+        )));
+        lines.push(Line::raw(""));
+        for kb in bindings {
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {:<13}", kb.keys), key_style),
+                Span::styled(kb.description, desc_style),
+            ]));
+        }
+    }
+
+    lines.push(Line::raw(""));
+
+    let label = keybindings::context_label(&app.overlay);
+    let title = format!("Help — {label}");
+    let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
-}
-
-fn help_line<'a>(key: &'a str, desc: &'a str, key_style: Style, desc_style: Style) -> Line<'a> {
-    Line::from(vec![
-        Span::styled(key, key_style),
-        Span::styled(desc, desc_style),
-    ])
 }
 
 fn render_agent_picker(

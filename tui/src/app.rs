@@ -530,6 +530,11 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
             (KeyModifiers::CONTROL, KeyCode::Char('e')) => Some(Msg::ComposeInEditor),
 
+            // Context-aware help (only when input is empty)
+            (KeyModifiers::NONE, KeyCode::Char('?')) if self.input.text.is_empty() => {
+                Some(Msg::OpenOverlay(OverlayKind::Help))
+            }
+
             // Char input
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 

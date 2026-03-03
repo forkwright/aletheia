@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::{AgentStatus, App};
+use crate::keybindings;
 use crate::theme::{self, ThemePalette};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -57,8 +58,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         }
     }
 
-    // Right-align keybinding hints
-    let hints = "^A agents │ ^I status │ ^N new │ ^Q quit";
+    // Right-align context-aware keybinding hints
+    let hint_pairs = keybindings::status_bar_hints(app);
+    let hints: String = hint_pairs
+        .iter()
+        .map(|(k, d)| format!("{k} {d}"))
+        .collect::<Vec<_>>()
+        .join(" │ ");
     let used_width: usize = spans.iter().map(|s| s.content.len()).sum();
     let remaining = area.width as usize - used_width.min(area.width as usize);
     if remaining > hints.len() + 2 {

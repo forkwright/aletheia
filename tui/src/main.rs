@@ -4,6 +4,7 @@ mod clipboard;
 mod config;
 mod events;
 mod highlight;
+mod keybindings;
 mod markdown;
 mod msg;
 mod theme;
