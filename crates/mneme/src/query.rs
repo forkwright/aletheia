@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use aletheia_mneme_engine::DataValue;
 
 /// Datalog field reference. Implemented by per-relation field enums.
-pub trait Field: Copy {
+pub(crate) trait Field: Copy {
     fn name(self) -> &'static str;
 }
 
@@ -16,7 +16,7 @@ pub trait Field: Copy {
 /// [`crate::schema::DDL`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Relation {
+pub(crate) enum Relation {
     /// Bi-temporal fact store.
     Facts,
     /// Named entity graph nodes.
@@ -32,7 +32,7 @@ impl Relation {
     ///
     /// For example, `Relation::Facts.name()` returns `"facts"` — the name
     /// used in `*facts{...}` pattern clauses.
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Facts => "facts",
             Self::Entities => "entities",
@@ -47,7 +47,7 @@ impl Relation {
 /// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum FactsField {
+pub(crate) enum FactsField {
     Id,
     ValidFrom,
     Content,
@@ -82,7 +82,7 @@ impl Field for FactsField {
 /// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum EntitiesField {
+pub(crate) enum EntitiesField {
     Id,
     Name,
     EntityType,
@@ -109,7 +109,7 @@ impl Field for EntitiesField {
 /// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum RelationshipsField {
+pub(crate) enum RelationshipsField {
     Src,
     Dst,
     Relation,
@@ -134,7 +134,7 @@ impl Field for RelationshipsField {
 /// Implements [`Field`] — use with [`QueryBuilder::scan`] / [`PutBuilder::keys`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum EmbeddingsField {
+pub(crate) enum EmbeddingsField {
     Id,
     Content,
     SourceType,
@@ -164,7 +164,7 @@ impl Field for EmbeddingsField {
 
 /// Accumulates Datalog script lines and parameter bindings.
 #[must_use]
-pub struct QueryBuilder {
+pub(crate) struct QueryBuilder {
     lines: Vec<String>,
     params: BTreeMap<String, DataValue>,
 }
@@ -175,7 +175,7 @@ impl QueryBuilder {
     /// Call [`put`](QueryBuilder::put) to start an upsert operation or
     /// [`scan`](QueryBuilder::scan) to start a query. Use [`build`](QueryBuilder::build)
     /// or [`build_script`](QueryBuilder::build_script) to finalise.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             lines: Vec::new(),
             params: BTreeMap::new(),
@@ -183,7 +183,7 @@ impl QueryBuilder {
     }
 
     /// Start a `:put` operation against a relation.
-    pub fn put(self, relation: Relation) -> PutBuilder {
+    pub(crate) fn put(self, relation: Relation) -> PutBuilder {
         PutBuilder {
             parent: self,
             relation,
@@ -194,7 +194,7 @@ impl QueryBuilder {
     }
 
     /// Start a `?[...] := *relation{...}` scan query.
-    pub fn scan(self, relation: Relation) -> ScanBuilder {
+    pub(crate) fn scan(self, relation: Relation) -> ScanBuilder {
         ScanBuilder {
             parent: self,
             relation,
@@ -207,24 +207,24 @@ impl QueryBuilder {
     }
 
     /// Append a raw Datalog line (escape hatch for complex queries).
-    pub fn raw(mut self, line: &str) -> Self {
+    pub(crate) fn raw(mut self, line: &str) -> Self {
         self.lines.push(line.to_owned());
         self
     }
 
     /// Bind a named parameter.
-    pub fn param(mut self, name: &str, value: DataValue) -> Self {
+    pub(crate) fn param(mut self, name: &str, value: DataValue) -> Self {
         self.params.insert(name.to_owned(), value);
         self
     }
 
     /// Consume the builder, producing `(script, params)`.
-    pub fn build(self) -> (String, BTreeMap<String, DataValue>) {
+    pub(crate) fn build(self) -> (String, BTreeMap<String, DataValue>) {
         (self.lines.join("\n"), self.params)
     }
 
     /// Consume the builder, producing only the script string.
-    pub fn build_script(self) -> String {
+    pub(crate) fn build_script(self) -> String {
         self.lines.join("\n")
     }
 }
@@ -241,7 +241,7 @@ impl Default for QueryBuilder {
 
 /// Builds a `:put relation { keys => values }` operation.
 #[must_use]
-pub struct PutBuilder {
+pub(crate) struct PutBuilder {
     parent: QueryBuilder,
     relation: Relation,
     all_fields: Vec<&'static str>,
@@ -251,7 +251,7 @@ pub struct PutBuilder {
 
 impl PutBuilder {
     /// Declare key fields (before the `=>` in the `:put` clause).
-    pub fn keys(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn keys(mut self, fields: &[impl Field]) -> Self {
         self.key_count = fields.len();
         for f in fields {
             self.all_fields.push(f.name());
@@ -260,7 +260,7 @@ impl PutBuilder {
     }
 
     /// Declare value fields (after the `=>` in the `:put` clause).
-    pub fn values(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn values(mut self, fields: &[impl Field]) -> Self {
         for f in fields {
             self.all_fields.push(f.name());
         }
@@ -272,7 +272,7 @@ impl PutBuilder {
     /// Each entry is a Datalog expression: `"$param_name"`, `"null"`, a quoted
     /// literal like `"\"9999-12-31\""`, etc. Required for multi-row puts where
     /// different rows bind different params (e.g. `SUPERSEDE_FACT`).
-    pub fn row(mut self, exprs: &[&str]) -> Self {
+    pub(crate) fn row(mut self, exprs: &[&str]) -> Self {
         self.rows.push(exprs.iter().map(|s| (*s).to_owned()).collect());
         self
     }
@@ -281,7 +281,7 @@ impl PutBuilder {
     ///
     /// If no explicit `row()` was called, generates a single row from field
     /// names (convention: `$field_name` for each field).
-    pub fn done(mut self) -> QueryBuilder {
+    pub(crate) fn done(mut self) -> QueryBuilder {
         if self.rows.is_empty() {
             let auto_row: Vec<String> = self
                 .all_fields
@@ -326,7 +326,7 @@ impl PutBuilder {
 
 /// Builds a `?[select] := *relation{bindings}, filters` query.
 #[must_use]
-pub struct ScanBuilder {
+pub(crate) struct ScanBuilder {
     parent: QueryBuilder,
     relation: Relation,
     select: Vec<&'static str>,
@@ -338,43 +338,43 @@ pub struct ScanBuilder {
 
 impl ScanBuilder {
     /// Set the `?[...]` projection fields.
-    pub fn select(mut self, fields: &[impl Field]) -> Self {
+    pub(crate) fn select(mut self, fields: &[impl Field]) -> Self {
         self.select = fields.iter().map(|f| f.name()).collect();
         self
     }
 
     /// Bind a field in the `*relation{...}` clause (just the field name).
-    pub fn bind(mut self, field: impl Field) -> Self {
+    pub(crate) fn bind(mut self, field: impl Field) -> Self {
         self.bindings.push(field.name().to_owned());
         self
     }
 
     /// Bind a field to an expression: `field: expr` in `*relation{...}`.
-    pub fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
+    pub(crate) fn bind_to(mut self, field: impl Field, expr: &str) -> Self {
         self.bindings.push(format!("{}: {expr}", field.name()));
         self
     }
 
     /// Add a filter condition (raw Datalog expression after the scan clause).
-    pub fn filter(mut self, expr: &str) -> Self {
+    pub(crate) fn filter(mut self, expr: &str) -> Self {
         self.filters.push(expr.to_owned());
         self
     }
 
     /// Set `:order` directive (e.g. `"-confidence"`).
-    pub fn order(mut self, expr: &str) -> Self {
+    pub(crate) fn order(mut self, expr: &str) -> Self {
         self.order = Some(expr.to_owned());
         self
     }
 
     /// Set `:limit` directive (e.g. `"$limit"`).
-    pub fn limit(mut self, expr: &str) -> Self {
+    pub(crate) fn limit(mut self, expr: &str) -> Self {
         self.limit = Some(expr.to_owned());
         self
     }
 
     /// Finish the scan, returning the parent `QueryBuilder`.
-    pub fn done(mut self) -> QueryBuilder {
+    pub(crate) fn done(mut self) -> QueryBuilder {
         let select_list = self.select.join(", ");
         let binding_list = self.bindings.join(", ");
 
@@ -406,13 +406,13 @@ impl ScanBuilder {
 // ---------------------------------------------------------------------------
 
 /// Builder-generated query scripts for KnowledgeStore operations.
-pub mod queries {
+pub(crate) mod queries {
     use super::*;
 
     /// Insert or update a fact. Params: `$id`, `$valid_from`, `$content`,
     /// `$nous_id`, `$confidence`, `$tier`, `$valid_to`, `$superseded_by`,
     /// `$source_session_id`, `$recorded_at`.
-    pub fn upsert_fact() -> String {
+    pub(crate) fn upsert_fact() -> String {
         use FactsField::*;
         QueryBuilder::new()
             .put(Relation::Facts)
@@ -433,7 +433,7 @@ pub mod queries {
 
     /// Query current facts for a nous (not superseded, currently valid).
     /// Params: `$nous_id`, `$now`, `$limit`.
-    pub fn current_facts() -> String {
+    pub(crate) fn current_facts() -> String {
         use FactsField::*;
         QueryBuilder::new()
             .scan(Relation::Facts)
@@ -459,7 +459,7 @@ pub mod queries {
 
     /// Extended query returning all `Fact` fields.
     /// Params: `$nous_id`, `$now`, `$limit`.
-    pub fn full_current_facts() -> String {
+    pub(crate) fn full_current_facts() -> String {
         use FactsField::*;
         QueryBuilder::new()
             .scan(Relation::Facts)
@@ -496,7 +496,7 @@ pub mod queries {
     }
 
     /// Point-in-time fact query. Params: `$time`.
-    pub fn facts_at_time() -> String {
+    pub(crate) fn facts_at_time() -> String {
         use FactsField::*;
         QueryBuilder::new()
             .scan(Relation::Facts)
@@ -518,7 +518,7 @@ pub mod queries {
     /// `$old_confidence`, `$old_tier`, `$now`, `$new_id`, `$old_source`,
     /// `$old_recorded`, `$new_content`, `$new_confidence`, `$new_tier`,
     /// `$source_session_id`.
-    pub fn supersede_fact() -> String {
+    pub(crate) fn supersede_fact() -> String {
         use FactsField::*;
         QueryBuilder::new()
             .put(Relation::Facts)
@@ -563,7 +563,7 @@ pub mod queries {
 
     /// Insert or update an entity.
     /// Params: `$id`, `$name`, `$entity_type`, `$aliases`, `$created_at`, `$updated_at`.
-    pub fn upsert_entity() -> String {
+    pub(crate) fn upsert_entity() -> String {
         use EntitiesField::*;
         QueryBuilder::new()
             .put(Relation::Entities)
@@ -575,7 +575,7 @@ pub mod queries {
 
     /// Insert a relationship.
     /// Params: `$src`, `$dst`, `$relation`, `$weight`, `$created_at`.
-    pub fn upsert_relationship() -> String {
+    pub(crate) fn upsert_relationship() -> String {
         use RelationshipsField::{CreatedAt, Dst, Relation as Rel, Src, Weight};
         QueryBuilder::new()
             .put(super::Relation::Relationships)
@@ -588,7 +588,7 @@ pub mod queries {
     /// Insert an embedding chunk.
     /// Params: `$id`, `$content`, `$source_type`, `$source_id`, `$nous_id`,
     /// `$embedding`, `$created_at`.
-    pub fn upsert_embedding() -> String {
+    pub(crate) fn upsert_embedding() -> String {
         use EmbeddingsField::*;
         QueryBuilder::new()
             .put(Relation::Embeddings)
@@ -599,7 +599,7 @@ pub mod queries {
     }
 
     /// 2-hop entity neighborhood. Params: `$entity_id`.
-    pub const ENTITY_NEIGHBORHOOD: &str = r"
+    pub(crate) const ENTITY_NEIGHBORHOOD: &str = r"
         hop1[dst, rel] := *relationships{src: $entity_id, dst, relation: rel}
         hop2[dst, rel] := hop1[mid, _], *relationships{src: mid, dst, relation: rel}
         ?[id, name, entity_type, relation, hop] :=
@@ -610,14 +610,14 @@ pub mod queries {
     ";
 
     /// KNN vector search. Params: `$query_vec`, `$k`, `$ef`.
-    pub const SEMANTIC_SEARCH: &str = r"
+    pub(crate) const SEMANTIC_SEARCH: &str = r"
         ?[id, content, source_type, source_id, dist] :=
             ~embeddings:semantic_idx {id, content, source_type, source_id |
                 query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
     ";
 
     /// Entity search by name or alias (prefix match). Params: `$prefix`, `$limit`.
-    pub const SEARCH_ENTITIES: &str = r"
+    pub(crate) const SEARCH_ENTITIES: &str = r"
         ?[id, name, entity_type] :=
             *entities{id, name, entity_type},
             starts_with(name, $prefix)
@@ -630,7 +630,7 @@ pub mod queries {
     /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
     /// Graph sub-rules are injected dynamically by `build_hybrid_query`.
     /// Params: `$query_text`, `$query_vec`, `$k`, `$ef`, `$limit`.
-    pub const HYBRID_SEARCH_BASE: &str = r"
+    pub(crate) const HYBRID_SEARCH_BASE: &str = r"
         bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
 
         vec[id, score] :=

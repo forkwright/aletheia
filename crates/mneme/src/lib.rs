@@ -11,7 +11,7 @@
 //! - [`types::Session`] / [`types::Message`] — session and message records from `SQLite`
 //! - [`types::SessionStatus`] / [`types::SessionType`] / [`types::Role`] — enum domain types
 //! - [`knowledge::Fact`] / [`knowledge::Entity`] / [`knowledge::Relationship`] — `CozoDB` domain types
-//! - [`extract::ExtractionEngine`] — LLM-driven fact/entity extraction from conversations
+//! - `extract::ExtractionEngine` — LLM-driven fact/entity extraction from conversations
 //! - [`embedding::EmbeddingProvider`] — text-to-vector interface for semantic recall
 //! - `recall::RecallQuery` — structured semantic + graph recall query
 //!
@@ -19,11 +19,12 @@
 
 pub mod embedding;
 pub mod error;
-pub mod extract;
+#[cfg_attr(not(test), expect(dead_code, reason = "used in module tests only"))]
+pub(crate) mod extract;
 pub mod knowledge;
 pub mod knowledge_store;
 #[cfg(feature = "mneme-engine")]
-pub mod query;
+pub(crate) mod query;
 pub mod recall;
 #[cfg(feature = "sqlite")]
 pub mod schema;
