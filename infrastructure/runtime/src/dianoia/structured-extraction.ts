@@ -109,6 +109,15 @@ export function selectRoleForTask(task: string): "coder" | "reviewer" | "researc
   return taskTypeToRole(classification);
 }
 
+// Achievement claim from sub-agent completion assertions (EXEC-02)
+const AchievementSchema = z.object({
+  claim: z.string().min(1),
+  evidence: z.string().optional(),
+  verifiable: z.boolean().optional(),
+});
+
+export type Achievement = z.infer<typeof AchievementSchema>;
+
 // Sub-agent result schema matching the existing interface
 const SubAgentResultSchema = z.object({
   role: z.string().min(1, "Role must not be empty"),
@@ -124,6 +133,8 @@ const SubAgentResultSchema = z.object({
     suggestion: z.string().optional(),
   })).optional(),
   confidence: z.number().min(0).max(1),
+  achievements: z.array(AchievementSchema).optional(),
+  blockers: z.array(z.string()).optional(),
 });
 
 export type SubAgentResult = z.infer<typeof SubAgentResultSchema>;

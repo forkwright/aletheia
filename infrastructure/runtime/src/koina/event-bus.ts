@@ -39,6 +39,8 @@ export type EventName =
   | "planning:edit-recorded"
   | "planning:state-transition"
   | "planning:execution-progress"
+  | "planning:execution-stuck"
+  | "planning:iteration-capped"
   | "planning:verification-complete"
   | "task:created"
   | "task:updated"

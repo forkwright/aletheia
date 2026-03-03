@@ -135,6 +135,8 @@ export const ERROR_CODES = {
   PLANNING_RESEARCH_ALL_FAILED: "All research dimensions failed — cannot proceed without domain research",
   PLANNING_DISPATCH_FAILED: "Plan dispatch failed after retry",
   PLANNING_DISPATCH_PARSE_FAILED: "Failed to parse dispatch response",
+  PLANNING_EXECUTION_STUCK: "Plan stuck: same error pattern repeated",
+  PLANNING_ITERATION_CAP_EXCEEDED: "Plan exceeded maximum iteration count",
 
   // Task system
   TASK_NOT_FOUND: "Task ID does not exist",

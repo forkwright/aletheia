@@ -5,9 +5,15 @@
 // - EXEC-02: Structured extraction with Zod validation + retry feedback
 // - EXEC-03: Wave concurrency (parallel dispatch within a wave)
 // - EXEC-04: Automatic retry with validation error feedback
+// - EXEC-05: Stuck detection (prevents blind retries on repeated errors)
+// - EXEC-06: Completion assertions (achievements + blockers)
+// - EXEC-07: Iteration caps with blocker documentation
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { createLogger } from "../koina/logger.js";
+import { eventBus } from "../koina/event-bus.js";
 import type { ToolContext, ToolHandler } from "../organon/registry.js";
 import { PlanningStore } from "./store.js";
 import type { PlanningPhase } from "./types.js";
@@ -17,6 +23,7 @@ import {
   parseDispatchResponse,
   selectRoleForTask,
 } from "./structured-extraction.js";
+import { StuckDetector } from "./stuck-detection.js";
 
 // Re-export wave computation utilities (shared with base ExecutionOrchestrator)
 export { computeWaves, directDependents, findResumeWave } from "./execution.js";
@@ -31,6 +38,7 @@ export interface ExecutionOptions {
   maxConcurrentTasks: number;
   maxRetries: number;
   zombieThresholdSeconds: number;
+  maxIterationsPerPlan: number;
 }
 
 export const DEFAULT_EXECUTION_OPTIONS: ExecutionOptions = {
@@ -41,6 +49,7 @@ export const DEFAULT_EXECUTION_OPTIONS: ExecutionOptions = {
   maxConcurrentTasks: 10,
   maxRetries: 1,
   zombieThresholdSeconds: 600,
+  maxIterationsPerPlan: 3,
 };
 
 export interface EnhancedExecutionResult {
@@ -50,11 +59,15 @@ export interface EnhancedExecutionResult {
   concurrent: boolean;
   totalDispatches: number;
   retries: number;
+  stuckPlans: string[];
+  cappedPlans: string[];
 }
 
 export class EnhancedExecutionOrchestrator {
   private store: PlanningStore;
   private options: ExecutionOptions;
+  private stuckDetector = new StuckDetector();
+  private iterationCounts = new Map<string, number>();
 
   constructor(
     db: Database.Database,
@@ -90,6 +103,8 @@ export class EnhancedExecutionOrchestrator {
     let skipped = 0;
     let totalDispatches = 0;
     let retries = 0;
+    const stuckPlans: string[] = [];
+    const cappedPlans: string[] = [];
     const skippedIds = new Set<string>(
       existingRecords.filter((r) => r.status === "skipped").map((r) => r.phaseId),
     );
@@ -140,17 +155,69 @@ export class EnhancedExecutionOrchestrator {
           }
         }
       } else {
-        // Sequential: dispatch one at a time
+        // Sequential: dispatch with retry loop per plan
         for (const plan of activePlans) {
-          const result = await this.executeSinglePlan(
-            projectId,
-            plan,
-            waveIndex,
-            project.goal,
-            toolContext,
-          );
-          totalDispatches++;
-          if (result === "failed") {
+          let planDone = false;
+
+          for (let attempt = 1; attempt <= this.options.maxIterationsPerPlan; attempt++) {
+            const result = await this.executeSinglePlan(
+              projectId,
+              plan,
+              waveIndex,
+              project.goal,
+              toolContext,
+            );
+            totalDispatches++;
+
+            if (result.status === "done") {
+              this.stuckDetector.clear(plan.id);
+              this.iterationCounts.delete(plan.id);
+              planDone = true;
+              break;
+            }
+
+            // Record failure for stuck detection
+            const errorMsg = result.errorMessage ?? "Execution failed";
+            const stuckCheck = this.stuckDetector.recordFailure(plan.id, errorMsg);
+
+            if (stuckCheck.isStuck) {
+              stuckPlans.push(plan.id);
+              eventBus.emit("planning:execution-stuck", {
+                projectId,
+                planId: plan.id,
+                planName: plan.name,
+                pattern: stuckCheck.signature.pattern,
+                count: stuckCheck.signature.count,
+              });
+              log.warn(
+                `Plan ${plan.id} stuck: error pattern "${stuckCheck.signature.pattern}" seen ${stuckCheck.signature.count} times — skipping retry`,
+              );
+              break;
+            }
+
+            this.iterationCounts.set(plan.id, attempt);
+
+            if (attempt >= this.options.maxIterationsPerPlan) {
+              cappedPlans.push(plan.id);
+              this.writeBlockerFile(projectId, plan, "iteration_cap_exceeded");
+              eventBus.emit("planning:iteration-capped", {
+                projectId,
+                planId: plan.id,
+                planName: plan.name,
+                iterations: attempt,
+                maxIterations: this.options.maxIterationsPerPlan,
+              });
+              log.warn(
+                `Plan ${plan.id} hit iteration cap (${attempt}/${this.options.maxIterationsPerPlan}) — documenting blocker`,
+              );
+              break;
+            }
+
+            retries++;
+            log.info(`Retrying plan ${plan.id} (attempt ${attempt + 1}/${this.options.maxIterationsPerPlan})`);
+          }
+
+          if (!planDone) {
             failed++;
             const { directDependents } = await import("./execution.js");
             const dependents = directDependents(plan.id, allPhases);
@@ -166,6 +233,12 @@ export class EnhancedExecutionOrchestrator {
       }
     }
 
+    if (stuckPlans.length > 0 || cappedPlans.length > 0) {
+      log.info(
+        `Phase execution summary: ${stuckPlans.length} stuck, ${cappedPlans.length} capped`,
+      );
+    }
+
     return {
       waveCount: waves.length,
       failed,
@@ -173,6 +246,8 @@ export class EnhancedExecutionOrchestrator {
       concurrent: this.options.enableWaveConcurrency,
       totalDispatches,
       retries,
+      stuckPlans,
+      cappedPlans,
     };
   }
 
@@ -227,16 +302,39 @@ export class EnhancedExecutionOrchestrator {
           const spawnId = spawnIds[i]!;
 
           if (result.status === "success") {
-            this.store.updateSpawnRecord(spawnId, {
-              status: "done",
-              completedAt: new Date().toISOString(),
-            });
+            this.stuckDetector.clear(plan.id);
+
+            // Log achievement warning if completion lacks claims
+            const structured = result.structuredResult;
+            if (structured && (!structured.achievements || structured.achievements.length === 0)) {
+              log.warn(`Plan ${plan.id} reported success without achievement claims`);
+            }
+
+            // Store achievements in spawn record
+            if (structured?.achievements) {
+              this.store.updateSpawnRecord(spawnId, {
+                status: "done",
+                completedAt: new Date().toISOString(),
+                result: JSON.stringify({
+                  achievements: structured.achievements,
+                  blockers: structured.blockers ?? [],
+                }),
+              });
+            } else {
+              this.store.updateSpawnRecord(spawnId, {
+                status: "done",
+                completedAt: new Date().toISOString(),
+              });
+            }
             this.store.updatePhaseStatus(plan.id, "complete");
           } else {
+            const errorMsg = result.error ?? "Dispatch failure";
+            this.stuckDetector.recordFailure(plan.id, errorMsg);
+
             this.store.updateSpawnRecord(spawnId, {
               status: "failed",
               completedAt: new Date().toISOString(),
-              errorMessage: result.error ?? "Dispatch failure",
+              errorMessage: errorMsg,
             });
             this.store.updatePhaseStatus(plan.id, "failed");
             failed++;
@@ -246,10 +344,13 @@ export class EnhancedExecutionOrchestrator {
       } else {
         // Parse failure — mark all as failed
         for (let i = 0; i < plans.length; i++) {
+          const errorMsg = "Dispatch response parse failure";
+          this.stuckDetector.recordFailure(plans[i]!.id, errorMsg);
+
           this.store.updateSpawnRecord(spawnIds[i]!, {
             status: "failed",
             completedAt: new Date().toISOString(),
-            errorMessage: "Dispatch response parse failure",
+            errorMessage: errorMsg,
           });
           this.store.updatePhaseStatus(plans[i]!.id, "failed");
           failed++;
@@ -258,10 +359,13 @@ export class EnhancedExecutionOrchestrator {
       }
     } catch (error) {
       for (let i = 0; i < plans.length; i++) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.stuckDetector.recordFailure(plans[i]!.id, errorMsg);
+
         this.store.updateSpawnRecord(spawnIds[i]!, {
           status: "failed",
           completedAt: new Date().toISOString(),
-          errorMessage: error instanceof Error ? error.message : String(error),
+          errorMessage: errorMsg,
         });
         this.store.updatePhaseStatus(plans[i]!.id, "failed");
         failed++;
@@ -278,7 +382,7 @@ export class EnhancedExecutionOrchestrator {
     waveIndex: number,
     projectGoal: string,
     toolContext: ToolContext,
-  ): Promise<"done" | "failed"> {
+  ): Promise<{ status: "done" | "failed"; errorMessage?: string }> {
     const record = this.store.createSpawnRecord({
       projectId,
       phaseId: plan.id,
@@ -306,29 +410,49 @@ export class EnhancedExecutionOrchestrator {
       const firstResult = parsed?.results[0];
 
       if (firstResult?.status === "success") {
-        this.store.updateSpawnRecord(record.id, {
-          status: "done",
-          completedAt: new Date().toISOString(),
-        });
+        // Log achievement warning if completion lacks claims
+        const structured = firstResult.structuredResult;
+        if (structured && (!structured.achievements || structured.achievements.length === 0)) {
+          log.warn(`Plan ${plan.id} reported success without achievement claims`);
+        }
+
+        // Store achievements in spawn record
+        if (structured?.achievements) {
+          this.store.updateSpawnRecord(record.id, {
+            status: "done",
+            completedAt: new Date().toISOString(),
+            result: JSON.stringify({
+              achievements: structured.achievements,
+              blockers: structured.blockers ?? [],
+            }),
+          });
+        } else {
+          this.store.updateSpawnRecord(record.id, {
+            status: "done",
+            completedAt: new Date().toISOString(),
+          });
+        }
         this.store.updatePhaseStatus(plan.id, "complete");
-        return "done";
+        return { status: "done" };
       }
 
+      const errorMessage = firstResult?.error ?? "Execution failed";
       this.store.updateSpawnRecord(record.id, {
         status: "failed",
         completedAt: new Date().toISOString(),
-        errorMessage: firstResult?.error ?? "Execution failed",
+        errorMessage,
       });
       this.store.updatePhaseStatus(plan.id, "failed");
-      return "failed";
+      return { status: "failed", errorMessage };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.store.updateSpawnRecord(record.id, {
         status: "failed",
         completedAt: new Date().toISOString(),
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage,
       });
       this.store.updatePhaseStatus(plan.id, "failed");
-      return "failed";
+      return { status: "failed", errorMessage };
     }
   }
 
@@ -368,10 +492,60 @@ export class EnhancedExecutionOrchestrator {
       `  "summary": "Brief description of what was accomplished",`,
       `  "filesChanged": ["list", "of", "files"],`,
       `  "issues": [],`,
-      `  "confidence": 0.0-1.0`,
+      `  "confidence": 0.0-1.0,`,
+      `  "achievements": [{"claim": "What was done", "evidence": "file:line", "verifiable": true}],`,
+      `  "blockers": ["Description of any blocking issue"]`,
       `}`,
       "```",
     ].join("\n");
+  }
+
+  private writeBlockerFile(projectId: string, plan: PlanningPhase, reason: string): void {
+    const project = this.store.getProject(projectId);
+    if (!project?.projectDir) {
+      log.warn(`Cannot write blocker file: no projectDir for project ${projectId}`);
+      return;
+    }
+
+    try {
+      const dir = join(project.projectDir, "blockers");
+      mkdirSync(dir, { recursive: true });
+
+      const signatures = this.stuckDetector.getSignatures(plan.id);
+      const iterations = this.iterationCounts.get(plan.id) ?? 0;
+
+      const content = [
+        `# Blocker: ${plan.name}`,
+        "",
+        `| Field | Value |`,
+        `|-------|-------|`,
+        `| Plan ID | \`${plan.id}\` |`,
+        `| Phase | ${plan.name} |`,
+        `| Reason | ${reason} |`,
+        `| Iterations | ${iterations} |`,
+        `| Recorded | ${new Date().toISOString()} |`,
+        "",
+        "## Error History",
+        "",
+        ...(signatures.length > 0
+          ? signatures.map(
+              (s) =>
+                `- **Pattern:** "${s.pattern}" (seen ${s.count}x, first: ${s.firstSeen}, last: ${s.lastSeen})`,
+            )
+          : ["_No error signatures recorded_"]),
+        "",
+        "## Success Criteria",
+        "",
+        ...plan.successCriteria.map((c, i) => `${i + 1}. ${c}`),
+        "",
+      ].join("\n");
+
+      const filePath = join(dir, `${plan.id}.md`);
+      writeFileSync(filePath, content, "utf-8");
+      log.info(`Blocker file written: ${filePath}`);
+    } catch (error) {
+      log.warn(`Failed to write blocker file for plan ${plan.id}: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   private reapZombies(projectId: string, _allPhases: PlanningPhase[]): void {
