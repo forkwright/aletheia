@@ -446,7 +446,7 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 | 4.2 | `daemon` | Per-nous cron, evolution, prosoche, graph maintenance, morning digest. **Includes recursive behavioral evolution:** tool call observation → pattern extraction → fitness-scored instincts (contextual, not abstract) → niche differentiation → ecological succession. Not self-improvement — co-evolution with operator and environment. |
 | 4.3 | `dianoia` | Planning FSM from first principles. **Core redesign:** workspace model (not pipeline). 3 operating modes: full project (research→execute→verify), quick task (appetite-based, time-boxed), and autonomous background. Skip any phase that adds no value. State machine with exhaustive `match` on typed enums — every transition explicit. |
 | 4.4 | Cross-nous coordination | Competence-aware routing, structured task handoff, priority queue |
-| 4.5 | Tool observability | Pre/post-tool hooks with structured tracing spans. Foundation for behavioral evolution, environmental pressure signals, debugging, and Spec 41 observability. |
+| 4.5 | Tool observability + lifecycle hooks | Pre/post-tool hooks with structured tracing spans. **Lifecycle hook system:** PreToolUse, PostToolUse, SessionStart/End, PreCompact, TaskCompleted events. Three hook types: command (shell), prompt (LLM eval), inline (Rust callback). Oikos cascade for hook config (shared/hooks/ + nous/{id}/hooks/). Foundation for auto-format, pre-compaction memory safety, verification hooks, behavioral evolution. |
 
 **Absorbed ideas:**
 - **Spec 27 Phase 4 (Cross-Agent Semantic Routing):** Route messages to the correct nous by comparing message embedding to each agent's memory cluster centroid. Replaces config-label domain matching with embedding-space proximity — foundational to correct multi-nous coordination. (Moved from M6 per G-05: without this, M4 ships with inherited string-matching patterns.)
@@ -463,6 +463,9 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 - **Orbital Distillation Optimization (DIST-01..02):** Model downshift for cheaper distillation + structured condensing prompt template. Source: Orbital condense/index.ts, custom condensing handler.
 - **Orbital Eval Schema (EVAL-05..06):** Concrete data model: runs→tasks→metrics→toolErrors. CozoDB storage. Source: Orbital packages/evals DB schema.
 - **Orbital Manual Skills (SKILL-01):** Static skill files in workspace, loadable on demand. Bridges gap before instinct speciation produces stable behavioral patterns. Source: Orbital .agent/skills/ pattern.
+- **Claude Cowork Lifecycle Hooks (HOOK-01..07):** Event-driven hook registry for tool and session lifecycle. PostToolUse on Write/Edit enables auto-format/lint. PreCompact guarantees memory file write before distillation (solves amnesia). TaskCompleted enables verification assertions. Oikos cascade for hook configuration. Source: Claude Cowork plugin hooks architecture.
+- **Ralph Wiggum Execution Resilience (EXEC-01..04):** Stuck detection (same error twice → escalate, not retry), completion assertions (sub-agents state what they achieved), max iteration caps with blocker documentation, opt-in re-injection on Stop for iterative tasks. Source: Ralph Wiggum iterative pattern, Claude Cowork Stop hook.
+- **Claude Cowork Skill Modularity (LOOP-03):** Decompose monolithic SOUL.md/AGENTS.md into composable skill files discovered via oikos cascade. assemble-context loads them dynamically. Source: Claude Cowork SKILL.md pattern.
 
 **Success criteria:** Syn, Akron, Syl, Demiurge all running simultaneously. Background tasks execute independently. Cross-nous task handoff works without operator intervention. Semantic routing correctly directs messages to domain-appropriate nous without config labels.
 
@@ -506,6 +509,8 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 | 6.4 | Embedding space intelligence — JEPA goal vectors, collapse prevention, embedding health monitoring | Spec 27 (phases 5-6) |
 | 6.5 | UI layout overhaul | Spec 29, Issue #328 |
 | 6.6 | TUI enhancements — fuzzy filter, F2 overlay, OSC 8, plan widget | Issue #326 |
+| 6.7 | LSP integration — rust-analyzer/pyright in agent loop for real-time diagnostics | LOOP-01 |
+| 6.8 | Path display normalization — translate workspace paths to user-friendly relative paths in webchat | LOOP-02 |
 
 These are not sequenced — they can be worked in parallel once the platform is stable. Each is a self-contained project.
 
