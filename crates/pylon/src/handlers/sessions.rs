@@ -310,23 +310,32 @@ async fn find_session(
 
 // --- Request/Response types ---
 
+/// Request body for `POST /api/sessions`.
 #[derive(Debug, Deserialize)]
 pub struct CreateSessionRequest {
+    /// ID of the nous agent that will own this session.
     pub nous_id: String,
+    /// Caller-assigned session key (unique per nous).
     pub session_key: String,
 }
 
+/// Request body for `POST /api/sessions/{id}/messages`.
 #[derive(Debug, Deserialize)]
 pub struct SendMessageRequest {
+    /// User message text to process.
     pub content: String,
 }
 
+/// Query parameters for `GET /api/sessions/{id}/history`.
 #[derive(Debug, Deserialize)]
 pub struct HistoryParams {
+    /// Maximum number of messages to return.
     pub limit: Option<u32>,
+    /// Return only messages with sequence number less than this value.
     pub before: Option<i64>,
 }
 
+/// Response body for session endpoints.
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
     pub id: String,
@@ -356,14 +365,18 @@ impl SessionResponse {
     }
 }
 
+/// Response body for `GET /api/sessions/{id}/history`.
 #[derive(Debug, Serialize)]
 pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
 
+/// A single message in the conversation history.
 #[derive(Debug, Serialize)]
 pub struct HistoryMessage {
+    /// Database row ID.
     pub id: i64,
+    /// Monotonic sequence number within the session.
     pub seq: i64,
     pub role: String,
     pub content: String,

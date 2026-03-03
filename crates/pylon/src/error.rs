@@ -5,8 +5,10 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use snafu::Snafu;
 
+/// HTTP API error that maps directly to an Axum response with a JSON error body.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[non_exhaustive]
 pub enum ApiError {
     #[snafu(display("session not found: {id}"))]
     SessionNotFound { id: String },

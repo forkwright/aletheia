@@ -5,6 +5,7 @@ use serde::Serialize;
 /// SSE event emitted to the client during message streaming.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum SseEvent {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },

@@ -57,17 +57,26 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     })
 }
 
+/// Top-level response body for `GET /api/health`.
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
+    /// Overall health status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
     pub status: &'static str,
+    /// Crate version from `CARGO_PKG_VERSION`.
     pub version: &'static str,
+    /// Seconds since the server started.
     pub uptime_seconds: u64,
+    /// Individual subsystem check results.
     pub checks: Vec<HealthCheck>,
 }
 
+/// Result of a single subsystem health check.
 #[derive(Debug, Serialize)]
 pub struct HealthCheck {
+    /// Subsystem name (e.g., `"session_store"`).
     pub name: &'static str,
+    /// Check outcome: `"pass"`, `"warn"`, or `"fail"`.
     pub status: &'static str,
+    /// Optional human-readable failure message.
     pub message: Option<String>,
 }

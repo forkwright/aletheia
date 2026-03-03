@@ -1,4 +1,8 @@
 //! Axum HTTP gateway for Aletheia.
+//!
+//! Exposes the REST API and SSE streaming endpoints consumed by the UI and
+//! external clients. Delegates business logic to [`aletheia_nous`] actors and
+//! [`aletheia_mneme`] storage through shared [`state::AppState`].
 
 pub mod error;
 pub mod extract;

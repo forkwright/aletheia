@@ -28,7 +28,9 @@ pub struct ServerConfig {
     pub instance_path: PathBuf,
 }
 
+/// Fatal errors that prevent the HTTP server from starting or running.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum ServerError {
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore {
@@ -46,6 +48,11 @@ pub enum ServerError {
 }
 
 /// Start the HTTP gateway and block until shutdown.
+///
+/// # Errors
+///
+/// Returns a bind error if the address is already in use, a session-store error
+/// if the database cannot be opened, or a serve error if the server exits unexpectedly.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Arc::new(Oikos::from_root(&config.instance_path));
 
