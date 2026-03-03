@@ -1,8 +1,8 @@
 # Aletheia — Project Plan
 
 > Roadmap and current status for Aletheia's evolution from TypeScript prototype to Rust production system.
-> For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `docs/DISPOSITION.md`.
-> Last updated: 2026-03-02 — M0a/M0b/M1 complete, M2 core + M3 complete. 745 tests across 15 crates, ~21K lines Rust (+42K vendored mneme-engine).
+> For decisions see `docs/decisions/`, for standards see `docs/STANDARDS.md`, for triage see `.planning/DISPOSITION.md` (local).
+> Last updated: 2026-03-05 — M0a/M0b/M1 complete, M2 core + M3 complete, pipeline wired end-to-end. 849 tests across 15 crates, ~27K lines Rust. mneme v2 Phases 9-11 done.
 
 ---
 
@@ -241,6 +241,23 @@ CozoDB provides all three storage layers:
 
 Custom (first principles): bi-temporal knowledge graph, graph extraction, entity resolution, 6-factor recall scoring, cross-nous scoring, recollection-as-memory.
 
+#### mneme v2: The Transformation Arc
+
+v1 absorbed CozoDB into the workspace as `mneme-engine` — it compiles, tests pass, hybrid retrieval works. v2 transforms it from "CozoDB that we absorbed" into Aletheia's memory engine.
+
+Three movements:
+
+1. **Integration (current)** — Bug fixes, recall pipeline, typed query builder. The engine connects to agent cognition.
+2. **Transformation** — Crate consolidation (`mneme-engine` + `graph-builder` → `mneme`), API reshaped around knowledge and memory (Fact, Association, Confidence, TemporalQuery — not DataValue, NamedRows), HNSW rewritten in-memory, CSV/JSON import restored as Rust-native, C/C++ dependencies evaluated for pure-Rust replacement.
+3. **Intelligence** — Knowledge extraction from conversations, conflict resolution on write, temporal decay, Louvain-based consolidation. Framed as **recursive evolution**: the engine co-evolves with the operator and environment. Fitness is contextual, variation is preserved, ecological succession replaces aggressive pruning.
+
+Design principles:
+- **Reshape, don't shrink.** The 30+ graph algorithms, bi-temporal reasoning, Datalog optimizer, BM25 — all stay. We use 15% today but the roadmap reaches into the rest. Strip dead code (removed platform backends, FFI shims), not dormant capability.
+- **Rust-native where possible.** Evaluate pure-Rust alternatives for every C/C++ dependency without sacrificing quality. RocksDB → redb/fjall if benchmarks hold.
+- **API speaks our language.** The public surface thinks in knowledge, memory, recall, and confidence — not generic Datalog relations.
+
+Detailed phase plans and requirements in `.planning/` (local-only, not tracked in repo).
+
 ### Anthropic Client (hermeneus)
 
 ```rust
@@ -426,9 +443,10 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 | Phase | Crate | What It Proves |
 |-------|-------|----------------|
 | 4.1 | `nous` (multi-actor) | Multiple NousActors on real Tokio threads, independent inboxes |
-| 4.2 | `daemon` | Per-nous cron, evolution, prosoche, graph maintenance, morning digest |
+| 4.2 | `daemon` | Per-nous cron, evolution, prosoche, graph maintenance, morning digest. **Includes recursive behavioral evolution:** tool call observation → pattern extraction → fitness-scored instincts (contextual, not abstract) → niche differentiation → ecological succession. Not self-improvement — co-evolution with operator and environment. |
 | 4.3 | `dianoia` | Planning FSM from first principles. **Core redesign:** workspace model (not pipeline). 3 operating modes: full project (research→execute→verify), quick task (appetite-based, time-boxed), and autonomous background. Skip any phase that adds no value. State machine with exhaustive `match` on typed enums — every transition explicit. |
 | 4.4 | Cross-nous coordination | Competence-aware routing, structured task handoff, priority queue |
+| 4.5 | Tool observability + lifecycle hooks | Pre/post-tool hooks with structured tracing spans. **Lifecycle hook system:** PreToolUse, PostToolUse, SessionStart/End, PreCompact, TaskCompleted events. Three hook types: command (shell), prompt (LLM eval), inline (Rust callback). Oikos cascade for hook config (shared/hooks/ + nous/{id}/hooks/). Foundation for auto-format, pre-compaction memory safety, verification hooks, behavioral evolution. |
 
 **Absorbed ideas:**
 - **Spec 27 Phase 4 (Cross-Agent Semantic Routing):** Route messages to the correct nous by comparing message embedding to each agent's memory cluster centroid. Replaces config-label domain matching with embedding-space proximity — foundational to correct multi-nous coordination. (Moved from M6 per G-05: without this, M4 ships with inherited string-matching patterns.)
@@ -437,6 +455,17 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 - **Spec 42, Gap 2 (Task Handoff):** Structured lightweight schema: `{id, from, to, type, context, status, created, updated}`. State machine: created → assigned → in-progress → review → done. Context travels with handoff. Informal `sessions_send` remains for quick coordination (G-13).
 - **Issue #313 (Prosoche signals):** Activity tracking, HEARTBEAT_OK dedup, work signals. Built into daemon.
 - **Issue #239 (Graph maintenance):** Automated CozoDB graph QA, vector dedup, orphan purge. Per-nous cron schedule.
+- **ECC Instinct System (INST-01..11, evolution-reframed):** Tool call observation → pattern extraction → fitness-scored instincts (contextual, not abstract) with niche identification and per-nous scoping → ecological succession + speciation + co-evolutionary recalibration. Reframed from self-improvement (optimize toward fixed target) to recursive evolution (co-evolve with operator and environment). Fitness through use, not scoring. Variation preserved, not pruned. Source: everything-claude-code continuous-learning-v2, reframed.
+- **ECC Tool Observability (OBS-01..04):** Pre/post-tool hook points, tool call tracing spans, async hook registration API. Source: everything-claude-code hooks architecture.
+- **Rowboat Knowledge Ingestion (KI-01..05):** Source monitoring + incremental change detection (mtime+hash) + batch extraction pipeline + entity deduplication + strictness levels. Informs Phase 15 knowledge lifecycle. Source: rowboat build_graph, graph_state, strictness_analyzer.
+- **Rowboat Background Scheduling (SCHED-01..03):** Cron + window + once scheduling for autonomous agent runs. Informs daemon cron capabilities. Source: rowboat agent-schedule/runner.
+- **Orbital Agent Safety (ASAFE-01..02):** Tool repetition detection (loop breaker) + checkpoint/rollback for destructive ops. Source: Orbital ToolRepetitionDetector, checkpoint services.
+- **Orbital Distillation Optimization (DIST-01..02):** Model downshift for cheaper distillation + structured condensing prompt template. Source: Orbital condense/index.ts, custom condensing handler.
+- **Orbital Eval Schema (EVAL-05..06):** Concrete data model: runs→tasks→metrics→toolErrors. CozoDB storage. Source: Orbital packages/evals DB schema.
+- **Orbital Manual Skills (SKILL-01):** Static skill files in workspace, loadable on demand. Bridges gap before instinct speciation produces stable behavioral patterns. Source: Orbital .agent/skills/ pattern.
+- **Claude Cowork Lifecycle Hooks (HOOK-01..07):** Event-driven hook registry for tool and session lifecycle. PostToolUse on Write/Edit enables auto-format/lint. PreCompact guarantees memory file write before distillation (solves amnesia). TaskCompleted enables verification assertions. Oikos cascade for hook configuration. Source: Claude Cowork plugin hooks architecture.
+- **Ralph Wiggum Execution Resilience (EXEC-01..04):** Stuck detection (same error twice → escalate, not retry), completion assertions (sub-agents state what they achieved), max iteration caps with blocker documentation, opt-in re-injection on Stop for iterative tasks. Source: Ralph Wiggum iterative pattern, Claude Cowork Stop hook.
+- **Claude Cowork Skill Modularity (LOOP-03):** Decompose monolithic SOUL.md/AGENTS.md into composable skill files discovered via oikos cascade. assemble-context loads them dynamically. Source: Claude Cowork SKILL.md pattern.
 
 **Success criteria:** Syn, Akron, Syl, Demiurge all running simultaneously. Background tasks execute independently. Cross-nous task handoff works without operator intervention. Semantic routing correctly directs messages to domain-appropriate nous without config labels.
 
@@ -456,8 +485,9 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 | 5.4 | Cutover | TS runtime retired, Rust binary takes production |
 
 **Absorbed ideas:**
-- **Spec 40 (Testing Strategy):** Coverage targets, integration patterns, contract tests adapted for `cargo test`. CI enforcement.
-- **Spec 41 (Observability):** tracing crate with spans, layers, journald integration. Prometheus/OpenTelemetry metrics. Structured query: "why was that turn slow?"
+- **Spec 40 (Testing Strategy):** Coverage targets, integration patterns, contract tests adapted for `cargo test`. CI enforcement. **Includes behavioral eval framework (EVAL-01..04):** capability evals, recall quality scoring (precision@k, recall@k), model-graded response quality, regression tracking per-commit. Source: ECC eval-harness.
+- **Spec 41 (Observability):** tracing crate with spans, layers, journald integration. Prometheus/OpenTelemetry metrics. Structured query: "why was that turn slow?" **Tool call spans (OBS-03)** wired as tracing spans — queryable tool performance and error analysis.
+- **ECC Plugin Architecture (PLUG-01..03):** Plugin manifest schema (TOML), lifecycle events (SessionStart/End, Pre/PostTool, Pre/PostDistillation), WASM isolation with capability-based permissions. Informs prostheke design.
 
 **Success criteria:** All existing functionality works. Test suite passes. Binary deploys via `scp + systemctl`.
 
@@ -479,6 +509,8 @@ Slack: raw API, reqwest + WebSocket Socket mode.
 | 6.4 | Embedding space intelligence — JEPA goal vectors, collapse prevention, embedding health monitoring | Spec 27 (phases 5-6) |
 | 6.5 | UI layout overhaul | Spec 29, Issue #328 |
 | 6.6 | TUI enhancements — fuzzy filter, F2 overlay, OSC 8, plan widget | Issue #326 |
+| 6.7 | LSP integration — rust-analyzer/pyright in agent loop for real-time diagnostics | LOOP-01 |
+| 6.8 | Path display normalization — translate workspace paths to user-friendly relative paths in webchat | LOOP-02 |
 
 These are not sequenced — they can be worked in parallel once the platform is stable. Each is a self-contained project.
 
@@ -497,7 +529,7 @@ Progress updates go here as milestones complete. Daily work tracked in `memory/Y
 
 ### Current Status
 
-Last updated: 2026-03-01
+Last updated: 2026-03-04
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
@@ -515,7 +547,7 @@ Last updated: 2026-03-01
 | M2.1c | ✅ **Complete** | CozoDB absorption analysis — research doc: module deps, FTS feasibility, graph algo inventory, 42 unsafe sites, integration plan. PR #364. |
 | M2.1d | ✅ **Complete** | Test expansion — 79 new tests across koina, mneme, nous, taxis + integration tests. PR #365. |
 | M2.2 | ✅ **Complete** | Context bootstrap — BootstrapAssembler (oikos cascade), TokenBudget (system/history/turn zones), CharEstimator, SectionPriority (Required > Important > Flexible > Optional), section-aware truncation, tool summary tiers. 14 tests. PR #369. |
-| M2.3 | ⚙️ **In progress** | CozoDB absorption — mneme-engine crate with forked CozoDB, 3 compile bugs patched, unsafe sites isolated in graph-builder. Phases 1-3 complete (PR #378, 252 tests). Phases 4-6 remaining (GSD prompt 05). |
+| M2.3 | ✅ **Complete** | CozoDB absorption — mneme-engine crate with forked CozoDB, 3 compile bugs patched, unsafe sites isolated in graph-builder. Phases 1-9 complete (PRs #378, #407, #422). Hybrid retrieval (vector + graph + BM25), idiom migration, clippy clean. |
 | M2.4 | ✅ **Complete** | taxis config loading — figment-based YAML cascade, AletheiaConfig structs, resolve_nous() merger, env overrides, camelCase compat. 37 tests. PR #379. |
 | M2.5 | ✅ **Complete** | nous execute stage — core LLM call + tool dispatch loop, LoopDetector integration, signal classification, `run_pipeline` entry point. ThinkingConfig in hermeneus. 78 tests. PR #381. |
 | M3.1a | ✅ **Complete** | symbolon (auth) — JWT sessions (access+refresh), API keys (ale_ format, blake3), argon2id passwords, RBAC (Operator/Agent/Readonly), AuthStore (SQLite), 50 tests. PR #368. |
@@ -524,12 +556,22 @@ Last updated: 2026-03-01
 | M3.3a | ✅ **Complete** | nous NousActor — Tokio actor model with inbox, lifecycle states (Active/Idle/Dormant), NousManager, message dispatch. 33 tests. PR #382. |
 | M3.3b | ✅ **Complete** | melete distillation — context distillation engine, compression strategies, token budget management, session continuity. 34 tests. PR #383. |
 | M3.3c | ✅ **Complete** | agora Signal listener — inbound message routing, SignalListener with JSON-RPC subscribe, message-to-nous dispatch. 41 tests. PR #384. |
-| M3.4+ | Not started | Delivery reliability, cross-nous message routing, end-to-end pipeline integration |
+| M3.4a | ✅ **Complete** | nous history stage — budget-aware conversation history loading, system/tool message filtering, truncation marking. 7 tests. PR #419. |
+| M3.4b | ✅ **Complete** | nous finalize stage — persist user/assistant/tool messages, token usage recording, non-fatal error handling. 6 tests. PR #420. |
+| M3.4c | ✅ **Complete** | agora inbound routing — MessageRouter with 5-priority binding resolution (group→source→channel→global→none), session key template expansion, background dispatch task. PR #421. |
+| M3.4d | ✅ **Complete** | End-to-end integration tests — HTTP→pipeline→provider→persistence round-trip with mock providers, JWT auth validation, bootstrap assembly verification. 7 tests. PR #418. |
+| M3.4e | ✅ **Complete** | mneme hybrid search bug fixes — graph score aggregation (`graph_raw` + `sum()`), RRF rank encoding (0→-1), empty seed_entities handling. 4 tests. PR #422. (Completes mneme v2 Phase 9.) |
+| M3.5a | ✅ **Complete** | KnowledgeVectorSearch bridge — feature-gated `VectorSearch` trait adapter for recall pipeline. 4 tests. PR #444. |
+| M3.5b | ✅ **Complete** | Recall pipeline wiring — `EmbeddingSettings` in taxis config, embedding provider creation in `main.rs`, wired to `NousManager`. 2 tests. PR #446. (mneme v2 Phase 10 partial.) |
+| M3.5c | ✅ **Complete** | Iterative recall — 2-cycle retrieval with terminology discovery, gap detection, `LoopDetector` ring buffer. Tool repetition detection (`ASAFE-01`). 8+ tests. PR #443. (Completes mneme v2 Phase 10.) |
+| M3.5d | ✅ **Complete** | Typed Datalog query builder — field enums, fluent API (`QueryBuilder`/`PutBuilder`/`SelectBuilder`), ~10 queries migrated from string constants. Regression tests. PR #447. (Completes mneme v2 Phase 11.) |
+| M3.5e | ✅ **Complete** | Execution resilience — `StuckDetector` with error pattern normalization, iteration caps, blocker file writing. 5 tests. PR #442. (Dianoia orchestrator.) |
+| M3.6+ | Not started | Delivery reliability, cross-nous sessions, knowledge extraction (mneme v2 Phase 12+) |
 | M4 | Not started | Multi-nous, roles, daemon, melete, dianoia |
 | M5 | Not started | Plugins, portability, cutover |
 | M6 | Backlog | Independent items, work anytime after M5 |
 
-**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 745 tests (`#[test]` + `#[tokio::test]`), ~21K lines of Rust (+42K vendored CozoDB in mneme-engine).
+**Totals:** 15 crate directories (11 application + `aletheia` binary + `graph-builder` + `integration-tests` + `mneme-bench`), 849 tests (`#[test]` + `#[tokio::test]`), ~27K lines of Rust (+46K vendored CozoDB in mneme-engine).
 
 ---
 
@@ -541,7 +583,7 @@ Last updated: 2026-03-01
 | `docs/STANDARDS.md` | Code standards + project governance (commit, deviation, research rules) |
 | `docs/decisions/` | Architecture Decision Records — G-01 through G-20, gnomon audit, CozoDB absorption |
 | `docs/LESSONS.md` | Operational lessons learned (16 rules earned through failure) |
-| `docs/DISPOSITION.md` | Spec & issue triage record — what was absorbed, retained, or closed |
+| `.planning/DISPOSITION.md` | Spec & issue triage record (local-only) — what was absorbed, retained, or closed |
 | `docs/gnomon.md` | Naming system and philosophy |
 | `docs/specs/44_oikos.md` | Detailed oikos spec (directory structure, resolution rules, migration plan) |
 | `docs/specs/40_testing-strategy.md` | Testing targets and patterns |

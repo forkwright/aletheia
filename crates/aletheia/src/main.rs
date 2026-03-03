@@ -1,5 +1,7 @@
 //! Aletheia cognitive agent runtime — binary entrypoint.
 
+mod dispatch;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -7,13 +9,17 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::{info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 use aletheia_agora::listener::ChannelListener;
-use aletheia_agora::semeion::client::SignalClient;
+use aletheia_agora::registry::ChannelRegistry;
+use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::SignalProvider;
+use aletheia_agora::semeion::client::SignalClient;
+use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
@@ -100,8 +106,10 @@ async fn serve(cli: Cli) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create data dir {}", parent.display()))?;
     }
-    let session_store = SessionStore::open(&db_path)
-        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+    let session_store = Arc::new(Mutex::new(
+        SessionStore::open(&db_path)
+            .with_context(|| format!("failed to open session store at {}", db_path.display()))?,
+    ));
     info!(path = %db_path.display(), "session store opened");
 
     // JWT manager
@@ -112,13 +120,31 @@ async fn serve(cli: Cli) -> Result<()> {
     let tool_registry = Arc::new(build_tool_registry()?);
     let oikos_arc = Arc::new(oikos);
 
+    // Embedding provider — drives recall query embedding
+    let embedding_config = EmbeddingConfig {
+        provider: config.embedding.provider.clone(),
+        model: config.embedding.model.clone(),
+        dimension: Some(config.embedding.dimension),
+        api_key: None,
+    };
+    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::from(
+        create_provider(&embedding_config).context("failed to create embedding provider")?,
+    );
+    info!(
+        provider = %config.embedding.provider,
+        dim = config.embedding.dimension,
+        "embedding provider created"
+    );
+
     // Spawn nous actors
+    // vector_search is None until Phase 2 (prompt 28) lands KnowledgeVectorSearch
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos_arc),
+        Some(embedding_provider),
         None,
-        None,
+        Some(Arc::clone(&session_store)),
     );
 
     if config.agents.list.is_empty() {
@@ -144,13 +170,16 @@ async fn serve(cli: Cli) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
-    // Signal channel listener (optional)
-    let _listener = start_signal_listener(&config.channels.signal);
+    // Wrap in Arc — shared between dispatcher and AppState
+    let nous_manager = Arc::new(nous_manager);
 
-    // Pylon HTTP gateway — shares registries with NousManager, owns the manager
+    // Channel registry + inbound dispatch
+    let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(&config, &nous_manager);
+
+    // Pylon HTTP gateway — shares registries with NousManager
     let state = Arc::new(AppState {
-        session_store: Mutex::new(session_store),
-        nous_manager,
+        session_store,
+        nous_manager: Arc::clone(&nous_manager),
         provider_registry,
         tool_registry,
         oikos: oikos_arc,
@@ -211,9 +240,51 @@ fn build_tool_registry() -> Result<ToolRegistry> {
     Ok(registry)
 }
 
-fn start_signal_listener(
+/// Build channel registry, start inbound listener, and spawn dispatch loop.
+fn start_inbound_dispatch(
+    config: &aletheia_taxis::config::AletheiaConfig,
+    nous_manager: &Arc<NousManager>,
+) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
+    let mut channel_registry = ChannelRegistry::new();
+
+    let signal_provider = build_signal_provider(&config.channels.signal);
+    if let Some(ref provider) = signal_provider {
+        channel_registry
+            .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
+            .expect("register signal provider");
+    }
+    let channel_registry = Arc::new(channel_registry);
+
+    let handle = if let Some(ref provider) = signal_provider {
+        let listener = ChannelListener::start(provider, None);
+        info!("signal channel listener started");
+        let rx = listener.into_receiver();
+
+        let default_nous_id = config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.default)
+            .or_else(|| config.agents.list.first())
+            .map(|a| a.id.clone());
+        let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
+
+        Some(dispatch::spawn_dispatcher(
+            rx,
+            router,
+            Arc::clone(nous_manager),
+            Arc::clone(&channel_registry),
+        ))
+    } else {
+        None
+    };
+
+    (channel_registry, handle)
+}
+
+fn build_signal_provider(
     signal_config: &aletheia_taxis::config::SignalConfig,
-) -> Option<ChannelListener> {
+) -> Option<Arc<SignalProvider>> {
     if !signal_config.enabled {
         info!("signal channel disabled");
         return None;
@@ -229,10 +300,7 @@ fn start_signal_listener(
         if !account_cfg.enabled {
             continue;
         }
-        let base_url = format!(
-            "http://{}:{}",
-            account_cfg.http_host, account_cfg.http_port
-        );
+        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
         match SignalClient::new(&base_url) {
             Ok(client) => {
                 provider.add_account(account_id.clone(), client);
@@ -244,18 +312,19 @@ fn start_signal_listener(
         }
     }
 
-    let listener = ChannelListener::start(&provider, None);
-    info!("signal channel listener started");
-    Some(listener)
+    Some(Arc::new(provider))
 }
 
 fn init_tracing(log_level: &str, json: bool) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(format!("aletheia={log_level},{log_level}"))
-    });
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("aletheia={log_level},{log_level}")));
 
     if json {
-        fmt().with_env_filter(filter).json().with_target(true).init();
+        fmt()
+            .with_env_filter(filter)
+            .json()
+            .with_target(true)
+            .init();
     } else {
         fmt()
             .with_env_filter(filter)

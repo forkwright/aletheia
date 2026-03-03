@@ -1,8 +1,8 @@
 //! API error types with Axum response integration.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]

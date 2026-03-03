@@ -35,10 +35,16 @@ fn convert_message(msg: &m::Message) -> h::Message {
 #[test]
 fn build_completion_request_from_mneme_history() {
     let store = SessionStore::open_in_memory().unwrap();
-    store.create_session("ses-1", "syn", "main", None, None).unwrap();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .unwrap();
 
-    store.append_message("ses-1", m::Role::User, "what is 2+2?", None, None, 20).unwrap();
-    store.append_message("ses-1", m::Role::Assistant, "4", None, None, 10).unwrap();
+    store
+        .append_message("ses-1", m::Role::User, "what is 2+2?", None, None, 20)
+        .unwrap();
+    store
+        .append_message("ses-1", m::Role::Assistant, "4", None, None, 10)
+        .unwrap();
 
     let history = store.get_history("ses-1", None).unwrap();
     let messages: Vec<h::Message> = history.iter().map(convert_message).collect();
@@ -62,7 +68,9 @@ fn build_completion_request_from_mneme_history() {
 #[test]
 fn tool_result_converts_to_content_block() {
     let store = SessionStore::open_in_memory().unwrap();
-    store.create_session("ses-1", "syn", "main", None, None).unwrap();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .unwrap();
 
     store
         .append_message(

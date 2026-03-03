@@ -7,7 +7,6 @@
 from aletheia_memory.config import GRAPH_EXTRACTION_PROMPT
 from aletheia_memory.vocab import CONTROLLED_VOCAB, normalize_type
 
-
 # ---------------------------------------------------------------------------
 # RELATES_TO elimination — the foundational invariant
 # ---------------------------------------------------------------------------

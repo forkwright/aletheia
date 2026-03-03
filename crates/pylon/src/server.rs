@@ -31,7 +31,9 @@ pub struct ServerConfig {
 #[derive(Debug, Snafu)]
 pub enum ServerError {
     #[snafu(display("failed to open session store: {source}"))]
-    SessionStore { source: aletheia_mneme::error::Error },
+    SessionStore {
+        source: aletheia_mneme::error::Error,
+    },
 
     #[snafu(display("failed to bind to {addr}: {source}"))]
     Bind {
@@ -47,8 +49,7 @@ pub enum ServerError {
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Arc::new(Oikos::from_root(&config.instance_path));
 
-    let session_store =
-        SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
+    let session_store = SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
 
     let provider_registry = Arc::new(ProviderRegistry::new());
     let tool_registry = Arc::new(ToolRegistry::new());
@@ -60,13 +61,16 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         Arc::clone(&oikos),
         None,
         None,
+        None,
     );
     let nous_config = NousConfig::default();
-    nous_manager.spawn(nous_config, PipelineConfig::default()).await;
+    nous_manager
+        .spawn(nous_config, PipelineConfig::default())
+        .await;
 
     let state = Arc::new(AppState {
-        session_store: Mutex::new(session_store),
-        nous_manager,
+        session_store: Arc::new(Mutex::new(session_store)),
+        nous_manager: Arc::new(nous_manager),
         provider_registry,
         tool_registry,
         oikos,

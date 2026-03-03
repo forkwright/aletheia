@@ -68,21 +68,14 @@ pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
         .as_deref()
         .or(envelope.source_uuid.as_deref())?;
 
-    let group_id = data
-        .group_info
-        .as_ref()
-        .and_then(|g| g.group_id.clone());
+    let group_id = data.group_info.as_ref().and_then(|g| g.group_id.clone());
 
     let attachments = data
         .attachments
         .as_ref()
         .map(|atts| {
             atts.iter()
-                .filter_map(|a| {
-                    a.filename
-                        .clone()
-                        .or_else(|| a.id.clone())
-                })
+                .filter_map(|a| a.filename.clone().or_else(|| a.id.clone()))
                 .collect()
         })
         .unwrap_or_default();

@@ -9,10 +9,14 @@
 //! 5. **Execute** — call LLM, process tool use, iterate
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
+use std::collections::VecDeque;
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 use aletheia_mneme::embedding::EmbeddingProvider;
+use aletheia_mneme::store::SessionStore;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
@@ -23,6 +27,7 @@ use crate::bootstrap::BootstrapAssembler;
 use crate::budget::TokenBudget;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
+use crate::history::{self, HistoryConfig, HistoryResult};
 use crate::session::SessionState;
 
 /// Input to the pipeline — an inbound message.
@@ -45,14 +50,18 @@ pub struct PipelineContext {
     pub messages: Vec<PipelineMessage>,
     /// Available tools for this turn.
     pub tools: Vec<String>,
-    /// Token budget remaining after bootstrap + history.
+    /// Token budget remaining after bootstrap (system prompt space).
     pub remaining_tokens: i64,
+    /// Token budget allocated for conversation history.
+    pub history_budget: i64,
     /// Whether distillation is needed before this turn.
     pub needs_distillation: bool,
     /// Guard decision.
     pub guard_result: GuardResult,
     /// Recall stage output, if recall was run.
     pub recall_result: Option<crate::recall::RecallStageResult>,
+    /// History stage output, if history was loaded.
+    pub history_result: Option<HistoryResult>,
 }
 
 impl Default for PipelineContext {
@@ -62,9 +71,11 @@ impl Default for PipelineContext {
             messages: Vec::new(),
             tools: Vec::new(),
             remaining_tokens: 0,
+            history_budget: 0,
             needs_distillation: false,
             guard_result: GuardResult::Allow,
             recall_result: None,
+            history_result: None,
         }
     }
 }
@@ -93,42 +104,49 @@ pub enum GuardResult {
     Rejected { reason: String },
 }
 
-/// Loop detector — tracks repeated tool call patterns.
+/// Loop detector — tracks repeated tool call patterns with a capped ring buffer.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
-    /// Recent tool call signatures.
-    history: Vec<String>,
+    /// Recent tool call signatures (ring buffer, capped at `window` entries).
+    history: VecDeque<String>,
     /// Threshold for identical consecutive calls.
     threshold: u32,
+    /// Maximum history entries retained.
+    window: usize,
 }
 
+const DEFAULT_LOOP_WINDOW: usize = 20;
+
 impl LoopDetector {
-    /// Create a new loop detector.
+    /// Create a new loop detector with the default window size (20).
     #[must_use]
     pub fn new(threshold: u32) -> Self {
         Self {
-            history: Vec::new(),
+            history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
             threshold,
+            window: DEFAULT_LOOP_WINDOW,
         }
     }
 
     /// Record a tool call and check for loops.
     ///
-    /// Returns `Some(pattern)` if a loop is detected.
+    /// Returns `Some(pattern)` if a loop is detected (N consecutive identical calls
+    /// where N = threshold).
     pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
         let signature = format!("{tool_name}:{input_hash}");
-        self.history.push(signature.clone());
+        self.history.push_back(signature.clone());
+
+        // Evict oldest entry if over window cap
+        if self.history.len() > self.window {
+            self.history.pop_front();
+        }
 
         // Check for N consecutive identical calls
         let recent = self.history.iter().rev().take(self.threshold as usize);
         let all_same = recent.clone().count() >= self.threshold as usize
             && recent.clone().all(|s| *s == signature);
 
-        if all_same {
-            Some(signature)
-        } else {
-            None
-        }
+        if all_same { Some(signature) } else { None }
     }
 
     /// Reset the detector (e.g. on new turn).
@@ -136,10 +154,25 @@ impl LoopDetector {
         self.history.clear();
     }
 
-    /// Number of calls recorded.
+    /// Number of calls currently in the history window.
     #[must_use]
     pub fn call_count(&self) -> usize {
         self.history.len()
+    }
+
+    /// Count consecutive identical entries at the tail of the history.
+    ///
+    /// Returns 0 if empty, otherwise the number of trailing entries matching the last one.
+    #[must_use]
+    pub fn pattern_count(&self) -> usize {
+        let Some(last) = self.history.back() else {
+            return 0;
+        };
+        self.history
+            .iter()
+            .rev()
+            .take_while(|s| *s == last)
+            .count()
     }
 }
 
@@ -246,9 +279,13 @@ pub fn assemble_context(
     let result = assembler.assemble(&nous_config.id, &mut budget)?;
 
     ctx.system_prompt = Some(result.system_prompt);
-    #[expect(clippy::cast_possible_wrap, reason = "budget fits in i64 for practical context windows")]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "budget fits in i64 for practical context windows"
+    )]
     {
         ctx.remaining_tokens = budget.remaining() as i64;
+        ctx.history_budget = budget.history_budget() as i64;
     }
 
     Ok(())
@@ -264,9 +301,16 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
 
 /// Run the full pipeline for one turn.
 ///
-/// Stages: context → history (stub) → guard → execute.
-/// Resolve (stage 4) and finalize (stage 6) are future work.
-#[expect(clippy::too_many_arguments, reason = "pipeline threading requires all dependencies until config struct refactor")]
+/// Stages: context → recall → history → guard → execute → finalize.
+/// Resolve (stage 4) is future work.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "pipeline threading requires all dependencies until config struct refactor"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "pipeline orchestrator — sequential stages are clearer inline"
+)]
 #[instrument(skip_all, fields(nous_id = %config.id))]
 pub async fn run_pipeline(
     input: PipelineInput,
@@ -278,6 +322,7 @@ pub async fn run_pipeline(
     tool_ctx: &ToolContext,
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
+    session_store: Option<&Mutex<SessionStore>>,
 ) -> error::Result<TurnResult> {
     // Stage 1: Context
     let mut ctx = PipelineContext::default();
@@ -287,7 +332,10 @@ pub async fn run_pipeline(
     if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
         let recall_config = crate::recall::RecallConfig::default();
         let recall_stage = crate::recall::RecallStage::new(recall_config);
-        #[expect(clippy::cast_sign_loss, reason = "remaining_tokens is positive after context assembly")]
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "remaining_tokens is positive after context assembly"
+        )]
         let budget = ctx.remaining_tokens.max(0) as u64;
         match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
             Ok(recall_result) => {
@@ -297,7 +345,9 @@ pub async fn run_pipeline(
                         prompt.push_str(section);
                     }
                     #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
-                    { ctx.remaining_tokens -= recall_result.tokens_consumed as i64; }
+                    {
+                        ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                    }
                 }
                 ctx.recall_result = Some(recall_result);
             }
@@ -309,14 +359,29 @@ pub async fn run_pipeline(
         debug!("recall skipped: embedding provider or vector search not configured");
     }
 
-    // Stage 2: History (stub — just add the user message)
-    #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-    let token_estimate = input.content.len() as i64 / 4;
-    ctx.messages.push(PipelineMessage {
-        role: "user".to_owned(),
-        content: input.content.clone(),
-        token_estimate,
-    });
+    // Stage 2: History
+    let history_config = HistoryConfig::default();
+    if let Some(store_mutex) = session_store {
+        let store = store_mutex.lock().expect("session store lock");
+        let (messages, hist_result) = history::load_history(
+            &store,
+            &input.session.id,
+            ctx.history_budget,
+            &history_config,
+            &input.content,
+        )?;
+        ctx.messages = messages;
+        ctx.history_budget -= hist_result.tokens_consumed;
+        ctx.history_result = Some(hist_result);
+    } else {
+        #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+        let token_estimate = input.content.len() as i64 / 4;
+        ctx.messages.push(PipelineMessage {
+            role: "user".to_owned(),
+            content: input.content.clone(),
+            token_estimate,
+        });
+    }
 
     // Stage 3: Guard
     let guard = check_guard(&input.session, config);
@@ -346,7 +411,31 @@ pub async fn run_pipeline(
     let result =
         crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx).await?;
 
-    // Stage 6: Finalize (stub)
+    // Stage 6: Finalize
+    if let Some(store_mutex) = session_store {
+        let store = store_mutex.lock().expect("session store lock");
+        let finalize_config = crate::finalize::FinalizeConfig::default();
+        match crate::finalize::finalize(
+            &store,
+            &input.session,
+            &input.content,
+            &result,
+            &finalize_config,
+        ) {
+            Ok(fr) => {
+                debug!(
+                    messages = fr.messages_persisted,
+                    usage = fr.usage_recorded,
+                    "finalize complete"
+                );
+            }
+            Err(e) => {
+                error!(error = %e, "finalize failed, returning result without persistence");
+            }
+        }
+    } else {
+        debug!("no session store, skipping finalize");
+    }
 
     Ok(result)
 }
@@ -458,7 +547,9 @@ mod tests {
 
     #[test]
     fn guard_result_rate_limited() {
-        let g = GuardResult::RateLimited { retry_after_ms: 5000 };
+        let g = GuardResult::RateLimited {
+            retry_after_ms: 5000,
+        };
         assert_ne!(g, GuardResult::Allow);
         match g {
             GuardResult::RateLimited { retry_after_ms } => assert_eq!(retry_after_ms, 5000),
@@ -468,7 +559,9 @@ mod tests {
 
     #[test]
     fn guard_result_loop_detected() {
-        let g = GuardResult::LoopDetected { pattern: "exec:abc".to_owned() };
+        let g = GuardResult::LoopDetected {
+            pattern: "exec:abc".to_owned(),
+        };
         match g {
             GuardResult::LoopDetected { pattern } => assert_eq!(pattern, "exec:abc"),
             _ => panic!("wrong variant"),
@@ -477,7 +570,9 @@ mod tests {
 
     #[test]
     fn guard_result_rejected() {
-        let g = GuardResult::Rejected { reason: "unsafe content".to_owned() };
+        let g = GuardResult::Rejected {
+            reason: "unsafe content".to_owned(),
+        };
         match g {
             GuardResult::Rejected { reason } => assert!(reason.contains("unsafe")),
             _ => panic!("wrong variant"),
@@ -665,7 +760,11 @@ mod tests {
             allowed_roots: vec![PathBuf::from("/tmp")],
         };
 
-        let session = crate::session::SessionState::new("test-session".to_owned(), "main".to_owned(), &nous_config);
+        let session = crate::session::SessionState::new(
+            "test-session".to_owned(),
+            "main".to_owned(),
+            &nous_config,
+        );
         let input = PipelineInput {
             content: "Hello".to_owned(),
             session,
@@ -682,6 +781,7 @@ mod tests {
             &tool_ctx,
             None,
             None,
+            None,
         )
         .await
         .expect("pipeline should succeed");
@@ -690,5 +790,57 @@ mod tests {
         assert!(result.tool_calls.is_empty());
         assert_eq!(result.usage.llm_calls, 1);
         assert_eq!(result.stop_reason, "end_turn");
+    }
+
+    // --- Loop Detector window cap ---
+
+    #[test]
+    fn loop_detector_window_cap_evicts_old_calls() {
+        let mut det = LoopDetector::new(100); // high threshold so no loop triggers
+        for i in 0..25 {
+            det.record("tool", &format!("hash{i}"));
+        }
+        assert_eq!(
+            det.call_count(),
+            DEFAULT_LOOP_WINDOW,
+            "history should be capped at window size"
+        );
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_tracks_repetitions() {
+        let mut det = LoopDetector::new(100);
+        det.record("exec", "same");
+        det.record("exec", "same");
+        det.record("exec", "same");
+        assert_eq!(det.pattern_count(), 3);
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_zero_on_empty() {
+        let det = LoopDetector::new(3);
+        assert_eq!(det.pattern_count(), 0);
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_resets_on_different() {
+        let mut det = LoopDetector::new(100);
+        det.record("exec", "hash1");
+        det.record("exec", "hash1");
+        det.record("read", "hash2");
+        assert_eq!(det.pattern_count(), 1, "different call breaks the streak");
+    }
+
+    #[test]
+    fn loop_detector_window_still_detects_loops() {
+        let mut det = LoopDetector::new(3);
+        // Fill window with unique calls
+        for i in 0..18 {
+            det.record("tool", &format!("hash{i}"));
+        }
+        // Now trigger a loop within the window
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_some(), "should detect loop even after window eviction");
     }
 }

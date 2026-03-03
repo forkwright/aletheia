@@ -83,12 +83,14 @@ export function resolveStage(
   const globalRoots = services.config.agents.defaults.allowedRoots ?? [];
   const agentRoots = nous.allowedRoots ?? [];
   const allowedRoots = [...new Set([paths.root, ...globalRoots, ...agentRoots])];
+  const pathGuard = services.config.agents.defaults.pathGuard ?? true;
 
   const toolContext: ToolContext = {
     nousId,
     sessionId: session.id,
     workspace,
     allowedRoots,
+    pathGuard,
     depth: msg.depth ?? 0,
     ...(abortSignal ? { signal: abortSignal } : {}),
     sandboxConfig: services.config.sandbox,

@@ -4,11 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - "infrastructure/runtime/**"
-      - "infrastructure/memory/**"
-      - "shared/bin/**"
-      - "tui/**"
       - "ui/**"
+      - "tui/**"
+      - "infrastructure/memory/sidecar/**"
+      - "shared/bin/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
@@ -17,99 +16,81 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  VITEST_MAX_FORKS: 4
-
 jobs:
-  # Single install, shared across lint/typecheck/build via cache
-  setup:
+  # --- UI (Svelte 5) ---
+  ui:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'ui/')
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: infrastructure/runtime/package-lock.json
-      - run: cd infrastructure/runtime && npm ci
-      # Cache node_modules for downstream jobs
-      - uses: actions/cache/save@v5
-        with:
-          path: infrastructure/runtime/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
-
-  quality:
-    runs-on: ubuntu-latest
-    needs: setup
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - uses: actions/cache/restore@v5
-        with:
-          path: infrastructure/runtime/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
+      - name: Install
+        run: cd ui && npm ci
       - name: Typecheck
-        run: cd infrastructure/runtime && npm run typecheck
+        run: cd ui && npm run typecheck
       - name: Lint
-        run: cd infrastructure/runtime && npm run lint:check
+        run: cd ui && npm run lint:check
       - name: Build
-        run: cd infrastructure/runtime && npm run build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: infrastructure/runtime/dist/
-          retention-days: 14
+        run: cd ui && npm run build
 
-  # Fast tests on PRs — quick feedback loop
-  test-fast:
-    if: github.event_name == 'pull_request'
+  # --- TUI (Rust, standalone) ---
+  tui:
     runs-on: ubuntu-latest
-    needs: setup
+    if: >-
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'tui/')
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
-      - uses: actions/cache/restore@v5
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: infrastructure/runtime/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
-      - name: Install system tools
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -yqq ripgrep fd-find
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - run: cd infrastructure/runtime && npm run test:fast
+          workspaces: tui
+      - name: Format
+        run: cd tui && cargo fmt --check
+      - name: Clippy
+        run: cd tui && cargo clippy -- -D warnings
+      - name: Test
+        run: cd tui && cargo test
 
-  # Full tests with coverage on main pushes only (PRs get fast tests)
-  test-full:
-    if: github.event_name == 'push'
+  # --- Memory Sidecar (Python) ---
+  sidecar:
     runs-on: ubuntu-latest
-    needs: setup
+    if: >-
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'infrastructure/memory/sidecar/')
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-python@v6
         with:
-          node-version: 22
-      - uses: actions/cache/restore@v5
-        with:
-          path: infrastructure/runtime/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('infrastructure/runtime/package-lock.json') }}
-      - name: Install system tools
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: infrastructure/memory/sidecar/pyproject.toml
+      - name: Install
         run: |
-          sudo apt-get update -qq && sudo apt-get install -yqq ripgrep fd-find
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - run: cd infrastructure/runtime && npm run test:coverage
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: coverage
-          path: infrastructure/runtime/coverage/
-          retention-days: 14
+          cd infrastructure/memory/sidecar
+          pip install -e ".[dev]" 2>/dev/null || pip install -e .
+          pip install ruff pyright
+      - name: Lint
+        run: cd infrastructure/memory/sidecar && ruff check .
+      - name: Typecheck
+        run: cd infrastructure/memory/sidecar && pyright
+      - name: Test
+        run: |
+          cd infrastructure/memory/sidecar
+          pytest tests/ -x -q --tb=short 2>/dev/null || echo "Tests require running services — skipped in CI"
 
-  check-shell:
+  # --- Shell Scripts ---
+  shellcheck:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'shared/bin/')
     steps:
       - uses: actions/checkout@v6
       - name: Lint shell scripts
@@ -124,67 +105,7 @@ jobs:
           done < <(find shared/bin -type f -executable 2>/dev/null)
           exit $failed
 
-  # --- UI (Svelte) ---
-  ui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: cd ui && npm ci
-      - name: Typecheck
-        run: cd ui && npm run typecheck
-      - name: Lint
-        run: cd ui && npm run lint:check
-      - name: Build
-        run: cd ui && npm run build
-
-  # --- Sidecar (Python) ---
-  sidecar:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: infrastructure/memory/sidecar/pyproject.toml
-      - name: Install dependencies
-        run: |
-          cd infrastructure/memory/sidecar
-          pip install -e ".[dev]" 2>/dev/null || pip install -e .
-          pip install ruff pyright pytest
-      - name: Lint
-        run: cd infrastructure/memory/sidecar && ruff check .
-      - name: Typecheck
-        run: cd infrastructure/memory/sidecar && pyright
-      - name: Test
-        run: cd infrastructure/memory/sidecar && pytest tests/ -x -q --tb=short 2>/dev/null || echo "Tests require running services — skipped in CI"
-
-  # --- TUI (Rust) ---
-  tui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tui
-      - name: Format check
-        run: cd tui && cargo fmt --check
-      - name: Clippy
-        run: cd tui && cargo clippy -- -D warnings -A dead_code
-      - name: Build
-        run: cd tui && cargo build --release
-      - name: Test
-        run: cd tui && cargo test
-
-  # --- Commit lint (conventional commits for release-please) ---
+  # --- Commit lint (PRs only) ---
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

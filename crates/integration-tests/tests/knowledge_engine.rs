@@ -24,8 +24,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
 // TEST-02: Fact inserted via insert_fact is queryable and returns identical data.
 #[test]
 fn fact_round_trip() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-        .expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
     let fact = Fact {
         id: "f-1".to_owned(),
@@ -54,13 +53,14 @@ fn fact_round_trip() {
 #[test]
 fn hnsw_vector_search() {
     let dim = 16;
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim })
-        .expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
     // MockEmbeddingProvider is deterministic by text input — satisfies the
     // "deterministic random vectors" constraint from CONTEXT.md.
     let provider = MockEmbeddingProvider::new(dim);
 
-    let texts = ["apple", "banana", "cherry", "database", "engine", "function"];
+    let texts = [
+        "apple", "banana", "cherry", "database", "engine", "function",
+    ];
     for (i, text) in texts.iter().enumerate() {
         let embedding = provider.embed(text).expect("embed");
         let chunk = EmbeddedChunk {
@@ -80,7 +80,10 @@ fn hnsw_vector_search() {
     let results = store.search_vectors(query_vec, 3, 20).expect("search");
 
     assert!(!results.is_empty(), "should return results");
-    assert_eq!(results[0].content, "apple", "nearest neighbor should be the exact match");
+    assert_eq!(
+        results[0].content, "apple",
+        "nearest neighbor should be the exact match"
+    );
     assert_eq!(results[0].source_type, "test");
     // Cosine distance to identical vector should be ~0.
     assert!(
@@ -93,8 +96,7 @@ fn hnsw_vector_search() {
 // INTG-05: Schema version is queryable and returns 1.
 #[test]
 fn schema_version_queryable() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-        .expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
     let version = store.schema_version().expect("version");
     assert_eq!(version, 1);
 }
@@ -126,8 +128,7 @@ fn multiple_facts_ordered_by_confidence() {
 // INTG-04: spawn_blocking async wrappers work from #[tokio::test] context.
 #[tokio::test]
 async fn async_spawn_blocking_wrapper() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-        .expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
     let fact = Fact {
         id: "f-async".to_owned(),
@@ -155,10 +156,11 @@ async fn async_spawn_blocking_wrapper() {
 // Raw query escape hatch returns the expected relations.
 #[test]
 fn raw_query_escape_hatch() {
-    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-        .expect("open_mem");
+    let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
-    let rows = store.run_query("::relations", BTreeMap::new()).expect("relations");
+    let rows = store
+        .run_query("::relations", BTreeMap::new())
+        .expect("relations");
     // Should have at least: facts, entities, relationships, embeddings, _schema_version
     assert!(
         rows.rows.len() >= 5,
@@ -230,7 +232,11 @@ fn hybrid_retrieval_end_to_end() {
     }
 
     // Insert entities and relationships for graph signal.
-    for (id, name) in [("e-rust", "Rust"), ("e-python", "Python"), ("e-tokio", "Tokio")] {
+    for (id, name) in [
+        ("e-rust", "Rust"),
+        ("e-python", "Python"),
+        ("e-tokio", "Tokio"),
+    ] {
         let entity = Entity {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -340,20 +346,25 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
     let query_vec = make_vec(25);
 
     // Baseline recall@10.
-    let baseline = store.search_vectors(query_vec.clone(), 10, 40).expect("baseline search");
+    let baseline = store
+        .search_vectors(query_vec.clone(), 10, 40)
+        .expect("baseline search");
     let baseline_ids: std::collections::HashSet<String> =
         baseline.iter().map(|r| r.source_id.clone()).collect();
 
-    assert!(!baseline_ids.is_empty(), "baseline search must return results");
+    assert!(
+        !baseline_ids.is_empty(),
+        "baseline search must return results"
+    );
 
     // 5 delete+reinsert cycles for chunk-0..chunk-9.
     for _cycle in 0..5 {
         // Delete chunk-0..chunk-9 via :rm
         for i in 0u64..10 {
-            let delete_script = format!(
-                "?[id] <- [[\"chunk-{i}\"]] :rm embeddings {{ id }}"
-            );
-            store.run_mut_query(&delete_script, BTreeMap::new()).expect("delete embedding");
+            let delete_script = format!("?[id] <- [[\"chunk-{i}\"]] :rm embeddings {{ id }}");
+            store
+                .run_mut_query(&delete_script, BTreeMap::new())
+                .expect("delete embedding");
         }
 
         // Reinsert chunk-0..chunk-9 with same IDs and vectors.
@@ -372,7 +383,9 @@ fn hnsw_connectivity_after_delete_reinsert_cycles() {
     }
 
     // Post-cycle recall@10.
-    let after = store.search_vectors(query_vec.clone(), 10, 40).expect("post-cycle search");
+    let after = store
+        .search_vectors(query_vec.clone(), 10, 40)
+        .expect("post-cycle search");
     let after_ids: std::collections::HashSet<String> =
         after.iter().map(|r| r.source_id.clone()).collect();
 

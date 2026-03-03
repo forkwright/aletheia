@@ -73,11 +73,7 @@ impl SignalProvider {
     /// Register a Signal account backed by a client.
     ///
     /// The first account added becomes the default.
-    pub fn add_account(
-        &mut self,
-        account_id: String,
-        client: client::SignalClient,
-    ) {
+    pub fn add_account(&mut self, account_id: String, client: client::SignalClient) {
         if self.default_account.is_none() {
             self.default_account = Some(account_id.clone());
         }
@@ -107,20 +103,15 @@ impl SignalProvider {
                 account = %account_id
             );
 
-            let handle = tokio::spawn(
-                poll_loop(signal_client, account_id, tx, interval)
-                    .instrument(span),
-            );
+            let handle =
+                tokio::spawn(poll_loop(signal_client, account_id, tx, interval).instrument(span));
             handles.push(handle);
         }
 
         (rx, handles)
     }
 
-    fn resolve_client(
-        &self,
-        account_id: Option<&str>,
-    ) -> Option<(&str, &client::SignalClient)> {
+    fn resolve_client(&self, account_id: Option<&str>) -> Option<(&str, &client::SignalClient)> {
         let key = account_id.or(self.default_account.as_deref())?;
         self.clients
             .get_key_value(key)
@@ -135,12 +126,18 @@ impl Default for SignalProvider {
 }
 
 impl ChannelProvider for SignalProvider {
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait signature requires &str")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait signature requires &str"
+    )]
     fn id(&self) -> &str {
         "signal"
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait signature requires &str")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait signature requires &str"
+    )]
     fn name(&self) -> &str {
         "Signal"
     }
@@ -154,9 +151,7 @@ impl ChannelProvider for SignalProvider {
         params: &'a ChannelSendParams,
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
         Box::pin(async move {
-            let Some((account, client)) =
-                self.resolve_client(params.account_id.as_deref())
-            else {
+            let Some((account, client)) = self.resolve_client(params.account_id.as_deref()) else {
                 return SendResult {
                     sent: false,
                     error: Some("no Signal client available".to_owned()),
@@ -195,17 +190,13 @@ impl ChannelProvider for SignalProvider {
         })
     }
 
-    fn probe<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
+    fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
         Box::pin(async move {
             if self.clients.is_empty() {
                 return ProbeResult {
                     ok: false,
                     latency_ms: None,
-                    error: Some(
-                        "no Signal clients configured".to_owned(),
-                    ),
+                    error: Some("no Signal clients configured".to_owned()),
                     details: None,
                 };
             }
@@ -218,10 +209,7 @@ impl ChannelProvider for SignalProvider {
                 if ok {
                     any_ok = true;
                 }
-                account_results.insert(
-                    account_id.clone(),
-                    serde_json::Value::Bool(ok),
-                );
+                account_results.insert(account_id.clone(), serde_json::Value::Bool(ok));
             }
 
             ProbeResult {
@@ -241,10 +229,7 @@ impl ChannelProvider for SignalProvider {
 impl std::fmt::Debug for SignalProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SignalProvider")
-            .field(
-                "accounts",
-                &self.clients.keys().collect::<Vec<_>>(),
-            )
+            .field("accounts", &self.clients.keys().collect::<Vec<_>>())
             .field("default_account", &self.default_account)
             .finish()
     }
@@ -261,13 +246,9 @@ async fn poll_loop(
         match signal_client.receive(Some(&account_id)).await {
             Ok(envelopes) => {
                 for env in &envelopes {
-                    if let Some(msg) =
-                        envelope::extract_message(env)
-                    {
+                    if let Some(msg) = envelope::extract_message(env) {
                         if tx.send(msg).await.is_err() {
-                            tracing::info!(
-                                "receiver dropped, stopping poll"
-                            );
+                            tracing::info!("receiver dropped, stopping poll");
                             return;
                         }
                     } else {
@@ -359,16 +340,12 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
         let mut provider = SignalProvider::new();
-        let signal_client =
-            client::SignalClient::new(&server.uri()).expect("client");
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         provider.add_account("+1111111111".to_owned(), signal_client);
 
         let (rx, handles) = provider.listen(Some(Duration::from_secs(60)));
@@ -407,15 +384,11 @@ mod tests {
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_json(&rpc_response),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
             .mount(&server)
             .await;
 
-        let signal_client =
-            client::SignalClient::new(&server.uri()).expect("client");
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         let (tx, mut rx) = mpsc::channel(16);
 
         let handle = tokio::spawn(super::poll_loop(
@@ -434,8 +407,7 @@ mod tests {
 
         // Drop receiver — poll loop should stop
         drop(rx);
-        let result =
-            tokio::time::timeout(Duration::from_secs(5), handle).await;
+        let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
         assert!(
             result.is_ok(),
             "poll loop should stop when receiver is dropped"

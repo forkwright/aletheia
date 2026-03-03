@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::sync::atomic::Ordering::AcqRel;
 
-use crate::{input::Direction, Error};
+use crate::{Error, input::Direction};
 
 use super::{InputCapabilities, InputPath, ParseValue};
 

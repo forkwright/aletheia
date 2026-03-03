@@ -15,7 +15,8 @@ WORKSPACE="$NOUS_ROOT/$AGENT"
 
 if [ -z "$AGENT" ]; then
   # Default to first available agent
-  AGENT=$(ls -1 "$NOUS_ROOT" 2>/dev/null | grep -v '^_' | head -1)
+  AGENT=$(find "$NOUS_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '_*' -printf '%f
+' 2>/dev/null | sort | head -1)
   if [ -z "$AGENT" ]; then
     echo "Error: No agents found in $NOUS_ROOT" >&2
     exit 1

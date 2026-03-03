@@ -128,7 +128,10 @@ async fn dispatch_tools(
             Err(e) => (format!("Tool error: {e}"), true),
         };
 
-        debug!(tool = tool_name.as_str(), duration_ms, is_error, "tool executed");
+        debug!(
+            tool = tool_name.as_str(),
+            duration_ms, is_error, "tool executed"
+        );
 
         all_tool_calls.push(ToolCall {
             id: tool_id.clone(),
@@ -565,8 +568,7 @@ mod tests {
     #[tokio::test]
     async fn loop_detection_triggers() {
         let mut providers = ProviderRegistry::new();
-        let response =
-            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
+        let response = make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
         providers.register(Box::new(MockProvider::with_responses(vec![
             response.clone(),
             response.clone(),
@@ -595,9 +597,7 @@ mod tests {
     async fn max_iterations_respected() {
         let mut providers = ProviderRegistry::new();
         let responses: Vec<CompletionResponse> = (0..10)
-            .map(|i| {
-                make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i}))
-            })
+            .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
             .collect();
         providers.register(Box::new(MockProvider::with_responses(responses)));
 
@@ -724,5 +724,113 @@ mod tests {
         assert_eq!(result.usage.output_tokens, 80);
         assert_eq!(result.usage.llm_calls, 2);
         assert_eq!(result.usage.total_tokens(), 260);
+    }
+
+    #[tokio::test]
+    async fn tool_error_captured_not_propagated() {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(MockProvider::with_responses(vec![
+            make_tool_response("fail_tool", "tu_1", serde_json::json!({})),
+            make_text_response("recovered"),
+        ])));
+
+        let tools = make_registry_with("fail_tool", Box::new(ErrorExecutor));
+        let result = execute(
+            &test_pipeline_ctx(),
+            &test_session(),
+            &test_config(),
+            &providers,
+            &tools,
+            &test_tool_ctx(),
+        )
+        .await
+        .expect("pipeline should complete despite tool error");
+
+        assert!(
+            result.tool_calls.iter().any(|tc| tc.is_error),
+            "should capture the tool error in tool_calls"
+        );
+    }
+
+    #[tokio::test]
+    async fn max_iterations_stops_loop() {
+        let mut providers = ProviderRegistry::new();
+        // Provider always returns tool use — would loop forever without max_iterations.
+        // Supply enough unique-id responses to feed several iterations.
+        let responses: Vec<_> = (0..10)
+            .map(|i| make_tool_response("echo", &format!("tu_{i}"), serde_json::json!({"i": i})))
+            .collect();
+        providers.register(Box::new(MockProvider::with_responses(responses)));
+
+        let tools = make_registry_with("echo", Box::new(EchoExecutor));
+        let mut config = test_config();
+        config.max_tool_iterations = 2;
+        config.loop_detection_threshold = 100;
+        let result = execute(
+            &test_pipeline_ctx(),
+            &test_session(),
+            &config,
+            &providers,
+            &tools,
+            &test_tool_ctx(),
+        )
+        .await
+        .expect("should complete after hitting max iterations");
+
+        assert!(
+            result.usage.llm_calls <= 3,
+            "should have stopped after ~2 iterations, got {} llm_calls",
+            result.usage.llm_calls
+        );
+    }
+
+    #[tokio::test]
+    async fn text_response_no_tools() {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(MockProvider::with_responses(vec![
+            make_text_response("just text"),
+        ])));
+
+        let tools = ToolRegistry::new();
+        let result = execute(
+            &test_pipeline_ctx(),
+            &test_session(),
+            &test_config(),
+            &providers,
+            &tools,
+            &test_tool_ctx(),
+        )
+        .await
+        .expect("execute");
+
+        assert!(result.tool_calls.is_empty(), "no tool calls expected");
+        assert_eq!(result.content, "just text");
+    }
+
+    #[test]
+    fn classify_signals_conversation_when_no_tools() {
+        let signals = classify_signals(&[], "some text");
+        assert_eq!(signals, vec![InteractionSignal::Conversation]);
+    }
+
+    #[test]
+    fn classify_signals_includes_error_recovery() {
+        let calls = vec![ToolCall {
+            id: "1".to_owned(),
+            name: "test".to_owned(),
+            input: serde_json::json!({}),
+            result: Some("failed".to_owned()),
+            is_error: true,
+            duration_ms: 5,
+        }];
+        let signals = classify_signals(&calls, "");
+        assert!(
+            signals.contains(&InteractionSignal::ToolExecution),
+            "should have ToolExecution"
+        );
+        assert!(
+            signals.contains(&InteractionSignal::ErrorRecovery),
+            "should have ErrorRecovery"
+        );
     }
 }

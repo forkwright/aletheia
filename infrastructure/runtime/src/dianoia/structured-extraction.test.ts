@@ -185,6 +185,71 @@ describe("Structured Extraction", () => {
   });
 });
 
+describe("Achievement and Blocker Schemas", () => {
+  it("should parse sub-agent response with achievements", async () => {
+    const response = JSON.stringify({
+      role: "coder",
+      task: "implement auth",
+      status: "success",
+      summary: "Auth implemented",
+      details: {},
+      confidence: 0.9,
+      achievements: [
+        { claim: "Created auth middleware", evidence: "src/auth.ts:15", verifiable: true },
+        { claim: "Added JWT validation", evidence: "src/jwt.ts:1" },
+      ],
+      blockers: ["Need to configure OAuth provider"],
+    });
+
+    const result = await parseSubAgentResponse(response);
+
+    expect(result).toBeDefined();
+    expect(result?.achievements).toHaveLength(2);
+    expect(result?.achievements?.[0]).toMatchObject({
+      claim: "Created auth middleware",
+      evidence: "src/auth.ts:15",
+      verifiable: true,
+    });
+    expect(result?.achievements?.[1]?.verifiable).toBeUndefined();
+    expect(result?.blockers).toEqual(["Need to configure OAuth provider"]);
+  });
+
+  it("should parse sub-agent response without achievements (backward compat)", async () => {
+    const response = JSON.stringify({
+      role: "coder",
+      task: "implement feature",
+      status: "success",
+      summary: "Done",
+      details: {},
+      confidence: 0.8,
+    });
+
+    const result = await parseSubAgentResponse(response);
+
+    expect(result).toBeDefined();
+    expect(result?.achievements).toBeUndefined();
+    expect(result?.blockers).toBeUndefined();
+  });
+
+  it("should parse blockers array on failed response", async () => {
+    const response = JSON.stringify({
+      role: "coder",
+      task: "migrate database",
+      status: "failed",
+      summary: "Migration blocked",
+      details: {},
+      confidence: 0.2,
+      blockers: ["Database is read-only", "Missing migration scripts"],
+    });
+
+    const result = await parseSubAgentResponse(response);
+
+    expect(result).toBeDefined();
+    expect(result?.blockers).toHaveLength(2);
+    expect(result?.blockers).toContain("Database is read-only");
+  });
+});
+
 describe("Task Classification", () => {
   describe("classifyTask", () => {
     it("should classify code generation tasks", () => {

@@ -41,8 +41,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 fn mem0_search_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("mem0_search").expect("valid tool name"),
-        description: "Search long-term memory for facts, preferences, and relationships"
-            .to_owned(),
+        description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([
@@ -174,5 +173,84 @@ fn blackboard_def() -> ToolDef {
         },
         category: ToolCategory::Memory,
         auto_activate: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use aletheia_koina::id::{NousId, SessionId, ToolName};
+
+    use crate::registry::ToolRegistry;
+    use crate::types::{ToolContext, ToolInput};
+
+    fn test_ctx() -> ToolContext {
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            workspace: PathBuf::from("/tmp/test"),
+            allowed_roots: vec![PathBuf::from("/tmp")],
+        }
+    }
+
+    #[tokio::test]
+    async fn register_memory_tools() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        assert_eq!(reg.definitions().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn mem0_search_stub_responds() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::new("mem0_search").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"query": "test"}),
+        };
+        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
+        assert!(!result.is_error);
+        assert!(
+            result.content.contains("stub"),
+            "expected stub response: {}",
+            result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn note_stub_responds() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::new("note").expect("valid"),
+            tool_use_id: "tu_2".to_owned(),
+            arguments: serde_json::json!({"action": "add", "content": "test"}),
+        };
+        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn blackboard_stub_responds() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::new("blackboard").expect("valid"),
+            tool_use_id: "tu_3".to_owned(),
+            arguments: serde_json::json!({"action": "read", "key": "test"}),
+        };
+        let result = reg.execute(&input, &test_ctx()).await.expect("execute");
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn mem0_search_def_requires_query() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("mem0_search").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(def.input_schema.required.contains(&"query".to_owned()));
     }
 }

@@ -1,7 +1,9 @@
 //! Manages all nous actor instances.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+use aletheia_mneme::store::SessionStore;
 
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -30,6 +32,7 @@ pub struct NousManager {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    session_store: Option<Arc<Mutex<SessionStore>>>,
 }
 
 impl NousManager {
@@ -41,6 +44,7 @@ impl NousManager {
         oikos: Arc<Oikos>,
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+        session_store: Option<Arc<Mutex<SessionStore>>>,
     ) -> Self {
         Self {
             actors: HashMap::new(),
@@ -49,13 +53,18 @@ impl NousManager {
             oikos,
             embedding_provider,
             vector_search,
+            session_store,
         }
     }
 
     /// Spawn a new nous actor and return its handle.
     ///
     /// If an actor with the same id already exists, the old actor is shut down first.
-    pub async fn spawn(&mut self, config: NousConfig, pipeline_config: PipelineConfig) -> NousHandle {
+    pub async fn spawn(
+        &mut self,
+        config: NousConfig,
+        pipeline_config: PipelineConfig,
+    ) -> NousHandle {
         let id = config.id.clone();
 
         if let Some(old) = self.actors.remove(&id) {
@@ -72,14 +81,18 @@ impl NousManager {
             Arc::clone(&self.oikos),
             self.embedding_provider.clone(),
             self.vector_search.clone(),
+            self.session_store.clone(),
         );
 
         info!(nous_id = %id, "actor spawned");
-        self.actors.insert(id, ActorEntry {
-            handle: handle.clone(),
-            join: join_handle,
-            config,
-        });
+        self.actors.insert(
+            id,
+            ActorEntry {
+                handle: handle.clone(),
+                join: join_handle,
+                config,
+            },
+        );
         handle
     }
 
@@ -228,7 +241,14 @@ mod tests {
     }
 
     fn test_manager(oikos: Arc<Oikos>) -> NousManager {
-        NousManager::new(test_providers(), Arc::new(ToolRegistry::new()), oikos, None, None)
+        NousManager::new(
+            test_providers(),
+            Arc::new(ToolRegistry::new()),
+            oikos,
+            None,
+            None,
+            None,
+        )
     }
 
     fn syn_config() -> NousConfig {
@@ -306,7 +326,8 @@ mod tests {
         let mut mgr = test_manager(oikos);
 
         mgr.spawn(syn_config(), PipelineConfig::default()).await;
-        mgr.spawn(demiurge_config(), PipelineConfig::default()).await;
+        mgr.spawn(demiurge_config(), PipelineConfig::default())
+            .await;
 
         let configs = mgr.configs();
         assert_eq!(configs.len(), 2);
@@ -324,7 +345,8 @@ mod tests {
         let mut mgr = test_manager(oikos);
 
         mgr.spawn(syn_config(), PipelineConfig::default()).await;
-        mgr.spawn(demiurge_config(), PipelineConfig::default()).await;
+        mgr.spawn(demiurge_config(), PipelineConfig::default())
+            .await;
 
         let statuses = mgr.list().await;
         assert_eq!(statuses.len(), 2);
@@ -342,7 +364,9 @@ mod tests {
         let mut mgr = test_manager(oikos);
 
         let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await;
-        let handle2 = mgr.spawn(demiurge_config(), PipelineConfig::default()).await;
+        let handle2 = mgr
+            .spawn(demiurge_config(), PipelineConfig::default())
+            .await;
 
         mgr.shutdown_all().await;
 
@@ -357,7 +381,8 @@ mod tests {
         let mut mgr = test_manager(oikos);
 
         mgr.spawn(syn_config(), PipelineConfig::default()).await;
-        mgr.spawn(demiurge_config(), PipelineConfig::default()).await;
+        mgr.spawn(demiurge_config(), PipelineConfig::default())
+            .await;
 
         assert_eq!(mgr.count(), 2);
 

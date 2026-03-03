@@ -213,10 +213,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             let Some(p) = cascade::resolve(self.oikos, nous_id, spec.filename, None) else {
                 if spec.priority == SectionPriority::Required {
                     return Err(error::ContextAssemblySnafu {
-                        message: format!(
-                            "required file {} not found in cascade",
-                            spec.filename
-                        ),
+                        message: format!("required file {} not found in cascade", spec.filename),
                     }
                     .build());
                 }
@@ -243,10 +240,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
                 Err(e) => {
                     if spec.priority == SectionPriority::Required {
                         return Err(error::ContextAssemblySnafu {
-                            message: format!(
-                                "required file {} unreadable: {e}",
-                                spec.filename
-                            ),
+                            message: format!("required file {} unreadable: {e}", spec.filename),
                         }
                         .build());
                     }
@@ -357,11 +351,7 @@ mod tests {
             if let Some(stripped) = name.strip_prefix("theke:") {
                 fs::write(root.join("theke").join(stripped), content).unwrap();
             } else {
-                fs::write(
-                    root.join(format!("nous/{nous_id}")).join(name),
-                    content,
-                )
-                .unwrap();
+                fs::write(root.join(format!("nous/{nous_id}")).join(name), content).unwrap();
             }
         }
 
@@ -395,7 +385,10 @@ mod tests {
 
         let err = assembler.assemble("test", &mut budget).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("SOUL.md"), "error should mention SOUL.md: {msg}");
+        assert!(
+            msg.contains("SOUL.md"),
+            "error should mention SOUL.md: {msg}"
+        );
     }
 
     #[test]
@@ -496,7 +489,11 @@ mod tests {
         let result = assembler.assemble("test", &mut budget).unwrap();
         assert!(result.sections_included.contains(&"MNEME.md".to_owned()));
         assert!(result.sections_truncated.contains(&"MNEME.md".to_owned()));
-        assert!(result.system_prompt.contains("[truncated for token budget]"));
+        assert!(
+            result
+                .system_prompt
+                .contains("[truncated for token budget]")
+        );
     }
 
     #[test]
@@ -517,10 +514,8 @@ mod tests {
 
     #[test]
     fn assemble_budget_consumed_correctly() {
-        let (_dir, oikos) = setup_oikos(
-            "test",
-            &[("SOUL.md", "identity"), ("USER.md", "user info")],
-        );
+        let (_dir, oikos) =
+            setup_oikos("test", &[("SOUL.md", "identity"), ("USER.md", "user info")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
@@ -585,7 +580,8 @@ mod tests {
         let section = BootstrapSection {
             name: "MNEME.md".to_owned(),
             priority: SectionPriority::Flexible,
-            content: "## Section A\nContent A.\n## Section B\nContent B.\n## Section C\nContent C.".to_owned(),
+            content: "## Section A\nContent A.\n## Section B\nContent B.\n## Section C\nContent C."
+                .to_owned(),
             tokens: 100,
             truncatable: true,
         };

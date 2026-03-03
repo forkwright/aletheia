@@ -128,7 +128,12 @@ pub fn discover(
 /// Resolve a single named file through the cascade.
 ///
 /// Returns the most-specific path, or `None` if not found in any tier.
-pub fn resolve(oikos: &Oikos, nous_id: &str, filename: &str, subdir: Option<&str>) -> Option<PathBuf> {
+pub fn resolve(
+    oikos: &Oikos,
+    nous_id: &str,
+    filename: &str,
+    subdir: Option<&str>,
+) -> Option<PathBuf> {
     let candidates: Vec<PathBuf> = if let Some(sub) = subdir {
         vec![
             oikos.nous_dir(nous_id).join(sub).join(filename),
@@ -157,7 +162,12 @@ pub fn resolve(oikos: &Oikos, nous_id: &str, filename: &str, subdir: Option<&str
 ///
 /// Returns matches ordered most-specific first. Useful for config deep-merge
 /// where all tiers contribute.
-pub fn resolve_all(oikos: &Oikos, nous_id: &str, filename: &str, subdir: Option<&str>) -> Vec<CascadeEntry> {
+pub fn resolve_all(
+    oikos: &Oikos,
+    nous_id: &str,
+    filename: &str,
+    subdir: Option<&str>,
+) -> Vec<CascadeEntry> {
     let tiers: Vec<(Tier, PathBuf)> = if let Some(sub) = subdir {
         vec![
             (Tier::Nous, oikos.nous_dir(nous_id).join(sub).join(filename)),
@@ -354,7 +364,12 @@ mod tests {
 
         let found = resolve(&oikos, "syn", "pre-turn.sh", Some("hooks"));
         assert!(found.is_some());
-        assert!(found.unwrap().to_string_lossy().contains("hooks/pre-turn.sh"));
+        assert!(
+            found
+                .unwrap()
+                .to_string_lossy()
+                .contains("hooks/pre-turn.sh")
+        );
     }
 
     #[test]

@@ -138,6 +138,7 @@ const AgentDefaults = z.preprocess(
     // Additional filesystem roots the agent may read/write outside its workspace.
     // Each entry is an absolute path. The ALETHEIA_ROOT is always allowed.
     allowedRoots: z.array(z.string()).default([]),
+    pathGuard: z.boolean().default(true),
     model: z
       .object({
         primary: z.string().default("claude-opus-4-6"),

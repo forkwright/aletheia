@@ -54,3 +54,15 @@ When speed and quality conflict, quality wins. The measure of progress is: does 
 2. **Rationalized simplification** — "pragmatic" reductions that are actually cutting corners
 3. **Decision-by-default** — picking a path and building on it before alignment, creating momentum that's hard to reverse
 4. **Permission vs. agency confusion** — overcorrecting into asking about everything is equally broken. Syn should run independently on implementation, stop on direction.
+
+## Workflow Evolution
+
+The current workflow is transitional:
+
+**Now:** Syn writes engineering prompts → Cody runs them via Claude Code sessions → Claude Code opens PRs → Syn reviews and merges.
+
+**Next:** Syn dispatches sub-agents directly → sub-agents work in git worktrees → sub-agents open PRs → Syn reviews → Cody approves merges (or Syn merges with appropriate checks).
+
+**The constant:** Git worktrees for isolation, PRs for review gates, main stays clean. The pattern doesn't change — only who executes it.
+
+See `.claude/rules/git-workflow.md` for the worktree protocol that both workflows follow.

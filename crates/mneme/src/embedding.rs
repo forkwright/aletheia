@@ -82,9 +82,13 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         }
         for (i, v) in vec.iter_mut().enumerate() {
             // Mix hash with position for per-dimension variation
-            let h = hash.wrapping_mul(i as u64 + 1).wrapping_add(i as u64 * 2_654_435_761);
+            let h = hash
+                .wrapping_mul(i as u64 + 1)
+                .wrapping_add(i as u64 * 2_654_435_761);
             #[allow(clippy::cast_precision_loss)]
-            { *v = ((h % 10000) as f32 / 5000.0) - 1.0; }
+            {
+                *v = ((h % 10000) as f32 / 5000.0) - 1.0;
+            }
         }
         // L2 normalize
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -394,10 +398,7 @@ mod tests {
         fn fastembed_embed_is_normalized() {
             let vec = PROVIDER.embed("normalize me").unwrap();
             let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
-            assert!(
-                (norm - 1.0).abs() < 0.01,
-                "expected unit norm, got {norm}"
-            );
+            assert!((norm - 1.0).abs() < 0.01, "expected unit norm, got {norm}");
         }
 
         #[test]

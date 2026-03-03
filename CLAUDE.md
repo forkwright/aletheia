@@ -6,7 +6,7 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, typed errors, never empty catch, test behavior not implementation.
+Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
 
 @.claude/rules/rust.md
 @.claude/rules/typescript.md
@@ -16,42 +16,13 @@ Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, 
 
 ## Structure
 
-### Rust Crate Workspace (target architecture)
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full crate workspace, TypeScript module map, dependency graph, and trait boundaries.
 
-11 application crates in `crates/`, plus 4 support crates:
-
-| Crate | Purpose |
-|-------|---------|
-| `koina` | Errors (snafu), tracing, fs utilities, safe wrappers — leaf node |
-| `taxis` | Config loading (figment YAML cascade), path resolution, oikos hierarchy |
-| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval |
-| `mneme-engine` | CozoDB embedded database: vectors, graph, relations (vendored, ~42K lines) |
-| `hermeneus` | Anthropic client, model routing, credentials, streaming retry, provider trait |
-| `organon` | Tool registry, tool definitions, built-in tool set |
-| `symbolon` | JWT tokens, password hashing, RBAC policies — leaf node |
-| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize |
-| `melete` | Context distillation, compression strategies, token budget management |
-| `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client |
-| `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware |
-| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together |
-| `graph-builder` | CSR graph construction/traversal (build tool) |
-| `integration-tests` | Cross-crate integration tests |
-| `mneme-bench` | CozoDB validation benchmarks (excluded from default build) |
-
-### TypeScript Runtime (current production)
-
-- **Runtime:** `infrastructure/runtime/src/` — TypeScript, tsdown, vitest
-- **UI:** `ui/` — Svelte 5, Vite
-- **Memory sidecar:** `infrastructure/memory/sidecar/` — Python FastAPI
-
-### Config
+### Config Locations
 
 - **TS runtime:** `~/.aletheia/aletheia.json` — validated by Zod in `taxis/schema.ts`
 - **Rust crates:** `instance/config/aletheia.yaml` — figment cascade (defaults → YAML → env vars)
-
-### Other
-
-- **Specs:** `docs/specs/` — design documents numbered by implementation order
+- **Specs:** `docs/specs/` — design documents
 - **Decisions:** `docs/decisions/` — Architecture Decision Records
 
 ## Commands
@@ -61,7 +32,7 @@ Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Key points: self-documenting code, 
 ```bash
 cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # All tests (745 across 15 crates)
+cargo test --workspace                 # All tests
 cargo test -p aletheia-hermeneus       # Single crate
 cargo clippy --workspace               # Lint (zero warnings policy)
 ```
@@ -79,30 +50,29 @@ cd ../../ui && npm run build           # Build UI
 aletheia doctor                        # Validate config
 ```
 
-## Patterns
+## Key Patterns
 
 ### Rust
 
-- **Errors:** `snafu` enums per crate with `.context()` propagation and `Location` tracking. See `.claude/rules/rust.md`.
-- **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`, etc.)
+- **Errors:** `snafu` with `.context()` propagation and `Location` tracking
+- **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** figment YAML cascade in `taxis`
 
 ### TypeScript
 
-- **Modules:** Greek names — koina, taxis, mneme, hermeneus, nous, organon, melete, symbolon, dianoia, semeion, pylon, prostheke
-- **Errors:** `AletheiaError` hierarchy in `koina/errors.ts`, codes in `koina/error-codes.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts`
-- **Logging:** `createLogger("module-name")` — structured with AsyncLocalStorage context
+- **Errors:** `AletheiaError` hierarchy in `koina/errors.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts`
+- **Logging:** `createLogger("module-name")` with AsyncLocalStorage context
 - **Events:** `eventBus` — `noun:verb` naming (e.g., `turn:before`, `tool:called`)
 - **Config:** Zod schemas in `taxis/schema.ts`
 - **Imports:** `.js` extensions, order: node → external → internal → local
 
 ### Both Stacks
 
-- **Naming:** Greek names per [gnomon.md](docs/gnomon.md). Names identify modes of attention, not implementations.
+- **Naming:** Greek names per [gnomon.md](docs/gnomon.md)
 - **No barrel files** — import from the file that owns the symbol
-- **Module imports flow downward** — higher layers may depend on lower, never the reverse
+- **Module imports flow downward** — higher layers depend on lower, never reverse
 
 ## Before Submitting
 
@@ -117,3 +87,10 @@ aletheia doctor                        # Validate config
 2. No new empty catch blocks
 3. New errors use typed error classes
 4. `npx tsc --noEmit` clean
+
+## Dianoia Gotchas
+
+1. **Migration propagation:** Every `makeDb()` helper in `src/dianoia/*.test.ts` must include ALL migrations. When adding a migration, update ALL test helpers.
+2. **exactOptionalPropertyTypes:** Use conditional spread (`...(value !== undefined ? { field: value } : {})`) not `field: value ?? undefined`.
+3. **oxlint require-await:** Use `return Promise.resolve(result)` instead of `async` on functions with no `await`.
+4. **Orchestrator registration:** New orchestrators follow the `NousManager` setter/getter pattern with conditional spread in `RouteDeps`.

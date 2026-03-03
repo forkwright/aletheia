@@ -2,24 +2,15 @@
 
 ## Prerequisites
 
-### Rust (crate workspace)
+### Rust
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Rust | 1.85+ (2024 edition) | Compiler |
-| cargo | (bundled) | Build system, package manager |
-| clippy | (bundled) | Linting (zero warnings policy) |
+Rust stable (2024 edition), cargo, clippy (bundled).
 
-### TypeScript (current runtime)
+### TypeScript
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Node.js | >= 22.12 | Runtime |
-| tsdown | 0.20+ | Bundler (devDep) |
-| TypeScript | 5.7+ | Type checking (devDep) |
-| vitest | 3.0+ | Testing (devDep) |
+Node.js >= 22.12. Dev dependencies (tsdown, TypeScript, vitest) installed via `npm install`.
 
-Optional: Docker (Qdrant, Neo4j, Langfuse), signal-cli, Chromium (browser tool).
+Optional: Docker/Podman (Qdrant, Neo4j, Langfuse), signal-cli, Chromium (browser tool).
 
 ---
 
@@ -28,14 +19,12 @@ Optional: Docker (Qdrant, Neo4j, Langfuse), signal-cli, Chromium (browser tool).
 ### Rust
 
 ```bash
-cargo build                     # debug build
-cargo build --release           # release build (LTO, stripped)
-cargo clippy --workspace        # lint (must be zero warnings)
+cargo build                     # debug
+cargo build --release           # release (thin LTO, stripped)
+cargo clippy --workspace        # lint — zero warnings, pedantic
 ```
 
-The workspace uses pedantic clippy lints with select allows (`missing_errors_doc`, `module_name_repetitions`, `must_use_candidate`). `dbg!`, `todo!`, and `unimplemented!` are denied. `unsafe` is denied workspace-wide.
-
-Release profile: thin LTO, single codegen unit, symbols stripped.
+Workspace lints: pedantic clippy with select allows. `dbg!`, `todo!`, `unimplemented!` denied. `unsafe` denied workspace-wide.
 
 ### TypeScript
 
@@ -43,53 +32,7 @@ Release profile: thin LTO, single codegen unit, symbols stripped.
 cd infrastructure/runtime && npm install && npx tsdown
 ```
 
-Output: `dist/entry.mjs` (~450KB ESM bundle) + source map.
-
-For dev without building: `npm run dev` (tsx).
-
----
-
-## Module Architecture
-
-### Rust Crate Dependency Graph
-
-```
-                        pylon
-                     /  | |  \  \
-                   /    | |   \   \
-                nous  symbolon  |   |
-              / | | \         mneme |
-            /   |  \  \        |    |
-       taxis organon melete    |    |
-          |     |      |       |    |
-        koina  hermeneus    mneme-engine
-                                    agora
-                                   /    \
-                                taxis  koina
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency rules and trait boundaries.
-
-### TypeScript Initialization Order
-
-`taxis -> mneme -> hermeneus -> organon -> nous -> dianoia -> prostheke -> daemon` (semeion + pylon wired at runtime start)
-
-| Module | Domain | Key Files |
-|--------|--------|-----------|
-| `koina` | Logger, errors, event bus, safe wrappers, crypto | `logger.ts`, `errors.ts`, `event-bus.ts`, `safe.ts` |
-| `taxis` | Config loading + Zod validation | `schema.ts`, `loader.ts`, `paths.ts` |
-| `mneme` | Session store (better-sqlite3, migrations) | `store.ts`, `schema.ts` |
-| `hermeneus` | Anthropic SDK, provider router, token counting | `anthropic.ts`, `router.ts`, `complexity.ts`, `pricing.ts` |
-| `organon` | 48 built-in tools, skills, self-authoring | `registry.ts`, `skills.ts`, `built-in/*.ts` |
-| `nous` | Agent bootstrap, turn pipeline, working state | `manager.ts`, `bootstrap.ts`, `working-state.ts`, `pipeline/` |
-| `melete` | Distillation, reflection, memory flush | `pipeline.ts`, `extract.ts`, `reflect.ts`, `summarize.ts` |
-| `symbolon` | Split-token authentication, JWT, sessions, RBAC | `tokens.ts`, `passwords.ts`, `sessions.ts`, `rbac.ts` |
-| `dianoia` | Multi-phase planning orchestrator | `orchestrator.ts`, `store.ts`, `execution.ts`, `verifier.ts` |
-| `semeion` | Signal client, listener, commands, TTS | `client.ts`, `listener.ts`, `commands.ts` |
-| `pylon` | Hono HTTP gateway, MCP, Web UI | `server.ts`, `mcp.ts`, `ui.ts` |
-| `prostheke` | Plugin system (lifecycle hooks) | `types.ts`, `loader.ts`, `registry.ts` |
-| `daemon` | Cron, watchdog, update checker | `cron.ts`, `watchdog.ts`, `update-check.ts` |
-| `portability` | Agent import/export (AgentFile format) | `export.ts`, `import.ts` |
+Output: `dist/entry.mjs` (~450KB ESM bundle). For dev without building: `npm run dev` (tsx).
 
 ---
 
@@ -98,81 +41,49 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency rules and trait b
 ### Rust
 
 ```bash
-cargo test --workspace                          # all tests
+cargo test --workspace                          # all
 cargo test -p aletheia-nous                     # single crate
 cargo test -p aletheia-nous -- actor            # filter by name
-cargo test -p aletheia-integration-tests        # cross-crate integration tests
+cargo test -p aletheia-integration-tests        # cross-crate
 ```
 
-Tests live alongside source in `#[cfg(test)] mod tests` blocks. Integration tests are in `crates/integration-tests/`.
+Tests live alongside source in `#[cfg(test)] mod tests`. Integration tests in `crates/integration-tests/`.
 
 ### TypeScript
 
 ```bash
-npm test                    # unit tests
-npm run test:watch          # watch mode
-npm run test:coverage       # coverage (thresholds enforced)
-npm run test:integration    # integration (30s timeout)
+npx vitest run                          # all
+npx vitest run src/path/file.test.ts    # specific
 ```
 
 Tests live alongside source as `*.test.ts`. Integration tests use `.integration.test.ts`.
-
-Coverage thresholds: 80% statements, 78% branches, 90% functions, 80% lines.
 
 ---
 
 ## Code Style
 
-Full conventions in [STANDARDS.md](STANDARDS.md). Key rules by language:
+Full reference: [STANDARDS.md](STANDARDS.md).
 
 ### Rust
 
 - Edition 2024, `unsafe` denied, pedantic clippy
-- Errors via `snafu` with context selectors, not `anyhow`
-- `pub(crate)` by default, minimize public surface
+- Errors via `snafu` with context selectors
+- `pub(crate)` by default
 - `expect("invariant description")` over bare `unwrap()`
-- File headers: `//!` module doc, one line
 - Property-based testing with `proptest` where applicable
 
 ### TypeScript
 
-Strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`. Bracket notation for index access: `record["key"]`.
+- Strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
+- Bracket notation for index access: `record["key"]`
+- `.js` import extensions required
 
-### Both Languages
+### Universal
 
 - File headers: one-line comment describing purpose
 - No inline comments except genuinely non-obvious *why* explanations
 - No creation dates, author info, or AI generation indicators
-- Conventional commits: `feat(crate):`, `fix(crate):`, `chore(crate):`
-
-### File and Code Naming
-
-| Context | Convention | Example |
-|---------|-----------|---------|
-| Files | `kebab-case` | `session-store.rs`, `event-bus.ts` |
-| Types / Traits | `PascalCase` | `SessionStore`, `EmbeddingProvider` |
-| Functions | `camelCase` (TS) / `snake_case` (Rust) | `loadConfig` / `load_config` |
-| Constants | `UPPER_SNAKE` | `MAX_TURNS`, `DEFAULT_PORT` |
-| Events | `noun:verb` | `turn:before`, `tool:called` |
-
-### Import Order (TypeScript)
-
-```typescript
-import { join } from "node:path";           // 1. Node builtins
-import { Hono } from "hono";               // 2. External
-import { createLogger } from "../koina/logger.js";  // 3. Internal
-import type { TurnState } from "./types.js";        // 4. Local
-```
-
-### Error Handling (TypeScript)
-
-```typescript
-// Typed errors
-throw new PipelineError("Stage failed", { code: "PIPELINE_STAGE_FAILED", context: { stage, sessionId } });
-
-// Non-critical operations
-const result = trySafe("skill extraction", () => extractSkill(data), null);
-```
+- Conventional commits: `feat(scope):`, `fix(scope):`
 
 ---
 
@@ -193,61 +104,24 @@ export const myTool: ToolHandler = {
 };
 ```
 
-Register in `src/aletheia.ts`: `tools.register(myTool)`.
-
-For tools needing runtime deps (store, config), use factory functions:
-
-```typescript
-export function createMyTool(store: SessionStore): ToolHandler { ... }
-```
-
-Categories: `"essential"` (always available) or `"available"` (on-demand via `enable_tool`, expires after 5 unused turns).
-
----
-
-## Adding Signal Commands
-
-Register in `createDefaultRegistry()` in `src/semeion/commands.ts`:
-
-```typescript
-registry.register({
-  name: "mycommand",
-  aliases: ["mc"],
-  description: "What this command does",
-  adminOnly: false,
-  async execute(args: string, ctx: CommandContext): Promise<string> {
-    return "Response text";
-  },
-});
-```
-
-`CommandContext` provides: `sender`, `client`, `store`, `config`, `manager`, `watchdog`, `skills`.
+Register in `src/aletheia.ts`. Categories: `"essential"` (always available) or `"available"` (on-demand, expires after 5 unused turns).
 
 ---
 
 ## CLI
 
-Lifecycle (managed by `bin/aletheia` shell wrapper):
-
 ```
-aletheia start [--no-memory]      # start memory services + gateway
-aletheia stop [--all]             # stop gateway (--all includes containers)
-aletheia restart
-aletheia logs [-f]
-aletheia tui
-```
-
-Gateway commands (talk to a running gateway via HTTP):
-
-```
-aletheia status [-u url] [-t token]
-aletheia doctor [-c config]
-aletheia send -a <id> -m <text>
-aletheia sessions [-a agent]
-aletheia update [version] [--edge|--check|--rollback]
-aletheia cron list|trigger <id>
-aletheia replay <session-id> [--live]
-aletheia gateway start [-c config]    # low-level: start gateway in foreground
+aletheia start [--no-memory]     # start memory services + gateway
+aletheia stop [--all]            # stop gateway (--all includes containers)
+aletheia restart                 # restart gateway
+aletheia logs [-f]               # follow logs
+aletheia tui                     # terminal UI
+aletheia status                  # live metrics
+aletheia doctor                  # validate config + connectivity
+aletheia send -a <id> -m <text>  # send message
+aletheia sessions [-a agent]     # list sessions
+aletheia update [version]        # self-update
+aletheia cron list|trigger <id>  # manage cron
 ```
 
 ---
@@ -260,8 +134,7 @@ aletheia gateway start [-c config]    # low-level: start gateway in foreground
 | GET | `/api/status` | Agent list + version |
 | GET | `/api/metrics` | Full metrics |
 | GET | `/api/agents` | All agents |
-| GET | `/api/agents/:id` | Agent + recent sessions + usage |
-| GET | `/api/agents/:id/identity` | Name + emoji |
+| GET | `/api/agents/:id` | Agent detail |
 | GET | `/api/sessions` | Session list |
 | GET | `/api/sessions/:id/history` | Message history |
 | POST | `/api/sessions/send` | Send message |
@@ -270,11 +143,7 @@ aletheia gateway start [-c config]    # low-level: start gateway in foreground
 | POST | `/api/sessions/:id/distill` | Trigger distillation |
 | GET | `/api/events` | SSE event stream |
 | GET | `/api/costs/summary` | Token usage + cost |
-| GET | `/api/costs/session/:id` | Per-session costs |
 | GET | `/api/cron` | Cron jobs |
 | POST | `/api/cron/:id/trigger` | Trigger cron job |
 | GET | `/api/skills` | Skills directory |
-| GET | `/api/contacts/pending` | Pending contacts |
-| POST | `/api/contacts/:code/approve` | Approve contact |
-| POST | `/api/contacts/:code/deny` | Deny contact |
 | GET | `/api/config` | Config summary |

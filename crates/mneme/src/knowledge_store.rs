@@ -113,116 +113,12 @@ pub fn fts_ddl() -> &'static str {
     }"
 }
 
-/// Query templates for common knowledge operations.
-pub mod queries {
-    /// Insert or update a fact.
-    pub const UPSERT_FACT: &str = r"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [[$id, $valid_from,
-          $content, $nous_id, $confidence, $tier, $valid_to, $superseded_by,
-          $source_session_id, $recorded_at]]
-        :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
-    ";
-
-    /// Query current facts for a nous (not superseded, currently valid).
-    pub const CURRENT_FACTS: &str = r"
-        ?[id, content, confidence, tier, recorded_at] :=
-            *facts{id, valid_from, content, nous_id, confidence, tier,
-                   valid_to, superseded_by, recorded_at},
-            nous_id = $nous_id,
-            valid_from <= $now,
-            valid_to > $now,
-            is_null(superseded_by)
-        :order -confidence
-        :limit $limit
-    ";
-
-    /// Point-in-time fact query.
-    pub const FACTS_AT_TIME: &str = r"
-        ?[id, content, confidence, tier] :=
-            *facts{id, valid_from, content, confidence, tier, valid_to},
-            valid_from <= $time,
-            valid_to > $time
-    ";
-
-    /// Supersede a fact (close old, insert new).
-    #[allow(clippy::needless_raw_string_hashes)]  // contains inner quotes
-    pub const SUPERSEDE_FACT: &str = r#"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [
-            [$old_id, $old_valid_from, $old_content, $nous_id, $old_confidence,
-             $old_tier, $now, $new_id, $old_source, $old_recorded],
-            [$new_id, $now, $new_content, $nous_id, $new_confidence,
-             $new_tier, "9999-12-31", null, $source_session_id, $now]
-        ]
-        :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
-    "#;
-
-    /// Insert or update an entity.
-    pub const UPSERT_ENTITY: &str = r"
-        ?[id, name, entity_type, aliases, created_at, updated_at] <- [
-            [$id, $name, $entity_type, $aliases, $created_at, $updated_at]
-        ]
-        :put entities {id => name, entity_type, aliases, created_at, updated_at}
-    ";
-
-    /// Insert a relationship.
-    pub const UPSERT_RELATIONSHIP: &str = r"
-        ?[src, dst, relation, weight, created_at] <- [
-            [$src, $dst, $relation, $weight, $created_at]
-        ]
-        :put relationships {src, dst => relation, weight, created_at}
-    ";
-
-    /// 2-hop entity neighborhood.
-    pub const ENTITY_NEIGHBORHOOD: &str = r"
-        hop1[dst, rel] := *relationships{src: $entity_id, dst, relation: rel}
-        hop2[dst, rel] := hop1[mid, _], *relationships{src: mid, dst, relation: rel}
-        ?[id, name, entity_type, relation, hop] :=
-            hop1[id, relation], *entities{id, name, entity_type}, hop = 1
-        ?[id, name, entity_type, relation, hop] :=
-            hop2[id, relation], *entities{id, name, entity_type}, hop = 2
-        :order hop, name
-    ";
-
-    /// KNN vector search.
-    pub const SEMANTIC_SEARCH: &str = r"
-        ?[id, content, source_type, source_id, dist] :=
-            ~embeddings:semantic_idx {id, content, source_type, source_id |
-                query: $query_vec, k: $k, ef: $ef, bind_distance: dist}
-    ";
-
-    /// Entity search by name or alias (prefix match).
-    pub const SEARCH_ENTITIES: &str = r"
-        ?[id, name, entity_type] :=
-            *entities{id, name, entity_type},
-            starts_with(name, $prefix)
-        ?[id, name, entity_type] :=
-            *entities{id, name, entity_type, aliases},
-            contains(aliases, $prefix)
-        :limit $limit
-    ";
-
-    /// Hybrid search: BM25 + HNSW vector + graph neighborhood fused via RRF.
-    /// Graph sub-rules are injected dynamically by `build_hybrid_query`.
-    pub const HYBRID_SEARCH_BASE: &str = r"
-        bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
-
-        vec[id, score] :=
-            ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},
-            score = 1.0 - raw_dist
-
-        {GRAPH_RULES}
-
-        ?[id, rrf_score, bm25_rank, vec_rank, graph_rank] <~
-            ReciprocalRankFusion(bm25[], vec[], graph[])
-
-        :order -rrf_score
-        :limit $limit
-    ";
-}
+/// Re-export query builder types and pre-built query scripts.
+///
+/// Builder-generated queries (field-safe): `queries::upsert_fact()`, etc.
+/// Raw Datalog constants (multi-rule): `queries::ENTITY_NEIGHBORHOOD`, etc.
+#[cfg(feature = "mneme-engine")]
+use crate::query::queries;
 
 /// Configuration for `KnowledgeStore` initialization.
 #[cfg(feature = "mneme-engine")]
@@ -264,11 +160,11 @@ pub struct HybridResult {
     pub id: String,
     /// Fused RRF score (higher = more relevant).
     pub rrf_score: f64,
-    /// Rank in BM25 signal (0 = not in BM25 results).
+    /// Rank in BM25 signal (-1 = absent, 1+ = rank where 1 is best).
     pub bm25_rank: i64,
-    /// Rank in vector search signal (0 = not in vector results).
+    /// Rank in vector search signal (-1 = absent, 1+ = rank).
     pub vec_rank: i64,
-    /// Rank in graph neighborhood signal (0 = no graph contribution).
+    /// Rank in graph neighborhood signal (-1 = absent, 1+ = rank).
     pub graph_rank: i64,
 }
 
@@ -295,9 +191,16 @@ impl KnowledgeStore {
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
-        let db = aletheia_mneme_engine::Db::open_mem()
-            .map_err(|e| crate::error::EngineInitSnafu { message: e.to_string() }.build())?;
-        let store = Self { db: std::sync::Arc::new(db), dim: config.dim };
+        let db = aletheia_mneme_engine::Db::open_mem().map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        let store = Self {
+            db: std::sync::Arc::new(db),
+            dim: config.dim,
+        };
         store.init_schema()?;
         Ok(std::sync::Arc::new(store))
     }
@@ -309,23 +212,43 @@ impl KnowledgeStore {
         for ddl in KNOWLEDGE_DDL {
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
-                .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
         }
 
         let emb_ddl = embeddings_ddl(self.dim);
         self.db
             .run(&emb_ddl, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         let hnsw = hnsw_ddl(self.dim);
         self.db
             .run(&hnsw, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         let fts = fts_ddl();
         self.db
             .run(fts, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
         // relations only in temp_store_tx which does not persist across run() calls).
@@ -335,7 +258,12 @@ impl KnowledgeStore {
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         // Insert initial version
         let mut params = BTreeMap::new();
@@ -353,7 +281,12 @@ impl KnowledgeStore {
                 params,
                 ScriptMutability::Mutable,
             )
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())?;
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         Ok(())
     }
@@ -361,7 +294,7 @@ impl KnowledgeStore {
     /// Insert or update a fact.
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         let params = fact_to_params(fact);
-        self.run_mut(queries::UPSERT_FACT, params)
+        self.run_mut(&queries::upsert_fact(), params)
     }
 
     /// Query current facts for a nous at a given time, up to limit results.
@@ -379,7 +312,7 @@ impl KnowledgeStore {
         params.insert("now".to_owned(), DataValue::Str(now.into()));
         params.insert("limit".to_owned(), DataValue::from(limit));
 
-        let rows = self.run_read(FULL_CURRENT_FACTS, params)?;
+        let rows = self.run_read(&queries::full_current_facts(), params)?;
         rows_to_facts(rows, nous_id)
     }
 
@@ -391,14 +324,14 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert("time".to_owned(), DataValue::Str(time.into()));
 
-        let rows = self.run_read(queries::FACTS_AT_TIME, params)?;
+        let rows = self.run_read(&queries::facts_at_time(), params)?;
         rows_to_facts_partial(rows)
     }
 
     /// Insert or update an entity.
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         let params = entity_to_params(entity);
-        self.run_mut(queries::UPSERT_ENTITY, params)
+        self.run_mut(&queries::upsert_entity(), params)
     }
 
     /// Insert a relationship.
@@ -407,7 +340,7 @@ impl KnowledgeStore {
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()> {
         let params = relationship_to_params(rel);
-        self.run_mut(queries::UPSERT_RELATIONSHIP, params)
+        self.run_mut(&queries::upsert_relationship(), params)
     }
 
     /// Query 2-hop entity neighborhood. Returns raw rows for flexible callers.
@@ -429,13 +362,7 @@ impl KnowledgeStore {
         chunk: &crate::knowledge::EmbeddedChunk,
     ) -> crate::error::Result<()> {
         let params = embedding_to_params(chunk, self.dim);
-        self.run_mut(
-            r"?[id, content, source_type, source_id, nous_id, embedding, created_at] <- [
-                [$id, $content, $source_type, $source_id, $nous_id, $embedding, $created_at]
-              ]
-              :put embeddings { id => content, source_type, source_id, nous_id, embedding, created_at }",
-            params,
-        )
+        self.run_mut(&queries::upsert_embedding(), params)
     }
 
     /// kNN semantic vector search.
@@ -467,10 +394,7 @@ impl KnowledgeStore {
 
         let mut params = BTreeMap::new();
         params.insert("key".to_owned(), DataValue::Str("schema".into()));
-        let rows = self.run_read(
-            r"?[version] := *schema_version{key: $key, version}",
-            params,
-        )?;
+        let rows = self.run_read(r"?[version] := *schema_version{key: $key, version}", params)?;
         let row = rows.rows.into_iter().next().ok_or_else(|| {
             crate::error::EngineQuerySnafu {
                 message: "schema version record missing",
@@ -500,7 +424,7 @@ impl KnowledgeStore {
     /// The `:timeout` directive is injected into the script — callers should not include it.
     ///
     /// Note: timeout detection relies on the engine error containing "killed before completion"
-    /// (from CozoDB's internal `ProcessKilled` error). This is a known fragile dependency.
+    /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
     pub fn run_query_with_timeout(
         &self,
         script: &str,
@@ -518,7 +442,7 @@ impl KnowledgeStore {
                 let msg = e.to_string();
                 if msg.contains("killed before completion") {
                     crate::error::QueryTimeoutSnafu {
-                        secs: timeout.map(|d| d.as_secs_f64()).unwrap_or(0.0),
+                        secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
                     }
                     .build()
                 } else {
@@ -537,22 +461,27 @@ impl KnowledgeStore {
         use aletheia_mneme_engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Mutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
     ///
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
-    pub fn search_hybrid(
-        &self,
-        q: &HybridQuery,
-    ) -> crate::error::Result<Vec<HybridResult>> {
+    pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use aletheia_mneme_engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("query_text".to_owned(), DataValue::Str(q.text.as_str().into()));
+        params.insert(
+            "query_text".to_owned(),
+            DataValue::Str(q.text.as_str().into()),
+        );
         params.insert(
             "query_vec".to_owned(),
             DataValue::Vec(Vector::F32(Array1::from(q.embedding.clone()))),
@@ -634,7 +563,12 @@ impl KnowledgeStore {
         self.db
             .run(script, params, ScriptMutability::Mutable)
             .map(|_| ())
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 
     fn run_read(
@@ -645,23 +579,14 @@ impl KnowledgeStore {
         use aletheia_mneme_engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Immutable)
-            .map_err(|e| crate::error::EngineQuerySnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 }
-
-// Extended query that returns all Fact fields (used by query_facts).
-#[cfg(feature = "mneme-engine")]
-const FULL_CURRENT_FACTS: &str = r"
-    ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id] :=
-        *facts{id, valid_from, content, nous_id, confidence, tier,
-               valid_to, superseded_by, source_session_id, recorded_at},
-        nous_id = $nous_id,
-        valid_from <= $now,
-        valid_to > $now,
-        is_null(superseded_by)
-    :order -confidence
-    :limit $limit
-";
 
 // --- Conversion helpers ---
 
@@ -684,14 +609,8 @@ fn fact_to_params(
         "nous_id".to_owned(),
         DataValue::Str(fact.nous_id.as_str().into()),
     );
-    p.insert(
-        "confidence".to_owned(),
-        DataValue::from(fact.confidence),
-    );
-    p.insert(
-        "tier".to_owned(),
-        DataValue::Str(fact.tier.as_str().into()),
-    );
+    p.insert("confidence".to_owned(), DataValue::from(fact.confidence));
+    p.insert("tier".to_owned(), DataValue::Str(fact.tier.as_str().into()));
     p.insert(
         "valid_to".to_owned(),
         DataValue::Str(fact.valid_to.as_str().into()),
@@ -1012,9 +931,10 @@ fn build_hybrid_query(q: &HybridQuery) -> String {
         let seeds_inline = seed_data.join(", ");
         format!(
             "seed_list[e] <- [{seeds_inline}]\n        \
-             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
-             graph[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
-             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5"
+             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: id, weight: score}}\n        \
+             graph_raw[id, score] := seed_list[seed], *relationships{{src: seed, dst: mid, weight: _w}}, \
+             *relationships{{src: mid, dst: id, weight}}, score = weight * 0.5\n        \
+             graph[id, sum(score)] := graph_raw[id, score]"
         )
     };
     queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
@@ -1058,11 +978,21 @@ fn rows_to_hybrid_results(
             }
             .build()
         })?)?;
-        out.push(HybridResult { id, rrf_score, bm25_rank, vec_rank, graph_rank });
+        out.push(HybridResult {
+            id,
+            rrf_score,
+            bm25_rank,
+            vec_rank,
+            graph_rank,
+        });
     }
     // Sort by rrf_score descending (RRF output is unordered since it comes through :order in Datalog,
     // but :order is applied by the engine — this is a safety sort for correctness)
-    out.sort_by(|a, b| b.rrf_score.partial_cmp(&a.rrf_score).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.rrf_score
+            .partial_cmp(&a.rrf_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(out)
 }
 
@@ -1129,8 +1059,8 @@ fn parse_epistemic_tier(s: &str) -> crate::error::Result<crate::knowledge::Epist
 
 #[cfg(all(test, feature = "mneme-engine"))]
 mod engine_assertions {
-    use static_assertions::assert_impl_all;
     use super::KnowledgeStore;
+    use static_assertions::assert_impl_all;
     assert_impl_all!(KnowledgeStore: Send, Sync);
 }
 
@@ -1142,8 +1072,8 @@ mod timeout_tests {
 
     #[test]
     fn query_timeout_returns_typed_error() {
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-            .expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
         // Recursive transitive closure on a linear chain of N nodes requires N-1 semi-naive
         // fixpoint epochs. Each epoch checks the Poison flag. With N=2000 and timeout=50ms
@@ -1171,14 +1101,10 @@ reach[a, c] := reach[a, b], edge[b, c]
 
     #[test]
     fn query_without_timeout_succeeds() {
-        let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 })
-            .expect("open_mem");
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
 
-        let result = store.run_query_with_timeout(
-            "?[x] := x = 42",
-            BTreeMap::new(),
-            None,
-        );
+        let result = store.run_query_with_timeout("?[x] := x = 42", BTreeMap::new(), None);
 
         assert!(result.is_ok(), "query without timeout should succeed");
         let rows = result.unwrap();
@@ -1203,14 +1129,17 @@ mod tests {
         assert!(fts.contains("bm25") || fts.contains("Simple"));
     }
 
+    #[cfg(feature = "mneme-engine")]
     #[test]
     fn query_templates_contain_params() {
-        assert!(queries::CURRENT_FACTS.contains("$nous_id"));
-        assert!(queries::CURRENT_FACTS.contains("$now"));
+        let current = queries::current_facts();
+        assert!(current.contains("$nous_id"));
+        assert!(current.contains("$now"));
         assert!(queries::SEMANTIC_SEARCH.contains("$query_vec"));
         assert!(queries::ENTITY_NEIGHBORHOOD.contains("$entity_id"));
-        assert!(queries::SUPERSEDE_FACT.contains("$old_id"));
-        assert!(queries::SUPERSEDE_FACT.contains("$new_id"));
+        let supersede = queries::supersede_fact();
+        assert!(supersede.contains("$old_id"));
+        assert!(supersede.contains("$new_id"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("$query_text"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("$query_vec"));
         assert!(queries::HYBRID_SEARCH_BASE.contains("ReciprocalRankFusion"));
@@ -1227,7 +1156,10 @@ mod tests {
             ef: 20,
         };
         let script = build_hybrid_query(&q);
-        assert!(script.contains("graph[id, score] <- []"), "empty seeds must produce empty graph relation");
+        assert!(
+            script.contains("graph[id, score] <- []"),
+            "empty seeds must produce empty graph relation"
+        );
         assert!(script.contains("ReciprocalRankFusion"));
     }
 
@@ -1242,9 +1174,323 @@ mod tests {
             ef: 20,
         };
         let script = build_hybrid_query(&q);
-        assert!(script.contains("seed_list"), "non-empty seeds must produce seed_list relation");
+        assert!(
+            script.contains("seed_list"),
+            "non-empty seeds must produce seed_list relation"
+        );
         assert!(script.contains("e-rust"));
         assert!(script.contains("e-python"));
         assert!(script.contains("*relationships"));
+        assert!(
+            script.contains("graph_raw"),
+            "must use graph_raw intermediate for aggregation"
+        );
+        assert!(
+            script.contains("sum(score)"),
+            "must aggregate scores per entity"
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_empty_seeds_returns_results() {
+        use crate::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
+
+        let dim = 4;
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        let fact = Fact {
+            id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        let chunk = EmbeddedChunk {
+            id: "f1".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            embedding: vec![0.9, 0.1, 0.1, 0.1],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_embedding(&chunk).expect("insert embedding");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "Rust programming".to_owned(),
+                embedding: vec![0.9, 0.1, 0.1, 0.1],
+                seed_entities: vec![],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search with empty seeds");
+
+        assert!(
+            !results.is_empty(),
+            "empty seeds must still return BM25+vec results"
+        );
+        for r in &results {
+            assert_eq!(
+                r.graph_rank, -1,
+                "graph_rank must be -1 when seeds are empty"
+            );
+        }
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_graph_aggregation() {
+        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
+
+        let dim = 4;
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        // f1: reachable from 3 seed entities
+        let f1 = Fact {
+            id: "f1".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "Rust systems programming".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&f1).expect("insert f1");
+        store
+            .insert_embedding(&EmbeddedChunk {
+                id: "f1".to_owned(),
+                content: "Rust systems programming".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f1".to_owned(),
+                nous_id: "test".to_owned(),
+                embedding: vec![0.9, 0.1, 0.1, 0.1],
+                created_at: "2026-03-01T00:00:00Z".to_owned(),
+            })
+            .expect("insert f1 embedding");
+
+        // f2: reachable from only 1 seed entity
+        let f2 = Fact {
+            id: "f2".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "Rust memory safety".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&f2).expect("insert f2");
+        store
+            .insert_embedding(&EmbeddedChunk {
+                id: "f2".to_owned(),
+                content: "Rust memory safety".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f2".to_owned(),
+                nous_id: "test".to_owned(),
+                embedding: vec![0.8, 0.2, 0.1, 0.1],
+                created_at: "2026-03-01T00:00:00Z".to_owned(),
+            })
+            .expect("insert f2 embedding");
+
+        // Three seed entities: all point to f1, only s1 points to f2
+        for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
+            store
+                .insert_entity(&Entity {
+                    id: id.to_owned(),
+                    name: name.to_owned(),
+                    entity_type: "concept".to_owned(),
+                    aliases: vec![],
+                    created_at: "2026-03-01T00:00:00Z".to_owned(),
+                    updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                })
+                .expect("insert entity");
+            store
+                .insert_relationship(&Relationship {
+                    src: id.to_owned(),
+                    dst: "f1".to_owned(),
+                    relation: "describes".to_owned(),
+                    weight: 0.7,
+                    created_at: "2026-03-01T00:00:00Z".to_owned(),
+                })
+                .expect("insert relationship to f1");
+        }
+        store
+            .insert_relationship(&Relationship {
+                src: "s1".to_owned(),
+                dst: "f2".to_owned(),
+                relation: "describes".to_owned(),
+                weight: 0.7,
+                created_at: "2026-03-01T00:00:00Z".to_owned(),
+            })
+            .expect("insert relationship to f2");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "Rust programming".to_owned(),
+                embedding: vec![0.9, 0.1, 0.1, 0.1],
+                seed_entities: vec!["s1".to_owned(), "s2".to_owned(), "s3".to_owned()],
+                limit: 10,
+                ef: 20,
+            })
+            .expect("hybrid search with three seeds");
+
+        // f1 must appear exactly once (aggregated from 3 paths)
+        let f1_hits: Vec<_> = results.iter().filter(|r| r.id == "f1").collect();
+        assert_eq!(
+            f1_hits.len(),
+            1,
+            "entity reachable via multiple paths must appear once"
+        );
+        assert!(
+            f1_hits[0].graph_rank > 0,
+            "f1 must have a positive graph rank"
+        );
+
+        // f2 must appear exactly once (from 1 path)
+        let f2_hits: Vec<_> = results.iter().filter(|r| r.id == "f2").collect();
+        assert_eq!(f2_hits.len(), 1, "f2 must appear once");
+        assert!(
+            f2_hits[0].graph_rank > 0,
+            "f2 must have a positive graph rank"
+        );
+
+        // f1 (3 paths) should have a higher RRF score than f2 (1 path)
+        assert!(
+            f1_hits[0].rrf_score > f2_hits[0].rrf_score,
+            "3-path entity must score higher than 1-path entity: f1={} vs f2={}",
+            f1_hits[0].rrf_score,
+            f2_hits[0].rrf_score,
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_two_signal_no_graph() {
+        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact};
+
+        let dim = 4;
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        let fact = Fact {
+            id: "f-twosig".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "unique harpsichord melody testing".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        store
+            .insert_embedding(&EmbeddedChunk {
+                id: "f-twosig".to_owned(),
+                content: "unique harpsichord melody testing".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f-twosig".to_owned(),
+                nous_id: "test".to_owned(),
+                embedding: vec![0.7, 0.3, 0.2, 0.1],
+                created_at: "2026-03-01T00:00:00Z".to_owned(),
+            })
+            .expect("insert embedding");
+
+        // Insert an unrelated seed entity so the graph signal is structurally present but yields
+        // no matches for f-twosig
+        store
+            .insert_entity(&Entity {
+                id: "e-unrelated".to_owned(),
+                name: "Unrelated".to_owned(),
+                entity_type: "concept".to_owned(),
+                aliases: vec![],
+                created_at: "2026-03-01T00:00:00Z".to_owned(),
+                updated_at: "2026-03-01T00:00:00Z".to_owned(),
+            })
+            .expect("insert entity");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "harpsichord melody".to_owned(),
+                embedding: vec![0.7, 0.3, 0.2, 0.1],
+                seed_entities: vec!["e-unrelated".to_owned()],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search two signals");
+
+        let hit = results.iter().find(|r| r.id == "f-twosig");
+        assert!(hit.is_some(), "BM25+vector fact must appear in results");
+        let hit = hit.unwrap();
+        assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
+        assert!(hit.vec_rank > 0, "must have positive vector rank");
+        assert_eq!(
+            hit.graph_rank, -1,
+            "absent from graph signal must be -1"
+        );
+        assert!(
+            hit.rrf_score > 0.0,
+            "RRF score must be positive from two signals"
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn hybrid_search_absent_signal_rank_is_negative_one() {
+        use crate::knowledge::{EpistemicTier, Fact};
+
+        let dim = 4;
+        let store =
+            KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
+
+        // Insert a fact but no embedding and no graph edges
+        let fact = Fact {
+            id: "f-bm25-only".to_owned(),
+            nous_id: "test".to_owned(),
+            content: "unique xylophone testing keyword".to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        store.insert_fact(&fact).expect("insert fact");
+
+        let results = store
+            .search_hybrid(&HybridQuery {
+                text: "xylophone testing".to_owned(),
+                embedding: vec![0.5, 0.5, 0.5, 0.5],
+                seed_entities: vec![],
+                limit: 5,
+                ef: 20,
+            })
+            .expect("hybrid search bm25-only");
+
+        let hit = results.iter().find(|r| r.id == "f-bm25-only");
+        assert!(hit.is_some(), "BM25-only fact must appear in results");
+        let hit = hit.unwrap();
+        assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
+        assert_eq!(hit.vec_rank, -1, "absent from vector signal must be -1");
+        assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
     }
 }

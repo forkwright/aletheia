@@ -78,7 +78,10 @@ impl DistillEngine {
         if context_window == 0 {
             return false;
         }
-        #[expect(clippy::cast_precision_loss, reason = "token counts fit in f64 mantissa")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "token counts fit in f64 mantissa"
+        )]
         let ratio = token_estimate as f64 / context_window as f64;
         ratio >= threshold
     }
@@ -152,10 +155,7 @@ impl DistillEngine {
 
 /// Estimate token count from messages using chars/4 heuristic.
 fn estimate_tokens(messages: &[Message]) -> u64 {
-    let total_chars: usize = messages
-        .iter()
-        .map(|m| m.content.text().len())
-        .sum();
+    let total_chars: usize = messages.iter().map(|m| m.content.text().len()).sum();
     (total_chars as u64).div_ceil(4)
 }
 
@@ -175,9 +175,7 @@ fn extract_summary_text(content: &[aletheia_hermeneus::types::ContentBlock]) -> 
 
 #[cfg(test)]
 mod tests {
-    use aletheia_hermeneus::types::{
-        CompletionResponse, ContentBlock, StopReason, Usage,
-    };
+    use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
     use super::*;
 

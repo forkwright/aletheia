@@ -4,20 +4,24 @@ Multi-agent AI platform with persistent memory, messaging, and a web interface. 
 
 Self-hosted. Runs on commodity hardware. No cloud dependencies beyond an LLM API key.
 
-**v0.10.0** | [Quickstart](docs/QUICKSTART.md) | [Configuration](docs/CONFIGURATION.md) | [Development](docs/DEVELOPMENT.md)
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md)
 
 ---
+
+## What It Is
+
+Multiple AI agents working in concert with a human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use.
+
+Not a chatbot framework. A distributed cognition system.
 
 ## Architecture
 
 Ergon is built on Aletheia's runtime. The TypeScript gateway runs production today; a Rust rewrite is in progress for single-binary deployment.
 
-### Runtime Stack
-
 ```
          Web UI (Svelte 5)          Signal Messenger
               |                          |
-         HTTP/SSE (:18789/ui)       signal-cli (JSON-RPC, :8080)
+         HTTP/SSE                   signal-cli (JSON-RPC)
               |                          |
               +----------+---------------+
                          |
@@ -30,109 +34,73 @@ Ergon is built on Aletheia's runtime. The TypeScript gateway runs production tod
               Bindings (per-agent routing)
                 /       |    |      \
          +------+  +------+ +------+ +------+
-         | agent|  | agent| | agent| | agent|   N agents, each with:
+         | nous |  | nous | | nous | | nous |   N agents, each with:
          +------+  +------+ +------+ +------+   - SOUL.md (character)
-            |         |         |        |       - AGENTS.md (operations)
-            v         v         v        v       - MEMORY.md (continuity)
+            |         |         |        |       - workspace files
+            v         v         v        v       - persistent memory
          Claude     Claude    Claude   Claude
 ```
 
-**Runtime**: Node.js >=22.12, TypeScript compiled with tsdown (~450KB bundle), Hono gateway on port 18789.
+### Rust Crates (target)
 
-**Interfaces**: Svelte 5 web UI with streaming, file browser, and syntax highlighting. Signal messenger via signal-cli. CLI admin tools.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 
-**Models**: Anthropic (OAuth or API key). Complexity-based routing across model tiers.
+| Layer | Crates |
+|-------|--------|
+| Leaf | `koina` (errors, tracing), `symbolon` (auth), `mneme-engine` (embedded DB) |
+| Low | `taxis` (config), `hermeneus` (LLM), `mneme` (memory), `organon` (tools), `agora` (channels), `melete` (distillation) |
+| Mid | `nous` (agent pipeline) |
+| High | `pylon` (HTTP gateway) |
+| Top | `aletheia` (binary entrypoint) |
 
-**Memory**: Dual-layer — Mem0 (Qdrant vectors + Neo4j graph + LLM extraction) for cross-agent long-term memory; sqlite-vec for local per-agent search.
+### TypeScript Runtime (current production)
 
-### Rust Crates (in progress)
+14 modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
 
-```
-ergon (binary)
-├── koina           shared errors, tracing, utilities
-├── taxis           config loading, path resolution
-├── mneme           unified memory store (sqlite + fastembed + CozoDB)
-├── mneme-engine    CozoDB embedded database (vectors, graph, relations)
-├── hermeneus       Anthropic client, model routing, credential management
-├── organon         tool registry, built-in tools
-├── nous            agent pipeline, actor model (tokio)
-├── melete          context distillation, compression strategies
-├── agora           channel registry, Signal/Slack providers
-├── pylon           Axum HTTP gateway, SSE streaming
-└── symbolon        JWT authentication, session management, RBAC
-```
-
-11 crates, 718 tests, ~21K lines of Rust. See [PROJECT.md](docs/PROJECT.md) for status.
-
----
-
-## Directory Structure
-
-```
-ergon/
-├── crates/                     Rust workspace
-├── infrastructure/
-│   ├── runtime/                Gateway (TypeScript) — current production
-│   ├── memory/                 Mem0 sidecar + Qdrant + Neo4j
-│   ├── prosoche/               Adaptive attention daemon
-│   └── langfuse/               Self-hosted observability
-├── instance/                   Deployment-specific state
-│   ├── nous/                   Agent workspaces (SOUL.md, MEMORY.md, etc.)
-│   ├── config/                 Runtime config
-│   └── data/                   Session DB, logs
-├── ui/                         Web UI (Svelte 5)
-├── shared/                     Scripts, templates, hooks
-└── config/                     Example configuration
-```
-
----
-
-## Agents
-
-Each agent has a workspace under `instance/nous/` with identity (`SOUL.md`), operations (`AGENTS.md`), and continuity (`MEMORY.md`). See [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/CKickertz/ergon.git && cd ergon
-./setup.sh
-```
-
-Setup builds the runtime and UI, creates a default config, and opens your browser at `http://localhost:18789`.
-
-After first run:
-
-| Task | Command |
-|------|---------|
-| Start | `aletheia start` |
-| Stop | `aletheia stop` |
-| Status | `aletheia status` |
-| Logs | `aletheia logs -f` |
-| Diagnose | `aletheia doctor` |
-
-See [QUICKSTART.md](docs/QUICKSTART.md) for details, [DEPLOYMENT.md](docs/DEPLOYMENT.md) for production setup.
-
----
-
-## Services
-
-| Service | Port | Required |
-|---------|------|----------|
-| Gateway | 18789 | Yes |
-| Signal | 8080 | For messaging |
-| Memory sidecar | 8230 | Recommended |
-| Qdrant | 6333 | If using Mem0 |
-| Neo4j | 7474/7687 | If using Mem0 |
+**Models:** Anthropic (OAuth or API key). Complexity-based routing.
+**Memory:** Mem0 (Qdrant + Neo4j + Haiku extraction) for cross-agent long-term memory. SQLite for sessions.
 
 ---
 
 ## Upstream
 
-Ergon is a fork of [forkwright/aletheia](https://github.com/forkwright/aletheia). Internal module names (koina, taxis, mneme, hermeneus, etc.) are preserved from upstream — see [ALETHEIA.md](ALETHEIA.md) for the naming philosophy.
+Ergon is a fork of [forkwright/aletheia](https://github.com/forkwright/aletheia). Internal module names (koina, taxis, mneme, hermeneus, etc.) are preserved from upstream -- see [ALETHEIA.md](ALETHEIA.md) for the naming philosophy.
 
 See [fork-upstream.md](docs/policy/fork-upstream.md) for the sync policy: what stays upstream, what's fork-specific, and how conflicts are resolved.
+
+See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production, [RESCUE.md](RESCUE.md) for recovery.
+
+---
+
+## Why Greek?
+
+Every name in this system follows a deliberate naming philosophy. Names unconceal essential natures, not describe implementations. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container.
+
+See [docs/gnomon.md](docs/gnomon.md) for the full naming system.
+
+---
+
+## Agents
+
+Each agent has a workspace under `nous/` with character, operations, and memory files. See `nous/_example/` for a template, [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
+
+## Interfaces
+
+- **Web UI** -- Svelte 5 at `/ui`. Streaming, file upload, syntax highlighting, thinking visualization.
+- **Signal** -- 15 `!` commands. `!help` for the list.
+- **CLI** -- `aletheia help` for the full command reference.
+- **API** -- REST on port 18789. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#api-endpoints).
+
+## Services
+
+| Service | Port | Required |
+|---------|------|----------|
+| aletheia | 18789 | Yes |
+| signal-cli | 8080 | For Signal |
+| aletheia-memory | 8230 | Recommended |
+| qdrant | 6333 | If using Mem0 |
+| neo4j | 7474/7687 | If using Mem0 |
+| langfuse | 3100 | Optional |
 
 ## License
 

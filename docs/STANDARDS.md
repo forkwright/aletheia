@@ -1,8 +1,7 @@
 # Aletheia Code Standards
 
 > Single source of truth for all languages. `.claude/rules/*.md` files are excerpts of this document.
-> Each rule: what / why / compliant / non-compliant / enforced-by / scan count (where applicable).
-> Last updated: 2026-02-28
+> 
 
 ---
 
@@ -440,7 +439,6 @@ throw "unexpected state";
 
 **Enforced by:** Convention + agent context (oxlint has no rule for this pattern; Phase 12 manual audit covers it). See `koina/errors.ts` for the full hierarchy and `koina/error-codes.ts` for codes.
 
-**Scan count:** 41 bare `throw new Error(` in non-test runtime source (2026-02-25). 31 typed `AletheiaError` subclass throws in same scope. The ratio confirms adoption is partial — remediation is Phase 13.
 
 ---
 
@@ -478,7 +476,6 @@ try {
 
 **Enforced by:** `no-empty` (oxlint, currently `error`) catches empty catch blocks. Silent catch with a body (e.g., a comment-only block) is convention + agent context.
 
-**Scan count:** 0 empty catch blocks detected by `no-empty` rule. Convention violations (catch blocks with only a TODO or unused variable) are not mechanically counted — Phase 12 audit will surface them.
 
 ---
 
@@ -505,7 +502,6 @@ function process(input: any): string {
 
 **Enforced by:** `typescript/no-explicit-any` (oxlint, currently `warn` — deferred to Phase 14, 32 violations).
 
-**Scan count:** 32 violations in non-test runtime source (2026-02-25).
 
 ---
 
@@ -535,7 +531,6 @@ console.error("Provider error:", err);
 
 **Enforced by:** `no-console` (oxlint, Phase 11 addition — not yet in `.oxlintrc.json`). Exception: `nous/audit.ts` and any function explicitly documented as producing CLI stdout output.
 
-**Scan count:** 271 total `console.*` in non-test runtime source. ~60 are in `nous/audit.ts` (legitimate CLI output). 256 excluding `audit.ts` — all are candidates for `createLogger` migration in Phase 13.
 
 ---
 
@@ -570,7 +565,6 @@ export const myTool: ToolHandler = {
 
 **Enforced by:** `require-await` (oxlint, currently `warn` — deferred to Phase 14, 125 violations). See CONTRIBUTING.md Gotcha 3.
 
-**Scan count:** 125 violations, concentrated in `organon/built-in/*.ts` (the ToolHandler pattern). Non-organon violations are genuine bugs — 0 found outside organon in current scan.
 
 ---
 
@@ -594,7 +588,6 @@ import { SessionError, AletheiaError, PlanningError } from "../koina/errors.js";
 
 **Enforced by:** `sort-imports` (oxlint, currently `warn` — deferred to Phase 14, 68 violations). Note: `ignoreDeclarationSort: true` means statement-level ordering is not enforced — only member-level sorting within a single import statement.
 
-**Scan count:** 68 violations in runtime source (2026-02-25).
 
 ---
 
@@ -618,7 +611,6 @@ import type { SessionStore } from "../mneme/store";
 
 **Enforced by:** `import/extensions` (oxlint — verify rule name in Phase 11; currently enforced via tsconfig `moduleResolution` which fails to resolve extensionless imports at build time).
 
-**Scan count:** 0 — build fails on extensionless imports. Already universally compliant.
 
 ---
 
@@ -641,7 +633,6 @@ import { AletheiaConfig } from "./taxis/schema.js"; // type used as value import
 
 **Enforced by:** `typescript/consistent-type-imports` (oxlint, currently `error`). Already enforced.
 
-**Scan count:** 1 `import/no-duplicates` error — a duplicate import from the same module, which this rule also covers. 0 `consistent-type-imports` violations (rule is at `error` level and already passing).
 
 ---
 
@@ -667,7 +658,6 @@ processQueue(); // promise rejection silently dropped
 
 **Enforced by:** `typescript/no-floating-promises` (oxlint, currently `error`). Already enforced.
 
-**Scan count:** 0 violations — rule is at `error` level and already passing.
 
 ---
 
@@ -696,7 +686,6 @@ processQueue(); // promise rejection silently dropped
 
 **Enforced by:** `svelte/no-at-html-tags` (eslint-plugin-svelte, Phase 11 addition). Currently enforced by convention + agent context.
 
-**Scan count:** Not scanned — UI source not covered by current oxlint config. Phase 12 Svelte audit will establish baseline.
 
 ---
 
@@ -730,7 +719,6 @@ processQueue(); // promise rejection silently dropped
 
 **Enforced by:** Convention + agent context. Svelte 5 compiler warns on legacy syntax in runes mode. `svelte-check` escalates warnings to errors (see Rule: svelte-check Warnings Are Errors).
 
-**Scan count:** Not scanned — UI lint coverage added in Phase 11. Baseline established then.
 
 ---
 
@@ -748,7 +736,6 @@ Any `svelte-check` warning left unaddressed; `svelte-check` run without `--fail-
 
 **Enforced by:** CI step `cd ui && npx svelte-check --fail-on-warnings` (Phase 11 addition).
 
-**Scan count:** Not scanned — UI CI integration added in Phase 11.
 
 ---
 
@@ -779,7 +766,6 @@ Any `svelte-check` warning left unaddressed; `svelte-check` run without `--fail-
 
 **Enforced by:** `svelte-check` (type checking at component boundaries) + convention + agent context.
 
-**Scan count:** Not scanned — UI coverage added in Phase 11.
 
 ---
 
@@ -812,7 +798,6 @@ async def search(query: SearchQuery, db: Database = Database(settings.db_url)): 
 
 **Enforced by:** ruff rule `B008` (Phase 11 addition to sidecar CI). FastAPI pattern is also validated by `pyright` strict mode.
 
-**Scan count:** Not scanned — ruff not yet configured for the sidecar (pyproject.toml has no `[tool.ruff]` section as of 2026-02-25). Phase 11 establishes the baseline.
 
 ---
 
@@ -837,7 +822,6 @@ ignore = ["B008"]  # FastAPI Depends() — intentional, see STANDARDS.md
 
 **Enforced by:** ruff (Phase 11 addition to `pyproject.toml` and CI).
 
-**Scan count:** 0 — no ruff config exists yet. Baseline established in Phase 11.
 
 ---
 
@@ -866,7 +850,6 @@ async def add_memories(request):  # untyped — pyright strict error
 
 **Enforced by:** pyright (Phase 11 addition to CI). Not yet configured.
 
-**Scan count:** 0 — pyright not yet configured. Baseline established in Phase 11.
 
 ---
 
@@ -900,7 +883,6 @@ except Exception:  # swallowed
 
 **Enforced by:** ruff rule `BLE001` (blind exception catch) and `E722` (bare except). Phase 11 addition.
 
-**Scan count:** Not scanned — ruff not yet configured. Phase 11 establishes baseline.
 
 ---
 
@@ -948,7 +930,6 @@ import { loadConfig } from "../taxis/loader.js"; // forbidden — koina is a lea
 
 **Enforced by:** `import/no-cycle` (oxlint, Phase 11 addition). Convention + agent context for directional enforcement. See `docs/ARCHITECTURE.md#dependency-rules`.
 
-**Scan count:** Circular dependency baseline established in Phase 12. Current count unknown — oxlint `import/no-cycle` not yet configured.
 
 ---
 
@@ -974,7 +955,6 @@ eventBus.emit("sessionCreated", { id });           // camelCase, no colon
 
 **Enforced by:** Convention + agent context. No mechanical enforcement exists. Phase 12 audit will scan for non-conforming event names.
 
-**Scan count:** Not counted. All events authored during the main build phases follow the pattern; compliance is high but unverified.
 
 ---
 
@@ -1000,7 +980,6 @@ createLogger("temp");                           // unnamed, not assigned
 
 **Enforced by:** Convention + agent context. `createLogger` is the only way to get a structured logger — no alternative exists in the codebase.
 
-**Scan count:** Not counted. `createLogger` calls are universal in compliant modules; violations would be `console.*` usage (see Rule: Logger Not Console — 271 count).
 
 ---
 
@@ -1034,7 +1013,6 @@ import { createLogger } from "../koina/index.js";
 
 **Enforced by:** Convention + agent context. Spec 33 Phase 1 will add tsconfig path aliases and barrel exports for all gnomon modules. `eslint-plugin-import` `no-internal-modules` rule planned as mechanical enforcement.
 
-**Scan count:** Not yet enforced mechanically. Current codebase uses direct cross-module imports — migration to barrel + alias pattern is tracked in Spec 33.
 
 **Note:** This rule supersedes the previous "No Barrel Files" rule. The original concern (loading entire modules when only one export is needed) is valid for `koina/` but not for domain modules with a clear public surface. The tsconfig path alias + selective barrel pattern avoids the loading problem while providing the boundary discipline the codebase needs.
 
@@ -1064,7 +1042,6 @@ PR: "fix: typed errors across runtime"
 
 **Enforced by:** PR review convention. Phase 13 execution plan will batch work by module.
 
-**Scan count:** N/A — process rule, not a code pattern.
 
 ---
 
@@ -1175,10 +1152,6 @@ The `.githooks/pre-commit` hook runs lint and type checks for each sub-project w
 | TypeScript runtime | Any `infrastructure/runtime/` file staged | `npm run typecheck && npm run lint:check` |
 | Svelte UI | Any `ui/` file staged | `npm run lint:check` (oxlint + eslint-plugin-svelte) |
 | Python sidecar | Any `infrastructure/memory/sidecar/` file staged | `uv run ruff check . && uv run pyright` |
-
-### Known gap
-
-UI `svelte-check --fail-on-warnings` is NOT gated in the hook. The pre-existing 112 errors from before Phase 11 must be cleared in Phase 13 before `npm run typecheck` can be added to the UI hook section. After Phase 13, add `&& npm run typecheck` to the UI section in `.githooks/pre-commit`.
 
 ### Timing
 

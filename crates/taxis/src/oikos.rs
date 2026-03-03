@@ -178,7 +178,10 @@ mod tests {
 
         assert_eq!(oikos.root(), Path::new("/srv/aletheia/instance"));
         assert_eq!(oikos.theke(), PathBuf::from("/srv/aletheia/instance/theke"));
-        assert_eq!(oikos.shared(), PathBuf::from("/srv/aletheia/instance/shared"));
+        assert_eq!(
+            oikos.shared(),
+            PathBuf::from("/srv/aletheia/instance/shared")
+        );
         assert_eq!(
             oikos.nous_dir("syn"),
             PathBuf::from("/srv/aletheia/instance/nous/syn")
@@ -220,8 +223,14 @@ mod tests {
     fn data_paths() {
         let oikos = Oikos::from_root("/srv/instance");
         assert_eq!(oikos.data(), PathBuf::from("/srv/instance/data"));
-        assert_eq!(oikos.sessions_db(), PathBuf::from("/srv/instance/data/sessions.db"));
-        assert_eq!(oikos.planning_db(), PathBuf::from("/srv/instance/data/planning.db"));
+        assert_eq!(
+            oikos.sessions_db(),
+            PathBuf::from("/srv/instance/data/sessions.db")
+        );
+        assert_eq!(
+            oikos.planning_db(),
+            PathBuf::from("/srv/instance/data/planning.db")
+        );
         assert_eq!(oikos.logs(), PathBuf::from("/srv/instance/logs"));
         assert_eq!(oikos.signal(), PathBuf::from("/srv/instance/signal"));
     }
@@ -230,8 +239,14 @@ mod tests {
     fn config_paths() {
         let oikos = Oikos::from_root("/srv/instance");
         assert_eq!(oikos.config(), PathBuf::from("/srv/instance/config"));
-        assert_eq!(oikos.credentials(), PathBuf::from("/srv/instance/config/credentials"));
-        assert_eq!(oikos.session_key(), PathBuf::from("/srv/instance/config/session.key"));
+        assert_eq!(
+            oikos.credentials(),
+            PathBuf::from("/srv/instance/config/credentials")
+        );
+        assert_eq!(
+            oikos.session_key(),
+            PathBuf::from("/srv/instance/config/session.key")
+        );
     }
 
     #[test]

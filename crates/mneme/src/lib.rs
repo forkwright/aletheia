@@ -9,6 +9,8 @@ pub mod embedding;
 pub mod error;
 pub mod knowledge;
 pub mod knowledge_store;
+#[cfg(feature = "mneme-engine")]
+pub mod query;
 pub mod recall;
 #[cfg(feature = "sqlite")]
 pub mod schema;
@@ -18,8 +20,8 @@ pub mod types;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
-    use static_assertions::assert_impl_all;
     use super::store::SessionStore;
+    use static_assertions::assert_impl_all;
 
     assert_impl_all!(SessionStore: Send);
 }

@@ -32,10 +32,7 @@ impl ChannelRegistry {
     }
 
     /// Register a channel provider. Fails if a provider with the same ID exists.
-    pub fn register(
-        &mut self,
-        provider: Arc<dyn ChannelProvider>,
-    ) -> Result<()> {
+    pub fn register(&mut self, provider: Arc<dyn ChannelProvider>) -> Result<()> {
         let id = provider.id().to_owned();
         ensure!(
             !self.providers.contains_key(&id),
@@ -47,10 +44,7 @@ impl ChannelRegistry {
 
     /// Look up a provider by channel ID.
     #[must_use]
-    pub fn get(
-        &self,
-        channel_id: &str,
-    ) -> Option<&Arc<dyn ChannelProvider>> {
+    pub fn get(&self, channel_id: &str) -> Option<&Arc<dyn ChannelProvider>> {
         self.providers.get(channel_id)
     }
 
@@ -58,11 +52,7 @@ impl ChannelRegistry {
     ///
     /// Returns `Err` if the channel is not registered.
     /// Provider-level failures are captured in [`SendResult::error`].
-    pub async fn send(
-        &self,
-        channel_id: &str,
-        params: &SendParams,
-    ) -> Result<SendResult> {
+    pub async fn send(&self, channel_id: &str, params: &SendParams) -> Result<SendResult> {
         let provider = self.providers.get(channel_id).ok_or_else(|| {
             error::UnknownChannelSnafu {
                 id: channel_id.to_owned(),
@@ -172,15 +162,11 @@ mod tests {
         fn send<'a>(
             &'a self,
             _params: &'a SendParams,
-        ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>>
-        {
+        ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
             Box::pin(async { self.send_result.clone() })
         }
 
-        fn probe<'a>(
-            &'a self,
-        ) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>
-        {
+        fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
             Box::pin(async { self.probe_result.clone() })
         }
     }
@@ -220,27 +206,31 @@ mod tests {
     #[tokio::test]
     async fn send_routes_to_correct_provider() {
         let mut reg = ChannelRegistry::new();
-        reg.register(Arc::new(
-            MockProvider::new("signal").with_send_result(SendResult {
+        reg.register(Arc::new(MockProvider::new("signal").with_send_result(
+            SendResult {
                 sent: true,
                 error: None,
-            }),
-        ))
+            },
+        )))
         .expect("register signal");
-        reg.register(Arc::new(
-            MockProvider::new("slack").with_send_result(SendResult {
+        reg.register(Arc::new(MockProvider::new("slack").with_send_result(
+            SendResult {
                 sent: false,
                 error: Some("slack down".to_owned()),
-            }),
-        ))
+            },
+        )))
         .expect("register slack");
 
-        let signal_result =
-            reg.send("signal", &test_params("+1234567890")).await.expect("send");
+        let signal_result = reg
+            .send("signal", &test_params("+1234567890"))
+            .await
+            .expect("send");
         assert!(signal_result.sent);
 
-        let slack_result =
-            reg.send("slack", &test_params("C0123")).await.expect("send");
+        let slack_result = reg
+            .send("slack", &test_params("C0123"))
+            .await
+            .expect("send");
         assert!(!slack_result.sent);
         assert_eq!(slack_result.error.as_deref(), Some("slack down"));
     }
@@ -260,14 +250,14 @@ mod tests {
         let mut reg = ChannelRegistry::new();
         reg.register(Arc::new(MockProvider::new("signal")))
             .expect("register");
-        reg.register(Arc::new(
-            MockProvider::new("slack").with_probe_result(ProbeResult {
+        reg.register(Arc::new(MockProvider::new("slack").with_probe_result(
+            ProbeResult {
                 ok: false,
                 latency_ms: None,
                 error: Some("unreachable".to_owned()),
                 details: None,
-            }),
-        ))
+            },
+        )))
         .expect("register");
 
         let results = reg.probe_all().await;

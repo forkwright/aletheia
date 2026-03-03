@@ -12,6 +12,27 @@ pub struct AletheiaConfig {
     pub agents: AgentsConfig,
     pub gateway: GatewayConfig,
     pub channels: ChannelsConfig,
+    pub bindings: Vec<ChannelBinding>,
+    pub embedding: EmbeddingSettings,
+}
+
+/// Maps a channel source to a nous agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelBinding {
+    /// Channel type (e.g., "signal").
+    pub channel: String,
+    /// Source pattern — phone number, group ID, or "*" for default.
+    pub source: String,
+    /// Nous ID to route to.
+    pub nous_id: String,
+    /// Session key pattern. Supports `{source}` and `{group}` placeholders.
+    #[serde(default = "default_session_pattern")]
+    pub session_key: String,
+}
+
+fn default_session_pattern() -> String {
+    "{source}".to_owned()
 }
 
 /// Agent configuration: shared defaults and per-agent definitions.
@@ -151,6 +172,29 @@ impl Default for GatewayAuthConfig {
     }
 }
 
+/// Embedding provider configuration for recall pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct EmbeddingSettings {
+    /// Provider type: "mock", "fastembed".
+    pub provider: String,
+    /// Provider-specific model name.
+    pub model: Option<String>,
+    /// Output vector dimension (must match knowledge store HNSW index).
+    pub dimension: usize,
+}
+
+impl Default for EmbeddingSettings {
+    fn default() -> Self {
+        Self {
+            provider: "mock".to_owned(),
+            model: None,
+            dimension: 384,
+        }
+    }
+}
+
 /// Channel configuration (messaging transports).
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,7 +222,10 @@ impl Default for SignalConfig {
 }
 
 /// Configuration for a single Signal account.
-#[expect(clippy::struct_excessive_bools, reason = "mirrors TS config schema 1:1")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "mirrors TS config schema 1:1"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -317,6 +364,10 @@ mod tests {
         assert_eq!(config.gateway.auth.mode, "token");
         assert!(config.channels.signal.enabled);
         assert!(config.channels.signal.accounts.is_empty());
+        assert!(config.bindings.is_empty());
+        assert_eq!(config.embedding.provider, "mock");
+        assert!(config.embedding.model.is_none());
+        assert_eq!(config.embedding.dimension, 384);
     }
 
     #[test]
@@ -327,6 +378,8 @@ mod tests {
         assert_eq!(back.agents.defaults.context_tokens, 200_000);
         assert_eq!(back.gateway.port, 18789);
         assert!(back.channels.signal.enabled);
+        assert_eq!(back.embedding.provider, "mock");
+        assert_eq!(back.embedding.dimension, 384);
     }
 
     #[test]
@@ -449,5 +502,43 @@ mod tests {
         assert!(account.require_mention);
         assert!(account.send_read_receipts);
         assert_eq!(account.text_chunk_limit, 2000);
+    }
+
+    #[test]
+    fn channel_binding_serde_roundtrip() {
+        let json = r#"{
+            "channel": "signal",
+            "source": "+1234567890",
+            "nousId": "syn"
+        }"#;
+        let binding: ChannelBinding = serde_json::from_str(json).expect("parse binding");
+        assert_eq!(binding.channel, "signal");
+        assert_eq!(binding.source, "+1234567890");
+        assert_eq!(binding.nous_id, "syn");
+        assert_eq!(binding.session_key, "{source}");
+    }
+
+    #[test]
+    fn embedding_override_from_json() {
+        let json = r#"{
+            "embedding": {
+                "provider": "fastembed",
+                "model": "BAAI/bge-small-en-v1.5",
+                "dimension": 512
+            }
+        }"#;
+        let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+        assert_eq!(config.embedding.provider, "fastembed");
+        assert_eq!(
+            config.embedding.model,
+            Some("BAAI/bge-small-en-v1.5".to_owned())
+        );
+        assert_eq!(config.embedding.dimension, 512);
+    }
+
+    #[test]
+    fn bindings_in_config_default_empty() {
+        let config = AletheiaConfig::default();
+        assert!(config.bindings.is_empty());
     }
 }

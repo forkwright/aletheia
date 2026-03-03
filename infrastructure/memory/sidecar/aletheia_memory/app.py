@@ -10,12 +10,19 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mem0 import Memory
-from starlette.responses import Response
-
 from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
+from starlette.responses import Response
 
-from .config import LLM_BACKEND, NEO4J_PASSWORD, NEO4J_URL, NEO4J_USER, QDRANT_HOST, QDRANT_PORT, build_mem0_config
+from .config import (
+    LLM_BACKEND,
+    NEO4J_PASSWORD,
+    NEO4J_URL,
+    NEO4J_USER,
+    QDRANT_HOST,
+    QDRANT_PORT,
+    build_mem0_config,
+)
 from .discovery import discovery_router
 from .evolution import evolution_router
 from .graph import set_shared_driver

@@ -122,6 +122,10 @@ If any check fails, fix it before creating the PR.
 
 After the PR is created, respond with: PR: <url>
 If no PR was created, respond with: PR: none — <reason>
+
+Include an ## Observations section in the PR body if you noticed anything
+outside scope — bugs, debt, ideas, missing tests, doc gaps. See the
+Observation Capture section of docs/CLAUDE_CODE.md for format and labels.
 ```
 
 ## Branch Naming
@@ -165,6 +169,11 @@ the prompt. Execute it.
 
 ## Before Creating the PR
 <validation gate block from above>
+
+## Observations
+<anything noticed outside scope — bugs, debt, ideas, missing tests, doc gaps>
+<use the labels from the Observation Capture section>
+<if nothing observed, omit this section entirely>
 ```
 
 **Note the section is called "Task", not "Scope".** "Scope" reads as a briefing
@@ -181,6 +190,7 @@ Before dispatching a prompt, verify:
 5. **Is there a clear deliverable?** PR URL, file path, or explicit output format.
 6. **For docs-only tasks:** Still use imperative framing. "Write a research document
    at path X that covers Y" not "Produce an analysis of Y."
+7. **Does it include the observations reminder?** The validation gate should mention observations.
 
 ## Common Mistakes to Prevent
 
@@ -209,7 +219,67 @@ After Claude Code creates PRs:
 2. Review each PR diff: `gh pr diff <number>`
 3. Run clippy + tests on the branch (checkout or worktree)
 4. Fix any issues, push to the branch
-5. Squash merge: `gh pr merge <number> --squash --subject "<conventional commit>" --delete-branch`
-6. Pull main: `git pull --rebase`
-7. Verify clean state: `git branch -a`, prune stale remotes
-8. Update working state notes
+5. **Triage observations** — check the PR body for an Observations section:
+   - **Bugs:** Create a GitHub issue (consolidate related bugs into one issue)
+   - **Debt/Ideas:** Add to BACKLOG.md or create an issue if substantial
+   - **Missing tests:** Bundle into a test-coverage issue or address in next related PR
+   - **Doc gaps:** Fix inline or add to a docs chore issue
+6. Squash merge: `gh pr merge <number> --squash --subject "<conventional commit>" --delete-branch`
+7. Pull main: `git pull --rebase`
+8. Verify clean state: `git branch -a`, prune stale remotes
+9. Update working state notes
+
+## Observation Capture
+
+While working, you will notice things outside your task scope — bugs in adjacent code,
+API inconsistencies, missing tests, improvement ideas, technical debt. **Don't fix them.
+Don't ignore them. Capture them.**
+
+### In the PR Description
+
+Add an `## Observations` section at the bottom of every PR body. Include anything you
+noticed that's outside scope but worth recording:
+
+```markdown
+## Observations
+
+While working in `crates/mneme/`, noticed:
+
+- **Bug:** `recall.rs:142` — graph score aggregation sums across relations but doesn't
+  deduplicate entity IDs first. Multiple edges to the same node inflate its score.
+- **Debt:** `knowledge_store.rs` — BM25 parameters (k1=1.2, b=0.75) are hardcoded.
+  Should be in KnowledgeConfig if multi-language support is planned.
+- **Idea:** The `HybridResult` struct could carry provenance metadata (which signals
+  contributed to the final score) for debugging retrieval quality.
+- **Missing test:** No test covers the case where `seed_entities` is empty but BM25
+  and LSH still have results — RRF should still execute with 2 signals.
+```
+
+### Categories
+
+Use these labels consistently:
+
+| Label | What | Example |
+|-------|------|---------|
+| **Bug** | Something broken or wrong | Off-by-one, logic error, race condition |
+| **Debt** | Works but fragile or hardcoded | Magic numbers, missing error handling |
+| **Idea** | Enhancement or new capability | Better API shape, performance optimization |
+| **Missing test** | Untested path or edge case | Error paths, boundary conditions |
+| **Doc gap** | Missing or stale documentation | Outdated comments, undocumented behavior |
+
+### Scope Discipline
+
+The observations section is a **capture mechanism**, not a license to expand scope:
+
+- **Do NOT fix** observed issues unless they block your task
+- **Do NOT investigate** deeply — note what you saw, where, and move on
+- **Do NOT create GitHub issues** — Syn triages observations and creates consolidated issues
+- **Do** note the file and line number when possible
+- **Do** distinguish severity — a data corruption bug is different from a style nit
+
+### Why This Matters
+
+Sub-agent sessions are ephemeral. When the session ends, everything the agent noticed
+but didn't write down is lost. The PR description is the durable artifact. Observations
+captured here get triaged into GitHub issues, backlog items, or dismissed — but at least
+they're not lost.

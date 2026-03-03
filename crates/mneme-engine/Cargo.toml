@@ -62,9 +62,9 @@ snafu = { workspace = true }
 graph = "0.3.1"
 
 # Priority queues and numeric types
-ordered-float = "4.2.0"
-priority-queue = "1.4"
-ndarray = { version = "0.15.6", features = ["serde"] }
+ordered-float = "5.1.0"
+priority-queue = "2.7"
+ndarray = { version = "0.16.1", features = ["serde"] }
 approx = "0.5.1"
 
 # Data encoding
@@ -82,13 +82,13 @@ rmpv = "1.0"
 crossbeam = "0.8.4"
 itertools = "0.12.1"
 rustc-hash = "1.1.0"
-twox-hash = "1.6"
+twox-hash = "2.1"
 byteorder = "1.5"
 num-traits = "0.2"
 regex = "1"
 sha2 = "0.10"
 chrono = "0.4"
-chrono-tz = "0.9"
+chrono-tz = "0.10"
 either = "1"
 rand = "0.8"
 base64 = "0.22"
@@ -115,6 +115,7 @@ bytemuck = "1.25"
 rocksdb = { version = "0.22.0", optional = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 tempfile = "3"
 static_assertions = { workspace = true }
 tracing-subscriber = { workspace = true }

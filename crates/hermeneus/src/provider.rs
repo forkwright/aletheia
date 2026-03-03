@@ -99,7 +99,10 @@ impl ProviderRegistry {
     /// Find a provider that supports the given model.
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
-        self.providers.iter().find(|p| p.supports_model(model)).map(AsRef::as_ref)
+        self.providers
+            .iter()
+            .find(|p| p.supports_model(model))
+            .map(AsRef::as_ref)
     }
 
     /// List all registered providers.

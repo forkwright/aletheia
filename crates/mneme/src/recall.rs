@@ -191,11 +191,11 @@ impl RecallEngine {
     #[must_use]
     pub fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
         match hops {
-            Some(0 | 1) => 1.0,  // Same entity or direct neighbor
+            Some(0 | 1) => 1.0, // Same entity or direct neighbor
             Some(2) => 0.5,
             Some(3) => 0.25,
             Some(n) => (0.5_f64).powi(i32::try_from(n.saturating_sub(1)).unwrap_or(i32::MAX)),
-            None => 0.0,         // No connection
+            None => 0.0, // No connection
         }
     }
 
@@ -235,7 +235,11 @@ impl RecallEngine {
         for candidate in &mut candidates {
             candidate.score = self.compute_score(&candidate.factors);
         }
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         candidates
     }
 

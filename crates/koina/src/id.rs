@@ -72,11 +72,13 @@ impl SessionId {
     /// # Errors
     /// Returns an error if the string is not a valid ULID.
     pub fn parse(s: &str) -> Result<Self, IdError> {
-        let ulid = s.parse::<ulid::Ulid>().map_err(|e| IdError::InvalidFormat {
-            kind: "SessionId",
-            value: s.to_owned(),
-            reason: e.to_string(),
-        })?;
+        let ulid = s
+            .parse::<ulid::Ulid>()
+            .map_err(|e| IdError::InvalidFormat {
+                kind: "SessionId",
+                value: s.to_owned(),
+                reason: e.to_string(),
+            })?;
         Ok(Self(ulid))
     }
 
@@ -369,9 +371,18 @@ mod tests {
 
     #[test]
     fn nous_id_special_chars_rejected() {
-        assert!(matches!(NousId::new("syn_1"), Err(IdError::InvalidFormat { .. })));
-        assert!(matches!(NousId::new("syn.1"), Err(IdError::InvalidFormat { .. })));
-        assert!(matches!(NousId::new("syn 1"), Err(IdError::InvalidFormat { .. })));
+        assert!(matches!(
+            NousId::new("syn_1"),
+            Err(IdError::InvalidFormat { .. })
+        ));
+        assert!(matches!(
+            NousId::new("syn.1"),
+            Err(IdError::InvalidFormat { .. })
+        ));
+        assert!(matches!(
+            NousId::new("syn 1"),
+            Err(IdError::InvalidFormat { .. })
+        ));
     }
 
     #[test]
@@ -429,7 +440,11 @@ mod tests {
         let empty = IdError::Empty { kind: "NousId" };
         assert_eq!(empty.to_string(), "NousId cannot be empty");
 
-        let long = IdError::TooLong { kind: "NousId", max: 64, actual: 100 };
+        let long = IdError::TooLong {
+            kind: "NousId",
+            max: 64,
+            actual: 100,
+        };
         assert!(long.to_string().contains("100"));
 
         let fmt = IdError::InvalidFormat {

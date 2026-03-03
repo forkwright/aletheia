@@ -47,7 +47,10 @@ impl MockProvider {
 }
 
 impl LlmProvider for MockProvider {
-    fn complete(&self, _request: &CompletionRequest) -> aletheia_hermeneus::error::Result<CompletionResponse> {
+    fn complete(
+        &self,
+        _request: &CompletionRequest,
+    ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
         Ok(self.response.clone())
     }
 
@@ -92,7 +95,8 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
     std::fs::create_dir_all(root.join("nous/syn")).expect("mkdir nous/syn");
     std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
     std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
-    std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.").expect("write SOUL.md");
+    std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
+        .expect("write SOUL.md");
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
     let oikos = Arc::new(Oikos::from_root(root));
@@ -110,6 +114,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         Arc::clone(&oikos),
         None,
         None,
+        None,
     );
 
     let nous_config = NousConfig {
@@ -117,13 +122,15 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         model: "mock-model".to_owned(),
         ..NousConfig::default()
     };
-    nous_manager.spawn(nous_config, PipelineConfig::default()).await;
+    nous_manager
+        .spawn(nous_config, PipelineConfig::default())
+        .await;
 
     let jwt_manager = test_jwt_manager();
 
     let state = Arc::new(AppState {
-        session_store: Mutex::new(store),
-        nous_manager,
+        session_store: Arc::new(Mutex::new(store)),
+        nous_manager: Arc::new(nous_manager),
         provider_registry,
         tool_registry,
         oikos,
@@ -571,9 +578,18 @@ async fn send_message_stream_contains_events() {
     let resp = router.clone().oneshot(req).await.unwrap();
     let body = body_string(resp).await;
 
-    assert!(body.contains("event: text_delta"), "should contain text_delta event");
-    assert!(body.contains("Hello from mock!"), "should contain mock response text");
-    assert!(body.contains("event: message_complete"), "should contain message_complete event");
+    assert!(
+        body.contains("event: text_delta"),
+        "should contain text_delta event"
+    );
+    assert!(
+        body.contains("Hello from mock!"),
+        "should contain mock response text"
+    );
+    assert!(
+        body.contains("event: message_complete"),
+        "should contain message_complete event"
+    );
 }
 
 #[tokio::test]
@@ -696,10 +712,7 @@ async fn malformed_send_body_returns_error() {
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(authed_get("/api/nous"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/api/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -711,10 +724,7 @@ async fn list_nous_returns_agents() {
 #[tokio::test]
 async fn get_nous_status() {
     let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(authed_get("/api/nous/syn"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/api/nous/syn")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -817,8 +827,14 @@ async fn send_message_routes_through_actor() {
     let body = body_string(resp).await;
 
     assert!(body.contains("event: text_delta"), "should have text_delta");
-    assert!(body.contains("Hello from mock!"), "should contain mock response");
-    assert!(body.contains("event: message_complete"), "should have message_complete");
+    assert!(
+        body.contains("Hello from mock!"),
+        "should contain mock response"
+    );
+    assert!(
+        body.contains("event: message_complete"),
+        "should have message_complete"
+    );
     assert!(body.contains("end_turn"), "stop_reason should be end_turn");
 }
 
@@ -827,10 +843,7 @@ async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state));
 
-    let resp = router
-        .oneshot(authed_get("/api/nous"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(authed_get("/api/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -839,4 +852,102 @@ async fn nous_list_from_manager() {
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");
     assert_eq!(agents[0]["status"], "active");
+}
+
+#[tokio::test]
+async fn empty_json_body_send_message_returns_400() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/sessions/{id}/messages"),
+        Some(serde_json::json!({})),
+    );
+
+    let resp = router.clone().oneshot(req).await.expect("response");
+    assert!(
+        resp.status() == StatusCode::BAD_REQUEST
+            || resp.status() == StatusCode::UNPROCESSABLE_ENTITY,
+        "expected 400 or 422, got {}",
+        resp.status()
+    );
+}
+
+#[tokio::test]
+async fn double_close_session_is_idempotent() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let first = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .await
+        .expect("first close");
+    assert_eq!(first.status(), StatusCode::NO_CONTENT);
+
+    let second = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .await
+        .expect("second close");
+    assert_eq!(second.status(), StatusCode::NO_CONTENT);
+
+    // Session should still be accessible as archived after both closes
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .await
+        .expect("get after double close");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "archived");
+}
+
+#[tokio::test]
+async fn get_session_after_create_reflects_state() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], id);
+    assert_eq!(body["status"], "active");
+    assert_eq!(body["nous_id"], "syn");
+}
+
+#[tokio::test]
+async fn unknown_route_returns_404() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/nonexistent"))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn missing_auth_header_returns_401() {
+    let (app, _dir) = app().await;
+    let req = json_request(
+        "POST",
+        "/api/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "no-auth-test"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.expect("response");
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }

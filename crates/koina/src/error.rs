@@ -72,20 +72,18 @@ mod tests {
 
     #[test]
     fn error_display_includes_path() {
-        let err: Result<Vec<u8>> =
-            std::fs::read("/nonexistent/path").context(ReadFileSnafu {
-                path: PathBuf::from("/nonexistent/path"),
-            });
+        let err: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+            path: PathBuf::from("/nonexistent/path"),
+        });
         let msg = err.unwrap_err().to_string();
         assert!(msg.contains("/nonexistent/path"));
     }
 
     #[test]
     fn error_source_chain() {
-        let err: Result<Vec<u8>> =
-            std::fs::read("/nonexistent/path").context(ReadFileSnafu {
-                path: PathBuf::from("/nonexistent/path"),
-            });
+        let err: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+            path: PathBuf::from("/nonexistent/path"),
+        });
         let err = err.unwrap_err();
         // snafu chains preserve the source
         assert!(std::error::Error::source(&err).is_some());

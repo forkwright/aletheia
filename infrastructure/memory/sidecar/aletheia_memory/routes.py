@@ -23,7 +23,14 @@ import neo4j as _neo4j
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, IsNullCondition, MatchValue, PayloadField, PointStruct
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    IsNullCondition,
+    MatchValue,
+    PayloadField,
+    PointStruct,
+)
 
 from .config import LLM_BACKEND, QDRANT_HOST, QDRANT_PORT
 from .entity_resolver import (
@@ -33,9 +40,26 @@ from .entity_resolver import (
     resolve_entity,
 )
 from .evolution import exponential_decay_penalty
-from .fts import index_memory as fts_index, index_batch as fts_index_batch, search_bm25, get_stats as fts_stats, remove_memory as fts_remove
+from .fts import get_stats as fts_stats
+from .fts import index_batch as fts_index_batch
+from .fts import index_memory as fts_index
+from .fts import remove_memory as fts_remove
+from .fts import search_bm25
 from .graph import mark_neo4j_down, mark_neo4j_ok, neo4j_available, neo4j_driver
 from .graph_extraction import extract_graph, extract_graph_batch
+
+
+def _sanitize_log(exc: Exception) -> str:
+    """Sanitize exception messages for safe logging — strip potential credentials/PII."""
+    msg = str(exc)
+    # Mask anything that looks like a token or key
+    msg = re.sub(r'(Bearer |token[= ]"|key[= ]")[A-Za-z0-9_\-\.]{8,}', r'[REDACTED]', msg)
+    # Mask URLs with embedded credentials
+    msg = re.sub(r'://[^@]+@', '://[REDACTED]@', msg)
+    # Truncate very long error messages
+    if len(msg) > 500:
+        msg = msg[:500] + '...[truncated]'
+    return msg
 
 
 def _extract_entities_for_episode(text: str) -> list[str]:

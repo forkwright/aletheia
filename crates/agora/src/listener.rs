@@ -38,10 +38,7 @@ impl ChannelListener {
     ///
     /// Use when the caller assembles provider-specific listeners
     /// independently (e.g., merging Signal + future Slack receivers).
-    pub fn from_parts(
-        rx: mpsc::Receiver<InboundMessage>,
-        handles: Vec<JoinHandle<()>>,
-    ) -> Self {
+    pub fn from_parts(rx: mpsc::Receiver<InboundMessage>, handles: Vec<JoinHandle<()>>) -> Self {
         Self {
             rx: Some(rx),
             handles,
@@ -176,16 +173,14 @@ mod tests {
 
     #[tokio::test]
     async fn listener_drop_aborts_tasks() {
-        let task_finished =
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task_finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let finished_clone = task_finished.clone();
 
         let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
         let handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-            finished_clone
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+            finished_clone.store(true, std::sync::atomic::Ordering::Relaxed);
         });
 
         {

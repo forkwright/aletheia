@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 
 /// What a channel supports.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[expect(clippy::struct_excessive_bools, reason = "capability flags are inherently boolean")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "capability flags are inherently boolean"
+)]
 pub struct ChannelCapabilities {
     pub threads: bool,
     pub reactions: bool,
@@ -99,9 +102,7 @@ pub trait ChannelProvider: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>>;
 
     /// Health probe for this channel.
-    fn probe<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>;
+    fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>;
 }
 
 #[cfg(test)]
@@ -122,8 +123,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&msg).expect("serialize");
-        let back: InboundMessage =
-            serde_json::from_str(&json).expect("deserialize");
+        let back: InboundMessage = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(back.channel, msg.channel);
         assert_eq!(back.sender, msg.sender);
