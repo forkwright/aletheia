@@ -276,7 +276,8 @@ impl DataValue {
             JSON_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
                 (
-                    DataValue::Json(JsonData(serde_json::from_slice(&bytes).unwrap())),
+                    DataValue::Json(JsonData(serde_json::from_slice(&bytes)
+                        .expect("INVARIANT: memcmp key encoder writes valid JSON under JSON_TAG"))),
                     remaining,
                 )
             }

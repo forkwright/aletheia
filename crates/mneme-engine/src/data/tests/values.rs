@@ -15,11 +15,11 @@ use crate::data::value::DataValue;
 
 #[test]
 fn show_size() {
-    dbg!(size_of::<DataValue>());
-    dbg!(size_of::<Symbol>());
-    dbg!(size_of::<String>());
-    dbg!(size_of::<HashMap<String, String>>());
-    dbg!(size_of::<BTreeMap<String, String>>());
+    println!("DataValue: {}", size_of::<DataValue>());
+    println!("Symbol: {}", size_of::<Symbol>());
+    println!("String: {}", size_of::<String>());
+    println!("HashMap<String, String>: {}", size_of::<HashMap<String, String>>());
+    println!("BTreeMap<String, String>: {}", size_of::<BTreeMap<String, String>>());
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn utf8() {
         s.as_bytes()[2],
         s.as_bytes()[3]
     );
-    dbg!(s);
+    println!("{s:?}");
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn display_datavalues() {
     println!("{}", DataValue::Null);
     println!("{}", DataValue::from(true));
     println!("{}", DataValue::from(-1));
-    println!("{}", DataValue::from(-1121212121.331212121));
+    println!("{}", DataValue::from(-1_121_212_121.331_212_2));
     println!("{}", DataValue::from(f64::NAN));
     println!("{}", DataValue::from(f64::NEG_INFINITY));
     println!("{}", DataValue::from(vec![10, 20]));

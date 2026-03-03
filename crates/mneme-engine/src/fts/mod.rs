@@ -79,8 +79,7 @@ impl TokenizerConfig {
             "Whitespace" => Box::new(WhitespaceTokenizer),
             "NGram" => {
                 let min_gram = self
-                    .args
-                    .get(0)
+                    .args.first()
                     .unwrap_or(&DataValue::from(1))
                     .get_int()
                     .ok_or_else(|| crate::error::AdhocError("First argument `min_gram` must be an integer".to_string()))?;
@@ -113,8 +112,7 @@ impl TokenizerConfig {
             "AsciiFolding" => AsciiFoldingFilter.into(),
             "LowerCase" | "Lowercase" => LowerCaser.into(),
             "RemoveLong" => RemoveLongFilter::limit(
-                self.args
-                    .get(0)
+                self.args.first()
                     .ok_or_else(|| crate::error::AdhocError("Missing first argument `min_length`".to_string()))?
                     .get_int()
                     .ok_or_else(|| crate::error::AdhocError("First argument `min_length` must be an integer".to_string()))?
@@ -124,8 +122,7 @@ impl TokenizerConfig {
             "SplitCompoundWords" => {
                 let mut list_values = Vec::new();
                 match self
-                    .args
-                    .get(0)
+                    .args.first()
                     .ok_or_else(|| crate::error::AdhocError("Missing first argument `compound_words_list`".to_string()))?
                 {
                     DataValue::List(l) => {
@@ -146,8 +143,7 @@ impl TokenizerConfig {
             }
             "Stemmer" => {
                 let language = match self
-                    .args
-                    .get(0)
+                    .args.first()
                     .ok_or_else(|| crate::error::AdhocError("Missing first argument `language` to Stemmer".to_string()))?
                     .get_str()
                     .ok_or_else(|| {
@@ -179,7 +175,7 @@ impl TokenizerConfig {
                 Stemmer::new(language).into()
             }
             "Stopwords" => {
-                match self.args.get(0).ok_or_else(|| {
+                match self.args.first().ok_or_else(|| {
                     crate::error::AdhocError("Filter Stopwords requires language name or a list of stopwords".to_string())
                 })? {
                     DataValue::Str(name) => StopWordFilter::for_lang(name)?.into(),

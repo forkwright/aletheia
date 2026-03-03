@@ -40,12 +40,12 @@ pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
 
-#[cfg(test)]
-mod safety_assertions {
-    use static_assertions::assert_impl_all;
-    assert_impl_all!(crate::runtime::db::Db<crate::storage::mem::MemStorage>: Send, Sync);
-    #[cfg(feature = "storage-new-rocksdb")]
-    assert_impl_all!(crate::runtime::db::Db<crate::storage::newrocks::NewRocksDbStorage>: Send, Sync);
+/// Convert an internal BoxErr to the public Error type, detecting ProcessKilled for typed matching.
+fn convert_err(e: crate::error::BoxErr) -> Error {
+    if e.downcast_ref::<crate::runtime::db::ProcessKilled>().is_some() {
+        return error::QueryKilledSnafu.build();
+    }
+    error::EngineSnafu { message: e.to_string() }.build()
 }
 
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
@@ -60,7 +60,7 @@ impl Db {
     pub fn open_mem() -> crate::Result<Self> {
         crate::storage::mem::new_cozo_mem()
             .map(Db::Mem)
-            .map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+            .map_err(convert_err)
     }
 
     /// Open a RocksDB-backed database at the given path.
@@ -68,7 +68,7 @@ impl Db {
     pub fn open_rocksdb(path: impl AsRef<Path>) -> crate::Result<Self> {
         crate::storage::newrocks::new_cozo_newrocksdb(path)
             .map(Db::RocksDb)
-            .map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+            .map_err(convert_err)
     }
 
     /// Execute a Datalog script.
@@ -83,7 +83,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.run_script(script, params, mutability),
         };
-        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+        result.map_err(convert_err)
     }
 
     /// Export relations for backup.
@@ -97,7 +97,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.export_relations(relations),
         };
-        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+        result.map_err(convert_err)
     }
 
     /// Import relations from backup.
@@ -107,7 +107,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.import_relations(data),
         };
-        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+        result.map_err(convert_err)
     }
 
     /// Register a custom fixed rule (graph algorithm).
@@ -121,7 +121,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.register_fixed_rule(name, rule),
         };
-        result.map_err(|e| error::EngineSnafu { message: e.to_string() }.build())
+        result.map_err(convert_err)
     }
 
     /// Register a callback for relation changes.
@@ -238,4 +238,12 @@ impl TestMultiTx {
         self.sender.send(TransactionPayload::Abort).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }
+}
+
+#[cfg(test)]
+mod safety_assertions {
+    use static_assertions::assert_impl_all;
+    assert_impl_all!(crate::runtime::db::Db<crate::storage::mem::MemStorage>: Send, Sync);
+    #[cfg(feature = "storage-new-rocksdb")]
+    assert_impl_all!(crate::runtime::db::Db<crate::storage::newrocks::NewRocksDbStorage>: Send, Sync);
 }

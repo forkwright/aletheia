@@ -231,7 +231,7 @@ impl NamedRows {
     pub fn into_payload(self, relation: &str, op: &str) -> Payload {
         let cols_str = self.headers.join(", ");
         let query = format!("?[{cols_str}] <- $data :{op} {relation} {{ {cols_str} }}");
-        let data = DataValue::List(self.rows.into_iter().map(|r| DataValue::List(r)).collect());
+        let data = DataValue::List(self.rows.into_iter().map(DataValue::List).collect());
         (query, [("data".to_string(), data)].into())
     }
 }
@@ -1863,14 +1863,15 @@ fn _get_variables(src: &str, params: &BTreeMap<String, DataValue>) -> Result<BTr
 #[derive(Clone, Default)]
 pub struct Poison(pub(crate) Arc<AtomicBool>);
 
+/// Typed error for query cancellation — enables downstream matching without string parsing.
+#[derive(Debug, Snafu)]
+#[snafu(display("Running query is killed before completion"))]
+pub(crate) struct ProcessKilled;
+
 impl Poison {
     /// Will return `Err` if user has initiated termination.
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
-        #[derive(Debug, Snafu)]
-        #[snafu(display("Running query is killed before completion"))]
-        struct ProcessKilled;
-
         if self.0.load(Ordering::Relaxed) {
             bail!(ProcessKilled)
         }

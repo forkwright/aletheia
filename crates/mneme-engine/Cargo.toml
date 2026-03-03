@@ -23,27 +23,12 @@ private_interfaces = { level = "allow", priority = 1 }
 [lints.clippy]
 pedantic = { level = "allow", priority = 1 }
 await_holding_lock = "warn"
-dbg_macro = { level = "allow", priority = 1 }
-todo = { level = "allow", priority = 1 }
-unimplemented = { level = "allow", priority = 1 }
-# CozoDB patterns — tracked in #405
+# CozoDB patterns — DataValue as HashMap key (custom Eq/Hash), deep generics, wide signatures
 mutable_key_type = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
 too_many_arguments = { level = "allow", priority = 1 }
-# CozoDB code quality patterns — tracked in #405
-get_first = { level = "allow", priority = 1 }
-iter_kv_map = { level = "allow", priority = 1 }
-let_and_return = { level = "allow", priority = 1 }
-manual_inspect = { level = "allow", priority = 1 }
-manual_unwrap_or_default = { level = "allow", priority = 1 }
-needless_borrows_for_generic_args = { level = "allow", priority = 1 }
+# CozoDB PartialOrd on float-containing types (3 impls) + ensure! macro float comparisons (6 sites)
 non_canonical_partial_ord_impl = { level = "allow", priority = 1 }
-question_mark = { level = "allow", priority = 1 }
-redundant_closure = { level = "allow", priority = 1 }
-swap_with_temporary = { level = "allow", priority = 1 }
-useless_conversion = { level = "allow", priority = 1 }
-useless_format = { level = "allow", priority = 1 }
-# ensure! macro + float comparisons — inherited CozoDB pattern
 neg_cmp_op_on_partial_ord = { level = "allow", priority = 1 }
 
 [features]
