@@ -10,6 +10,13 @@ publish = false
 name = "aletheia"
 path = "src/main.rs"
 
+[features]
+default = []
+# Recall pipeline: enables KnowledgeStore (CozoDB) for vector search.
+# OFF by default — mneme-engine conflicts with rusqlite bundled sqlite3.
+# Phase 2 (prompt 28) wires KnowledgeVectorSearch behind this gate.
+recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
+
 [dependencies]
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
