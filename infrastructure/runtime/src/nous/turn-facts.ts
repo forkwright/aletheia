@@ -40,7 +40,7 @@ DO NOT EXTRACT:
 
 QUALITY:
 - Each fact must stand alone without conversation context
-- Be specific: "Pitman arm torque is 185 ft-lbs" not "torque spec discussed"
+- Be specific: "Widget torque spec is 42 Nm" not "torque spec discussed"
 - One fact per line, no numbering
 - If nothing worth extracting, return empty array
 

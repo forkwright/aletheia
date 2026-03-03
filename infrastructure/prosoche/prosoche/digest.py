@@ -19,7 +19,9 @@ async def build_morning_digest(config: dict) -> Signal | None:
     parts: list[str] = []
 
     # Weather
-    weather = await _get_weather()
+    digest_config = config.get("signals", {}).get("digest", {})
+    weather_location = digest_config.get("weather_location", "Austin+TX")
+    weather = await _get_weather(location=weather_location)
     if weather:
         parts.append(f"**Weather:** {weather}")
 
@@ -76,10 +78,10 @@ async def build_morning_digest(config: dict) -> Signal | None:
     )
 
 
-async def _get_weather() -> str | None:
+async def _get_weather(location: str = "Austin+TX") -> str | None:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "curl", "-s", "--max-time", "5", "wttr.in/Pflugerville+TX?format=%c+%t+%h+%w",
+            "curl", "-s", "--max-time", "5", f"wttr.in/{location}?format=%c+%t+%h+%w",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

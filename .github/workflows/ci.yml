@@ -17,6 +17,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # --- PII scan ---
+  pii-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Scan for PII patterns
+        run: |
+          failed=0
+          while IFS= read -r pattern; do
+            [[ "$pattern" =~ ^#.*$ || -z "$pattern" ]] && continue
+            if grep -rnE "$pattern" \
+              --include='*.rs' --include='*.ts' --include='*.py' --include='*.json' \
+              --include='*.md' --include='*.yaml' --include='*.yml' --include='*.toml' \
+              --include='*.svelte' \
+              . | grep -v '.git/' | grep -v 'node_modules' | grep -v 'target/' | \
+              grep -v '.venv/' | grep -v 'scrub-callback' | grep -v 'pii-patterns.txt'; then
+              echo "::error::PII pattern matched: $pattern"
+              failed=1
+            fi
+          done < .github/pii-patterns.txt
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::PII scan failed — remove personal data before merging"
+            exit 1
+          fi
+
   # --- UI (Svelte 5) ---
   ui:
     runs-on: ubuntu-latest

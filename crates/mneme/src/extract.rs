@@ -174,7 +174,7 @@ Rules:
 - Extract relationships between entities as verb phrases ("works on", "depends on", "created by").
 - Extract factual claims as subject-predicate-object triples.
 - Assign confidence: 1.0 for explicit statements, 0.5-0.8 for inferences, below 0.5 for weak signals.
-- Normalize entity names: use proper nouns ("Cody" not "he", "Aletheia" not "the project").
+- Normalize entity names: use proper nouns ("Alice" not "she", "Aletheia" not "the project").
 - Skip greetings, small talk, and meta-conversation ("let me think about that").
 - Maximum {max_entities} entities, {max_relationships} relationships.
 - If the conversation contains no extractable knowledge, return empty arrays."#,
@@ -433,11 +433,11 @@ mod tests {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"{
             "entities": [
-                { "name": "Cody", "entity_type": "person", "description": "Developer of Aletheia" },
+                { "name": "Alice", "entity_type": "person", "description": "Developer of Aletheia" },
                 { "name": "Aletheia", "entity_type": "project", "description": "AI memory system" }
             ],
             "relationships": [
-                { "source": "Cody", "relation": "works on", "target": "Aletheia", "confidence": 0.95 }
+                { "source": "Alice", "relation": "works on", "target": "Aletheia", "confidence": 0.95 }
             ],
             "facts": [
                 { "subject": "Aletheia", "predicate": "is", "object": "an AI memory system", "confidence": 0.9 }
@@ -446,7 +446,7 @@ mod tests {
 
         let extraction = engine.parse_response(json).unwrap();
         assert_eq!(extraction.entities.len(), 2);
-        assert_eq!(extraction.entities[0].name, "Cody");
+        assert_eq!(extraction.entities[0].name, "Alice");
         assert_eq!(extraction.entities[1].entity_type, "project");
         assert_eq!(extraction.relationships.len(), 1);
         assert_eq!(extraction.relationships[0].relation, "works on");
@@ -506,25 +506,25 @@ mod tests {
         struct MockProvider;
         impl ExtractionProvider for MockProvider {
             fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Cody","predicate":"lives in","object":"Pflugerville","confidence":0.95}]}"#.to_owned())
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Alice","predicate":"lives in","object":"Springfield","confidence":0.95}]}"#.to_owned())
             }
         }
 
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let messages = vec![ConversationMessage {
             role: "user".to_owned(),
-            content: "Cody lives in Pflugerville, Texas and works on AI memory systems every day."
+            content: "Alice lives in Springfield, Illinois and works on AI memory systems every day."
                 .to_owned(),
         }];
 
         let result = engine.extract(&messages, &MockProvider).unwrap();
         assert_eq!(result.facts.len(), 1);
-        assert_eq!(result.facts[0].subject, "Cody");
+        assert_eq!(result.facts[0].subject, "Alice");
     }
 
     #[test]
     fn slugify_works() {
-        assert_eq!(slugify("Cody Kickertz"), "cody-kickertz");
+        assert_eq!(slugify("Alice Johnson"), "alice-johnson");
         assert_eq!(slugify("AI Memory System"), "ai-memory-system");
         assert_eq!(slugify("  hello  world  "), "hello-world");
         assert_eq!(slugify("C++/Rust"), "c-rust");
@@ -550,7 +550,7 @@ mod tests {
         let extraction = Extraction {
             entities: vec![
                 ExtractedEntity {
-                    name: "Cody".to_owned(),
+                    name: "Alice".to_owned(),
                     entity_type: "person".to_owned(),
                     description: "Developer of Aletheia".to_owned(),
                 },
@@ -561,7 +561,7 @@ mod tests {
                 },
             ],
             relationships: vec![ExtractedRelationship {
-                source: "Cody".to_owned(),
+                source: "Alice".to_owned(),
                 relation: "works on".to_owned(),
                 target: "Aletheia".to_owned(),
                 confidence: 0.95,
@@ -582,10 +582,10 @@ mod tests {
         assert_eq!(result.facts_inserted, 1);
 
         // Verify entities are queryable via entity_neighborhood.
-        let neighborhood = store.entity_neighborhood("cody").unwrap();
+        let neighborhood = store.entity_neighborhood("alice").unwrap();
         assert!(
             !neighborhood.rows.is_empty(),
-            "cody entity should be reachable in the graph"
+            "alice entity should be reachable in the graph"
         );
 
         // query_facts filters: valid_from <= now AND valid_to > now

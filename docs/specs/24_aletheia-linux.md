@@ -2,7 +2,7 @@
 
 **Status:** Skeleton
 **Origin:** Issue #332
-**Author:** Cody
+**Author:** forkwright
 **Date:** 2026-02-21
 **Spec:** 24
 

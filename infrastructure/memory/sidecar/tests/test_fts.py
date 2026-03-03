@@ -33,9 +33,9 @@ def clean_db():
 
 class TestIndexAndSearch:
     def test_index_and_find(self):
-        index_memory("m1", "Cody prefers dark roast coffee in the morning", agent_id="syn")
-        index_memory("m2", "The truck needs new brake pads", agent_id="akron")
-        index_memory("m3", "Kendall's birthday is in September", agent_id="syl")
+        index_memory("m1", "Alice prefers dark roast coffee in the morning", agent_id="syn")
+        index_memory("m2", "The equipment needs new brake pads", agent_id="akron")
+        index_memory("m3", "Bob's birthday is in September", agent_id="syl")
 
         hits = search_bm25("coffee morning")
         assert len(hits) >= 1

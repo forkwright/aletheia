@@ -22,11 +22,11 @@ Aletheia already embeds every memory via Voyage-3-large (2,425 memories in Qdran
 
 1. **Uniform turn cost.** A "thanks" message triggers: bootstrap assembly (~40ms), recall query to Qdrant (~200-500ms), interaction signal classification, working state extraction (Haiku call, ~200ms), and turn fact extraction (Haiku call, ~200ms). For messages that don't shift the conversation semantically, the recall and extraction are wasted compute.
 
-2. **Lossy similarity metrics.** The MMR diversity selection in `recall.ts` and the similarity pruning in `similarity-pruning.ts` both use Jaccard word overlap. "The truck's steering is loose" vs "The Ram 2500 has play in the steering column" share few words but are semantically identical. Jaccard says 0.15 (different), cosine on Voyage embeddings would say 0.92 (same).
+2. **Lossy similarity metrics.** The MMR diversity selection in `recall.ts` and the similarity pruning in `similarity-pruning.ts` both use Jaccard word overlap. "The machine's alignment is off" vs "The equipment has play in the drive column" share few words but are semantically identical. Jaccard says 0.15 (different), cosine on Voyage embeddings would say 0.92 (same).
 
-3. **Naive contradiction detection.** `_check_contradictions` in the sidecar uses negation word sets. "Pitman arm torque is 185 ft-lbs" vs "Pitman arm torque is 225 ft-lbs" has no negation asymmetry — both are affirmative statements. They share high cosine similarity but differ on a key value. The contradiction is invisible to the current heuristic.
+3. **Naive contradiction detection.** `_check_contradictions` in the sidecar uses negation word sets. "Widget torque is 42 Nm" vs "Widget torque is 55 Nm" has no negation asymmetry — both are affirmative statements. They share high cosine similarity but differ on a key value. The contradiction is invisible to the current heuristic.
 
-4. **No cross-agent semantic routing.** `bestAgentForDomain()` uses string-matched domain labels from config. If a message about "leather tooling techniques" arrives, the competence model needs an exact domain match. Embedding the message and comparing to each agent's memory cluster centroid would reveal that Demiurge's memory space is closest — without config labels.
+4. **No cross-agent semantic routing.** `bestAgentForDomain()` uses string-matched domain labels from config. If a message about "polymer fabrication techniques" arrives, the competence model needs an exact domain match. Embedding the message and comparing to each agent's memory cluster centroid would reveal that Demiurge's memory space is closest — without config labels.
 
 5. **No predictive context.** Every turn starts fresh: what tools will this need? What memories are relevant? Past turns with similar embeddings already answered these questions. The answers are in the session history but unexploited.
 

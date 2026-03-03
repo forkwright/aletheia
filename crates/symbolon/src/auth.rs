@@ -247,10 +247,10 @@ mod tests {
     #[test]
     fn register_and_login() {
         let svc = test_service();
-        svc.register_user("cody", &secret("hunter2"), Role::Operator)
+        svc.register_user("alice", &secret("hunter2"), Role::Operator)
             .unwrap();
 
-        let pair = svc.login("cody", &secret("hunter2")).unwrap();
+        let pair = svc.login("alice", &secret("hunter2")).unwrap();
         let claims = svc.validate_token(&pair.access_token).unwrap();
         assert_eq!(claims.role, Role::Operator);
         assert_eq!(claims.kind, TokenKind::Access);
@@ -259,10 +259,10 @@ mod tests {
     #[test]
     fn login_wrong_password() {
         let svc = test_service();
-        svc.register_user("cody", &secret("hunter2"), Role::Operator)
+        svc.register_user("alice", &secret("hunter2"), Role::Operator)
             .unwrap();
 
-        let result = svc.login("cody", &secret("wrong"));
+        let result = svc.login("alice", &secret("wrong"));
         assert!(result.is_err());
     }
 
@@ -278,9 +278,9 @@ mod tests {
     #[test]
     fn validate_then_logout_then_reject() {
         let svc = test_service();
-        svc.register_user("cody", &secret("pw"), Role::Operator)
+        svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
-        let pair = svc.login("cody", &secret("pw")).unwrap();
+        let pair = svc.login("alice", &secret("pw")).unwrap();
 
         // Token is valid
         assert!(svc.validate_token(&pair.access_token).is_ok());
@@ -296,9 +296,9 @@ mod tests {
     #[test]
     fn refresh_token_flow() {
         let svc = test_service();
-        svc.register_user("cody", &secret("pw"), Role::Operator)
+        svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
-        let pair = svc.login("cody", &secret("pw")).unwrap();
+        let pair = svc.login("alice", &secret("pw")).unwrap();
 
         let new_pair = svc.refresh_token(&pair.refresh_token).unwrap();
         let claims = svc.validate_token(&new_pair.access_token).unwrap();
@@ -308,9 +308,9 @@ mod tests {
     #[test]
     fn refresh_with_access_token_rejected() {
         let svc = test_service();
-        svc.register_user("cody", &secret("pw"), Role::Operator)
+        svc.register_user("alice", &secret("pw"), Role::Operator)
             .unwrap();
-        let pair = svc.login("cody", &secret("pw")).unwrap();
+        let pair = svc.login("alice", &secret("pw")).unwrap();
 
         let result = svc.refresh_token(&pair.access_token);
         assert!(result.is_err());
@@ -505,9 +505,9 @@ mod tests {
     #[test]
     fn duplicate_user_registration_rejected() {
         let svc = test_service();
-        svc.register_user("cody", &secret("pw1"), Role::Operator)
+        svc.register_user("alice", &secret("pw1"), Role::Operator)
             .unwrap();
-        let result = svc.register_user("cody", &secret("pw2"), Role::Readonly);
+        let result = svc.register_user("alice", &secret("pw2"), Role::Readonly);
         assert!(result.is_err());
     }
 }

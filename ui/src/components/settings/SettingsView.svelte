@@ -301,7 +301,7 @@
         {#if primaryType === "api"}
           <p class="how-to-text">
             Get an API key from <strong>console.anthropic.com</strong> → API Keys.
-            Use this for direct API access or a team billing seat (e.g. a Summus API account).
+            Use this for direct API access or a team billing seat.
             Keys start with <code>sk-ant-api03-</code>.
           </p>
         {:else}

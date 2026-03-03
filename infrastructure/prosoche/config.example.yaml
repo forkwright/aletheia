@@ -59,13 +59,10 @@ signals:
   nas:
     enabled: true
     interval_seconds: 600
-    host: 192.168.0.120
+    host: 192.168.1.100
     ssh_port: 22
     mounts:
-    - /mnt/nas/Media
-    - /mnt/nas/docker
-    - /mnt/nas/photos
-    - /mnt/nas/vpn_media
+    - /mnt/nas
   credentials:
     enabled: true
     interval_seconds: 3600

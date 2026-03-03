@@ -16,9 +16,9 @@ function mockRouter(responseText: string) {
 describe("extractFromMessages", () => {
   it("parses JSON from LLM response", async () => {
     const json = JSON.stringify({
-      facts: ["Pitman arm torque spec is 185 ft-lbs per service manual"],
-      decisions: ["Decision: use chrome-tanned leather for belt due to durability"],
-      openItems: ["Need to order steering box rebuild kit before Saturday"],
+      facts: ["Widget torque spec is 42 Nm per service manual"],
+      decisions: ["Decision: use high-grade polymer for bracket due to durability"],
+      openItems: ["Need to order motor mount rebuild kit before Saturday"],
       keyEntities: ["ent1"],
       contradictions: [],
     });
@@ -27,9 +27,9 @@ describe("extractFromMessages", () => {
       { role: "user", content: "hello" },
     ], "test-model");
 
-    expect(result.facts).toEqual(["Pitman arm torque spec is 185 ft-lbs per service manual"]);
-    expect(result.decisions).toEqual(["Decision: use chrome-tanned leather for belt due to durability"]);
-    expect(result.openItems).toEqual(["Need to order steering box rebuild kit before Saturday"]);
+    expect(result.facts).toEqual(["Widget torque spec is 42 Nm per service manual"]);
+    expect(result.decisions).toEqual(["Decision: use high-grade polymer for bracket due to durability"]);
+    expect(result.openItems).toEqual(["Need to order motor mount rebuild kit before Saturday"]);
     expect(result.keyEntities).toEqual(["ent1"]);
     expect(result.contradictions).toEqual([]);
   });
@@ -167,7 +167,7 @@ describe("noise filtering", () => {
       facts: [
         "Uses grep for searching",
         "Familiar with TypeScript and React patterns",
-        "Baby #2 due October 2026",
+        "Project Alpha deadline is March 2026",
         "Works with a system called Aletheia",
         "The user asked about deployment",
         "Ran git status to check repository state",
@@ -183,10 +183,10 @@ describe("noise filtering", () => {
       { role: "user", content: "hello" },
     ], "test-model");
 
-    // Should keep: Baby #2, Prosoche, Qdrant migration
+    // Should keep: Project Alpha deadline, Prosoche, Qdrant migration
     // Should filter: Uses grep, Familiar with, Works with, The user asked, Ran git, Discussed
     expect(result.facts).toEqual([
-      "Baby #2 due October 2026",
+      "Project Alpha deadline is March 2026",
       "Prosoche dedup window set to 8 hours to reduce alert fatigue",
     ]);
     expect(result.decisions).toEqual([
@@ -216,14 +216,14 @@ describe("noise filtering", () => {
       facts: [
         "Session id: abc123-session-started",
         "The conversation started at session created time",
-        "Baby #2 due October 2026",
+        "Project Alpha deadline is March 2026",
       ],
       decisions: [],
     });
     const router = mockRouter(json);
     const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
 
-    expect(result.facts).toEqual(["Baby #2 due October 2026"]);
+    expect(result.facts).toEqual(["Project Alpha deadline is March 2026"]);
   });
 
   it("filters meta-commentary about the conversation", async () => {
@@ -250,14 +250,14 @@ describe("noise filtering", () => {
         "Called tool grep to search for imports",
         "Invoked function deployService with args prod",
         "Executed command npm run build successfully",
-        "Pitman arm torque spec is 185 ft-lbs per service manual",
+        "Widget torque spec is 42 Nm per service manual",
       ],
       decisions: [],
     });
     const router = mockRouter(json);
     const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
 
-    expect(result.facts).toEqual(["Pitman arm torque spec is 185 ft-lbs per service manual"]);
+    expect(result.facts).toEqual(["Widget torque spec is 42 Nm per service manual"]);
   });
 
   it("filters acknowledgment phrases", async () => {
@@ -283,14 +283,14 @@ describe("noise filtering", () => {
         "Reading file config.json to load settings",
         "Writing path /etc/aletheia to disk",
         "Opening directory /inst/config",
-        "Pitman arm torque spec is 185 ft-lbs per service manual",
+        "Widget torque spec is 42 Nm per service manual",
       ],
       decisions: [],
     });
     const router = mockRouter(json);
     const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
 
-    expect(result.facts).toEqual(["Pitman arm torque spec is 185 ft-lbs per service manual"]);
+    expect(result.facts).toEqual(["Widget torque spec is 42 Nm per service manual"]);
   });
 
   it("filters timestamp-only facts with no content", async () => {
@@ -298,21 +298,21 @@ describe("noise filtering", () => {
       facts: [
         "On 3:45 we discussed the project",
         "At 14:00 the meeting occurred",
-        "MBA final project due March 15, needs 3 weeks of work",
+        "Final project due March 15, needs 3 weeks of work",
       ],
       decisions: [],
     });
     const router = mockRouter(json);
     const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
 
-    expect(result.facts).toEqual(["MBA final project due March 15, needs 3 weeks of work"]);
+    expect(result.facts).toEqual(["Final project due March 15, needs 3 weeks of work"]);
   });
 
   it("passes legitimate short facts above the minimum length threshold", async () => {
     const json = JSON.stringify({
       facts: [
         "Uses Vim",
-        "Baby #2 due October 2026",
+        "Project Alpha deadline is March 2026",
       ],
       decisions: [],
     });
@@ -320,8 +320,8 @@ describe("noise filtering", () => {
     const result = await extractFromMessages(router, [{ role: "user", content: "hello" }], "test-model");
 
     // "Uses Vim" is filtered by the Uses pattern AND is under 15 chars
-    // "Baby #2 due October 2026" is 24 chars and doesn't match noise patterns
-    expect(result.facts).toEqual(["Baby #2 due October 2026"]);
+    // "Project Alpha deadline is March 2026" is 36 chars and doesn't match noise patterns
+    expect(result.facts).toEqual(["Project Alpha deadline is March 2026"]);
   });
 });
 
@@ -347,9 +347,9 @@ describe("deduplicateFactsViaSidecar", () => {
 
   it("calls sidecar and returns deduplicated facts", async () => {
     const facts = [
-      "User prefers chrome-tanned leather for belts",
-      "User strongly prefers chrome-tanned leather for belts",
-      "Baby #2 due October 2026",
+      "User prefers high-grade polymer for brackets",
+      "User strongly prefers high-grade polymer for brackets",
+      "Project Alpha deadline is March 2026",
     ];
     const deduped = [facts[0]!, facts[2]!];
 
@@ -376,8 +376,8 @@ describe("deduplicateFactsViaSidecar", () => {
 
   it("falls back to original facts on fetch error (fail-open)", async () => {
     const facts = [
-      "Pitman arm torque spec is 185 ft-lbs per service manual",
-      "Baby #2 due October 2026",
+      "Widget torque spec is 42 Nm per service manual",
+      "Project Alpha deadline is March 2026",
     ];
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
@@ -392,8 +392,8 @@ describe("deduplicateFactsViaSidecar", () => {
 
   it("falls back to original facts when sidecar returns non-200 status", async () => {
     const facts = [
-      "Pitman arm torque spec is 185 ft-lbs per service manual",
-      "Baby #2 due October 2026",
+      "Widget torque spec is 42 Nm per service manual",
+      "Project Alpha deadline is March 2026",
     ];
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

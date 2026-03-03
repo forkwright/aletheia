@@ -2,6 +2,19 @@
 /instance/
 !/instance.example/
 
+# === PII-bearing docs (moved to instance/.planning/) ===
+docs/specs/29_ui-layout-and-theming.md
+docs/specs/30_homepage-dashboard.md
+docs/specs/44_oikos.md
+docs/specs/45_theatron.md
+docs/WORKING-AGREEMENT.md
+memory/
+
+# === Operator-specific config ===
+infrastructure/prosoche/config.yaml
+shared/config/tools.yaml
+shared/prosoche/activity_model.json
+
 # === Legacy paths (remove after migration completes) ===
 theke/
 projects/

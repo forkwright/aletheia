@@ -42,13 +42,13 @@ describe("write path: per-turn extraction (extractTurnFacts)", () => {
     const { extractTurnFacts } = await import("../nous/turn-facts.js");
 
     const facts = [
-      "Pitman arm torque is 185 ft-lbs on the 2003 Honda Passport",
-      "Chrome-tanned leather preferred over veg-tan for belt durability",
+      "Widget torque spec is 42 Nm per the maintenance manual",
+      "High-grade polymer preferred over standard for bracket durability",
     ];
     const router = makeRouter(JSON.stringify(facts));
 
-    const assistantText = "The Pitman arm torque spec for your 2003 Honda Passport is 185 ft-lbs, not 225. " +
-      "Also, for belt making, chrome-tanned leather holds up much better than veg-tan for daily wear. ".repeat(3);
+    const assistantText = "The widget torque spec per the maintenance manual is 42 Nm, not 55. " +
+      "Also, for bracket assembly, high-grade polymer holds up much better than standard for daily wear. ".repeat(3);
 
     const result = await extractTurnFacts(router, assistantText, "", "claude-haiku-4-5-20251001");
 
@@ -62,14 +62,14 @@ describe("write path: per-turn extraction (extractTurnFacts)", () => {
     const { extractTurnFacts } = await import("../nous/turn-facts.js");
 
     const router = makeRouter("[]");
-    const assistantText = "Baby #2 is due in October 2026, which means planning needs to account for reduced capacity from September onward. "
+    const assistantText = "Project Alpha deadline is March 2026, which means planning needs to account for reduced capacity from February onward. "
       .repeat(5);
 
     await extractTurnFacts(router, assistantText, "", "claude-haiku-4-5-20251001");
 
     expect(router.complete).toHaveBeenCalledTimes(1);
     const call = (router.complete as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-    expect(call.messages[0]!.content).toContain("Baby #2 is due in October 2026");
+    expect(call.messages[0]!.content).toContain("Project Alpha deadline is March 2026");
   });
 
   it("includes tool summary in the router call when provided", async () => {
@@ -103,12 +103,12 @@ describe("write path: per-turn extraction (extractTurnFacts)", () => {
     const noisyFacts = [
       "Uses grep to search for patterns",
       "Runs the test suite to verify behavior",
-      "Pitman arm torque is 185 ft-lbs on the 2003 Honda Passport",
+      "Widget torque spec is 42 Nm per the maintenance manual",
     ];
     const router = makeRouter(JSON.stringify(noisyFacts));
 
     const assistantText = "The auth module needs cleanup. " +
-      "Pitman arm torque spec is an important thing to know for the vehicle maintenance section. ".repeat(5);
+      "Widget torque spec is an important thing to know for the equipment maintenance section. ".repeat(5);
 
     const result = await extractTurnFacts(router, assistantText, "", "claude-haiku-4-5-20251001");
 
@@ -233,7 +233,7 @@ describe("write path: workspace flush (flushToWorkspace)", () => {
       distillationNumber: 1,
       summary: "Integration test session — reviewed memory pipeline wiring.",
       extraction: {
-        facts: ["Baby #2 due October 2026", "Pitman arm torque is 185 ft-lbs"],
+        facts: ["Project Alpha deadline is March 2026", "Widget torque spec is 42 Nm"],
         decisions: ["Evaluate Mem0 sidecar during Phase 2"],
         openItems: ["Write integration tests for read paths"],
         keyEntities: ["Aletheia", "Qdrant"],

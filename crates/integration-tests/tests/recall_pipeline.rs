@@ -25,7 +25,7 @@ fn recall_with_mock_vectors_end_to_end() {
     let search = MockVectorSearch {
         results: vec![
             KnowledgeRecallResult {
-                content: "Cody lives in Pflugerville".to_owned(),
+                content: "Alice lives in Springfield".to_owned(),
                 distance: 0.05,
                 source_type: "fact".to_owned(),
                 source_id: "f-1".to_owned(),
@@ -45,14 +45,14 @@ fn recall_with_mock_vectors_end_to_end() {
     });
 
     let result = stage
-        .run("Where does Cody live?", "syn", &embedder, &search, 10000)
+        .run("Where does Alice live?", "syn", &embedder, &search, 10000)
         .expect("recall should succeed");
 
     assert!(result.candidates_found >= 1);
     assert!(result.results_injected >= 1);
     let section = result.recall_section.expect("should have recall section");
     assert!(
-        section.contains("Cody lives in Pflugerville"),
+        section.contains("Alice lives in Springfield"),
         "section should contain the closest fact"
     );
 }

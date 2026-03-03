@@ -145,7 +145,7 @@ systemctl --user restart aletheia-memory
 ps aux | grep signal-cli | grep -v grep
 # If not running, gateway auto-starts it. Restart gateway.
 # If running but not receiving:
-signal-cli -a +15124288605 receive --timeout 5
+signal-cli -a +15550100001 receive --timeout 5
 ```
 
 ### Prosoche waking too frequently
@@ -191,9 +191,9 @@ Router auto-failover handles 429/5xx across configured providers, but expired OA
 ### NAS SSH refused
 
 ```bash
-ping -c 1 192.168.0.120     # Should succeed (NAS is up)
-ssh nas                      # Port 22 refused = SSH service disabled in Synology DSM
-# Fix: Enable SSH in DSM → Control Panel → Terminal & SNMP → Enable SSH
+ping -c 1 192.168.1.100     # Should succeed (NAS is up)
+ssh nas                      # Port 22 refused = SSH service disabled in NAS admin panel
+# Fix: Enable SSH in the NAS admin panel
 ```
 
 ## Log Locations

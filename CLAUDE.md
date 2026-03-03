@@ -72,6 +72,14 @@ aletheia doctor                        # Validate config
 - **No barrel files** — import from the file that owns the symbol
 - **Module imports flow downward** — higher layers depend on lower, never reverse
 
+## Test Data & Instance Boundary
+
+- All test data MUST use synthetic identities (alice, bob, acme.corp, 192.168.1.100)
+- NEVER use real personal information in test fixtures or example data
+- Operator-specific config belongs in `instance/` (gitignored), not `shared/` or repo root
+- `instance.example/` shows the expected structure for fresh clones
+- The CI PII scanner will reject commits containing personal data patterns (`.github/pii-patterns.txt`)
+
 ## Before Submitting
 
 ### Rust

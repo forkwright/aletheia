@@ -89,7 +89,7 @@ describe("reflectOnAgent", () => {
       contradictions: [],
       corrections: ["[MEDIUM] Torque spec corrected from 225 to 185 ft-lbs"],
       implicit_preferences: ["[HIGH] User values directness over politeness"],
-      relationships: ["[HIGH] (Cody, works_at, Summus)"],
+      relationships: ["[HIGH] (Alice, works_at, Acme)"],
       unresolved_threads: ["[LOW] Question about Neo4j indexing never answered"],
     };
 

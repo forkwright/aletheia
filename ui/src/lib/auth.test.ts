@@ -32,14 +32,14 @@ describe("auth", () => {
         JSON.stringify({
           accessToken: "tok-123",
           expiresIn: 900,
-          username: "cody",
+          username: "alice",
           role: "admin",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
 
-    const result = await auth.login("cody", "pass");
+    const result = await auth.login("alice", "pass");
     expect(result.ok).toBe(true);
     expect(auth.getAccessToken()).toBe("tok-123");
   });
@@ -135,13 +135,13 @@ describe("auth", () => {
         JSON.stringify({
           accessToken: "tok-bye",
           expiresIn: 900,
-          username: "cody",
+          username: "alice",
           role: "admin",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    await auth.login("cody", "pass");
+    await auth.login("alice", "pass");
     expect(auth.getAccessToken()).toBe("tok-bye");
 
     // Logout

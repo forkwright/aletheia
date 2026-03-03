@@ -412,23 +412,23 @@ mod tests {
     fn user_crud() {
         let store = test_store();
         let user = store
-            .create_user("u1", "cody", "$argon2id$hash", Role::Operator)
+            .create_user("u1", "alice", "$argon2id$hash", Role::Operator)
             .unwrap();
-        assert_eq!(user.username, "cody");
+        assert_eq!(user.username, "alice");
         assert_eq!(user.role, Role::Operator);
 
-        let found = store.find_user_by_username("cody").unwrap();
+        let found = store.find_user_by_username("alice").unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().id, "u1");
 
-        store.update_user_role("cody", Role::Readonly).unwrap();
-        let updated = store.find_user_by_username("cody").unwrap().unwrap();
+        store.update_user_role("alice", Role::Readonly).unwrap();
+        let updated = store.find_user_by_username("alice").unwrap().unwrap();
         assert_eq!(updated.role, Role::Readonly);
 
-        let deleted = store.delete_user("cody").unwrap();
+        let deleted = store.delete_user("alice").unwrap();
         assert!(deleted);
 
-        let gone = store.find_user_by_username("cody").unwrap();
+        let gone = store.find_user_by_username("alice").unwrap();
         assert!(gone.is_none());
     }
 
@@ -436,9 +436,9 @@ mod tests {
     fn duplicate_username_rejected() {
         let store = test_store();
         store
-            .create_user("u1", "cody", "$hash1", Role::Operator)
+            .create_user("u1", "alice", "$hash1", Role::Operator)
             .unwrap();
-        let result = store.create_user("u2", "cody", "$hash2", Role::Readonly);
+        let result = store.create_user("u2", "alice", "$hash2", Role::Readonly);
         assert!(result.is_err());
     }
 

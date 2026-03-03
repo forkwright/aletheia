@@ -1,0 +1,15 @@
+# PII detection patterns — shared between pre-commit hook and CI
+# One extended regex per line. Lines starting with # are comments.
+cody\.kickertz
+ckickertz
+[Kk]ickertz
+summusglobal
+Pflugerville
+Baby #[0-9]
+Pitman arm
+due October 2026
+192\.168\.0\.
+\+1512[0-9]{7}
+ardentleatherworks
+Ardent LLC
+Kendall.s birthday

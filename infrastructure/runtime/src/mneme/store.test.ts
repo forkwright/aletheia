@@ -575,29 +575,29 @@ describe("archiveStaleSpawnSessions", () => {
 
 describe("thread model (Phase 2)", () => {
   it("resolveThread creates new thread on first call", () => {
-    const thread = store.resolveThread("syn", "cody");
+    const thread = store.resolveThread("syn", "alice");
     expect(thread.id).toMatch(/^thr_/);
     expect(thread.nousId).toBe("syn");
-    expect(thread.identity).toBe("cody");
+    expect(thread.identity).toBe("alice");
   });
 
   it("resolveThread returns same thread on second call", () => {
-    const t1 = store.resolveThread("syn", "cody");
-    const t2 = store.resolveThread("syn", "cody");
+    const t1 = store.resolveThread("syn", "alice");
+    const t2 = store.resolveThread("syn", "alice");
     expect(t1.id).toBe(t2.id);
   });
 
   it("resolveThread creates separate threads for different (nous, identity) pairs", () => {
-    const t1 = store.resolveThread("syn", "cody");
-    const t2 = store.resolveThread("chiron", "cody");
-    const t3 = store.resolveThread("syn", "alice");
+    const t1 = store.resolveThread("syn", "alice");
+    const t2 = store.resolveThread("chiron", "alice");
+    const t3 = store.resolveThread("syn", "bob");
     expect(t1.id).not.toBe(t2.id);
     expect(t1.id).not.toBe(t3.id);
     expect(t2.id).not.toBe(t3.id);
   });
 
   it("resolveBinding upserts binding and returns it", () => {
-    const thread = store.resolveThread("syn", "cody");
+    const thread = store.resolveThread("syn", "alice");
     const binding = store.resolveBinding(thread.id, "signal", "signal:abc123");
     expect(binding.id).toMatch(/^tbnd_/);
     expect(binding.threadId).toBe(thread.id);
@@ -606,9 +606,9 @@ describe("thread model (Phase 2)", () => {
   });
 
   it("resolveBinding returns same binding on repeat call (updates lastSeenAt)", () => {
-    const thread = store.resolveThread("syn", "cody");
-    const b1 = store.resolveBinding(thread.id, "webchat", "web:cody:syn");
-    const b2 = store.resolveBinding(thread.id, "webchat", "web:cody:syn");
+    const thread = store.resolveThread("syn", "alice");
+    const b1 = store.resolveBinding(thread.id, "webchat", "web:alice:syn");
+    const b2 = store.resolveBinding(thread.id, "webchat", "web:alice:syn");
     expect(b1.id).toBe(b2.id);
   });
 
@@ -632,7 +632,7 @@ describe("thread summary (Phase 3)", () => {
   let threadId: string;
 
   beforeEach(() => {
-    const thread = store.resolveThread("syn", "cody");
+    const thread = store.resolveThread("syn", "alice");
     threadId = thread.id;
   });
 
@@ -641,10 +641,10 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("updateThreadSummary creates new summary", () => {
-    store.updateThreadSummary(threadId, "Cody and I have been working on auth.", ["Auth implemented", "PR #26 merged"]);
+    store.updateThreadSummary(threadId, "Alice and I have been working on auth.", ["Auth implemented", "PR #26 merged"]);
     const summary = store.getThreadSummary(threadId);
     expect(summary).not.toBeNull();
-    expect(summary!.summary).toBe("Cody and I have been working on auth.");
+    expect(summary!.summary).toBe("Alice and I have been working on auth.");
     expect(summary!.keyFacts).toEqual(["Auth implemented", "PR #26 merged"]);
     expect(summary!.threadId).toBe(threadId);
   });
@@ -658,9 +658,9 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getThreadForSession returns the thread linked to a session", () => {
-    const session = store.createSession("syn", "signal:cody123");
-    const thread = store.resolveThread("syn", "cody");
-    store.resolveBinding(thread.id, "signal", "signal:cody123");
+    const session = store.createSession("syn", "signal:alice123");
+    const thread = store.resolveThread("syn", "alice");
+    store.resolveBinding(thread.id, "signal", "signal:alice123");
     store.linkSessionToThread(session.id, thread.id, "signal");
 
     const found = store.getThreadForSession(session.id);
@@ -674,8 +674,8 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getSessionsByThread returns sessions in the thread", () => {
-    const session = store.createSession("syn", "signal:cody123");
-    const thread = store.resolveThread("syn", "cody");
+    const session = store.createSession("syn", "signal:alice123");
+    const thread = store.resolveThread("syn", "alice");
     store.linkSessionToThread(session.id, thread.id, "signal");
 
     const sessions = store.getSessionsByThread(thread.id);
@@ -684,9 +684,9 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("getThreadHistory returns messages across all sessions in thread", () => {
-    const s1 = store.createSession("syn", "signal:cody123");
-    const s2 = store.createSession("syn", "signal:cody456");
-    const thread = store.resolveThread("syn", "cody");
+    const s1 = store.createSession("syn", "signal:alice123");
+    const s2 = store.createSession("syn", "signal:alice456");
+    const thread = store.resolveThread("syn", "alice");
     store.linkSessionToThread(s1.id, thread.id, "signal");
     store.linkSessionToThread(s2.id, thread.id, "signal");
 
@@ -702,8 +702,8 @@ describe("thread summary (Phase 3)", () => {
   });
 
   it("listThreads returns threads with session and message counts", () => {
-    const thread = store.resolveThread("syn", "cody");
-    const session = store.createSession("syn", "signal:cody123");
+    const thread = store.resolveThread("syn", "alice");
+    const session = store.createSession("syn", "signal:alice123");
     store.linkSessionToThread(session.id, thread.id, "signal");
     store.appendMessage(session.id, "user", "hello", { tokenEstimate: 5 });
 
@@ -747,7 +747,7 @@ describe("session classification", () => {
   });
 
   it("webchat session type is primary", () => {
-    const session = store.createSession("syn", "web:cody:syn");
+    const session = store.createSession("syn", "web:alice:syn");
     expect(session.sessionType).toBe("primary");
   });
 

@@ -71,7 +71,7 @@ def test_add_batch_never_calls_mem_add(client: TestClient) -> None:
         resp = client.post(
             "/add_batch",
             json={
-                "texts": ["Cody is building Aletheia"],
+                "texts": ["Alice is building Aletheia"],
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "distillation",
@@ -110,7 +110,7 @@ def test_add_direct_never_calls_mem_add(client: TestClient) -> None:
         resp = client.post(
             "/add_direct",
             json={
-                "text": "Cody prefers Python over JavaScript",
+                "text": "Alice prefers Python over JavaScript",
                 "agent_id": "syn",
                 "session_id": "ses_abc123",
                 "source": "direct",
@@ -152,7 +152,7 @@ def test_dedup_batch_no_duplicates(client: TestClient) -> None:
         mock_embed.return_value = [vec_a, vec_b]
         resp = client.post(
             "/dedup/batch",
-            json={"texts": ["User prefers Python over JavaScript", "Baby #2 due October 2026"]},
+            json={"texts": ["User prefers Python over JavaScript", "Project Alpha deadline is March 2026"]},
         )
 
     assert resp.status_code == 200
@@ -172,8 +172,8 @@ def test_dedup_batch_removes_near_duplicates(client: TestClient) -> None:
             "/dedup/batch",
             json={
                 "texts": [
-                    "User prefers chrome-tanned leather for belts",
-                    "User strongly prefers chrome-tanned leather for belts",
+                    "User prefers high-grade polymer for brackets",
+                    "User strongly prefers high-grade polymer for brackets",
                 ]
             },
         )
@@ -183,7 +183,7 @@ def test_dedup_batch_removes_near_duplicates(client: TestClient) -> None:
     assert data["removed"] == 1
     assert len(data["deduplicated"]) == 1
     # The first text (original order) is retained
-    assert data["deduplicated"][0] == "User prefers chrome-tanned leather for belts"
+    assert data["deduplicated"][0] == "User prefers high-grade polymer for brackets"
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ def test_noise_filter_penalizes_noisy_results() -> None:
     """Noisy results get 0.3x score penalty, not removed."""
     results: list[dict[str, Any]] = [
         {"memory": "Session started with session id abc123", "score": 1.0},
-        {"memory": "Baby #2 due October 2026", "score": 0.9},
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.9},
     ]
     filtered = _filter_noisy_results(results)
 
@@ -207,14 +207,14 @@ def test_noise_filter_penalizes_noisy_results() -> None:
     assert abs(noisy["score"] - 0.3) < 1e-9
 
     # Clean result passes through unchanged
-    clean = next(r for r in filtered if "Baby" in r["memory"])
+    clean = next(r for r in filtered if "Project Alpha" in r["memory"])
     assert abs(clean["score"] - 0.9) < 1e-9
 
 
 def test_noise_filter_passes_clean_results_unchanged() -> None:
     """Clean results with no noise patterns have scores unchanged."""
     results: list[dict[str, Any]] = [
-        {"memory": "Pitman arm torque spec is 185 ft-lbs per service manual", "score": 0.95},
+        {"memory": "Widget torque spec is 42 Nm per service manual", "score": 0.95},
         {"memory": "ALETHEIA_MEMORY_USER must be set in aletheia.env", "score": 0.88},
     ]
     filtered = _filter_noisy_results(results)
@@ -228,7 +228,7 @@ def test_noise_filter_penalizes_short_memories() -> None:
     """Memories shorter than the minimum length threshold get score penalty."""
     results: list[dict[str, Any]] = [
         {"memory": "ok", "score": 0.8},  # Too short — noise
-        {"memory": "Baby #2 due October 2026", "score": 0.7},  # Clean
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.7},  # Clean
     ]
     filtered = _filter_noisy_results(results)
 
@@ -237,7 +237,7 @@ def test_noise_filter_penalizes_short_memories() -> None:
     short = next(r for r in filtered if r["memory"] == "ok")
     assert abs(short["score"] - 0.8 * 0.3) < 1e-9
 
-    clean = next(r for r in filtered if "Baby" in r["memory"])
+    clean = next(r for r in filtered if "Project Alpha" in r["memory"])
     assert abs(clean["score"] - 0.7) < 1e-9
 
 
@@ -262,12 +262,12 @@ def test_noise_filter_sorts_by_score_after_penalty() -> None:
     """After applying penalties, results are re-sorted by score descending."""
     results: list[dict[str, Any]] = [
         {"memory": "Session started conversation id abc", "score": 1.0},  # noisy → 0.3
-        {"memory": "Baby #2 due October 2026", "score": 0.5},  # clean → 0.5
+        {"memory": "Project Alpha deadline is March 2026", "score": 0.5},  # clean → 0.5
     ]
     filtered = _filter_noisy_results(results)
 
     # Clean result should come first after re-sort
-    assert filtered[0]["memory"] == "Baby #2 due October 2026"
+    assert filtered[0]["memory"] == "Project Alpha deadline is March 2026"
     assert filtered[1]["memory"] == "Session started conversation id abc"
 
 
@@ -372,7 +372,7 @@ def test_qdrant_search_direct_returns_scored_results() -> None:
     mock_point = MagicMock()
     mock_point.id = "abc-123"
     mock_point.score = 0.85
-    mock_point.payload = {"memory": "Cody prefers Python", "user_id": "default"}
+    mock_point.payload = {"memory": "Alice prefers Python", "user_id": "default"}
 
     mock_results = MagicMock()
     mock_results.points = [mock_point]
@@ -393,7 +393,7 @@ def test_qdrant_search_direct_returns_scored_results() -> None:
     assert len(results) == 1
     assert results[0]["id"] == "abc-123"
     assert results[0]["score"] == 0.85
-    assert results[0]["memory"] == "Cody prefers Python"
+    assert results[0]["memory"] == "Alice prefers Python"
 
 
 def test_qdrant_search_direct_filters_by_min_score() -> None:

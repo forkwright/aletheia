@@ -29,7 +29,7 @@ fn fact_round_trip() {
     let fact = Fact {
         id: "f-1".to_owned(),
         nous_id: "syn".to_owned(),
-        content: "Cody lives in Pflugerville".to_owned(),
+        content: "Alice lives in Springfield".to_owned(),
         confidence: 0.95,
         tier: EpistemicTier::Verified,
         valid_from: "2026-01-01".to_owned(),
@@ -44,7 +44,7 @@ fn fact_round_trip() {
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, "f-1");
-    assert_eq!(results[0].content, "Cody lives in Pflugerville");
+    assert_eq!(results[0].content, "Alice lives in Springfield");
     assert!((results[0].confidence - 0.95).abs() < f64::EPSILON);
     assert_eq!(results[0].tier, EpistemicTier::Verified);
 }

@@ -40,3 +40,21 @@ if sidecar_changed; then
     }
   fi
 fi
+
+# PII scanner — block personal data patterns in staged changes
+PATTERNS_FILE="$ROOT/.github/pii-patterns.txt"
+if [ -f "$PATTERNS_FILE" ]; then
+  DIFF=$(git diff --cached --diff-filter=d -U0)
+  while IFS= read -r pattern; do
+    [[ "$pattern" =~ ^#.*$ || -z "$pattern" ]] && continue
+    MATCHES=$(echo "$DIFF" | grep -iE "$pattern" | grep -v 'scrub-callback' || true)
+    if [ -n "$MATCHES" ]; then
+      echo ""
+      echo "PII BLOCKED: pattern '$pattern' found in staged changes:"
+      echo "$MATCHES"
+      echo ""
+      echo "Remove personal data before committing. Use --no-verify to bypass."
+      exit 1
+    fi
+  done < "$PATTERNS_FILE"
+fi
