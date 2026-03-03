@@ -303,6 +303,7 @@ where
             return Err(Error::InvalidIdType {
                 expected: expected_type_name,
                 actual: type_name,
+                location: snafu::location!(),
             });
         }
 
@@ -1247,12 +1248,7 @@ mod tests {
 
         assert!(res.is_err());
 
-        let _expected = Error::InvalidIdType {
-            expected: String::from("usize"),
-            actual: String::from("u32"),
-        };
-
-        assert!(matches!(res, _expected));
+        assert!(matches!(res, Err(Error::InvalidIdType { .. })));
     }
 
     #[test]

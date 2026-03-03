@@ -310,7 +310,9 @@ where
         F: Fn(&Self, NI, &mut T) + Send + Sync,
     {
         if node_values.len() != self.node_count().index() {
-            return Err(Error::InvalidNodeValues);
+            return Err(Error::InvalidNodeValues {
+                location: snafu::location!(),
+            });
         }
 
         let node_fn = Arc::new(node_fn);
@@ -345,11 +347,15 @@ where
         F: Fn(&Self, NI, &mut T) + Send + Sync,
     {
         if node_values.len() != self.node_count().index() {
-            return Err(Error::InvalidNodeValues);
+            return Err(Error::InvalidNodeValues {
+                location: snafu::location!(),
+            });
         }
 
         if partition.iter().map(|r| r.end - r.start).sum::<NI>() != self.node_count() {
-            return Err(Error::InvalidPartitioning);
+            return Err(Error::InvalidPartitioning {
+                location: snafu::location!(),
+            });
         }
 
         let node_fn = Arc::new(node_fn);

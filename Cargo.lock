@@ -128,8 +128,8 @@ dependencies = [
  "page_size 0.6.0",
  "parking_lot",
  "rayon",
+ "snafu",
  "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]

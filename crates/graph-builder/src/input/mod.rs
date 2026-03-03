@@ -113,5 +113,6 @@ impl_parse_value!(
 impl_parse_value!(parse_float, f32, f64);
 
 fn parse_float<T: fast_float2::FastFloat>(bytes: &[u8]) -> (T, usize) {
-    fast_float2::parse_partial(bytes).unwrap()
+    fast_float2::parse_partial(bytes)
+        .expect("invariant: parse_float called only on validated numeric byte sequences")
 }

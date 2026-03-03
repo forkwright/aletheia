@@ -215,46 +215,84 @@ pub use crate::graph::csr::CsrLayout;
 pub use crate::graph::csr::DirectedCsrGraph;
 pub use crate::graph::csr::UndirectedCsrGraph;
 
-use std::convert::Infallible;
-
 use crate::graph::Target;
 use crate::index::Idx;
-use thiserror::Error;
+use snafu::Snafu;
+
+// Manual From impls for absorbed crate compatibility — many internal call sites use `?`
+// directly on io::Error and TryFromIntError. The standard snafu .context() pattern would
+// require updating 20+ call sites in vendored code. These From impls preserve the absorbed
+// crate's error conversion semantics while using snafu for the enum definition.
+impl From<std::io::Error> for Error {
+    fn from(source: std::io::Error) -> Self {
+        Error::IoError {
+            source,
+            location: snafu::location!(),
+        }
+    }
+}
+
+impl From<std::num::TryFromIntError> for Error {
+    fn from(source: std::num::TryFromIntError) -> Self {
+        Error::IdxError {
+            source,
+            location: snafu::location!(),
+        }
+    }
+}
+
+// Required by GraphBuilder::build where Graph::Error = Infallible (non-file graph construction).
+impl From<std::convert::Infallible> for Error {
+    fn from(_: std::convert::Infallible) -> Self {
+        unreachable!()
+    }
+}
 
 /// Errors produced by graph construction and graph operations.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum Error {
     /// I/O failure while reading or writing a graph file.
-    #[error("error while loading graph")]
+    #[snafu(display("error while loading graph: {source}"))]
     IoError {
-        #[from]
         source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
     },
     /// Node index type is too narrow for the actual node count.
-    #[error("incompatible index type")]
+    #[snafu(display("incompatible index type: {source}"))]
     IdxError {
-        #[from]
         source: std::num::TryFromIntError,
+        #[snafu(implicit)]
+        location: snafu::Location,
     },
     /// The provided partition does not cover all nodes exactly once.
-    #[error("invalid partitioning")]
-    InvalidPartitioning,
+    #[snafu(display("invalid partitioning"))]
+    InvalidPartitioning {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
     /// Node value slice length does not match the graph's node count.
-    #[error("number of node values must be the same as node count")]
-    InvalidNodeValues,
+    #[snafu(display("number of node values must be the same as node count"))]
+    InvalidNodeValues {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
     /// Serialized graph used a different index type than the deserializer expects.
-    #[error("invalid id size, expected {expected:?} bytes, got {actual:?} bytes")]
-    InvalidIdType { expected: String, actual: String },
+    #[snafu(display("invalid id size, expected {expected:?} bytes, got {actual:?} bytes"))]
+    InvalidIdType {
+        expected: String,
+        actual: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
     /// The referenced node does not exist in the graph.
-    #[error("node {node:?} does not exist in the graph")]
-    MissingNode { node: String },
-}
-
-impl From<Infallible> for Error {
-    fn from(_: Infallible) -> Self {
-        unreachable!()
-    }
+    #[snafu(display("node {node:?} does not exist in the graph"))]
+    MissingNode {
+        node: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// A graph is a tuple `(N, E)`, where `N` is a set of nodes and `E` a set of
