@@ -19,11 +19,13 @@ aletheia-koina = { path = "../koina" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-organon = { path = "../organon" }
 aletheia-taxis = { path = "../taxis" }
+jiff = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+ulid = { workspace = true }
 
 [dev-dependencies]
 indexmap = { workspace = true }

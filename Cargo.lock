@@ -246,6 +246,7 @@ dependencies = [
  "aletheia-organon",
  "aletheia-taxis",
  "indexmap",
+ "jiff",
  "serde",
  "serde_json",
  "snafu",
@@ -253,6 +254,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "ulid",
 ]
 
 [[package]]
