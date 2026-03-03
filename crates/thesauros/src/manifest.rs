@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, ensure};
 
@@ -23,6 +24,9 @@ pub struct PackManifest {
     /// Context files to inject into bootstrap.
     #[serde(default)]
     pub context: Vec<ContextEntry>,
+    /// Tool definitions provided by this pack.
+    #[serde(default)]
+    pub tools: Vec<PackToolDef>,
     /// Per-agent config overlays.
     #[serde(default)]
     pub overlays: std::collections::HashMap<String, AgentOverlay>,
@@ -64,6 +68,54 @@ pub struct AgentOverlay {
     /// Domain tags to merge into the agent's config.
     #[serde(default)]
     pub domains: Vec<String>,
+}
+
+/// A tool definition declared in a pack manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackToolDef {
+    /// Tool name (must be a valid `ToolName`).
+    pub name: String,
+    /// Short description sent to the LLM.
+    pub description: String,
+    /// Path to executable script, relative to pack root.
+    pub command: String,
+    /// Execution timeout in milliseconds.
+    #[serde(default = "default_tool_timeout")]
+    pub timeout: u64,
+    /// Input parameter schema.
+    #[serde(default)]
+    pub input_schema: Option<PackInputSchema>,
+}
+
+fn default_tool_timeout() -> u64 {
+    30_000
+}
+
+/// Input schema for a pack tool, matching JSON Schema structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackInputSchema {
+    /// Property definitions, insertion-ordered.
+    #[serde(default)]
+    pub properties: IndexMap<String, PackPropertyDef>,
+    /// Names of required properties.
+    #[serde(default)]
+    pub required: Vec<String>,
+}
+
+/// A single property in a pack tool's input schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackPropertyDef {
+    /// JSON Schema type name ("string", "number", "integer", "boolean", "array", "object").
+    #[serde(rename = "type")]
+    pub property_type: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Allowed enum values, if constrained.
+    #[serde(default, rename = "enum", skip_serializing_if = "Option::is_none")]
+    pub enum_values: Option<Vec<String>>,
+    /// Default value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
 }
 
 /// Load and parse a pack manifest from a directory.
@@ -261,11 +313,90 @@ overlays:
                 agents: vec!["chiron".to_owned()],
                 truncatable: true,
             }],
+            tools: vec![],
             overlays: std::collections::HashMap::new(),
         };
         let json = serde_json::to_string(&manifest).unwrap();
         let back: PackManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "test");
         assert_eq!(back.context[0].priority, Priority::Flexible);
+    }
+
+    #[test]
+    fn load_manifest_with_tools() {
+        let yaml = r#"
+name: tool-pack
+version: "1.0"
+tools:
+  - name: query_redshift
+    description: "Execute read-only SQL against Redshift"
+    command: tools/query_redshift.sh
+    timeout: 60000
+    input_schema:
+      properties:
+        sql: { type: string, description: "SQL query to execute" }
+      required: [sql]
+  - name: schema_lookup
+    description: "Look up table schema"
+    command: tools/schema_lookup.py
+    input_schema:
+      properties:
+        table: { type: string, description: "Table name" }
+      required: [table]
+"#;
+        let dir = setup_pack(&[
+            ("pack.yaml", yaml),
+            ("tools/query_redshift.sh", "#!/bin/sh"),
+            ("tools/schema_lookup.py", "#!/usr/bin/env python3"),
+        ]);
+
+        let manifest = load_manifest(dir.path()).unwrap();
+        assert_eq!(manifest.tools.len(), 2);
+        assert_eq!(manifest.tools[0].name, "query_redshift");
+        assert_eq!(manifest.tools[0].timeout, 60_000);
+        assert!(manifest.tools[0].input_schema.is_some());
+        let schema = manifest.tools[0].input_schema.as_ref().unwrap();
+        assert_eq!(schema.required, vec!["sql"]);
+        assert_eq!(schema.properties["sql"].property_type, "string");
+
+        // Second tool uses default timeout
+        assert_eq!(manifest.tools[1].timeout, 30_000);
+    }
+
+    #[test]
+    fn manifest_without_tools_backward_compat() {
+        let dir = setup_pack(&[("pack.yaml", minimal_manifest())]);
+        let manifest = load_manifest(dir.path()).unwrap();
+        assert!(manifest.tools.is_empty());
+    }
+
+    #[test]
+    fn pack_tool_def_serde_roundtrip() {
+        let tool = PackToolDef {
+            name: "test_tool".to_owned(),
+            description: "A test tool".to_owned(),
+            command: "tools/test.sh".to_owned(),
+            timeout: 45_000,
+            input_schema: Some(PackInputSchema {
+                properties: IndexMap::from([(
+                    "query".to_owned(),
+                    PackPropertyDef {
+                        property_type: "string".to_owned(),
+                        description: "Search query".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                )]),
+                required: vec!["query".to_owned()],
+            }),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        let back: PackToolDef = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "test_tool");
+        assert_eq!(back.timeout, 45_000);
+        assert_eq!(
+            back.input_schema.unwrap().properties["query"].property_type,
+            "string"
+        );
     }
 }

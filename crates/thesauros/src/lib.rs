@@ -7,8 +7,9 @@
 //! The loader resolves manifests, reads context files, and returns structured
 //! data for the bootstrap assembler and tool registry to consume.
 //!
-//! Depends only on `aletheia-koina`.
+//! Depends on `aletheia-koina` and `aletheia-organon` (tool types).
 
 pub mod error;
 pub mod loader;
 pub mod manifest;
+pub mod tools;

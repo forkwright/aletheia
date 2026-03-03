@@ -122,7 +122,15 @@ async fn serve(cli: Cli) -> Result<()> {
 
     // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry());
-    let tool_registry = Arc::new(build_tool_registry()?);
+    let mut tool_registry = build_tool_registry()?;
+
+    // Register domain pack tools alongside builtins
+    let tool_errors = aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
+    for err in &tool_errors {
+        warn!(error = %err, "failed to register pack tool");
+    }
+
+    let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
     // Embedding provider — drives recall query embedding

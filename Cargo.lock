@@ -370,6 +370,9 @@ name = "aletheia-thesauros"
 version = "0.1.0"
 dependencies = [
  "aletheia-koina",
+ "aletheia-organon",
+ "futures",
+ "indexmap",
  "serde",
  "serde_json",
  "serde_yml",

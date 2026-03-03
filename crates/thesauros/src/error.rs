@@ -50,6 +50,41 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Tool command script not found at declared path.
+    #[snafu(display("tool command not found: {}", path.display()))]
+    ToolCommandNotFound {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Tool command path resolves outside the pack root.
+    #[snafu(display("tool command escapes pack root: {}", path.display()))]
+    ToolCommandEscape {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Unknown property type in a tool's input schema.
+    #[snafu(display("unknown property type '{type_name}' in tool '{tool_name}'"))]
+    UnknownPropertyType {
+        type_name: String,
+        tool_name: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Failed to register a pack tool in the registry.
+    #[snafu(display("failed to register tool '{tool_name}' from pack '{pack_name}': {reason}"))]
+    ToolRegistration {
+        tool_name: String,
+        pack_name: String,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -139,6 +139,8 @@ pub enum ToolCategory {
     System,
     /// Agent coordination and spawning.
     Agent,
+    /// External domain pack tools.
+    Domain,
 }
 
 impl std::fmt::Display for ToolCategory {
@@ -150,6 +152,7 @@ impl std::fmt::Display for ToolCategory {
             Self::Planning => f.write_str("planning"),
             Self::System => f.write_str("system"),
             Self::Agent => f.write_str("agent"),
+            Self::Domain => f.write_str("domain"),
         }
     }
 }
