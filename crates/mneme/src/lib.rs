@@ -7,6 +7,7 @@
 
 pub mod embedding;
 pub mod error;
+pub mod extract;
 pub mod knowledge;
 pub mod knowledge_store;
 #[cfg(feature = "mneme-engine")]
