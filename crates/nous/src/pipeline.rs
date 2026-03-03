@@ -9,6 +9,7 @@
 //! 5. **Execute** — call LLM, process tool use, iterate
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -103,31 +104,42 @@ pub enum GuardResult {
     Rejected { reason: String },
 }
 
-/// Loop detector — tracks repeated tool call patterns.
+/// Loop detector — tracks repeated tool call patterns with a capped ring buffer.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
-    /// Recent tool call signatures.
-    history: Vec<String>,
+    /// Recent tool call signatures (ring buffer, capped at `window` entries).
+    history: VecDeque<String>,
     /// Threshold for identical consecutive calls.
     threshold: u32,
+    /// Maximum history entries retained.
+    window: usize,
 }
 
+const DEFAULT_LOOP_WINDOW: usize = 20;
+
 impl LoopDetector {
-    /// Create a new loop detector.
+    /// Create a new loop detector with the default window size (20).
     #[must_use]
     pub fn new(threshold: u32) -> Self {
         Self {
-            history: Vec::new(),
+            history: VecDeque::with_capacity(DEFAULT_LOOP_WINDOW),
             threshold,
+            window: DEFAULT_LOOP_WINDOW,
         }
     }
 
     /// Record a tool call and check for loops.
     ///
-    /// Returns `Some(pattern)` if a loop is detected.
+    /// Returns `Some(pattern)` if a loop is detected (N consecutive identical calls
+    /// where N = threshold).
     pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
         let signature = format!("{tool_name}:{input_hash}");
-        self.history.push(signature.clone());
+        self.history.push_back(signature.clone());
+
+        // Evict oldest entry if over window cap
+        if self.history.len() > self.window {
+            self.history.pop_front();
+        }
 
         // Check for N consecutive identical calls
         let recent = self.history.iter().rev().take(self.threshold as usize);
@@ -142,10 +154,25 @@ impl LoopDetector {
         self.history.clear();
     }
 
-    /// Number of calls recorded.
+    /// Number of calls currently in the history window.
     #[must_use]
     pub fn call_count(&self) -> usize {
         self.history.len()
+    }
+
+    /// Count consecutive identical entries at the tail of the history.
+    ///
+    /// Returns 0 if empty, otherwise the number of trailing entries matching the last one.
+    #[must_use]
+    pub fn pattern_count(&self) -> usize {
+        let Some(last) = self.history.back() else {
+            return 0;
+        };
+        self.history
+            .iter()
+            .rev()
+            .take_while(|s| *s == last)
+            .count()
     }
 }
 
@@ -763,5 +790,57 @@ mod tests {
         assert!(result.tool_calls.is_empty());
         assert_eq!(result.usage.llm_calls, 1);
         assert_eq!(result.stop_reason, "end_turn");
+    }
+
+    // --- Loop Detector window cap ---
+
+    #[test]
+    fn loop_detector_window_cap_evicts_old_calls() {
+        let mut det = LoopDetector::new(100); // high threshold so no loop triggers
+        for i in 0..25 {
+            det.record("tool", &format!("hash{i}"));
+        }
+        assert_eq!(
+            det.call_count(),
+            DEFAULT_LOOP_WINDOW,
+            "history should be capped at window size"
+        );
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_tracks_repetitions() {
+        let mut det = LoopDetector::new(100);
+        det.record("exec", "same");
+        det.record("exec", "same");
+        det.record("exec", "same");
+        assert_eq!(det.pattern_count(), 3);
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_zero_on_empty() {
+        let det = LoopDetector::new(3);
+        assert_eq!(det.pattern_count(), 0);
+    }
+
+    #[test]
+    fn loop_detector_pattern_count_resets_on_different() {
+        let mut det = LoopDetector::new(100);
+        det.record("exec", "hash1");
+        det.record("exec", "hash1");
+        det.record("read", "hash2");
+        assert_eq!(det.pattern_count(), 1, "different call breaks the streak");
+    }
+
+    #[test]
+    fn loop_detector_window_still_detects_loops() {
+        let mut det = LoopDetector::new(3);
+        // Fill window with unique calls
+        for i in 0..18 {
+            det.record("tool", &format!("hash{i}"));
+        }
+        // Now trigger a loop within the window
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_none());
+        assert!(det.record("exec", "same").is_some(), "should detect loop even after window eviction");
     }
 }
