@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Bump the workspace version in Cargo.toml and the release-please manifest.
+# Fallback for when release-please TOML updater doesn't handle Cargo.toml.
+#
+# Usage: scripts/bump-version.sh 0.11.0
+
+set -euo pipefail
+
+VERSION="${1:?Usage: $0 <version>}"
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"${VERSION}\"/" \
+  "${REPO_ROOT}/Cargo.toml"
+
+MANIFEST="${REPO_ROOT}/.release-please-manifest.json"
+if [[ -f "$MANIFEST" ]]; then
+  sed -i "s/\"\\.: \"[0-9]*\\.[0-9]*\\.[0-9]*\"/\".\": \"${VERSION}\"/" \
+    "$MANIFEST"
+fi
+
+echo "Bumped workspace version to ${VERSION}"
+echo "Verify: cargo metadata --format-version 1 | jq '.packages[] | select(.name | startswith(\"aletheia\")) | .version'"
