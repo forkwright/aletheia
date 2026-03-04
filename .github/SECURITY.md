@@ -15,7 +15,7 @@ Do not open a public issue for security vulnerabilities.
 ## Scanning
 
 This repository uses:
-- **Dependabot** — automated dependency updates (npm, pip, Docker, Actions)
-- **CodeQL** — static analysis for JavaScript/TypeScript and Python
-- **TruffleHog** — secret detection in git history
-- **npm audit / pip-audit** — dependency vulnerability scanning
+- **Dependabot** - automated dependency updates (npm, pip, Docker, Actions)
+- **CodeQL** - static analysis for JavaScript/TypeScript and Python
+- **TruffleHog** - secret detection in git history
+- **npm audit / pip-audit** - dependency vulnerability scanning

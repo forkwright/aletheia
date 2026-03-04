@@ -108,4 +108,4 @@ Tools, templates, hooks, and config all resolve through this cascade.
 4. **The planning DB can grow large.** `nous/_shared/workspace/plans.db` accumulates messages, sessions, and tool stats. Plan for periodic maintenance.
 5. **Archived agents can be removed.** If an agent is retired, remove its `nous/{id}/` directory. No cascade dependencies.
 
-See `docs/specs/44_oikos.md` for the full design rationale.
+See `docs/ARCHITECTURE.md` for the oikos hierarchy and design rationale.

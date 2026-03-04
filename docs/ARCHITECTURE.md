@@ -2,12 +2,100 @@
 
 > Module map, dependency graph, trait boundaries, and extension points.
 > Covers the Rust crate workspace (target) and TypeScript runtime (current production).
+>
+> Technology choices and dependency policy: [TECHNOLOGY.md](TECHNOLOGY.md).
+> Project roadmap: [PROJECT.md](PROJECT.md).
 
 ---
 
 ## Naming
 
-Module and subsystem names follow the naming philosophy in [gnomon.md](gnomon.md). Names unconceal essential natures, not describe implementations. Check the layer test (L1–L4) and anti-patterns before naming new components.
+Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See ALETHEIA.md for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
+
+---
+
+## The Binary
+
+```
+aletheia
+├── koina         — errors, tracing, safe wrappers, fs utils
+├── taxis         — config, path resolution, oikos hierarchy, secret refs
+├── mneme         — unified memory (CozoDB embedded + fastembed-rs + extraction)
+│   ├── store     — CozoDB: vectors, graph, relations, bi-temporal facts — single embedded DB
+│   ├── embed     — EmbeddingProvider trait: fastembed-rs (local default) | HTTP API (Voyage, optional)
+│   ├── extract   — LLM-driven fact extraction, entity resolution, contradiction detection
+│   └── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity, recollection-as-memory
+├── hermeneus     — Anthropic client, model routing, credentials, provider trait
+├── organon       — tool registry + built-in tools
+├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
+│   └── roles     — tekton, theoros, zetetes, kritikos, ergates
+├── dianoia       — planning / project orchestration
+├── pylon         — Axum HTTP gateway, SSE, static UI serving
+├── symbolon      — JWT auth, sessions, RBAC
+├── agora         — channel registry + ChannelProvider trait
+│   ├── semeion   — Signal (signal-cli subprocess)
+│   └── slack     — Slack (raw API + WebSocket)
+├── daemon        — per-nous background tasks, cron, evolution, prosoche
+├── prostheke     — WASM plugin host (wasmtime)
+├── melete        — distillation, reflection, memory flush, consolidation
+└── autarkeia     — agent export/import
+```
+
+---
+
+## The Oikos (Instance Structure)
+
+Platform (tracked) vs. instance (gitignored). One directory, one boundary.
+
+```
+aletheia/                          # git root — the platform
+├── crates/                        # Rust workspace
+├── ui/                            # Svelte 5 frontend
+├── docs/                          # platform docs
+│
+├── instance/                      # GITIGNORED — all instance state
+│   ├── theke/                     # Tier 0: human + nous collaborative space
+│   │   ├── USER.md               #   Canonical user profile (one copy)
+│   │   ├── AGENTS.md             #   Team topology
+│   │   ├── tools/                #   Tools for human + all nous
+│   │   ├── research/             #   Shared research
+│   │   ├── deliberations/        #   Multi-agent deliberations
+│   │   └── projects/             #   Active work products
+│   │
+│   ├── shared/                   # Tier 1: nous-only shared
+│   │   ├── tools/                #   Nous-only tools
+│   │   ├── skills/               #   Extracted skill patterns
+│   │   ├── hooks/                #   Global event hooks
+│   │   ├── templates/            #   System prompt templates
+│   │   └── coordination/         #   Blackboard, task state
+│   │
+│   ├── nous/                     # Tier 2: individual nous workspaces
+│   │   ├── <agent-id>/
+│   │   │   ├── SOUL.md           #   Identity (operator-owned)
+│   │   │   ├── GOALS.md          #   Goals (operator-owned)
+│   │   │   ├── MEMORY.md         #   Memory (agent-writable)
+│   │   │   ├── tools/            #   Nous-specific tools
+│   │   │   ├── hooks/            #   Nous-specific hooks
+│   │   │   └── memory/           #   Daily memory files
+│   │   └── _example/             #   Template for new agents
+│   │
+│   ├── config/                   # Deployment config
+│   │   ├── aletheia.yaml
+│   │   ├── credentials/
+│   │   └── bindings.yaml
+│   │
+│   ├── data/                     # Runtime stores
+│   │   ├── sessions.db
+│   │   └── cozo/                 #   CozoDB persistent storage (embedded)
+│   │
+│   └── signal/                   # signal-cli data
+│
+└── instance.example/              # TRACKED — scaffold template
+```
+
+Three-tier cascading resolution: nous/{id} -> shared -> theke. Most specific wins. Presence is declaration - drop a file in the right directory, it's discovered.
+
+The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
@@ -30,10 +118,10 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
 | `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
-| `thesauros` | Domain pack loader — external knowledge, tools, config overlays | koina, organon |
+| `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia |
+| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia |
 
 **Support crates** (not part of the application dependency graph):
 
@@ -162,12 +250,27 @@ See [docs/PLUGINS.md](PLUGINS.md).
 
 ---
 
-## Key Structural Properties
+## Release Profile
 
-- **koina is a true leaf node** in both stacks. No `index.ts` in TS — import from specific files. No workspace deps in Rust.
+```toml
+[profile.release]
+strip = true
+lto = "thin"
+opt-level = "z"    # size-optimized — single static binary
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2      # optimize deps in dev — faster iteration
+```
+
+---
+
+## Structural Properties
+
+- **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
 - **symbolon is zero-dependency** in both stacks. Takes `Database.Database` as constructor argument in TS.
 - **mneme-engine is vendored.** CozoDB absorbed into workspace. Optional dependency of `mneme`.
-- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` — implement the trait, swap the provider.
-- **daemon depends only on koina** — lightweight scheduling, not a high-layer crate. Must not be imported by other application crates.
-- **dianoia depends only on koina** — planning context is decoupled from the agent pipeline. Must not be imported by other application crates.
-- **thesauros loads domain packs** — knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
+- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` - implement the trait, swap the provider.
+- **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
+- **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
+- **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.

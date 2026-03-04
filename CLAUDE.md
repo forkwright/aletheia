@@ -14,14 +14,13 @@ Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Full reference: [docs/STANDARDS.md]
 
 ## Structure
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full crate workspace, TypeScript module map, dependency graph, and trait boundaries.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - crate workspace, module map, dependency graph, trait boundaries.
 
 ### Config Locations
 
-- **TS runtime:** `~/.aletheia/aletheia.json` — validated by Zod in `taxis/schema.ts`
-- **Rust crates:** `instance/config/aletheia.yaml` — figment cascade (defaults → YAML → env vars)
-- **Specs:** `docs/specs/` — design documents
-- **Decisions:** `docs/decisions/` — Architecture Decision Records
+- **Rust crates:** `instance/config/aletheia.yaml` - figment cascade (defaults -> YAML -> env vars)
+- **TS runtime:** `instance/config/aletheia.json` - validated by Zod in `taxis/schema.ts`
+- **Standards:** [docs/STANDARDS.md](docs/STANDARDS.md) - coding standards reference
 
 ## Commands
 
@@ -32,7 +31,7 @@ cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
 cargo test --workspace                 # All tests
 cargo test -p aletheia-hermeneus       # Single crate
-cargo clippy --workspace --exclude aletheia-mneme-engine  # Lint (zero warnings; mneme-engine excluded — vendored CozoDB)
+cargo clippy --workspace --exclude aletheia-mneme-engine  # Lint (zero warnings; mneme-engine excluded -- vendored CozoDB)
 ```
 
 ### TypeScript
@@ -57,28 +56,28 @@ aletheia doctor                        # Validate config
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** figment YAML cascade in `taxis`
-- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` — every suppression justified
-- **Visibility:** `pub(crate)` by default — `pub` only for cross-crate API surface
+- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` - every suppression justified
+- **Visibility:** `pub(crate)` by default - `pub` only for cross-crate API surface
 
 ### TypeScript
 
 - **Errors:** `AletheiaError` hierarchy in `koina/errors.ts`, `trySafe`/`trySafeAsync` in `koina/safe.ts`
 - **Logging:** `createLogger("module-name")` with AsyncLocalStorage context
-- **Events:** `eventBus` — `noun:verb` naming (e.g., `turn:before`, `tool:called`)
+- **Events:** `eventBus` - `noun:verb` naming (e.g., `turn:before`, `tool:called`)
 - **Config:** Zod schemas in `taxis/schema.ts`
-- **Imports:** `.js` extensions, order: node → external → internal → local
+- **Imports:** `.js` extensions, order: node -> external -> internal -> local
 
 ### Both Stacks
 
-- **Naming:** Greek names per [gnomon.md](docs/gnomon.md)
-- **No barrel files** — import from the file that owns the symbol
-- **Module imports flow downward** — higher layers depend on lower, never reverse
+- **Naming:** Greek names that reflect purpose (nous = mind, mneme = memory, hermeneus = interpreter)
+- **No barrel files** - import from the file that owns the symbol
+- **Module imports flow downward** - higher layers depend on lower, never reverse
 
 ## Before Submitting
 
 ### Rust
 1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace --exclude aletheia-mneme-engine` — zero warnings
+2. `cargo clippy --workspace --exclude aletheia-mneme-engine` - zero warnings
 3. No `unwrap()` in library code
 4. New errors use snafu with context
 5. All lint suppressions use `#[expect]` with reason, not `#[allow]`
@@ -95,7 +94,7 @@ aletheia doctor                        # Validate config
 - NEVER use real personal information in test fixtures or example data
 - Operator-specific config belongs in `instance/` (gitignored), not `shared/` or repo root
 - `instance.example/` shows the expected structure for fresh clones
-- The CI PII scanner will reject commits containing personal data patterns (`.github/pii-patterns.txt`)
+- CI PII scanner rejects commits with personal data patterns (`.github/pii-patterns.txt`)
 
 ## Dianoia Gotchas
 

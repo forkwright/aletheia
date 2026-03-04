@@ -31,10 +31,10 @@ Your chat output is for the human. Your thinking is for you. Keep them separate.
 **Structured status** instead of prose:
 
 ### Completed
-- PR #55 merged — working state + agent notes
+- PR #55 merged - working state + agent notes
 
 ### In Progress
-- Spec 04 Phase 1 — message queue
+- Spec 04 Phase 1 - message queue
 
 ### Blocked
 - None
@@ -44,7 +44,7 @@ Your chat output is for the human. Your thinking is for you. Keep them separate.
 **Bold** for key terms and decisions on first mention.
 
 **No filler:**
-- Don't narrate what you're about to do — just do it
-- Don't announce tool calls — the UI shows them
+- Don't narrate what you're about to do - just do it
+- Don't announce tool calls - the UI shows them
 - Don't repeat yourself across messages
 - Don't soften, hedge, or pad

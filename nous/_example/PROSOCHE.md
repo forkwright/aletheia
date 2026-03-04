@@ -1,4 +1,4 @@
-# Prosoche — Directed Attention
+# Prosoche - Directed Attention
 
 Prosoche (προσοχή) = directed attention. This file defines what the agent checks on each heartbeat tick.
 
@@ -38,14 +38,14 @@ If something needs attention, send a brief alert to the operator. One line per i
 ## Rules
 - Do NOT read other agents' workspaces
 - Do NOT run sudo commands
-- Do NOT investigate or research — just check and report
+- Do NOT investigate or research - just check and report
 - Maximum 5 tool calls per tick
 - If a check fails, skip it and note the failure
 
 ## Customization
 
 Add or remove checklist items as needed for your deployment. The key constraints:
-- **Numbered items only** — the heartbeat cron references this checklist directly
-- **Commands, not prose** — each item should have a concrete command to run
-- **Hard ceiling on tool calls** — keep the total under 5 to avoid token waste
-- **Binary response** — either HEARTBEAT_OK or actionable alerts, nothing in between
+- **Numbered items only** - the heartbeat cron references this checklist directly
+- **Commands, not prose** - each item should have a concrete command to run
+- **Hard ceiling on tool calls** - keep the total under 5 to avoid token waste
+- **Binary response** - either HEARTBEAT_OK or actionable alerts, nothing in between

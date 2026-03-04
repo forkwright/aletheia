@@ -145,7 +145,7 @@ import { type Logger, createLogger } from "../koina/logger.js"; // not sorted
 import { AletheiaConfig } from "./taxis/schema.js";      // type-only, not import type
 ```
 
-Import order: node built-ins → external packages → internal modules → local files.
+Import order: node built-ins -> external packages -> internal modules -> local files.
 
 See: docs/STANDARDS.md#rule-js-import-extensions
 See: docs/STANDARDS.md#rule-sort-named-imports-within-statement

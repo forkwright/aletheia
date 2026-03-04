@@ -1,32 +1,54 @@
 # Aletheia
 
-> Self-hosted multi-agent AI system with a web UI, persistent memory, and Signal messaging.
+> Self-hosted multi-agent AI system with persistent memory, Signal messaging, and a web UI.
 
-Privacy-first distributed cognition. N agents + 1 human operator. Web chat UI (Svelte 5), dual-layer memory (Mem0 + sqlite-vec), automatic fact extraction, tool approval system, HTTP API.
+Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
 
-## Documentation
-- [README.md](README.md): Architecture, directory structure, deployment, configuration, API reference
-- [ALETHEIA.md](ALETHEIA.md): System manifesto and naming philosophy
-- [RESCUE.md](RESCUE.md): Full recovery guide from scratch
-- [CHANGELOG.md](CHANGELOG.md): Change history with decision context
-- [docs/QUICKSTART.md](docs/QUICKSTART.md): Zero-to-running in 5 minutes
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): Full config reference (all Zod-validated options)
-- [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): Production setup with systemd, Signal, memory sidecar
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): Building, module architecture, testing, contributing
-- [docs/PLUGINS.md](docs/PLUGINS.md): Plugin system, lifecycle hooks, tool registration
+Dual-stack: Rust crates (target architecture) and TypeScript runtime (current production). Greek naming - modules and crates use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter).
+
+## Getting Started
+
+- [QUICKSTART](docs/QUICKSTART.md): Zero-to-running in 5 minutes
+- [CONFIGURATION](docs/CONFIGURATION.md): Full config reference, all Zod-validated options
+- [DEPLOYMENT](docs/DEPLOYMENT.md): Production setup with systemd, Signal, memory sidecar
+
+## Architecture
+
+- [ARCHITECTURE](docs/ARCHITECTURE.md): Crate workspace, module map, dependency graph, trait boundaries
+- [PROJECT](docs/PROJECT.md): Project plan, milestones, dependency policy, crate-to-module mapping
+- [TECHNOLOGY](docs/TECHNOLOGY.md): Technology decisions, dependency rationale, pinning policy
+- [ALETHEIA](ALETHEIA.md): System manifesto and naming philosophy
+
+## Standards
+
+- [STANDARDS](docs/STANDARDS.md): Coding standards across all stacks
+- [CONTRIBUTING](CONTRIBUTING.md): Contribution workflow, PR discipline, commit conventions
+- [CLAUDE](CLAUDE.md): AI agent workspace rules and conventions
+
+## Agents
+
+- [WORKSPACE_FILES](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
+- [PLUGINS](docs/PLUGINS.md): Plugin system, lifecycle hooks, tool registration
+- [PACKS](docs/PACKS.md): Domain packs for agent specialization
+
+## Operations
+
+- [RUNBOOK](docs/RUNBOOK.md): Operational procedures, troubleshooting, maintenance
+- [DATA](docs/DATA.md): Data sovereignty, storage locations, backup, migration
+- [RELEASING](docs/RELEASING.md): Release process, versioning, changelog discipline
+- [SECURITY](SECURITY.md): Vulnerability reporting, developer security practices, pre-commit hooks
+
+## Reference
+
+- [VENDORING](docs/VENDORING.md): Vendored dependencies - what, why, modifications, upstream status
+- [CHANGELOG](CHANGELOG.md): Change history with decision context and migration notes
 
 ## Key Directories
-- [nous/_example/](nous/_example/): Template agent workspace (SOUL.md, USER.md, AGENTS.md, etc.)
-- [shared/bin/](shared/bin/): Shared scripts (pplx, scholar, browse, ingest-doc, aletheia-graph, nous-health)
-- [shared/config/](shared/config/): Environment and tool configuration
-- [config/](config/): Example gateway config (aletheia.example.json)
-- [infrastructure/runtime/](infrastructure/runtime/): Gateway source (TypeScript, tsdown)
-- [infrastructure/runtime/src/](infrastructure/runtime/src/): Module architecture (taxis, mneme, hermeneus, organon, semeion, pylon, prostheke, nous, distillation, daemon, koina)
-- [infrastructure/memory/](infrastructure/memory/): Mem0 sidecar + Qdrant + Neo4j
-- [infrastructure/prosoche/](infrastructure/prosoche/): Adaptive attention daemon
 
-## Configuration
-- [config/aletheia.example.json](config/aletheia.example.json): Gateway config reference
-- [.env.example](.env.example): Environment variables template
-- [infrastructure/runtime/src/taxis/schema.ts](infrastructure/runtime/src/taxis/schema.ts): Zod config schema (source of truth)
+- `nous/_example/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
+- `infrastructure/runtime/src/`: TypeScript gateway modules (taxis, mneme, hermeneus, organon, nous, etc.)
+- `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
+- `infrastructure/memory/`: Mem0 sidecar + Qdrant + Neo4j
+- `ui/`: Svelte 5 web interface
+- `config/`: Example gateway config
+- `.claude/rules/`: AI agent coding rules per language

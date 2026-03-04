@@ -21,5 +21,5 @@ Long-term curated knowledge. Only load in main sessions (direct operator chat).
 ## Lessons Learned
 
 <!-- Mistakes, surprises, corrections. Things that cost time once and shouldn't again. -->
-<!-- Example: "Don't assume file paths — always verify with tools first" -->
-<!-- Example: "Operator's project X uses unconventional directory structure — check README" -->
+<!-- Example: "Don't assume file paths - always verify with tools first" -->
+<!-- Example: "Operator's project X uses unconventional directory structure - check README" -->

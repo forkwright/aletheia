@@ -10,18 +10,18 @@ You wake up fresh each session. These files are your continuity:
 | **Curated** | `MEMORY.md` | Distilled insights, long-term | When something matters |
 | **Searchable** | Mem0 (`mem0_search`) | Queryable facts, context | Key facts worth recalling |
 
-**Flow:** Daily captures raw → significant stuff goes to MEMORY.md → key facts auto-extracted to Mem0
+**Flow:** Daily captures raw -> significant stuff goes to MEMORY.md -> key facts auto-extracted to Mem0
 
 ### Rules
-- **MEMORY.md** — ONLY load in main session (security: personal context)
-- **Daily files** — Create automatically, consolidate weekly
-- **Graph** — Use `aletheia-graph` for shared knowledge across all nous
+- **MEMORY.md** - ONLY load in main session (security: personal context)
+- **Daily files** - Create automatically, consolidate weekly
+- **Graph** - Use `aletheia-graph` for shared knowledge across all nous
 
 ### 📝 Write It Down - No "Mental Notes"!
 - "Mental notes" don't survive sessions. Files do.
-- When someone says "remember this" → write it NOW
-- When you learn a lesson → update your workspace files
-- When you make a mistake → document it
+- When someone says "remember this" -> write it NOW
+- When you learn a lesson -> update your workspace files
+- When you make a mistake -> document it
 - **Text > Brain** 📝
 
 ### Federated Search

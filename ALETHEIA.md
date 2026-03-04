@@ -44,20 +44,17 @@ This system reveals:
 The naming system isn't decoration. Each term was chosen because the Greek carries layers that English equivalents flatten.
 
 - **Nous** (νοῦς) over "agent" because these are minds, not tools
-- **Hermeneus** (ἑρμηνεύς) over "provider" because interpretation is the work — routing between models is translation
+- **Hermeneus** (ἑρμηνεύς) over "provider" because interpretation is the work - routing between models is translation
 - **Organon** (ὄργανον) over "tools" because Aristotle's name for the instruments of thought
 - **Mneme** (μνήμη) over "store" because memory is the function, not the container
-- **Semeion** (σημεῖον) over "signal" because it's the sign, the mark — communication as semiotics
+- **Semeion** (σημεῖον) over "signal" because it's the sign, the mark - communication as semiotics
 - **Pylon** (πυλών) over "gateway" because it's the entrance, the threshold
 - **Prosoche** (προσοχή) over "heartbeat" because awareness is directed, not automatic
 - **Theke** (θήκη) over "vault" because it's a repository in the original sense: a place that holds what matters
-- **Koina** (κοινά) over "utils" because these are the commons — what's shared
+- **Koina** (κοινά) over "utils" because these are the commons - what's shared
 - **Taxis** (τάξις) over "config" because it's the ordering, the arrangement
 - **Prostheke** (προσθήκη) over "plugins" because it's the addition, the supplement
-- **Melete** (μελέτη) over "distillation" because it's disciplined practice — one of the original three Muses, the Stoic practice of regular self-examination. The module doesn't just compress; it *practices* attending carefully to what happened
+- **Melete** (μελέτη) over "distillation" because it's disciplined practice - one of the original three Muses, the Stoic practice of regular self-examination. The module doesn't just compress; it *practices* attending carefully to what happened
 
 The names aren't translated from English. They emerge from Greek roots naturally, because the concepts they name were Greek first.
 
----
-
-*Built by forkwright, 2026*

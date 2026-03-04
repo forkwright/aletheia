@@ -4,7 +4,7 @@ Self-hosted multi-agent AI system with persistent memory, Signal messaging, and 
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
-[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md)
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Releasing](docs/RELEASING.md)
 
 ---
 
@@ -70,28 +70,26 @@ git clone https://github.com/forkwright/aletheia.git && cd aletheia
 aletheia start    # from next time on
 ```
 
-See [docs/QUICKSTART.md](docs/QUICKSTART.md) for full setup, [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production, [RESCUE.md](RESCUE.md) for recovery.
+[Full setup guide](docs/QUICKSTART.md) · [Production deployment](docs/DEPLOYMENT.md)
 
 ---
 
 ## Why Greek?
 
-Every name in this system follows a deliberate naming philosophy. Names unconceal essential natures, not describe implementations. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container.
-
-See [docs/gnomon.md](docs/gnomon.md) for the full naming system.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](ALETHEIA.md) for philosophical grounding.
 
 ---
 
 ## Agents
 
-Each agent has a workspace under `nous/` with character, operations, and memory files. See `nous/_example/` for a template, [docs/WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
+Each agent has a workspace under `nous/` with character, operations, and memory files. See `nous/_example/` for a template, [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
 
 ## Interfaces
 
-- **Web UI** — Svelte 5 at `/ui`. Streaming, file upload, syntax highlighting, thinking visualization.
-- **Signal** — 15 `!` commands. `!help` for the list.
-- **CLI** — `aletheia help` for the full command reference.
-- **API** — REST on port 18789. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#api-endpoints).
+- **Web UI** - Svelte 5 at `/ui`. Streaming, file upload, syntax highlighting, thinking visualization.
+- **Signal** - 15 `!` commands. `!help` for the list.
+- **CLI** - `aletheia help` for the full command reference.
+- **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Services
 
@@ -107,5 +105,3 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 ## License
 
 AGPL-3.0 (runtime) + Apache-2.0 (SDK/client). See [LICENSING.md](LICENSING.md).
-
-*Built by [forkwright](https://github.com/forkwright), 2026*
