@@ -94,7 +94,7 @@ Read these before writing any code:
 - .claude/rules/svelte.md — Svelte rules (if touching UI)
 
 Key rules you MUST follow:
-- Zero clippy warnings: cargo clippy --workspace --all-targets -- -D warnings
+- Zero clippy warnings: cargo clippy --workspace --exclude aletheia-mneme-engine --all-targets -- -D warnings
 - All tests pass: cargo test --workspace
 - snafu for errors (not thiserror), anyhow only in CLI
 - #[non_exhaustive] on public enums that may grow

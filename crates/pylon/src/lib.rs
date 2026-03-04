@@ -1,4 +1,6 @@
 //! Axum HTTP gateway for Aletheia.
+//!
+//! Pylon (πυλών) — "gateway." Routes HTTP and SSE requests to the agent pipeline.
 
 pub mod error;
 pub mod extract;

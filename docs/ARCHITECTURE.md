@@ -30,16 +30,17 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
 | `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
-| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon |
+| `thesauros` | Domain pack loader — external knowledge, tools, config overlays | koina, organon |
+| `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | koina, taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, melete |
+| `aletheia` | Binary entrypoint (Clap CLI) — wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia |
 
 **Support crates** (not part of the application dependency graph):
 
 | Crate | Domain | Depends On |
 |-------|--------|------------|
 | `graph-builder` | CSR graph construction for mneme-engine | nothing (standalone) |
-| `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon |
+| `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 | `mneme-bench` | CozoDB benchmark harness | nothing (standalone, excluded from workspace) |
 
 ### Dependency Graph
@@ -63,7 +64,7 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 **Layer rules:**
 - **Leaf** (no workspace deps): `koina`, `symbolon`, `mneme-engine`, `graph-builder`
 - **Low** (leaf deps only): `taxis`, `hermeneus`, `melete`, `agora`, `mneme`
-- **Mid**: `organon` (koina + hermeneus), `daemon` (koina), `dianoia` (koina)
+- **Mid**: `organon` (koina + hermeneus), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous)
 - **Top**: `aletheia` binary
 - **Support**: `integration-tests`, `mneme-bench`
@@ -76,13 +77,12 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 |-------|-------|---------|
 | `EmbeddingProvider` | mneme | Vector embeddings from text |
 | `ChannelProvider` | agora | Send/receive on a messaging channel |
-| `ModelProvider` | hermeneus | LLM API calls |
+| `LlmProvider` | hermeneus | LLM API calls |
 
 ### Planned Crates
 
 | Crate | Domain | Milestone |
 |-------|--------|-----------|
-| `thesauros` | Domain pack loader — external knowledge, tools, config overlays | M5 |
 | `prostheke` | WASM plugin host (wasmtime) | M5 |
 | `autarkeia` | Agent export/import | M5 |
 | `theatron` | Composable operations UI | M6 |
@@ -170,4 +170,4 @@ See [docs/PLUGINS.md](PLUGINS.md).
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` — implement the trait, swap the provider.
 - **daemon depends only on koina** — lightweight scheduling, not a high-layer crate. Must not be imported by other application crates.
 - **dianoia depends only on koina** — planning context is decoupled from the agent pipeline. Must not be imported by other application crates.
-- **thesauros (planned) loads domain packs** — knowledge, tools, config overlays bundled as portable extensions.
+- **thesauros loads domain packs** — knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
