@@ -1,12 +1,12 @@
 //! Anthropic Messages API provider.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use snafu::ResultExt;
-use tracing::instrument;
+use tracing::{info, info_span};
 
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, ProviderConfig};
@@ -89,12 +89,28 @@ impl AnthropicProvider {
     /// This is an `AnthropicProvider`-specific method. The sync `LlmProvider`
     /// trait only exposes `complete()`. When the trait goes async in M2, this
     /// will become the primary implementation.
-    #[instrument(skip(self, request, on_event), fields(model = %request.model))]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "streaming retry loop with span recording at each exit point"
+    )]
     pub fn complete_streaming(
         &self,
         request: &CompletionRequest,
         mut on_event: impl FnMut(StreamEvent),
     ) -> Result<CompletionResponse> {
+        let span = info_span!("llm_call",
+            llm.provider = "anthropic",
+            llm.model = %request.model,
+            llm.duration_ms = tracing::field::Empty,
+            llm.tokens_in = tracing::field::Empty,
+            llm.tokens_out = tracing::field::Empty,
+            llm.status = tracing::field::Empty,
+            llm.retries = tracing::field::Empty,
+            llm.stream = true,
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+
         let wire = WireRequest::from_request(request, Some(true));
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
         let headers = self.build_headers();
@@ -131,6 +147,19 @@ impl AnthropicProvider {
                 let err = super::error::map_error_response(response);
                 // Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "LLM call duration fits in u64"
+                    )]
+                    {
+                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                    }
+                    span.record("llm.retries", attempt);
+                    if status == 401 {
+                        span.record("llm.status", "auth_failed");
+                    } else {
+                        span.record("llm.status", "error");
+                    }
                     return Err(err);
                 }
                 last_error = Some(err);
@@ -155,12 +184,42 @@ impl AnthropicProvider {
             });
 
             match stream_result {
-                Ok(()) => return Ok(accumulator.finish()),
+                Ok(()) => {
+                    let resp = accumulator.finish();
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "LLM call duration fits in u64"
+                    )]
+                    {
+                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                    }
+                    span.record("llm.tokens_in", resp.usage.input_tokens);
+                    span.record("llm.tokens_out", resp.usage.output_tokens);
+                    span.record("llm.status", "ok");
+                    span.record("llm.retries", attempt);
+                    info!(
+                        model = %request.model,
+                        tokens_in = resp.usage.input_tokens,
+                        tokens_out = resp.usage.output_tokens,
+                        cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        "LLM call complete"
+                    );
+                    return Ok(resp);
+                }
                 Err(e) => {
                     // If content was already streamed, we can't retry — it would
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "LLM call duration fits in u64"
+                        )]
+                        {
+                            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                        }
+                        span.record("llm.retries", attempt);
+                        span.record("llm.status", "error");
                         return Err(e);
                     }
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
@@ -169,10 +228,29 @@ impl AnthropicProvider {
                         last_error = Some(e);
                         continue;
                     }
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "LLM call duration fits in u64"
+                    )]
+                    {
+                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                    }
+                    span.record("llm.retries", attempt);
+                    span.record("llm.status", "error");
                     return Err(e);
                 }
             }
         }
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "LLM call duration fits in u64"
+        )]
+        {
+            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+        }
+        span.record("llm.retries", self.max_retries);
+        span.record("llm.status", "error");
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
@@ -198,7 +276,24 @@ impl AnthropicProvider {
         headers
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "retry loop with span recording at each exit point"
+    )]
     fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        let span = info_span!("llm_call",
+            llm.provider = "anthropic",
+            llm.model = %request.model,
+            llm.duration_ms = tracing::field::Empty,
+            llm.tokens_in = tracing::field::Empty,
+            llm.tokens_out = tracing::field::Empty,
+            llm.status = tracing::field::Empty,
+            llm.retries = tracing::field::Empty,
+            llm.stream = false,
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+
         let wire = WireRequest::from_request(request, None);
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
@@ -233,23 +328,69 @@ impl AnthropicProvider {
                     }
                     .build()
                 })?;
-                return super::error::parse_response_body::<super::wire::WireResponse>(&text)
+                let parsed = super::error::parse_response_body::<super::wire::WireResponse>(&text)
                     .and_then(|r| {
                         r.into_response()
                             .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
                     });
+                if let Ok(ref resp) = parsed {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "LLM call duration fits in u64"
+                    )]
+                    {
+                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                    }
+                    span.record("llm.tokens_in", resp.usage.input_tokens);
+                    span.record("llm.tokens_out", resp.usage.output_tokens);
+                    span.record("llm.status", "ok");
+                    span.record("llm.retries", attempt);
+                    info!(
+                        model = %request.model,
+                        tokens_in = resp.usage.input_tokens,
+                        tokens_out = resp.usage.output_tokens,
+                        cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        "LLM call complete"
+                    );
+                }
+                return parsed;
             }
 
             let err = super::error::map_error_response(response);
 
             // Non-retryable: 401, 400-level (except 429).
             if status == 401 || ((400..500).contains(&status) && status != 429) {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "LLM call duration fits in u64"
+                )]
+                {
+                    span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                }
+                span.record("llm.retries", attempt);
+                if status == 401 {
+                    span.record("llm.status", "auth_failed");
+                } else if status == 429 {
+                    span.record("llm.status", "rate_limited");
+                } else {
+                    span.record("llm.status", "error");
+                }
                 return Err(err);
             }
 
             // Retryable: 429, 5xx, network errors.
             last_error = Some(err);
         }
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "LLM call duration fits in u64"
+        )]
+        {
+            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+        }
+        span.record("llm.retries", self.max_retries);
+        span.record("llm.status", "error");
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
@@ -261,7 +402,6 @@ impl AnthropicProvider {
 }
 
 impl LlmProvider for AnthropicProvider {
-    #[instrument(skip(self, request), fields(model = %request.model))]
     fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         self.execute_with_retry(request)
     }
@@ -277,6 +417,21 @@ impl LlmProvider for AnthropicProvider {
     fn name(&self) -> &str {
         "anthropic"
     }
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "token counts are small enough for f64 precision"
+)]
+fn estimate_cost(model: &str, input_tokens: u64, output_tokens: u64) -> f64 {
+    let (in_rate, out_rate) = if model.contains("opus") {
+        (15.0, 75.0)
+    } else if model.contains("haiku") {
+        (0.80, 4.0)
+    } else {
+        (3.0, 15.0)
+    };
+    (input_tokens as f64 * in_rate + output_tokens as f64 * out_rate) / 1_000_000.0
 }
 
 pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {
@@ -554,6 +709,33 @@ mod tests {
             matches!(err, Error::ParseResponse { .. }),
             "expected ParseResponse, got: {err:?}"
         );
+    }
+
+    // --- estimate_cost unit tests ---
+
+    #[test]
+    fn estimate_cost_opus() {
+        let cost = estimate_cost("claude-opus-4-20250514", 1000, 100);
+        assert!((cost - 0.0225).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_cost_sonnet() {
+        let cost = estimate_cost("claude-sonnet-4-20250514", 1000, 100);
+        assert!((cost - 0.0045).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_cost_haiku() {
+        let cost = estimate_cost("claude-haiku-4-5-20251001", 1000, 100);
+        assert!((cost - 0.0012).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_cost_unknown_defaults_to_sonnet() {
+        let cost_unknown = estimate_cost("some-unknown-model", 1000, 100);
+        let cost_sonnet = estimate_cost("claude-sonnet-4-20250514", 1000, 100);
+        assert!((cost_unknown - cost_sonnet).abs() < 0.0001);
     }
 
     // --- backoff_delay unit tests ---

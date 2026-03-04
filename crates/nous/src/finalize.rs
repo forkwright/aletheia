@@ -7,7 +7,7 @@
 //! 4. Records token usage
 
 use snafu::ResultExt;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role, UsageRecord};
@@ -133,6 +133,7 @@ pub fn finalize(
         usage_recorded = true;
     }
 
+    debug!(messages_persisted, usage_recorded, "finalize complete");
     Ok(FinalizeResult {
         messages_persisted,
         usage_recorded,

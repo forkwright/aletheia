@@ -11,9 +11,10 @@
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, error, info_span, instrument, warn};
 
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
@@ -168,11 +169,7 @@ impl LoopDetector {
         let Some(last) = self.history.back() else {
             return 0;
         };
-        self.history
-            .iter()
-            .rev()
-            .take_while(|s| *s == last)
-            .count()
+        self.history.iter().rev().take_while(|s| *s == last).count()
     }
 }
 
@@ -324,7 +321,6 @@ pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult
     clippy::too_many_lines,
     reason = "pipeline orchestrator — sequential stages are clearer inline"
 )]
-#[instrument(skip_all, fields(nous_id = %config.id))]
 pub async fn run_pipeline(
     input: PipelineInput,
     oikos: &Oikos,
@@ -338,118 +334,270 @@ pub async fn run_pipeline(
     session_store: Option<&Mutex<SessionStore>>,
     extra_bootstrap: Vec<BootstrapSection>,
 ) -> error::Result<TurnResult> {
+    let pipeline_start = Instant::now();
+    let pipeline_span = info_span!("pipeline",
+        nous_id = %config.id,
+        session_id = %input.session.id,
+        pipeline.total_duration_ms = tracing::field::Empty,
+        pipeline.stages_completed = tracing::field::Empty,
+        pipeline.tool_calls = tracing::field::Empty,
+        pipeline.model = %config.model,
+    );
+    let _pipeline_guard = pipeline_span.enter();
+    let mut stages_completed: u32 = 0;
+
     // Stage 1: Context (with domain pack sections if any)
     let mut ctx = PipelineContext::default();
-    assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)?;
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "context",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
+        }
+        span.record("status", "ok");
+        stages_completed += 1;
+    }
 
     // Stage 1.5: Recall
-    if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
-        let recall_config = crate::recall::RecallConfig::default();
-        let recall_stage = crate::recall::RecallStage::new(recall_config);
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "remaining_tokens is positive after context assembly"
-        )]
-        let budget = ctx.remaining_tokens.max(0) as u64;
-        match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
-            Ok(recall_result) => {
-                if let Some(ref section) = recall_result.recall_section {
-                    if let Some(ref mut prompt) = ctx.system_prompt {
-                        prompt.push_str("\n\n");
-                        prompt.push_str(section);
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "recall",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
+            let recall_config = crate::recall::RecallConfig::default();
+            let recall_stage = crate::recall::RecallStage::new(recall_config);
+            #[expect(
+                clippy::cast_sign_loss,
+                reason = "remaining_tokens is positive after context assembly"
+            )]
+            let budget = ctx.remaining_tokens.max(0) as u64;
+            match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
+                Ok(recall_result) => {
+                    if let Some(ref section) = recall_result.recall_section {
+                        if let Some(ref mut prompt) = ctx.system_prompt {
+                            prompt.push_str("\n\n");
+                            prompt.push_str(section);
+                        }
+                        #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
+                        {
+                            ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                        }
                     }
-                    #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
-                    {
-                        ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
-                    }
+                    ctx.recall_result = Some(recall_result);
+                    span.record("status", "ok");
                 }
-                ctx.recall_result = Some(recall_result);
+                Err(e) => {
+                    warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
+                    span.record("status", "error");
+                }
             }
-            Err(e) => {
-                warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
-            }
+        } else {
+            debug!("recall skipped: embedding provider or vector search not configured");
+            span.record("status", "skipped");
         }
-    } else {
-        debug!("recall skipped: embedding provider or vector search not configured");
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
+        }
+        stages_completed += 1;
     }
 
     // Stage 2: History
-    let history_config = HistoryConfig::default();
-    if let Some(store_mutex) = session_store {
-        let store = store_mutex.lock().expect("session store lock");
-        let (messages, hist_result) = history::load_history(
-            &store,
-            &input.session.id,
-            ctx.history_budget,
-            &history_config,
-            &input.content,
-        )?;
-        ctx.messages = messages;
-        ctx.history_budget -= hist_result.tokens_consumed;
-        ctx.history_result = Some(hist_result);
-    } else {
-        #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-        let token_estimate = input.content.len() as i64 / 4;
-        ctx.messages.push(PipelineMessage {
-            role: "user".to_owned(),
-            content: input.content.clone(),
-            token_estimate,
-        });
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "history",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        let history_config = HistoryConfig::default();
+        if let Some(store_mutex) = session_store {
+            let store = store_mutex.lock().expect("session store lock");
+            let (messages, hist_result) = history::load_history(
+                &store,
+                &input.session.id,
+                ctx.history_budget,
+                &history_config,
+                &input.content,
+            )?;
+            ctx.messages = messages;
+            ctx.history_budget -= hist_result.tokens_consumed;
+            ctx.history_result = Some(hist_result);
+        } else {
+            #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
+            let token_estimate = input.content.len() as i64 / 4;
+            ctx.messages.push(PipelineMessage {
+                role: "user".to_owned(),
+                content: input.content.clone(),
+                token_estimate,
+            });
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
+        }
+        span.record("status", "ok");
+        stages_completed += 1;
     }
 
     // Stage 3: Guard
-    let guard = check_guard(&input.session, config);
-    match guard {
-        GuardResult::Allow => {}
-        GuardResult::RateLimited { retry_after_ms } => {
-            return Err(error::GuardRejectedSnafu {
-                reason: format!("rate limited, retry after {retry_after_ms}ms"),
-            }
-            .build());
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "guard",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        let guard = check_guard(&input.session, config);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
-        GuardResult::LoopDetected { pattern } => {
-            return Err(error::LoopDetectedSnafu {
-                iterations: 0u32,
-                pattern,
+        match guard {
+            GuardResult::Allow => {
+                span.record("status", "ok");
+                stages_completed += 1;
             }
-            .build());
-        }
-        GuardResult::Rejected { reason } => {
-            return Err(error::GuardRejectedSnafu { reason }.build());
+            GuardResult::RateLimited { retry_after_ms } => {
+                span.record("status", "error");
+                return Err(error::GuardRejectedSnafu {
+                    reason: format!("rate limited, retry after {retry_after_ms}ms"),
+                }
+                .build());
+            }
+            GuardResult::LoopDetected { pattern } => {
+                span.record("status", "error");
+                return Err(error::LoopDetectedSnafu {
+                    iterations: 0u32,
+                    pattern,
+                }
+                .build());
+            }
+            GuardResult::Rejected { reason } => {
+                span.record("status", "error");
+                return Err(error::GuardRejectedSnafu { reason }.build());
+            }
         }
     }
 
     // Stage 4: Resolve (stub)
 
     // Stage 5: Execute
-    let result =
-        crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx).await?;
+    let result;
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "execute",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty,
+            tokens_in = tracing::field::Empty,
+            tokens_out = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        result = crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
+            .await?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
+        }
+        span.record("tokens_in", result.usage.input_tokens);
+        span.record("tokens_out", result.usage.output_tokens);
+        span.record("status", "ok");
+        stages_completed += 1;
+    }
 
     // Stage 6: Finalize
-    if let Some(store_mutex) = session_store {
-        let store = store_mutex.lock().expect("session store lock");
-        let finalize_config = crate::finalize::FinalizeConfig::default();
-        match crate::finalize::finalize(
-            &store,
-            &input.session,
-            &input.content,
-            &result,
-            &finalize_config,
-        ) {
-            Ok(fr) => {
-                debug!(
-                    messages = fr.messages_persisted,
-                    usage = fr.usage_recorded,
-                    "finalize complete"
-                );
+    {
+        let span = info_span!(
+            "pipeline_stage",
+            stage = "finalize",
+            duration_ms = tracing::field::Empty,
+            status = tracing::field::Empty
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        if let Some(store_mutex) = session_store {
+            let store = store_mutex.lock().expect("session store lock");
+            let finalize_config = crate::finalize::FinalizeConfig::default();
+            match crate::finalize::finalize(
+                &store,
+                &input.session,
+                &input.content,
+                &result,
+                &finalize_config,
+            ) {
+                Ok(fr) => {
+                    debug!(
+                        messages = fr.messages_persisted,
+                        usage = fr.usage_recorded,
+                        "finalize complete"
+                    );
+                    span.record("status", "ok");
+                }
+                Err(e) => {
+                    error!(error = %e, "finalize failed, returning result without persistence");
+                    span.record("status", "error");
+                }
             }
-            Err(e) => {
-                error!(error = %e, "finalize failed, returning result without persistence");
-            }
+        } else {
+            debug!("no session store, skipping finalize");
+            span.record("status", "skipped");
         }
-    } else {
-        debug!("no session store, skipping finalize");
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "stage duration fits in u64"
+        )]
+        {
+            span.record("duration_ms", start.elapsed().as_millis() as u64);
+        }
+        stages_completed += 1;
     }
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "pipeline duration fits in u64"
+    )]
+    {
+        pipeline_span.record(
+            "pipeline.total_duration_ms",
+            pipeline_start.elapsed().as_millis() as u64,
+        );
+    }
+    pipeline_span.record("pipeline.stages_completed", stages_completed);
+    pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
 
     Ok(result)
 }
@@ -856,6 +1004,9 @@ mod tests {
         // Now trigger a loop within the window
         assert!(det.record("exec", "same").is_none());
         assert!(det.record("exec", "same").is_none());
-        assert!(det.record("exec", "same").is_some(), "should detect loop even after window eviction");
+        assert!(
+            det.record("exec", "same").is_some(),
+            "should detect loop even after window eviction"
+        );
     }
 }

@@ -5,6 +5,7 @@
 //! user message at the end.
 
 use snafu::ResultExt;
+use tracing::debug;
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::Role;
@@ -129,14 +130,18 @@ pub fn load_history(
         token_estimate: current_tokens,
     });
 
-    Ok((
-        messages,
-        HistoryResult {
-            messages_loaded: loaded_count,
-            tokens_consumed,
-            truncated,
-        },
-    ))
+    let result = HistoryResult {
+        messages_loaded: loaded_count,
+        tokens_consumed,
+        truncated,
+    };
+    debug!(
+        messages_loaded = result.messages_loaded,
+        tokens_consumed = result.tokens_consumed,
+        truncated = result.truncated,
+        "history loaded"
+    );
+    Ok((messages, result))
 }
 
 #[cfg(test)]

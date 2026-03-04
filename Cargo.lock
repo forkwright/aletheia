@@ -305,6 +305,7 @@ dependencies = [
  "static_assertions",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

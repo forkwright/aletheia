@@ -2,10 +2,12 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Instant;
 
 use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 use snafu::ensure;
+use tracing::info_span;
 
 use crate::error::{self, Result};
 use crate::types::{ToolCategory, ToolContext, ToolDef, ToolInput, ToolResult};
@@ -77,7 +79,22 @@ impl ToolRegistry {
             }
             .build()
         })?;
-        tool.executor.execute(input, ctx).await
+        let span = info_span!("tool_execute",
+            tool.name = %input.name,
+            tool.duration_ms = tracing::field::Empty,
+            tool.status = tracing::field::Empty,
+        );
+        let _guard = span.enter();
+        let start = Instant::now();
+        let result = tool.executor.execute(input, ctx).await;
+        #[expect(clippy::cast_possible_truncation, reason = "tool duration fits in u64")]
+        let duration_ms = start.elapsed().as_millis() as u64;
+        span.record("tool.duration_ms", duration_ms);
+        match &result {
+            Ok(r) if !r.is_error => span.record("tool.status", "ok"),
+            _ => span.record("tool.status", "error"),
+        };
+        result
     }
 
     /// All registered tool definitions, in insertion order.
