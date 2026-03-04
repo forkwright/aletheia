@@ -1,6 +1,6 @@
 # Domain Packs
 
-A domain pack is an external bundle of knowledge, tools, and configuration overlays that extends an Aletheia agent without modifying the core runtime. Packs keep domain-specific content (company IP, schemas, runbooks) separate from the generic agent infrastructure.
+A domain pack bundles knowledge, tools, and configuration overlays that extend an Aletheia agent without modifying the core runtime. Packs keep domain-specific content (company IP, schemas, runbooks) separate from generic agent infrastructure.
 
 ## Directory Structure
 
@@ -61,7 +61,7 @@ overlays:
 
 ## Context Entries
 
-Each context entry maps to a file whose content is injected into the agent's system prompt at startup.
+Each context entry maps to a file injected into the agent's system prompt at startup.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -80,7 +80,7 @@ The `agents` field filters which agents receive the section. An empty list means
 
 ## Tool Definitions
 
-Tools are shell commands exposed to the LLM as callable functions. The runtime pipes JSON input to stdin and reads JSON output from stdout.
+Tools are shell commands exposed to the LLM as callable functions. The runtime pipes JSON to stdin and reads JSON from stdout.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -109,7 +109,7 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 
 ## Overlays
 
-Overlays configure per-agent domain tags. Domain tags extend an agent's reach: a section tagged `agents: [healthcare]` reaches any agent whose domain list includes `healthcare`.
+Overlays assign per-agent domain tags. A section tagged `agents: [healthcare]` reaches any agent whose domain list includes `healthcare`.
 
 ```yaml
 overlays:
@@ -127,10 +127,10 @@ Domain merging at startup:
 ## How It Works
 
 ### Bootstrap injection
-`pack.yaml` context entries are loaded into `PackSection` values, filtered by agent ID and domain tags, converted to `BootstrapSection` values, and merged into the bootstrap assembler alongside workspace files (SOUL.md, USER.md, etc.). Pack sections participate in the same priority sorting and token budget as workspace files.
+Context entries load into `PackSection` values, filter by agent ID and domain tags, convert to `BootstrapSection` values, and merge into the bootstrap assembler alongside workspace files (SOUL.md, USER.md, etc.). Pack sections participate in the same priority sorting and token budget as workspace files.
 
 ### Tool registration
-`pack.yaml` tool definitions are validated (command exists, path is safe, schema parses), converted to `ToolDef` values with category `Domain`, and registered in the shared `ToolRegistry` before agents spawn. Invalid tools are skipped with warnings.
+Tool definitions are validated (command exists, path is safe, schema parses), converted to `ToolDef` values with category `Domain`, and registered in the shared `ToolRegistry` before agents spawn. Invalid tools are skipped with warnings.
 
 ### Domain resolution
-At agent spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domains)` on each loaded pack. A section matches if its `agents` list is empty, contains the agent ID, or contains any of the agent's domain tags.
+At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domains)` on each loaded pack. A section matches if its `agents` list is empty, contains the agent ID, or contains any of the agent's domain tags.

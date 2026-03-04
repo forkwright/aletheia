@@ -1,7 +1,7 @@
 # Soul
 
 <!-- Define this agent's identity, role, and character. -->
-<!-- See docs/specs/44_oikos.md for the full template structure. -->
+<!-- See docs/WORKSPACE_FILES.md for the full template structure. -->
 
 ## What I Am
 

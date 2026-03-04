@@ -26,10 +26,10 @@ import { SessionStore } from "../mneme/store.js";
 
 Key boundary rules (see docs/ARCHITECTURE.md#dependency-rules for the full table):
 
-- `koina` imports nothing — it is the leaf node
+- `koina` imports nothing - it is the leaf node
 - `taxis` imports only `koina`
-- `auth` imports only `node:crypto` and `hono` — no aletheia module imports
-- `daemon` imports `nous` and `distillation` — it is a high-layer module; nothing imports daemon
+- `auth` imports only `node:crypto` and `hono` - no aletheia module imports
+- `daemon` imports `nous` and `distillation` - it is a high-layer module; nothing imports daemon
 
 Run `import/no-cycle` check after adding any new cross-module import.
 
@@ -94,29 +94,30 @@ See: docs/STANDARDS.md#rule-logger-creation-pattern-createloggermodule-name
 
 ---
 
-## No Barrel Files
+## Module Boundary Discipline
 
-Import directly from the file that owns the symbol. Do not create `index.ts` files that re-export a module's internals.
+Import directly from the file that owns the symbol. Do not create `index.ts` barrel files that re-export a module's internals just to flatten import paths. Modules with a legitimate public API surface (e.g., `dianoia/index.ts` that defines the module's external interface) may use an `index.ts` to curate their exports.
 
 Compliant:
 ```typescript
 import { SessionStore } from "../mneme/store.js";
 import { createLogger } from "../koina/logger.js";
 import { AletheiaError } from "../koina/errors.js";
+
+// Module with a curated public API surface — acceptable
+import { orchestrate } from "../dianoia/index.js";
 ```
 
 Non-compliant:
 ```typescript
-// Creating koina/index.ts that re-exports everything:
+// Gratuitous barrel that re-exports everything:
 import { createLogger } from "../koina/index.js";  // loads all of koina
 
-// Creating mneme/index.ts that re-exports SessionStore, makeDb, etc.:
+// Barrel created just to flatten paths:
 import { SessionStore } from "../mneme/index.js";
 ```
 
-Modules that have a legitimate public API surface (e.g., `dianoia/index.ts`) are acceptable. The rule targets gratuitous barrel files that exist only to flatten import paths.
-
-See: docs/STANDARDS.md#rule-no-barrel-files
+See: docs/STANDARDS.md#rule-module-boundary-discipline
 
 ---
 

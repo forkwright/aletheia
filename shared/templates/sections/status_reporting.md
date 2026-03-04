@@ -7,7 +7,7 @@ When asked for status or during check-ins, use this format:
 - 🟢 Normal / 🟡 Needs attention / 🔴 Blocked
 
 ### Active
-- [task] — [status]
+- [task] - [status]
 
 ### Upcoming (7 days)
 - [deadlines]

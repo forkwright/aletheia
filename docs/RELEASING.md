@@ -2,11 +2,9 @@
 
 ## Version Scheme
 
-Semantic Versioning. Pre-1.0, MINOR bumps may include breaking changes with
-documented migration. PATCH bumps are backwards-compatible.
+Semantic Versioning. Pre-1.0, MINOR bumps may include breaking changes with documented migration. PATCH bumps are backwards-compatible.
 
-The canonical version lives in `Cargo.toml` at `[workspace.package].version`.
-All crates inherit it via `version.workspace = true`.
+The canonical version lives in `Cargo.toml` at `[workspace.package].version`. All crates inherit it via `version.workspace = true`.
 
 ## Automated Release Process
 
@@ -34,7 +32,7 @@ All crates inherit it via `version.workspace = true`.
 
 ## Manual Release
 
-If release-please fails or you need an out-of-band release:
+When release-please fails or you need an out-of-band release:
 
 ```bash
 # Bump the version
@@ -65,12 +63,11 @@ git tag v0.10.1
 git push origin hotfix/0.10.1 --tags
 ```
 
-The tag push builds binaries the same way. Merge the hotfix branch back to
-`main` afterwards.
+The tag push builds binaries the same way. Merge the hotfix branch back to `main` afterwards.
 
 ## Binary Verification
 
-Each binary has a companion `.sha256` file attached to the GitHub Release.
+Each binary has a `.sha256` companion file attached to the GitHub Release.
 
 ```bash
 # Download binary and checksum
@@ -80,8 +77,7 @@ gh release download v0.10.0 -p 'aletheia-linux-amd64*'
 sha256sum -c aletheia-linux-amd64.sha256
 ```
 
-The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release and
-lists all Cargo dependencies with versions.
+The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release, listing all Cargo dependencies with versions.
 
 ## Supply Chain
 

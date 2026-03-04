@@ -25,7 +25,7 @@ handler:
   cwd: /some/dir            # optional working directory
 
 # Optional: restrict to specific agents
-nousFilter: [demiurge, akron]
+nousFilter: [agent-a, agent-b]
 ```
 
 ## Supported Events
@@ -41,7 +41,7 @@ nousFilter: [demiurge, akron]
 | `session:created` | sessionId, nousId | New session created |
 | `session:archived` | sessionId | Session archived |
 | `memory:added` | nousId, count | Facts extracted and stored |
-| `boot:start` | — | Runtime starting |
+| `boot:start` | (none) | Runtime starting |
 | `boot:ready` | port, tools, plugins | Runtime ready |
 | `config:reloaded` | added, removed | Config hot-reloaded |
 
@@ -58,23 +58,23 @@ echo "Processing session: $SESSION_ID"
 ```
 
 **Environment variables** are always set:
-- `ALETHEIA_HOOK_NAME` — the hook's name
-- `ALETHEIA_HOOK_EVENT` — the event that triggered it
+- `ALETHEIA_HOOK_NAME` -the hook's name
+- `ALETHEIA_HOOK_EVENT` -the event that triggered it
 - Plus any custom env vars from the `env:` field
 
 **Exit codes:**
-- `0` — success
-- `1` — warning (logged if failAction is not "silent")
-- `2+` — error (always logged unless "silent")
+- `0` -success
+- `1` -warning (logged if failAction is not "silent")
+- `2+` -error (always logged unless "silent")
 
 ## Template Variables
 
 Args and the command itself support `{{variable}}` substitution from the event payload:
 
-- `{{sessionId}}` — session ID
-- `{{nousId}}` — agent ID
-- `{{toolName}}` — tool name (tool events only)
-- `{{timestamp}}` — event timestamp
+- `{{sessionId}}` -session ID
+- `{{nousId}}` -agent ID
+- `{{toolName}}` -tool name (tool events only)
+- `{{timestamp}}` -event timestamp
 - Nested: `{{session.id}}` for nested objects
 
 Missing variables resolve to empty string.
@@ -84,8 +84,8 @@ Missing variables resolve to empty string.
 Hooks in `shared/hooks/` apply globally. For agent-specific hooks, create a `hooks/` directory in the agent's workspace:
 
 ```
-nous/demiurge/hooks/craft-journal.yaml
-nous/akron/hooks/maintenance-log.yaml
+nous/<agent-a>/hooks/craft-journal.yaml
+nous/<agent-b>/hooks/maintenance-log.yaml
 ```
 
 Or use `nousFilter` in a global hook to restrict which agents trigger it.
@@ -99,9 +99,9 @@ Commands without extensions (e.g., `/usr/bin/curl`) are also allowed.
 
 ## Fail Actions
 
-- **warn** (default) — log a warning on non-zero exit, don't affect the event
-- **silent** — swallow all errors silently
-- **block** — log an error (future: may block the triggering operation)
+- **warn** (default) -log a warning on non-zero exit, don't affect the event
+- **silent** -swallow all errors silently
+- **block** -log an error (future: may block the triggering operation)
 
 ## Examples
 

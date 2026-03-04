@@ -1,15 +1,15 @@
-# Example: Per-agent hook — only fires for Demiurge
-# Copy to shared/hooks/ or nous/demiurge/hooks/ to activate
+# Example: Per-agent hook - only fires for a specific agent
+# Copy to shared/hooks/ or nous/<agent-id>/hooks/ to activate
 
 name: craft-journal
 event: turn:after
-description: Append craft session notes for Demiurge's domain
-nousFilter: [demiurge]
+description: Append craft session notes for a specific agent's domain
+nousFilter: [my-agent]
 
 handler:
   type: shell
   command: /bin/sh
-  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/demiurge/craft-journal.log"]
-  # Replace <nous-dir> with your agent's workspace directory
+  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/<agent-id>/craft-journal.log"]
+  # Replace <nous-dir> and <agent-id> with your agent's workspace directory
   timeout: 5s
   failAction: silent

@@ -50,12 +50,12 @@ Non-compliant:
 ```python
 try:
     result = await mem0.search(query)
-except:                  # bare except — catches SystemExit, KeyboardInterrupt
+except:                  # bare except - catches SystemExit, KeyboardInterrupt
     return []
 
 try:
     result = await mem0.search(query)
-except Exception:        # swallowed — no log, no raise
+except Exception:        # swallowed - no log, no raise
     pass
 ```
 
@@ -74,7 +74,7 @@ Compliant:
 # pyproject.toml
 [tool.ruff]
 select = ["E", "W", "F", "B", "I", "UP"]
-ignore = ["B008"]  # FastAPI Depends() — intentional
+ignore = ["B008"]  # FastAPI Depends() - intentional
 ```
 
 Non-compliant: no `[tool.ruff]` section in `pyproject.toml`.
@@ -87,7 +87,7 @@ See: docs/STANDARDS.md#rule-ruff-selected-rule-set
 
 ## Type Annotations
 
-Annotate all function parameters and return types. Python 3.12 is available — use modern syntax directly.
+Annotate all function parameters and return types. Python 3.12 is available - use modern syntax directly.
 
 Compliant:
 ```python
@@ -107,6 +107,6 @@ def get_settings():                # missing return type
     return Settings()
 ```
 
-Use `from __future__ import annotations` only when forward references require it — not as a blanket import.
+Use `from __future__ import annotations` only when forward references require it - not as a blanket import.
 
 See: docs/STANDARDS.md#rule-pyright-strict-mode

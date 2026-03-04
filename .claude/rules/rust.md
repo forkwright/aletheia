@@ -51,13 +51,13 @@ pub fn parse_config(input: &str) -> Config {
     serde_json::from_str(input).unwrap()
 }
 
-// anyhow in library — callers can't match error variants
+// anyhow in library - callers can't match error variants
 pub fn connect(url: &str) -> anyhow::Result<Connection> { ... }
 
-// bare ? without context — loses information
+// bare ? without context - loses information
 let contents = std::fs::read_to_string(path)?;
 
-// Box<dyn Error> — erases type info
+// Box<dyn Error> - erases type info
 fn process() -> Result<(), Box<dyn std::error::Error>> { ... }
 ```
 
@@ -120,7 +120,7 @@ guard.push(data);
 
 ### Spawned Tasks
 
-Spawned tasks are `'static` — they outlive any reference. Move owned data in. Clone `Arc`s before spawn. Propagate tracing spans.
+Spawned tasks are `'static` - they outlive any reference. Move owned data in. Clone `Arc`s before spawn. Propagate tracing spans.
 
 Compliant:
 ```rust
@@ -133,10 +133,10 @@ tokio::spawn(async move {
 
 Non-compliant:
 ```rust
-// Won't compile — &self is not 'static
+// Won't compile - &self is not 'static
 tokio::spawn(async { self.handle().await });
 
-// Missing span propagation — loses trace context
+// Missing span propagation - loses trace context
 tokio::spawn(async move { handle().await });
 ```
 
@@ -176,14 +176,14 @@ fn process(data: &mut Vec<String>) {
 Start with owned types. Only add lifetimes when profiling shows the allocation matters. Config structs own their strings.
 
 ```rust
-// GOOD: own the data — config is long-lived
+// GOOD: own the data - config is long-lived
 struct Config {
     name: String,
     host: String,
     port: u16,
 }
 
-// GOOD: borrow in short-lived views — justified
+// GOOD: borrow in short-lived views - justified
 struct RequestView<'a> {
     path: &'a str,  // borrowing from HTTP request buffer
     method: Method,
@@ -240,7 +240,7 @@ fn route_message(agent: &AgentId, session: &SessionId, msg: &str) { ... }
 Non-compliant:
 ```rust
 fn route_message(agent_id: &str, session_id: &str, msg: &str) { ... }
-// easy to swap arguments — compiles fine, breaks at runtime
+// easy to swap arguments - compiles fine, breaks at runtime
 ```
 
 ### #[non_exhaustive] on Public Enums
@@ -276,7 +276,7 @@ impl Connection<Disconnected> {
 
 impl Connection<Connected> {
     fn query(&self, q: &str) -> Result<Row> { ... }
-    // query() is impossible to call on Disconnected — compile error
+    // query() is impossible to call on Disconnected - compile error
 }
 ```
 
@@ -292,10 +292,10 @@ Use `match` with explicit variants over wildcard arms when the enum is under you
 
 Each nous is a Tokio actor (Alice Ryhl pattern: actor struct + handle struct).
 
-1. **Bounded channels** — unbounded = memory leak. Default: 32, tune empirically.
+1. **Bounded channels** - unbounded = memory leak. Default: 32, tune empirically.
 2. **Actor owns ALL mutable state.** Handle is a thin `mpsc::Sender`. No `Arc<Mutex<_>>` between them.
-3. **Track spawned tasks** — they outlive the actor. Use `JoinHandle` or `CancellationToken`.
-4. **Shutdown** — when all handles drop, mpsc closes, actor loop exits. No separate shutdown signal unless cleanup needed.
+3. **Track spawned tasks** - they outlive the actor. Use `JoinHandle` or `CancellationToken`.
+4. **Shutdown** - when all handles drop, mpsc closes, actor loop exits. No separate shutdown signal unless cleanup needed.
 
 ### Prefer std::sync::Mutex for Short Critical Sections
 
@@ -361,7 +361,7 @@ if let Some(agent) = find_agent(id)
 ### Async Closures
 
 ```rust
-// 2024 edition — can borrow from environment
+// 2024 edition - can borrow from environment
 let client = reqwest::Client::new();
 let fetch = async |url: &str| {
     client.get(url).send().await
@@ -413,7 +413,7 @@ impl StorageProvider for MockStore {
 
 ### Use In-Memory CozoDB for Tests
 
-No external services in tests. CozoDB supports in-memory storage — use it.
+No external services in tests. CozoDB supports in-memory storage - use it.
 
 ### Property Tests for Serialization
 
@@ -436,16 +436,16 @@ fn config_roundtrip() {
 
 Things Claude tends to do wrong in Rust. Watch for and correct:
 
-1. **Over-engineering** — wrapper types with no value, trait abstractions with one impl, builders for simple structs. Use `Default` + struct update syntax.
-2. **Outdated crate choices** — `lazy_static` (use `LazyLock`), `once_cell` (use `LazyLock`), `async-trait` (use native), `failure` (dead), `reqwest::blocking` in async.
-3. **Hallucinated APIs** — verify method signatures against docs.rs. AI invents plausible but nonexistent methods. Always `cargo check`.
-4. **Incomplete trait impls** — missing `size_hint` on Iterator, missing `source()` on Error, incomplete Serialize edge cases.
-5. **Clone to satisfy borrow checker** — restructure ownership instead.
-6. **unwrap() in library code** — use `?` or explicit error handling.
-7. **std::sync::Mutex in async** — use tokio::sync::Mutex when holding across `.await`.
-8. **Ignoring Send+Sync** — types not Send used across thread boundaries.
-9. **CozoDB queries in SQL syntax** — CozoDB uses Datalog, not SQL. Provide reference inline.
-10. **Verbose needless code** — run `cargo clippy` after every generation pass.
+1. **Over-engineering** - wrapper types with no value, trait abstractions with one impl, builders for simple structs. Use `Default` + struct update syntax.
+2. **Outdated crate choices** - `lazy_static` (use `LazyLock`), `once_cell` (use `LazyLock`), `async-trait` (use native), `failure` (dead), `reqwest::blocking` in async.
+3. **Hallucinated APIs** - verify method signatures against docs.rs. AI invents plausible but nonexistent methods. Always `cargo check`.
+4. **Incomplete trait impls** - missing `size_hint` on Iterator, missing `source()` on Error, incomplete Serialize edge cases.
+5. **Clone to satisfy borrow checker** - restructure ownership instead.
+6. **unwrap() in library code** - use `?` or explicit error handling.
+7. **std::sync::Mutex in async** - use tokio::sync::Mutex when holding across `.await`.
+8. **Ignoring Send+Sync** - types not Send used across thread boundaries.
+9. **CozoDB queries in SQL syntax** - CozoDB uses Datalog, not SQL. Provide reference inline.
+10. **Verbose needless code** - run `cargo clippy` after every generation pass.
 
 ---
 
@@ -454,7 +454,7 @@ Things Claude tends to do wrong in Rust. Watch for and correct:
 `tracing` with structured spans. `#[instrument]` on public functions.
 
 - Spawned tasks MUST propagate spans: `.instrument(span)` or `.in_current_span()`
-- Never bare `tokio::spawn()` — always `.instrument()`
+- Never bare `tokio::spawn()` - always `.instrument()`
 - Never hold `span.enter()` across `.await` points
 
 ---
@@ -464,11 +464,11 @@ Things Claude tends to do wrong in Rust. Watch for and correct:
 - Prefer std when adequate
 - Each new dependency must justify itself
 - Pin unstable crates (pre-1.0) to exact versions, wrap in traits
-- `serde_yml` is banned (unsound unsafe) — use `serde_yaml` if YAML parsing is needed
+- `serde_yml` is banned (unsound unsafe) - use `serde_yaml` if YAML parsing is needed
 - `thiserror` replaced by `snafu` for library crates
-- `async-trait` unnecessary — use native async fn in trait
+- `async-trait` unnecessary - use native async fn in trait
 
-See: docs/PROJECT.md (Dependency Policy, Crate-to-Module Mapping)
+See: docs/TECHNOLOGY.md
 
 ---
 
@@ -476,7 +476,7 @@ See: docs/PROJECT.md (Dependency Policy, Crate-to-Module Mapping)
 
 Same layered import rules as TypeScript. `koina` imports nothing. `taxis` imports only `koina`. Higher layers import lower layers only. No cycles.
 
-Crate names follow gnomon naming system. See `docs/gnomon.md`.
+Greek naming - modules and crates use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter).
 
 See: docs/ARCHITECTURE.md#dependency-rules
 
@@ -486,13 +486,13 @@ See: docs/ARCHITECTURE.md#dependency-rules
 
 Known optimization opportunities from TS codebase analysis. Apply when implementing the equivalent Rust module.
 
-- **Prepared statements** — `rusqlite::CachedStatement` for all session queries. TS recompiles SQL every call.
-- **SSE broadcast** — Serialize message once, write bytes to all connected clients. Don't serialize per-connection.
-- **Lazy JSON deserialization** — `serde_json::value::RawValue` for fields not always needed (`workingState`, `distillationPriming`). Don't parse until accessed.
-- **Regex caching** — `LazyLock<RegexSet>` for interaction signal patterns. TS recompiles `RegExp` inside loops.
-- **Arena allocation** — `bumpalo` for per-turn transient data (tool results, intermediate parsing). Freed in bulk at turn end.
-- **File watching** — `notify` crate for bootstrap files. TS does 11 sync reads per turn; cache and recompute only on change.
-- **Batched writes** — Group tool result messages into single SQLite transaction. Don't commit per-message.
+- **Prepared statements** - `rusqlite::CachedStatement` for all session queries. TS recompiles SQL every call.
+- **SSE broadcast** - Serialize message once, write bytes to all connected clients. Don't serialize per-connection.
+- **Lazy JSON deserialization** - `serde_json::value::RawValue` for fields not always needed (`workingState`, `distillationPriming`). Don't parse until accessed.
+- **Regex caching** - `LazyLock<RegexSet>` for interaction signal patterns. TS recompiles `RegExp` inside loops.
+- **Arena allocation** - `bumpalo` for per-turn transient data (tool results, intermediate parsing). Freed in bulk at turn end.
+- **File watching** - `notify` crate for bootstrap files. TS does 11 sync reads per turn; cache and recompute only on change.
+- **Batched writes** - Group tool result messages into single SQLite transaction. Don't commit per-message.
 
 ---
 
@@ -507,7 +507,7 @@ cargo test -p integration-tests
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The clippy pass type-checks the full workspace — it catches cross-crate breakage without running every test.
+The clippy pass type-checks the full workspace - it catches cross-crate breakage without running every test.
 
 ### Final Gate (once, before creating PR)
 ```bash

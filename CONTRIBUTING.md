@@ -8,44 +8,134 @@ cd aletheia
 ```
 
 ### Rust
+
 ```bash
 cargo build && cargo test --workspace && cargo clippy --workspace
 ```
 
+Rust stable (2024 edition). Clippy bundled.
+
 ### TypeScript
+
 ```bash
 cd infrastructure/runtime && npm install
 git config core.hooksPath .githooks
 ```
 
-## Development
+Node.js >= 22.12. Optional: Docker/Podman (Qdrant, Neo4j, Langfuse), signal-cli, Chromium.
+
+## Building
+
+### Rust
+
+```bash
+cargo build                     # debug
+cargo build --release           # release (thin LTO, stripped)
+cargo clippy --workspace        # lint - zero warnings, pedantic
+```
+
+Workspace lints: pedantic clippy with select allows. `dbg!`, `todo!`, `unimplemented!` denied. `unsafe` denied workspace-wide.
+
+### TypeScript
+
+```bash
+cd infrastructure/runtime && npx tsdown
+```
+
+Output: `dist/entry.mjs` (~450KB ESM bundle). Dev without building: `npm run dev`.
+
+## Testing
+
+### Rust
+
+```bash
+cargo test --workspace                          # all
+cargo test -p aletheia-nous                     # single crate
+cargo test -p aletheia-nous -- actor            # filter by name
+cargo test -p aletheia-integration-tests        # cross-crate
+```
+
+Tests live alongside source in `#[cfg(test)] mod tests`. Integration tests in `crates/integration-tests/`.
+
+### TypeScript
+
+```bash
+npx vitest run                          # all
+npx vitest run src/path/file.test.ts    # specific
+```
+
+Tests live alongside source as `*.test.ts`. Integration tests use `.integration.test.ts`.
 
 ### Local Validation
 
 ```bash
-# TypeScript — run during development
 npm run typecheck && npm run lint:check
-
-# Targeted testing
-npx vitest run src/path/to/specific.test.ts
 ```
 
-**Never run `npm test` locally.** CI handles full test runs. Local full-suite runs are slow and duplicate CI.
+**Never run `npm test` locally.** It executes the full integration suite which requires running services. Use `npx vitest run src/path/file.test.ts` for targeted tests.
 
 ### Pre-commit Hook
 
-`.githooks/pre-commit` runs typecheck + lint automatically on staged files. It does not run tests — that's CI's job. Install with `git config core.hooksPath .githooks`.
+`.githooks/pre-commit` runs typecheck + lint on staged files. No tests - that's CI's job. Install: `git config core.hooksPath .githooks`.
+
+## Adding Tools
+
+Tools live in `src/organon/built-in/`. Each exports a `ToolHandler`:
+
+```typescript
+export const myTool: ToolHandler = {
+  definition: {
+    name: "my_tool",
+    description: "What this tool does",
+    input_schema: { type: "object", properties: { param: { type: "string" } }, required: ["param"] },
+  },
+  async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
+    return JSON.stringify({ result: input["param"] });
+  },
+};
+```
+
+Register in `src/aletheia.ts`. Categories: `"essential"` (always available) or `"available"` (on-demand, expires after 5 unused turns).
+
+## CLI
+
+```
+aletheia start [--no-memory]     # start memory services + gateway
+aletheia stop [--all]            # stop gateway (--all includes containers)
+aletheia restart                 # restart gateway
+aletheia logs [-f]               # follow logs
+aletheia tui                     # terminal UI
+aletheia status                  # live metrics
+aletheia doctor                  # validate config + connectivity
+aletheia send -a <id> -m <text>  # send message
+aletheia sessions [-a agent]     # list sessions
+aletheia update [version]        # self-update
+aletheia cron list|trigger <id>  # manage cron
+```
+
+## API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health check |
+| GET | `/api/status` | Agent list + version |
+| GET | `/api/metrics` | Full metrics |
+| GET | `/api/agents` | All agents |
+| GET | `/api/agents/:id` | Agent detail |
+| GET | `/api/sessions` | Session list |
+| GET | `/api/sessions/:id/history` | Message history |
+| POST | `/api/sessions/send` | Send message |
+| POST | `/api/sessions/stream` | Streaming message (SSE) |
+| POST | `/api/sessions/:id/archive` | Archive session |
+| POST | `/api/sessions/:id/distill` | Trigger distillation |
+| GET | `/api/events` | SSE event stream |
+| GET | `/api/costs/summary` | Token usage + cost |
+| GET | `/api/cron` | Cron jobs |
+| POST | `/api/cron/:id/trigger` | Trigger cron job |
+| GET | `/api/skills` | Skills directory |
+| GET | `/api/config` | Config summary |
 
 ## Git
-
-### Authorship
-
-All commits use the operator's author identity. Agents are tooling, not contributors.
-
-```
-git config user.name "forkwright"
-git config user.email "forkwright@users.noreply.github.com"
-```
 
 ### Branches
 
@@ -56,47 +146,52 @@ git config user.email "forkwright@users.noreply.github.com"
 | Bug fix | `fix/<description>` | `fix/distillation-overflow` |
 | Chore/docs | `chore/<description>` | `chore/readme-update` |
 
-Always branch from `main`. Always `git pull --rebase origin main` before pushing. Never commit directly to `main` (except docs-only or trivial config).
+Branch from `main`. Rebase before pushing (`git pull --rebase origin main`). Never commit directly to `main` except docs-only or trivial config.
 
 ### Commits
 
 Conventional commits: `<type>(<scope>): <description>`
 
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
-Rules: present tense imperative, first line ≤72 chars, body wraps at 80 chars.
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`. Present tense imperative, first line <=72 chars, body wraps at 80 chars.
 
 ### Squash Policy
 
-**Always squash merge.** Every PR becomes a single commit on `main`. Branch preserves detailed work history.
-
-## Pull Requests
-
-1. Create branch from main
-2. Make changes, commit, push
-3. Create PR with structured description (use `.github/pull_request_template.md`)
-4. CI must pass
-5. Squash merge with clean commit message
-6. Branch auto-deleted after merge
+Always squash merge. Every PR becomes a single commit on `main`.
 
 ## Code Standards
 
-Full reference: [docs/STANDARDS.md](docs/STANDARDS.md). Key points:
+Full reference: [docs/STANDARDS.md](docs/STANDARDS.md). Highlights:
 
 - Self-documenting code. Comments only for *why*.
-- Typed errors — extend `AletheiaError` (TS), use `snafu` (Rust). Never throw strings or bare `Error`.
+- Typed errors - `AletheiaError` (TS), `snafu` (Rust). Never throw strings or bare `Error`.
 - No silent catch blocks.
-- Greek naming for persistent names per [docs/gnomon.md](docs/gnomon.md).
-- Testing: behavior not implementation, descriptive names, same-directory test files.
+- Greek naming for modules and crates (see [ALETHEIA.md](ALETHEIA.md)).
+- Tests: behavior not implementation, descriptive names, same-directory files.
 
-## Agent Task Dispatch
+### Rust
 
-When dispatching to Claude Code or sub-agents, use the template in [docs/WORKING-AGREEMENT.md](docs/WORKING-AGREEMENT.md).
+- Edition 2024, `unsafe` denied, pedantic clippy
+- Errors via `snafu` with context selectors
+- `pub(crate)` by default
+- `expect("invariant description")` over bare `unwrap()`
+
+### TypeScript
+
+- Strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
+- Bracket notation for index access: `record["key"]`
+- `.js` import extensions required
+
+### Universal
+
+- One-line file header max
+- No inline comments except genuinely non-obvious *why* explanations
+- No creation dates, author info, or AI generation indicators
 
 ## Reporting Issues
 
 - **Bugs:** [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
 - **Features:** [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
-- **Security:** [SECURITY.md](.github/SECURITY.md) — do not open public issues
+- **Security:** [SECURITY.md](SECURITY.md) - do not open public issues
 
 ## License
 

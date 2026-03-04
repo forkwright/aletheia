@@ -1,22 +1,29 @@
-# Aletheia Configuration Reference
+# Configuration Reference
 
-## Current Runtime (TypeScript)
+## TypeScript Runtime
 
-Config file location: `~/.aletheia/aletheia.json`
+**File:** `~/.aletheia/aletheia.json`
 
 Validated at startup against the Zod schema in `src/taxis/schema.ts`. Unknown top-level fields are preserved (passthrough) for forward compatibility.
 
 ## Rust Crates
 
-Config file location: `instance/config/aletheia.yaml` (or `~/.aletheia/aletheia.yaml`)
+**File:** `instance/config/aletheia.yaml` (or `~/.aletheia/aletheia.yaml`)
 
-Loaded by the `taxis` crate using figment with a three-layer cascade: compiled defaults, YAML file, environment variables (prefix `ALETHEIA_`). Environment variables override YAML, YAML overrides defaults. The Rust config uses `AletheiaConfig` structs validated at deserialization time, not a separate validation pass.
+Loaded by the `taxis` crate using figment with a three-layer cascade:
 
-Key differences from the JSON config:
-- YAML format instead of JSON
-- Figment cascade (defaults, file, env) instead of single-file loading
-- camelCase field names still work (compat layer), but snake_case is canonical
-- Secret values use `SecretString` from the `secrecy` crate, never logged or serialized to debug output
+1. Compiled defaults (`AletheiaConfig::default()`)
+2. YAML file (if present)
+3. Environment variables, prefix `ALETHEIA_` (double underscore for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
+
+Later layers override earlier ones.
+
+Differences from the JSON config:
+
+- YAML format
+- Figment cascade (defaults -> file -> env) vs. single-file loading
+- `snake_case` is canonical; `camelCase` works via compat layer
+- Secret values use `SecretString` from the `secrecy` crate - never logged or serialized
 
 ---
 
@@ -32,6 +39,8 @@ Key differences from the JSON config:
 - [models](#models)
 - [env](#env)
 - [watchdog](#watchdog)
+- [heartbeat](#heartbeat-config)
+- [Additional sections](#additional-sections)
 
 ---
 
@@ -44,17 +53,21 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `model.primary` | string | `"claude-opus-4-6"` | Primary model ID |
-| `model.fallbacks` | string[] | `[]` | Fallback model IDs tried in order |
+| `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
 | `bootstrapMaxTokens` | number | `40000` | Max tokens for bootstrap context injection |
 | `userTimezone` | string | `"UTC"` | IANA timezone for time-aware prompts |
 | `contextTokens` | number | `200000` | Context window budget |
 | `maxOutputTokens` | number | `16384` | Max tokens per response |
 | `timeoutSeconds` | number | `300` | LLM call timeout |
-| `workspace` | string | _(none)_ | Default workspace path (optional) |
-| `compaction` | object | _(see below)_ | History compaction settings |
-| `routing` | object | _(see below)_ | Model routing/tiering |
-| `heartbeat` | object | _(none)_ | Default heartbeat config (optional) |
-| `tools` | object | _(see below)_ | Default tool profile |
+| `workspace` | string | -- | Default workspace path |
+| `compaction` | object | see below | History compaction settings |
+| `routing` | object | see below | Model routing/tiering |
+| `heartbeat` | object | -- | Default heartbeat config |
+| `tools` | object | see below | Default tool profile |
+| `approval.mode` | `"autonomous"` \| `"guarded"` \| `"supervised"` | `"autonomous"` | Tool approval mode |
+| `narrationFilter` | boolean | `true` | Filter narration from output |
+| `pathGuard` | boolean | `true` | Restrict filesystem access to workspace + allowedRoots |
+| `allowedRoots` | string[] | `[]` | Additional filesystem paths the agent may access |
 
 **Backwards compat:** `bootstrapMaxChars` is silently migrated to `bootstrapMaxTokens`.
 
@@ -65,20 +78,22 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `mode` | `"default"` \| `"safeguard"` | `"default"` | Compaction strategy |
 | `reserveTokensFloor` | number | `8000` | Minimum tokens reserved after compaction |
 | `maxHistoryShare` | number | `0.7` | Max fraction of context window for history |
-| `distillationModel` | string | `"claude-haiku-4-5-20251001"` | Model used for distillation summaries |
+| `distillationModel` | string | `"claude-haiku-4-5-20251001"` | Model for distillation summaries |
+| `preserveRecentMessages` | number | `10` | Recent messages exempt from compaction |
+| `preserveRecentMaxTokens` | number | `12000` | Token cap for preserved recent messages |
 | `memoryFlush.enabled` | boolean | `true` | Flush to long-term memory before compaction |
 | `memoryFlush.softThresholdTokens` | number | `8000` | Token threshold triggering soft flush |
-| `memoryFlush.prompt` | string | _(none)_ | Custom extraction prompt (optional) |
-| `memoryFlush.systemPrompt` | string | _(none)_ | Custom system prompt for extraction (optional) |
+| `memoryFlush.prompt` | string | -- | Custom extraction prompt |
+| `memoryFlush.systemPrompt` | string | -- | Custom system prompt for extraction |
 
 #### agents.defaults.routing
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable model routing by complexity tier |
-| `tiers.routine` | string | `"claude-haiku-4-5-20251001"` | Model for routine/simple tasks |
-| `tiers.standard` | string | `"claude-sonnet-4-5-20250929"` | Model for standard tasks |
-| `tiers.complex` | string | `"claude-sonnet-4-5-20250929"` | Model for complex tasks |
+| `tiers.routine` | string | `"claude-haiku-4-5-20251001"` | Model for routine tasks |
+| `tiers.standard` | string | `"claude-sonnet-4-6"` | Model for standard tasks |
+| `tiers.complex` | string | `"claude-sonnet-4-6"` | Model for complex tasks |
 | `agentOverrides` | Record<string, tier> | `{}` | Force a tier for specific agent IDs |
 
 #### agents.defaults.tools
@@ -96,39 +111,40 @@ Each entry defines a nous (agent).
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `id` | string | yes | -- | Unique agent identifier |
-| `default` | boolean | no | `false` | Is this the default agent for unrouted messages |
-| `name` | string | no | _(none)_ | Display name |
+| `default` | boolean | no | `false` | Default agent for unrouted messages |
+| `name` | string | no | -- | Display name |
 | `workspace` | string | yes | -- | Absolute path to agent workspace |
-| `model` | string \| object | no | _(inherits defaults)_ | Per-agent model override. String or `{ primary, fallbacks }` |
-| `subagents` | object | no | `{}` | Subagent spawning config |
-| `subagents.allowAgents` | string[] | no | `[]` | Agent IDs this agent can spawn as subagents |
-| `subagents.model` | string \| object | no | _(none)_ | Model for spawned subagents |
-| `tools` | object | no | _(inherits defaults)_ | Per-agent tool profile override |
-| `heartbeat` | object | no | _(none)_ | Per-agent heartbeat override |
-| `identity.name` | string | no | _(none)_ | Identity name used in prompts |
-| `identity.emoji` | string | no | _(none)_ | Emoji prefix for Signal messages |
+| `model` | string \| object | no | inherits | Per-agent model override. String or `{ primary, fallbacks }` |
+| `params` | object | no | -- | LLM params: `maxTokens`, `temperature`, `thinkingBudget` (passthrough) |
+| `subagents.allowAgents` | string[] | no | `[]` | Agent IDs this agent can spawn |
+| `subagents.model` | string \| object | no | -- | Model for spawned subagents |
+| `tools` | object | no | inherits | Per-agent tool profile override |
+| `heartbeat` | object | no | -- | Per-agent heartbeat override |
+| `identity.name` | string | no | -- | Identity name for prompts |
+| `identity.emoji` | string | no | -- | Emoji prefix for Signal messages |
+| `allowedRoots` | string[] | no | -- | Per-agent filesystem access roots |
+| `domains` | string[] | no | -- | Domain tags for the agent |
 
 Extra fields are preserved (passthrough).
 
-**JSON example (current runtime):**
 ```json
 {
   "id": "research",
   "name": "Scholar",
   "workspace": "/path/to/aletheia/nous/scholar",
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-4-6",
   "identity": { "name": "Scholar", "emoji": "📚" }
 }
 ```
 
-**YAML example (Rust):**
 ```yaml
+# Rust equivalent
 agents:
   list:
     - id: research
       name: Scholar
       workspace: /path/to/aletheia/instance/nous/scholar
-      model: claude-sonnet-4-5-20250929
+      model: claude-sonnet-4-6
       identity:
         name: Scholar
         emoji: "📚"
@@ -138,14 +154,14 @@ agents:
 
 ## bindings
 
-Array of routing rules mapping channels/peers to agents. Evaluated in order; first match wins.
+Array of routing rules mapping channels/peers to agents. Evaluated in order - first match wins.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `agentId` | string | yes | Target agent ID |
 | `match.channel` | string | yes | Channel name (e.g. `"signal"`) |
 | `match.accountId` | string | no | Restrict to specific channel account |
-| `match.peer.kind` | string | no | Peer type: `"dm"` or `"group"` |
+| `match.peer.kind` | string | no | `"dm"` or `"group"` |
 | `match.peer.id` | string | no | Peer identifier (Signal UUID or group ID) |
 
 ```json
@@ -158,15 +174,13 @@ Array of routing rules mapping channels/peers to agents. Evaluated in order; fir
 }
 ```
 
-A binding with only `channel` (no peer) acts as a catch-all for that channel. More specific bindings should appear first.
+A binding with only `channel` (no peer) acts as a catch-all. More specific bindings should appear first.
 
 ---
 
 ## channels
 
 ### channels.signal
-
-Top-level toggle and named accounts map.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -177,36 +191,34 @@ Top-level toggle and named accounts map.
 
 ### channels.signal.accounts.*
 
-Each account entry:
-
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | _(none)_ | Display name (optional) |
+| `name` | string | -- | Display name |
 | `enabled` | boolean | `true` | Enable this account |
-| `account` | string | _(none)_ | Phone number (e.g. `"+15551234567"`) |
-| `httpUrl` | string | _(none)_ | Full URL override for signal-cli REST API |
+| `account` | string | -- | Phone number (e.g. `"+15551234567"`) |
+| `httpUrl` | string | -- | Full URL override for signal-cli REST API |
 | `httpHost` | string | `"localhost"` | signal-cli REST API host |
 | `httpPort` | number | `8080` | signal-cli REST API port |
-| `cliPath` | string | _(none)_ | Path to signal-cli binary (optional) |
+| `cliPath` | string | -- | Path to signal-cli binary |
 | `autoStart` | boolean | `true` | Auto-start receive loop |
-| `receiveMode` | `"on-start"` \| `"manual"` | `"on-start"` | When to start receiving messages |
+| `receiveMode` | `"on-start"` \| `"manual"` | `"on-start"` | When to start receiving |
 | `sendReadReceipts` | boolean | `true` | Send read receipts |
 | `dmPolicy` | `"pairing"` \| `"allowlist"` \| `"open"` \| `"disabled"` | `"open"` | DM access policy |
-| `groupPolicy` | `"open"` \| `"disabled"` \| `"allowlist"` | `"allowlist"` | Group message access policy |
-| `allowFrom` | (string \| number)[] | `[]` | Allowed sender IDs for DMs (used with `allowlist` policy) |
-| `groupAllowFrom` | (string \| number)[] | `[]` | Allowed group IDs (used with `allowlist` policy) |
-| `textChunkLimit` | number | `2000` | Max characters per outgoing message chunk |
-| `mediaMaxMb` | number | `25` | Max media attachment size in MB |
+| `groupPolicy` | `"open"` \| `"disabled"` \| `"allowlist"` | `"allowlist"` | Group access policy |
+| `allowFrom` | (string \| number)[] | `[]` | Allowed sender IDs (for `allowlist` policy) |
+| `groupAllowFrom` | (string \| number)[] | `[]` | Allowed group IDs (for `allowlist` policy) |
+| `textChunkLimit` | number | `2000` | Max chars per outgoing message chunk |
+| `mediaMaxMb` | number | `25` | Max media attachment size (MB) |
 | `requireMention` | boolean | `true` | Require @mention in groups |
 
 **DM policies:**
 
 | Policy | Behavior |
 |--------|----------|
-| `pairing` | New contacts must complete a challenge-code handshake before messaging |
+| `pairing` | New contacts must complete a challenge-code handshake |
 | `allowlist` | Only UUIDs in `allowFrom` can send DMs |
 | `open` | Anyone can send DMs |
-| `disabled` | DMs ignored entirely |
+| `disabled` | DMs ignored |
 
 ```json
 "signal": {
@@ -222,29 +234,54 @@ Each account entry:
 }
 ```
 
+### channels.slack
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable Slack channel |
+| `mode` | `"socket"` \| `"http"` | `"socket"` | Connection mode |
+| `appToken` | string | -- | Socket Mode token (`xapp-...`) |
+| `botToken` | string | -- | Bot User OAuth token (`xoxb-...`) |
+| `signingSecret` | string | -- | HTTP mode signing secret |
+| `dmPolicy` | `"open"` \| `"allowlist"` \| `"pairing"` \| `"disabled"` | `"open"` | DM access policy |
+| `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | `"allowlist"` | Channel access policy |
+| `allowedChannels` | string[] | `[]` | Allowed Slack channel IDs |
+| `allowedUsers` | string[] | `[]` | Allowed Slack user IDs |
+| `requireMention` | boolean | `true` | Require @mention in channels |
+| `streaming` | boolean | `true` | Stream responses |
+
 ---
 
 ## gateway
 
-HTTP gateway serving the API, MCP endpoint, and control UI.
+HTTP gateway serving the API, MCP endpoint, and web UI.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `port` | number | `18789` | Listen port |
 | `bind` | `"auto"` \| `"lan"` \| `"loopback"` \| `"custom"` | `"lan"` | Bind address strategy |
-| `auth.mode` | `"token"` \| `"password"` | `"token"` | Authentication mode |
-| `auth.token` | string | _(none)_ | Bearer token for API auth (optional, auto-generated if absent) |
+| `auth.mode` | `"none"` \| `"token"` \| `"password"` \| `"session"` | `"token"` | Authentication mode |
+| `auth.token` | string \| SecretRef | -- | Bearer token (auto-generated if absent) |
+| `auth.users` | array | `[]` | User accounts (for `password`/`session` modes) |
+| `auth.session.accessTokenTtl` | number | `900` | Access token TTL (seconds) |
+| `auth.session.refreshTokenTtl` | number | `2592000` | Refresh token TTL (seconds) |
+| `auth.session.maxSessionsPerUser` | number | `10` | Max concurrent sessions per user |
+| `auth.session.secureCookies` | boolean | `true` | Require HTTPS for cookies |
 | `controlUi.enabled` | boolean | `true` | Serve web UI at `/ui` |
 | `controlUi.allowInsecureAuth` | boolean | `false` | Allow auth over plain HTTP |
+| `mcp.requireAuth` | boolean | `true` | Require auth for MCP endpoint |
+| `rateLimit.requestsPerMinute` | number | `60` | API rate limit |
+| `cors.allowOrigins` | string[] | `[]` | CORS allowed origins |
+| `maxBodyBytes` | number | `1048576` | Max request body size (bytes) |
 
 **Bind modes:**
 
 | Mode | Behavior |
 |------|----------|
-| `auto` | Binds LAN if available, falls back to loopback |
+| `auto` | LAN if available, falls back to loopback |
 | `lan` | Binds to LAN interface |
-| `loopback` | Binds to `127.0.0.1` only |
-| `custom` | Uses a custom bind address (set via additional config) |
+| `loopback` | `127.0.0.1` only |
+| `custom` | Custom bind address |
 
 ```json
 "gateway": {
@@ -259,17 +296,15 @@ HTTP gateway serving the API, MCP endpoint, and control UI.
 
 ## plugins
 
-Plugin loader configuration.
-
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Global plugin toggle |
-| `load.paths` | string[] | `[]` | Directories to scan for plugins. Relative paths resolve from aletheia root. |
+| `load.paths` | string[] | `[]` | Directories to scan. Relative paths resolve from repo root. |
 | `entries` | Record<string, entry> | `{}` | Per-plugin overrides |
 | `entries.*.enabled` | boolean | `true` | Enable/disable specific plugin |
-| `entries.*.config` | Record<string, unknown> | `{}` | Plugin-specific config passed to its init |
+| `entries.*.config` | Record<string, unknown> | `{}` | Plugin-specific config passed to init |
 
-The plugin loader looks for `manifest.json` or `*.plugin.json` in each path.
+The loader looks for `manifest.json` or `*.plugin.json` in each path.
 
 ```json
 "plugins": {
@@ -290,17 +325,13 @@ The plugin loader looks for `manifest.json` or `*.plugin.json` in each path.
 
 ## session
 
-Conversation session management.
-
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `scope` | `"per-sender"` \| `"global"` | `"per-sender"` | Session isolation strategy |
-| `store` | string | _(none)_ | Custom path to sessions SQLite DB (optional) |
-| `idleMinutes` | number | `120` | Minutes of inactivity before session expires |
-| `mainKey` | string | `"main"` | Session key for the primary/default session |
-| `agentToAgent.maxPingPongTurns` | number | `5` | Max back-and-forth turns in agent-to-agent conversations |
-
-**Scope modes:**
+| `store` | string | -- | Custom path to sessions SQLite DB |
+| `idleMinutes` | number | `120` | Inactivity timeout before session expires |
+| `mainKey` | string | `"main"` | Session key for the primary session |
+| `agentToAgent.maxPingPongTurns` | number | `5` | Max turns in agent-to-agent conversations |
 
 | Scope | Behavior |
 |-------|----------|
@@ -310,8 +341,6 @@ Conversation session management.
 ---
 
 ## cron
-
-Scheduled jobs. Uses cron syntax.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -323,17 +352,17 @@ Scheduled jobs. Uses cron syntax.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `id` | string | yes | -- | Unique job identifier |
-| `enabled` | boolean | no | `true` | Enable/disable this job |
-| `name` | string | no | _(none)_ | Display name |
+| `enabled` | boolean | no | `true` | Enable/disable |
+| `name` | string | no | -- | Display name |
 | `schedule` | string | yes | -- | Cron expression (e.g. `"0 2 * * *"`) |
-| `agentId` | string | no | _(none)_ | Agent to run the job (uses default agent if omitted) |
-| `sessionKey` | string | no | _(none)_ | Session key override |
-| `model` | string | no | _(none)_ | Model override for this job |
-| `messageTemplate` | string | no | _(none)_ | Message sent to the agent when job fires |
-| `command` | string | no | _(none)_ | Shell command to run instead of agent message |
-| `timeoutSeconds` | number | no | `300` | Job execution timeout |
+| `agentId` | string | no | -- | Agent to run the job (default agent if omitted) |
+| `sessionKey` | string | no | -- | Session key override |
+| `model` | string | no | -- | Model override |
+| `messageTemplate` | string | no | -- | Message sent to agent when job fires |
+| `command` | string | no | -- | Shell command (alternative to messageTemplate) |
+| `timeoutSeconds` | number | no | `300` | Execution timeout |
 
-A job must have either `messageTemplate` (sends a message to an agent) or `command` (runs a shell command), not both.
+A job must have either `messageTemplate` or `command`, not both.
 
 ```json
 "cron": {
@@ -360,7 +389,7 @@ A job must have either `messageTemplate` (sends a message to an agent) or `comma
 
 ## models
 
-Custom model provider definitions. Used to add non-Anthropic providers or custom endpoints.
+Custom model provider definitions for non-Anthropic providers or custom endpoints.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -370,21 +399,21 @@ Custom model provider definitions. Used to add non-Anthropic providers or custom
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `baseUrl` | string | yes | -- | API base URL |
-| `apiKey` | string | no | _(none)_ | API key (optional if using other auth) |
-| `auth` | `"api-key"` \| `"oauth"` \| `"token"` | no | `"api-key"` | Authentication method |
+| `baseUrl` | string \| SecretRef | yes | -- | API base URL |
+| `apiKey` | string \| SecretRef | no | -- | API key |
+| `auth` | `"api-key"` \| `"oauth"` \| `"token"` | no | `"api-key"` | Auth method |
 | `api` | `"anthropic-messages"` \| `"openai-completions"` \| `"google-generative-ai"` | no | `"anthropic-messages"` | API protocol |
-| `models` | ProviderModel[] | no | `[]` | Model definitions for this provider |
+| `models` | ProviderModel[] | no | `[]` | Model definitions |
 
 ### models.providers.*.models[]
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `id` | string | yes | -- | Model identifier used in config |
+| `id` | string | yes | -- | Model identifier |
 | `name` | string | yes | -- | Display name |
-| `reasoning` | boolean | no | `false` | Model supports extended thinking |
-| `input` | (`"text"` \| `"image"`)[] | no | `["text"]` | Supported input modalities |
-| `contextWindow` | number | yes | -- | Context window size in tokens |
+| `reasoning` | boolean | no | `false` | Supports extended thinking |
+| `input` | (`"text"` \| `"image"`)[] | no | `["text"]` | Input modalities |
+| `contextWindow` | number | yes | -- | Context window (tokens) |
 | `maxTokens` | number | yes | -- | Max output tokens |
 
 ```json
@@ -413,9 +442,8 @@ Custom model provider definitions. Used to add non-Anthropic providers or custom
 
 Environment variables injected into the runtime and child processes.
 
-Supports two formats:
-
 **Flat (preferred):**
+
 ```json
 "env": {
   "PATH": "/path/to/aletheia/shared/bin",
@@ -424,6 +452,7 @@ Supports two formats:
 ```
 
 **Structured:**
+
 ```json
 "env": {
   "vars": {
@@ -443,15 +472,15 @@ Health monitoring for dependent services.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable watchdog |
-| `intervalMs` | number | `300000` (5 min) | Check interval in milliseconds |
-| `alertRecipient` | string | _(none)_ | Signal UUID or identifier to receive alerts (optional) |
+| `intervalMs` | number | `300000` (5 min) | Check interval (ms) |
+| `alertRecipient` | string | -- | Signal UUID to receive alerts |
 | `services` | WatchdogService[] | `[]` | Services to monitor |
 
 ### watchdog.services[]
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | yes | -- | Service display name |
+| `name` | string | yes | -- | Service name |
 | `url` | string | yes | -- | Health check URL (expects 2xx) |
 | `timeoutMs` | number | no | `3000` | Request timeout |
 
@@ -471,29 +500,47 @@ Health monitoring for dependent services.
 
 ## Heartbeat Config
 
-Used in `agents.defaults.heartbeat` or per-agent `heartbeat`. Sends periodic check-in messages to keep agents warm.
+Used in `agents.defaults.heartbeat` or per-agent `heartbeat`. Sends periodic check-in messages.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `every` | string | `"45m"` | Interval (duration string) |
-| `activeHours.start` | string | `"08:00"` | Quiet hours start (24h format) |
-| `activeHours.end` | string | `"23:00"` | Quiet hours end |
+| `activeHours.start` | string | `"08:00"` | Active window start (24h) |
+| `activeHours.end` | string | `"23:00"` | Active window end |
 | `activeHours.timezone` | string | `"UTC"` | Timezone for active hours |
-| `model` | string | _(none)_ | Model override for heartbeat calls (optional) |
+| `model` | string | -- | Model override for heartbeat calls |
 | `session` | string | `"main"` | Session key for heartbeat messages |
-| `prompt` | string | _(none)_ | Custom heartbeat prompt (optional) |
+| `prompt` | string | -- | Custom heartbeat prompt |
+
+---
+
+## Additional Sections
+
+The schema defines several additional top-level sections not fully documented here. See `src/taxis/schema.ts` for complete definitions:
+
+| Section | Purpose |
+|---------|---------|
+| `branding` | Instance name, tagline, favicon |
+| `mcp` | MCP server definitions (stdio/http/sse transports) |
+| `privacy` | Retention policies, PII detection/masking |
+| `sandbox` | Tool execution sandboxing (Docker or pattern-only) |
+| `encryption` | At-rest encryption for session data |
+| `backup` | Automated backup destination and retention |
+| `updates` | Update channel (stable/edge) and auto-check |
+| `planning` | Dianoia planning system tuning |
+| `memoryHealth` | Memory subsystem health thresholds |
 
 ---
 
 ## Minimal Config
 
-### JSON (current runtime)
+### JSON (TypeScript runtime)
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": { "primary": "claude-sonnet-4-5-20250929" }
+      "model": { "primary": "claude-sonnet-4-6" }
     },
     "list": [
       {
@@ -512,7 +559,7 @@ Used in `agents.defaults.heartbeat` or per-agent `heartbeat`. Sends periodic che
 agents:
   defaults:
     model:
-      primary: claude-sonnet-4-5-20250929
+      primary: claude-sonnet-4-6
   list:
     - id: main
       default: true
