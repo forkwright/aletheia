@@ -1141,6 +1141,69 @@ async fn csrf_allows_get_without_header() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
+// --- OpenAPI Tests ---
+
+#[tokio::test]
+async fn openapi_spec_returns_valid_json() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let version = body["openapi"].as_str().unwrap();
+    assert!(version.starts_with("3."), "expected OpenAPI 3.x, got {version}");
+}
+
+#[tokio::test]
+async fn openapi_spec_has_all_paths() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let paths = body["paths"].as_object().unwrap();
+    assert!(paths.contains_key("/api/health"));
+    assert!(paths.contains_key("/api/v1/sessions"));
+    assert!(paths.contains_key("/api/v1/sessions/{id}"));
+    assert!(paths.contains_key("/api/v1/sessions/{id}/messages"));
+    assert!(paths.contains_key("/api/v1/sessions/{id}/history"));
+    assert!(paths.contains_key("/api/v1/nous"));
+    assert!(paths.contains_key("/api/v1/nous/{id}"));
+    assert!(paths.contains_key("/api/v1/nous/{id}/tools"));
+}
+
+#[tokio::test]
+async fn openapi_docs_no_auth_required() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn openapi_spec_has_schemas() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let schemas = body["components"]["schemas"].as_object().unwrap();
+    assert!(schemas.contains_key("SessionResponse"));
+    assert!(schemas.contains_key("ErrorResponse"));
+    assert!(schemas.contains_key("HealthResponse"));
+    assert!(schemas.contains_key("NousStatus"));
+}
+
 // --- CORS Tests ---
 
 #[tokio::test]

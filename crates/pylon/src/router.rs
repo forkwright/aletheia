@@ -16,6 +16,7 @@ use tracing::info_span;
 
 use crate::error::ApiError;
 use crate::handlers::{health, nous, sessions};
+use crate::openapi;
 use crate::middleware::{CsrfState, RequestId, enrich_error_response, inject_request_id, require_csrf_header};
 use crate::security::SecurityConfig;
 use crate::state::AppState;
@@ -37,6 +38,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     let mut router = Router::new()
         .nest("/api/v1", v1)
         .route("/api/health", get(health::check))
+        .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .fallback(fallback_handler);
 
     // CSRF protection — inject state and apply middleware

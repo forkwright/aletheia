@@ -5,15 +5,16 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use snafu::Snafu;
+use utoipa::ToSchema;
 
 /// Consistent error response envelope.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
     pub error: ErrorBody,
 }
 
 /// Error body returned in all error responses.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
     pub code: String,
     pub message: String,
@@ -102,10 +103,10 @@ impl From<aletheia_hermeneus::error::Error> for ApiError {
             Error::AuthFailed { message, .. } => Self::ServiceUnavailable {
                 message: format!("provider auth failed: {message}"),
             },
-            Error::ApiError { status, .. } if status == 429 => Self::RateLimited {
+            Error::ApiError { status: 429, .. } => Self::RateLimited {
                 retry_after_ms: 0,
             },
-            Error::ApiError { status, message, .. } if status == 503 => {
+            Error::ApiError { status: 503, message, .. } => {
                 Self::ServiceUnavailable { message }
             }
             _ => Self::Internal {

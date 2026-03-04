@@ -75,6 +75,7 @@ serde_yaml = "0.9"
 
 # HTTP
 axum = "0.8"
+utoipa = { version = "5", features = ["axum_extras"] }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "limit", "set-header"] }
