@@ -76,7 +76,7 @@ aletheia start    # from next time on
 
 ## Why Greek?
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](ALETHEIA.md) for philosophical grounding.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
 
 ---
 

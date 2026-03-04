@@ -4,7 +4,7 @@
 
 Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
 
-Dual-stack: Rust crates (target architecture) and TypeScript runtime (current production). Greek naming - modules and crates use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter).
+Dual-stack: Rust crates (target architecture) and TypeScript runtime (current production).
 
 ## Getting Started
 

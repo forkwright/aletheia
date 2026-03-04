@@ -24,7 +24,7 @@ These apply regardless of language.
 
 #### Gnomon System (Persistent Names)
 
-Module directories, agent identities, subsystems, and major features use Greek naming. Greek naming - modules and crates use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). Names identify modes of attention, not implementations. Pass the layer test (L1-L4). If no Greek word fits naturally, the mode of attention isn't clear yet - wait.
+Module directories, agent identities, subsystems, and major features follow the gnomon naming convention. Names identify essential natures, not implementations. Pass the layer test (L1-L4). If no Greek word fits naturally, the essential nature isn't clear yet - wait.
 
 Applies to: modules, agents, subsystems, features that persist.
 Does not apply to: variables, functions, test fixtures, temporary branches.
@@ -908,9 +908,9 @@ except Exception:  # swallowed
 
 ### Rule: Gnomon Naming Convention
 
-**What:** Persistent names for modules, subsystems, agents, and major components use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). Names identify modes of attention, pass the layer test (L1-L4), and compose with the existing name topology. See ALETHEIA.md for philosophical grounding.
+**What:** Persistent names for modules, subsystems, agents, and major components follow the gnomon naming convention. Names unconceal essential natures, pass the layer test (L1-L4), and compose with the existing name topology.
 
-**Why:** The naming system is not decoration. Names that identify the right mode of attention survive refactors, communicate architectural intent, and resist drift toward generic labels. A well-chosen name teaches you something about what it names.
+**Why:** The naming system is not decoration. Names that identify the right essential nature survive refactors, communicate architectural intent, and resist drift toward generic labels. A well-chosen name teaches you something about what it names.
 
 **Applies to:** Module directories, agent identities, subsystem names, major persistent features. Does *not* apply to: utility functions, variable names, temporary branches, test fixtures.
 
