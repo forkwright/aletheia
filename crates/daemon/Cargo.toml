@@ -1,7 +1,7 @@
 [package]
-name = "aletheia-daemon"
+name = "aletheia-oikonomos"
 version.workspace = true
-description = "Per-nous background task runner — cron scheduling, prosoche attention"
+description = "Oikonomos (the steward) — per-nous background task runner, cron scheduling, prosoche attention"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

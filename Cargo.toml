@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/aletheia",
     "crates/dianoia",
-    "crates/graph-builder",
     "crates/agora",
     "crates/daemon",
     "crates/hermeneus",
@@ -11,7 +10,6 @@ members = [
     "crates/koina",
     "crates/mneme",
     "crates/melete",
-    "crates/mneme-engine",
     "crates/nous",
     "crates/organon",
     "crates/pylon",
@@ -21,7 +19,6 @@ members = [
 ]
 exclude = [
     "tui",
-    "crates/mneme-bench",
 ]
 
 [workspace.package]

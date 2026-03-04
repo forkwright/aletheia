@@ -5,6 +5,24 @@
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
+#[cfg(feature = "mneme-engine")]
+#[allow(
+    unsafe_code,
+    dead_code,
+    private_interfaces,
+    unexpected_cfgs,
+    unused_imports,
+    unreachable_code,
+    unused_variables,
+    clippy::pedantic,
+    clippy::mutable_key_type,
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::non_canonical_partial_ord_impl,
+    clippy::neg_cmp_op_on_partial_ord,
+)]
+pub mod engine;
+
 #[cfg(feature = "sqlite")]
 pub mod backup;
 pub mod embedding;

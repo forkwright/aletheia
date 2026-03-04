@@ -174,7 +174,7 @@ pub struct HybridResult {
 /// All sync methods can be called directly; async wrappers use `spawn_blocking`.
 #[cfg(feature = "mneme-engine")]
 pub struct KnowledgeStore {
-    db: std::sync::Arc<aletheia_mneme_engine::Db>,
+    db: std::sync::Arc<crate::engine::Db>,
     dim: usize,
 }
 
@@ -191,7 +191,7 @@ impl KnowledgeStore {
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
-        let db = aletheia_mneme_engine::Db::open_mem().map_err(|e| {
+        let db = crate::engine::Db::open_mem().map_err(|e| {
             crate::error::EngineInitSnafu {
                 message: e.to_string(),
             }
@@ -206,7 +206,7 @@ impl KnowledgeStore {
     }
 
     fn init_schema(&self) -> crate::error::Result<()> {
-        use aletheia_mneme_engine::ScriptMutability;
+        use crate::engine::ScriptMutability;
         use std::collections::BTreeMap;
 
         for ddl in KNOWLEDGE_DDL {
@@ -269,11 +269,11 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert(
             "key".to_owned(),
-            aletheia_mneme_engine::DataValue::Str("schema".into()),
+            crate::engine::DataValue::Str("schema".into()),
         );
         params.insert(
             "version".to_owned(),
-            aletheia_mneme_engine::DataValue::from(Self::SCHEMA_VERSION),
+            crate::engine::DataValue::from(Self::SCHEMA_VERSION),
         );
         self.db
             .run(
@@ -304,7 +304,7 @@ impl KnowledgeStore {
         now: &str,
         limit: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use aletheia_mneme_engine::DataValue;
+        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -318,7 +318,7 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use aletheia_mneme_engine::DataValue;
+        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -347,8 +347,8 @@ impl KnowledgeStore {
     pub fn entity_neighborhood(
         &self,
         entity_id: &str,
-    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
-        use aletheia_mneme_engine::DataValue;
+    ) -> crate::error::Result<crate::engine::NamedRows> {
+        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -372,7 +372,7 @@ impl KnowledgeStore {
         k: i64,
         ef: i64,
     ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
-        use aletheia_mneme_engine::{Array1, DataValue, Vector};
+        use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -389,7 +389,7 @@ impl KnowledgeStore {
 
     /// Get the current schema version.
     pub fn schema_version(&self) -> crate::error::Result<i64> {
-        use aletheia_mneme_engine::DataValue;
+        use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -413,8 +413,8 @@ impl KnowledgeStore {
     pub fn run_query(
         &self,
         script: &str,
-        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
-    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
+    ) -> crate::error::Result<crate::engine::NamedRows> {
         self.run_read(script, params)
     }
 
@@ -428,10 +428,10 @@ impl KnowledgeStore {
     pub fn run_query_with_timeout(
         &self,
         script: &str,
-        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
         timeout: Option<std::time::Duration>,
-    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
-        use aletheia_mneme_engine::ScriptMutability;
+    ) -> crate::error::Result<crate::engine::NamedRows> {
+        use crate::engine::ScriptMutability;
         let script_with_timeout = match timeout {
             Some(d) => format!("{script}\n:timeout {}", d.as_secs_f64()),
             None => script.to_owned(),
@@ -456,9 +456,9 @@ impl KnowledgeStore {
     pub fn run_mut_query(
         &self,
         script: &str,
-        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
-    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
-        use aletheia_mneme_engine::ScriptMutability;
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
+    ) -> crate::error::Result<crate::engine::NamedRows> {
+        use crate::engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Mutable)
             .map_err(|e| {
@@ -474,7 +474,7 @@ impl KnowledgeStore {
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
-        use aletheia_mneme_engine::{Array1, DataValue, Vector};
+        use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
@@ -557,9 +557,9 @@ impl KnowledgeStore {
     fn run_mut(
         &self,
         script: &str,
-        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
     ) -> crate::error::Result<()> {
-        use aletheia_mneme_engine::ScriptMutability;
+        use crate::engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Mutable)
             .map(|_| ())
@@ -574,9 +574,9 @@ impl KnowledgeStore {
     fn run_read(
         &self,
         script: &str,
-        params: std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue>,
-    ) -> crate::error::Result<aletheia_mneme_engine::NamedRows> {
-        use aletheia_mneme_engine::ScriptMutability;
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
+    ) -> crate::error::Result<crate::engine::NamedRows> {
+        use crate::engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Immutable)
             .map_err(|e| {
@@ -593,8 +593,8 @@ impl KnowledgeStore {
 #[cfg(feature = "mneme-engine")]
 fn fact_to_params(
     fact: &crate::knowledge::Fact,
-) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
-    use aletheia_mneme_engine::DataValue;
+) -> std::collections::BTreeMap<String, crate::engine::DataValue> {
+    use crate::engine::DataValue;
     let mut p = std::collections::BTreeMap::new();
     p.insert("id".to_owned(), DataValue::Str(fact.id.as_str().into()));
     p.insert(
@@ -639,8 +639,8 @@ fn fact_to_params(
 #[cfg(feature = "mneme-engine")]
 fn entity_to_params(
     entity: &crate::knowledge::Entity,
-) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
-    use aletheia_mneme_engine::DataValue;
+) -> std::collections::BTreeMap<String, crate::engine::DataValue> {
+    use crate::engine::DataValue;
     let mut p = std::collections::BTreeMap::new();
     p.insert("id".to_owned(), DataValue::Str(entity.id.as_str().into()));
     p.insert(
@@ -669,8 +669,8 @@ fn entity_to_params(
 #[cfg(feature = "mneme-engine")]
 fn relationship_to_params(
     rel: &crate::knowledge::Relationship,
-) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
-    use aletheia_mneme_engine::DataValue;
+) -> std::collections::BTreeMap<String, crate::engine::DataValue> {
+    use crate::engine::DataValue;
     let mut p = std::collections::BTreeMap::new();
     p.insert("src".to_owned(), DataValue::Str(rel.src.as_str().into()));
     p.insert("dst".to_owned(), DataValue::Str(rel.dst.as_str().into()));
@@ -690,8 +690,8 @@ fn relationship_to_params(
 fn embedding_to_params(
     chunk: &crate::knowledge::EmbeddedChunk,
     _dim: usize,
-) -> std::collections::BTreeMap<String, aletheia_mneme_engine::DataValue> {
-    use aletheia_mneme_engine::{Array1, DataValue, Vector};
+) -> std::collections::BTreeMap<String, crate::engine::DataValue> {
+    use crate::engine::{Array1, DataValue, Vector};
     let mut p = std::collections::BTreeMap::new();
     p.insert("id".to_owned(), DataValue::Str(chunk.id.as_str().into()));
     p.insert(
@@ -725,7 +725,7 @@ fn embedding_to_params(
 // Columns: id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id
 #[cfg(feature = "mneme-engine")]
 fn rows_to_facts(
-    rows: aletheia_mneme_engine::NamedRows,
+    rows: crate::engine::NamedRows,
     nous_id: &str,
 ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
     use crate::knowledge::Fact;
@@ -817,7 +817,7 @@ fn rows_to_facts(
 // Parse rows from FACTS_AT_TIME into Vec<Fact> (partial — only has id, content, confidence, tier).
 #[cfg(feature = "mneme-engine")]
 fn rows_to_facts_partial(
-    rows: aletheia_mneme_engine::NamedRows,
+    rows: crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
     use crate::knowledge::Fact;
     let mut out = Vec::with_capacity(rows.rows.len());
@@ -868,7 +868,7 @@ fn rows_to_facts_partial(
 // Columns: id, content, source_type, source_id, dist
 #[cfg(feature = "mneme-engine")]
 fn rows_to_recall_results(
-    rows: aletheia_mneme_engine::NamedRows,
+    rows: crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
     use crate::knowledge::RecallResult;
     let mut out = Vec::with_capacity(rows.rows.len());
@@ -944,7 +944,7 @@ fn build_hybrid_query(q: &HybridQuery) -> String {
 // Columns: id (Str), rrf_score (Float), bm25_rank (Int), vec_rank (Int), graph_rank (Int)
 #[cfg(feature = "mneme-engine")]
 fn rows_to_hybrid_results(
-    rows: aletheia_mneme_engine::NamedRows,
+    rows: crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<HybridResult>> {
     let mut out = Vec::with_capacity(rows.rows.len());
     for row in rows.rows {
@@ -999,9 +999,9 @@ fn rows_to_hybrid_results(
 // --- DataValue extraction utilities ---
 
 #[cfg(feature = "mneme-engine")]
-fn extract_str(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<String> {
+fn extract_str(val: &crate::engine::DataValue) -> crate::error::Result<String> {
     match val {
-        aletheia_mneme_engine::DataValue::Str(s) => Ok(s.to_string()),
+        crate::engine::DataValue::Str(s) => Ok(s.to_string()),
         other => Err(crate::error::ConversionSnafu {
             message: format!("expected Str, got {other:?}"),
         }
@@ -1011,11 +1011,11 @@ fn extract_str(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<S
 
 #[cfg(feature = "mneme-engine")]
 fn extract_optional_str(
-    val: &aletheia_mneme_engine::DataValue,
+    val: &crate::engine::DataValue,
 ) -> crate::error::Result<Option<String>> {
     match val {
-        aletheia_mneme_engine::DataValue::Null => Ok(None),
-        aletheia_mneme_engine::DataValue::Str(s) => Ok(Some(s.to_string())),
+        crate::engine::DataValue::Null => Ok(None),
+        crate::engine::DataValue::Str(s) => Ok(Some(s.to_string())),
         other => Err(crate::error::ConversionSnafu {
             message: format!("expected Str or Null, got {other:?}"),
         }
@@ -1024,7 +1024,7 @@ fn extract_optional_str(
 }
 
 #[cfg(feature = "mneme-engine")]
-fn extract_float(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<f64> {
+fn extract_float(val: &crate::engine::DataValue) -> crate::error::Result<f64> {
     val.get_float().ok_or_else(|| {
         crate::error::ConversionSnafu {
             message: format!("expected Num(Float), got {val:?}"),
@@ -1034,7 +1034,7 @@ fn extract_float(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result
 }
 
 #[cfg(feature = "mneme-engine")]
-fn extract_int(val: &aletheia_mneme_engine::DataValue) -> crate::error::Result<i64> {
+fn extract_int(val: &crate::engine::DataValue) -> crate::error::Result<i64> {
     val.get_int().ok_or_else(|| {
         crate::error::ConversionSnafu {
             message: format!("expected Num(Int), got {val:?}"),

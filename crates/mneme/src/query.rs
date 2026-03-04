@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use aletheia_mneme_engine::DataValue;
+use crate::engine::DataValue;
 
 /// Datalog field reference. Implemented by per-relation field enums.
 pub trait Field: Copy {

@@ -1,6 +1,6 @@
-//! aletheia-daemon — per-nous background task runner
+//! aletheia-oikonomos — per-nous background task runner
 //!
-//! Daemon (δαίμων) — "attendant spirit." The quiet persistent presence that
+//! Oikonomos (οἰκονόμος) — "the steward." The quiet persistent presence that
 //! keeps things running in the background. Manages scheduled tasks, periodic
 //! attention checks (prosoche), and maintenance cycles for each nous.
 

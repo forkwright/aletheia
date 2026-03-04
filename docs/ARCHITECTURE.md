@@ -35,7 +35,7 @@ aletheia
 ├── agora         — channel registry + ChannelProvider trait
 │   ├── semeion   — Signal (signal-cli subprocess)
 │   └── slack     — Slack (raw API + WebSocket)
-├── daemon        — per-nous background tasks, cron, evolution, prosoche
+├── daemon           — oikonomos: per-nous background tasks, cron, evolution, prosoche
 ├── melete        — distillation, reflection, memory flush, consolidation
 ├── prostheke     — WASM plugin host (wasmtime)                         [planned: M5]
 └── autarkeia     — agent export/import                                 [planned: M5]
@@ -105,7 +105,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Rust Crate Workspace
 
-Application crates in `crates/`, plus support crates (`graph-builder`, `integration-tests`, `mneme-bench`).
+Application crates in `crates/`, plus the `integration-tests` support crate.
 
 ### Crates
 
@@ -113,27 +113,24 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 |-------|--------|------------|
 | `koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
 | `taxis` | Config loading (figment YAML cascade), path resolution, oikos hierarchy | koina |
-| `mneme-engine` | CozoDB embedded database: vectors, graph, relations, bi-temporal facts | nothing (vendored) |
-| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval | koina, mneme-engine (optional) |
+| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval. Includes vendored CozoDB engine behind `mneme-engine` feature gate. | koina |
 | `hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
 | `organon` | Tool registry, tool definitions, built-in tool set | koina, hermeneus |
 | `symbolon` | JWT tokens, password hashing, RBAC policies | nothing (leaf) |
 | `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
-| `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
+| `oikonomos` | Background task scheduling, cron jobs, lifecycle events | koina |
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia |
+| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia |
 
 **Support crates** (not part of the application dependency graph):
 
 | Crate | Domain | Depends On |
 |-------|--------|------------|
-| `graph-builder` | CSR graph construction for mneme-engine | nothing (standalone) |
 | `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
-| `mneme-bench` | CozoDB benchmark harness | nothing (standalone, excluded from workspace) |
 
 ### Dependency Graph
 
@@ -149,17 +146,15 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
             | hermeneus mneme
             |    |       |
             koina koina  koina
-                         |
-                    mneme-engine (optional)
 ```
 
 **Layer rules:**
-- **Leaf** (no workspace deps): `koina`, `symbolon`, `mneme-engine`, `graph-builder`
-- **Low** (leaf deps only): `taxis`, `hermeneus`, `melete`, `agora`, `mneme`
-- **Mid**: `organon` (koina + hermeneus), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
+- **Leaf** (no workspace deps): `koina`, `symbolon`
+- **Low** (leaf deps only): `taxis`, `hermeneus`, `melete`, `agora`, `mneme` (includes vendored CozoDB engine behind feature gate)
+- **Mid**: `organon` (koina + hermeneus), `oikonomos` (koina), `dianoia` (koina), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous)
 - **Top**: `aletheia` binary
-- **Support**: `integration-tests`, `mneme-bench`
+- **Support**: `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
@@ -200,13 +195,13 @@ All modules in `infrastructure/runtime/src/`:
 | `semeion` | Signal client, listener, commands, TTS |
 | `pylon` | Hono HTTP gateway, MCP, Web UI routes |
 | `prostheke` | Plugin system, lifecycle hooks |
-| `daemon` | Cron scheduler, watchdog, update checker |
+| `oikonomos` | Cron scheduler, watchdog, update checker |
 | `portability` | Agent import/export (AgentFile format) |
 
 ### Initialization Order
 
 ```text
-taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon
+taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → oikonomos
                                            ↑
                                      (semeion and pylon wired at runtime start)
 ```
@@ -220,15 +215,15 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 | `mneme` | `koina`, `taxis` | everything else |
 | `hermeneus` | `koina`, `taxis` | everything else |
 | `organon` | `koina`, `taxis`, `hermeneus` | everything else |
-| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `melete`, `portability` | `semeion`, `pylon`, `prostheke`, `daemon`, `dianoia`, `symbolon` |
+| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `melete`, `portability` | `semeion`, `pylon`, `prostheke`, `oikonomos`, `dianoia`, `symbolon` |
 | `melete` | `koina`, `taxis`, `mneme`, `hermeneus` | everything else |
 | `symbolon` | `koina` | everything else (stateless utilities) |
-| `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `daemon` |
+| `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `oikonomos` |
 | `agora` | `koina`, `taxis`, `semeion` | everything else |
-| `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `daemon` |
-| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `daemon` | `prostheke`, `melete`, `portability` |
+| `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `oikonomos` |
+| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `oikonomos` | `prostheke`, `melete`, `portability` |
 | `prostheke` | `koina`, `organon` | everything else |
-| `daemon` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` | everything else |
+| `oikonomos` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` | everything else |
 | `portability` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | everything else |
 
 ---
@@ -275,8 +270,8 @@ opt-level = 2      # optimize deps in dev — faster iteration
 
 - **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
 - **symbolon is zero-dependency** in both stacks. Takes `Database.Database` as constructor argument in TS.
-- **mneme-engine is vendored.** CozoDB absorbed into workspace. Optional dependency of `mneme`.
+- **CozoDB engine is vendored** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
-- **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
+- **oikonomos depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
 - **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.

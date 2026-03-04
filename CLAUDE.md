@@ -31,7 +31,7 @@ cargo build                            # Debug build
 cargo build --release                  # Release (LTO, stripped)
 cargo test --workspace                 # All tests
 cargo test -p aletheia-hermeneus       # Single crate
-cargo clippy --workspace --exclude aletheia-mneme-engine  # Lint (zero warnings; mneme-engine excluded -- vendored CozoDB)
+cargo clippy --workspace                                  # Lint (zero warnings)
 ```
 
 ### TypeScript
@@ -77,7 +77,7 @@ aletheia doctor                        # Validate config
 
 ### Rust
 1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace --exclude aletheia-mneme-engine` - zero warnings
+2. `cargo clippy --workspace` - zero warnings
 3. No `unwrap()` in library code
 4. New errors use snafu with context
 5. All lint suppressions use `#[expect]` with reason, not `#[allow]`

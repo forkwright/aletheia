@@ -19,7 +19,7 @@ default = []
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
 
 [dependencies]
-aletheia-daemon = { path = "../daemon" }
+aletheia-oikonomos = { path = "../daemon" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-hermeneus = { path = "../hermeneus" }
