@@ -28,10 +28,12 @@ impl ProjectWorkspace {
         let root = root.into();
         let layout = Self::build_layout(&root);
 
-        for dir in [&layout.phases_dir, &layout.blockers_dir, &layout.artifacts_dir] {
-            std::fs::create_dir_all(dir).context(error::WorkspaceIoSnafu {
-                path: dir.clone(),
-            })?;
+        for dir in [
+            &layout.phases_dir,
+            &layout.blockers_dir,
+            &layout.artifacts_dir,
+        ] {
+            std::fs::create_dir_all(dir).context(error::WorkspaceIoSnafu { path: dir.clone() })?;
         }
 
         Ok(Self { root })
@@ -102,10 +104,9 @@ impl ProjectWorkspace {
         }
 
         let mut blockers = Vec::new();
-        let entries =
-            std::fs::read_dir(&phase_blockers).context(error::WorkspaceIoSnafu {
-                path: &phase_blockers,
-            })?;
+        let entries = std::fs::read_dir(&phase_blockers).context(error::WorkspaceIoSnafu {
+            path: &phase_blockers,
+        })?;
 
         for entry in entries {
             let entry = entry.context(error::WorkspaceIoSnafu {
@@ -113,14 +114,9 @@ impl ProjectWorkspace {
             })?;
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "md") {
-                let content =
-                    std::fs::read_to_string(&path).context(error::WorkspaceIoSnafu {
-                        path: &path,
-                    })?;
-                let plan_id_str = path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+                let content = std::fs::read_to_string(&path)
+                    .context(error::WorkspaceIoSnafu { path: &path })?;
+                let plan_id_str = path.file_stem().unwrap_or_default().to_string_lossy();
 
                 blockers.push(Blocker {
                     description: content,

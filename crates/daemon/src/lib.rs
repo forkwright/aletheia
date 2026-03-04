@@ -4,6 +4,7 @@
 //! keeps things running in the background. Manages scheduled tasks, periodic
 //! attention checks (prosoche), and maintenance cycles for each nous.
 
+pub mod bridge;
 pub mod error;
 pub mod prosoche;
 pub mod runner;

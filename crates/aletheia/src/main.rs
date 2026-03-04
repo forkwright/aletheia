@@ -1,5 +1,6 @@
 //! Aletheia cognitive agent runtime — binary entrypoint.
 
+mod daemon_bridge;
 mod dispatch;
 
 use std::path::PathBuf;
@@ -8,7 +9,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use tracing::{info, warn};
+use tracing::{Instrument, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
 use aletheia_agora::listener::ChannelListener;
@@ -22,6 +23,7 @@ use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
+use aletheia_nous::cross::CrossNousRouter;
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::builtins;
 use aletheia_organon::registry::ToolRegistry;
@@ -80,7 +82,10 @@ async fn main() -> Result<()> {
     serve(cli).await
 }
 
-#[expect(clippy::too_many_lines, reason = "binary entrypoint — sequential init steps")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "binary entrypoint — sequential init steps"
+)]
 async fn serve(cli: Cli) -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
@@ -149,6 +154,9 @@ async fn serve(cli: Cli) -> Result<()> {
         "embedding provider created"
     );
 
+    // Cross-nous router for inter-agent messaging
+    let cross_router = Arc::new(CrossNousRouter::default());
+
     // Spawn nous actors
     // vector_search is None until Phase 2 (prompt 28) lands KnowledgeVectorSearch
     let mut nous_manager = NousManager::new(
@@ -159,6 +167,7 @@ async fn serve(cli: Cli) -> Result<()> {
         None,
         Some(Arc::clone(&session_store)),
         Arc::clone(&packs),
+        Some(Arc::clone(&cross_router)),
     );
 
     if config.agents.list.is_empty() {
@@ -190,7 +199,13 @@ async fn serve(cli: Cli) -> Result<()> {
                 domains,
             };
             nous_manager
-                .spawn(nous_config, PipelineConfig::default())
+                .spawn(
+                    nous_config,
+                    PipelineConfig {
+                        extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
+                        ..PipelineConfig::default()
+                    },
+                )
                 .await;
         }
         info!(count = nous_manager.count(), "nous actors spawned");
@@ -199,8 +214,49 @@ async fn serve(cli: Cli) -> Result<()> {
     // Wrap in Arc — shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
-    // Channel registry + inbound dispatch
-    let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(&config, &nous_manager);
+    // Signal ready — all actors spawned, safe to accept inbound messages
+    nous_manager.ready();
+
+    // Channel registry + inbound dispatch (gated on ready signal)
+    let ready_rx = nous_manager.ready_rx();
+    let (_channel_registry, _dispatch_handle) =
+        start_inbound_dispatch(&config, &nous_manager, ready_rx);
+
+    // Daemon runners — per-agent background task scheduling
+    let (daemon_shutdown_tx, _) = tokio::sync::watch::channel(false);
+    let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
+        &nous_manager,
+    )));
+    for agent_def in &config.agents.list {
+        let mut runner = aletheia_daemon::runner::TaskRunner::with_bridge(
+            agent_def.id.clone(),
+            daemon_shutdown_tx.subscribe(),
+            daemon_bridge.clone(),
+        );
+        runner.register(aletheia_daemon::schedule::TaskDef {
+            id: format!("{}-prosoche", agent_def.id),
+            name: "Prosoche attention check".to_owned(),
+            nous_id: agent_def.id.clone(),
+            schedule: aletheia_daemon::schedule::Schedule::Interval(
+                std::time::Duration::from_secs(45 * 60),
+            ),
+            action: aletheia_daemon::schedule::TaskAction::Builtin(
+                aletheia_daemon::schedule::BuiltinTask::Prosoche,
+            ),
+            enabled: true,
+            active_window: Some((8, 23)),
+        });
+        let span = tracing::info_span!("daemon", nous.id = %agent_def.id);
+        tokio::spawn(
+            async move {
+                runner.run().await;
+            }
+            .instrument(span),
+        );
+    }
+    if !config.agents.list.is_empty() {
+        info!(count = config.agents.list.len(), "daemon runners spawned");
+    }
 
     // Pylon HTTP gateway — shares registries with NousManager
     let state = Arc::new(AppState {
@@ -228,6 +284,7 @@ async fn serve(cli: Cli) -> Result<()> {
         .context("server error")?;
 
     info!("shutting down");
+    let _ = daemon_shutdown_tx.send(true);
     state.nous_manager.shutdown_readonly().await;
     info!("shutdown complete");
 
@@ -270,6 +327,7 @@ fn build_tool_registry() -> Result<ToolRegistry> {
 fn start_inbound_dispatch(
     config: &aletheia_taxis::config::AletheiaConfig,
     nous_manager: &Arc<NousManager>,
+    ready_rx: tokio::sync::watch::Receiver<bool>,
 ) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
     let mut channel_registry = ChannelRegistry::new();
 
@@ -300,6 +358,7 @@ fn start_inbound_dispatch(
             router,
             Arc::clone(nous_manager),
             Arc::clone(&channel_registry),
+            ready_rx,
         ))
     } else {
         None

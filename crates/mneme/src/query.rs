@@ -243,7 +243,8 @@ impl PutBuilder {
     /// literal like `"\"9999-12-31\""`, etc. Required for multi-row puts where
     /// different rows bind different params (e.g. `SUPERSEDE_FACT`).
     pub fn row(mut self, exprs: &[&str]) -> Self {
-        self.rows.push(exprs.iter().map(|s| (*s).to_owned()).collect());
+        self.rows
+            .push(exprs.iter().map(|s| (*s).to_owned()).collect());
         self
     }
 
@@ -253,11 +254,7 @@ impl PutBuilder {
     /// names (convention: `$field_name` for each field).
     pub fn done(mut self) -> QueryBuilder {
         if self.rows.is_empty() {
-            let auto_row: Vec<String> = self
-                .all_fields
-                .iter()
-                .map(|f| format!("${f}"))
-                .collect();
+            let auto_row: Vec<String> = self.all_fields.iter().map(|f| format!("${f}")).collect();
             self.rows.push(auto_row);
         }
 
@@ -274,7 +271,11 @@ impl PutBuilder {
         let value_fields: Vec<&str> = self.all_fields[self.key_count..].to_vec();
 
         let put_clause = if value_fields.is_empty() {
-            format!(":put {} {{{}}}", self.relation.name(), key_fields.join(", "))
+            format!(
+                ":put {} {{{}}}",
+                self.relation.name(),
+                key_fields.join(", ")
+            )
         } else {
             format!(
                 ":put {} {{{} => {}}}",
@@ -701,7 +702,10 @@ mod tests {
             .build();
 
         assert!(script.contains("$val"), "script must reference $val");
-        assert!(!script.contains("42"), "script must not contain literal value");
+        assert!(
+            !script.contains("42"),
+            "script must not contain literal value"
+        );
         assert!(params.contains_key("val"));
     }
 
@@ -713,7 +717,10 @@ mod tests {
             .param("id", DataValue::Str("evil}; :rm facts".into()))
             .build();
 
-        assert!(!script.contains("evil}"), "injection payload must not appear in script");
+        assert!(
+            !script.contains("evil}"),
+            "injection payload must not appear in script"
+        );
         assert!(params.contains_key("id"));
     }
 
@@ -774,7 +781,14 @@ mod tests {
         assert_eq!(facts_ddl_fields.as_slice(), facts_enum_fields.as_slice());
 
         // Entities DDL fields
-        let entities_ddl = ["id", "name", "entity_type", "aliases", "created_at", "updated_at"];
+        let entities_ddl = [
+            "id",
+            "name",
+            "entity_type",
+            "aliases",
+            "created_at",
+            "updated_at",
+        ];
         let entities_enum: Vec<&str> = [
             EntitiesField::Id,
             EntitiesField::Name,

@@ -64,6 +64,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         None,
         Some(Arc::clone(&session_store)),
         Arc::new(vec![]),
+        None,
     );
     let nous_config = NousConfig::default();
     nous_manager

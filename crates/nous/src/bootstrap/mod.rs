@@ -732,9 +732,11 @@ mod tests {
             .assemble_with_extra("test", &mut budget, extra)
             .unwrap();
         assert!(result.system_prompt.contains("Domain logic from pack."));
-        assert!(result
-            .sections_included
-            .contains(&"[pack] LOGIC.md".to_owned()));
+        assert!(
+            result
+                .sections_included
+                .contains(&"[pack] LOGIC.md".to_owned())
+        );
         assert_eq!(result.sections_included.len(), 2);
     }
 

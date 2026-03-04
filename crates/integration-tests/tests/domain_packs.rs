@@ -7,9 +7,9 @@ use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
 use aletheia_hermeneus::types::{
     CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
 };
+use aletheia_koina::id::ToolName;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
-use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolCategory;
 use aletheia_taxis::oikos::Oikos;
@@ -110,7 +110,10 @@ context:
   - path: context/DOMAIN_KNOWLEDGE.md
     priority: important
 "#,
-        &[("context/DOMAIN_KNOWLEDGE.md", "Engagements flow into cases which flow into journeys.")],
+        &[(
+            "context/DOMAIN_KNOWLEDGE.md",
+            "Engagements flow into cases which flow into journeys.",
+        )],
     );
 
     let packs = load_packs(&[pack_dir.path().to_path_buf()]);
@@ -127,6 +130,7 @@ context:
         None,
         None,
         Arc::new(packs),
+        None,
     );
 
     let config = NousConfig {
@@ -196,7 +200,10 @@ tools:
 }
 
 #[tokio::test]
-#[expect(clippy::too_many_lines, reason = "integration test requires two full agent setups")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "integration test requires two full agent setups"
+)]
 async fn domain_tagged_sections_reach_correct_agents() {
     let oikos_dir = tempfile::TempDir::new().expect("tmpdir");
     let pack_dir = tempfile::TempDir::new().expect("tmpdir");
@@ -226,7 +233,10 @@ overlays:
 "#,
         &[
             ("context/GENERAL.md", "General knowledge for all agents."),
-            ("context/HEALTHCARE.md", "HIPAA compliance requires encryption at rest."),
+            (
+                "context/HEALTHCARE.md",
+                "HIPAA compliance requires encryption at rest.",
+            ),
         ],
     );
 
@@ -250,6 +260,7 @@ overlays:
         None,
         None,
         Arc::new(packs.clone()),
+        None,
     );
 
     let chiron_config = NousConfig {
@@ -280,6 +291,7 @@ overlays:
         None,
         None,
         Arc::new(packs),
+        None,
     );
 
     let hermes_config = NousConfig {
@@ -348,8 +360,11 @@ fn missing_pack_warns_not_crashes() {
 #[test]
 fn invalid_manifest_skips_gracefully() {
     let bad_dir = tempfile::TempDir::new().expect("tmpdir");
-    std::fs::write(bad_dir.path().join("pack.yaml"), "this: [is: not: valid: yaml: {{}}")
-        .expect("write bad yaml");
+    std::fs::write(
+        bad_dir.path().join("pack.yaml"),
+        "this: [is: not: valid: yaml: {{}}",
+    )
+    .expect("write bad yaml");
 
     let packs = load_packs(&[bad_dir.path().to_path_buf()]);
     assert!(packs.is_empty());

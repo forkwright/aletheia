@@ -8,6 +8,8 @@ use aletheia_mneme::store::SessionStore;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, info, instrument, warn};
 
+use crate::cross::CrossNousEnvelope;
+
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::embedding::EmbeddingProvider;
@@ -34,6 +36,7 @@ pub struct NousActor {
     config: NousConfig,
     pipeline_config: PipelineConfig,
     inbox: mpsc::Receiver<NousMessage>,
+    cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     lifecycle: NousLifecycle,
     sessions: HashMap<String, SessionState>,
     active_session: Option<String>,
@@ -58,6 +61,7 @@ impl NousActor {
         config: NousConfig,
         pipeline_config: PipelineConfig,
         inbox: mpsc::Receiver<NousMessage>,
+        cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
         oikos: Arc<Oikos>,
@@ -71,6 +75,7 @@ impl NousActor {
             config,
             pipeline_config,
             inbox,
+            cross_rx,
             lifecycle: NousLifecycle::Idle,
             sessions: HashMap::new(),
             active_session: None,
@@ -89,32 +94,64 @@ impl NousActor {
     pub async fn run(mut self) {
         info!(lifecycle = %self.lifecycle, "actor started");
 
-        while let Some(msg) = self.inbox.recv().await {
-            match msg {
-                NousMessage::Turn {
-                    session_key,
-                    content,
-                    reply,
+        loop {
+            tokio::select! {
+                msg = self.inbox.recv() => {
+                    let Some(msg) = msg else { break };
+                    match msg {
+                        NousMessage::Turn {
+                            session_key,
+                            content,
+                            reply,
+                        } => {
+                            self.handle_turn(session_key, content, reply).await;
+                        }
+                        NousMessage::Status { reply } => {
+                            self.handle_status(reply);
+                        }
+                        NousMessage::Sleep => {
+                            self.handle_sleep();
+                        }
+                        NousMessage::Wake => {
+                            self.handle_wake();
+                        }
+                        NousMessage::Shutdown => {
+                            info!("shutdown requested");
+                            break;
+                        }
+                    }
+                }
+                envelope = async {
+                    match self.cross_rx.as_mut() {
+                        Some(rx) => rx.recv().await,
+                        None => std::future::pending().await,
+                    }
                 } => {
-                    self.handle_turn(session_key, content, reply).await;
-                }
-                NousMessage::Status { reply } => {
-                    self.handle_status(reply);
-                }
-                NousMessage::Sleep => {
-                    self.handle_sleep();
-                }
-                NousMessage::Wake => {
-                    self.handle_wake();
-                }
-                NousMessage::Shutdown => {
-                    info!("shutdown requested");
-                    break;
+                    if let Some(envelope) = envelope {
+                        self.handle_cross_message(envelope).await;
+                    }
                 }
             }
         }
 
         info!(lifecycle = %self.lifecycle, "actor stopped");
+    }
+
+    async fn handle_cross_message(&mut self, envelope: CrossNousEnvelope) {
+        let from = &envelope.message.from;
+        let session_key = format!("cross:{from}");
+        let content = envelope.message.content.clone();
+
+        debug!(from = %from, session_key = %session_key, "processing cross-nous message");
+
+        match self.execute_turn(&session_key, &content).await {
+            Ok(result) => {
+                debug!(from = %from, content_len = result.content.len(), "cross-nous turn completed");
+            }
+            Err(e) => {
+                warn!(from = %from, error = %e, "cross-nous turn failed");
+            }
+        }
     }
 
     async fn handle_turn(
@@ -132,6 +169,10 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self.execute_turn(&session_key, &content).await;
+
+        if let Ok(ref turn_result) = result {
+            self.maybe_spawn_extraction(&content, &turn_result.content);
+        }
 
         self.active_session = None;
         self.lifecycle = NousLifecycle::Idle;
@@ -202,6 +243,34 @@ impl NousActor {
         let _ = reply.send(status);
     }
 
+    fn maybe_spawn_extraction(&self, user_content: &str, assistant_content: &str) {
+        let Some(ref extraction_config) = self.pipeline_config.extraction else {
+            return;
+        };
+        if !extraction_config.enabled {
+            return;
+        }
+
+        let content_len = user_content.len() + assistant_content.len();
+        if content_len < extraction_config.min_message_length {
+            return;
+        }
+
+        let config = extraction_config.clone();
+        let providers = Arc::clone(&self.providers);
+        let nous_id = self.id.clone();
+        let user = user_content.to_owned();
+        let assistant = assistant_content.to_owned();
+        let span = tracing::info_span!("extraction", nous.id = %nous_id);
+
+        tokio::spawn(
+            async move {
+                run_extraction(&config, providers, &nous_id, &user, &assistant);
+            }
+            .instrument(span),
+        );
+    }
+
     fn handle_sleep(&mut self) {
         match self.lifecycle {
             NousLifecycle::Idle => {
@@ -230,6 +299,46 @@ impl NousActor {
     }
 }
 
+/// Run extraction as a background task. Logs results, never panics.
+fn run_extraction(
+    config: &aletheia_mneme::extract::ExtractionConfig,
+    providers: Arc<ProviderRegistry>,
+    nous_id: &str,
+    user_content: &str,
+    assistant_content: &str,
+) {
+    use aletheia_mneme::extract::{ConversationMessage, ExtractionEngine};
+
+    let engine = ExtractionEngine::new(config.clone());
+    let provider = crate::extraction::HermeneusExtractionProvider::new(providers, &config.model);
+
+    let messages = vec![
+        ConversationMessage {
+            role: "user".to_owned(),
+            content: user_content.to_owned(),
+        },
+        ConversationMessage {
+            role: "assistant".to_owned(),
+            content: assistant_content.to_owned(),
+        },
+    ];
+
+    match engine.extract(&messages, &provider) {
+        Ok(extraction) => {
+            info!(
+                nous_id = %nous_id,
+                entities = extraction.entities.len(),
+                relationships = extraction.relationships.len(),
+                facts = extraction.facts.len(),
+                "extraction completed"
+            );
+        }
+        Err(e) => {
+            warn!(nous_id = %nous_id, error = %e, "extraction failed");
+        }
+    }
+}
+
 /// Spawn a nous actor, returning its handle and join handle.
 ///
 /// Creates a bounded channel with [`DEFAULT_INBOX_CAPACITY`], builds the actor,
@@ -248,6 +357,7 @@ pub fn spawn(
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
     extra_bootstrap: Vec<BootstrapSection>,
+    cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
 ) -> (NousHandle, tokio::task::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.clone();
@@ -258,6 +368,7 @@ pub fn spawn(
         config,
         pipeline_config,
         rx,
+        cross_rx,
         providers,
         tools,
         oikos,
@@ -364,6 +475,7 @@ mod tests {
             None,
             None,
             Vec::new(),
+            None,
         );
         (handle, join, dir)
     }

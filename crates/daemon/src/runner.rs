@@ -1,11 +1,13 @@
 //! Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tokio::sync::watch;
 
+use crate::bridge::DaemonBridge;
 use crate::error::{self, Result};
 use crate::prosoche::ProsocheCheck;
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
@@ -15,6 +17,7 @@ pub struct TaskRunner {
     nous_id: String,
     tasks: Vec<RegisteredTask>,
     shutdown: watch::Receiver<bool>,
+    bridge: Option<Arc<dyn DaemonBridge>>,
 }
 
 struct RegisteredTask {
@@ -38,6 +41,21 @@ impl TaskRunner {
             nous_id: nous_id.into(),
             tasks: Vec::new(),
             shutdown,
+            bridge: None,
+        }
+    }
+
+    /// Create a runner with a bridge for nous communication.
+    pub fn with_bridge(
+        nous_id: impl Into<String>,
+        shutdown: watch::Receiver<bool>,
+        bridge: Arc<dyn DaemonBridge>,
+    ) -> Self {
+        Self {
+            nous_id: nous_id.into(),
+            tasks: Vec::new(),
+            shutdown,
+            bridge: Some(bridge),
         }
     }
 
@@ -122,7 +140,8 @@ impl TaskRunner {
                 continue;
             }
 
-            let result = execute_action(&task.def.action, &task.def.nous_id).await;
+            let result =
+                execute_action(&task.def.action, &task.def.nous_id, self.bridge.as_ref()).await;
             task.last_run = Some(now);
 
             match result {
@@ -161,7 +180,11 @@ impl TaskRunner {
     }
 }
 
-async fn execute_action(action: &TaskAction, nous_id: &str) -> Result<ExecutionResult> {
+async fn execute_action(
+    action: &TaskAction,
+    nous_id: &str,
+    bridge: Option<&Arc<dyn DaemonBridge>>,
+) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
         TaskAction::Tool { name, .. } => {
@@ -176,17 +199,20 @@ async fn execute_action(action: &TaskAction, nous_id: &str) -> Result<ExecutionR
             })
         }
         TaskAction::Prompt(prompt) => {
-            tracing::info!(
-                nous_id = %nous_id,
-                prompt_len = prompt.len(),
-                "prompt injection not yet wired — requires nous pipeline access"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
+            if let Some(bridge) = bridge {
+                bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
+            } else {
+                tracing::warn!(
+                    nous_id = %nous_id,
+                    "prompt action skipped — no daemon bridge configured"
+                );
+                Ok(ExecutionResult {
+                    success: false,
+                    output: Some("no bridge configured".to_owned()),
+                })
+            }
         }
-        TaskAction::Builtin(builtin) => execute_builtin(builtin, nous_id).await,
+        TaskAction::Builtin(builtin) => execute_builtin(builtin, nous_id, bridge).await,
     }
 }
 
@@ -223,11 +249,30 @@ async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
     }
 }
 
-async fn execute_builtin(builtin: &BuiltinTask, nous_id: &str) -> Result<ExecutionResult> {
+async fn execute_builtin(
+    builtin: &BuiltinTask,
+    nous_id: &str,
+    bridge: Option<&Arc<dyn DaemonBridge>>,
+) -> Result<ExecutionResult> {
     match builtin {
         BuiltinTask::Prosoche => {
             let check = ProsocheCheck::new(nous_id);
             let result = check.run().await?;
+
+            if !result.items.is_empty() {
+                if let Some(bridge) = bridge {
+                    let summary: Vec<String> = result
+                        .items
+                        .iter()
+                        .map(|item| format!("- [{}] {}", item.category_label(), item.summary))
+                        .collect();
+                    let prompt = format!("Prosoche attention check:\n{}", summary.join("\n"));
+                    let _ = bridge
+                        .send_prompt(nous_id, "daemon:prosoche", &prompt)
+                        .await;
+                }
+            }
+
             Ok(ExecutionResult {
                 success: true,
                 output: Some(format!("{} items", result.items.len())),
@@ -316,9 +361,7 @@ mod tests {
             name: "Failing task".to_owned(),
             nous_id: "test-nous".to_owned(),
             schedule: Schedule::Interval(Duration::from_millis(10)),
-            action: TaskAction::Command(
-                "exit 1".to_owned(),
-            ),
+            action: TaskAction::Command("exit 1".to_owned()),
             enabled: true,
             active_window: None,
         };
@@ -338,7 +381,10 @@ mod tests {
         }
 
         let statuses = runner.status();
-        assert!(!statuses[0].enabled, "task should be disabled after 3 failures");
+        assert!(
+            !statuses[0].enabled,
+            "task should be disabled after 3 failures"
+        );
         assert_eq!(statuses[0].consecutive_failures, 3);
     }
 

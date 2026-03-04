@@ -72,10 +72,7 @@ impl ToolExecutor for ShellToolExecutor {
                             let _ = child.kill();
                             let _ = child.wait();
                             return Ok(ToolResult {
-                                content: format!(
-                                    "command timed out after {}ms",
-                                    self.timeout_ms
-                                ),
+                                content: format!("command timed out after {}ms", self.timeout_ms),
                                 is_error: true,
                             });
                         }
@@ -125,10 +122,7 @@ impl ToolExecutor for ShellToolExecutor {
 ///
 /// Validates each tool's command path and schema, then registers it.
 /// Invalid tools are skipped with warnings; errors are collected and returned.
-pub fn register_pack_tools(
-    packs: &[LoadedPack],
-    registry: &mut ToolRegistry,
-) -> Vec<error::Error> {
+pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) -> Vec<error::Error> {
     let mut errors = Vec::new();
 
     for pack in packs {
@@ -426,7 +420,10 @@ mod tests {
             result.properties["limit"].property_type,
             PropertyType::Integer
         );
-        assert_eq!(result.properties["limit"].default, Some(serde_json::json!(100)));
+        assert_eq!(
+            result.properties["limit"].default,
+            Some(serde_json::json!(100))
+        );
         assert_eq!(result.required, vec!["sql"]);
     }
 

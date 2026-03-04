@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use aletheia_mneme::store::SessionStore;
 use aletheia_thesauros::loader::LoadedPack;
 
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -37,11 +38,18 @@ pub struct NousManager {
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
     packs: Arc<Vec<LoadedPack>>,
+    router: Option<Arc<crate::cross::CrossNousRouter>>,
+    ready_tx: watch::Sender<bool>,
+    ready_rx: watch::Receiver<bool>,
 }
 
 impl NousManager {
     /// Create a new manager with shared dependencies.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "runtime init requires all shared dependencies"
+    )]
     pub fn new(
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
@@ -50,7 +58,9 @@ impl NousManager {
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
         packs: Arc<Vec<LoadedPack>>,
+        router: Option<Arc<crate::cross::CrossNousRouter>>,
     ) -> Self {
+        let (ready_tx, ready_rx) = watch::channel(false);
         Self {
             actors: HashMap::new(),
             providers,
@@ -60,7 +70,28 @@ impl NousManager {
             vector_search,
             session_store,
             packs,
+            router,
+            ready_tx,
+            ready_rx,
         }
+    }
+
+    /// Signal that all actors are spawned and the system is ready for inbound messages.
+    pub fn ready(&self) {
+        let _ = self.ready_tx.send(true);
+        info!(count = self.actors.len(), "system ready");
+    }
+
+    /// Subscribe to the ready signal.
+    #[must_use]
+    pub fn ready_rx(&self) -> watch::Receiver<bool> {
+        self.ready_rx.clone()
+    }
+
+    /// Access the cross-nous router, if configured.
+    #[must_use]
+    pub fn router(&self) -> Option<&Arc<crate::cross::CrossNousRouter>> {
+        self.router.as_ref()
     }
 
     /// Spawn a new nous actor and return its handle.
@@ -84,14 +115,21 @@ impl NousManager {
             let estimator = CharEstimator;
             let mut sections = Vec::new();
             for pack in self.packs.iter() {
-                let agent_sections =
-                    pack.sections_for_agent_or_domains(&id, &config.domains);
+                let agent_sections = pack.sections_for_agent_or_domains(&id, &config.domains);
                 sections.extend(pack_sections_to_bootstrap(&agent_sections, &estimator));
             }
             if !sections.is_empty() {
                 info!(nous_id = %id, sections = sections.len(), "domain pack sections resolved");
             }
             sections
+        };
+
+        let cross_rx = if let Some(ref router) = self.router {
+            let (cross_tx, cross_rx) = tokio::sync::mpsc::channel(32);
+            router.register(&id, cross_tx).await;
+            Some(cross_rx)
+        } else {
+            None
         };
 
         let (handle, join_handle) = actor::spawn(
@@ -104,6 +142,7 @@ impl NousManager {
             self.vector_search.clone(),
             self.session_store.clone(),
             extra_bootstrap,
+            cross_rx,
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -154,6 +193,12 @@ impl NousManager {
     pub async fn shutdown_all(&mut self) {
         info!(count = self.actors.len(), "shutting down all actors");
 
+        if let Some(ref router) = self.router {
+            for id in self.actors.keys() {
+                router.unregister(id).await;
+            }
+        }
+
         let entries: Vec<(String, NousHandle, JoinHandle<()>)> = self
             .actors
             .drain()
@@ -181,6 +226,13 @@ impl NousManager {
     /// Does not drain the entries — cleanup happens when the `Arc` drops.
     pub async fn shutdown_readonly(&self) {
         info!(count = self.actors.len(), "shutting down all actors");
+
+        if let Some(ref router) = self.router {
+            for id in self.actors.keys() {
+                router.unregister(id).await;
+            }
+        }
+
         for entry in self.actors.values() {
             if let Err(e) = entry.handle.shutdown().await {
                 warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
@@ -271,6 +323,7 @@ mod tests {
             None,
             None,
             Arc::new(Vec::new()),
+            None,
         )
     }
 

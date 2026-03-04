@@ -105,10 +105,9 @@ mod tests {
 
     #[test]
     fn read_file_chains_source() {
-        let result: Result<Vec<u8>> =
-            std::fs::read("/nonexistent/path").context(ReadFileSnafu {
-                path: PathBuf::from("/nonexistent/path"),
-            });
+        let result: Result<Vec<u8>> = std::fs::read("/nonexistent/path").context(ReadFileSnafu {
+            path: PathBuf::from("/nonexistent/path"),
+        });
         let err = result.unwrap_err();
         assert!(std::error::Error::source(&err).is_some());
     }

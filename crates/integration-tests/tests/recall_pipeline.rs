@@ -60,9 +60,7 @@ fn recall_with_mock_vectors_end_to_end() {
 #[test]
 fn recall_empty_store_graceful() {
     let embedder = MockEmbeddingProvider::new(384);
-    let search = MockVectorSearch {
-        results: vec![],
-    };
+    let search = MockVectorSearch { results: vec![] };
 
     let stage = RecallStage::new(RecallConfig::default());
 
