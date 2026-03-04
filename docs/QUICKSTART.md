@@ -34,7 +34,7 @@ Run `aletheia help` for the full command reference.
 
 `aletheia start` brings up Qdrant and Neo4j automatically if Podman or Docker is installed and `infrastructure/memory/docker-compose.yml` exists.
 
-```
+```text
 Memory services:
   qdrant      OK running
   neo4j       OK running
@@ -45,7 +45,7 @@ Memory services:
 
 **Linux / Docker / Podman:** Ensure Docker or Podman is running. `aletheia start` handles the rest.
 
-Skip with `aletheia start --no-memory`. See [DEPLOYMENT.md](DEPLOYMENT.md#memory-sidecar) for Mem0 sidecar setup.
+Skip with `aletheia start --no-memory`. See [DEPLOYMENT.md](DEPLOYMENT.md) for Mem0 sidecar setup.
 
 ## Optional: Signal Integration
 

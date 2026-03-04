@@ -35,7 +35,7 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 | M5 | Plugins + portability + cutover - WASM plugins, agent export, TS retirement | Not started |
 | M6 | Platform extensions - composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
 
-**Totals:** 18 crate directories, 1027 tests, ~38K lines of Rust (+46K vendored CozoDB in mneme-engine).
+See `Cargo.toml` workspace members for current crate inventory.
 
 ## Related Documents
 

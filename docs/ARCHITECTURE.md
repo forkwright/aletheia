@@ -10,13 +10,13 @@
 
 ## Naming
 
-Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See ALETHEIA.md for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
+Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](../ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
 
 ---
 
 ## The Binary
 
-```
+```text
 aletheia
 ├── koina         — errors, tracing, safe wrappers, fs utils
 ├── taxis         — config, path resolution, oikos hierarchy, secret refs
@@ -36,9 +36,9 @@ aletheia
 │   ├── semeion   — Signal (signal-cli subprocess)
 │   └── slack     — Slack (raw API + WebSocket)
 ├── daemon        — per-nous background tasks, cron, evolution, prosoche
-├── prostheke     — WASM plugin host (wasmtime)
 ├── melete        — distillation, reflection, memory flush, consolidation
-└── autarkeia     — agent export/import
+├── prostheke     — WASM plugin host (wasmtime)                         [planned: M5]
+└── autarkeia     — agent export/import                                 [planned: M5]
 ```
 
 ---
@@ -47,7 +47,7 @@ aletheia
 
 Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 
-```
+```text
 aletheia/                          # git root — the platform
 ├── crates/                        # Rust workspace
 ├── ui/                            # Svelte 5 frontend
@@ -70,10 +70,14 @@ aletheia/                          # git root — the platform
 │   │   └── coordination/         #   Blackboard, task state
 │   │
 │   ├── nous/                     # Tier 2: individual nous workspaces
-│   │   ├── <agent-id>/
-│   │   │   ├── SOUL.md           #   Identity (operator-owned)
-│   │   │   ├── GOALS.md          #   Goals (operator-owned)
-│   │   │   ├── MEMORY.md         #   Memory (agent-writable)
+│   │   ├── <agent-id>/           #   See WORKSPACE_FILES.md for full reference
+│   │   │   ├── SOUL.md           #   Character, principles (operator-owned)
+│   │   │   ├── IDENTITY.md       #   Name and emoji (required)
+│   │   │   ├── GOALS.md          #   Active goals (operator-owned)
+│   │   │   ├── MEMORY.md         #   Persistent knowledge (agent-writable)
+│   │   │   ├── TOOLS.md          #   Tool inventory (auto-generated)
+│   │   │   ├── PROSOCHE.md       #   Attention directives (auto-generated)
+│   │   │   ├── CONTEXT.md        #   Session state (runtime-written)
 │   │   │   ├── tools/            #   Nous-specific tools
 │   │   │   ├── hooks/            #   Nous-specific hooks
 │   │   │   └── memory/           #   Daily memory files
@@ -133,7 +137,7 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 
 ### Dependency Graph
 
-```
+```text
                           aletheia (binary)
                   /   /   / |  \   \    \   \
                  /   /   /  |   \   \    \   \
@@ -192,6 +196,7 @@ All modules in `infrastructure/runtime/src/`:
 | `melete` | Distillation, reflection, memory flush |
 | `symbolon` | Split-token authentication, JWT, sessions, RBAC |
 | `dianoia` | Multi-phase planning orchestrator |
+| `agora` | Channel registry, CLI commands |
 | `semeion` | Signal client, listener, commands, TTS |
 | `pylon` | Hono HTTP gateway, MCP, Web UI routes |
 | `prostheke` | Plugin system, lifecycle hooks |
@@ -200,7 +205,7 @@ All modules in `infrastructure/runtime/src/`:
 
 ### Initialization Order
 
-```
+```text
 taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon
                                            ↑
                                      (semeion and pylon wired at runtime start)
@@ -219,6 +224,7 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 | `melete` | `koina`, `taxis`, `mneme`, `hermeneus` | everything else |
 | `symbolon` | `koina` | everything else (stateless utilities) |
 | `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `daemon` |
+| `agora` | `koina`, `taxis`, `semeion` | everything else |
 | `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `daemon` |
 | `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `daemon` | `prostheke`, `melete`, `portability` |
 | `prostheke` | `koina`, `organon` | everything else |
@@ -270,7 +276,7 @@ opt-level = 2      # optimize deps in dev — faster iteration
 - **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
 - **symbolon is zero-dependency** in both stacks. Takes `Database.Database` as constructor argument in TS.
 - **mneme-engine is vendored.** CozoDB absorbed into workspace. Optional dependency of `mneme`.
-- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` - implement the trait, swap the provider.
+- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
 - **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.

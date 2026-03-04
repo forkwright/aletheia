@@ -4,7 +4,7 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Service Architecture
 
-```
+```text
 aletheia gateway              (port 18789)  -- Node.js runtime, web UI, API
 +-- signal-cli daemon         (port 8080)   -- Signal messaging
 +-- prosoche daemon           (background)  -- attention/wake system
@@ -147,7 +147,7 @@ signal-cli -a +15550100001 receive --timeout 5
 ### Prosoche waking too frequently
 
 ```bash
-cat <repo>/nous/syn/PROSOCHE.md
+cat <repo>/nous/<agent-id>/PROSOCHE.md
 journalctl --user -u prosoche --since "1 hour ago" 2>/dev/null || \
   tail -50 /tmp/prosoche.log
 ```

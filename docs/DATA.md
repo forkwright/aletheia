@@ -22,7 +22,7 @@ What Aletheia stores, where it lives, and how to control it.
 
 All data lives under the instance root directory. Default: `./instance`. Override with `ALETHEIA_ROOT` or the `-r` flag.
 
-```
+```text
 instance/
 ├── config/aletheia.yaml     # Main config
 ├── config/credentials/      # API keys
@@ -41,7 +41,7 @@ instance/
 
 ## Data Flow
 
-```
+```text
 Inbound message
   → Channel (Signal, HTTP)
   → Session store (sessions.db: session + messages)

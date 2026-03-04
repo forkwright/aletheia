@@ -124,7 +124,7 @@ All event names: `noun:verb` format. No exceptions.
 #### Commits
 
 Conventional commits with module scope:
-```
+```text
 feat(mneme): add WAL checkpoint scheduling
 fix(hermeneus): correct token counting for tool results
 refactor(organon): extract tool validation into separate module

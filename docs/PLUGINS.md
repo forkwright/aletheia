@@ -4,7 +4,7 @@ Plugins hook into the agent lifecycle and register custom tools.
 
 ## Structure
 
-```
+```text
 my-plugin/
 ├── manifest.json      # or my-plugin.plugin.json
 └── index.js

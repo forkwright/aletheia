@@ -4,7 +4,7 @@ Self-hosted multi-agent AI system with persistent memory, Signal messaging, and 
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
-[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Releasing](docs/RELEASING.md)
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Packs](docs/PACKS.md) · [Vendoring](docs/VENDORING.md) · [Releasing](docs/RELEASING.md)
 
 ---
 
@@ -18,7 +18,7 @@ Not a chatbot framework. A distributed cognition system.
 
 Aletheia is being rewritten in Rust. The target is a single static binary replacing the current Node.js gateway, Python memory sidecar, and shell scripts. The TypeScript runtime still runs production while the Rust crates reach feature parity.
 
-```
+```text
          Web UI (Svelte 5)          Signal Messenger
               |                          |
          HTTP/SSE                   signal-cli (JSON-RPC)
@@ -54,7 +54,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 
 ### TypeScript Runtime (current production)
 
-14 modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
+Modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `agora`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
 
 **Models:** Anthropic (OAuth or API key). Complexity-based routing.
 **Memory:** Mem0 (Qdrant + Neo4j + Haiku extraction) for cross-agent long-term memory. SQLite for sessions.

@@ -28,8 +28,8 @@ Key boundary rules (see docs/ARCHITECTURE.md#dependency-rules for the full table
 
 - `koina` imports nothing - it is the leaf node
 - `taxis` imports only `koina`
-- `auth` imports only `node:crypto` and `hono` - no aletheia module imports
-- `daemon` imports `nous` and `distillation` - it is a high-layer module; nothing imports daemon
+- `symbolon` imports only `koina` - stateless auth utilities
+- `daemon` imports `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` - nothing imports daemon
 
 Run `import/no-cycle` check after adding any new cross-module import.
 

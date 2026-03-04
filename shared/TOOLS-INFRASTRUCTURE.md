@@ -10,8 +10,6 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | ingest-doc | PDF/document extraction to markdown |
 | aletheia-graph | Knowledge graph CLI (Neo4j) |
 | nous-health | Monitor agent ecosystem health |
-| compile-context | Regenerate AGENTS.md + PROSOCHE.md from templates |
-| generate-tools-md | Regenerate TOOLS.md for all agents |
 
 ## Memory Systems
 
@@ -22,7 +20,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | Neo4j | localhost:7687 | Entity relationship graph (auto-extracted) |
 | Blackboard | sessions.db | Cross-agent shared state (TTL-based, SQLite) |
 
-## Built-in Runtime Tools (28)
+## Built-in Runtime Tools
 
 Essential (always available): read, write, edit, ls, find, grep, exec, mem0_search, sessions_send, sessions_spawn, enable_tool, deliberate
 

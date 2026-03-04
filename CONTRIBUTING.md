@@ -99,7 +99,7 @@ Register in `src/aletheia.ts`. Categories: `"essential"` (always available) or `
 
 ## CLI
 
-```
+```text
 aletheia start [--no-memory]     # start memory services + gateway
 aletheia stop [--all]            # stop gateway (--all includes containers)
 aletheia restart                 # restart gateway
@@ -195,4 +195,4 @@ Full reference: [docs/STANDARDS.md](docs/STANDARDS.md). Highlights:
 
 ## License
 
-By contributing, you agree to [AGPL-3.0](LICENSE).
+By contributing, you agree to [AGPL-3.0](LICENSE). This project follows the [Code of Conduct](CODE_OF_CONDUCT.md).

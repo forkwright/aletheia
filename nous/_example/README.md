@@ -4,7 +4,7 @@ This directory is the reference template for new Aletheia agents. It shows the e
 
 ## Directory Structure
 
-```
+```text
 {agent-id}/
 ├── workspace/
 │   ├── scripts/     # Agent-authored scripts and tools (git-tracked)

@@ -14,7 +14,7 @@ Never develop on `main` directly. Every task gets its own git worktree.
 
 ```bash
 # From the repo root (main branch, always clean)
-git worktree add ../aletheia-feat-<name> - b feat/<name> main
+git worktree add ../aletheia-feat-<name> -bfeat/<name> main
 
 # Work happens in the worktree directory
 cd ../aletheia-feat-<name>
@@ -22,7 +22,7 @@ cd ../aletheia-feat-<name>
 # When done - after PR is merged
 cd /path/to/main/repo
 git worktree remove ../aletheia-feat-<name>
-git branch - d feat/<name>
+git branch -d feat/<name>
 ```
 
 ### Rules
@@ -46,8 +46,8 @@ Multiple worktrees can exist simultaneously. Independent tasks won't conflict be
 Compliant:
 ```bash
 # Two parallel tasks, each in its own worktree
-git worktree add ../aletheia-feat-recall - b feat/recall main
-git worktree add ../aletheia-fix-rrf - b fix/rrf-encoding main
+git worktree add ../aletheia-feat-recall -bfeat/recall main
+git worktree add ../aletheia-fix-rrf -bfix/rrf-encoding main
 # Each works independently, PRs reviewed and merged separately
 ```
 
@@ -56,11 +56,11 @@ Non-compliant:
 # Working directly on main
 git checkout main
 # editing files...
-git commit - m "feat: add recall pipeline"
+git commit -m "feat: add recall pipeline"
 
 # Stashing to switch tasks
 git stash
-git checkout - b feat/other-thing
+git checkout -bfeat/other-thing
 # This creates race conditions with parallel agents
 ```
 
@@ -86,7 +86,7 @@ Scope is the crate or module name: `feat(nous): add history stage`, `fix(mneme):
 
 ```bash
 # From the worktree
-git push - u origin feat/<name>
+git push -u origin feat/<name>
 gh pr create --title "feat(scope): description" --body "..."
 ```
 

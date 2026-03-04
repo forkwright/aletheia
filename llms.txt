@@ -41,7 +41,6 @@ Dual-stack: Rust crates (target architecture) and TypeScript runtime (current pr
 ## Reference
 
 - [VENDORING](docs/VENDORING.md): Vendored dependencies - what, why, modifications, upstream status
-- [CHANGELOG](CHANGELOG.md): Change history with decision context and migration notes
 
 ## Key Directories
 
