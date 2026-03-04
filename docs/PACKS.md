@@ -4,7 +4,7 @@ A domain pack bundles knowledge, tools, and configuration overlays that extend a
 
 ## Directory Structure
 
-```
+```text
 my-pack/
   pack.yaml              # Manifest (required)
   context/               # Markdown files injected into bootstrap

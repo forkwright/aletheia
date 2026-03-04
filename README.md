@@ -18,7 +18,7 @@ Not a chatbot framework. A distributed cognition system.
 
 Aletheia is being rewritten in Rust. The target is a single static binary replacing the current Node.js gateway, Python memory sidecar, and shell scripts. The TypeScript runtime still runs production while the Rust crates reach feature parity.
 
-```
+```text
          Web UI (Svelte 5)          Signal Messenger
               |                          |
          HTTP/SSE                   signal-cli (JSON-RPC)

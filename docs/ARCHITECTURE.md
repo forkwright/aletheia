@@ -10,13 +10,13 @@
 
 ## Naming
 
-Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See ALETHEIA.md for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
+Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](../ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
 
 ---
 
 ## The Binary
 
-```
+```text
 aletheia
 ├── koina         — errors, tracing, safe wrappers, fs utils
 ├── taxis         — config, path resolution, oikos hierarchy, secret refs
@@ -47,7 +47,7 @@ aletheia
 
 Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 
-```
+```text
 aletheia/                          # git root — the platform
 ├── crates/                        # Rust workspace
 ├── ui/                            # Svelte 5 frontend
@@ -137,7 +137,7 @@ Application crates in `crates/`, plus support crates (`graph-builder`, `integrat
 
 ### Dependency Graph
 
-```
+```text
                           aletheia (binary)
                   /   /   / |  \   \    \   \
                  /   /   /  |   \   \    \   \
@@ -205,7 +205,7 @@ All modules in `infrastructure/runtime/src/`:
 
 ### Initialization Order
 
-```
+```text
 taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → daemon
                                            ↑
                                      (semeion and pylon wired at runtime start)
@@ -276,7 +276,7 @@ opt-level = 2      # optimize deps in dev — faster iteration
 - **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
 - **symbolon is zero-dependency** in both stacks. Takes `Database.Database` as constructor argument in TS.
 - **mneme-engine is vendored.** CozoDB absorbed into workspace. Optional dependency of `mneme`.
-- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `ModelProvider` - implement the trait, swap the provider.
+- **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
 - **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.

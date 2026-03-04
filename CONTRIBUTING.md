@@ -99,7 +99,7 @@ Register in `src/aletheia.ts`. Categories: `"essential"` (always available) or `
 
 ## CLI
 
-```
+```text
 aletheia start [--no-memory]     # start memory services + gateway
 aletheia stop [--all]            # stop gateway (--all includes containers)
 aletheia restart                 # restart gateway

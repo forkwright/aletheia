@@ -83,7 +83,7 @@ Missing variables resolve to empty string.
 
 Hooks in `shared/hooks/` apply globally. For agent-specific hooks, create a `hooks/` directory in the agent's workspace:
 
-```
+```text
 nous/<agent-a>/hooks/craft-journal.yaml
 nous/<agent-b>/hooks/maintenance-log.yaml
 ```

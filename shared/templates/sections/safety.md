@@ -10,5 +10,5 @@
 **ALWAYS** validate before restart:
 ```bash
 aletheia doctor           # Validate runtime config
-systemctl restart aletheia  # Only after doctor passes
+systemctl --user restart aletheia  # Only after doctor passes
 ```

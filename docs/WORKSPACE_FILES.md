@@ -74,7 +74,7 @@ The bootstrap system enforces a configurable token budget (default: 40,000 token
 
 The bootstrap budget is one piece of the total context window (`contextTokens`, default 200,000):
 
-```
+```text
 historyBudget = contextTokens - bootstrapTokens - toolDefTokens - maxOutputTokens
 ```
 

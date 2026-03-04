@@ -48,7 +48,7 @@ Every research session must produce:
 - **Confidence assessment** of overall conclusions
 
 Format (append to `memory/research-log.md`):
-```
+```markdown
 ## [Date] — [Topic]
 Queries: [list]
 Sources found: N | Included: N | Excluded: N (reasons)

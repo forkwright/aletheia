@@ -45,4 +45,4 @@ When delegating to sub-agents or Claude Code, include in every task:
 
 The orchestrator creates the PR after reviewing the branch.
 
-Full contribution workflow: [CONTRIBUTING.md](../../CONTRIBUTING.md)
+Full contribution workflow: [CONTRIBUTING.md](../../../CONTRIBUTING.md)
