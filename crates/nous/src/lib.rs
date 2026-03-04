@@ -19,6 +19,7 @@ pub mod handle;
 pub mod history;
 pub mod manager;
 pub mod message;
+pub mod metrics;
 pub mod pipeline;
 pub mod recall;
 pub mod session;

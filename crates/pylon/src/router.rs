@@ -15,14 +15,16 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
 use crate::error::ApiError;
-use crate::handlers::{health, nous, sessions};
+use crate::handlers::{health, metrics, nous, sessions};
 use crate::openapi;
-use crate::middleware::{CsrfState, RequestId, enrich_error_response, inject_request_id, require_csrf_header};
+use crate::middleware::{CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics, require_csrf_header};
 use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
+    crate::metrics::init();
+
     let v1 = Router::new()
         .route("/sessions", post(sessions::create))
         .route(
@@ -39,6 +41,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .nest("/api/v1", v1)
         .route("/api/health", get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
+        .route("/metrics", get(metrics::expose))
         .fallback(fallback_handler);
 
     // CSRF protection — inject state and apply middleware
@@ -57,6 +60,9 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     // Error response enrichment (innermost — body not yet compressed)
     router = router.layer(axum::middleware::from_fn(enrich_error_response));
+
+    // HTTP metrics recording
+    router = router.layer(axum::middleware::from_fn(record_http_metrics));
 
     // Compression
     router = router.layer(CompressionLayer::new());

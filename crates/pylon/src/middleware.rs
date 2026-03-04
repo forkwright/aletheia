@@ -114,3 +114,18 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
 
     Response::from_parts(parts, Body::from(bytes))
 }
+
+/// Middleware that records HTTP request metrics (count + duration).
+pub async fn record_http_metrics(request: Request, next: Next) -> Response {
+    let method = request.method().to_string();
+    let path = crate::metrics::normalize_path(request.uri().path());
+    let start = std::time::Instant::now();
+
+    let response = next.run(request).await;
+
+    let status = response.status().as_u16();
+    let duration = start.elapsed().as_secs_f64();
+    crate::metrics::record_request(&method, &path, status, duration);
+
+    response
+}

@@ -204,6 +204,13 @@ impl AnthropicProvider {
                         cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
                         "LLM call complete"
                     );
+                    crate::metrics::record_completion(
+                        "anthropic",
+                        resp.usage.input_tokens,
+                        resp.usage.output_tokens,
+                        estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        true,
+                    );
                     return Ok(resp);
                 }
                 Err(e) => {
@@ -251,6 +258,8 @@ impl AnthropicProvider {
         }
         span.record("llm.retries", self.max_retries);
         span.record("llm.status", "error");
+
+        crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
@@ -352,6 +361,13 @@ impl AnthropicProvider {
                         cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
                         "LLM call complete"
                     );
+                    crate::metrics::record_completion(
+                        "anthropic",
+                        resp.usage.input_tokens,
+                        resp.usage.output_tokens,
+                        estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        true,
+                    );
                 }
                 return parsed;
             }
@@ -391,6 +407,8 @@ impl AnthropicProvider {
         }
         span.record("llm.retries", self.max_retries);
         span.record("llm.status", "error");
+
+        crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {

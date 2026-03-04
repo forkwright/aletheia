@@ -2,6 +2,7 @@
 
 mod daemon_bridge;
 mod dispatch;
+mod status;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -99,6 +100,12 @@ enum Command {
         #[command(subcommand)]
         action: TlsAction,
     },
+    /// Show system status
+    Status {
+        /// Server URL to check
+        #[arg(long, default_value = "http://127.0.0.1:18789")]
+        url: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -144,6 +151,7 @@ async fn main() -> Result<()> {
             return run_maintenance(action.clone(), cli.instance_root.as_ref());
         }
         Some(Command::Tls { action }) => return handle_tls(action),
+        Some(Command::Status { url }) => return status::run(url, cli.instance_root.as_ref()).await,
         None => {}
     }
 
@@ -799,5 +807,20 @@ mod tests {
                 action: MaintenanceAction::Run { .. }
             })
         ));
+    }
+
+    #[test]
+    fn status_subcommand_parses() {
+        let cli = Cli::parse_from(["aletheia", "status"]);
+        assert!(matches!(cli.command, Some(Command::Status { .. })));
+    }
+
+    #[test]
+    fn status_custom_url_parses() {
+        let cli = Cli::parse_from(["aletheia", "status", "--url", "http://example:9999"]);
+        match cli.command {
+            Some(Command::Status { url }) => assert_eq!(url, "http://example:9999"),
+            _ => panic!("expected Status command"),
+        }
     }
 }

@@ -36,6 +36,9 @@ snafu = { workspace = true }
 # Observability
 tracing = { workspace = true }
 
+# Metrics
+prometheus = { workspace = true }
+
 # Types
 ulid = { workspace = true }
 
