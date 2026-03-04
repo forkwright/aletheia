@@ -100,6 +100,7 @@ const NousParams = z.object({
   maxTokens: z.number().optional(),
   temperature: z.number().optional(),
   thinkingBudget: z.number().optional(),
+  turnTimeoutSeconds: z.number().optional(), // Per-agent wall-clock ceiling override (seconds)
 }).passthrough();  // forward-compat: unknown keys pass through to provider
 
 const NousDefinition = z.object({
@@ -154,7 +155,7 @@ const AgentDefaults = z.preprocess(
     routing: RoutingConfig.default({}),
     heartbeat: HeartbeatConfig.optional(),
     tools: ToolsConfig.default({}),
-    timeoutSeconds: z.number().default(300),
+    timeoutSeconds: z.number().default(1800), // 30 min wall-clock ceiling per turn
     toolTimeouts: z
       .object({
         defaultMs: z.number().default(120_000),

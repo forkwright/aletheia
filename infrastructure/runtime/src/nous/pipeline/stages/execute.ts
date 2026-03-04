@@ -42,8 +42,19 @@ function resolveTemperature(state: TurnState): number | undefined {
 /** Hard ceiling on tool loops per turn. Prevents infinite loops from exhausting tokens/time. */
 const MAX_TOOL_LOOPS = 200;
 
-/** Hard ceiling on wall-clock time per turn (ms). 15 minutes. */
-const MAX_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;
+/** Default wall-clock ceiling per turn (ms). Used when no config override exists. */
+const DEFAULT_TURN_WALL_CLOCK_MS = 15 * 60 * 1000;
+
+/** Resolve per-turn wall-clock limit: agent params → global defaults → hardcoded fallback. */
+function resolveTurnTimeout(state: TurnState, services: RuntimeServices): number {
+  // Per-agent override via nous params (seconds → ms)
+  const agentTimeout = state.nous.params?.turnTimeoutSeconds;
+  if (typeof agentTimeout === "number" && agentTimeout > 0) return agentTimeout * 1000;
+  // Global default from config (seconds → ms)
+  const defaultTimeout = services.config.agents.defaults.timeoutSeconds;
+  if (typeof defaultTimeout === "number" && defaultTimeout > 0) return defaultTimeout * 1000;
+  return DEFAULT_TURN_WALL_CLOCK_MS;
+}
 
 /** Dynamic thinking budget based on message complexity. */
 function computeThinkingBudget(messages: readonly { role: string; content: unknown }[], toolCount: number, baseBudget: number): number {
@@ -110,6 +121,7 @@ export async function* executeStreaming(
   // Track which credential was used (updated each loop from streamResult)
   let lastCredentialLabel: string | undefined;
   const turnStartTime = Date.now();
+  const turnWallClockMs = resolveTurnTimeout(state, services);
 
   for (let loop = 0; ; loop++) {
     // Hard safety caps — prevent infinite loops and runaway turns
@@ -117,8 +129,8 @@ export async function* executeStreaming(
       throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
     }
     const elapsed = Date.now() - turnStartTime;
-    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
-      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    if (elapsed > turnWallClockMs) {
+      throw new PipelineError(`Turn exceeded ${Math.round(turnWallClockMs / 60000)} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
     }
 
     let accumulatedText = "";
@@ -502,6 +514,7 @@ export async function executeBuffered(
   const contextTokens = services.config.agents.defaults.contextTokens;
   const bufferedContextMgmt = buildContextManagement(contextTokens, false);
   const turnStartTime = Date.now();
+  const turnWallClockMs = resolveTurnTimeout(state, services);
 
   for (let loop = 0; ; loop++) {
     // Hard safety caps — prevent infinite loops and runaway turns
@@ -509,8 +522,8 @@ export async function executeBuffered(
       throw new PipelineError(`Turn exceeded ${MAX_TOOL_LOOPS} tool loops — halting`, { code: "PIPELINE_MAX_LOOPS" });
     }
     const elapsed = Date.now() - turnStartTime;
-    if (elapsed > MAX_TURN_WALL_CLOCK_MS) {
-      throw new PipelineError(`Turn exceeded ${MAX_TURN_WALL_CLOCK_MS / 60000} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
+    if (elapsed > turnWallClockMs) {
+      throw new PipelineError(`Turn exceeded ${Math.round(turnWallClockMs / 60000)} minute wall-clock limit — halting`, { code: "PIPELINE_WALL_CLOCK" });
     }
 
     const bufferedTemp = resolveTemperature(state);
