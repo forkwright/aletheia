@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createLogger } from "./koina/logger.js";
 import { trySafe } from "./koina/safe.js";
 import { applyEnv, loadConfig, watchConfig } from "./taxis/loader.js";
-import { mergeGitignore, scaffoldNousShared } from "./taxis/nous-scaffold.js";
+import { mergeGitignore, scaffoldTheke } from "./taxis/nous-scaffold.js";
 import { paths } from "./taxis/paths.js";
 import { resolveSecretRefs } from "./taxis/secret-resolver.js";
 import { migrateLegacyPaths } from "./taxis/migrate-legacy.js";
@@ -124,9 +124,9 @@ export interface AletheiaRuntime {
 export function createRuntime(configPath?: string): AletheiaRuntime {
   // Best-effort gap-fill — non-blocking, warns on newly created dirs
   trySafe("nous:scaffold", () => {
-    const created = scaffoldNousShared(paths.nous);
+    const created = scaffoldTheke(paths.theke);
     if (created.length > 0) {
-      log.warn("nous scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
+      log.warn("theke scaffold dirs created at startup (run 'aletheia init' for authoritative setup)", { created });
     }
     mergeGitignore(paths.nous);
   }, undefined);

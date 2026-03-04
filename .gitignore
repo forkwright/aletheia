@@ -3,8 +3,8 @@
 !/instance.example/
 
 # === Legacy paths (remove after migration completes) ===
-theke/
-projects/
+/theke/
+/projects/
 /archive/
 nous/*/
 !nous/_example/

@@ -139,4 +139,12 @@ describe("scaffoldAgent", () => {
     expect(() => scaffoldAgent({ id: "Bad Name", name: "Bad", ...fixture }))
       .toThrow("Invalid agent ID");
   });
+
+  it("creates memory/ directory but not workspace/ subdirectories", () => {
+    scaffoldAgent({ id: "lean", name: "Lean", ...fixture });
+    const ws = join(fixture.nousDir, "lean");
+    expect(existsSync(join(ws, "memory"))).toBe(true);
+    // Old scaffold created workspace/{scripts,drafts,data} — verify that's gone
+    expect(existsSync(join(ws, "workspace"))).toBe(false);
+  });
 });
