@@ -8,5 +8,6 @@
 
 pub mod anthropic;
 pub mod error;
+pub mod health;
 pub mod provider;
 pub mod types;
