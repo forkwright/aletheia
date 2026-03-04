@@ -54,7 +54,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 
 ### TypeScript Runtime (current production)
 
-14 modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
+Modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `agora`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
 
 **Models:** Anthropic (OAuth or API key). Complexity-based routing.
 **Memory:** Mem0 (Qdrant + Neo4j + Haiku extraction) for cross-agent long-term memory. SQLite for sessions.

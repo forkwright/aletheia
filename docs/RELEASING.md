@@ -10,8 +10,7 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
 
 1. Merge conventional-commit-formatted PRs to `main`
 2. [release-please](https://github.com/googleapis/release-please) opens a
-   version-bump PR that updates `CHANGELOG.md`, `.release-please-manifest.json`,
-   and `Cargo.toml`
+   version-bump PR that updates `.release-please-manifest.json` and `Cargo.toml`
 3. Review and merge the release PR
 4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
 5. The tag triggers `.github/workflows/release.yml`:
@@ -37,8 +36,6 @@ When release-please fails or you need an out-of-band release:
 ```bash
 # Bump the version
 scripts/bump-version.sh 0.11.0
-
-# Update CHANGELOG.md manually
 
 # Commit and tag
 git add -A
