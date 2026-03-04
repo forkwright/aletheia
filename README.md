@@ -46,8 +46,8 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 
 | Layer | Crates |
 |-------|--------|
-| Leaf | `koina` (errors, tracing), `symbolon` (auth), `mneme-engine` (embedded DB) |
-| Low | `taxis` (config), `hermeneus` (LLM), `mneme` (memory), `organon` (tools), `agora` (channels), `melete` (distillation) |
+| Leaf | `koina` (errors, tracing), `symbolon` (auth) |
+| Low | `taxis` (config), `hermeneus` (LLM), `mneme` (memory + embedded DB engine), `organon` (tools), `agora` (channels), `melete` (distillation) |
 | Mid | `nous` (agent pipeline) |
 | High | `pylon` (HTTP gateway) |
 | Top | `aletheia` (binary entrypoint) |
