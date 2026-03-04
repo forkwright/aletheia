@@ -1,18 +1,9 @@
-//! Schema definition and migration management.
+//! Schema definition constants.
 //!
-//! The DDL is the v1 baseline. Migrations are applied incrementally.
+//! The DDL is the v1 baseline. Migration management lives in `migration.rs`.
 //! This matches the TS schema exactly for wire-compatible databases.
 
-use rusqlite::Connection;
-use snafu::ResultExt;
-use tracing::info;
-
-use crate::error::{self, Result};
-
-/// Current schema version (base DDL).
-pub const SCHEMA_VERSION: u32 = 1;
-
-/// Base DDL — creates all tables for a fresh database.
+/// Base DDL — creates all tables for a fresh database (migration v1).
 pub const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -99,69 +90,36 @@ CREATE TABLE IF NOT EXISTS agent_notes (
 
 CREATE INDEX IF NOT EXISTS idx_notes_session ON agent_notes(session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
-
-CREATE TABLE IF NOT EXISTS schema_version (
-  version INTEGER PRIMARY KEY,
-  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
 ";
-
-/// Initialize the database: apply base DDL or run pending migrations.
-pub fn initialize(conn: &Connection) -> Result<()> {
-    let version = get_schema_version(conn);
-
-    if version == 0 {
-        info!("Initializing fresh database with schema v{SCHEMA_VERSION}");
-        conn.execute_batch(DDL).context(error::DatabaseSnafu)?;
-        conn.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?1)",
-            [SCHEMA_VERSION],
-        )
-        .context(error::DatabaseSnafu)?;
-    }
-
-    Ok(())
-}
-
-/// Get the current schema version, or 0 if uninitialized.
-fn get_schema_version(conn: &Connection) -> u32 {
-    conn.query_row(
-        "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
-        [],
-        |row| row.get(0),
-    )
-    .unwrap_or(0)
-}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rusqlite::Connection;
+
+    use crate::migration;
 
     #[test]
-    fn fresh_database_initializes() {
+    fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().unwrap();
-        initialize(&conn).unwrap();
-
-        let version = get_schema_version(&conn);
-        assert_eq!(version, SCHEMA_VERSION);
+        let result = migration::run_migrations(&conn).unwrap();
+        assert_eq!(result.current_version, 1);
     }
 
     #[test]
     fn idempotent_initialization() {
         let conn = Connection::open_in_memory().unwrap();
-        initialize(&conn).unwrap();
-        initialize(&conn).unwrap();
+        migration::run_migrations(&conn).unwrap();
+        migration::run_migrations(&conn).unwrap();
 
-        let version = get_schema_version(&conn);
-        assert_eq!(version, SCHEMA_VERSION);
+        let version = migration::get_schema_version(&conn);
+        assert_eq!(version, 1);
     }
 
     #[test]
     fn tables_exist_after_init() {
         let conn = Connection::open_in_memory().unwrap();
-        initialize(&conn).unwrap();
+        migration::run_migrations(&conn).unwrap();
 
-        // Verify key tables exist
         for table in &[
             "sessions",
             "messages",

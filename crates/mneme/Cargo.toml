@@ -12,7 +12,7 @@ workspace = true
 
 [features]
 default = ["sqlite"]
-sqlite = ["dep:rusqlite"]
+sqlite = ["dep:rusqlite", "dep:jiff"]
 fastembed = ["dep:fastembed"]
 # mneme-engine excluded from default — sqlite3 link conflict with rusqlite.
 # Build with: cargo build -p aletheia-mneme --no-default-features --features mneme-engine
@@ -23,6 +23,7 @@ mneme-engine = ["dep:aletheia-mneme-engine", "dep:miette", "dep:ndarray", "dep:t
 aletheia-koina = { path = "../koina" }
 aletheia-mneme-engine = { path = "../mneme-engine", optional = true }
 fastembed = { version = "5", optional = true }
+jiff = { workspace = true, optional = true }
 miette = { version = "5.10.0", optional = true }
 ndarray = { version = "0.16.1", optional = true }
 rusqlite = { version = "0.38", features = ["bundled"], optional = true }

@@ -298,6 +298,16 @@ async fn execute_builtin(
                 output: None,
             })
         }
+        BuiltinTask::SessionRetention => {
+            tracing::info!(
+                nous_id = %nous_id,
+                "session retention not yet wired — requires store access from daemon"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        }
     }
 }
 
