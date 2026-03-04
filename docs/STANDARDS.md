@@ -1,13 +1,12 @@
 # Aletheia Code Standards
 
 > Single source of truth for all languages. `.claude/rules/*.md` files are excerpts of this document.
-> 
 
 ---
 
 ## Philosophy
 
-Code is the documentation. Names, types, and structure carry meaning. Comments explain *why*, never *what*. If code needs a comment to explain what it does, the code needs refactoring.
+Code is the documentation. Names, types, and structure carry meaning. Comments explain *why*, never *what*. If code needs a comment to explain what it does, rewrite the code.
 
 Fail fast, fail loud. Crash on invariant violations. No defensive fallbacks for impossible states. Sentinel values and silent degradation are bugs. Surface errors at the point of origin with full context.
 
@@ -25,7 +24,7 @@ These apply regardless of language.
 
 #### Gnomon System (Persistent Names)
 
-Module directories, agent identities, subsystems, and major features follow the [gnomon naming system](gnomon.md). Names identify modes of attention, not implementations. Pass the layer test (L1-L4). If no Greek word fits naturally, the mode of attention isn't clear yet — wait.
+Module directories, agent identities, subsystems, and major features use Greek naming. Greek naming - modules and crates use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). Names identify modes of attention, not implementations. Pass the layer test (L1-L4). If no Greek word fits naturally, the mode of attention isn't clear yet - wait.
 
 Applies to: modules, agents, subsystems, features that persist.
 Does not apply to: variables, functions, test fixtures, temporary branches.
@@ -45,20 +44,20 @@ Verb-first for functions: `load_config`, `create_session`, `parse_input`. Drop `
 ### Error Handling (Universal)
 
 Every error must:
-1. Carry context — what operation failed, with what inputs
-2. Be typed — callers can match on error kind
-3. Propagate — chain errors with `.context()` or equivalent, never swallow
-4. Surface — log at the point of handling, not the point of throwing
+1. Carry context - what operation failed, with what inputs
+2. Be typed - callers can match on error kind
+3. Propagate - chain errors with `.context()` or equivalent, never swallow
+4. Surface - log at the point of handling, not the point of throwing
 
 Fail fast:
 - Panic on programmer bugs (violated invariants, impossible states)
 - `Result` / `throw` for anything the caller could handle or report
-- `expect("invariant description")` (Rust) over bare `unwrap()` — the message documents the invariant
+- `expect("invariant description")` (Rust) over bare `unwrap()` - the message documents the invariant
 - Never panic in library code for recoverable errors
 
 No silent catch:
 - Every catch/match block must log, propagate, return a meaningful value, or explain why it's discarded
-- `/* intentional: reason */` for deliberate discard — never empty catch
+- `/* intentional: reason */` for deliberate discard - never empty catch
 
 ### Documentation
 
@@ -110,7 +109,7 @@ The pre-commit hook and CI pipeline reject PRs containing known PII patterns.
 
 ### Module Boundaries
 
-Imports flow from higher layers to lower layers only. Never create cycles. Adding a cross-module import requires verifying the dependency graph.
+Imports flow from higher layers to lower layers only. Never create cycles. Verify the dependency graph before adding any cross-module import.
 
 Each module declares its public surface explicitly. Consumers import from the public API, not internal files.
 
@@ -137,10 +136,10 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
 
 Rules:
 - Present tense, imperative mood: "add X" not "added X"
-- First line ≤72 characters
+- First line <=72 characters
 - Body wraps at 80 characters
 - One logical change per commit
-- Squash merge on PR — branch preserves detailed history
+- Squash merge on PR - branch preserves detailed history
 
 #### Authorship
 
@@ -155,11 +154,11 @@ All commits use the operator's identity. Agents are tooling, not contributors.
 | Spec work | `spec<NN>/<description>` | `spec43/mneme-crate` |
 | Chore/docs | `chore/<description>` | `chore/update-deps` |
 
-Always branch from `main`. Always rebase before pushing. Never commit directly to `main`.
+Branch from `main`. Rebase before pushing. Never commit directly to `main`.
 
 #### Decision Documentation
 
-Significant design decisions get a document in `docs/specs/` or `docs/decisions/`. Include: context, options considered, decision, consequences.
+Significant design decisions get a document in `docs/`. Include: context, options considered, decision, consequences.
 
 ---
 
@@ -169,12 +168,12 @@ Significant design decisions get a document in `docs/specs/` or `docs/decisions/
 
 - Edition: **2024** (latest stable)
 - Resolver: **2** (mandatory in workspace)
-- MSRV: latest stable (internal project — no MSRV ceremony)
+- MSRV: latest stable (internal project - no MSRV ceremony)
 - Async: **Tokio** runtime, native `async fn` in traits (no `async-trait` crate)
 
 ### Error Handling (Rust)
 
-Per-crate error types via `snafu` (GreptimeDB pattern — context wrapping, Location-based virtual stack traces):
+Per-crate error types via `snafu` (GreptimeDB pattern - context wrapping, Location-based virtual stack traces):
 
 ```rust
 use snafu::{ResultExt, Snafu};
@@ -206,8 +205,8 @@ fn load_config(path: &Path) -> Result<Config, ConfigError> {
 ```
 
 Layering:
-- `snafu` in library crates — typed, matchable, with Location tracking
-- `anyhow` only in `main()`, CLI entry points, and tests — never in library crates
+- `snafu` in library crates - typed, matchable, with Location tracking
+- `anyhow` only in `main()`, CLI entry points, and tests - never in library crates
 - `miette` for user-facing diagnostics
 - Convention: `source` field = internal error (walk chain), `error` field = external (stop walking)
 - Log errors where HANDLED, not where they occur
@@ -245,8 +244,8 @@ impl Session<Active> {
 ```
 
 **Enums for closed sets, traits for open sets:**
-- Known finite variants → enum with exhaustive match
-- Runtime-extensible behavior → trait
+- Known finite variants -> enum with exhaustive match
+- Runtime-extensible behavior -> trait
 
 **`#[non_exhaustive]` on public enums** that may grow.
 
@@ -257,7 +256,7 @@ impl Session<Active> {
 | Situation | Use | Avoid |
 |-----------|-----|-------|
 | Read-only string input | `&str` | `String` |
-| Usually borrowed, sometimes owned | `Cow<'_, str>` | `String` |
+| Mostly borrowed, sometimes owned | `Cow<'_, str>` | `String` |
 | Must own | `String` | — |
 | Compile-time known | `&'static str` | `String` |
 | Return from function, caller decides | `impl Into<String>` | Force `String` |
@@ -274,7 +273,7 @@ Prefer iterator pipelines over collecting into intermediate `Vec`s. No `.clone()
 
 ### Lint Suppression
 
-- `#[expect(lint)]` over `#[allow(lint)]` — warns when suppression becomes unnecessary
+- `#[expect(lint)]` over `#[allow(lint)]` - warns when suppression becomes unnecessary
 - Every suppression requires inline reason: `#[expect(clippy::too_many_arguments, reason = "builder pattern WIP")]`
 
 ### Credentials
@@ -360,7 +359,7 @@ wasm-plugins = ["dep:wasmtime"]
 - Named files (`session.rs`) over `session/mod.rs` unless module has submodules
 - Tests in `#[cfg(test)] mod tests` at bottom of source file
 - Integration tests in `tests/` directory per crate
-- Imports grouped: std → external → workspace → local, blank line between groups
+- Imports grouped: std -> external -> workspace -> local, blank line between groups
 
 ### Rust Imports
 
@@ -438,9 +437,9 @@ unknown-git = "deny"
 
 ### Rule: Typed Errors Only
 
-**What:** All thrown errors must extend `AletheiaError`. Never `throw new Error(...)` or throw strings. Non-critical operations use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
+**What:** All thrown errors extend `AletheiaError`. Never `throw new Error(...)` or throw strings. Non-critical operations use `trySafe`/`trySafeAsync` from `koina/safe.ts`.
 
-**Why:** Bare errors are uncatchable by type — callers cannot distinguish error categories. The typed hierarchy enables targeted handling, structured logging, and clean error propagation across the call stack.
+**Why:** Bare errors are uncatchable by type - callers cannot distinguish error categories. The typed hierarchy enables targeted handling, structured logging, and clean propagation across the call stack.
 
 **Compliant:**
 ```typescript
@@ -456,16 +455,16 @@ throw new Error("session not found");
 throw "unexpected state";
 ```
 
-**Enforced by:** Convention + agent context (oxlint has no rule for this pattern; Phase 12 manual audit covers it). See `koina/errors.ts` for the full hierarchy and `koina/error-codes.ts` for codes.
+**Enforced by:** Convention + agent context. See `koina/errors.ts` for the full hierarchy and `koina/error-codes.ts` for codes.
 
 
 ---
 
 ### Rule: No Silent Catch
 
-**What:** Every catch block must either log the error, rethrow it, return a meaningful value, or include an explicit `/* reason */` comment explaining why the error is intentionally discarded.
+**What:** Every catch block must log the error, rethrow it, return a meaningful value, or include an explicit `/* reason */` comment explaining the intentional discard.
 
-**Why:** Silent catch blocks hide failures silently. In a daemon process there is no interactive feedback — a swallowed error is an invisible bug.
+**Why:** Silent catch blocks bury failures. In a daemon process there is no interactive feedback - a swallowed error is an invisible bug.
 
 **Compliant:**
 ```typescript
@@ -493,16 +492,16 @@ try {
 } catch (e) { /* TODO */ }
 ```
 
-**Enforced by:** `no-empty` (oxlint, currently `error`) catches empty catch blocks. Silent catch with a body (e.g., a comment-only block) is convention + agent context.
+**Enforced by:** `no-empty` (oxlint, currently `error`) catches empty catch blocks. Silent catch with a body (e.g., comment-only block) is convention + agent context.
 
 
 ---
 
 ### Rule: No Explicit Any
 
-**What:** Do not use `any` as a type annotation. Use `unknown` with type narrowing, or define a proper interface/type.
+**What:** Never use `any` as a type annotation. Use `unknown` with type narrowing, or define a proper interface/type.
 
-**Why:** `any` disables TypeScript's type checker for the annotated value and everything that flows through it. In a typed codebase it creates invisible holes in the type system.
+**Why:** `any` disables the type checker for the annotated value and everything downstream. In a typed codebase it creates invisible holes in the type system.
 
 **Compliant:**
 ```typescript
@@ -519,16 +518,16 @@ function process(input: any): string {
 }
 ```
 
-**Enforced by:** `typescript/no-explicit-any` (oxlint, currently `warn` — deferred to Phase 14, 32 violations).
+**Enforced by:** `typescript/no-explicit-any` (oxlint).
 
 
 ---
 
 ### Rule: Logger Not Console
 
-**What:** Use `createLogger("module-name")` for all daemon logging. `console.*` is acceptable only in CLI-mode functions that explicitly produce human-readable stdout output (e.g., `nous/audit.ts`).
+**What:** Use `createLogger("module-name")` for all daemon logging. `console.*` is acceptable only in CLI-mode functions that produce human-readable stdout (e.g., `nous/audit.ts`).
 
-**Why:** `createLogger` includes structured context (session ID, turn ID, agent ID) via AsyncLocalStorage. `console.*` in daemon code loses all context correlation and produces unstructured output that cannot be filtered, routed, or aggregated.
+**Why:** `createLogger` includes structured context (session ID, turn ID, agent ID) via AsyncLocalStorage. `console.*` in daemon code loses all context correlation and produces unstructured output that cannot be filtered or aggregated.
 
 **Compliant:**
 ```typescript
@@ -548,7 +547,7 @@ console.log("Turn complete", sessionId);
 console.error("Provider error:", err);
 ```
 
-**Enforced by:** `no-console` (oxlint, Phase 11 addition — not yet in `.oxlintrc.json`). Exception: `nous/audit.ts` and any function explicitly documented as producing CLI stdout output.
+**Enforced by:** `no-console` (oxlint). Exception: `nous/audit.ts` and any function explicitly documented as producing CLI stdout output.
 
 
 ---
@@ -557,7 +556,7 @@ console.error("Provider error:", err);
 
 **What:** `ToolHandler.execute()` implementations that are synchronous in some branches must use `return Promise.resolve(result)` rather than the `async` keyword without any `await`.
 
-**Why:** The `async` keyword on a function with no `await` triggers `eslint(require-await)`. The structural fix is to preserve the `Promise<string>` return type without the `async` keyword. Do not remove `async` and change the return type — that breaks the `ToolHandler` interface contract.
+**Why:** `async` on a function with no `await` triggers `eslint(require-await)`. The fix: keep the `Promise<string>` return type, drop the `async` keyword. Do not remove `async` and change the return type - that breaks the `ToolHandler` interface contract.
 
 **Compliant:**
 ```typescript
@@ -582,7 +581,7 @@ export const myTool: ToolHandler = {
 };
 ```
 
-**Enforced by:** `require-await` (oxlint, currently `warn` — deferred to Phase 14, 125 violations). See CONTRIBUTING.md Gotcha 3.
+**Enforced by:** `require-await` (oxlint). See CONTRIBUTING.md Gotcha 3.
 
 
 ---
@@ -591,7 +590,7 @@ export const myTool: ToolHandler = {
 
 **What:** Named imports within a single `import { }` statement must be sorted alphabetically (case-insensitive).
 
-**Why:** Consistent import ordering reduces diff noise and makes it easier to scan whether a specific name is imported from a module.
+**Why:** Consistent ordering reduces diff noise and makes scanning for specific names faster.
 
 **Compliant:**
 ```typescript
@@ -605,7 +604,7 @@ import { type Logger, createLogger } from "../koina/logger.js";
 import { SessionError, AletheiaError, PlanningError } from "../koina/errors.js";
 ```
 
-**Enforced by:** `sort-imports` (oxlint, currently `warn` — deferred to Phase 14, 68 violations). Note: `ignoreDeclarationSort: true` means statement-level ordering is not enforced — only member-level sorting within a single import statement.
+**Enforced by:** `sort-imports` (oxlint). Note: `ignoreDeclarationSort: true` means statement-level ordering is not enforced - only member-level sorting within a single import statement.
 
 
 ---
@@ -614,7 +613,7 @@ import { SessionError, AletheiaError, PlanningError } from "../koina/errors.js";
 
 **What:** All relative imports must include the `.js` extension, even for `.ts` source files.
 
-**Why:** TypeScript with `"moduleResolution": "bundler"` and ESM output requires `.js` extensions for Node.js compatibility. Omitting them causes runtime module resolution failures in the built output.
+**Why:** TypeScript with `"moduleResolution": "bundler"` and ESM output requires `.js` extensions for Node.js compatibility. Omitting them causes runtime module resolution failures in built output.
 
 **Compliant:**
 ```typescript
@@ -628,7 +627,7 @@ import { createLogger } from "../koina/logger";
 import type { SessionStore } from "../mneme/store";
 ```
 
-**Enforced by:** `import/extensions` (oxlint — verify rule name in Phase 11; currently enforced via tsconfig `moduleResolution` which fails to resolve extensionless imports at build time).
+**Enforced by:** tsconfig `moduleResolution` (fails to resolve extensionless imports at build time).
 
 
 ---
@@ -637,7 +636,7 @@ import type { SessionStore } from "../mneme/store";
 
 **What:** Import type-only symbols using `import type { }` syntax, not `import { }`. When mixing value and type imports from the same module, use inline `type` modifier: `import { value, type MyType }`.
 
-**Why:** `import type` is erased at compile time — it produces no runtime module load. Mixing runtime and type imports creates unnecessary module dependencies and increases bundle size.
+**Why:** `import type` is erased at compile time - no runtime module load. Mixing runtime and type imports creates unnecessary module dependencies and increases bundle size.
 
 **Compliant:**
 ```typescript
@@ -657,7 +656,7 @@ import { AletheiaConfig } from "./taxis/schema.js"; // type used as value import
 
 ### Rule: No Floating Promises
 
-**What:** Every `Promise` returned by an `async` function must be `await`ed, returned, or explicitly handled. Do not fire-and-forget unless the intent is documented.
+**What:** Every `Promise` returned by an `async` function must be `await`ed, returned, or explicitly handled. No fire-and-forget unless intent is documented.
 
 **Why:** Unhandled promise rejections crash the process in Node.js 22+. Fire-and-forget patterns lose error context and make debugging impossible.
 
@@ -684,9 +683,9 @@ processQueue(); // promise rejection silently dropped
 
 ### Rule: No XSS via @html
 
-**What:** Do not use `{@html ...}` with user-supplied or externally-sourced content unless the content has been sanitized through a verified sanitization library.
+**What:** Never use `{@html ...}` with user-supplied or externally-sourced content unless sanitized through a verified library.
 
-**Why:** `{@html}` bypasses Svelte's automatic HTML escaping and renders raw HTML directly into the DOM. Unsanitized user content creates a cross-site scripting (XSS) vulnerability.
+**Why:** `{@html}` bypasses Svelte's automatic HTML escaping and renders raw HTML directly into the DOM. Unsanitized user content creates XSS vulnerabilities.
 
 **Compliant:**
 ```svelte
@@ -703,16 +702,16 @@ processQueue(); // promise rejection silently dropped
 {@html apiResponse.content}
 ```
 
-**Enforced by:** `svelte/no-at-html-tags` (eslint-plugin-svelte, Phase 11 addition). Currently enforced by convention + agent context.
+**Enforced by:** `svelte/no-at-html-tags` (eslint-plugin-svelte). Convention + agent context.
 
 
 ---
 
 ### Rule: Svelte 5 Runes Only (no legacy reactive syntax)
 
-**What:** Use Svelte 5 rune syntax (`$state`, `$derived`, `$effect`, `$props`) exclusively. Do not use legacy reactive declarations (`$:`, `export let`, reactive stores with `$storeName` auto-subscription syntax in script blocks).
+**What:** Use Svelte 5 rune syntax (`$state`, `$derived`, `$effect`, `$props`) exclusively. No legacy reactive declarations (`$:`, `export let`, reactive stores with `$storeName` auto-subscription in script blocks).
 
-**Why:** Aletheia targets Svelte 5. Legacy reactive syntax is deprecated in Svelte 5 and will be removed. Mixing syntaxes creates ambiguous component behavior and blocks future Svelte upgrades.
+**Why:** Aletheia targets Svelte 5. Legacy reactive syntax is deprecated and will be removed. Mixing syntaxes creates ambiguous component behavior and blocks future upgrades.
 
 **Compliant:**
 ```svelte
@@ -743,9 +742,9 @@ processQueue(); // promise rejection silently dropped
 
 ### Rule: svelte-check Warnings Are Errors
 
-**What:** `svelte-check` must pass with zero warnings in CI. Warnings are treated as errors for gating purposes.
+**What:** `svelte-check` must pass with zero warnings in CI. Warnings are errors for gating purposes.
 
-**Why:** `svelte-check` catches type errors, missing props, and deprecated API usage in Svelte components. Allowing warnings to accumulate creates silent technical debt that is expensive to remediate later.
+**Why:** `svelte-check` catches type errors, missing props, and deprecated API usage. Letting warnings accumulate creates silent debt that compounds over time.
 
 **Compliant:**
 All props typed, no deprecated APIs, `svelte-check` exits 0.
@@ -753,16 +752,16 @@ All props typed, no deprecated APIs, `svelte-check` exits 0.
 **Non-compliant:**
 Any `svelte-check` warning left unaddressed; `svelte-check` run without `--fail-on-warnings`.
 
-**Enforced by:** CI step `cd ui && npx svelte-check --fail-on-warnings` (Phase 11 addition).
+**Enforced by:** CI step `cd ui && npx svelte-check --fail-on-warnings`.
 
 
 ---
 
 ### Rule: Typed Component Props
 
-**What:** All Svelte component props must be explicitly typed using `$props<{ ... }>()` with a TypeScript interface or inline type. No untyped or `any`-typed props.
+**What:** Type all Svelte component props using `$props<{ ... }>()` with a TypeScript interface or inline type. No untyped or `any`-typed props.
 
-**Why:** Untyped props break type-checking at component boundaries. TypeScript cannot verify that parent components pass the correct prop types.
+**Why:** Untyped props break type-checking at component boundaries. TypeScript cannot verify that parent components pass correct prop types.
 
 **Compliant:**
 ```svelte
@@ -792,9 +791,9 @@ Any `svelte-check` warning left unaddressed; `svelte-check` run without `--fail-
 
 ### Rule: FastAPI Depends() Pattern (not B008)
 
-**What:** Use `fastapi.Depends()` for dependency injection in FastAPI route signatures. Do not use mutable default arguments or call functions directly in parameter defaults.
+**What:** Use `fastapi.Depends()` for dependency injection in FastAPI route signatures. No mutable default arguments or direct function calls in parameter defaults.
 
-**Why:** FastAPI's `Depends()` mechanism handles lifecycle, caching, and async context correctly. Calling functions directly in default arguments (ruff rule B008) executes them at module import time rather than per-request.
+**Why:** FastAPI's `Depends()` handles lifecycle, caching, and async context correctly. Calling functions directly in default arguments (ruff rule B008) executes them at module import time, not per-request.
 
 **Compliant:**
 ```python
@@ -815,16 +814,16 @@ async def search(query: SearchQuery, db: Database = Database(settings.db_url)): 
     return await db.search(query.text)
 ```
 
-**Enforced by:** ruff rule `B008` (Phase 11 addition to sidecar CI). FastAPI pattern is also validated by `pyright` strict mode.
+**Enforced by:** ruff rule `B008`. FastAPI pattern is also validated by `pyright` strict mode.
 
 
 ---
 
 ### Rule: Ruff-Selected Rule Set
 
-**What:** The sidecar must pass ruff lint with the following rule sets enabled: `E`, `W`, `F`, `B`, `I`, `UP`. No `# noqa` suppression without an inline comment explaining why.
+**What:** The sidecar must pass ruff lint with rule sets: `E`, `W`, `F`, `B`, `I`, `UP`. No `# noqa` suppression without an inline explanation.
 
-**Why:** The sidecar currently has zero static analysis configured. `pyproject.toml` has no `[tool.ruff]` section. This leaves the Python codebase entirely unchecked. The selected rule sets cover pyflakes errors (`F`), pycodestyle (`E`/`W`), bugbear patterns (`B`), import ordering (`I`), and pyupgrade modernization (`UP`).
+**Why:** These rule sets cover pyflakes errors (`F`), pycodestyle (`E`/`W`), bugbear patterns (`B`), import ordering (`I`), and pyupgrade modernization (`UP`).
 
 **Compliant:**
 ```python
@@ -839,16 +838,16 @@ ignore = ["B008"]  # FastAPI Depends() — intentional, see STANDARDS.md
 # pyproject.toml has no [tool.ruff] section — no lint enforcement
 ```
 
-**Enforced by:** ruff (Phase 11 addition to `pyproject.toml` and CI).
+**Enforced by:** ruff (`pyproject.toml`).
 
 
 ---
 
 ### Rule: Pyright Strict Mode
 
-**What:** The sidecar must pass `pyright --strict` with zero errors. All functions must have explicit return type annotations. All parameters must be typed.
+**What:** The sidecar must pass `pyright --strict` with zero errors. All functions need explicit return type annotations and typed parameters.
 
-**Why:** FastAPI route handlers with untyped parameters produce incorrect OpenAPI schemas and miss runtime validation errors. Pyright strict mode catches these at development time rather than in production.
+**Why:** Untyped FastAPI route parameters produce incorrect OpenAPI schemas and miss runtime validation errors. Pyright strict catches these at development time.
 
 **Compliant:**
 ```python
@@ -867,16 +866,16 @@ async def add_memories(request):  # untyped — pyright strict error
     ...
 ```
 
-**Enforced by:** pyright (Phase 11 addition to CI). Not yet configured.
+**Enforced by:** pyright strict mode.
 
 
 ---
 
 ### Rule: No Bare Exception Catch
 
-**What:** Do not use bare `except:` or `except Exception:` without re-raising or logging the specific error with context. Always catch the most specific exception type available.
+**What:** No bare `except:` or `except Exception:` without re-raising or logging with context. Catch the most specific exception type available.
 
-**Why:** Bare `except:` catches `SystemExit`, `KeyboardInterrupt`, and other non-error signals. Even `except Exception:` swallows errors silently if not properly handled. FastAPI routes with silent exception swallowing return 500 errors with no diagnostic information.
+**Why:** Bare `except:` catches `SystemExit`, `KeyboardInterrupt`, and other non-error signals. Even `except Exception:` swallows errors silently without proper handling. FastAPI routes with silent exception swallowing return 500s with no diagnostic information.
 
 **Compliant:**
 ```python
@@ -900,7 +899,7 @@ except Exception:  # swallowed
     pass
 ```
 
-**Enforced by:** ruff rule `BLE001` (blind exception catch) and `E722` (bare except). Phase 11 addition.
+**Enforced by:** ruff rule `BLE001` (blind exception catch) and `E722` (bare except).
 
 
 ---
@@ -909,11 +908,11 @@ except Exception:  # swallowed
 
 ### Rule: Gnomon Naming Convention
 
-**What:** Persistent names for modules, subsystems, agents, and major components must follow the naming system documented in [gnomon.md](gnomon.md). Names identify modes of attention, pass the layer test (L1-L4), and compose with the existing name topology.
+**What:** Persistent names for modules, subsystems, agents, and major components use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). Names identify modes of attention, pass the layer test (L1-L4), and compose with the existing name topology. See ALETHEIA.md for philosophical grounding.
 
-**Why:** The naming system is not decoration. Names that identify the right mode of attention survive refactors, communicate architectural intent, and resist the drift toward generic labels. A well-chosen name teaches you something about the thing it names. See gnomon.md for the full philosophy, method, and anti-patterns.
+**Why:** The naming system is not decoration. Names that identify the right mode of attention survive refactors, communicate architectural intent, and resist drift toward generic labels. A well-chosen name teaches you something about what it names.
 
-**Applies to:** Module directories, agent identities, subsystem names, major features that will persist. Does *not* apply to: utility functions, variable names, temporary branches, test fixtures.
+**Applies to:** Module directories, agent identities, subsystem names, major persistent features. Does *not* apply to: utility functions, variable names, temporary branches, test fixtures.
 
 **Process:**
 1. Identify the mode of attention (not the implementation)
@@ -922,7 +921,7 @@ except Exception:  # swallowed
 4. Check topology against existing names
 5. If no Greek word fits naturally, the mode of attention isn't clear yet - wait
 
-**Enforced by:** Convention + agent context. Agents should have gnomon.md in context when proposing names for new persistent components.
+**Enforced by:** Convention + agent context.
 
 ---
 
@@ -930,9 +929,9 @@ except Exception:  # swallowed
 
 ### Rule: Module Import Direction (layered graph)
 
-**What:** Imports must flow from higher layers to lower layers only. See `docs/ARCHITECTURE.md` for the full dependency table with each module's permitted and forbidden imports.
+**What:** Imports flow from higher layers to lower layers only. See `docs/ARCHITECTURE.md` for the full dependency table.
 
-**Why:** Circular imports cause initialization order bugs and create tight coupling between modules that should be independent. Node.js ESM does not support circular dependencies cleanly — they produce `undefined` values at import time.
+**Why:** Circular imports cause initialization order bugs and tight coupling between modules that should be independent. Node.js ESM does not handle circular dependencies cleanly - they produce `undefined` values at import time.
 
 **Compliant:**
 ```typescript
@@ -947,16 +946,16 @@ import { createDefaultRouter } from "../hermeneus/router.js";
 import { loadConfig } from "../taxis/loader.js"; // forbidden — koina is a leaf node
 ```
 
-**Enforced by:** `import/no-cycle` (oxlint, Phase 11 addition). Convention + agent context for directional enforcement. See `docs/ARCHITECTURE.md#dependency-rules`.
+**Enforced by:** `import/no-cycle` (oxlint). Convention + agent context for directional enforcement. See `docs/ARCHITECTURE.md#dependency-rules`.
 
 
 ---
 
 ### Rule: Event Name Format noun:verb
 
-**What:** All event bus event names must follow `noun:verb` format (e.g., `turn:before`, `tool:called`, `session:created`). No other formats.
+**What:** All event bus event names use `noun:verb` format (e.g., `turn:before`, `tool:called`, `session:created`). No other formats.
 
-**Why:** Consistent `noun:verb` naming makes event subscriptions greppable and predictable. Mixed formats (camelCase, hyphenated, colon-less) make it impossible to find all events related to a subsystem.
+**Why:** Consistent `noun:verb` naming makes event subscriptions greppable and predictable. Mixed formats (camelCase, hyphenated, colon-less) make it impossible to find all events for a subsystem.
 
 **Compliant:**
 ```typescript
@@ -972,16 +971,16 @@ eventBus.emit("tool-called", { name });            // hyphenated
 eventBus.emit("sessionCreated", { id });           // camelCase, no colon
 ```
 
-**Enforced by:** Convention + agent context. No mechanical enforcement exists. Phase 12 audit will scan for non-conforming event names.
+**Enforced by:** Convention + agent context.
 
 
 ---
 
 ### Rule: Logger Creation Pattern createLogger("module-name")
 
-**What:** Create loggers at module scope using `createLogger("module-name")`. The module name must be a string literal matching the module's directory name or `"module:subcomponent"` for sub-components.
+**What:** Create loggers at module scope using `createLogger("module-name")`. The module name must match the module's directory name or use `"module:subcomponent"` for sub-components.
 
-**Why:** The module name is included in every log line and used for log filtering. Inconsistent naming makes log correlation across modules impossible.
+**Why:** The module name appears in every log line and drives log filtering. Inconsistent naming makes cross-module correlation impossible.
 
 **Compliant:**
 ```typescript
@@ -997,172 +996,78 @@ const log = createLogger("src/nous/pipeline");  // path format, not module name
 createLogger("temp");                           // unnamed, not assigned
 ```
 
-**Enforced by:** Convention + agent context. `createLogger` is the only way to get a structured logger — no alternative exists in the codebase.
+**Enforced by:** Convention + agent context. `createLogger` is the only way to get a structured logger - no alternative exists in the codebase.
 
 
 ---
 
 ### Rule: Module Boundary Discipline
 
-**What:** Cross-module imports use tsconfig path aliases (`@module`) and barrel exports (`index.ts`). Each module declares its public surface via `index.ts` — consumers import from the barrel, not internal files. `koina/` is the sole exception: it is a leaf node with direct-import discipline (no `index.ts`) to avoid loading the entire commons when only one utility is needed.
+**What:** Import directly from the file that owns the symbol. Do not create `index.ts` barrel files that re-export a module's internals just to flatten import paths. Modules with a legitimate public API surface (e.g., `dianoia/index.ts` that defines the module's external interface) may use an `index.ts` to curate their exports.
 
-**Why:** Module identity should be defined once and referenced everywhere. Direct imports into module internals (e.g., `../symbolon/middleware.js`) couple consumers to internal file structure. Barrel exports + path aliases make the module contract explicit and renames trivial (change tsconfig + directory name, done).
+**Why:** Gratuitous barrel files load entire modules when only one export is needed, hide the true dependency graph, and make tree-shaking harder. Direct imports keep dependencies explicit.
 
 **Compliant:**
 ```typescript
-// Cross-module: use path alias and barrel
-import { authMiddleware } from "@symbolon";
-import { distillSession } from "@melete";
-
-// koina exception: direct imports (leaf node, no barrel)
+// Direct import from the file that owns the symbol
+import { SessionStore } from "../mneme/store.js";
 import { createLogger } from "../koina/logger.js";
+import { AletheiaError } from "../koina/errors.js";
 
-// Within a module: relative imports to internal files
-import { hashPassword } from "./passwords.js";
+// Module with a curated public API surface — acceptable
+import { orchestrate } from "../dianoia/index.js";
 ```
 
 **Non-compliant:**
 ```typescript
-// Reaching into module internals from outside:
-import { authMiddleware } from "../symbolon/middleware.js";
-
-// koina barrel (would load everything):
+// Gratuitous barrel that re-exports everything:
+// koina/index.ts re-exporting createLogger, AletheiaError, trySafe, etc.
 import { createLogger } from "../koina/index.js";
+
+// Barrel created just to flatten paths:
+// mneme/index.ts re-exporting SessionStore, makeDb, etc.
+import { SessionStore } from "../mneme/index.js";
 ```
 
-**Enforced by:** Convention + agent context. Spec 33 Phase 1 will add tsconfig path aliases and barrel exports for all gnomon modules. `eslint-plugin-import` `no-internal-modules` rule planned as mechanical enforcement.
+**Enforced by:** Convention + agent context.
 
-
-**Note:** This rule supersedes the previous "No Barrel Files" rule. The original concern (loading entire modules when only one export is needed) is valid for `koina/` but not for domain modules with a clear public surface. The tsconfig path alias + selective barrel pattern avoids the loading problem while providing the boundary discipline the codebase needs.
-
----
-
-### Rule: One Module Per PR for Remediation Batches
-
-**What:** When remediating existing violations (Phase 13), each PR must touch at most one module directory. Do not batch multi-module remediations into a single PR.
-
-**Why:** Multi-module PRs are difficult to review, harder to revert if a remediation introduces a regression, and obscure the per-module violation delta in the audit trail.
-
-**Compliant:**
-```
-PR: "fix: typed errors in organon built-in tools"
-  src/organon/built-in/exec.ts
-  src/organon/built-in/read.ts
-  src/organon/built-in/grep.ts
-```
-
-**Non-compliant:**
-```
-PR: "fix: typed errors across runtime"
-  src/organon/built-in/exec.ts
-  src/nous/pipeline.ts         ← different module
-  src/hermeneus/router.ts      ← different module
-```
-
-**Enforced by:** PR review convention. Phase 13 execution plan will batch work by module.
-
-
----
-
-## Project Governance
-
-Rules specific to the Rust rewrite project lifecycle.
-
-### Implementation Philosophy: Docs Are the Spec
-
-When implementing each crate:
-
-1. Read the relevant section of `docs/PROJECT.md`
-2. Read `docs/ARCHITECTURE.md` for boundary rules
-3. Read this document for invariants
-4. Read `docs/gnomon.md` for naming
-5. Implement from those documents
-6. Consult TS/Python code only to understand *intent*, not to copy implementation
-
-Known-wrong patterns do not carry forward: per-request DB connections, `execSync`, `appendFileSync`, mem0 monkey-patching, silent catches, bare `throw new Error`.
-
-### Commit Standards
-
-```
-<type>(<scope>): <imperative description, ≤72 chars>
-
-<what and why, wrapped at 72 chars>
-```
-
-Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`. Scopes: crate names + `ui`, `tui`, `cli`, `specs`, `ci`. Single author: `forkwright <forkwright@users.noreply.github.com>`. No `Co-authored-by` lines. No agent attribution.
-
-### Deviation Rules
-
-When implementing, deviations from the plan or existing specs follow escalation levels:
-
-| Level | Scope | Action |
-|-------|-------|--------|
-| L1 | Bug fix — broken behavior, no design change | Auto-fix, document in commit |
-| L2 | Critical addition — missing piece that blocks progress | Auto-add, document rationale in commit body |
-| L3 | Blocker resolution — spec conflict or impossible requirement | Auto-fix, flag in next status update |
-| L4 | Design change — different approach than what's specified | **STOP AND ASK.** No autonomous design changes. |
-
-### Research Protocol
-
-Claims about external systems, libraries, or protocols require evidence:
-
-| Tier | Source | Example |
-|------|--------|---------|
-| S1 | Peer-reviewed / official docs | Tokio docs, Rust reference, RFC |
-| S2 | Authoritative secondary | crates.io README, well-maintained blog |
-| S3 | Community knowledge | GitHub issues, Stack Overflow with verification |
-| S4 | Direct testing | "I ran this and observed..." |
-| S5 | Our synthesis | Combining sources into a conclusion |
-
-**Rules:** Inline-cite sources. Include counter-evidence when it exists. Never cite what you haven't read. "I don't know" is always acceptable; wrong is not.
-
-### What Carries Forward Unchanged
-
-- **Svelte 5 UI** — no reason to rewrite
-- **CozoDB** — absorbed as mneme-engine (replaces Qdrant + Neo4j)
-- **signal-cli** — JVM process unchanged, Rust rewrites the glue
-- **Agent workspace files** — SOUL.md, TELOS.md, MNEME.md, etc. Same files, oikos paths
-- **HTTP/SSE API surface** — same endpoints, same events. UI works without modification
-- **6-cycle self-improvement loop** — evolution, competence, skills, feedback, distillation, consolidation
-- **Gnomon naming** — the naming system is the architecture
 
 ---
 
 ## Enforcement Summary Table
 
-| Rule | Tool | Config Location | Status |
-|------|------|-----------------|--------|
-| Typed Errors Only | Convention + agent context | — | Partial (41 violations) |
-| No Silent Catch | `no-empty` (oxlint) | `.oxlintrc.json` | Active (error) |
-| No Explicit Any | `typescript/no-explicit-any` (oxlint) | `.oxlintrc.json` | Warn → Error in Phase 11 |
-| Logger Not Console | `no-console` (oxlint) | Phase 11 addition | Not yet active |
-| Typed Promise Returns | `require-await` (oxlint) | `.oxlintrc.json` | Warn (125 violations — Phase 14) |
-| Sort Named Imports | `sort-imports` (oxlint) | `.oxlintrc.json` | Warn (68 violations — Phase 14) |
-| Prefer await over .then() | `promise/prefer-await-to-then` (oxlint) | `.oxlintrc.json` | Warn (61 violations — Phase 14) |
-| Catch param naming | `unicorn/catch-error-name` (oxlint) | `.oxlintrc.json` | Warn (221 violations — Phase 14) |
-| .js Import Extensions | tsconfig + build | `tsconfig.json` | Active (build fails) |
-| Type-Only Imports | `typescript/consistent-type-imports` (oxlint) | `.oxlintrc.json` | Active (error) |
-| No Floating Promises | `typescript/no-floating-promises` (oxlint) | `.oxlintrc.json` | Active (error) |
-| No XSS via @html | `svelte/no-at-html-tags` (eslint-plugin-svelte) | Phase 11 addition | Not yet active |
-| Svelte 5 Runes Only | Convention + svelte-check | Phase 11 CI | Not yet active |
-| svelte-check Warnings | CI step `--fail-on-warnings` | Phase 11 CI | Not yet active |
-| Typed Component Props | svelte-check + convention | Phase 11 | Not yet active |
-| FastAPI Depends() | ruff `B008` | Phase 11 addition | Not yet active |
-| Ruff Rule Set | ruff | Phase 11 addition to pyproject.toml | Not yet active |
-| Pyright Strict Mode | pyright | Phase 11 addition | Not yet active |
-| No Bare Exception Catch | ruff `BLE001`, `E722` | Phase 11 addition | Not yet active |
-| Gnomon Naming Convention | Convention + agent context | [gnomon.md](gnomon.md) | Active |
-| Module Import Direction | `import/no-cycle` (oxlint) | Phase 11 addition | Not yet active |
-| Event Name Format | Convention + agent context | — | High compliance, unverified |
-| Logger Creation Pattern | Convention + agent context | — | Universally followed |
-| Module Boundary Discipline | Convention → Spec 33 | `tsconfig.json` (planned) | Migration pending |
-| One Module Per PR | PR review convention | — | Process rule |
+| Rule | Status |
+|------|--------|
+| Typed Errors Only | Convention |
+| No Silent Catch | Active |
+| No Explicit Any | Active |
+| Logger Not Console | Convention |
+| Typed Promise Returns | Active |
+| Sort Named Imports | Active |
+| Prefer await over .then() | Active |
+| Catch param naming | Active |
+| .js Import Extensions | Active |
+| Type-Only Imports | Active |
+| No Floating Promises | Active |
+| No XSS via @html | Convention |
+| Svelte 5 Runes Only | Convention |
+| svelte-check Warnings | Convention |
+| Typed Component Props | Convention |
+| FastAPI Depends() | Convention |
+| Ruff Rule Set | Convention |
+| Pyright Strict Mode | Convention |
+| No Bare Exception Catch | Convention |
+| Gnomon Naming Convention | Active |
+| Module Import Direction | Convention |
+| Event Name Format | Convention |
+| Logger Creation Pattern | Convention |
+| Module Boundary Discipline | Convention |
 
 ---
 
 ## Pre-commit Hook
 
-The `.githooks/pre-commit` hook runs lint and type checks for each sub-project when relevant files are staged. The full test suite runs in CI only.
+`.githooks/pre-commit` runs lint and type checks for each sub-project when relevant files are staged. The full test suite runs in CI only.
 
 ### What runs
 
@@ -1173,8 +1078,6 @@ The `.githooks/pre-commit` hook runs lint and type checks for each sub-project w
 | Python sidecar | Any `infrastructure/memory/sidecar/` file staged | `uv run ruff check . && uv run pyright` |
 
 ### Timing
-
-Measured 2026-02-25 on development machine:
 
 | Sub-project | Command | Wall time |
 |-------------|---------|-----------|

@@ -1,4 +1,4 @@
-# PII detection patterns — one extended regex per line
+# PII detection patterns - one extended regex per line
 alice\.johnson
 forkwright
 [Kk]ickertz

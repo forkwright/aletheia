@@ -20,8 +20,7 @@ What Aletheia stores, where it lives, and how to control it.
 
 ## Storage Locations
 
-All data lives under the instance root directory. Default: `./instance`. Override with
-the `ALETHEIA_ROOT` environment variable or `-r` flag.
+All data lives under the instance root directory. Default: `./instance`. Override with `ALETHEIA_ROOT` or the `-r` flag.
 
 ```
 instance/
@@ -53,8 +52,7 @@ Inbound message
   → Recall pipeline (vector search + graph traversal)
 ```
 
-All processing happens locally. The only external call is to the configured LLM provider
-(Anthropic by default) for inference.
+All processing happens locally. The only external call is to the configured LLM provider (Anthropic by default) for inference.
 
 ## Retention Defaults
 
@@ -69,11 +67,9 @@ data:
     archiveBeforeDelete: true       # Export to JSON before deleting
 ```
 
-The retention policy only deletes **closed** sessions (archived or distilled). Active
-sessions are never deleted by retention regardless of age.
+The retention policy only deletes **closed** sessions (archived or distilled). Active sessions are never deleted regardless of age.
 
-When `archiveBeforeDelete` is true, each session is exported to
-`instance/data/archive/sessions/{session_id}.json` before removal.
+When `archiveBeforeDelete` is true, each session is exported to `instance/data/archive/sessions/{session_id}.json` before removal.
 
 ## Backup and Export
 
@@ -83,8 +79,7 @@ When `archiveBeforeDelete` is true, each session is exported to
 aletheia backup
 ```
 
-Creates a point-in-time SQLite backup at `instance/data/backups/sessions_{timestamp}.db`
-using `VACUUM INTO` (no locking, safe while running).
+Creates a point-in-time SQLite backup at `instance/data/backups/sessions_{timestamp}.db` using `VACUUM INTO` (no locking, safe while running).
 
 ### List backups
 
@@ -107,7 +102,7 @@ aletheia backup --export-json
 ```
 
 Exports every session as an individual JSON file to `instance/data/archive/sessions/`.
-Each file contains the session metadata, all messages, and export timestamp.
+Each file contains session metadata, all messages, and export timestamp.
 
 ## Deletion
 
@@ -152,14 +147,11 @@ The database will be recreated on next startup with the migration framework.
 | Anthropic API | Conversation messages, system prompts, tool calls | Every LLM inference call |
 | Signal servers | Message content (encrypted) | When Signal channel is enabled |
 
-**Everything else stays local.** The knowledge graph, embeddings, session history, agent
-workspaces, configuration, and credentials never leave your machine.
+**Everything else stays local.** The knowledge graph, embeddings, session history, agent workspaces, configuration, and credentials never leave your machine.
 
 ## Privacy by Default
 
-- **No telemetry.** Aletheia sends no usage data, analytics, or crash reports.
+- **No telemetry.** No usage data, analytics, or crash reports.
 - **No phone-home.** No update checks, license validation, or beacon requests.
-- **All data local.** Unless you configure an external channel (Signal) or LLM provider,
-  nothing leaves the instance directory.
-- **You own the data.** Export it, back it up, delete it — all via standard tools
-  (SQLite CLI, filesystem operations) or the built-in backup command.
+- **All data local.** Unless you configure an external channel (Signal) or LLM provider, nothing leaves the instance directory.
+- **You own the data.** Export, back up, or delete it - standard tools (SQLite CLI, filesystem operations) or the built-in backup command.

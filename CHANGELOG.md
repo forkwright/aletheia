@@ -8,89 +8,89 @@ Future entries are generated automatically by [release-please](https://github.co
 ## [0.10.6] - 2026-02-22
 
 ### Fixed
-- **Pipeline error `turn_complete`** — Streaming pipeline errors now yield a proper `turn_complete` event with error outcome, so clients compose correct assistant messages instead of saving partial text without attribution
-- **SSE stream error handler** — Guarded `controller.enqueue` in the stream endpoint's outer catch to prevent uncaught exception when client has already disconnected
-- **Active turns counter floor** — Global `activeTurns` counter uses `Math.max(0, ...)` to prevent negative values
-- **SSE connection resilience** — Heartbeat timer (45s) detects dead connections, reconnect clears stale `activeTurns`, disconnect fallback polls every 5s, fetch stream has 2-min read timeout
-- **Connection listener accumulation** — `initConnection()` now cleans up previous listener before adding a new one, preventing duplicate status callbacks on re-initialization
-- **App.svelte effect cleanup** — `$effect` returns `disconnect()` cleanup to close EventSource when effect re-runs
+- **Pipeline error `turn_complete`** - Streaming pipeline errors now yield a proper `turn_complete` event with error outcome, so clients compose correct assistant messages instead of saving partial text without attribution
+- **SSE stream error handler** - Guarded `controller.enqueue` in the stream endpoint's outer catch to prevent uncaught exception when client has already disconnected
+- **Active turns counter floor** - Global `activeTurns` counter uses `Math.max(0, ...)` to prevent negative values
+- **SSE connection resilience** - Heartbeat timer (45s) detects dead connections, reconnect clears stale `activeTurns`, disconnect fallback polls every 5s, fetch stream has 2-min read timeout
+- **Connection listener accumulation** - `initConnection()` now cleans up previous listener before adding a new one, preventing duplicate status callbacks on re-initialization
+- **App.svelte effect cleanup** - `$effect` returns `disconnect()` cleanup to close EventSource when effect re-runs
 
 ---
 
 ## [0.10.5] - 2026-02-22
 
 ### Added
-- **Web UI agent creation** (Spec 5 P5) — "+" button in sidebar opens inline form to create agents. Calls `POST /api/agents` which scaffolds workspace, updates config, and hot-reloads the runtime. New agent is auto-selected for immediate onboarding.
-- **`aletheia init` wizard** (Spec 5 P6) — First-run setup: prompts for Anthropic API key, gateway port, and first agent. Writes credentials, config, and scaffolds workspace in one flow.
+- **Web UI agent creation** (Spec 5 P5) - "+" button in sidebar opens inline form to create agents. Calls `POST /api/agents` which scaffolds workspace, updates config, and hot-reloads the runtime. New agent is auto-selected for immediate onboarding.
+- **`aletheia init` wizard** (Spec 5 P6) - First-run setup: prompts for Anthropic API key, gateway port, and first agent. Writes credentials, config, and scaffolds workspace in one flow.
 
 ### Specs Completed
-- **Spec 5** Plug-and-Play Onboarding — 6/6 phases
+- **Spec 5** Plug-and-Play Onboarding - 6/6 phases
 
 ---
 
 ## [0.10.4] - 2026-02-22
 
 ### Added
-- **`aletheia agent create`** (Spec 5 P1-P3) — CLI command scaffolds a new agent workspace from `_example/` template with onboarding SOUL.md. Supports `--id`, `--name`, `--emoji` flags or interactive prompts. Automatically updates `aletheia.json` with agent entry and web binding.
-- **Onboarding SOUL.md** (Spec 5 P4) — Scaffolded agents get an onboarding prompt as their initial SOUL.md. The agent interviews its operator to learn name, domain, working style, and boundaries, then writes its own `SOUL.md`, `USER.md`, and `MEMORY.md`. Zero runtime changes — the agent naturally transitions out of onboarding by overwriting SOUL.md via the write tool.
+- **`aletheia agent create`** (Spec 5 P1-P3) - CLI command scaffolds a new agent workspace from `_example/` template with onboarding SOUL.md. Supports `--id`, `--name`, `--emoji` flags or interactive prompts. Automatically updates `aletheia.json` with agent entry and web binding.
+- **Onboarding SOUL.md** (Spec 5 P4) - Scaffolded agents get an onboarding prompt as their initial SOUL.md. The agent interviews its operator to learn name, domain, working style, and boundaries, then writes its own `SOUL.md`, `USER.md`, and `MEMORY.md`. Zero runtime changes - the agent naturally transitions out of onboarding by overwriting SOUL.md via the write tool.
 
 ---
 
 ## [0.10.3] - 2026-02-22
 
 ### Added
-- **Runtime code patching** (Spec 26 P5) — `propose_patch` and `rollback_patch` tools let agents modify their own source code with automated safety gates (tsc + vitest + backup/restore). Patchable dirs: `organon/`, `nous/`, `distillation/`, `daemon/`. Rate limited: 1/hr/agent, 3/day total.
-- **Evolutionary config search** (Spec 26 P6) — `evolution:nightly` cron mutates pipeline configs (recall, tools, notes) via Haiku, benchmarks variants against approval-signal tasks, promotes winners with 24h auto-adopt window and Signal notification. Archive capped at 5 variants per agent.
-- **Checkpoint time-travel** (Spec 21 P4) — `aletheia fork <session-id> --at <N>` creates a new session branched from distillation checkpoint N. API endpoints: `GET /api/sessions/:id/checkpoints`, `POST /api/sessions/:id/fork`.
-- **Pipeline config save** — `savePipelineConfig()` function for writing validated configs back to disk
+- **Runtime code patching** (Spec 26 P5) - `propose_patch` and `rollback_patch` tools let agents modify their own source code with automated safety gates (tsc + vitest + backup/restore). Patchable dirs: `organon/`, `nous/`, `distillation/`, `daemon/`. Rate limited: 1/hr/agent, 3/day total.
+- **Evolutionary config search** (Spec 26 P6) - `evolution:nightly` cron mutates pipeline configs (recall, tools, notes) via Haiku, benchmarks variants against approval-signal tasks, promotes winners with 24h auto-adopt window and Signal notification. Archive capped at 5 variants per agent.
+- **Checkpoint time-travel** (Spec 21 P4) - `aletheia fork <session-id> --at <N>` creates a new session branched from distillation checkpoint N. API endpoints: `GET /api/sessions/:id/checkpoints`, `POST /api/sessions/:id/fork`.
+- **Pipeline config save** - `savePipelineConfig()` function for writing validated configs back to disk
 
 ### Specs Completed
-- **Spec 26** Recursive Self-Improvement — 6/6 phases
-- **Spec 21** Agent Portability — 4/4 phases
+- **Spec 26** Recursive Self-Improvement - 6/6 phases
+- **Spec 21** Agent Portability - 4/4 phases
 
 ---
 
 ## [0.10.2] - 2026-02-21
 
 ### Added
-- **Update notification badge** (Spec 3 P3b) — TopBar polls `/api/system/update-status`, shows green version badge when update available
-- **Update API endpoint** (Spec 3 P3c) — `POST /api/system/update` runs git pull + rebuild, returns status
-- **Credential failover** (Spec 3 P4a) — `ProviderRouter.complete()` tries backup API keys from `~/.aletheia/credentials/anthropic.json` on recoverable errors (429/5xx)
+- **Update notification badge** (Spec 3 P3b) - TopBar polls `/api/system/update-status`, shows green version badge when update available
+- **Update API endpoint** (Spec 3 P3c) - `POST /api/system/update` runs git pull + rebuild, returns status
+- **Credential failover** (Spec 3 P4a) - `ProviderRouter.complete()` tries backup API keys from `~/.aletheia/credentials/anthropic.json` on recoverable errors (429/5xx)
 
 ### Fixed
-- **`[object Object]` in webchat** — LLM sometimes returns structured objects in string arrays during distillation extraction and working state updates. Added `toStringArray()` filter to all 9 array fields across `extract.ts` and `working-state.ts`.
+- **`[object Object]` in webchat** - LLM sometimes returns structured objects in string arrays during distillation extraction and working state updates. Added `toStringArray()` filter to all 9 array fields across `extract.ts` and `working-state.ts`.
 
 ### Changed
-- **Tool workspace scope removed** — file tools (read, write, edit, ls, grep, find) no longer constrained to workspace + allowedRoots via `safePath()`. Now use plain `resolve()`, matching `exec` tool behavior. Deleted `safe-path.ts` and tests.
+- **Tool workspace scope removed** - file tools (read, write, edit, ls, grep, find) no longer constrained to workspace + allowedRoots via `safePath()`. Now use plain `resolve()`, matching `exec` tool behavior. Deleted `safe-path.ts` and tests.
 
 ### Specs Completed
-- **Spec 3** Auth & Updates — all phases complete
+- **Spec 3** Auth & Updates - all phases complete
 
 ---
 
 ## [0.10.1] - 2026-02-21
 
 ### Added
-- **Plugin auto-discovery** (Spec 18 P4) — scans `shared/plugins/` for plugin directories, merges with explicitly configured paths, `aletheia plugins list` CLI command
-- **Plugin path safety** (Spec 18 P5) — `realpathSync` traversal guard on auto-discovered plugins, symlink escape prevention. Explicit config paths bypass validation.
-- **Loop guard hook template** (Spec 18 P6) — `shared/hooks/_templates/loop-guard.yaml` + `.sh`, detects stuck tool-call patterns via sentinel file
-- **Encrypted memory init** (Spec 20 P4) — AES-256-GCM encryption wired at startup with salt persistence. `encryptIfEnabled`/`decryptIfNeeded` already in store; this adds `initEncryption()` call and salt management.
-- **Agent file import** (Spec 21 P2) — `aletheia import <file.agent.json>` restores workspace files, sessions with ID remapping, messages, notes, working state, distillation priming
-- **Scheduled backups** (Spec 21 P3) — `backup:all-agents` cron command, configurable destination and retention days via `BackupConfig` schema
+- **Plugin auto-discovery** (Spec 18 P4) - scans `shared/plugins/` for plugin directories, merges with explicitly configured paths, `aletheia plugins list` CLI command
+- **Plugin path safety** (Spec 18 P5) - `realpathSync` traversal guard on auto-discovered plugins, symlink escape prevention. Explicit config paths bypass validation.
+- **Loop guard hook template** (Spec 18 P6) - `shared/hooks/_templates/loop-guard.yaml` + `.sh`, detects stuck tool-call patterns via sentinel file
+- **Encrypted memory init** (Spec 20 P4) - AES-256-GCM encryption wired at startup with salt persistence. `encryptIfEnabled`/`decryptIfNeeded` already in store; this adds `initEncryption()` call and salt management.
+- **Agent file import** (Spec 21 P2) - `aletheia import <file.agent.json>` restores workspace files, sessions with ID remapping, messages, notes, working state, distillation priming
+- **Scheduled backups** (Spec 21 P3) - `backup:all-agents` cron command, configurable destination and retention days via `BackupConfig` schema
 
 ### Changed
 - CI streamlined: removed duplicate npm audit from nightly (kept in security.yml), fixed dependabot-auto-merge check name (`quality` not `typecheck`), staggered CodeQL to Wednesday, added zod major version ignore
 - Dependencies: better-sqlite3 11→12, @types/node 22→25, @vitest/coverage-v8 3→4, actions/setup-python v5→v6
 
 ### Fixed
-- **Rolldown chunk circular dependency** — dynamic `import("koina/fs.js")` in loader.ts created a chunk that referenced `__exportAll` from entry.mjs, causing `TypeError: __exportAll is not a function` at startup. Converted to static import.
+- **Rolldown chunk circular dependency** - dynamic `import("koina/fs.js")` in loader.ts created a chunk that referenced `__exportAll` from entry.mjs, causing `TypeError: __exportAll is not a function` at startup. Converted to static import.
 - 96 lint warnings eliminated (unused imports, unsorted imports, unused parameters across 21 test files)
-- Removed dead auth scaffolding (tls.ts, sanitize.ts, retention.ts — spec 3 stubs with zero consumers)
+- Removed dead auth scaffolding (tls.ts, sanitize.ts, retention.ts - spec 3 stubs with zero consumers)
 - Removed unused `StoreError` class
 
 ### Specs Completed
-- **Spec 18** Extensibility — 6/6 phases
-- **Spec 20** Security Hardening — 4/4 phases
+- **Spec 18** Extensibility - 6/6 phases
+- **Spec 20** Security Hardening - 4/4 phases
 
 ---
 
@@ -99,17 +99,17 @@ Future entries are generated automatically by [release-please](https://github.co
 Rust rewrite milestone: 18 crates, 973+ tests, ~33K lines. Key capabilities: agent pipeline, session store, tool execution, Signal integration, knowledge extraction, domain packs, distillation, web UI, plugin system, self-improvement, agent portability.
 
 ### Added
-- **Session continuity hardening** (Spec 12) — pre-compaction memory flush with distillation log, background session aggressive distillation (50 msg / 10K token triggers), ephemeral session cleanup (nightly purge), post-distillation verification checks
-- **Sub-agent workforce** (Spec 13) — 5 typed roles (coder, reviewer, researcher, explorer, runner) with structured JSON result contracts, parallel dispatch via `sessions_dispatch`, per-agent budget controls (turns, tokens, timeout)
-- **Domain-scoped memory** — agents filter recall by configured domains, backwards-compatible (unscoped memories always included)
-- **Memory confidence scoring** — Neo4j MemoryAccess decay/access counts weight search results, frequently accessed memories boosted, decayed memories penalized
-- **Tool categorization UI** — 28 tools mapped to 6 categories (filesystem, search, execute, communication, system, web) with category badges in tool panel header and status line
-- **Per-tool token estimates** — token consumption estimated per tool result, displayed in tool panel
-- **Distillation progress indicator** — live progress bar in webchat showing pipeline stage (sanitize, extract, summarize, flush, verify)
-- **Dynamic thinking budget** — thinking token budget scales with message complexity (2K-16K range)
-- **Tool result truncation** — per-tool-type storage limits with head/tail preservation
-- **Bootstrap token audit** — `aletheia audit-tokens [agent-id]` CLI command for per-section token breakdown
-- **Release automation** — release-please for versioned releases with auto-generated changelogs
+- **Session continuity hardening** (Spec 12) - pre-compaction memory flush with distillation log, background session aggressive distillation (50 msg / 10K token triggers), ephemeral session cleanup (nightly purge), post-distillation verification checks
+- **Sub-agent workforce** (Spec 13) - 5 typed roles (coder, reviewer, researcher, explorer, runner) with structured JSON result contracts, parallel dispatch via `sessions_dispatch`, per-agent budget controls (turns, tokens, timeout)
+- **Domain-scoped memory** - agents filter recall by configured domains, backwards-compatible (unscoped memories always included)
+- **Memory confidence scoring** - Neo4j MemoryAccess decay/access counts weight search results, frequently accessed memories boosted, decayed memories penalized
+- **Tool categorization UI** - 28 tools mapped to 6 categories (filesystem, search, execute, communication, system, web) with category badges in tool panel header and status line
+- **Per-tool token estimates** - token consumption estimated per tool result, displayed in tool panel
+- **Distillation progress indicator** - live progress bar in webchat showing pipeline stage (sanitize, extract, summarize, flush, verify)
+- **Dynamic thinking budget** - thinking token budget scales with message complexity (2K-16K range)
+- **Tool result truncation** - per-tool-type storage limits with head/tail preservation
+- **Bootstrap token audit** - `aletheia audit-tokens [agent-id]` CLI command for per-section token breakdown
+- **Release automation** - release-please for versioned releases with auto-generated changelogs
 
 ### Changed
 - Release workflow switched from manual tag-push to release-please managed releases

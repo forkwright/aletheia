@@ -16,7 +16,6 @@ Unless otherwise noted, all code is licensed under the **GNU Affero General Publ
 The following directories are licensed under Apache-2.0 (see [licenses/Apache-2.0.txt](licenses/Apache-2.0.txt)):
 
 - `shared/contracts/` - Agent capability contracts
-- Future SDK/client libraries when created
 
 Each Apache-2.0 directory contains its own LICENSE file referencing the Apache license.
 

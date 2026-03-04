@@ -1,18 +1,17 @@
-# Aletheia Operational Runbook
+# Operational Runbook
 
-Quick reference for starting, stopping, diagnosing, and recovering Aletheia services.
-For initial setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
+For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Service Architecture
 
 ```
-aletheia gateway              (port 18789)  — Node.js runtime, web UI, API
-├── signal-cli daemon         (port 8080)   — Signal messaging
-├── prosoche daemon           (background)  — attention/wake system
-├── aletheia-memory sidecar   (port 8230)   — mem0 FastAPI (Python)
-│   ├── qdrant                (port 6333)   — vector store (container)
-│   └── neo4j                 (port 7474/7687) — graph store (container)
-└── cron jobs                 (in-process)  — heartbeats, scheduled tasks
+aletheia gateway              (port 18789)  -- Node.js runtime, web UI, API
++-- signal-cli daemon         (port 8080)   -- Signal messaging
++-- prosoche daemon           (background)  -- attention/wake system
++-- aletheia-memory sidecar   (port 8230)   -- mem0 FastAPI (Python)
+|   +-- qdrant                (port 6333)   -- vector store (container)
+|   +-- neo4j                 (port 7474/7687) -- graph store (container)
++-- cron jobs                 (in-process)  -- heartbeats, scheduled tasks
 ```
 
 ## Quick Health Check
@@ -22,9 +21,11 @@ aletheia doctor          # connectivity, dependencies, boot persistence
 aletheia status          # agent status, sessions, cron jobs
 ```
 
+---
+
 ## Start Procedure
 
-### 1. Verify containers are running
+### 1. Verify containers
 
 ```bash
 podman ps | grep -E "qdrant|neo4j"
@@ -37,8 +38,12 @@ podman start qdrant neo4j
 ```bash
 curl -s http://localhost:8230/health | python3 -m json.tool
 # Expected: {"status":"ok","qdrant":"ok","neo4j":"ok","embedder":"ok"}
-#
-# If down, check: systemctl --user status aletheia-memory
+```
+
+If down:
+
+```bash
+systemctl --user status aletheia-memory
 # Or start manually:
 cd <repo>/infrastructure/memory/sidecar
 .venv/bin/uvicorn aletheia_memory.app:app --host 0.0.0.0 --port 8230 &
@@ -48,16 +53,14 @@ cd <repo>/infrastructure/memory/sidecar
 
 ```bash
 ss -tlnp | grep 18789
-# If occupied: find and kill the stale process
-# fuser -k 18789/tcp
+# If occupied:
+fuser -k 18789/tcp
 ```
 
 ### 4. Start gateway
 
 ```bash
 aletheia gateway start
-# Or directly:
-# node /usr/local/bin/aletheia gateway start
 ```
 
 ### 5. Verify
@@ -67,7 +70,7 @@ sleep 3
 curl -s http://localhost:18789/api/setup/status | python3 -m json.tool
 ```
 
-### 6. Start prosoche (if not running)
+### 6. Start prosoche (if needed)
 
 ```bash
 ps aux | grep prosoche | grep -v grep
@@ -75,6 +78,8 @@ ps aux | grep prosoche | grep -v grep
 cd <repo>/infrastructure/prosoche
 .venv/bin/python3 -m prosoche.daemon &
 ```
+
+---
 
 ## Stop Procedure
 
@@ -85,40 +90,32 @@ pkill -f "aletheia gateway" || pkill -f "entry.mjs"
 # Prosoche
 pkill -f "prosoche.daemon"
 
-# Memory sidecar (optional — usually leave running)
+# Memory sidecar (optional -- usually leave running)
 pkill -f "aletheia_memory"
 
-# Containers (optional — usually leave running)
+# Containers (optional -- usually leave running)
 podman stop qdrant neo4j
 ```
+
+---
 
 ## Deploy / Update
 
 ```bash
 cd <repo>
-
-# 1. Pull latest
 git pull origin main
-
-# 2. Build runtime
-cd infrastructure/runtime && npx tsdown
-cd ../..
-
-# 3. Build UI (if UI changes)
-cd ui && npm run build
-cd ..
-
-# 4. Restart gateway
+cd infrastructure/runtime && npx tsdown && cd ../..
+cd ui && npm run build && cd ..
 pkill -f "aletheia gateway"
 sleep 2
 aletheia gateway start
 ```
 
+---
+
 ## Common Issues
 
 ### EADDRINUSE on port 18789
-
-Port still held by a previous process.
 
 ```bash
 fuser 18789/tcp              # find PID
@@ -131,11 +128,10 @@ aletheia gateway start
 
 ```bash
 curl -s http://localhost:8230/health
-# Check individual services:
 curl -s http://localhost:6333/healthz       # Qdrant
-curl -s http://localhost:7474               # Neo4j (browser)
+curl -s http://localhost:7474               # Neo4j
 
-# Restart sidecar (VOYAGE_API_KEY only available in systemd service file):
+# Restart (VOYAGE_API_KEY only in systemd service file):
 systemctl --user restart aletheia-memory
 ```
 
@@ -143,20 +139,15 @@ systemctl --user restart aletheia-memory
 
 ```bash
 ps aux | grep signal-cli | grep -v grep
-# If not running, gateway auto-starts it. Restart gateway.
+# If not running, restart gateway -- it auto-starts signal-cli.
 # If running but not receiving:
 signal-cli -a +15550100001 receive --timeout 5
 ```
 
 ### Prosoche waking too frequently
 
-Check dedup window and fingerprint:
-
 ```bash
-# View current prosoche state
 cat <repo>/nous/syn/PROSOCHE.md
-
-# Check daemon logs
 journalctl --user -u prosoche --since "1 hour ago" 2>/dev/null || \
   tail -50 /tmp/prosoche.log
 ```
@@ -164,37 +155,21 @@ journalctl --user -u prosoche --since "1 hour ago" 2>/dev/null || \
 ### Agent not responding
 
 ```bash
-# Check if session exists
-aletheia sessions
-
-# Check agent config
-aletheia doctor
-
-# Verify workspace is readable
-ls -la <repo>/nous/<agent-id>/SOUL.md
+aletheia sessions             # check session exists
+aletheia doctor               # check agent config
+ls -la <repo>/nous/<agent-id>/SOUL.md   # verify workspace readable
 ```
 
 ### Credential / OAuth token expired
 
-Tokens expire and must be replaced manually. Check:
-
 ```bash
-# Look for 401/429 in logs
+# Look for auth errors in logs
 journalctl --user -u aletheia --since "1 hour ago" 2>/dev/null | grep -E "401|429|expired|unauthorized"
-
-# Config location for credentials:
-cat ~/.aletheia/aletheia.json | python3 -c "import json,sys; c=json.load(sys.stdin); [print(k) for k in c.get('models',{}).get('providers',{}).keys()]"
 ```
 
-Router auto-failover handles 429/5xx across configured providers, but expired OAuth tokens need manual replacement in `~/.aletheia/aletheia.json`.
+Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need manual replacement in `instance/config/aletheia.yaml`.
 
-### NAS SSH refused
-
-```bash
-ping -c 1 <NAS_IP>           # Should succeed (NAS is up)
-ssh nas                      # Port 22 refused = SSH service may be disabled
-# Fix: Enable SSH in NAS admin UI → Terminal settings → Enable SSH
-```
+---
 
 ## Log Locations
 
@@ -211,15 +186,14 @@ ssh nas                      # Port 22 refused = SSH service may be disabled
 
 | Path | Purpose |
 |------|---------|
-| `~/.aletheia/aletheia.json` | Main config |
-| `~/.aletheia/sessions.db` | SQLite session store |
-| `<repo>/` | Monorepo root |
-| `<repo>/nous/<id>/` | Agent workspaces |
-| `<repo>/infrastructure/runtime/` | TypeScript runtime |
-| `<repo>/infrastructure/memory/sidecar/` | Python memory sidecar |
-| `<repo>/infrastructure/prosoche/` | Prosoche daemon |
-| `<repo>/ui/` | Svelte web UI |
+| `instance/config/aletheia.yaml` | Main config |
+| `instance/data/sessions.db` | SQLite session store |
+| `instance/nous/<id>/` | Agent workspaces |
+| `infrastructure/runtime/` | TypeScript runtime |
+| `infrastructure/memory/sidecar/` | Python memory sidecar |
+| `infrastructure/prosoche/` | Prosoche daemon |
+| `ui/` | Svelte web UI |
 
-## Validation Before Restart
+## Pre-Restart Checklist
 
-**Always** run `aletheia doctor` before restarting. If it reports failures, fix those first — restarting with broken dependencies just adds confusion.
+Always run `aletheia doctor` before restarting. Fix reported failures first - restarting with broken dependencies adds confusion.

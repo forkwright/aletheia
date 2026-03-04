@@ -13,10 +13,10 @@ Convention-based paths (no mapping files needed):
 - Shared tools: `$ALETHEIA_SHARED/bin/$NAME`
 
 ### Shared Memory
-- `$ALETHEIA_SHARED/memory/facts.jsonl` — Single fact store (symlinked to all nous)
-- `$ALETHEIA_SHARED/USER.md` — Human context (symlinked to all nous)
+- `$ALETHEIA_SHARED/memory/facts.jsonl` - Single fact store (symlinked to all nous)
+- `$ALETHEIA_SHARED/USER.md` - Human context (symlinked to all nous)
 
 ### Coordination
-- **Blackboard:** `bb post/claim/complete/msg` — Quick coordination
-- **Task contracts:** `task-create/task-send` — Formal handoffs
-- **Agent health:** `nous-health` — Ecosystem monitoring
+- **Blackboard:** `bb post/claim/complete/msg` - Quick coordination
+- **Task contracts:** `task-create/task-send` - Formal handoffs
+- **Agent health:** `nous-health` - Ecosystem monitoring

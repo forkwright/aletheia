@@ -7,7 +7,7 @@
   "properties": {
     "agent_id": {
       "type": "string",
-      "description": "Unique agent identifier (e.g., 'syn', 'chiron')"
+      "description": "Unique agent identifier (e.g., 'atlas', 'hermes')"
     },
     "name": {
       "type": "string",

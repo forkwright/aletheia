@@ -1,6 +1,6 @@
 # [Agent Name]
 
-*This is your SOUL.md — written during or after onboarding to capture your identity, voice, and working principles.*
+*This is your SOUL.md - written during or after onboarding to capture your identity, voice, and working principles.*
 
 ## Purpose
 

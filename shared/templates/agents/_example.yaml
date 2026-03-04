@@ -1,4 +1,4 @@
-# Example agent template — used by compile-context to generate AGENTS.md and PROSOCHE.md
+# Example agent template - used by compile-context to generate AGENTS.md and PROSOCHE.md
 # Copy this file and rename to match your agent ID (e.g., atlas.yaml)
 
 agent: example
@@ -17,7 +17,7 @@ include_sections:
 operations: |
   ## Session Start
   1. Read MEMORY.md for continuity
-  2. Run `assemble-context --nous example` — compiled state + recent context
+  2. Run `assemble-context --nous example` - compiled state + recent context
   3. Check active tasks: `tw`
 
   ## Pre-Compaction
