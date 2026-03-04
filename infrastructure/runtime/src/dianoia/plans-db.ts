@@ -1,7 +1,7 @@
-// plans-db.ts — standalone plans.db opener with one-time migration from sessions.db
+// plans-db.ts — standalone plans.db opener with one-time migration
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createLogger } from "../koina/logger.js";
 import { paths } from "../taxis/paths.js";
 import {
@@ -25,12 +25,50 @@ export function plansDbPath(): string {
 }
 
 /**
- * One-time migration: copy planning tables from sessions.db into the new plans.db.
- * Uses VACUUM INTO to produce a WAL-free clean copy, then plans.db applies its own migrations.
- * Safe to call multiple times — exits early if plans.db already exists.
+ * Legacy path where plans.db lived before the workspace consolidation (pre-0.11).
+ * Check for this first since it may contain data that sessions.db doesn't.
+ */
+function legacyPlansDbPath(): string {
+  return join(paths.root, "nous", "_shared", "workspace", "plans.db");
+}
+
+/**
+ * One-time migration: move legacy plans.db or copy from sessions.db.
+ *
+ * Priority order:
+ * 1. Legacy plans.db at nous/_shared/workspace/plans.db — rename to new location
+ * 2. sessions.db with planning tables — VACUUM INTO new location
+ * 3. Neither — fresh DB created by caller
  */
 function migratePlansDb(sessionsDbPath: string, targetPath: string): void {
   if (existsSync(targetPath)) return; // already migrated
+
+  // Priority 1: legacy standalone plans.db (has the real data)
+  const legacyPath = legacyPlansDbPath();
+  if (existsSync(legacyPath)) {
+    // Copy rather than rename — the old path may be on a different filesystem,
+    // and we want to leave the original intact until confirmed working
+    copyFileSync(legacyPath, targetPath);
+    // Also copy WAL/SHM if present
+    for (const suffix of ["-wal", "-shm"]) {
+      if (existsSync(legacyPath + suffix)) {
+        copyFileSync(legacyPath + suffix, targetPath + suffix);
+      }
+    }
+    log.info("Migrated legacy plans.db to new location", { from: legacyPath, to: targetPath });
+
+    // Rename original to .migrated so it's not picked up again
+    renameSync(legacyPath, legacyPath + ".migrated");
+    for (const suffix of ["-wal", "-shm"]) {
+      if (existsSync(legacyPath + suffix)) {
+        try { renameSync(legacyPath + suffix, legacyPath + suffix + ".migrated"); } catch { /* ignore */ }
+      }
+    }
+    return;
+  }
+
+  // Priority 2: extract from sessions.db
+  if (!existsSync(sessionsDbPath)) return;
 
   const sessionsDb = new Database(sessionsDbPath, { readonly: true });
   const hasPlanningTables = sessionsDb
@@ -53,7 +91,7 @@ function migratePlansDb(sessionsDbPath: string, targetPath: string): void {
 
 /**
  * Open (or create) the standalone plans.db.
- * Runs one-time migration from sessionsDbPath if plans.db is absent.
+ * Runs one-time migration from legacy path or sessionsDbPath if plans.db is absent.
  * Applies all PLANNING_V* migrations to the opened DB.
  */
 export function openPlansDb(sessionsDbPath: string): Database.Database {
@@ -61,8 +99,8 @@ export function openPlansDb(sessionsDbPath: string): Database.Database {
   const dir = dirname(targetPath);
   mkdirSync(dir, { recursive: true });
 
-  // One-time migration if sessions.db exists and plans.db doesn't yet
-  if (existsSync(sessionsDbPath) && !existsSync(targetPath)) {
+  // One-time migration if plans.db doesn't exist yet
+  if (!existsSync(targetPath)) {
     migratePlansDb(sessionsDbPath, targetPath);
   }
 
@@ -71,12 +109,8 @@ export function openPlansDb(sessionsDbPath: string): Database.Database {
   db.pragma("foreign_keys = ON");
 
   // Apply all planning migrations — each is idempotent (CREATE TABLE IF NOT EXISTS or ALTER TABLE)
-  // Run in version order. Use a user_version pragma to track applied migrations.
   const currentVersion = (db.pragma("user_version", { simple: true }) as number) ?? 0;
 
-  // Migration array: [version_number, sql]
-  // Version 20 = initial DDL, 21-31 = incremental migrations
-  // Apply only if current user_version < migration version
   const migrations: Array<[number, string]> = [
     [20, PLANNING_V20_DDL],
     [21, PLANNING_V21_MIGRATION],
