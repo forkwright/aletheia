@@ -298,6 +298,9 @@ impl Default for RetentionConfig {
             orphan_message_max_age_days: 30,
             max_sessions_per_nous: 0,
             archive_before_delete: true,
+        }
+    }
+}
 /// Instance maintenance settings.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

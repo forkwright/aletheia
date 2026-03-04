@@ -66,7 +66,7 @@ struct Cli {
     command: Option<Command>,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 enum Command {
     /// Check if the server is running
     Health {
@@ -88,6 +88,7 @@ enum Command {
         /// Export sessions as JSON
         #[arg(long)]
         export_json: bool,
+    },
     /// Instance maintenance tasks
     Maintenance {
         #[command(subcommand)]
@@ -95,7 +96,7 @@ enum Command {
     },
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 enum MaintenanceAction {
     /// Show status of all maintenance tasks
     Status,
@@ -118,10 +119,8 @@ async fn main() -> Result<()> {
             keep,
             export_json,
         }) => return backup(&cli, *list, *prune, *keep, *export_json),
-    match cli.command {
-        Some(Command::Health { url }) => return health(&url).await,
         Some(Command::Maintenance { action }) => {
-            return run_maintenance(action, cli.instance_root.as_ref());
+            return run_maintenance(action.clone(), cli.instance_root.as_ref());
         }
         None => {}
     }

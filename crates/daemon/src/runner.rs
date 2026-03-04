@@ -47,6 +47,8 @@ impl TaskRunner {
             tasks: Vec::new(),
             shutdown,
             bridge: None,
+            maintenance: None,
+            retention_executor: None,
         }
     }
 
@@ -219,8 +221,6 @@ impl TaskRunner {
                 continue;
             }
 
-            let result =
-                execute_action(&task.def.action, &task.def.nous_id, self.bridge.as_ref()).await;
             // Clone action/nous_id to release borrow on self before calling methods.
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();
@@ -264,39 +264,6 @@ impl TaskRunner {
         }
     }
 
-async fn execute_action(
-    action: &TaskAction,
-    nous_id: &str,
-    bridge: Option<&Arc<dyn DaemonBridge>>,
-) -> Result<ExecutionResult> {
-    match action {
-        TaskAction::Command(cmd) => execute_command(cmd).await,
-        TaskAction::Tool { name, .. } => {
-            tracing::info!(
-                nous_id = %nous_id,
-                tool = %name,
-                "tool execution not yet wired — requires organon integration"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
-        }
-        TaskAction::Prompt(prompt) => {
-            if let Some(bridge) = bridge {
-                bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
-            } else {
-                tracing::warn!(
-                    nous_id = %nous_id,
-                    "prompt action skipped — no daemon bridge configured"
-                );
-                Ok(ExecutionResult {
-                    success: false,
-                    output: Some("no bridge configured".to_owned()),
-                })
-            }
-        }
-        TaskAction::Builtin(builtin) => execute_builtin(builtin, nous_id, bridge).await,
     async fn execute_action(&self, action: &TaskAction, nous_id: &str) -> Result<ExecutionResult> {
         match action {
             TaskAction::Command(cmd) => Self::execute_command(cmd).await,
@@ -312,15 +279,18 @@ async fn execute_action(
                 })
             }
             TaskAction::Prompt(prompt) => {
-                tracing::info!(
-                    nous_id = %nous_id,
-                    prompt_len = prompt.len(),
-                    "prompt injection not yet wired — requires nous pipeline access"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: None,
-                })
+                if let Some(bridge) = &self.bridge {
+                    bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
+                } else {
+                    tracing::warn!(
+                        nous_id = %nous_id,
+                        "prompt action skipped — no daemon bridge configured"
+                    );
+                    Ok(ExecutionResult {
+                        success: false,
+                        output: Some("no bridge configured".to_owned()),
+                    })
+                }
             }
             TaskAction::Builtin(builtin) => self.execute_builtin(builtin, nous_id).await,
         }
@@ -359,54 +329,6 @@ async fn execute_action(
         }
     }
 
-async fn execute_builtin(
-    builtin: &BuiltinTask,
-    nous_id: &str,
-    bridge: Option<&Arc<dyn DaemonBridge>>,
-) -> Result<ExecutionResult> {
-    match builtin {
-        BuiltinTask::Prosoche => {
-            let check = ProsocheCheck::new(nous_id);
-            let result = check.run().await?;
-
-            if !result.items.is_empty() {
-                if let Some(bridge) = bridge {
-                    let summary: Vec<String> = result
-                        .items
-                        .iter()
-                        .map(|item| format!("- [{}] {}", item.category_label(), item.summary))
-                        .collect();
-                    let prompt = format!("Prosoche attention check:\n{}", summary.join("\n"));
-                    let _ = bridge
-                        .send_prompt(nous_id, "daemon:prosoche", &prompt)
-                        .await;
-                }
-            }
-
-            Ok(ExecutionResult {
-                success: true,
-                output: Some(format!("{} items", result.items.len())),
-            })
-        }
-        BuiltinTask::GraphMaintenance => {
-            tracing::info!(
-                nous_id = %nous_id,
-                "graph maintenance not yet implemented — requires mneme integration"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
-        }
-        BuiltinTask::MemoryConsolidation => {
-            tracing::info!(
-                nous_id = %nous_id,
-                "memory consolidation not yet implemented — requires melete integration"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
     #[expect(
         clippy::too_many_lines,
         reason = "match dispatch over builtin variants"
@@ -420,6 +342,21 @@ async fn execute_builtin(
             BuiltinTask::Prosoche => {
                 let check = ProsocheCheck::new(nous_id);
                 let result = check.run().await?;
+
+                if !result.items.is_empty() {
+                    if let Some(bridge) = &self.bridge {
+                        let summary: Vec<String> = result
+                            .items
+                            .iter()
+                            .map(|item| format!("- [{}] {}", item.category_label(), item.summary))
+                            .collect();
+                        let prompt = format!("Prosoche attention check:\n{}", summary.join("\n"));
+                        let _ = bridge
+                            .send_prompt(nous_id, "daemon:prosoche", &prompt)
+                            .await;
+                    }
+                }
+
                 Ok(ExecutionResult {
                     success: true,
                     output: Some(format!("{} items", result.items.len())),
@@ -561,16 +498,16 @@ async fn execute_builtin(
                     )),
                 })
             }
-        }
-        BuiltinTask::SessionRetention => {
-            tracing::info!(
-                nous_id = %nous_id,
-                "session retention not yet wired — requires store access from daemon"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
+            BuiltinTask::SessionRetention => {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    "session retention not yet wired — requires store access from daemon"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: None,
+                })
+            }
         }
     }
 }
