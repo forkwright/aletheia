@@ -145,7 +145,7 @@ export function createRuntime(configPath?: string): AletheiaRuntime {
     })();
   }, undefined);
 
-  const plansDb = openPlansDb(paths.planningDb());
+  const plansDb = openPlansDb(paths.sessionsDb());
   log.info("Plans DB opened", { path: plansDb.name });
 
   eventBus.emit("boot:start", {});
