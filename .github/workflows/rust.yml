@@ -36,7 +36,7 @@ jobs:
       - name: Format
         run: |
           # Per-package — mneme-engine has vendored code rustfmt can't parse
-          for pkg in aletheia aletheia-agora aletheia-graph-builder \
+          for pkg in aletheia aletheia-agora aletheia-oikonomos \
                      aletheia-hermeneus aletheia-integration-tests \
                      aletheia-koina aletheia-melete aletheia-mneme \
                      aletheia-nous aletheia-organon aletheia-pylon \
