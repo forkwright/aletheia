@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::{HeaderName, HeaderValue, Method};
+use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
 use axum::routing::{get, post};
@@ -22,18 +22,21 @@ use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
-    let mut router = Router::new()
-        .route("/api/health", get(health::check))
-        .route("/api/sessions", post(sessions::create))
+    let v1 = Router::new()
+        .route("/sessions", post(sessions::create))
         .route(
-            "/api/sessions/{id}",
+            "/sessions/{id}",
             get(sessions::get_session).delete(sessions::close),
         )
-        .route("/api/sessions/{id}/messages", post(sessions::send_message))
-        .route("/api/sessions/{id}/history", get(sessions::history))
-        .route("/api/nous", get(nous::list))
-        .route("/api/nous/{id}", get(nous::get_status))
-        .route("/api/nous/{id}/tools", get(nous::tools))
+        .route("/sessions/{id}/messages", post(sessions::send_message))
+        .route("/sessions/{id}/history", get(sessions::history))
+        .route("/nous", get(nous::list))
+        .route("/nous/{id}", get(nous::get_status))
+        .route("/nous/{id}/tools", get(nous::tools));
+
+    let mut router = Router::new()
+        .nest("/api/v1", v1)
+        .route("/api/health", get(health::check))
         .fallback(fallback_handler);
 
     // CSRF protection — inject state and apply middleware
@@ -103,9 +106,28 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 }
 
 /// Fallback handler for unmatched routes.
+///
+/// Detects old unversioned `/api/sessions` and `/api/nous` paths and returns
+/// 410 Gone with a migration hint. All other unknown paths get 404.
 async fn fallback_handler(uri: axum::http::Uri) -> Response {
+    let path = uri.path();
+
+    if path.starts_with("/api/sessions") || path.starts_with("/api/nous") {
+        let suggestion = path.replacen("/api/", "/api/v1/", 1);
+        return (
+            StatusCode::GONE,
+            axum::Json(serde_json::json!({
+                "error": {
+                    "code": "api_version_required",
+                    "message": format!("This endpoint has moved. Use {suggestion} instead."),
+                }
+            })),
+        )
+            .into_response();
+    }
+
     ApiError::NotFound {
-        path: uri.path().to_owned(),
+        path: path.to_owned(),
     }
     .into_response()
 }

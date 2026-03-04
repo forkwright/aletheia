@@ -218,7 +218,7 @@ async fn body_string(response: axum::response::Response) -> String {
 async fn create_test_session(app: &axum::Router) -> serde_json::Value {
     let req = authed_request(
         "POST",
-        "/api/sessions",
+        "/api/v1/sessions",
         Some(serde_json::json!({
             "nous_id": "syn",
             "session_key": "test-session"
@@ -249,7 +249,7 @@ async fn sessions_require_auth() {
     let (app, _dir) = app().await;
     let req = json_request(
         "POST",
-        "/api/sessions",
+        "/api/v1/sessions",
         Some(serde_json::json!({
             "nous_id": "syn",
             "session_key": "test"
@@ -294,7 +294,7 @@ async fn expired_token_rejected() {
 
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
@@ -315,7 +315,7 @@ async fn malformed_token_rejected() {
     let (app, _dir) = app().await;
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", "Bearer not.a.valid.jwt")
         .body(Body::from(
@@ -337,7 +337,7 @@ async fn missing_bearer_prefix() {
     let token = default_token();
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", token)
         .body(Body::from(
@@ -403,7 +403,7 @@ async fn get_session_returns_created_session() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
 
@@ -417,7 +417,7 @@ async fn get_session_returns_created_session() {
 async fn get_unknown_session_returns_404() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/sessions/nonexistent"))
+        .oneshot(authed_get("/api/v1/sessions/nonexistent"))
         .await
         .unwrap();
 
@@ -434,7 +434,7 @@ async fn close_session_returns_204() {
 
     let resp = router
         .clone()
-        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
 
@@ -449,13 +449,13 @@ async fn get_closed_session_shows_archived() {
 
     router
         .clone()
-        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
 
@@ -468,7 +468,7 @@ async fn get_closed_session_shows_archived() {
 async fn close_unknown_session_returns_404() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_delete("/api/sessions/nonexistent"))
+        .oneshot(authed_delete("/api/v1/sessions/nonexistent"))
         .await
         .unwrap();
 
@@ -485,7 +485,7 @@ async fn history_empty_for_new_session() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}/history")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history")))
         .await
         .unwrap();
 
@@ -498,7 +498,7 @@ async fn history_empty_for_new_session() {
 async fn history_unknown_session_returns_404() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/sessions/nonexistent/history"))
+        .oneshot(authed_get("/api/v1/sessions/nonexistent/history"))
         .await
         .unwrap();
 
@@ -531,7 +531,7 @@ async fn history_with_limit() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}/history?limit=3")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history?limit=3")))
         .await
         .unwrap();
 
@@ -550,7 +550,7 @@ async fn send_message_returns_sse_content_type() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "Hello!" })),
     );
 
@@ -575,7 +575,7 @@ async fn send_message_stream_contains_events() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "Hello!" })),
     );
 
@@ -601,7 +601,7 @@ async fn send_message_unknown_session_returns_404() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "POST",
-        "/api/sessions/nonexistent/messages",
+        "/api/v1/sessions/nonexistent/messages",
         Some(serde_json::json!({ "content": "Hello!" })),
     );
 
@@ -617,7 +617,7 @@ async fn send_empty_message_returns_400() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "" })),
     );
 
@@ -634,7 +634,7 @@ async fn send_message_stores_in_history() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "Hello!" })),
     );
     let resp = router.clone().oneshot(req).await.unwrap();
@@ -645,7 +645,7 @@ async fn send_message_stores_in_history() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}/history")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history")))
         .await
         .unwrap();
 
@@ -663,7 +663,7 @@ async fn send_message_stores_in_history() {
 async fn error_response_has_consistent_structure() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/sessions/nonexistent"))
+        .oneshot(authed_get("/api/v1/sessions/nonexistent"))
         .await
         .unwrap();
 
@@ -680,7 +680,7 @@ async fn malformed_create_body_returns_400() {
     let token = default_token();
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(r#"{"invalid": true}"#))
@@ -702,7 +702,7 @@ async fn malformed_send_body_returns_error() {
     let token = default_token();
     let req = Request::builder()
         .method("POST")
-        .uri(format!("/api/sessions/{id}/messages"))
+        .uri(format!("/api/v1/sessions/{id}/messages"))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(r#"{"wrong_field": "abc"}"#))
@@ -720,7 +720,7 @@ async fn malformed_send_body_returns_error() {
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
-    let resp = app.oneshot(authed_get("/api/nous")).await.unwrap();
+    let resp = app.oneshot(authed_get("/api/v1/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -732,7 +732,7 @@ async fn list_nous_returns_agents() {
 #[tokio::test]
 async fn get_nous_status() {
     let (app, _dir) = app().await;
-    let resp = app.oneshot(authed_get("/api/nous/syn")).await.unwrap();
+    let resp = app.oneshot(authed_get("/api/v1/nous/syn")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -745,7 +745,7 @@ async fn get_nous_status() {
 async fn get_unknown_nous_returns_404() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/nous/nonexistent"))
+        .oneshot(authed_get("/api/v1/nous/nonexistent"))
         .await
         .unwrap();
 
@@ -758,7 +758,7 @@ async fn get_unknown_nous_returns_404() {
 async fn get_nous_tools() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(authed_get("/api/nous/syn/tools"))
+        .oneshot(authed_get("/api/v1/nous/syn/tools"))
         .await
         .unwrap();
 
@@ -779,7 +779,7 @@ async fn concurrent_session_creation() {
         handles.push(tokio::spawn(async move {
             let req = authed_request(
                 "POST",
-                "/api/sessions",
+                "/api/v1/sessions",
                 Some(serde_json::json!({
                     "nous_id": "syn",
                     "session_key": format!("concurrent-{i}")
@@ -807,7 +807,7 @@ async fn send_message_no_provider_returns_error() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "Hello!" })),
     );
 
@@ -826,7 +826,7 @@ async fn send_message_routes_through_actor() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "Test routing" })),
     );
 
@@ -851,7 +851,7 @@ async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &SecurityConfig::default());
 
-    let resp = router.oneshot(authed_get("/api/nous")).await.unwrap();
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
@@ -870,7 +870,7 @@ async fn empty_json_body_send_message_returns_400() {
 
     let req = authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({})),
     );
 
@@ -891,14 +891,14 @@ async fn double_close_session_is_idempotent() {
 
     let first = router
         .clone()
-        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("first close");
     assert_eq!(first.status(), StatusCode::NO_CONTENT);
 
     let second = router
         .clone()
-        .oneshot(authed_delete(&format!("/api/sessions/{id}")))
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("second close");
     assert_eq!(second.status(), StatusCode::NO_CONTENT);
@@ -906,7 +906,7 @@ async fn double_close_session_is_idempotent() {
     // Session should still be accessible as archived after both closes
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("get after double close");
     assert_eq!(resp.status(), StatusCode::OK);
@@ -922,7 +922,7 @@ async fn get_session_after_create_reflects_state() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/sessions/{id}")))
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("response");
 
@@ -948,6 +948,34 @@ async fn unknown_route_returns_404() {
 }
 
 #[tokio::test]
+async fn old_api_sessions_path_returns_gone() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/sessions"))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::GONE);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "api_version_required");
+    assert!(body["error"]["message"].as_str().unwrap().contains("/api/v1/sessions"));
+}
+
+#[tokio::test]
+async fn old_api_nous_path_returns_gone() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/nous"))
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::GONE);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "api_version_required");
+    assert!(body["error"]["message"].as_str().unwrap().contains("/api/v1/nous"));
+}
+
+#[tokio::test]
 async fn fallback_404_returns_json_error() {
     let (app, _dir) = app().await;
     let resp = app
@@ -967,7 +995,7 @@ async fn missing_auth_header_returns_401() {
     let (app, _dir) = app().await;
     let req = json_request(
         "POST",
-        "/api/sessions",
+        "/api/v1/sessions",
         Some(serde_json::json!({
             "nous_id": "syn",
             "session_key": "no-auth-test"
@@ -1042,7 +1070,7 @@ async fn oversized_body_returns_413() {
     let token = default_token();
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(big_body))
@@ -1062,7 +1090,7 @@ async fn csrf_rejects_post_without_header() {
 
     let req = authed_request(
         "POST",
-        "/api/sessions",
+        "/api/v1/sessions",
         Some(serde_json::json!({
             "nous_id": "syn",
             "session_key": "csrf-test"
@@ -1082,7 +1110,7 @@ async fn csrf_allows_post_with_correct_header() {
     let token = default_token();
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .header("x-requested-with", "aletheia")
@@ -1106,7 +1134,7 @@ async fn csrf_allows_get_without_header() {
     let router = build_router(state, &security);
 
     let resp = router
-        .oneshot(authed_get("/api/nous"))
+        .oneshot(authed_get("/api/v1/nous"))
         .await
         .unwrap();
 
