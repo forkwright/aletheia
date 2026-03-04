@@ -202,7 +202,7 @@ impl TestHarness {
     }
 
     fn router(&self) -> axum::Router {
-        build_router(Arc::clone(&self.state))
+        build_router(Arc::clone(&self.state), &aletheia_pylon::security::SecurityConfig::default())
     }
 
     fn authed_request(

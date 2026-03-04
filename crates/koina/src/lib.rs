@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod id;
+pub mod redact;
 pub mod tracing_init;
 
 // --- Static assertions: key types are Send + Sync ---

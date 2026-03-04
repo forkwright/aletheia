@@ -17,6 +17,7 @@ use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::oikos::Oikos;
 
 use crate::router::build_router;
+use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Server configuration.
@@ -26,6 +27,8 @@ pub struct ServerConfig {
     pub bind_addr: String,
     /// Path to the Aletheia instance directory.
     pub instance_path: PathBuf,
+    /// Security configuration for middleware layers.
+    pub security: SecurityConfig,
 }
 
 #[derive(Debug, Snafu)]
@@ -43,6 +46,12 @@ pub enum ServerError {
 
     #[snafu(display("server error: {source}"))]
     Serve { source: std::io::Error },
+
+    #[snafu(display("TLS configuration error: {source}"))]
+    TlsConfig { source: std::io::Error },
+
+    #[snafu(display("TLS support not compiled — rebuild with --features tls"))]
+    TlsNotCompiled,
 }
 
 /// Start the HTTP gateway and block until shutdown.
@@ -81,25 +90,85 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         start_time: Instant::now(),
     });
 
-    let app = build_router(state.clone());
+    let app = build_router(state.clone(), &config.security);
 
-    let listener = TcpListener::bind(&config.bind_addr)
+    if config.security.tls_enabled {
+        serve_tls(app, &config).await?;
+    } else {
+        serve_plain(app, &config.bind_addr).await?;
+    }
+
+    state.nous_manager.shutdown_readonly().await;
+    info!("pylon shutdown complete");
+    Ok(())
+}
+
+async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerError> {
+    let listener = TcpListener::bind(bind_addr)
         .await
         .context(BindSnafu {
-            addr: config.bind_addr.clone(),
+            addr: bind_addr.to_owned(),
         })?;
 
-    info!(addr = %config.bind_addr, "pylon listening");
+    info!(addr = %bind_addr, tls = false, "pylon listening");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .context(ServeSnafu)?;
+        .context(ServeSnafu)
+}
 
-    state.nous_manager.shutdown_readonly().await;
+#[cfg(feature = "tls")]
+async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), ServerError> {
+    use std::time::Duration;
 
-    info!("pylon shutdown complete");
-    Ok(())
+    use axum_server::tls_rustls::RustlsConfig;
+
+    let cert_path = config
+        .security
+        .tls_cert_path
+        .as_deref()
+        .unwrap_or(Path::new("instance/config/tls/cert.pem"));
+    let key_path = config
+        .security
+        .tls_key_path
+        .as_deref()
+        .unwrap_or(Path::new("instance/config/tls/key.pem"));
+
+    let tls_config = RustlsConfig::from_pem_file(cert_path, key_path)
+        .await
+        .context(TlsConfigSnafu)?;
+
+    let addr: std::net::SocketAddr = config
+        .bind_addr
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+        .context(BindSnafu {
+            addr: config.bind_addr.clone(),
+        })?;
+
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+    });
+
+    info!(addr = %config.bind_addr, tls = true, "pylon listening (TLS)");
+
+    axum_server::bind_rustls(addr, tls_config)
+        .handle(handle)
+        .serve(app.into_make_service())
+        .await
+        .context(ServeSnafu)
+}
+
+#[cfg(not(feature = "tls"))]
+fn serve_tls(
+    _app: axum::Router,
+    _config: &ServerConfig,
+) -> impl std::future::Future<Output = Result<(), ServerError>> {
+    std::future::ready(TlsNotCompiledSnafu.fail())
 }
 
 async fn shutdown_signal() {
