@@ -43,7 +43,7 @@ pub enum DownReason {
 pub struct HealthConfig {
     /// Consecutive errors before Degraded → Down. Default: 5.
     pub consecutive_failure_threshold: u32,
-    /// Cooldown before retrying a Down provider (ms). Default: 60_000.
+    /// Cooldown before retrying a Down provider (ms). Default: `60_000`.
     pub down_cooldown_ms: u64,
 }
 

@@ -76,16 +76,9 @@ struct ProviderEntry {
 }
 
 /// Provider registry — maps model IDs to providers with health tracking.
+#[derive(Default)]
 pub struct ProviderRegistry {
     providers: Vec<ProviderEntry>,
-}
-
-impl Default for ProviderRegistry {
-    fn default() -> Self {
-        Self {
-            providers: Vec::new(),
-        }
-    }
 }
 
 impl std::fmt::Debug for ProviderRegistry {

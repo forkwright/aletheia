@@ -322,6 +322,8 @@ impl std::fmt::Debug for SignalProvider {
         f.debug_struct("SignalProvider")
             .field("accounts", &self.clients.keys().collect::<Vec<_>>())
             .field("default_account", &self.default_account)
+            .field("account_states_count", &self.account_states.len())
+            .field("buffer_capacity", &self.buffer_capacity)
             .finish()
     }
 }
@@ -372,7 +374,7 @@ async fn poll_loop(
             Err(e) => {
                 let attempt = {
                     let mut s = state.lock().await;
-                    let attempt = match s.state {
+                    match s.state {
                         ConnectionState::Connected => {
                             s.state = ConnectionState::Reconnecting { attempt: 1 };
                             1
@@ -383,8 +385,7 @@ async fn poll_loop(
                             next
                         }
                         ConnectionState::Disconnected => u32::MAX,
-                    };
-                    attempt
+                    }
                 };
 
                 let delay = reconnect_delay(attempt);
