@@ -67,6 +67,14 @@ pub enum BuiltinTask {
     MemoryConsolidation,
     /// Session retention policy enforcement.
     SessionRetention,
+    /// Rotate and compress old trace files.
+    TraceRotation,
+    /// Compare instance against template for configuration drift.
+    DriftDetection,
+    /// Monitor database file sizes against thresholds.
+    DbSizeMonitor,
+    /// Execute data retention policy cleanup.
+    RetentionExecution,
 }
 
 impl Schedule {

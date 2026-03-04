@@ -19,6 +19,8 @@ default = []
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
 
 [dependencies]
+aletheia-daemon = { path = "../daemon" }
+aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-organon = { path = "../organon" }
@@ -28,7 +30,6 @@ aletheia-symbolon = { path = "../symbolon" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
 aletheia-thesauros = { path = "../thesauros" }
-aletheia-daemon = { path = "../daemon" }
 
 tokio = { workspace = true }
 axum = { workspace = true }

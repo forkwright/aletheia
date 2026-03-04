@@ -48,6 +48,24 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// I/O error during maintenance operation.
+    #[snafu(display("maintenance I/O error: {context}"))]
+    MaintenanceIo {
+        context: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Spawned blocking task failed.
+    #[snafu(display("blocking task failed: {context}"))]
+    BlockingJoin {
+        context: String,
+        source: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

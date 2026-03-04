@@ -109,9 +109,13 @@ jiff = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
 tokio-stream = "0.1"
 
+# Compression
+flate2 = "1"
+
 # Testing
 proptest = "1"
 static_assertions = "1.1"
+tempfile = "3"
 wiremock = "0.6"
 
 [profile.dev]
