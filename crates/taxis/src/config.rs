@@ -149,6 +149,10 @@ pub struct GatewayConfig {
     pub port: u16,
     pub bind: String,
     pub auth: GatewayAuthConfig,
+    pub tls: TlsConfig,
+    pub cors: CorsConfig,
+    pub body_limit: BodyLimitConfig,
+    pub csrf: CsrfConfig,
 }
 
 impl Default for GatewayConfig {
@@ -157,6 +161,10 @@ impl Default for GatewayConfig {
             port: 18789,
             bind: "lan".to_owned(),
             auth: GatewayAuthConfig::default(),
+            tls: TlsConfig::default(),
+            cors: CorsConfig::default(),
+            body_limit: BodyLimitConfig::default(),
+            csrf: CsrfConfig::default(),
         }
     }
 }
@@ -173,6 +181,73 @@ impl Default for GatewayAuthConfig {
     fn default() -> Self {
         Self {
             mode: "token".to_owned(),
+        }
+    }
+}
+
+/// TLS termination configuration.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct TlsConfig {
+    pub enabled: bool,
+    pub cert_path: Option<String>,
+    pub key_path: Option<String>,
+}
+
+/// CORS origin allowlist configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CorsConfig {
+    /// Allowed origins. Empty or `["*"]` means permissive (dev mode).
+    pub allowed_origins: Vec<String>,
+    /// Preflight cache duration in seconds.
+    pub max_age_secs: u64,
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            allowed_origins: Vec::new(),
+            max_age_secs: 3600,
+        }
+    }
+}
+
+/// Request body size limit configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct BodyLimitConfig {
+    /// Maximum request body size in bytes.
+    pub max_bytes: usize,
+}
+
+impl Default for BodyLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_bytes: 1_048_576,
+        }
+    }
+}
+
+/// CSRF protection configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CsrfConfig {
+    pub enabled: bool,
+    pub header_name: String,
+    pub header_value: String,
+}
+
+impl Default for CsrfConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            header_name: "x-requested-with".to_owned(),
+            header_value: "aletheia".to_owned(),
         }
     }
 }
@@ -489,6 +564,15 @@ mod tests {
         assert_eq!(config.gateway.port, 18789);
         assert_eq!(config.gateway.bind, "lan");
         assert_eq!(config.gateway.auth.mode, "token");
+        // Security config defaults
+        assert!(!config.gateway.tls.enabled);
+        assert!(config.gateway.tls.cert_path.is_none());
+        assert!(config.gateway.cors.allowed_origins.is_empty());
+        assert_eq!(config.gateway.cors.max_age_secs, 3600);
+        assert_eq!(config.gateway.body_limit.max_bytes, 1_048_576);
+        assert!(!config.gateway.csrf.enabled);
+        assert_eq!(config.gateway.csrf.header_name, "x-requested-with");
+        assert_eq!(config.gateway.csrf.header_value, "aletheia");
         assert!(config.channels.signal.enabled);
         assert!(config.channels.signal.accounts.is_empty());
         assert!(config.bindings.is_empty());

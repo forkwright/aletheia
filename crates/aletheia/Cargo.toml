@@ -17,6 +17,7 @@ default = []
 # OFF by default — mneme-engine conflicts with rusqlite bundled sqlite3.
 # Phase 2 (prompt 28) wires KnowledgeVectorSearch behind this gate.
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
+tls = ["aletheia-pylon/tls"]
 
 [dependencies]
 aletheia-daemon = { path = "../daemon" }
@@ -40,6 +41,8 @@ reqwest = { workspace = true }
 
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
+rcgen = { workspace = true }
+time = "0.3"
 
 [lints]
 workspace = true
