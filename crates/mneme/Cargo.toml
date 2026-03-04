@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-mneme"
-version = "0.1.0"
+version.workspace = true
 description = "Session store and memory engine for Aletheia"
 edition.workspace = true
 license.workspace = true

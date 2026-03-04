@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to Aletheia are documented here.
+Future entries are generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commits.
 
 ---
 
@@ -94,6 +95,8 @@ All notable changes to Aletheia are documented here.
 ---
 
 ## [0.10.0] - 2026-02-20
+
+Rust rewrite milestone: 18 crates, 973+ tests, ~33K lines. Key capabilities: agent pipeline, session store, tool execution, Signal integration, knowledge extraction, domain packs, distillation, web UI, plugin system, self-improvement, agent portability.
 
 ### Added
 - **Session continuity hardening** (Spec 12) — pre-compaction memory flush with distillation log, background session aggressive distillation (50 msg / 10K token triggers), ephemeral session cleanup (nightly purge), post-distillation verification checks

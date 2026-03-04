@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-graph-builder"
-version = "0.1.0"
+version.workspace = true
 description = "CSR graph construction and traversal for Aletheia graph algorithms (graph_builder 0.4.1 absorbed)"
 edition.workspace = true
 license = "MIT"

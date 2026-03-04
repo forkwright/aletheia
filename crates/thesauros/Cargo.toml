@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-thesauros"
-version = "0.1.0"
+version.workspace = true
 description = "Domain pack loader — external knowledge, tools, and config overlays"
 edition.workspace = true
 license.workspace = true

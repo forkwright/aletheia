@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-melete"
-version = "0.1.0"
+version.workspace = true
 description = "Context distillation engine — compresses conversation history"
 edition.workspace = true
 license.workspace = true

@@ -9,7 +9,11 @@ Semantic versioning with pre-1.0 interpretation:
 | `0.MINOR.PATCH` | Pre-stable. Breaking changes allowed in MINOR bumps with documented migration |
 | `1.0.0` | Stable public API. Breaking changes require MAJOR bump |
 
-**Current:** `0.1.0` (pre-stable)
+**Current:** `0.10.0` (pre-stable)
+
+The canonical version lives in `Cargo.toml` under `[workspace.package].version`.
+All crates inherit it via `version.workspace = true`. The release-please manifest
+(`.release-please-manifest.json`) tracks the same value.
 
 ## What Constitutes a Breaking Change
 
@@ -39,25 +43,29 @@ Every breaking change includes:
 
 ## Release Process
 
-1. Bump version in `package.json`
-2. Update `CHANGELOG.md` with categorized changes
-3. Tag: `git tag v0.MINOR.PATCH`
-4. GitHub Release with migration notes if breaking
-5. Notify downstream operators (your fork) if breaking
+1. Merge to `main` with conventional commit messages
+2. release-please opens a version-bump PR (updates `CHANGELOG.md`, manifest, `Cargo.toml`)
+3. Merge the release PR to create a git tag
+4. CI builds cross-platform binaries and attaches them to the GitHub Release
+5. Notify downstream operators if breaking
+
+Manual fallback: `scripts/bump-version.sh <version>`, then tag and push.
+
+See `docs/RELEASING.md` for the full process.
 
 ## Changelog Format
 
 ```markdown
-## [0.2.0] — 2026-MM-DD
+## [0.11.0] — 2026-MM-DD
 
 ### Breaking
-- Renamed `agents.list[].pipeline` to `agents.list[].config` — run `npx aletheia migrate`
+- Renamed `agents.list[].pipeline` to `agents.list[].config` — run `aletheia migrate`
 
 ### Added
 - New tool: `plan_discuss` for phase-level discussion flow
 
 ### Fixed
-- Memory recall diversity regression from v0.1.3
+- Memory recall diversity regression from v0.10.3
 
 ### Changed
 - Default context window reduced from 200k to 128k for cost optimization

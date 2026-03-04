@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-taxis"
-version = "0.1.0"
+version.workspace = true
 description = "Configuration cascade and path resolution for Aletheia"
 edition.workspace = true
 license.workspace = true
