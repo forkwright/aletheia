@@ -69,7 +69,7 @@ aletheia doctor                        # Validate config
 
 ### Both Stacks
 
-- **Naming:** Greek names that reflect purpose (nous = mind, mneme = memory, hermeneus = interpreter)
+- **Naming:** Greek names per the gnomon convention in STANDARDS.md
 - **No barrel files** - import from the file that owns the symbol
 - **Module imports flow downward** - higher layers depend on lower, never reverse
 
