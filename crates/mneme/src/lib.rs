@@ -14,6 +14,8 @@ pub mod knowledge_store;
 pub mod query;
 pub mod recall;
 #[cfg(feature = "sqlite")]
+pub mod backup;
+#[cfg(feature = "sqlite")]
 pub mod migration;
 #[cfg(feature = "sqlite")]
 pub mod retention;

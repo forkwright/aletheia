@@ -67,14 +67,36 @@ enum Command {
         #[arg(long, default_value = "http://127.0.0.1:18789")]
         url: String,
     },
+    /// Manage database backups
+    Backup {
+        /// List available backups
+        #[arg(long)]
+        list: bool,
+        /// Prune old backups
+        #[arg(long)]
+        prune: bool,
+        /// Number of backups to keep when pruning
+        #[arg(long, default_value_t = 5)]
+        keep: usize,
+        /// Export sessions as JSON
+        #[arg(long)]
+        export_json: bool,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if let Some(Command::Health { url }) = cli.command {
-        return health(&url).await;
+    match &cli.command {
+        Some(Command::Health { url }) => return health(url).await,
+        Some(Command::Backup {
+            list,
+            prune,
+            keep,
+            export_json,
+        }) => return backup(&cli, *list, *prune, *keep, *export_json),
+        None => {}
     }
 
     serve(cli).await
@@ -384,6 +406,67 @@ async fn shutdown_signal() {
         () = ctrl_c => info!("received ctrl+c"),
         () = terminate => info!("received SIGTERM"),
     }
+}
+
+fn backup(cli: &Cli, list: bool, prune: bool, keep: usize, export_json: bool) -> Result<()> {
+    let oikos = match &cli.instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+
+    let db_path = oikos.sessions_db();
+    let store = SessionStore::open(&db_path)
+        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+
+    let backup_dir = oikos.backups();
+    let manager = aletheia_mneme::backup::BackupManager::new(store.conn(), &backup_dir);
+
+    if list {
+        let backups = manager.list_backups().context("failed to list backups")?;
+        if backups.is_empty() {
+            println!("No backups found.");
+        } else {
+            for b in &backups {
+                println!("{} ({} bytes)", b.filename, b.size_bytes);
+            }
+        }
+        return Ok(());
+    }
+
+    if prune {
+        let removed = manager
+            .prune_backups(keep)
+            .context("failed to prune backups")?;
+        println!("Pruned {removed} backup(s), kept {keep}.");
+        return Ok(());
+    }
+
+    if export_json {
+        let export_dir = oikos.archive().join("sessions");
+        let result = manager
+            .export_sessions_json(&export_dir)
+            .context("failed to export sessions")?;
+        println!(
+            "Exported {} session(s) to {}",
+            result.sessions_exported,
+            result.output_dir.display()
+        );
+        return Ok(());
+    }
+
+    // Default: create a backup
+    let result = manager
+        .create_backup()
+        .context("failed to create backup")?;
+    println!(
+        "Backup created: {} ({} bytes, {} sessions, {} messages)",
+        result.path.display(),
+        result.size_bytes,
+        result.sessions_count,
+        result.messages_count,
+    );
+
+    Ok(())
 }
 
 async fn health(url: &str) -> Result<()> {
