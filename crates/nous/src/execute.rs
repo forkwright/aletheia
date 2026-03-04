@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 use snafu::ResultExt;
 use tracing::{debug, info, instrument, warn};
 
+use aletheia_hermeneus::health::ProviderHealth;
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,
@@ -177,6 +178,16 @@ pub async fn execute(
         .build()
     })?;
 
+    if let Some(health) = providers.provider_health(provider.name()) {
+        if matches!(health, ProviderHealth::Down { .. }) {
+            return Err(error::PipelineStageSnafu {
+                stage: "execute",
+                message: format!("provider '{}' is currently unavailable", provider.name()),
+            }
+            .build());
+        }
+    }
+
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
@@ -215,7 +226,16 @@ pub async fn execute(
             stop_sequences: vec![],
         };
 
-        let response = provider.complete(&request).context(error::LlmSnafu)?;
+        let response = match provider.complete(&request) {
+            Ok(resp) => {
+                providers.record_success(provider.name());
+                resp
+            }
+            Err(e) => {
+                providers.record_error(provider.name(), &e);
+                return Err(e).context(error::LlmSnafu);
+            }
+        };
 
         total_usage.input_tokens += response.usage.input_tokens;
         total_usage.output_tokens += response.usage.output_tokens;

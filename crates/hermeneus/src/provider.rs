@@ -4,7 +4,8 @@
 //! must implement. Designed for the current sync-first approach with
 //! async streaming planned for M2.
 
-use crate::error::Result;
+use crate::error::{self, Result};
+use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 /// Trait for LLM providers.
@@ -69,15 +70,27 @@ impl Default for ProviderConfig {
     }
 }
 
-/// Provider registry — maps model IDs to providers.
-#[derive(Default)]
+struct ProviderEntry {
+    provider: Box<dyn LlmProvider>,
+    health: ProviderHealthTracker,
+}
+
+/// Provider registry — maps model IDs to providers with health tracking.
 pub struct ProviderRegistry {
-    providers: Vec<Box<dyn LlmProvider>>,
+    providers: Vec<ProviderEntry>,
+}
+
+impl Default for ProviderRegistry {
+    fn default() -> Self {
+        Self {
+            providers: Vec::new(),
+        }
+    }
 }
 
 impl std::fmt::Debug for ProviderRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let names: Vec<&str> = self.providers.iter().map(|p| p.name()).collect();
+        let names: Vec<&str> = self.providers.iter().map(|e| e.provider.name()).collect();
         f.debug_struct("ProviderRegistry")
             .field("providers", &names)
             .finish()
@@ -91,9 +104,17 @@ impl ProviderRegistry {
         Self::default()
     }
 
-    /// Register a provider.
+    /// Register a provider with default health config.
     pub fn register(&mut self, provider: Box<dyn LlmProvider>) {
-        self.providers.push(provider);
+        self.register_with_config(provider, HealthConfig::default());
+    }
+
+    /// Register a provider with custom health thresholds.
+    pub fn register_with_config(&mut self, provider: Box<dyn LlmProvider>, config: HealthConfig) {
+        self.providers.push(ProviderEntry {
+            provider,
+            health: ProviderHealthTracker::new(config),
+        });
     }
 
     /// Find a provider that supports the given model.
@@ -101,14 +122,36 @@ impl ProviderRegistry {
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
         self.providers
             .iter()
-            .find(|p| p.supports_model(model))
-            .map(AsRef::as_ref)
+            .find(|e| e.provider.supports_model(model))
+            .map(|e| e.provider.as_ref())
     }
 
     /// List all registered providers.
+    pub fn providers(&self) -> Vec<&dyn LlmProvider> {
+        self.providers.iter().map(|e| e.provider.as_ref()).collect()
+    }
+
+    /// Query health of a provider by name.
     #[must_use]
-    pub fn providers(&self) -> &[Box<dyn LlmProvider>] {
-        &self.providers
+    pub fn provider_health(&self, name: &str) -> Option<ProviderHealth> {
+        self.providers
+            .iter()
+            .find(|e| e.provider.name() == name)
+            .map(|e| e.health.health())
+    }
+
+    /// Record a successful request for the named provider.
+    pub fn record_success(&self, name: &str) {
+        if let Some(entry) = self.providers.iter().find(|e| e.provider.name() == name) {
+            entry.health.record_success();
+        }
+    }
+
+    /// Record a failed request for the named provider.
+    pub fn record_error(&self, name: &str, error: &error::Error) {
+        if let Some(entry) = self.providers.iter().find(|e| e.provider.name() == name) {
+            entry.health.record_error(error);
+        }
     }
 }
 
@@ -217,5 +260,72 @@ mod tests {
     fn mock_provider_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockProvider>();
+    }
+
+    #[test]
+    fn registry_health_starts_up() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new()));
+
+        assert_eq!(
+            registry.provider_health("mock"),
+            Some(ProviderHealth::Up)
+        );
+    }
+
+    #[test]
+    fn registry_health_unknown_provider() {
+        let registry = ProviderRegistry::new();
+        assert_eq!(registry.provider_health("nonexistent"), None);
+    }
+
+    #[test]
+    fn registry_record_error_updates_health() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new()));
+
+        let err: crate::error::Error = crate::error::ApiRequestSnafu {
+            message: "timeout",
+        }
+        .build();
+        registry.record_error("mock", &err);
+
+        match registry.provider_health("mock") {
+            Some(ProviderHealth::Degraded { consecutive_errors, .. }) => {
+                assert_eq!(consecutive_errors, 1);
+            }
+            other => panic!("expected Degraded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn registry_record_success_resets_health() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new()));
+
+        let err: crate::error::Error = crate::error::ApiRequestSnafu {
+            message: "timeout",
+        }
+        .build();
+        registry.record_error("mock", &err);
+        registry.record_success("mock");
+
+        assert_eq!(
+            registry.provider_health("mock"),
+            Some(ProviderHealth::Up)
+        );
+    }
+
+    #[test]
+    fn registry_record_unknown_is_noop() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new()));
+        // Should not panic
+        registry.record_success("nonexistent");
+        let err: crate::error::Error = crate::error::ApiRequestSnafu {
+            message: "timeout",
+        }
+        .build();
+        registry.record_error("nonexistent", &err);
     }
 }
