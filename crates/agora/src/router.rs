@@ -1,5 +1,7 @@
 //! Message routing — resolves inbound messages to nous targets.
 
+use tracing::debug;
+
 use aletheia_taxis::config::ChannelBinding;
 
 use crate::types::InboundMessage;
@@ -44,6 +46,14 @@ impl MessageRouter {
 
     /// Resolve which nous should handle this message.
     pub fn resolve(&self, msg: &InboundMessage) -> Option<RouteDecision> {
+        let decision = self.match_route(msg);
+        if let Some(ref d) = decision {
+            debug!(nous_id = %d.nous_id, matched_by = ?d.matched_by, "message routed");
+        }
+        decision
+    }
+
+    fn match_route(&self, msg: &InboundMessage) -> Option<RouteDecision> {
         // Priority 1: exact group match (channel + group_id)
         if let Some(group_id) = &msg.group_id {
             for b in &self.bindings {

@@ -177,6 +177,40 @@ pub struct ToolInput {
     pub arguments: serde_json::Value,
 }
 
+/// Cumulative tool execution statistics for a pipeline turn.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ToolStats {
+    pub total_calls: u32,
+    pub total_duration_ms: u64,
+    pub error_count: u32,
+    pub calls_by_tool: IndexMap<String, u32>,
+}
+
+impl ToolStats {
+    /// Record a tool execution.
+    pub fn record(&mut self, name: &str, duration_ms: u64, is_error: bool) {
+        self.total_calls += 1;
+        self.total_duration_ms += duration_ms;
+        if is_error {
+            self.error_count += 1;
+        }
+        *self.calls_by_tool.entry(name.to_owned()).or_insert(0) += 1;
+    }
+
+    /// Top N tools by call count.
+    #[must_use]
+    pub fn top_tools(&self, n: usize) -> Vec<(&str, u32)> {
+        let mut sorted: Vec<_> = self
+            .calls_by_tool
+            .iter()
+            .map(|(k, v)| (k.as_str(), *v))
+            .collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.truncate(n);
+        sorted
+    }
+}
+
 /// Execution context passed to every tool invocation.
 #[derive(Debug, Clone)]
 pub struct ToolContext {
@@ -265,6 +299,34 @@ mod tests {
     fn tool_category_display() {
         assert_eq!(ToolCategory::Workspace.to_string(), "workspace");
         assert_eq!(ToolCategory::Communication.to_string(), "communication");
+    }
+
+    #[test]
+    fn tool_stats_record_accumulates() {
+        let mut stats = ToolStats::default();
+        stats.record("read", 10, false);
+        stats.record("write", 20, false);
+        stats.record("read", 15, true);
+        assert_eq!(stats.total_calls, 3);
+        assert_eq!(stats.total_duration_ms, 45);
+        assert_eq!(stats.error_count, 1);
+        assert_eq!(stats.calls_by_tool["read"], 2);
+        assert_eq!(stats.calls_by_tool["write"], 1);
+    }
+
+    #[test]
+    fn tool_stats_top_tools() {
+        let mut stats = ToolStats::default();
+        stats.record("a", 1, false);
+        stats.record("b", 1, false);
+        stats.record("b", 1, false);
+        stats.record("c", 1, false);
+        stats.record("c", 1, false);
+        stats.record("c", 1, false);
+        let top = stats.top_tools(2);
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0], ("c", 3));
+        assert_eq!(top[1], ("b", 2));
     }
 
     #[test]

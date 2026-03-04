@@ -4,10 +4,18 @@ use std::future::Future;
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::instrument;
+use tracing::{info_span, instrument};
 
 use crate::semeion::SignalProvider;
 use crate::types::InboundMessage;
+
+fn redact_phone(phone: &str) -> String {
+    if phone.len() > 4 {
+        format!("...{}", &phone[phone.len() - 4..])
+    } else {
+        "****".to_owned()
+    }
+}
 
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
@@ -56,6 +64,11 @@ impl ChannelListener {
     {
         if let Some(ref mut rx) = self.rx {
             while let Some(msg) = rx.recv().await {
+                let span = info_span!("inbound_message",
+                    msg.channel = %msg.channel,
+                    msg.source = %redact_phone(&msg.sender),
+                );
+                let _guard = span.enter();
                 handler(msg).await;
             }
         }
@@ -93,6 +106,26 @@ impl Drop for ChannelListener {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redact_phone_long_number() {
+        assert_eq!(redact_phone("+1234567890"), "...7890");
+    }
+
+    #[test]
+    fn redact_phone_short_number() {
+        assert_eq!(redact_phone("12"), "****");
+    }
+
+    #[test]
+    fn redact_phone_exactly_four() {
+        assert_eq!(redact_phone("1234"), "****");
+    }
+
+    #[test]
+    fn redact_phone_five_chars() {
+        assert_eq!(redact_phone("12345"), "...2345");
+    }
 
     #[tokio::test]
     async fn listener_receives_messages() {
