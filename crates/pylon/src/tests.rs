@@ -671,6 +671,7 @@ async fn error_response_has_consistent_structure() {
     assert!(body["error"].is_object());
     assert!(body["error"]["code"].is_string());
     assert!(body["error"]["message"].is_string());
+    assert!(body["error"]["request_id"].is_string(), "error response must include request_id");
 }
 
 #[tokio::test]
@@ -941,6 +942,24 @@ async fn unknown_route_returns_404() {
         .expect("response");
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "not_found");
+    assert!(body["error"]["request_id"].is_string());
+}
+
+#[tokio::test]
+async fn fallback_404_returns_json_error() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/totally/unknown/path").body(Body::empty()).unwrap())
+        .await
+        .expect("response");
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "not_found");
+    assert!(body["error"]["message"].as_str().unwrap().contains("/totally/unknown/path"));
+    assert!(body["error"]["request_id"].is_string());
 }
 
 #[tokio::test]
