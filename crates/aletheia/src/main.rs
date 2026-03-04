@@ -18,11 +18,11 @@ use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::SignalProvider;
 use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
-use aletheia_daemon::maintenance::{
+use aletheia_oikonomos::maintenance::{
     DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
     TraceRotationConfig, TraceRotator,
 };
-use aletheia_daemon::runner::TaskRunner;
+use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
@@ -221,7 +221,7 @@ fn build_maintenance_config(
             warn_threshold_mb: settings.db_monitoring.warn_threshold_mb,
             alert_threshold_mb: settings.db_monitoring.alert_threshold_mb,
         },
-        retention: aletheia_daemon::maintenance::RetentionConfig {
+        retention: aletheia_oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },
     }
@@ -384,20 +384,20 @@ async fn serve(cli: Cli) -> Result<()> {
         &nous_manager,
     )));
     for agent_def in &config.agents.list {
-        let mut runner = aletheia_daemon::runner::TaskRunner::with_bridge(
+        let mut runner = aletheia_oikonomos::runner::TaskRunner::with_bridge(
             agent_def.id.clone(),
             daemon_shutdown_tx.subscribe(),
             daemon_bridge.clone(),
         );
-        runner.register(aletheia_daemon::schedule::TaskDef {
+        runner.register(aletheia_oikonomos::schedule::TaskDef {
             id: format!("{}-prosoche", agent_def.id),
             name: "Prosoche attention check".to_owned(),
             nous_id: agent_def.id.clone(),
-            schedule: aletheia_daemon::schedule::Schedule::Interval(
+            schedule: aletheia_oikonomos::schedule::Schedule::Interval(
                 std::time::Duration::from_secs(45 * 60),
             ),
-            action: aletheia_daemon::schedule::TaskAction::Builtin(
-                aletheia_daemon::schedule::BuiltinTask::Prosoche,
+            action: aletheia_oikonomos::schedule::TaskAction::Builtin(
+                aletheia_oikonomos::schedule::BuiltinTask::Prosoche,
             ),
             enabled: true,
             active_window: Some((8, 23)),
