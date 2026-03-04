@@ -159,6 +159,7 @@ impl TestHarness {
             None,
             Some(Arc::clone(&session_store)),
             Arc::new(vec![]),
+            None,
         );
 
         let nous_config = NousConfig {

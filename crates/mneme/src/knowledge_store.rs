@@ -1442,10 +1442,7 @@ mod tests {
         let hit = hit.unwrap();
         assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
         assert!(hit.vec_rank > 0, "must have positive vector rank");
-        assert_eq!(
-            hit.graph_rank, -1,
-            "absent from graph signal must be -1"
-        );
+        assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
         assert!(
             hit.rrf_score > 0.0,
             "RRF score must be positive from two signals"

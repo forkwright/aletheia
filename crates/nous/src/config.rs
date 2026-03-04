@@ -58,6 +58,9 @@ pub struct PipelineConfig {
     pub max_notes: usize,
     /// Token budget for history (remaining after bootstrap).
     pub history_budget_ratio: f64,
+    /// Knowledge extraction configuration (None = disabled).
+    #[serde(default)]
+    pub extraction: Option<aletheia_mneme::extract::ExtractionConfig>,
 }
 
 impl Default for PipelineConfig {
@@ -68,6 +71,7 @@ impl Default for PipelineConfig {
             include_working_state: true,
             max_notes: 50,
             history_budget_ratio: 0.6,
+            extraction: None,
         }
     }
 }

@@ -18,9 +18,7 @@ pub enum ProjectState {
     Verifying,
     Complete,
     Abandoned,
-    Paused {
-        previous: Box<ProjectState>,
-    },
+    Paused { previous: Box<ProjectState> },
 }
 
 /// Valid transitions between project states.
@@ -154,15 +152,9 @@ impl ProjectState {
                 Transition::Abandon,
                 Transition::Pause,
             ],
-            Self::Verifying => vec![
-                Transition::Complete,
-                Transition::Abandon,
-            ],
+            Self::Verifying => vec![Transition::Complete, Transition::Abandon],
             Self::Complete | Self::Abandoned => vec![],
-            Self::Paused { .. } => vec![
-                Transition::Resume,
-                Transition::Abandon,
-            ],
+            Self::Paused { .. } => vec![Transition::Resume, Transition::Abandon],
         }
     }
 
@@ -261,14 +253,13 @@ mod tests {
     #[test]
     fn terminal_states_reject_all_transitions() {
         for terminal in [ProjectState::Complete, ProjectState::Abandoned] {
-            assert!(terminal
-                .clone()
-                .transition(Transition::StartQuestioning)
-                .is_err());
-            assert!(terminal
-                .clone()
-                .transition(Transition::Abandon)
-                .is_err());
+            assert!(
+                terminal
+                    .clone()
+                    .transition(Transition::StartQuestioning)
+                    .is_err()
+            );
+            assert!(terminal.clone().transition(Transition::Abandon).is_err());
             assert!(terminal.transition(Transition::Pause).is_err());
         }
     }

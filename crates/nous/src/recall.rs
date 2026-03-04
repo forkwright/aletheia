@@ -58,7 +58,12 @@ impl VectorSearch for KnowledgeVectorSearch {
         let ef_i64 = i64::try_from(ef).unwrap_or(i64::MAX);
         self.store
             .search_vectors(query_vec, k_i64, ef_i64)
-            .map_err(|e| error::RecallSearchSnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                error::RecallSearchSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 }
 
@@ -154,9 +159,21 @@ impl RecallStage {
         }
 
         if self.config.iterative && self.config.max_cycles > 1 {
-            self.run_iterative(query, nous_id, embedding_provider, vector_search, remaining_budget)
+            self.run_iterative(
+                query,
+                nous_id,
+                embedding_provider,
+                vector_search,
+                remaining_budget,
+            )
         } else {
-            self.run_single(query, nous_id, embedding_provider, vector_search, remaining_budget)
+            self.run_single(
+                query,
+                nous_id,
+                embedding_provider,
+                vector_search,
+                remaining_budget,
+            )
         }
     }
 
@@ -249,7 +266,10 @@ impl RecallStage {
             }
         }
 
-        debug!(unique_candidates = merged.len(), "merged results from 2 cycles");
+        debug!(
+            unique_candidates = merged.len(),
+            "merged results from 2 cycles"
+        );
 
         let candidates = self.build_candidates(merged, nous_id);
         let ranked = self.engine.rank(candidates);
@@ -286,7 +306,11 @@ impl RecallStage {
             candidates_found,
             results_injected,
             tokens_consumed: tokens,
-            recall_section: if section.is_empty() { None } else { Some(section) },
+            recall_section: if section.is_empty() {
+                None
+            } else {
+                Some(section)
+            },
         }
     }
 
@@ -365,37 +389,144 @@ fn search(
     query_vec: Vec<f32>,
     k: usize,
 ) -> error::Result<Vec<KnowledgeRecallResult>> {
-    vector_search
-        .search_vectors(query_vec, k, 50)
-        .map_err(|e| {
-            error::RecallSearchSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
+    vector_search.search_vectors(query_vec, k, 50).map_err(|e| {
+        error::RecallSearchSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })
 }
 
 // --- Stopword list ---
 
 static STOPWORDS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
-        "a", "an", "the", "and", "but", "or", "nor", "for", "yet", "so",
-        "in", "on", "at", "to", "from", "by", "with", "about", "into",
-        "through", "during", "before", "after", "above", "below", "between",
-        "out", "off", "over", "under", "again", "further", "then", "once",
-        "is", "am", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "having", "do", "does", "did", "doing",
-        "will", "would", "shall", "should", "may", "might", "must", "can",
-        "could", "need", "dare", "ought", "used",
-        "i", "me", "my", "myself", "we", "our", "ours", "ourselves",
-        "you", "your", "yours", "yourself", "yourselves",
-        "he", "him", "his", "himself", "she", "her", "hers", "herself",
-        "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
-        "what", "which", "who", "whom", "this", "that", "these", "those",
-        "here", "there", "when", "where", "why", "how",
-        "all", "each", "every", "both", "few", "more", "most", "other",
-        "some", "such", "only", "own", "same", "than",
-        "too", "very", "just", "also", "not", "no",
+        "a",
+        "an",
+        "the",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "for",
+        "yet",
+        "so",
+        "in",
+        "on",
+        "at",
+        "to",
+        "from",
+        "by",
+        "with",
+        "about",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "out",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "is",
+        "am",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "having",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "need",
+        "dare",
+        "ought",
+        "used",
+        "i",
+        "me",
+        "my",
+        "myself",
+        "we",
+        "our",
+        "ours",
+        "ourselves",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+        "he",
+        "him",
+        "his",
+        "himself",
+        "she",
+        "her",
+        "hers",
+        "herself",
+        "it",
+        "its",
+        "itself",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "themselves",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "than",
+        "too",
+        "very",
+        "just",
+        "also",
+        "not",
+        "no",
     ])
 });
 
@@ -422,10 +553,7 @@ fn discover_terminology(results: &[ScoredResult], original_query: &str) -> Vec<S
             let cleaned = word
                 .trim_matches(|c: char| !c.is_alphanumeric())
                 .to_lowercase();
-            if cleaned.len() > 3
-                && !query_words.contains(&cleaned)
-                && !is_stopword(&cleaned)
-            {
+            if cleaned.len() > 3 && !query_words.contains(&cleaned) && !is_stopword(&cleaned) {
                 *term_freq.entry(cleaned).or_default() += 1;
             }
         }
@@ -767,7 +895,6 @@ mod tests {
         fn _assert_object_safe(_: &dyn VectorSearch) {}
     }
 
-
     #[cfg(feature = "knowledge-store")]
     mod knowledge_bridge_tests {
         use aletheia_mneme::knowledge::EmbeddedChunk;
@@ -939,7 +1066,8 @@ mod tests {
 
         let gaps = detect_gaps(&results);
         assert!(
-            gaps.iter().any(|g| g == "Machine Learning" || g == "Research"),
+            gaps.iter()
+                .any(|g| g == "Machine Learning" || g == "Research"),
             "should detect capitalized phrases: got {gaps:?}"
         );
     }
@@ -1008,7 +1136,10 @@ mod tests {
             .unwrap();
 
         // fact-b should appear only once in the merged set
-        assert_eq!(result.candidates_found, 3, "should have 3 unique candidates");
+        assert_eq!(
+            result.candidates_found, 3,
+            "should have 3 unique candidates"
+        );
         assert_eq!(search.call_count(), 2, "should have searched twice");
     }
 

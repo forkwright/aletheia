@@ -4,11 +4,13 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{instrument, warn};
 use ulid::Ulid;
 
-use crate::error::{self, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu, ReplyNotFoundSnafu};
+use crate::error::{
+    self, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu, ReplyNotFoundSnafu,
+};
 
 const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
@@ -41,11 +43,7 @@ pub struct CrossNousMessage {
 
 impl CrossNousMessage {
     #[must_use]
-    pub fn new(
-        from: impl Into<String>,
-        to: impl Into<String>,
-        content: impl Into<String>,
-    ) -> Self {
+    pub fn new(from: impl Into<String>, to: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
             id: Ulid::new(),
             from: from.into(),
@@ -146,9 +144,12 @@ impl CrossNousRouter {
         let routes = self.routes.read().await;
         let Some(sender) = routes.get(&to).cloned() else {
             drop(routes);
-            self.log_delivery(&message, &DeliveryState::Failed {
-                reason: format!("nous '{to}' not registered"),
-            })
+            self.log_delivery(
+                &message,
+                &DeliveryState::Failed {
+                    reason: format!("nous '{to}' not registered"),
+                },
+            )
             .await;
             return NousNotFoundSnafu { nous_id: to }.fail();
         };
@@ -161,8 +162,7 @@ impl CrossNousRouter {
 
         match sender.send(envelope).await {
             Ok(()) => {
-                self.log_delivery_state(&to, DeliveryState::Delivered)
-                    .await;
+                self.log_delivery_state(&to, DeliveryState::Delivered).await;
                 Ok(DeliveryState::Delivered)
             }
             Err(send_err) => {
@@ -185,9 +185,12 @@ impl CrossNousRouter {
         let routes = self.routes.read().await;
         let Some(sender) = routes.get(&to).cloned() else {
             drop(routes);
-            self.log_delivery(&message, &DeliveryState::Failed {
-                reason: format!("nous '{to}' not registered"),
-            })
+            self.log_delivery(
+                &message,
+                &DeliveryState::Failed {
+                    reason: format!("nous '{to}' not registered"),
+                },
+            )
             .await;
             return NousNotFoundSnafu { nous_id: to }.fail();
         };
@@ -196,10 +199,7 @@ impl CrossNousRouter {
         let (reply_tx, reply_rx) = oneshot::channel();
         let msg_id = message.id;
 
-        self.pending_replies
-            .write()
-            .await
-            .insert(msg_id, reply_tx);
+        self.pending_replies.write().await.insert(msg_id, reply_tx);
 
         let envelope = CrossNousEnvelope {
             message: message.clone(),
@@ -208,15 +208,17 @@ impl CrossNousRouter {
 
         if sender.send(envelope).await.is_err() {
             self.pending_replies.write().await.remove(&msg_id);
-            self.log_delivery(&message, &DeliveryState::Failed {
-                reason: "inbox closed".to_owned(),
-            })
+            self.log_delivery(
+                &message,
+                &DeliveryState::Failed {
+                    reason: "inbox closed".to_owned(),
+                },
+            )
             .await;
             return DeliveryFailedSnafu { nous_id: to }.fail();
         }
 
-        self.log_delivery(&message, &DeliveryState::Delivered)
-            .await;
+        self.log_delivery(&message, &DeliveryState::Delivered).await;
 
         tokio::select! {
             result = reply_rx => {

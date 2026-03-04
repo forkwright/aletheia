@@ -8,6 +8,7 @@ use snafu::{ResultExt, Snafu};
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
 pub enum ExtractionError {
     #[snafu(display("failed to parse extraction response"))]
     ParseResponse {
@@ -104,11 +105,7 @@ impl Default for ExtractionConfig {
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
 pub trait ExtractionProvider: Send + Sync {
-    fn complete(
-        &self,
-        system: &str,
-        user_message: &str,
-    ) -> Result<String, ExtractionError>;
+    fn complete(&self, system: &str, user_message: &str) -> Result<String, ExtractionError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,9 +277,12 @@ Rules:
         }
 
         for (i, fact) in extraction.facts.iter().enumerate() {
-            let content =
-                format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = format!("{}-{}-{i}", slugify(&fact.subject), slugify(&fact.predicate));
+            let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
+            let id = format!(
+                "{}-{}-{i}",
+                slugify(&fact.subject),
+                slugify(&fact.predicate)
+            );
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
@@ -374,8 +374,7 @@ fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097) as u32;
-    let yoe =
-        (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = (yoe as i64) + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
@@ -532,12 +531,22 @@ mod tests {
 
     #[test]
     fn strip_code_fences_works() {
-        assert_eq!(strip_code_fences(r#"```json
+        assert_eq!(
+            strip_code_fences(
+                r#"```json
 {"a":1}
-```"#), r#"{"a":1}"#);
-        assert_eq!(strip_code_fences(r#"```
+```"#
+            ),
+            r#"{"a":1}"#
+        );
+        assert_eq!(
+            strip_code_fences(
+                r#"```
 {"a":1}
-```"#), r#"{"a":1}"#);
+```"#
+            ),
+            r#"{"a":1}"#
+        );
         assert_eq!(strip_code_fences(r#"{"a":1}"#), r#"{"a":1}"#);
     }
 
@@ -590,7 +599,9 @@ mod tests {
 
         // query_facts filters: valid_from <= now AND valid_to > now
         // Use a future time that's after valid_from but before valid_to.
-        let facts = store.query_facts("syn", "9999-01-01T00:00:00Z", 100).unwrap();
+        let facts = store
+            .query_facts("syn", "9999-01-01T00:00:00Z", 100)
+            .unwrap();
         assert!(
             facts.iter().any(|f| f.content.contains("CozoDB")),
             "persisted fact should be retrievable"

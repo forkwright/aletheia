@@ -42,6 +42,7 @@ name = "aletheia"
 version = "0.1.0"
 dependencies = [
  "aletheia-agora",
+ "aletheia-daemon",
  "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-melete",

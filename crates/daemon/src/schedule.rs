@@ -74,11 +74,9 @@ impl Schedule {
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
-                let schedule = cron::Schedule::from_str(expr).context(
-                    error::InvalidCronSnafu {
-                        expression: expr.clone(),
-                    },
-                )?;
+                let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
+                    expression: expr.clone(),
+                })?;
                 let next = schedule.upcoming(chrono::Utc).next();
                 Ok(next.map(|dt| {
                     jiff::Timestamp::from_second(dt.timestamp())
@@ -87,10 +85,11 @@ impl Schedule {
             }
             Self::Interval(duration) => {
                 let span = jiff::SignedDuration::from_nanos(
-                    i64::try_from(duration.as_nanos())
-                        .expect("interval fits in i64 nanos"),
+                    i64::try_from(duration.as_nanos()).expect("interval fits in i64 nanos"),
                 );
-                let next = jiff::Timestamp::now().checked_add(span).expect("interval addition overflow");
+                let next = jiff::Timestamp::now()
+                    .checked_add(span)
+                    .expect("interval addition overflow");
                 Ok(Some(next))
             }
             Self::Once(ts) => {
@@ -144,7 +143,10 @@ mod tests {
     #[test]
     fn interval_next_run_returns_future() {
         let schedule = Schedule::Interval(Duration::from_secs(10));
-        let next = schedule.next_run().expect("no error").expect("should have next");
+        let next = schedule
+            .next_run()
+            .expect("no error")
+            .expect("should have next");
         assert!(next > jiff::Timestamp::now());
     }
 
@@ -154,7 +156,10 @@ mod tests {
             .checked_add(jiff::SignedDuration::from_secs(3600))
             .unwrap();
         let schedule = Schedule::Once(future);
-        let next = schedule.next_run().expect("no error").expect("should have next");
+        let next = schedule
+            .next_run()
+            .expect("no error")
+            .expect("should have next");
         assert_eq!(next, future);
     }
 

@@ -168,11 +168,7 @@ impl LoopDetector {
         let Some(last) = self.history.back() else {
             return 0;
         };
-        self.history
-            .iter()
-            .rev()
-            .take_while(|s| *s == last)
-            .count()
+        self.history.iter().rev().take_while(|s| *s == last).count()
     }
 }
 
@@ -856,6 +852,9 @@ mod tests {
         // Now trigger a loop within the window
         assert!(det.record("exec", "same").is_none());
         assert!(det.record("exec", "same").is_none());
-        assert!(det.record("exec", "same").is_some(), "should detect loop even after window eviction");
+        assert!(
+            det.record("exec", "same").is_some(),
+            "should detect loop even after window eviction"
+        );
     }
 }

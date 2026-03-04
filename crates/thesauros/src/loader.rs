@@ -107,11 +107,7 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
 
     if !packs.is_empty() {
         let total_sections: usize = packs.iter().map(|p| p.sections.len()).sum();
-        info!(
-            packs = packs.len(),
-            total_sections,
-            "domain packs loaded"
-        );
+        info!(packs = packs.len(), total_sections, "domain packs loaded");
     }
 
     packs
@@ -236,11 +232,17 @@ overlays:
     #[test]
     fn load_packs_multiple() {
         let dir1 = setup_pack(&[
-            ("pack.yaml", "name: pack-a\nversion: \"1.0\"\ncontext:\n  - path: a.md\n"),
+            (
+                "pack.yaml",
+                "name: pack-a\nversion: \"1.0\"\ncontext:\n  - path: a.md\n",
+            ),
             ("a.md", "Content A"),
         ]);
         let dir2 = setup_pack(&[
-            ("pack.yaml", "name: pack-b\nversion: \"1.0\"\ncontext:\n  - path: b.md\n"),
+            (
+                "pack.yaml",
+                "name: pack-b\nversion: \"1.0\"\ncontext:\n  - path: b.md\n",
+            ),
             ("b.md", "Content B"),
         ]);
 
@@ -252,9 +254,7 @@ overlays:
 
     #[test]
     fn load_packs_skips_invalid() {
-        let good = setup_pack(&[
-            ("pack.yaml", "name: good\nversion: \"1.0\"\n"),
-        ]);
+        let good = setup_pack(&[("pack.yaml", "name: good\nversion: \"1.0\"\n")]);
 
         let packs = load_packs(&[
             PathBuf::from("/nonexistent/pack"),
@@ -327,10 +327,7 @@ context:
         let pack = load_single_pack(dir.path()).unwrap();
 
         // hermes has no agent match but has healthcare domain
-        let sections = pack.sections_for_agent_or_domains(
-            "hermes",
-            &["healthcare".to_owned()],
-        );
+        let sections = pack.sections_for_agent_or_domains("hermes", &["healthcare".to_owned()]);
         assert_eq!(sections.len(), 2); // general + healthcare
         let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"general.md"));
@@ -356,10 +353,7 @@ context:
         let pack = load_single_pack(dir.path()).unwrap();
 
         // unknown agent, no matching domains: only general (no filter) section
-        let sections = pack.sections_for_agent_or_domains(
-            "unknown",
-            &["analytics".to_owned()],
-        );
+        let sections = pack.sections_for_agent_or_domains("unknown", &["analytics".to_owned()]);
         assert_eq!(sections.len(), 1);
         assert_eq!(sections[0].name, "general.md");
     }
@@ -380,10 +374,7 @@ context:
     #[test]
     fn missing_context_file_skipped_gracefully() {
         let yaml = "name: partial\nversion: \"1.0\"\ncontext:\n  - path: exists.md\n  - path: missing.md\n";
-        let dir = setup_pack(&[
-            ("pack.yaml", yaml),
-            ("exists.md", "content"),
-        ]);
+        let dir = setup_pack(&[("pack.yaml", yaml), ("exists.md", "content")]);
 
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
@@ -393,7 +384,10 @@ context:
     #[test]
     fn content_is_trimmed() {
         let dir = setup_pack(&[
-            ("pack.yaml", "name: trim-test\nversion: \"1.0\"\ncontext:\n  - path: padded.md\n"),
+            (
+                "pack.yaml",
+                "name: trim-test\nversion: \"1.0\"\ncontext:\n  - path: padded.md\n",
+            ),
             ("padded.md", "\n\n  Content with whitespace.  \n\n"),
         ]);
 

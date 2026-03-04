@@ -19,7 +19,10 @@ pub enum DistillSection {
     OpenThreads,
     Corrections,
     /// Custom section with a name and description.
-    Custom { name: String, description: String },
+    Custom {
+        name: String,
+        description: String,
+    },
 }
 
 impl DistillSection {

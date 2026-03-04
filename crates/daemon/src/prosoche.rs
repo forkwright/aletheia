@@ -42,6 +42,17 @@ pub enum Urgency {
     Critical,
 }
 
+impl AttentionItem {
+    pub fn category_label(&self) -> &str {
+        match &self.category {
+            AttentionCategory::Calendar => "calendar",
+            AttentionCategory::Task => "task",
+            AttentionCategory::SystemHealth => "health",
+            AttentionCategory::Custom(s) => s,
+        }
+    }
+}
+
 impl ProsocheCheck {
     pub fn new(nous_id: impl Into<String>) -> Self {
         Self {
@@ -54,7 +65,10 @@ impl ProsocheCheck {
     /// Currently returns an empty result — actual checks (gcal, taskwarrior,
     /// system health) require tool execution which will be wired when daemon
     /// integrates with the nous pipeline.
-    #[expect(clippy::unused_async, reason = "will perform async I/O once wired to nous pipeline")]
+    #[expect(
+        clippy::unused_async,
+        reason = "will perform async I/O once wired to nous pipeline"
+    )]
     pub async fn run(&self) -> crate::error::Result<ProsocheResult> {
         tracing::info!(nous_id = %self.nous_id, "prosoche check completed");
         Ok(ProsocheResult {

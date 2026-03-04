@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{Instrument, info, warn};
 
@@ -19,10 +19,18 @@ pub fn spawn_dispatcher(
     router: Arc<MessageRouter>,
     nous_manager: Arc<NousManager>,
     channel_registry: Arc<ChannelRegistry>,
+    mut ready_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!("message_dispatcher");
     tokio::spawn(
         async move {
+            // Wait for ready signal before processing messages
+            while !*ready_rx.borrow_and_update() {
+                if ready_rx.changed().await.is_err() {
+                    warn!("ready channel dropped before ready signal");
+                    return;
+                }
+            }
             info!("dispatch loop started");
             while let Some(msg) = rx.recv().await {
                 let router = Arc::clone(&router);
