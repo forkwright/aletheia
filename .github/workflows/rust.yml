@@ -35,16 +35,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: |
-          # Per-package — mneme-engine has vendored code rustfmt can't parse
+          # Per-package — mneme contains vendored engine code rustfmt can't parse
           for pkg in aletheia aletheia-agora aletheia-oikonomos \
                      aletheia-hermeneus aletheia-integration-tests \
-                     aletheia-koina aletheia-melete aletheia-mneme \
+                     aletheia-koina aletheia-melete \
                      aletheia-nous aletheia-organon aletheia-pylon \
                      aletheia-symbolon aletheia-taxis; do
             cargo fmt -p "$pkg" -- --check
           done
       - name: Clippy
-        run: cargo clippy --workspace --exclude aletheia-mneme-engine --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test

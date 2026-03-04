@@ -164,27 +164,8 @@ dependencies = [
 name = "aletheia-mneme"
 version = "0.10.0"
 dependencies = [
- "aletheia-koina",
- "aletheia-mneme-engine",
- "fastembed",
- "jiff",
- "miette",
- "ndarray 0.16.1",
- "rusqlite",
- "serde",
- "serde_json",
- "snafu",
- "static_assertions",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "aletheia-mneme-engine"
-version = "0.10.0"
-dependencies = [
  "aho-corasick",
+ "aletheia-koina",
  "approx",
  "base64 0.22.1",
  "bytemuck",
@@ -194,8 +175,11 @@ dependencies = [
  "chrono-tz",
  "crossbeam",
  "either",
+ "fastembed",
  "graph",
  "itertools 0.12.1",
+ "jiff",
+ "miette",
  "ndarray 0.16.1",
  "num-traits",
  "ordered-float",
@@ -211,6 +195,7 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "rocksdb",
+ "rusqlite",
  "rust-stemmers",
  "rustc-hash 1.1.0",
  "serde",
@@ -224,6 +209,7 @@ dependencies = [
  "static_assertions",
  "swapvec",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "twox-hash 2.1.2",

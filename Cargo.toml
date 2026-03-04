@@ -10,7 +10,6 @@ members = [
     "crates/koina",
     "crates/mneme",
     "crates/melete",
-    "crates/mneme-engine",
     "crates/nous",
     "crates/organon",
     "crates/pylon",
