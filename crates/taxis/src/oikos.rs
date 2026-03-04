@@ -171,6 +171,18 @@ impl Oikos {
         self.root.join("logs")
     }
 
+    /// Trace files directory.
+    #[must_use]
+    pub fn traces(&self) -> PathBuf {
+        self.root.join("logs").join("traces")
+    }
+
+    /// Trace archive directory.
+    #[must_use]
+    pub fn trace_archive(&self) -> PathBuf {
+        self.root.join("logs").join("traces").join("archive")
+    }
+
     // --- Signal ---
 
     /// The Signal data directory.

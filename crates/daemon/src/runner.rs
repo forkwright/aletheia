@@ -9,6 +9,9 @@ use tokio::sync::watch;
 
 use crate::bridge::DaemonBridge;
 use crate::error::{self, Result};
+use crate::maintenance::{
+    DbMonitor, DriftDetector, MaintenanceConfig, RetentionExecutor, TraceRotator,
+};
 use crate::prosoche::ProsocheCheck;
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 
@@ -18,6 +21,8 @@ pub struct TaskRunner {
     tasks: Vec<RegisteredTask>,
     shutdown: watch::Receiver<bool>,
     bridge: Option<Arc<dyn DaemonBridge>>,
+    maintenance: Option<MaintenanceConfig>,
+    retention_executor: Option<Arc<dyn RetentionExecutor>>,
 }
 
 struct RegisteredTask {
@@ -56,6 +61,80 @@ impl TaskRunner {
             tasks: Vec::new(),
             shutdown,
             bridge: Some(bridge),
+            maintenance: None,
+            retention_executor: None,
+        }
+    }
+
+    /// Attach maintenance configuration.
+    #[must_use]
+    pub fn with_maintenance(mut self, config: MaintenanceConfig) -> Self {
+        self.maintenance = Some(config);
+        self
+    }
+
+    /// Attach a retention executor for data cleanup.
+    #[must_use]
+    pub fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
+        self.retention_executor = Some(executor);
+        self
+    }
+
+    /// Register default maintenance tasks based on configuration.
+    ///
+    /// Skips disabled tasks and retention when no executor is provided.
+    pub fn register_maintenance_tasks(&mut self) {
+        let Some(config) = self.maintenance.clone() else {
+            return;
+        };
+        let has_executor = self.retention_executor.is_some();
+
+        if config.trace_rotation.enabled {
+            self.register(TaskDef {
+                id: "trace-rotation".to_owned(),
+                name: "Trace rotation".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Cron("0 0 3 * * *".to_owned()),
+                action: TaskAction::Builtin(BuiltinTask::TraceRotation),
+                enabled: true,
+                active_window: None,
+            });
+        }
+
+        if config.drift_detection.enabled {
+            self.register(TaskDef {
+                id: "drift-detection".to_owned(),
+                name: "Instance drift detection".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Cron("0 0 4 * * *".to_owned()),
+                action: TaskAction::Builtin(BuiltinTask::DriftDetection),
+                enabled: true,
+                active_window: None,
+            });
+        }
+
+        if config.db_monitoring.enabled {
+            self.register(TaskDef {
+                id: "db-size-monitor".to_owned(),
+                name: "Database size monitor".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Interval(Duration::from_secs(6 * 3600)),
+                action: TaskAction::Builtin(BuiltinTask::DbSizeMonitor),
+                enabled: true,
+                active_window: None,
+            });
+        }
+
+        if config.retention.enabled && has_executor {
+            self.register(TaskDef {
+                id: "retention-execution".to_owned(),
+                name: "Data retention cleanup".to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule: Schedule::Cron("0 30 3 * * *".to_owned()),
+                action: TaskAction::Builtin(BuiltinTask::RetentionExecution),
+                enabled: true,
+                active_window: None,
+            });
         }
     }
 
@@ -123,12 +202,12 @@ impl TaskRunner {
     async fn tick(&mut self) {
         let now = jiff::Timestamp::now();
 
-        for task in &mut self.tasks {
-            if !task.def.enabled {
+        for i in 0..self.tasks.len() {
+            if !self.tasks[i].def.enabled {
                 continue;
             }
 
-            let Some(next) = task.next_run else {
+            let Some(next) = self.tasks[i].next_run else {
                 continue;
             };
 
@@ -136,12 +215,18 @@ impl TaskRunner {
                 continue;
             }
 
-            if !Schedule::in_window(task.def.active_window) {
+            if !Schedule::in_window(self.tasks[i].def.active_window) {
                 continue;
             }
 
             let result =
                 execute_action(&task.def.action, &task.def.nous_id, self.bridge.as_ref()).await;
+            // Clone action/nous_id to release borrow on self before calling methods.
+            let action = self.tasks[i].def.action.clone();
+            let nous_id = self.tasks[i].def.nous_id.clone();
+
+            let result = self.execute_action(&action, &nous_id).await;
+            let task = &mut self.tasks[i];
             task.last_run = Some(now);
 
             match result {
@@ -178,7 +263,6 @@ impl TaskRunner {
             }
         }
     }
-}
 
 async fn execute_action(
     action: &TaskAction,
@@ -213,41 +297,67 @@ async fn execute_action(
             }
         }
         TaskAction::Builtin(builtin) => execute_builtin(builtin, nous_id, bridge).await,
-    }
-}
-
-async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
-    let output = tokio::process::Command::new("sh")
-        .args(["-c", cmd])
-        .output()
-        .await
-        .context(error::CommandFailedSnafu {
-            command: cmd.to_owned(),
-        })?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if output.status.success() {
-        tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
-        Ok(ExecutionResult {
-            success: true,
-            output: Some(stdout.into_owned()),
-        })
-    } else {
-        let reason = if stderr.is_empty() {
-            format!("exit code: {}", output.status)
-        } else {
-            stderr.into_owned()
-        };
-
-        error::TaskFailedSnafu {
-            task_id: cmd.to_owned(),
-            reason,
+    async fn execute_action(&self, action: &TaskAction, nous_id: &str) -> Result<ExecutionResult> {
+        match action {
+            TaskAction::Command(cmd) => Self::execute_command(cmd).await,
+            TaskAction::Tool { name, .. } => {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    tool = %name,
+                    "tool execution not yet wired — requires organon integration"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: None,
+                })
+            }
+            TaskAction::Prompt(prompt) => {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    prompt_len = prompt.len(),
+                    "prompt injection not yet wired — requires nous pipeline access"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: None,
+                })
+            }
+            TaskAction::Builtin(builtin) => self.execute_builtin(builtin, nous_id).await,
         }
-        .fail()
     }
-}
+
+    async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
+        let output = tokio::process::Command::new("sh")
+            .args(["-c", cmd])
+            .output()
+            .await
+            .context(error::CommandFailedSnafu {
+                command: cmd.to_owned(),
+            })?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        if output.status.success() {
+            tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(stdout.into_owned()),
+            })
+        } else {
+            let reason = if stderr.is_empty() {
+                format!("exit code: {}", output.status)
+            } else {
+                stderr.into_owned()
+            };
+
+            error::TaskFailedSnafu {
+                task_id: cmd.to_owned(),
+                reason,
+            }
+            .fail()
+        }
+    }
 
 async fn execute_builtin(
     builtin: &BuiltinTask,
@@ -297,6 +407,160 @@ async fn execute_builtin(
                 success: true,
                 output: None,
             })
+    #[expect(
+        clippy::too_many_lines,
+        reason = "match dispatch over builtin variants"
+    )]
+    async fn execute_builtin(
+        &self,
+        builtin: &BuiltinTask,
+        nous_id: &str,
+    ) -> Result<ExecutionResult> {
+        match builtin {
+            BuiltinTask::Prosoche => {
+                let check = ProsocheCheck::new(nous_id);
+                let result = check.run().await?;
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some(format!("{} items", result.items.len())),
+                })
+            }
+            BuiltinTask::GraphMaintenance => {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    "graph maintenance not yet implemented — requires mneme integration"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: None,
+                })
+            }
+            BuiltinTask::MemoryConsolidation => {
+                tracing::info!(
+                    nous_id = %nous_id,
+                    "memory consolidation not yet implemented — requires melete integration"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: None,
+                })
+            }
+            BuiltinTask::TraceRotation => {
+                let config = self
+                    .maintenance
+                    .as_ref()
+                    .map(|m| m.trace_rotation.clone())
+                    .unwrap_or_default();
+                let report =
+                    tokio::task::spawn_blocking(move || TraceRotator::new(config).rotate())
+                        .await
+                        .context(error::BlockingJoinSnafu {
+                            context: "trace rotation",
+                        })??;
+
+                tracing::info!(
+                    rotated = report.files_rotated,
+                    pruned = report.files_pruned,
+                    bytes_freed = report.bytes_freed,
+                    "maintenance: trace rotation complete"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some(format!(
+                        "{} files rotated, {} pruned, {} bytes freed",
+                        report.files_rotated, report.files_pruned, report.bytes_freed
+                    )),
+                })
+            }
+            BuiltinTask::DriftDetection => {
+                let config = self
+                    .maintenance
+                    .as_ref()
+                    .map(|m| m.drift_detection.clone())
+                    .unwrap_or_default();
+                let report =
+                    tokio::task::spawn_blocking(move || DriftDetector::new(config).check())
+                        .await
+                        .context(error::BlockingJoinSnafu {
+                            context: "drift detection",
+                        })??;
+
+                tracing::info!(
+                    missing = report.missing_files.len(),
+                    extra = report.extra_files.len(),
+                    permission_issues = report.permission_issues.len(),
+                    "maintenance: drift detection complete"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some(format!(
+                        "{} missing, {} extra",
+                        report.missing_files.len(),
+                        report.extra_files.len()
+                    )),
+                })
+            }
+            BuiltinTask::DbSizeMonitor => {
+                let config = self
+                    .maintenance
+                    .as_ref()
+                    .map(|m| m.db_monitoring.clone())
+                    .unwrap_or_default();
+                let report = tokio::task::spawn_blocking(move || DbMonitor::new(config).check())
+                    .await
+                    .context(error::BlockingJoinSnafu {
+                        context: "db size monitor",
+                    })??;
+
+                let summary: Vec<String> = report
+                    .databases
+                    .iter()
+                    .map(|db| {
+                        format!(
+                            "{} {}MB ({})",
+                            db.name,
+                            db.size_bytes / (1024 * 1024),
+                            db.status
+                        )
+                    })
+                    .collect();
+                tracing::info!(
+                    databases = %summary.join(", "),
+                    "maintenance: db monitor complete"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some(summary.join(", ")),
+                })
+            }
+            BuiltinTask::RetentionExecution => {
+                let Some(executor) = self.retention_executor.as_ref().map(Arc::clone) else {
+                    tracing::info!("retention execution skipped — no executor configured");
+                    return Ok(ExecutionResult {
+                        success: true,
+                        output: Some("skipped — no executor".to_owned()),
+                    });
+                };
+                let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
+                    .await
+                    .context(error::BlockingJoinSnafu {
+                        context: "retention execution",
+                    })??;
+
+                tracing::info!(
+                    sessions = summary.sessions_cleaned,
+                    messages = summary.messages_cleaned,
+                    bytes_freed = summary.bytes_freed,
+                    "maintenance: retention complete"
+                );
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some(format!(
+                        "{} sessions, {} messages cleaned, {} bytes freed",
+                        summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
+                    )),
+                })
+            }
         }
         BuiltinTask::SessionRetention => {
             tracing::info!(
@@ -457,5 +721,63 @@ mod tests {
         let statuses = runner.status();
         assert_eq!(statuses[0].run_count, 1);
         assert_eq!(statuses[0].consecutive_failures, 0);
+    }
+
+    #[test]
+    fn register_maintenance_tasks_respects_enabled() {
+        let (_tx, rx) = watch::channel(false);
+        let mut config = MaintenanceConfig::default();
+        config.trace_rotation.enabled = true;
+        config.drift_detection.enabled = false;
+        config.db_monitoring.enabled = true;
+        config.retention.enabled = false;
+
+        let mut runner = TaskRunner::new("system", rx).with_maintenance(config);
+        runner.register_maintenance_tasks();
+
+        let statuses = runner.status();
+        let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"trace-rotation"));
+        assert!(!ids.contains(&"drift-detection"));
+        assert!(ids.contains(&"db-size-monitor"));
+        assert!(!ids.contains(&"retention-execution"));
+    }
+
+    #[test]
+    fn register_maintenance_tasks_skips_without_config() {
+        let (_tx, rx) = watch::channel(false);
+        let mut runner = TaskRunner::new("system", rx);
+        runner.register_maintenance_tasks();
+        assert!(runner.status().is_empty());
+    }
+
+    #[test]
+    fn retention_requires_executor() {
+        let (_tx, rx) = watch::channel(false);
+        let mut config = MaintenanceConfig::default();
+        config.retention.enabled = true;
+
+        let mut runner = TaskRunner::new("system", rx).with_maintenance(config);
+        runner.register_maintenance_tasks();
+
+        let statuses = runner.status();
+        let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+        assert!(
+            !ids.contains(&"retention-execution"),
+            "retention should not register without executor"
+        );
+    }
+
+    #[tokio::test]
+    async fn retention_without_executor_skips() {
+        let (_tx, rx) = watch::channel(false);
+        let runner = TaskRunner::new("system", rx);
+
+        let result = runner
+            .execute_builtin(&BuiltinTask::RetentionExecution, "system")
+            .await;
+        assert!(result.is_ok());
+        let output = result.unwrap().output.unwrap_or_default();
+        assert!(output.contains("skipped"));
     }
 }

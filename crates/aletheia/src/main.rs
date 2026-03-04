@@ -18,6 +18,11 @@ use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::SignalProvider;
 use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
+use aletheia_daemon::maintenance::{
+    DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
+    TraceRotationConfig, TraceRotator,
+};
+use aletheia_daemon::runner::TaskRunner;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
@@ -83,6 +88,21 @@ enum Command {
         /// Export sessions as JSON
         #[arg(long)]
         export_json: bool,
+    /// Instance maintenance tasks
+    Maintenance {
+        #[command(subcommand)]
+        action: MaintenanceAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum MaintenanceAction {
+    /// Show status of all maintenance tasks
+    Status,
+    /// Run a specific maintenance task immediately
+    Run {
+        /// Task name: trace-rotation, drift-detection, db-monitor, or all
+        task: String,
     },
 }
 
@@ -98,10 +118,114 @@ async fn main() -> Result<()> {
             keep,
             export_json,
         }) => return backup(&cli, *list, *prune, *keep, *export_json),
+    match cli.command {
+        Some(Command::Health { url }) => return health(&url).await,
+        Some(Command::Maintenance { action }) => {
+            return run_maintenance(action, cli.instance_root.as_ref());
+        }
         None => {}
     }
 
     serve(cli).await
+}
+
+fn run_maintenance(action: MaintenanceAction, instance_root: Option<&PathBuf>) -> Result<()> {
+    let oikos = match instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+    let config = load_config(&oikos).context("failed to load config")?;
+    let maint = build_maintenance_config(&oikos, &config.maintenance);
+
+    match action {
+        MaintenanceAction::Status => {
+            let (_tx, rx) = tokio::sync::watch::channel(false);
+            let mut runner = TaskRunner::new("system", rx).with_maintenance(maint);
+            runner.register_maintenance_tasks();
+            let statuses = runner.status();
+            println!("{}", serde_json::to_string_pretty(&statuses)?);
+        }
+        MaintenanceAction::Run { task } => {
+            let tasks: Vec<&str> = if task == "all" {
+                vec!["trace-rotation", "drift-detection", "db-monitor"]
+            } else {
+                vec![task.as_str()]
+            };
+            for name in tasks {
+                match name {
+                    "trace-rotation" => {
+                        let report = TraceRotator::new(maint.trace_rotation.clone())
+                            .rotate()
+                            .context("trace rotation failed")?;
+                        println!(
+                            "trace-rotation: {} rotated, {} pruned, {} bytes freed",
+                            report.files_rotated, report.files_pruned, report.bytes_freed
+                        );
+                    }
+                    "drift-detection" => {
+                        let report = DriftDetector::new(maint.drift_detection.clone())
+                            .check()
+                            .context("drift detection failed")?;
+                        println!(
+                            "drift-detection: {} missing, {} extra",
+                            report.missing_files.len(),
+                            report.extra_files.len()
+                        );
+                    }
+                    "db-monitor" => {
+                        let report = DbMonitor::new(maint.db_monitoring.clone())
+                            .check()
+                            .context("db monitor failed")?;
+                        for db in &report.databases {
+                            println!(
+                                "db-monitor: {} {}MB ({})",
+                                db.name,
+                                db.size_bytes / (1024 * 1024),
+                                db.status
+                            );
+                        }
+                    }
+                    other => anyhow::bail!(
+                        "unknown task: {other}. Valid: trace-rotation, drift-detection, db-monitor, all"
+                    ),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn build_maintenance_config(
+    oikos: &Oikos,
+    settings: &aletheia_taxis::config::MaintenanceSettings,
+) -> MaintenanceConfig {
+    MaintenanceConfig {
+        trace_rotation: TraceRotationConfig {
+            enabled: settings.trace_rotation.enabled,
+            trace_dir: oikos.traces(),
+            archive_dir: oikos.trace_archive(),
+            max_age_days: settings.trace_rotation.max_age_days,
+            max_total_size_mb: settings.trace_rotation.max_total_size_mb,
+            compress: settings.trace_rotation.compress,
+            max_archives: settings.trace_rotation.max_archives,
+        },
+        drift_detection: DriftDetectionConfig {
+            enabled: settings.drift_detection.enabled,
+            instance_root: oikos.root().to_path_buf(),
+            example_root: PathBuf::from("instance.example"),
+            alert_on_missing: settings.drift_detection.alert_on_missing,
+            ignore_patterns: settings.drift_detection.ignore_patterns.clone(),
+        },
+        db_monitoring: DbMonitoringConfig {
+            enabled: settings.db_monitoring.enabled,
+            data_dir: oikos.data(),
+            warn_threshold_mb: settings.db_monitoring.warn_threshold_mb,
+            alert_threshold_mb: settings.db_monitoring.alert_threshold_mb,
+        },
+        retention: aletheia_daemon::maintenance::RetentionConfig {
+            enabled: settings.retention.enabled,
+        },
+    }
 }
 
 #[expect(
@@ -233,6 +357,17 @@ async fn serve(cli: Cli) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
+    // Daemon — background maintenance tasks
+    let (daemon_shutdown_tx, daemon_shutdown_rx) = tokio::sync::watch::channel(false);
+    let maintenance_config = build_maintenance_config(&oikos_arc, &config.maintenance);
+    let mut daemon_runner =
+        TaskRunner::new("system", daemon_shutdown_rx).with_maintenance(maintenance_config);
+    daemon_runner.register_maintenance_tasks();
+    let daemon_handle = tokio::spawn(async move {
+        daemon_runner.run().await;
+    });
+    info!("daemon started");
+
     // Wrap in Arc — shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
@@ -307,6 +442,7 @@ async fn serve(cli: Cli) -> Result<()> {
 
     info!("shutting down");
     let _ = daemon_shutdown_tx.send(true);
+    let _ = daemon_handle.await;
     state.nous_manager.shutdown_readonly().await;
     info!("shutdown complete");
 
@@ -569,5 +705,27 @@ mod tests {
     fn health_subcommand_parses() {
         let cli = Cli::parse_from(["aletheia", "health", "--url", "http://localhost:9999"]);
         assert!(matches!(cli.command, Some(Command::Health { .. })));
+    }
+
+    #[test]
+    fn maintenance_status_parses() {
+        let cli = Cli::parse_from(["aletheia", "maintenance", "status"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Maintenance {
+                action: MaintenanceAction::Status
+            })
+        ));
+    }
+
+    #[test]
+    fn maintenance_run_parses() {
+        let cli = Cli::parse_from(["aletheia", "maintenance", "run", "trace-rotation"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Maintenance {
+                action: MaintenanceAction::Run { .. }
+            })
+        ));
     }
 }

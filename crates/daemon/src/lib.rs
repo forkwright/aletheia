@@ -6,6 +6,7 @@
 
 pub mod bridge;
 pub mod error;
+pub mod maintenance;
 pub mod prosoche;
 pub mod runner;
 pub mod schedule;
@@ -17,4 +18,7 @@ mod assertions {
     assert_impl_all!(super::runner::TaskRunner: Send);
     assert_impl_all!(super::prosoche::ProsocheCheck: Send, Sync);
     assert_impl_all!(super::schedule::TaskDef: Send, Sync);
+    assert_impl_all!(super::maintenance::TraceRotator: Send, Sync);
+    assert_impl_all!(super::maintenance::DriftDetector: Send, Sync);
+    assert_impl_all!(super::maintenance::DbMonitor: Send, Sync);
 }
