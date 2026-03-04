@@ -36,9 +36,9 @@ aletheia
 │   ├── semeion   — Signal (signal-cli subprocess)
 │   └── slack     — Slack (raw API + WebSocket)
 ├── daemon        — per-nous background tasks, cron, evolution, prosoche
-├── prostheke     — WASM plugin host (wasmtime)
 ├── melete        — distillation, reflection, memory flush, consolidation
-└── autarkeia     — agent export/import
+├── prostheke     — WASM plugin host (wasmtime)                         [planned: M5]
+└── autarkeia     — agent export/import                                 [planned: M5]
 ```
 
 ---
@@ -70,10 +70,14 @@ aletheia/                          # git root — the platform
 │   │   └── coordination/         #   Blackboard, task state
 │   │
 │   ├── nous/                     # Tier 2: individual nous workspaces
-│   │   ├── <agent-id>/
-│   │   │   ├── SOUL.md           #   Identity (operator-owned)
-│   │   │   ├── GOALS.md          #   Goals (operator-owned)
-│   │   │   ├── MEMORY.md         #   Memory (agent-writable)
+│   │   ├── <agent-id>/           #   See WORKSPACE_FILES.md for full reference
+│   │   │   ├── SOUL.md           #   Character, principles (operator-owned)
+│   │   │   ├── IDENTITY.md       #   Name and emoji (required)
+│   │   │   ├── GOALS.md          #   Active goals (operator-owned)
+│   │   │   ├── MEMORY.md         #   Persistent knowledge (agent-writable)
+│   │   │   ├── TOOLS.md          #   Tool inventory (auto-generated)
+│   │   │   ├── PROSOCHE.md       #   Attention directives (auto-generated)
+│   │   │   ├── CONTEXT.md        #   Session state (runtime-written)
 │   │   │   ├── tools/            #   Nous-specific tools
 │   │   │   ├── hooks/            #   Nous-specific hooks
 │   │   │   └── memory/           #   Daily memory files
@@ -192,6 +196,7 @@ All modules in `infrastructure/runtime/src/`:
 | `melete` | Distillation, reflection, memory flush |
 | `symbolon` | Split-token authentication, JWT, sessions, RBAC |
 | `dianoia` | Multi-phase planning orchestrator |
+| `agora` | Channel registry, CLI commands |
 | `semeion` | Signal client, listener, commands, TTS |
 | `pylon` | Hono HTTP gateway, MCP, Web UI routes |
 | `prostheke` | Plugin system, lifecycle hooks |
@@ -219,6 +224,7 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 | `melete` | `koina`, `taxis`, `mneme`, `hermeneus` | everything else |
 | `symbolon` | `koina` | everything else (stateless utilities) |
 | `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `daemon` |
+| `agora` | `koina`, `taxis`, `semeion` | everything else |
 | `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `daemon` |
 | `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `daemon` | `prostheke`, `melete`, `portability` |
 | `prostheke` | `koina`, `organon` | everything else |
