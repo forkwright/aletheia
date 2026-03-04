@@ -41,7 +41,7 @@ export function generateMigrationPrompt(projects: LegacyProject[]): string {
 
   return [
     "The following in-flight planning projects are stored at old-style paths and can be migrated",
-    "to the new shared workspace location (shared/workspace/plans/{slug}/):",
+    "to the new data/plans/{slug}/:",
     "",
     list,
     "",

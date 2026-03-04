@@ -120,8 +120,8 @@ program
         }
         console.log(`  Instance: ${paths.root}`);
 
-        const { scaffoldNousShared: doScaffold, mergeGitignore: doMerge } = await import("./taxis/nous-scaffold.js");
-        const sharedCreated = doScaffold(nousDir);
+        const { scaffoldTheke: doScaffold, mergeGitignore: doMerge } = await import("./taxis/nous-scaffold.js");
+        const sharedCreated = doScaffold(paths.theke);
         doMerge(nousDir);
         if (sharedCreated.length > 0) {
           console.log(`  Scaffold: ${sharedCreated.join(", ")}`);

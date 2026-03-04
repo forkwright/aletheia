@@ -6,35 +6,48 @@ import { createLogger } from "../koina/logger.js";
 
 const log = createLogger("taxis:nous-scaffold");
 
-const SHARED_WORKSPACE_DIRS = [
-  ["workspace", "plans"],
-  ["workspace", "specs"],
-  ["workspace", "standards"],
-  ["workspace", "references"],
+/**
+ * Theke directories — the single shared working tree for all agents and the
+ * operator.  Organized by subject, not by agent.
+ *
+ * See docs/WORKSPACE_FILES.md and instance.example/README.md for the full
+ * rationale.  The rule: nous/{id}/ holds identity + session memory ONLY.
+ * All research, plans, drafts, specs, and work products live in theke/.
+ */
+const THEKE_DIRS = [
+  ["projects"],
+  ["research"],
+  ["reference"],
+  ["nous"],        // per-agent scratch within theke (theke/nous/{id}/)
+  ["archive"],
 ] as const;
 
-export function scaffoldNousShared(sharedDir: string): string[] {
+/**
+ * Scaffold the theke/ working tree inside the instance directory.
+ * Called during `aletheia init` and at runtime startup.
+ *
+ * @returns list of directories that were newly created (empty on repeat calls)
+ */
+export function scaffoldTheke(thekeDir: string): string[] {
   const created: string[] = [];
-  for (const segments of SHARED_WORKSPACE_DIRS) {
-    const dir = join(sharedDir, ...segments);
+  for (const segments of THEKE_DIRS) {
+    const dir = join(thekeDir, ...segments);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
       created.push(segments.join("/"));
     }
   }
-  log.debug("scaffoldNousShared complete", { sharedDir, created });
+  log.debug("scaffoldTheke complete", { thekeDir, created });
   return created;
 }
 
 const MANAGED_BEGIN = "# BEGIN aletheia-managed";
 const MANAGED_END = "# END aletheia-managed";
 const MANAGED_ENTRIES = [
-  "# Workspace ephemeral content",
-  "*/workspace/plans/",
-  "*/workspace/data/",
-  "",
-  "# Memory and index",
+  "# Agent session memory",
   "memory/",
+  "",
+  "# Runtime index",
   ".aletheia-index/",
   "",
   "# Secrets and credentials",
@@ -71,11 +84,25 @@ export function mergeGitignore(nousDir: string): void {
   log.debug("mergeGitignore complete", { gitignorePath });
 }
 
-const AGENT_WORKSPACE_SUBDIRS = ["scripts", "drafts", "data"] as const;
-
-export function scaffoldAgentWorkspaceDirs(agentWorkspace: string): void {
-  for (const subdir of AGENT_WORKSPACE_SUBDIRS) {
-    mkdirSync(join(agentWorkspace, "workspace", subdir), { recursive: true });
+/**
+ * Scaffold the minimal agent workspace: just a memory/ directory for session
+ * logs.  All other working files belong in theke/.
+ */
+export function scaffoldAgentWorkspace(agentWorkspace: string): void {
+  const memDir = join(agentWorkspace, "memory");
+  if (!existsSync(memDir)) {
+    mkdirSync(memDir, { recursive: true });
   }
-  log.debug("scaffoldAgentWorkspaceDirs complete", { agentWorkspace });
+  log.debug("scaffoldAgentWorkspace complete", { agentWorkspace });
+}
+
+// ── Deprecated aliases ──────────────────────────────────────────────────────
+
+/** @deprecated Use scaffoldTheke instead. Will be removed in a future version. */
+export const scaffoldNousShared = scaffoldTheke;
+
+/** @deprecated Use scaffoldAgentWorkspace instead. Will be removed in a future version. */
+export function scaffoldAgentWorkspaceDirs(agentWorkspace: string): void {
+  log.warn("scaffoldAgentWorkspaceDirs is deprecated — use scaffoldAgentWorkspace");
+  scaffoldAgentWorkspace(agentWorkspace);
 }

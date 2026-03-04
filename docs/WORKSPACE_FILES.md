@@ -123,3 +123,34 @@ Beyond the 9 workspace files, the bootstrap accepts:
 ## Bootstrap Diff Tracking
 
 The system tracks per-file content hashes across turns (`bootstrap-diff.ts`). When a workspace file changes between turns, the diff is logged to `shared/status/bootstrap-changes.jsonl`. Useful for diagnosing cache invalidation or unexpected workspace mutations.
+
+---
+
+## File Location Rule
+
+Agent workspaces (`instance/nous/{id}/`) hold **identity files and session memory only**. All other working files — research, plans, drafts, specs, notes, project work — belong in `instance/theke/`.
+
+### What stays in `nous/{id}/`
+
+- Bootstrap files: SOUL.md, USER.md, AGENTS.md, IDENTITY.md, GOALS.md, TOOLS.md, MEMORY.md, PROSOCHE.md, CONTEXT.md
+- Session logs: `memory/YYYY-MM-DD.md`
+
+### What goes in `theke/`
+
+| Content | Location |
+|---------|----------|
+| Project work | `theke/projects/{name}/` |
+| Research | `theke/research/` |
+| Reference material | `theke/reference/` |
+| Agent scratch space | `theke/nous/{id}/` |
+| Completed work | `theke/archive/` |
+
+### Why
+
+Files organized by **subject**, not by agent. This prevents:
+- Per-agent sprawl (agents growing docs/, drafts/, plans/, archive/ directories)
+- Duplication across agents
+- Files that can't be found because you don't know which agent created them
+- Maintenance overhead from managing N separate file trees
+
+The `_example/AGENTS.md` template includes this rule, so every newly scaffolded agent learns it during onboarding. See `instance.example/README.md` for the full directory structure.
