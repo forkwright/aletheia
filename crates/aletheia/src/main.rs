@@ -357,7 +357,7 @@ async fn serve(cli: Cli) -> Result<()> {
     }
 
     // Daemon — background maintenance tasks
-    let (daemon_shutdown_tx, daemon_shutdown_rx) = tokio::sync::watch::channel(false);
+    let (_daemon_shutdown_tx, daemon_shutdown_rx) = tokio::sync::watch::channel(false);
     let maintenance_config = build_maintenance_config(&oikos_arc, &config.maintenance);
     let mut daemon_runner =
         TaskRunner::new("system", daemon_shutdown_rx).with_maintenance(maintenance_config);
