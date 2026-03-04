@@ -19,7 +19,6 @@ members = [
 ]
 exclude = [
     "tui",
-    "crates/mneme-bench",
 ]
 
 [workspace.package]
