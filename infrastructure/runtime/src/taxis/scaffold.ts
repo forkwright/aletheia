@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ConfigError } from "../koina/errors.js";
 import { readJson, writeJson } from "../koina/fs.js";
 import type { AletheiaConfig } from "./schema.js";
-import { scaffoldAgentWorkspaceDirs } from "./nous-scaffold.js";
+import { scaffoldAgentWorkspace } from "./nous-scaffold.js";
 
 export interface UserProfile {
   name: string;
@@ -132,7 +132,7 @@ export function scaffoldAgent(opts: ScaffoldOpts): ScaffoldResult {
   }
 
   mkdirSync(workspace, { recursive: true });
-  scaffoldAgentWorkspaceDirs(workspace);  // creates workspace/scripts, drafts, data
+  scaffoldAgentWorkspace(workspace);  // creates memory/ only — work goes in theke/
   const filesCreated: string[] = [];
 
   for (const file of TEMPLATE_FILES) {

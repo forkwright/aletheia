@@ -194,7 +194,7 @@ export class DianoiaOrchestrator {
         "Migration complete:",
         ...results,
         "",
-        "Projects now stored at shared/workspace/plans/{slug}/.",
+        "Projects now stored at data/plans/{slug}/.",
       ].join("\n");
     }
 
@@ -273,7 +273,7 @@ export class DianoiaOrchestrator {
 
     eventBus.emit("planning:project-created", { projectId: project.id, nousId, sessionId });
     log.info(`Created planning project ${project.id} for nous ${nousId}`, { slug, dir });
-    return `Project "${displayName}" (slug: ${slug}) created. Artifacts will be stored in shared/workspace/plans/${slug}/\n\nFirst: what are you building?`;
+    return `Project "${displayName}" (slug: ${slug}) created. Artifacts will be stored in data/plans/${slug}/\n\nFirst: what are you building?`;
   }
 
   confirmResume(projectId: string, nousId: string, sessionId: string, answer: string): string {

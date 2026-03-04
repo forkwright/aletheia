@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mergeGitignore, scaffoldAgentWorkspaceDirs, scaffoldNousShared } from "./nous-scaffold.js";
+import { mergeGitignore, scaffoldAgentWorkspace, scaffoldTheke } from "./nous-scaffold.js";
 
 let tmpDir: string;
 
@@ -14,28 +14,30 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("scaffoldNousShared", () => {
-  it("creates four subdirectories under workspace/", () => {
-    scaffoldNousShared(tmpDir);
-    expect(existsSync(join(tmpDir, "workspace", "plans"))).toBe(true);
-    expect(existsSync(join(tmpDir, "workspace", "specs"))).toBe(true);
-    expect(existsSync(join(tmpDir, "workspace", "standards"))).toBe(true);
-    expect(existsSync(join(tmpDir, "workspace", "references"))).toBe(true);
+describe("scaffoldTheke", () => {
+  it("creates the theke directory structure", () => {
+    scaffoldTheke(tmpDir);
+    expect(existsSync(join(tmpDir, "projects"))).toBe(true);
+    expect(existsSync(join(tmpDir, "research"))).toBe(true);
+    expect(existsSync(join(tmpDir, "reference"))).toBe(true);
+    expect(existsSync(join(tmpDir, "nous"))).toBe(true);
+    expect(existsSync(join(tmpDir, "archive"))).toBe(true);
   });
 
   it("returns created paths as segment strings", () => {
-    const created = scaffoldNousShared(tmpDir);
+    const created = scaffoldTheke(tmpDir);
     expect(created).toEqual([
-      "workspace/plans",
-      "workspace/specs",
-      "workspace/standards",
-      "workspace/references",
+      "projects",
+      "research",
+      "reference",
+      "nous",
+      "archive",
     ]);
   });
 
   it("returns empty array when all dirs already exist (idempotent)", () => {
-    scaffoldNousShared(tmpDir);
-    const second = scaffoldNousShared(tmpDir);
+    scaffoldTheke(tmpDir);
+    const second = scaffoldTheke(tmpDir);
     expect(second).toEqual([]);
   });
 });
@@ -48,7 +50,7 @@ describe("mergeGitignore", () => {
     const content = readFileSync(join(tmpDir, ".gitignore"), "utf-8");
     expect(content).toContain(MANAGED_BLOCK_SNIPPET);
     expect(content).toContain("# END aletheia-managed");
-    expect(content).toContain("*/workspace/plans/");
+    expect(content).toContain("memory/");
   });
 
   it("appends managed block to file with content but no managed block", () => {
@@ -66,7 +68,7 @@ describe("mergeGitignore", () => {
     mergeGitignore(tmpDir);
     const content = readFileSync(join(tmpDir, ".gitignore"), "utf-8");
     expect(content).not.toContain("OLD_ENTRY/");
-    expect(content).toContain("*/workspace/plans/");
+    expect(content).toContain("memory/");
   });
 
   it("preserves content above and below managed block on replacement", () => {
@@ -90,7 +92,7 @@ describe("mergeGitignore", () => {
     expect(content).toContain("# More user content");
     expect(content).toContain("dist/");
     expect(content).not.toContain("OLD_ENTRY/");
-    expect(content).toContain("*/workspace/plans/");
+    expect(content).toContain("memory/");
   });
 
   it("is idempotent — second call produces identical file content", () => {
@@ -103,17 +105,17 @@ describe("mergeGitignore", () => {
   });
 });
 
-describe("scaffoldAgentWorkspaceDirs", () => {
-  it("creates scripts, drafts, data under workspace/", () => {
-    scaffoldAgentWorkspaceDirs(tmpDir);
-    expect(existsSync(join(tmpDir, "workspace", "scripts"))).toBe(true);
-    expect(existsSync(join(tmpDir, "workspace", "drafts"))).toBe(true);
-    expect(existsSync(join(tmpDir, "workspace", "data"))).toBe(true);
+describe("scaffoldAgentWorkspace", () => {
+  it("creates memory/ directory only", () => {
+    scaffoldAgentWorkspace(tmpDir);
+    expect(existsSync(join(tmpDir, "memory"))).toBe(true);
+    // Should NOT create the old workspace/ subdirectories
+    expect(existsSync(join(tmpDir, "workspace"))).toBe(false);
   });
 
   it("is idempotent — safe to call twice", () => {
-    scaffoldAgentWorkspaceDirs(tmpDir);
-    expect(() => scaffoldAgentWorkspaceDirs(tmpDir)).not.toThrow();
-    expect(existsSync(join(tmpDir, "workspace", "scripts"))).toBe(true);
+    scaffoldAgentWorkspace(tmpDir);
+    expect(() => scaffoldAgentWorkspace(tmpDir)).not.toThrow();
+    expect(existsSync(join(tmpDir, "memory"))).toBe(true);
   });
 });
