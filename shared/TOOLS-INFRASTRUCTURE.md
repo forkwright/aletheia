@@ -10,8 +10,6 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | ingest-doc | PDF/document extraction to markdown |
 | aletheia-graph | Knowledge graph CLI (Neo4j) |
 | nous-health | Monitor agent ecosystem health |
-| compile-context | Regenerate AGENTS.md + PROSOCHE.md from templates |
-| generate-tools-md | Regenerate TOOLS.md for all agents |
 
 ## Memory Systems
 
