@@ -4,7 +4,7 @@ Self-hosted multi-agent AI system with persistent memory, Signal messaging, and 
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
-[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Releasing](docs/RELEASING.md)
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Packs](docs/PACKS.md) · [Vendoring](docs/VENDORING.md) · [Releasing](docs/RELEASING.md)
 
 ---
 

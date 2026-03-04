@@ -1,6 +1,6 @@
 # Workspace Files Reference
 
-Each nous has a workspace directory (`instance/nous/<name>/`) containing up to 9 markdown files that form its identity, memory, and runtime context. The bootstrap system (`src/nous/bootstrap.ts`) reads these files, applies token budgeting, and assembles them into the system prompt for each API call.
+Each nous has a workspace directory (`instance/nous/<name>/`) containing up to 9 markdown files that form its identity, memory, and runtime context. The bootstrap system (`src/nous/bootstrap.ts`) reads these files, applies token budgeting, and assembles them into the system prompt for each API call. For shared tools available to all agents, see [shared/TOOLS-INFRASTRUCTURE.md](../shared/TOOLS-INFRASTRUCTURE.md).
 
 ---
 
