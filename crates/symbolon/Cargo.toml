@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-symbolon"
-version = "0.1.0"
+version.workspace = true
 description = "Authentication and authorization for Aletheia"
 edition.workspace = true
 license.workspace = true

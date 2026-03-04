@@ -1,6 +1,6 @@
 [package]
 name = "aletheia-mneme-engine"
-version = "0.1.0"
+version.workspace = true
 description = "Embedded Datalog + HNSW + graph engine for Aletheia (absorbed from CozoDB 0.7.6)"
 edition.workspace = true
 license = "MPL-2.0"

@@ -1,0 +1,37 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Exclude vendored CozoDB engine and test-only crate from all checks
+exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
+
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained — transitive via graph_builder, no safe upgrade" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "AGPL-3.0-or-later",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []
