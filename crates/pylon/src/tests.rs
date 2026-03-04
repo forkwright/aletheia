@@ -18,6 +18,7 @@ use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::oikos::Oikos;
 
 use crate::router::build_router;
+use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 // --- Mock Provider ---
@@ -146,12 +147,12 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
 
 async fn app() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
-    (build_router(state), dir)
+    (build_router(state, &SecurityConfig::default()), dir)
 }
 
 async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_provider(false).await;
-    (build_router(state), dir)
+    (build_router(state, &SecurityConfig::default()), dir)
 }
 
 fn json_request(method: &str, uri: &str, body: Option<serde_json::Value>) -> Request<Body> {
@@ -507,7 +508,7 @@ async fn history_unknown_session_returns_404() {
 #[tokio::test]
 async fn history_with_limit() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
 
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -543,7 +544,7 @@ async fn history_with_limit() {
 #[tokio::test]
 async fn send_message_returns_sse_content_type() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -568,7 +569,7 @@ async fn send_message_returns_sse_content_type() {
 #[tokio::test]
 async fn send_message_stream_contains_events() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -627,7 +628,7 @@ async fn send_empty_message_returns_400() {
 #[tokio::test]
 async fn send_message_stores_in_history() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -773,7 +774,7 @@ async fn concurrent_session_creation() {
     let mut handles = Vec::new();
 
     for i in 0..5 {
-        let router = build_router(Arc::clone(&state));
+        let router = build_router(Arc::clone(&state), &SecurityConfig::default());
         handles.push(tokio::spawn(async move {
             let req = authed_request(
                 "POST",
@@ -799,7 +800,7 @@ async fn concurrent_session_creation() {
 #[tokio::test]
 async fn send_message_no_provider_returns_error() {
     let (state, _dir) = test_state_with_provider(false).await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -818,7 +819,7 @@ async fn send_message_no_provider_returns_error() {
 #[tokio::test]
 async fn send_message_routes_through_actor() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -847,7 +848,7 @@ async fn send_message_routes_through_actor() {
 #[tokio::test]
 async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state));
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
 
     let resp = router.oneshot(authed_get("/api/nous")).await.unwrap();
 
@@ -956,4 +957,183 @@ async fn missing_auth_header_returns_401() {
 
     let resp = app.oneshot(req).await.expect("response");
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// --- Security Header Tests ---
+
+#[tokio::test]
+async fn security_headers_present_on_response() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("x-frame-options").unwrap(),
+        "DENY"
+    );
+    assert_eq!(
+        resp.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+    assert_eq!(
+        resp.headers().get("x-xss-protection").unwrap(),
+        "0"
+    );
+    assert_eq!(
+        resp.headers().get("referrer-policy").unwrap(),
+        "strict-origin-when-cross-origin"
+    );
+    assert_eq!(
+        resp.headers().get("content-security-policy").unwrap(),
+        "default-src 'self'"
+    );
+    // HSTS should NOT be present when TLS is disabled
+    assert!(resp.headers().get("strict-transport-security").is_none());
+}
+
+#[tokio::test]
+async fn hsts_header_present_when_tls_enabled() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { tls_enabled: true, ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let resp = router
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.headers().get("strict-transport-security").unwrap(),
+        "max-age=31536000; includeSubDomains"
+    );
+}
+
+// --- Body Limit Tests ---
+
+#[tokio::test]
+async fn oversized_body_returns_413() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { body_limit_bytes: 100, ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let big_body = "x".repeat(200);
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(big_body))
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+// --- CSRF Tests ---
+
+#[tokio::test]
+async fn csrf_rejects_post_without_header() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let req = authed_request(
+        "POST",
+        "/api/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "csrf-test"
+        })),
+    );
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn csrf_allows_post_with_correct_header() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-requested-with", "aletheia")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "csrf-test"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn csrf_allows_get_without_header() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let resp = router
+        .oneshot(authed_get("/api/nous"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// --- CORS Tests ---
+
+#[tokio::test]
+async fn cors_permissive_when_no_origins_configured() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig::default(); // empty origins = permissive
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/health")
+        .header("origin", "http://evil.example.com")
+        .header("access-control-request-method", "GET")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    // Permissive CORS should allow any origin
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn cors_rejects_unlisted_origin() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig { allowed_origins: vec!["http://localhost:3000".to_owned()], ..SecurityConfig::default() };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/health")
+        .header("origin", "http://evil.example.com")
+        .header("access-control-request-method", "GET")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    // Should not have the evil origin in access-control-allow-origin
+    let allow_origin = resp.headers().get("access-control-allow-origin");
+    assert!(
+        allow_origin.is_none()
+            || allow_origin.unwrap() != "http://evil.example.com"
+    );
 }
