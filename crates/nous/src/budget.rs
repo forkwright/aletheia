@@ -126,6 +126,110 @@ impl TokenBudget {
     }
 }
 
+// --- Time budget (complementary to token budget) ---
+
+use std::time::{Duration, Instant};
+use crate::config::StageBudget;
+
+/// Tracks wall-clock time per pipeline stage and enforces limits.
+pub struct TimeBudget {
+    pipeline_start: Instant,
+    stage_budgets: StageBudget,
+    stage_elapsed: Vec<StageTimingRecord>,
+    current_stage: Option<(String, Instant)>,
+}
+
+/// Timing record for a completed pipeline stage.
+#[derive(Debug, Clone)]
+pub struct StageTimingRecord {
+    pub name: String,
+    pub elapsed: Duration,
+    pub status: StageTimingStatus,
+}
+
+/// How a pipeline stage completed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageTimingStatus {
+    Completed,
+    TimedOut,
+    Skipped,
+}
+
+impl TimeBudget {
+    #[must_use]
+    pub fn new(stage_budgets: StageBudget) -> Self {
+        Self {
+            pipeline_start: Instant::now(),
+            stage_budgets,
+            stage_elapsed: Vec::with_capacity(6),
+            current_stage: None,
+        }
+    }
+
+    #[must_use]
+    pub fn total_exceeded(&self) -> bool {
+        if self.stage_budgets.total_secs == 0 {
+            return false;
+        }
+        self.pipeline_start.elapsed() >= Duration::from_secs(u64::from(self.stage_budgets.total_secs))
+    }
+
+    #[must_use]
+    pub fn total_remaining(&self) -> Duration {
+        if self.stage_budgets.total_secs == 0 {
+            return Duration::from_secs(u64::MAX);
+        }
+        let total = Duration::from_secs(u64::from(self.stage_budgets.total_secs));
+        total.saturating_sub(self.pipeline_start.elapsed())
+    }
+
+    #[must_use]
+    pub fn stage_limit(&self, stage_name: &str) -> Option<Duration> {
+        let stage_secs = match stage_name {
+            "context" => self.stage_budgets.context_secs,
+            "recall" => self.stage_budgets.recall_secs,
+            "history" => self.stage_budgets.history_secs,
+            "guard" => self.stage_budgets.guard_secs,
+            "execute" => self.stage_budgets.execute_secs,
+            "finalize" => self.stage_budgets.finalize_secs,
+            _ => 0,
+        };
+        if stage_secs == 0 && self.stage_budgets.total_secs == 0 {
+            return None;
+        }
+        let stage_limit = if stage_secs > 0 {
+            Duration::from_secs(u64::from(stage_secs))
+        } else {
+            Duration::from_secs(u64::MAX)
+        };
+        Some(stage_limit.min(self.total_remaining()))
+    }
+
+    pub fn begin_stage(&mut self, name: &str) {
+        self.current_stage = Some((name.to_owned(), Instant::now()));
+    }
+
+    pub fn end_stage(&mut self, status: StageTimingStatus) {
+        if let Some((name, start)) = self.current_stage.take() {
+            self.stage_elapsed.push(StageTimingRecord {
+                name,
+                elapsed: start.elapsed(),
+                status,
+            });
+        }
+    }
+
+    #[must_use]
+    pub fn summary(&self) -> &[StageTimingRecord] {
+        &self.stage_elapsed
+    }
+
+    #[must_use]
+    pub fn total_elapsed(&self) -> Duration {
+        self.pipeline_start.elapsed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +334,63 @@ mod tests {
     fn char_estimator_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<CharEstimator>();
+    }
+
+    // --- TimeBudget ---
+
+    #[test]
+    fn time_budget_not_exceeded_initially() {
+        let tb = TimeBudget::new(StageBudget::default());
+        assert!(!tb.total_exceeded());
+    }
+
+    #[test]
+    fn time_budget_unlimited_when_zero() {
+        let tb = TimeBudget::new(StageBudget { total_secs: 0, ..StageBudget::default() });
+        assert!(!tb.total_exceeded());
+        assert!(tb.total_remaining() > Duration::from_secs(1_000_000));
+    }
+
+    #[test]
+    fn stage_limit_none_when_both_zero() {
+        let tb = TimeBudget::new(StageBudget {
+            execute_secs: 0, total_secs: 0, ..StageBudget::default()
+        });
+        // execute has 0 stage limit and total is 0
+        assert!(tb.stage_limit("execute").is_none());
+    }
+
+    #[test]
+    fn stage_limit_capped_by_total() {
+        let tb = TimeBudget::new(StageBudget {
+            recall_secs: 999, total_secs: 10, ..StageBudget::default()
+        });
+        let limit = tb.stage_limit("recall").unwrap();
+        assert!(limit <= Duration::from_secs(10));
+    }
+
+    #[test]
+    fn begin_end_stage_records() {
+        let mut tb = TimeBudget::new(StageBudget::default());
+        tb.begin_stage("context");
+        tb.end_stage(StageTimingStatus::Completed);
+        assert_eq!(tb.summary().len(), 1);
+        assert_eq!(tb.summary()[0].name, "context");
+        assert_eq!(tb.summary()[0].status, StageTimingStatus::Completed);
+    }
+
+    #[test]
+    fn stage_budget_serde_roundtrip() {
+        let sb = StageBudget::default();
+        let json = serde_json::to_string(&sb).unwrap();
+        let back: StageBudget = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.total_secs, 300);
+        assert_eq!(back.recall_secs, 15);
+    }
+
+    #[test]
+    fn time_budget_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<TimeBudget>();
     }
 }

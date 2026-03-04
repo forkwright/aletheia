@@ -61,6 +61,9 @@ pub struct PipelineConfig {
     /// Knowledge extraction configuration (None = disabled).
     #[serde(default)]
     pub extraction: Option<aletheia_mneme::extract::ExtractionConfig>,
+    /// Per-stage time budgets.
+    #[serde(default)]
+    pub stage_budget: StageBudget,
 }
 
 impl Default for PipelineConfig {
@@ -72,6 +75,38 @@ impl Default for PipelineConfig {
             max_notes: 50,
             history_budget_ratio: 0.6,
             extraction: None,
+            stage_budget: StageBudget::default(),
+        }
+    }
+}
+
+/// Per-stage time budget configuration (seconds).
+///
+/// Each field is a maximum wall-clock duration for that pipeline stage.
+/// `total_secs` is a hard cap — if elapsed time exceeds it, remaining
+/// stages are skipped and a partial result is returned.
+/// A value of 0 means no limit for that stage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageBudget {
+    pub context_secs: u32,
+    pub recall_secs: u32,
+    pub history_secs: u32,
+    pub guard_secs: u32,
+    pub execute_secs: u32,
+    pub finalize_secs: u32,
+    pub total_secs: u32,
+}
+
+impl Default for StageBudget {
+    fn default() -> Self {
+        Self {
+            context_secs: 10,
+            recall_secs: 15,
+            history_secs: 5,
+            guard_secs: 2,
+            execute_secs: 0,
+            finalize_secs: 10,
+            total_secs: 300,
         }
     }
 }
