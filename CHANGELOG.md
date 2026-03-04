@@ -151,7 +151,7 @@ Rust rewrite milestone: 18 crates, 973+ tests, ~33K lines. Key capabilities: age
 - **MCP client support** - stdio, SSE, and HTTP transports for connecting to external MCP servers
 - **Prompt caching** - `cache_control` breakpoints on tool definitions and conversation history. Uses 2 of 4 Anthropic cache slots (other 2 on system prompt). 60-80% input token savings during tool loops.
 - **Pipeline decomposition** - `manager.ts` broken into composable stages for testability
-- **Design specs** - auth/security, data privacy, tool governance, distillation persistence, modular runtime architecture (in `docs/specs/`)
+- **Design specs** - auth/security, data privacy, tool governance, distillation persistence, modular runtime architecture
 
 ### Fixed
 - History endpoint returns newest messages instead of oldest
