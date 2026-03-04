@@ -1,15 +1,17 @@
 //! Signal channel provider — wraps signal-cli JSON-RPC.
 
 pub mod client;
+pub mod connection;
 pub mod envelope;
 pub mod error;
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{Instrument, instrument};
 
@@ -17,8 +19,10 @@ use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
 };
+use connection::{AccountState, ConnectionHealthReport, ConnectionState, reconnect_delay};
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,20 +57,30 @@ static SIGNAL_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
 /// Signal channel provider implementing `ChannelProvider`.
 ///
 /// Manages multiple Signal accounts, each backed by a `SignalClient`.
-/// The first registered account becomes the default for sends without
-/// an explicit `account_id`.
+/// Tracks connection state per account with reconnect backoff and
+/// outbound message buffering during disconnection.
 pub struct SignalProvider {
     clients: HashMap<String, client::SignalClient>,
     default_account: Option<String>,
+    account_states: HashMap<String, Arc<Mutex<AccountState>>>,
+    buffer_capacity: usize,
 }
 
 impl SignalProvider {
     /// Create an empty provider. Add accounts with [`add_account`](Self::add_account).
     #[must_use]
     pub fn new() -> Self {
+        Self::with_buffer_capacity(DEFAULT_BUFFER_CAPACITY)
+    }
+
+    /// Create a provider with a custom outbound buffer capacity.
+    #[must_use]
+    pub fn with_buffer_capacity(capacity: usize) -> Self {
         Self {
             clients: HashMap::new(),
             default_account: None,
+            account_states: HashMap::new(),
+            buffer_capacity: capacity,
         }
     }
 
@@ -77,14 +91,17 @@ impl SignalProvider {
         if self.default_account.is_none() {
             self.default_account = Some(account_id.clone());
         }
+        self.account_states.insert(
+            account_id.clone(),
+            Arc::new(Mutex::new(AccountState::new(self.buffer_capacity))),
+        );
         self.clients.insert(account_id, client);
     }
 
     /// Start listening for inbound messages on all registered accounts.
     ///
-    /// Spawns a polling task per account. Messages from all accounts merge
-    /// into the returned receiver. Dropping the receiver stops all tasks
-    /// (the send half detects the closed channel).
+    /// Spawns a polling task per account with reconnect backoff.
+    /// Messages from all accounts merge into the returned receiver.
     #[instrument(skip(self))]
     pub fn listen(
         &self,
@@ -98,17 +115,40 @@ impl SignalProvider {
             let tx = tx.clone();
             let account_id = account_id.clone();
             let signal_client = signal_client.clone();
+            let state = self
+                .account_states
+                .get(&account_id)
+                .expect("state initialized in add_account")
+                .clone();
             let span = tracing::info_span!(
                 "signal_poll",
                 account = %account_id
             );
 
-            let handle =
-                tokio::spawn(poll_loop(signal_client, account_id, tx, interval).instrument(span));
+            let handle = tokio::spawn(
+                poll_loop(signal_client, account_id, tx, interval, state).instrument(span),
+            );
             handles.push(handle);
         }
 
         (rx, handles)
+    }
+
+    /// Query connection health for all accounts.
+    pub async fn connection_health(&self) -> HashMap<String, ConnectionHealthReport> {
+        let mut reports = HashMap::new();
+        for (account_id, state_mutex) in &self.account_states {
+            let s = state_mutex.lock().await;
+            reports.insert(
+                account_id.clone(),
+                ConnectionHealthReport {
+                    state: s.state.clone(),
+                    buffered_messages: s.buffered_count(),
+                    dropped_count: s.dropped_count,
+                },
+            );
+        }
+        reports
     }
 
     fn resolve_client(&self, account_id: Option<&str>) -> Option<(&str, &client::SignalClient)> {
@@ -116,6 +156,29 @@ impl SignalProvider {
         self.clients
             .get_key_value(key)
             .map(|(k, v)| (k.as_str(), v))
+    }
+
+    fn build_send_params(
+        account: &str,
+        params: &ChannelSendParams,
+    ) -> client::SendParams {
+        let target = parse_target(&params.to);
+        match target {
+            SignalTarget::Phone(ref phone) => client::SendParams {
+                message: Some(params.text.clone()),
+                recipient: Some(phone.clone()),
+                group_id: None,
+                account: Some(account.to_owned()),
+                attachments: params.attachments.clone(),
+            },
+            SignalTarget::Group(ref group_id) => client::SendParams {
+                message: Some(params.text.clone()),
+                recipient: None,
+                group_id: Some(group_id.clone()),
+                account: Some(account.to_owned()),
+                attachments: params.attachments.clone(),
+            },
+        }
     }
 }
 
@@ -158,34 +221,46 @@ impl ChannelProvider for SignalProvider {
                 };
             };
 
-            let target = parse_target(&params.to);
+            let account_id = account.to_owned();
+            let send_params = Self::build_send_params(account, params);
 
-            let send_params = match target {
-                SignalTarget::Phone(ref phone) => client::SendParams {
-                    message: Some(params.text.clone()),
-                    recipient: Some(phone.clone()),
-                    group_id: None,
-                    account: Some(account.to_owned()),
-                    attachments: params.attachments.clone(),
-                },
-                SignalTarget::Group(ref group_id) => client::SendParams {
-                    message: Some(params.text.clone()),
-                    recipient: None,
-                    group_id: Some(group_id.clone()),
-                    account: Some(account.to_owned()),
-                    attachments: params.attachments.clone(),
-                },
+            let Some(state_mutex) = self.account_states.get(&account_id) else {
+                return SendResult {
+                    sent: false,
+                    error: Some("account state not initialized".to_owned()),
+                };
             };
 
-            match client.send_message(&send_params).await {
-                Ok(_) => SendResult {
-                    sent: true,
-                    error: None,
-                },
-                Err(e) => SendResult {
-                    sent: false,
-                    error: Some(format!("{e}")),
-                },
+            let state = state_mutex.lock().await;
+            match &state.state {
+                ConnectionState::Connected => {
+                    drop(state);
+                    match client.send_message(&send_params).await {
+                        Ok(_) => SendResult {
+                            sent: true,
+                            error: None,
+                        },
+                        Err(e) => {
+                            // Buffer on transport failure
+                            if matches!(e, error::Error::Http { .. }) {
+                                let mut s = state_mutex.lock().await;
+                                s.enqueue(send_params);
+                            }
+                            SendResult {
+                                sent: false,
+                                error: Some(format!("{e}")),
+                            }
+                        }
+                    }
+                }
+                ConnectionState::Reconnecting { .. } | ConnectionState::Disconnected => {
+                    let mut s = state;
+                    s.enqueue(send_params);
+                    SendResult {
+                        sent: false,
+                        error: Some("connection unavailable, message buffered".to_owned()),
+                    }
+                }
             }
         })
     }
@@ -209,7 +284,23 @@ impl ChannelProvider for SignalProvider {
                 if ok {
                     any_ok = true;
                 }
-                account_results.insert(account_id.clone(), serde_json::Value::Bool(ok));
+                let mut detail = serde_json::Map::new();
+                detail.insert("reachable".to_owned(), serde_json::Value::Bool(ok));
+
+                if let Some(state_mutex) = self.account_states.get(account_id) {
+                    let s = state_mutex.lock().await;
+                    detail.insert(
+                        "connection_state".to_owned(),
+                        serde_json::Value::String(format!("{:?}", s.state)),
+                    );
+                    detail.insert(
+                        "buffered_messages".to_owned(),
+                        serde_json::Value::Number(s.buffered_count().into()),
+                    );
+                }
+
+                account_results
+                    .insert(account_id.clone(), serde_json::Value::Object(detail));
             }
 
             ProbeResult {
@@ -231,6 +322,8 @@ impl std::fmt::Debug for SignalProvider {
         f.debug_struct("SignalProvider")
             .field("accounts", &self.clients.keys().collect::<Vec<_>>())
             .field("default_account", &self.default_account)
+            .field("account_states_count", &self.account_states.len())
+            .field("buffer_capacity", &self.buffer_capacity)
             .finish()
     }
 }
@@ -240,11 +333,32 @@ async fn poll_loop(
     account_id: String,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
+    state: Arc<Mutex<AccountState>>,
 ) {
     tracing::info!("polling started");
     loop {
         match signal_client.receive(Some(&account_id)).await {
             Ok(envelopes) => {
+                // Restore connection if we were reconnecting
+                {
+                    let mut s = state.lock().await;
+                    if s.state != ConnectionState::Connected {
+                        tracing::info!("connection restored");
+                        s.state = ConnectionState::Connected;
+
+                        let buffered = s.drain_all();
+                        if !buffered.is_empty() {
+                            tracing::info!(count = buffered.len(), "draining buffered messages");
+                            drop(s);
+                            for params in buffered {
+                                if let Err(e) = signal_client.send_message(&params).await {
+                                    tracing::warn!(error = %e, "failed to send buffered message");
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for env in &envelopes {
                     if let Some(msg) = envelope::extract_message(env) {
                         if tx.send(msg).await.is_err() {
@@ -255,12 +369,35 @@ async fn poll_loop(
                         tracing::debug!("skipping non-message envelope");
                     }
                 }
+                tokio::time::sleep(interval).await;
             }
             Err(e) => {
-                tracing::warn!(error = %e, "receive poll failed");
+                let attempt = {
+                    let mut s = state.lock().await;
+                    match s.state {
+                        ConnectionState::Connected => {
+                            s.state = ConnectionState::Reconnecting { attempt: 1 };
+                            1
+                        }
+                        ConnectionState::Reconnecting { attempt } => {
+                            let next = attempt.saturating_add(1);
+                            s.state = ConnectionState::Reconnecting { attempt: next };
+                            next
+                        }
+                        ConnectionState::Disconnected => u32::MAX,
+                    }
+                };
+
+                let delay = reconnect_delay(attempt);
+                tracing::warn!(
+                    error = %e,
+                    attempt,
+                    backoff_secs = delay.as_secs(),
+                    "receive poll failed, backing off"
+                );
+                tokio::time::sleep(delay).await;
             }
         }
-        tokio::time::sleep(interval).await;
     }
 }
 
@@ -319,8 +456,6 @@ mod tests {
 
     #[test]
     fn listen_empty_provider_returns_empty() {
-        // Create a runtime manually to avoid #[tokio::test] overhead
-        // when we just need to verify the return shape.
         let provider = SignalProvider::new();
         let (rx, handles) = provider.listen(None);
         assert!(handles.is_empty());
@@ -331,7 +466,6 @@ mod tests {
     async fn listen_returns_receiver_and_handles() {
         let server = wiremock::MockServer::start().await;
 
-        // Return empty result so the poll loop has something to do
         let rpc_response = serde_json::json!({
             "jsonrpc": "2.0",
             "result": [],
@@ -351,12 +485,8 @@ mod tests {
         let (rx, handles) = provider.listen(Some(Duration::from_secs(60)));
         assert_eq!(handles.len(), 1);
 
-        // Drop receiver to stop the poll tasks
         drop(rx);
-
-        // Wait for task to finish (it should detect closed channel)
         for h in handles {
-            // Use a timeout so the test doesn't hang
             let _ = tokio::time::timeout(Duration::from_secs(5), h).await;
         }
     }
@@ -390,27 +520,41 @@ mod tests {
 
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");
         let (tx, mut rx) = mpsc::channel(16);
+        let account_state = Arc::new(Mutex::new(AccountState::new(100)));
 
         let handle = tokio::spawn(super::poll_loop(
             signal_client,
             "+0000000000".to_owned(),
             tx,
             Duration::from_millis(50),
+            account_state,
         ));
 
-        // Receive one message
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
             .expect("timeout")
             .expect("message");
         assert_eq!(msg.text, "test msg");
 
-        // Drop receiver — poll loop should stop
         drop(rx);
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
         assert!(
             result.is_ok(),
             "poll loop should stop when receiver is dropped"
         );
+    }
+
+    #[tokio::test]
+    async fn connection_health_reports_state() {
+        let mut provider = SignalProvider::with_buffer_capacity(50);
+        let server = wiremock::MockServer::start().await;
+        let signal_client = client::SignalClient::new(&server.uri()).expect("client");
+        provider.add_account("+1111111111".to_owned(), signal_client);
+
+        let health = provider.connection_health().await;
+        let report = health.get("+1111111111").expect("account present");
+        assert_eq!(report.state, ConnectionState::Connected);
+        assert_eq!(report.buffered_messages, 0);
+        assert_eq!(report.dropped_count, 0);
     }
 }
