@@ -80,8 +80,7 @@ impl RetentionPolicy {
 
         // 2. Enforce per-nous session limit
         if self.max_sessions_per_nous > 0 {
-            let excess =
-                find_excess_sessions_per_nous(conn, self.max_sessions_per_nous)?;
+            let excess = find_excess_sessions_per_nous(conn, self.max_sessions_per_nous)?;
             if !excess.is_empty() {
                 if self.archive_before_delete {
                     archive_sessions(conn, &excess, archive_dir)?;
@@ -118,9 +117,7 @@ impl RetentionPolicy {
 
 fn find_expired_sessions(conn: &Connection, cutoff: &str) -> Result<Vec<String>> {
     let mut stmt = conn
-        .prepare_cached(
-            "SELECT id FROM sessions WHERE status != 'active' AND updated_at < ?1",
-        )
+        .prepare_cached("SELECT id FROM sessions WHERE status != 'active' AND updated_at < ?1")
         .context(error::DatabaseSnafu)?;
 
     let rows = stmt
@@ -271,17 +268,21 @@ fn build_session_archive(conn: &Connection, session_id: &str) -> Result<SessionA
 }
 
 fn delete_sessions(conn: &Connection, session_ids: &[String]) -> Result<u32> {
-    let tx = conn
-        .unchecked_transaction()
-        .context(error::DatabaseSnafu)?;
+    let tx = conn.unchecked_transaction().context(error::DatabaseSnafu)?;
 
     let mut count = 0u32;
     for session_id in session_ids {
         // Delete related rows first (foreign key constraint)
-        tx.execute("DELETE FROM agent_notes WHERE session_id = ?1", [session_id])
-            .context(error::DatabaseSnafu)?;
-        tx.execute("DELETE FROM distillations WHERE session_id = ?1", [session_id])
-            .context(error::DatabaseSnafu)?;
+        tx.execute(
+            "DELETE FROM agent_notes WHERE session_id = ?1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+        tx.execute(
+            "DELETE FROM distillations WHERE session_id = ?1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
         tx.execute("DELETE FROM usage WHERE session_id = ?1", [session_id])
             .context(error::DatabaseSnafu)?;
         tx.execute("DELETE FROM messages WHERE session_id = ?1", [session_id])

@@ -5,18 +5,18 @@
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
+#[cfg(feature = "sqlite")]
+pub mod backup;
 pub mod embedding;
 pub mod error;
 pub mod extract;
 pub mod knowledge;
 pub mod knowledge_store;
+#[cfg(feature = "sqlite")]
+pub mod migration;
 #[cfg(feature = "mneme-engine")]
 pub mod query;
 pub mod recall;
-#[cfg(feature = "sqlite")]
-pub mod backup;
-#[cfg(feature = "sqlite")]
-pub mod migration;
 #[cfg(feature = "sqlite")]
 pub mod retention;
 #[cfg(feature = "sqlite")]

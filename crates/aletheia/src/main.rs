@@ -102,7 +102,10 @@ async fn main() -> Result<()> {
     serve(cli).await
 }
 
-#[expect(clippy::too_many_lines, reason = "binary entrypoint — sequential init steps")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "binary entrypoint — sequential init steps"
+)]
 async fn serve(cli: Cli) -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
@@ -455,9 +458,7 @@ fn backup(cli: &Cli, list: bool, prune: bool, keep: usize, export_json: bool) ->
     }
 
     // Default: create a backup
-    let result = manager
-        .create_backup()
-        .context("failed to create backup")?;
+    let result = manager.create_backup().context("failed to create backup")?;
     println!(
         "Backup created: {} ({} bytes, {} sessions, {} messages)",
         result.path.display(),

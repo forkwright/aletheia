@@ -207,6 +207,7 @@ dependencies = [
  "aletheia-koina",
  "aletheia-mneme-engine",
  "fastembed",
+ "jiff",
  "miette",
  "ndarray 0.16.1",
  "rusqlite",

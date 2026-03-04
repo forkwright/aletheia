@@ -69,13 +69,12 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
             "applying migration"
         );
 
-        let tx = conn
-            .unchecked_transaction()
-            .context(error::DatabaseSnafu)?;
+        let tx = conn.unchecked_transaction().context(error::DatabaseSnafu)?;
 
-        tx.execute_batch(migration.up).context(error::MigrationSnafu {
-            version: migration.version,
-        })?;
+        tx.execute_batch(migration.up)
+            .context(error::MigrationSnafu {
+                version: migration.version,
+            })?;
 
         tx.execute(
             "INSERT INTO schema_version (version, description) VALUES (?1, ?2)",

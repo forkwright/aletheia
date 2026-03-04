@@ -54,9 +54,7 @@ impl<'a> BackupManager<'a> {
             path: self.backup_dir.display().to_string(),
         })?;
 
-        let timestamp = jiff::Timestamp::now()
-            .strftime("%Y%m%dT%H%M%S")
-            .to_string();
+        let timestamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
         let filename = format!("sessions_{timestamp}.db");
         let backup_path = self.backup_dir.join(&filename);
 
@@ -343,11 +341,7 @@ mod tests {
         let backup_dir = dir.path().join("backups");
         std::fs::create_dir_all(&backup_dir).unwrap();
 
-        std::fs::write(
-            backup_dir.join("sessions_20260101T120000.db"),
-            "test data",
-        )
-        .unwrap();
+        std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data").unwrap();
         // Non-matching file should be ignored
         std::fs::write(backup_dir.join("other.txt"), "ignored").unwrap();
 
