@@ -85,7 +85,7 @@ impl EmbeddingProvider for MockEmbeddingProvider {
             let h = hash
                 .wrapping_mul(i as u64 + 1)
                 .wrapping_add(i as u64 * 2_654_435_761);
-            #[allow(clippy::cast_precision_loss)]
+            #[expect(clippy::cast_precision_loss, reason = "hash modulo fits in f32")]
             {
                 *v = ((h % 10000) as f32 / 5000.0) - 1.0;
             }
@@ -104,7 +104,7 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         self.dim
     }
 
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
     fn model_name(&self) -> &str {
         "mock-embedding"
     }

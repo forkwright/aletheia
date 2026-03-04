@@ -204,7 +204,7 @@ impl RecallEngine {
     /// Logarithmic scaling: `score = log(1 + count) / log(1 + max_count)`
     #[must_use]
     pub fn score_access_frequency(&self, access_count: u64) -> f64 {
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(clippy::cast_precision_loss, reason = "access count fits in f64")]
         let count = access_count as f64;
         (1.0 + count).ln() / (1.0 + self.max_access_count).ln()
     }

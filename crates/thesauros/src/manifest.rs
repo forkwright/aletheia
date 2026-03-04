@@ -148,7 +148,7 @@ pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
         })?;
 
     let manifest: PackManifest =
-        serde_yml::from_str(&contents).map_err(|e| error::Error::ParseManifest {
+        serde_yaml::from_str(&contents).map_err(|e| error::Error::ParseManifest {
             path: manifest_path,
             reason: e.to_string(),
             location: snafu::Location::new(file!(), line!(), column!()),
