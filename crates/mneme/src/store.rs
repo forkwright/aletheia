@@ -373,6 +373,101 @@ impl SessionStore {
         Ok(())
     }
 
+    // --- Distillation ---
+
+    /// Insert a distillation summary as a system message, then remove distilled messages.
+    ///
+    /// In a single transaction:
+    /// 1. Shift seq numbers of undistilled messages up by 1
+    /// 2. Insert summary at seq 0
+    /// 3. Delete all messages marked `is_distilled = 1`
+    #[instrument(skip(self, content))]
+    pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        // Shift existing undistilled messages up by 1
+        tx.execute(
+            "UPDATE messages SET seq = seq + 1 WHERE session_id = ?1 AND is_distilled = 0",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Insert summary at seq 0
+        #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
+        let token_estimate = content.len() as i64 / 4;
+        tx.execute(
+            "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
+             VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            rusqlite::params![session_id, content, token_estimate],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Delete distilled messages
+        tx.execute(
+            "DELETE FROM messages WHERE session_id = ?1 AND is_distilled = 1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Recalculate session counts
+        let (total_tokens, msg_count): (i64, i64) = tx
+            .query_row(
+                "SELECT COALESCE(SUM(token_estimate), 0), COUNT(*) FROM messages WHERE session_id = ?1 AND is_distilled = 0",
+                [session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET token_count_estimate = ?1, message_count = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?3",
+            rusqlite::params![total_tokens, msg_count, session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        info!(session_id, msg_count, total_tokens, "inserted distillation summary");
+        Ok(())
+    }
+
+    /// Record a distillation event: insert into distillations table, update session counters.
+    #[instrument(skip(self))]
+    pub fn record_distillation(
+        &self,
+        session_id: &str,
+        messages_before: i64,
+        messages_after: i64,
+        tokens_before: i64,
+        tokens_after: i64,
+        model: Option<&str>,
+    ) -> Result<()> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "INSERT INTO distillations (session_id, messages_before, messages_after, tokens_before, tokens_after, model)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![session_id, messages_before, messages_after, tokens_before, tokens_after, model],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET distillation_count = distillation_count + 1, last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        info!(session_id, messages_before, messages_after, tokens_before, tokens_after, "recorded distillation");
+        Ok(())
+    }
+
     // --- Usage ---
 
     /// Record token usage for a turn.
@@ -1102,5 +1197,70 @@ mod tests {
 
         let list = store.blackboard_list().unwrap();
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn record_distillation_increments_count() {
+        let store = test_store();
+        store
+            .create_session("ses-1", "syn", "main", None, None)
+            .unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.distillation_count, 0);
+        assert!(session.last_distilled_at.is_none());
+
+        store
+            .record_distillation("ses-1", 20, 5, 50000, 2000, Some("sonnet"))
+            .unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.distillation_count, 1);
+        assert!(session.last_distilled_at.is_some());
+
+        store
+            .record_distillation("ses-1", 15, 3, 30000, 1500, None)
+            .unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.distillation_count, 2);
+    }
+
+    #[test]
+    fn insert_distillation_summary_and_cleanup() {
+        let store = test_store();
+        store
+            .create_session("ses-1", "syn", "main", None, None)
+            .unwrap();
+
+        // Add some messages
+        store
+            .append_message("ses-1", Role::User, "msg1", None, None, 100)
+            .unwrap();
+        store
+            .append_message("ses-1", Role::Assistant, "msg2", None, None, 200)
+            .unwrap();
+        store
+            .append_message("ses-1", Role::User, "msg3", None, None, 50)
+            .unwrap();
+
+        // Mark first two as distilled
+        store.mark_messages_distilled("ses-1", &[1, 2]).unwrap();
+
+        // Insert summary (should also delete distilled messages)
+        store
+            .insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary text")
+            .unwrap();
+
+        let history = store.get_history("ses-1", None).unwrap();
+        // Should have: summary (seq 0) + undistilled msg3 (seq shifted)
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, Role::System);
+        assert!(history[0].content.contains("Distillation #1"));
+        assert_eq!(history[1].content, "msg3");
+
+        // Session counts should reflect new state
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.message_count, 2);
     }
 }

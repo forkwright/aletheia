@@ -12,7 +12,6 @@ use crate::error::{self, Result};
 use crate::maintenance::{
     DbMonitor, DriftDetector, MaintenanceConfig, RetentionExecutor, TraceRotator,
 };
-use crate::prosoche::ProsocheCheck;
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 
 /// Per-nous background task runner.
@@ -343,27 +342,21 @@ impl TaskRunner {
     ) -> Result<ExecutionResult> {
         match builtin {
             BuiltinTask::Prosoche => {
-                let check = ProsocheCheck::new(nous_id);
-                let result = check.run().await?;
-
-                if !result.items.is_empty() {
-                    if let Some(bridge) = &self.bridge {
-                        let summary: Vec<String> = result
-                            .items
-                            .iter()
-                            .map(|item| format!("- [{}] {}", item.category_label(), item.summary))
-                            .collect();
-                        let prompt = format!("Prosoche attention check:\n{}", summary.join("\n"));
-                        let _ = bridge
-                            .send_prompt(nous_id, "daemon:prosoche", &prompt)
-                            .await;
-                    }
+                if let Some(bridge) = &self.bridge {
+                    let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
+                    let _ = bridge
+                        .send_prompt(nous_id, "daemon:prosoche", prompt)
+                        .await;
+                    Ok(ExecutionResult {
+                        success: true,
+                        output: Some("dispatched".to_owned()),
+                    })
+                } else {
+                    Ok(ExecutionResult {
+                        success: false,
+                        output: Some("no bridge configured".to_owned()),
+                    })
                 }
-
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some(format!("{} items", result.items.len())),
-                })
             }
             BuiltinTask::GraphMaintenance => {
                 tracing::info!(

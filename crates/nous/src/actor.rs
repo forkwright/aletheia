@@ -175,6 +175,7 @@ impl NousActor {
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_distillation(&session_key);
         }
 
         self.active_session = None;
@@ -276,6 +277,51 @@ impl NousActor {
         );
     }
 
+    fn maybe_spawn_distillation(&self, session_key: &str) {
+        let Some(ref store_arc) = self.session_store else {
+            return;
+        };
+        let Some(session_state) = self.sessions.get(session_key) else {
+            return;
+        };
+        let session_id = session_state.id.clone();
+
+        // Quick trigger check under the lock
+        let should_distill = {
+            let store = store_arc.lock().expect("session store lock");
+            let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
+                return;
+            };
+            let config = crate::distillation::DistillTriggerConfig::default();
+            crate::distillation::should_trigger_distillation(
+                &session,
+                u64::from(self.config.context_window),
+                &config,
+            )
+            .is_some()
+        };
+
+        if !should_distill {
+            return;
+        }
+
+        let config = crate::distillation::DistillTriggerConfig::default();
+        if self.providers.find_provider(&config.model).is_none() {
+            warn!(model = %config.model, "no provider for distillation model");
+            return;
+        }
+
+        let store = Arc::clone(store_arc);
+        let providers = Arc::clone(&self.providers);
+        let nous_id = self.id.clone();
+        let span = tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
+
+        tokio::spawn(
+            run_background_distillation(store, providers, session_id, nous_id, config)
+                .instrument(span),
+        );
+    }
+
     fn handle_sleep(&mut self) {
         match self.lifecycle {
             NousLifecycle::Idle => {
@@ -342,6 +388,76 @@ fn run_extraction(
             warn!(nous_id = %nous_id, error = %e, "extraction failed");
         }
     }
+}
+
+/// Run distillation as a background task. Loads history, calls LLM, applies results.
+async fn run_background_distillation(
+    store: Arc<Mutex<SessionStore>>,
+    providers: Arc<ProviderRegistry>,
+    session_id: String,
+    nous_id: String,
+    config: crate::distillation::DistillTriggerConfig,
+) {
+    let Some(provider) = providers.find_provider(&config.model) else {
+        return;
+    };
+
+    // Load history under the lock, then release before async work
+    let (history, session) = {
+        let s = store.lock().expect("session store lock");
+        let Ok(Some(session)) = s.find_session_by_id(&session_id) else {
+            return;
+        };
+        match s.get_history(&session_id, None) {
+            Ok(h) if !h.is_empty() => (h, session),
+            Ok(_) => return,
+            Err(e) => {
+                warn!(error = %e, "failed to load history for distillation");
+                return;
+            }
+        }
+    };
+
+    let messages = crate::distillation::convert_to_hermeneus_messages(&history);
+    let engine = aletheia_melete::distill::DistillEngine::new(
+        aletheia_melete::distill::DistillConfig {
+            model: config.model.clone(),
+            verbatim_tail: config.verbatim_tail,
+            ..Default::default()
+        },
+    );
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "distillation count is small non-negative"
+    )]
+    let distill_count = session.distillation_count as u32;
+    let result = match engine
+        .distill(&messages, &nous_id, provider, distill_count + 1)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(error = %e, "distillation LLM call failed");
+            return;
+        }
+    };
+
+    // Apply results under the lock
+    let s = store.lock().expect("session store lock");
+    if let Err(e) =
+        crate::distillation::apply_distillation(&s, &session_id, &result, &history)
+    {
+        warn!(error = %e, "failed to apply distillation");
+        return;
+    }
+
+    info!(
+        session_id = %session_id,
+        messages_distilled = result.messages_distilled,
+        "background distillation complete"
+    );
 }
 
 /// Spawn a nous actor, returning its handle and join handle.
