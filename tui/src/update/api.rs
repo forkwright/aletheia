@@ -14,6 +14,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
             active_tool: None,
             tool_started_at: None,
             sessions: Vec::new(),
+            model: a.model,
             compaction_stage: None,
             has_notification: false,
         })

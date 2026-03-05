@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::command::build_suggestions;
 use crate::msg::ErrorToast;
 use crate::state::Overlay;
 
@@ -7,7 +8,7 @@ pub fn handle_open(app: &mut App) {
     app.command_palette.input.clear();
     app.command_palette.cursor = 0;
     app.command_palette.selected = 0;
-    app.command_palette.suggestions = crate::command::filter_commands("");
+    app.command_palette.suggestions = build_suggestions("", &app.agents);
 }
 
 pub fn handle_close(app: &mut App) {
@@ -20,8 +21,7 @@ pub fn handle_input(app: &mut App, c: char) {
         .input
         .insert(app.command_palette.cursor, c);
     app.command_palette.cursor += c.len_utf8();
-    app.command_palette.suggestions =
-        crate::command::filter_commands(&app.command_palette.input);
+    refresh_suggestions(app);
     app.command_palette.selected = 0;
 }
 
@@ -29,8 +29,7 @@ pub fn handle_backspace(app: &mut App) {
     if app.command_palette.cursor > 0 {
         app.command_palette.cursor -= 1;
         app.command_palette.input.remove(app.command_palette.cursor);
-        app.command_palette.suggestions =
-            crate::command::filter_commands(&app.command_palette.input);
+        refresh_suggestions(app);
         app.command_palette.selected = 0;
     } else {
         // Backspace on empty input closes palette (vim behavior)
@@ -48,8 +47,7 @@ pub fn handle_delete_word(app: &mut App) {
     }
     app.command_palette.input.drain(pos..app.command_palette.cursor);
     app.command_palette.cursor = pos;
-    app.command_palette.suggestions =
-        crate::command::filter_commands(&app.command_palette.input);
+    refresh_suggestions(app);
     app.command_palette.selected = 0;
 }
 
@@ -63,27 +61,57 @@ pub fn handle_down(app: &mut App) {
 }
 
 pub fn handle_tab(app: &mut App) {
-    if let Some(scored) = app
+    if let Some(suggestion) = app
         .command_palette
         .suggestions
         .get(app.command_palette.selected)
     {
-        let cmd = &crate::command::COMMANDS[scored.index];
+        let base = suggestion.execute_as.clone();
         let args = app
             .command_palette
             .input
             .split_once(' ')
             .map(|(_, a)| format!(" {a}"))
             .unwrap_or_default();
-        app.command_palette.input = format!("{}{}", cmd.name, args);
-        app.command_palette.cursor = cmd.name.len();
-        app.command_palette.suggestions =
-            crate::command::filter_commands(&app.command_palette.input);
+        app.command_palette.input = format!("{base}{args}");
+        app.command_palette.cursor = base.len();
+        refresh_suggestions(app);
     }
 }
 
 pub async fn handle_select(app: &mut App) {
+    // Resolve to the selected suggestion before executing
+    if let Some(suggestion) = app
+        .command_palette
+        .suggestions
+        .get(app.command_palette.selected)
+    {
+        let execute_as = suggestion.execute_as.clone();
+        let extra_args = app
+            .command_palette
+            .input
+            .split_once(' ')
+            .map(|(_, a)| a.trim().to_string())
+            .unwrap_or_default();
+
+        if extra_args.is_empty() {
+            app.command_palette.input = execute_as;
+        } else {
+            // Preserve typed args (e.g., user typed "agent sy" but suggestion is "agent")
+            let suggestion_has_args = execute_as.contains(' ');
+            if suggestion_has_args {
+                app.command_palette.input = execute_as;
+            } else {
+                app.command_palette.input = format!("{execute_as} {extra_args}");
+            }
+        }
+    }
     execute_command(app).await;
+}
+
+fn refresh_suggestions(app: &mut App) {
+    app.command_palette.suggestions =
+        build_suggestions(&app.command_palette.input, &app.agents);
 }
 
 async fn execute_command(app: &mut App) {
@@ -142,25 +170,85 @@ async fn execute_command(app: &mut App) {
             app.scroll_to_bottom();
         }
         "compact" => {
-            app.error_toast =
-                Some(ErrorToast::new("Compact not yet available via TUI".into()));
+            execute_compact(app).await;
         }
         "recall" | "r" => {
             if args.is_empty() {
                 app.error_toast =
                     Some(ErrorToast::new("Usage: :recall <query>".into()));
             } else {
-                app.error_toast =
-                    Some(ErrorToast::new(format!("Recall not yet available: {args}")));
+                execute_recall(app, args).await;
             }
         }
         "model" => {
-            app.error_toast =
-                Some(ErrorToast::new("Model info not yet available".into()));
+            execute_model(app);
         }
         _ => {
             app.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
+        }
+    }
+}
+
+fn execute_model(app: &mut App) {
+    let agent = app.focused_agent.as_ref().and_then(|id| {
+        app.agents.iter().find(|a| &a.id == id)
+    });
+
+    match agent {
+        Some(agent) => {
+            let model = agent.model.as_deref().unwrap_or("unknown");
+            let name = &agent.name;
+            app.error_toast = Some(ErrorToast::new(format!("{name}: {model}")));
+        }
+        None => {
+            app.error_toast = Some(ErrorToast::new("No agent focused".into()));
+        }
+    }
+}
+
+async fn execute_compact(app: &mut App) {
+    let session_id = match &app.focused_session_id {
+        Some(id) => id.clone(),
+        None => {
+            app.error_toast = Some(ErrorToast::new("No active session to compact".into()));
+            return;
+        }
+    };
+
+    let client = app.client.clone();
+    match client.compact(&session_id).await {
+        Ok(()) => {
+            app.error_toast = Some(ErrorToast::new("Distillation triggered".into()));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Compact failed: {e}")));
+        }
+    }
+}
+
+async fn execute_recall(app: &mut App, query: &str) {
+    let nous_id = match &app.focused_agent {
+        Some(id) => id.clone(),
+        None => {
+            app.error_toast = Some(ErrorToast::new("No agent focused for recall".into()));
+            return;
+        }
+    };
+
+    let client = app.client.clone();
+    let query = query.to_string();
+    match client.recall(&nous_id, &query).await {
+        Ok(result) => {
+            let display = if result.len() > 200 {
+                format!("{}...", &result[..200])
+            } else {
+                result
+            };
+            app.error_toast = Some(ErrorToast::new(display));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
         }
     }
 }
