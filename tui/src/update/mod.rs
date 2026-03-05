@@ -5,6 +5,7 @@ mod input;
 mod navigation;
 mod overlay;
 pub(crate) mod selection;
+pub(crate) mod settings;
 mod sse;
 mod streaming;
 
@@ -80,12 +81,29 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::Resize(w, h) => navigation::handle_resize(app, w, h),
 
         // --- Overlay ---
-        Msg::OpenOverlay(kind) => overlay::handle_open_overlay(app, kind),
+        Msg::OpenOverlay(kind) => overlay::handle_open_overlay(app, kind).await,
         Msg::CloseOverlay => overlay::handle_close_overlay(app),
         Msg::OverlayUp => overlay::handle_overlay_up(app),
         Msg::OverlayDown => overlay::handle_overlay_down(app),
         Msg::OverlaySelect => overlay::handle_overlay_select(app).await,
-        Msg::OverlayFilter(_) | Msg::OverlayFilterBackspace => {}
+        Msg::OverlayFilter(c) => {
+            if matches!(&app.overlay, Some(crate::state::Overlay::Settings(_))) {
+                if settings::is_editing(app) {
+                    settings::handle_edit_char(app, c);
+                } else {
+                    match c {
+                        's' | 'S' => settings::handle_save(app).await,
+                        'r' | 'R' => settings::handle_reset(app),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Msg::OverlayFilterBackspace => {
+            if matches!(&app.overlay, Some(crate::state::Overlay::Settings(_))) {
+                settings::handle_edit_backspace(app);
+            }
+        }
 
         // --- SSE ---
         Msg::SseConnected => sse::handle_sse_connected(app).await,
@@ -164,7 +182,11 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
         Msg::AuthResult(_) | Msg::ApiError(_) => {}
         Msg::NewSession => api::handle_new_session(app).await,
+        Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
+        Msg::SettingsSaved => settings::handle_saved(app),
+        Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
+        Msg::ShowSuccess(msg) => api::handle_show_error(app, msg),
         Msg::DismissError => api::handle_dismiss_error(app),
         Msg::Quit => app.should_quit = true,
         Msg::Tick => api::handle_tick(app),

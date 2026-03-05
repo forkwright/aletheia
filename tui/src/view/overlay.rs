@@ -28,6 +28,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
+        Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
     }
 }
 

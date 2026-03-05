@@ -183,6 +183,9 @@ async fn execute_command(app: &mut App) {
         "model" => {
             execute_model(app);
         }
+        "settings" => {
+            super::settings::handle_open(app).await;
+        }
         _ => {
             app.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));

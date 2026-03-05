@@ -141,6 +141,9 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         oikos,
         jwt_manager,
         start_time: Instant::now(),
+        config: Arc::new(tokio::sync::RwLock::new(
+            aletheia_taxis::config::AletheiaConfig::default(),
+        )),
     });
 
     (state, dir)

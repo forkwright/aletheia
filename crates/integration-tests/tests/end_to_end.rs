@@ -188,6 +188,9 @@ impl TestHarness {
             oikos,
             jwt_manager: Arc::clone(&jwt_manager),
             start_time: Instant::now(),
+            config: Arc::new(tokio::sync::RwLock::new(
+                aletheia_taxis::config::AletheiaConfig::default(),
+            )),
         });
 
         Self {

@@ -1,5 +1,7 @@
 //! HTTP request handlers.
 
+/// Runtime configuration read/write.
+pub mod config;
 /// System health and readiness check.
 pub mod health;
 /// Prometheus metrics exposition endpoint.

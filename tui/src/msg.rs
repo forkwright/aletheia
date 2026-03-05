@@ -193,8 +193,14 @@ pub enum Msg {
     AuthResult(AuthOutcome),
     ApiError(String),
 
+    // --- Settings ---
+    SettingsLoaded(serde_json::Value),
+    SettingsSaved,
+    SettingsSaveError(String),
+
     // --- Errors / toasts ---
     ShowError(String),
+    ShowSuccess(String),
     DismissError,
 
     // --- Timer ---
@@ -216,6 +222,7 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SystemStatus,
+    Settings,
 }
 
 /// Transient error toast that auto-dismisses.

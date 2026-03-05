@@ -20,6 +20,7 @@ pub enum KeyContext {
     Overlay,
     ToolApproval,
     PlanApproval,
+    Settings,
 }
 
 impl KeyContext {
@@ -35,6 +36,7 @@ impl KeyContext {
             Self::Overlay => "Overlay",
             Self::ToolApproval => "Tool Approval",
             Self::PlanApproval => "Plan Approval",
+            Self::Settings => "Settings",
         }
     }
 
@@ -45,7 +47,8 @@ impl KeyContext {
             | Self::Selection
             | Self::Filter
             | Self::CommandPalette
-            | Self::SessionList => 0,
+            | Self::SessionList
+            | Self::Settings => 0,
             Self::Chat => 1,
             Self::Input => 2,
             Self::Overlay => 3,
@@ -372,6 +375,31 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::PlanApproval],
             show_in_status_bar: true,
         },
+        // --- Settings ---
+        Keybinding {
+            keys: "Enter",
+            description: "Edit / toggle",
+            contexts: &[KeyContext::Settings],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "S",
+            description: "Save changes",
+            contexts: &[KeyContext::Settings],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "R",
+            description: "Reset changes",
+            contexts: &[KeyContext::Settings],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Close / cancel edit",
+            contexts: &[KeyContext::Settings],
+            show_in_status_bar: true,
+        },
     ]
 }
 
@@ -400,6 +428,9 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
             contexts.push(KeyContext::PlanApproval);
             contexts.push(KeyContext::Overlay);
         }
+        Some(Overlay::Settings(_)) => {
+            contexts.push(KeyContext::Settings);
+        }
         Some(_) => {
             contexts.push(KeyContext::Overlay);
         }
@@ -426,6 +457,7 @@ pub fn context_label(app: &App) -> &'static str {
         Some(Overlay::ToolApproval(_)) => "Tool Approval",
         Some(Overlay::PlanApproval(_)) => "Plan Approval",
         Some(Overlay::SystemStatus) => "System Status",
+        Some(Overlay::Settings(_)) => "Settings",
     }
 }
 

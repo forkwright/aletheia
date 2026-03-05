@@ -287,6 +287,40 @@ impl ApiClient {
         Ok(resp.text().await?)
     }
 
+    // --- Config ---
+
+    pub async fn config(&self) -> Result<serde_json::Value> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/config")
+            .send()
+            .await
+            .context("failed to load config")?;
+        Self::check_auth(&resp)?;
+        resp.error_for_status_ref()
+            .context("config request failed")?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn update_config_section(
+        &self,
+        section: &str,
+        data: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/config/{section}"),
+            )
+            .json(data)
+            .send()
+            .await
+            .context("failed to update config")?;
+        Self::check_auth(&resp)?;
+        resp.error_for_status_ref()
+            .context("config update failed")?;
+        Ok(resp.json().await?)
+    }
+
     // --- Message queue (mid-turn) ---
 
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {

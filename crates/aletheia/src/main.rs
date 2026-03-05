@@ -562,6 +562,8 @@ async fn serve(cli: Cli) -> Result<()> {
     }
 
     // Pylon HTTP gateway — shares registries with NousManager
+    let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc)
+        .unwrap_or_default();
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::clone(&nous_manager),
@@ -570,6 +572,7 @@ async fn serve(cli: Cli) -> Result<()> {
         oikos: oikos_arc,
         jwt_manager: Arc::new(jwt_manager),
         start_time: Instant::now(),
+        config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
     });
 
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);

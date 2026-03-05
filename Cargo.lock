@@ -365,6 +365,7 @@ dependencies = [
  "figment",
  "serde",
  "serde_json",
+ "serde_yaml",
  "snafu",
  "tempfile",
  "tracing",

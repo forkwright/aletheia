@@ -55,6 +55,8 @@ fuzzy-matcher = "0.3"
 # Cross-platform URL/file opening
 open = "5"
 
+[workspace]
+
 [profile.release]
 strip = true
 lto = "thin"
