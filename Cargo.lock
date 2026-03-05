@@ -242,6 +242,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "twox-hash 2.1.2",
+ "ulid",
  "unicode-normalization",
  "uuid",
 ]
@@ -259,6 +260,7 @@ dependencies = [
  "indexmap",
  "jiff",
  "prometheus",
+ "reqwest",
  "serde",
  "serde_json",
  "snafu",
@@ -296,6 +298,7 @@ dependencies = [
  "base64 0.22.1",
  "indexmap",
  "prometheus",
+ "reqwest",
  "serde",
  "serde_json",
  "snafu",
