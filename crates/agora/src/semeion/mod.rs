@@ -132,7 +132,7 @@ impl SignalProvider {
             );
 
             let handle = tokio::spawn(
-                poll_loop(signal_client, account_id, tx, interval, state).instrument(span),
+                poll_loop(signal_client, tx, interval, state).instrument(span),
             );
             handles.push(handle);
         }
@@ -332,14 +332,13 @@ impl std::fmt::Debug for SignalProvider {
 
 async fn poll_loop(
     signal_client: client::SignalClient,
-    account_id: String,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
     state: Arc<Mutex<AccountState>>,
 ) {
     tracing::info!("polling started");
     loop {
-        match signal_client.receive(Some(&account_id)).await {
+        match signal_client.receive(None).await {
             Ok(envelopes) => {
                 // Restore connection if we were reconnecting
                 {
@@ -526,7 +525,6 @@ mod tests {
 
         let handle = tokio::spawn(super::poll_loop(
             signal_client,
-            "+0000000000".to_owned(),
             tx,
             Duration::from_millis(50),
             account_state,
