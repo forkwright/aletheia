@@ -13,6 +13,7 @@ use tracing::{info, warn};
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_organon::registry::ToolRegistry;
+use aletheia_organon::types::ToolServices;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::actor;
@@ -39,6 +40,7 @@ pub struct NousManager {
     session_store: Option<Arc<Mutex<SessionStore>>>,
     packs: Arc<Vec<LoadedPack>>,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
+    tool_services: Option<Arc<ToolServices>>,
     ready_tx: watch::Sender<bool>,
     ready_rx: watch::Receiver<bool>,
 }
@@ -59,6 +61,7 @@ impl NousManager {
         session_store: Option<Arc<Mutex<SessionStore>>>,
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,
+        tool_services: Option<Arc<ToolServices>>,
     ) -> Self {
         let (ready_tx, ready_rx) = watch::channel(false);
         Self {
@@ -71,6 +74,7 @@ impl NousManager {
             session_store,
             packs,
             router,
+            tool_services,
             ready_tx,
             ready_rx,
         }
@@ -141,6 +145,7 @@ impl NousManager {
             self.embedding_provider.clone(),
             self.vector_search.clone(),
             self.session_store.clone(),
+            self.tool_services.clone(),
             extra_bootstrap,
             cross_rx,
         );
@@ -324,6 +329,7 @@ mod tests {
             None,
             None,
             Arc::new(Vec::new()),
+            None,
             None,
         )
     }
