@@ -57,6 +57,10 @@ pub enum ApiError {
 
     #[snafu(display("service unavailable: {message}"))]
     ServiceUnavailable { message: String },
+
+    /// Config validation failed (422).
+    #[snafu(display("validation failed"))]
+    ValidationFailed { errors: Vec<String> },
 }
 
 impl IntoResponse for ApiError {
@@ -77,6 +81,11 @@ impl IntoResponse for ApiError {
             Self::ServiceUnavailable { .. } => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", None)
             }
+            Self::ValidationFailed { errors } => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_failed",
+                Some(serde_json::json!({ "errors": errors })),
+            ),
         };
 
         let body = ErrorResponse {

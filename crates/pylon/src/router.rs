@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
 use crate::error::ApiError;
-use crate::handlers::{health, metrics, nous, sessions};
+use crate::handlers::{config, health, metrics, nous, sessions};
 use crate::middleware::{
     CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics,
     require_csrf_header,
@@ -38,7 +38,12 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route("/sessions/{id}/history", get(sessions::history))
         .route("/nous", get(nous::list))
         .route("/nous/{id}", get(nous::get_status))
-        .route("/nous/{id}/tools", get(nous::tools));
+        .route("/nous/{id}/tools", get(nous::tools))
+        .route("/config", get(config::get_config))
+        .route(
+            "/config/{section}",
+            get(config::get_section).put(config::update_section),
+        );
 
     let mut router = Router::new()
         .nest("/api/v1", v1)

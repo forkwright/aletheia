@@ -15,3 +15,9 @@ pub mod error;
 pub mod loader;
 /// Instance directory structure and path resolution for all Aletheia subsystems.
 pub mod oikos;
+/// Config redaction — strips secrets before API exposure.
+pub mod redact;
+/// Hot-reload classification — restart vs live update.
+pub mod reload;
+/// Config section validation.
+pub mod validate;

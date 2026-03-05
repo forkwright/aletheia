@@ -61,6 +61,23 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Failed to serialize configuration to YAML.
+    #[snafu(display("failed to serialize config to YAML: {reason}"))]
+    SerializeYaml {
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Failed to write configuration to disk.
+    #[snafu(display("failed to write config to {}", path.display()))]
+    WriteConfig {
+        path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result<T, Error>`.

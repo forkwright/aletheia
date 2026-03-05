@@ -5,7 +5,7 @@ use figment::providers::{Env, Format, Serialized, Yaml};
 use snafu::ResultExt;
 
 use crate::config::AletheiaConfig;
-use crate::error::{FigmentSnafu, Result};
+use crate::error::{FigmentSnafu, Result, SerializeYamlSnafu, WriteConfigSnafu};
 use crate::oikos::Oikos;
 
 /// Load configuration with cascade: defaults → YAML → environment.
@@ -30,6 +30,36 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
 
     figment.extract().context(FigmentSnafu)
+}
+
+/// Write configuration to the instance YAML file.
+///
+/// Uses atomic write: writes to a `.tmp` file, then renames. This prevents
+/// corruption if the process is killed during write.
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Error is inherently large"
+)]
+pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
+    let yaml = serde_yaml::to_string(config).map_err(|e| {
+        SerializeYamlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })?;
+
+    let config_dir = oikos.config();
+    std::fs::create_dir_all(&config_dir).context(WriteConfigSnafu {
+        path: config_dir.clone(),
+    })?;
+
+    let target = config_dir.join("aletheia.yaml");
+    let tmp = config_dir.join("aletheia.yaml.tmp");
+
+    std::fs::write(&tmp, yaml).context(WriteConfigSnafu { path: tmp.clone() })?;
+    std::fs::rename(&tmp, &target).context(WriteConfigSnafu { path: target })?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -93,6 +123,24 @@ mod tests {
 
             assert_eq!(config.gateway.port, 18789);
             assert_eq!(config.agents.defaults.context_tokens, 200_000);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn write_then_load_roundtrip() {
+        figment::Jail::expect_with(|jail| {
+            let oikos = Oikos::from_root(jail.directory());
+            let mut config = AletheiaConfig::default();
+            config.gateway.port = 9876;
+            config.agents.defaults.timeout_seconds = 600;
+
+            write_config(&oikos, &config).map_err(|e| e.to_string())?;
+            let loaded = load_config(&oikos).map_err(|e| e.to_string())?;
+
+            assert_eq!(loaded.gateway.port, 9876);
+            assert_eq!(loaded.agents.defaults.timeout_seconds, 600);
+            assert_eq!(loaded.agents.defaults.context_tokens, 200_000);
             Ok(())
         });
     }
