@@ -55,7 +55,7 @@ impl ApiClient {
     pub async fn health(&self) -> Result<bool> {
         let resp = self
             .client
-            .get(self.url("/health"))
+            .get(self.url("/api/health"))
             .send()
             .await
             .context("health check failed")?;
