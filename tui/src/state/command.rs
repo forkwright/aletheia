@@ -10,12 +10,11 @@ pub struct CommandPaletteState {
 
 /// Selection context for context-aware status bar hints.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[expect(dead_code, reason = "variants used when selection tracking is wired")]
 pub enum SelectionContext {
     #[default]
     None,
-    UserMessage,
-    AgentResponse,
-    ToolCall,
-    SessionList,
+    UserMessage { index: usize },
+    AgentResponse { index: usize, has_code: bool, has_links: bool },
+    ToolCall { index: usize, tool_id: String, needs_approval: bool },
+    SessionListItem { index: usize },
 }
