@@ -181,6 +181,7 @@ impl ScenarioRunner {
 mod tests {
     use super::*;
 
+    #[expect(dead_code, reason = "used in RunReport assertion test")]
     struct PassScenario;
     impl Scenario for PassScenario {
         fn meta(&self) -> crate::scenario::ScenarioMeta {
@@ -197,6 +198,7 @@ mod tests {
         }
     }
 
+    #[expect(dead_code, reason = "used in RunReport assertion test")]
     struct FailScenario;
     impl Scenario for FailScenario {
         fn meta(&self) -> crate::scenario::ScenarioMeta {

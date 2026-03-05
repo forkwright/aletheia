@@ -45,10 +45,11 @@ impl EvalClient {
     // --- Nous ---
 
     /// List all configured nous agents.
-    pub async fn list_nous(&self) -> Result<Vec<NousInfo>> {
+    pub async fn list_nous(&self) -> Result<Vec<NousSummary>> {
         let url = format!("{}/api/v1/nous", self.base_url);
         let resp = self.authed_get(&url).await?;
-        self.expect_ok(&url, resp).await
+        let list: NousListResponse = self.expect_ok(&url, resp).await?;
+        Ok(list.nous)
     }
 
     /// Get status for a specific nous agent.
@@ -242,10 +243,15 @@ pub struct HealthCheck {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct NousInfo {
+pub struct NousListResponse {
+    pub nous: Vec<NousSummary>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NousSummary {
     pub id: String,
-    pub lifecycle: String,
-    pub session_count: usize,
+    pub model: String,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -254,6 +260,14 @@ pub struct NousStatus {
     pub model: String,
     pub context_window: u32,
     pub max_output_tokens: u32,
+    #[serde(default)]
+    pub thinking_enabled: bool,
+    #[serde(default)]
+    pub thinking_budget: u32,
+    #[serde(default)]
+    pub max_tool_iterations: u32,
+    #[serde(default)]
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
