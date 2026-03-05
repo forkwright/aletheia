@@ -52,6 +52,9 @@ arboard = "3"
 # Fuzzy matching for command palette
 fuzzy-matcher = "0.3"
 
+# Cross-platform URL/file opening
+open = "5"
+
 [profile.release]
 strip = true
 lto = "thin"

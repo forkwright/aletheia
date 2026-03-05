@@ -34,6 +34,14 @@ pub enum Msg {
 
     NewSession, // Ctrl+N — start new topic
 
+    // --- Message selection ---
+    SelectPrev,                          // k or Up in selection mode
+    SelectNext,                          // j or Down in selection mode
+    DeselectMessage,                     // Esc — return to auto-scroll
+    SelectFirst,                         // Home in selection mode
+    SelectLast,                          // G or End in selection mode
+    MessageAction(MessageActionKind),    // Action on selected message
+
     // --- Navigation ---
     ScrollUp,
     ScrollDown,
@@ -181,6 +189,16 @@ pub enum Msg {
 
     // --- Timer ---
     Tick,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageActionKind {
+    Copy,
+    YankCodeBlock,
+    Edit,
+    Delete,
+    OpenLinks,
+    Inspect,
 }
 
 #[derive(Debug, Clone)]

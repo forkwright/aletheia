@@ -6,7 +6,7 @@ use crossterm::event::{
 use crate::api::types::SseEvent;
 use crate::app::App;
 use crate::events::{Event, StreamEvent};
-use crate::msg::{Msg, OverlayKind};
+use crate::msg::{MessageActionKind, Msg, OverlayKind};
 use crate::state::Overlay;
 
 impl App {
@@ -64,6 +64,11 @@ impl App {
             return self.map_palette_key(key);
         }
 
+        // Selection mode — single-letter keys become actions
+        if self.selected_message.is_some() {
+            return self.map_selection_key(key);
+        }
+
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
@@ -100,8 +105,17 @@ impl App {
             (_, KeyCode::Right) => Some(Msg::CursorRight),
             (_, KeyCode::Home) => Some(Msg::CursorHome),
             (_, KeyCode::End) => Some(Msg::CursorEnd),
+
+            // Up/Down with empty input enters selection mode; otherwise history nav
+            (_, KeyCode::Up) if self.input.text.is_empty() && !self.messages.is_empty() => {
+                Some(Msg::SelectPrev)
+            }
+            (_, KeyCode::Down) if self.input.text.is_empty() && !self.messages.is_empty() => {
+                Some(Msg::SelectNext)
+            }
             (_, KeyCode::Up) => Some(Msg::HistoryUp),
             (_, KeyCode::Down) => Some(Msg::HistoryDown),
+
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::ClearLine),
             (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
@@ -117,6 +131,67 @@ impl App {
                 Some(Msg::CommandPaletteOpen)
             }
 
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::CharInput(c))
+            }
+
+            _ => None,
+        }
+    }
+
+    fn map_selection_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            // Ctrl combos pass through to global handlers
+            (KeyModifiers::CONTROL, KeyCode::Char('c'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
+            (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
+            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
+            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
+                Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
+
+            // Shift+Up/Down scroll (before bare Up/Down)
+            (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollUp),
+            (KeyModifiers::SHIFT, KeyCode::Down) => Some(Msg::ScrollDown),
+
+            // Navigation
+            (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::SelectNext),
+            (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
+            (_, KeyCode::Esc) => Some(Msg::DeselectMessage),
+            (_, KeyCode::Home) => Some(Msg::SelectFirst),
+            (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
+                Some(Msg::SelectLast)
+            }
+
+            // Actions
+            (KeyModifiers::NONE, KeyCode::Char('c')) => {
+                Some(Msg::MessageAction(MessageActionKind::Copy))
+            }
+            (KeyModifiers::NONE, KeyCode::Char('y')) => {
+                Some(Msg::MessageAction(MessageActionKind::YankCodeBlock))
+            }
+            (KeyModifiers::NONE, KeyCode::Char('e')) => {
+                Some(Msg::MessageAction(MessageActionKind::Edit))
+            }
+            (KeyModifiers::NONE, KeyCode::Char('d')) => {
+                Some(Msg::MessageAction(MessageActionKind::Delete))
+            }
+            (KeyModifiers::NONE, KeyCode::Char('o')) => {
+                Some(Msg::MessageAction(MessageActionKind::OpenLinks))
+            }
+            (KeyModifiers::NONE, KeyCode::Char('i')) => {
+                Some(Msg::MessageAction(MessageActionKind::Inspect))
+            }
+
+            (_, KeyCode::PageUp) => Some(Msg::ScrollPageUp),
+            (_, KeyCode::PageDown) => Some(Msg::ScrollPageDown),
+            (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
+
+            // Any other character deselects and inserts into input
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CharInput(c))
             }

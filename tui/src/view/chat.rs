@@ -16,8 +16,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     lines.push(Line::raw(""));
 
     // Render each message
-    for msg in &app.messages {
-        render_message(app, msg, &mut lines, inner_width, theme);
+    for (idx, msg) in app.messages.iter().enumerate() {
+        let selected = app.selected_message == Some(idx);
+        render_message(app, msg, &mut lines, inner_width, theme, selected);
     }
 
     // Streaming response (in progress)
@@ -65,6 +66,7 @@ fn render_message(
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
     theme: &ThemePalette,
+    selected: bool,
 ) {
     let (role_label, role_style) = match msg.role.as_str() {
         "user" => ("you".to_string(), theme.style_user()),
@@ -80,8 +82,19 @@ fn render_message(
         _ => ("system".to_string(), theme.style_muted()),
     };
 
-    // Header: role name + optional model (dim) + timestamp
-    let mut header_spans = vec![Span::styled(format!(" {}", role_label), role_style)];
+    // Selection indicator prefix
+    let marker = if selected { "▸" } else { " " };
+    let marker_style = if selected {
+        Style::default().fg(theme.selected)
+    } else {
+        Style::default()
+    };
+
+    // Header: selection marker + role name + optional model (dim) + timestamp
+    let mut header_spans = vec![
+        Span::styled(marker, marker_style),
+        Span::styled(format!(" {}", role_label), role_style),
+    ];
 
     if let Some(ref model) = msg.model {
         let short_model = model.split('/').next_back().unwrap_or(model);
@@ -114,8 +127,14 @@ fn render_message(
         theme,
         &app.highlighter,
     );
+    let content_prefix = if selected { "│" } else { " " };
+    let prefix_style = if selected {
+        Style::default().fg(theme.selected)
+    } else {
+        Style::default()
+    };
     for line in rendered {
-        let mut padded_spans = vec![Span::raw(" ")];
+        let mut padded_spans = vec![Span::styled(content_prefix, prefix_style)];
         padded_spans.extend(line.spans);
         lines.push(Line::from(padded_spans));
     }
