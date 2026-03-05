@@ -14,18 +14,31 @@ use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{info, instrument, warn};
+use utoipa::ToSchema;
 
 use aletheia_mneme::types::SessionStatus;
 use aletheia_nous::pipeline::TurnResult;
 
 use crate::error::{
-    ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu,
+    ApiError, BadRequestSnafu, ErrorResponse, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu,
 };
 use crate::extract::Claims;
 use crate::state::AppState;
 use crate::stream::{SseEvent, UsageData};
 
-/// POST /api/sessions — create a new session.
+/// POST /api/v1/sessions — create a new session.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions",
+    request_body = CreateSessionRequest,
+    responses(
+        (status = 201, description = "Session created", body = SessionResponse),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims, body))]
 pub async fn create(
     State(state): State<Arc<AppState>>,
@@ -64,7 +77,18 @@ pub async fn create(
     ))
 }
 
-/// GET /api/sessions/{id} — get session state.
+/// GET /api/v1/sessions/{id} — get session state.
+#[utoipa::path(
+    get,
+    path = "/api/v1/sessions/{id}",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session details", body = SessionResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn get_session(
     State(state): State<Arc<AppState>>,
@@ -75,7 +99,18 @@ pub async fn get_session(
     Ok(Json(SessionResponse::from_mneme(&session)))
 }
 
-/// DELETE /api/sessions/{id} — close (archive) a session.
+/// DELETE /api/v1/sessions/{id} — close (archive) a session.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sessions/{id}",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 204, description = "Session closed"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn close(
     State(state): State<Arc<AppState>>,
@@ -96,7 +131,22 @@ pub async fn close(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /api/sessions/{id}/history — get conversation history.
+/// GET /api/v1/sessions/{id}/history — get conversation history.
+#[utoipa::path(
+    get,
+    path = "/api/v1/sessions/{id}/history",
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        ("limit" = Option<u32>, Query, description = "Maximum messages to return"),
+        ("before" = Option<i64>, Query, description = "Return messages before this sequence number"),
+    ),
+    responses(
+        (status = 200, description = "Conversation history", body = HistoryResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn history(
     State(state): State<Arc<AppState>>,
@@ -135,7 +185,20 @@ pub async fn history(
     Ok(Json(HistoryResponse { messages: items }))
 }
 
-/// POST /api/sessions/{id}/messages — send a message and stream the response via SSE.
+/// POST /api/v1/sessions/{id}/messages — send a message and stream the response via SSE.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions/{id}/messages",
+    params(("id" = String, Path, description = "Session ID")),
+    request_body = SendMessageRequest,
+    responses(
+        (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
@@ -312,13 +375,13 @@ async fn find_session(
 
 // --- Request/Response types ---
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     pub nous_id: String,
     pub session_key: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
     pub content: String,
 }
@@ -329,7 +392,7 @@ pub struct HistoryParams {
     pub before: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SessionResponse {
     pub id: String,
     pub nous_id: String,
@@ -358,12 +421,12 @@ impl SessionResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryMessage {
     pub id: i64,
     pub seq: i64,

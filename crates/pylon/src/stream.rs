@@ -1,9 +1,10 @@
 //! SSE event types and hermeneus→SSE bridge.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// SSE event emitted to the client during message streaming.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
 pub enum SseEvent {
     #[serde(rename = "text_delta")]
@@ -37,7 +38,7 @@ pub enum SseEvent {
 }
 
 /// Token usage summary sent with `message_complete`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct UsageData {
     pub input_tokens: u64,
     pub output_tokens: u64,

@@ -5,12 +5,22 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::Serialize;
+use utoipa::ToSchema;
 
-use crate::error::{ApiError, NousNotFoundSnafu};
+use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
 use crate::extract::Claims;
 use crate::state::AppState;
 
-/// GET /api/nous — list registered nous agents.
+/// GET /api/v1/nous — list registered nous agents.
+#[utoipa::path(
+    get,
+    path = "/api/v1/nous",
+    responses(
+        (status = 200, description = "List of nous agents", body = NousListResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<NousListResponse> {
     let nous: Vec<NousSummary> = state
         .nous_manager
@@ -25,7 +35,18 @@ pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<N
     Json(NousListResponse { nous })
 }
 
-/// GET /api/nous/{id} — get nous status.
+/// GET /api/v1/nous/{id} — get nous status.
+#[utoipa::path(
+    get,
+    path = "/api/v1/nous/{id}",
+    params(("id" = String, Path, description = "Nous agent ID")),
+    responses(
+        (status = 200, description = "Nous status", body = NousStatus),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn get_status(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
@@ -56,7 +77,18 @@ pub async fn get_status(
     }))
 }
 
-/// GET /api/nous/{id}/tools — list tools available to a nous.
+/// GET /api/v1/nous/{id}/tools — list tools available to a nous.
+#[utoipa::path(
+    get,
+    path = "/api/v1/nous/{id}/tools",
+    params(("id" = String, Path, description = "Nous agent ID")),
+    responses(
+        (status = 200, description = "Available tools", body = ToolsResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Nous not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn tools(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
@@ -81,19 +113,19 @@ pub async fn tools(
 
 // --- Response types ---
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NousListResponse {
     pub nous: Vec<NousSummary>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NousSummary {
     pub id: String,
     pub model: String,
     pub status: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NousStatus {
     pub id: String,
     pub model: String,
@@ -105,12 +137,12 @@ pub struct NousStatus {
     pub status: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ToolsResponse {
     pub tools: Vec<ToolSummary>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ToolSummary {
     pub name: String,
     pub description: String,
