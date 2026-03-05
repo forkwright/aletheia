@@ -380,22 +380,11 @@ impl AnthropicProvider {
         })?;
 
         let mut headers = HeaderMap::new();
-        match credential.source {
-            CredentialSource::OAuth => {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    HeaderValue::from_str(&format!("Bearer {}", credential.secret))
-                        .unwrap_or_else(|_| HeaderValue::from_static("")),
-                );
-            }
-            _ => {
-                headers.insert(
-                    "x-api-key",
-                    HeaderValue::from_str(&credential.secret)
-                        .unwrap_or_else(|_| HeaderValue::from_static("")),
-                );
-            }
-        }
+        headers.insert(
+            "x-api-key",
+            HeaderValue::from_str(&credential.secret)
+                .unwrap_or_else(|_| HeaderValue::from_static("")),
+        );
         headers.insert(
             "anthropic-version",
             HeaderValue::from_str(&self.api_version)
@@ -964,78 +953,4 @@ mod tests {
         );
     }
 
-    // --- OAuth vs API key header tests ---
-
-    struct MockOAuthProvider;
-
-    impl CredentialProvider for MockOAuthProvider {
-        fn get_credential(&self) -> Option<aletheia_koina::credential::Credential> {
-            Some(aletheia_koina::credential::Credential {
-                secret: "sk-ant-oat01-test-oauth-token".to_owned(),
-                source: CredentialSource::OAuth,
-            })
-        }
-        #[expect(
-            clippy::unnecessary_literal_bound,
-            reason = "trait requires &str return"
-        )]
-        fn name(&self) -> &str {
-            "mock-oauth"
-        }
-    }
-
-    #[tokio::test]
-    async fn oauth_credential_sends_bearer_header() {
-        let server = MockServer::start().await;
-
-        Mock::given(method("POST"))
-            .and(path("/v1/messages"))
-            .and(wiremock::matchers::header(
-                "authorization",
-                "Bearer sk-ant-oat01-test-oauth-token",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let config = ProviderConfig {
-            base_url: Some(server.uri()),
-            max_retries: Some(0),
-            ..ProviderConfig::default()
-        };
-        let request = test_request();
-
-        let result = tokio::task::spawn_blocking(move || {
-            let provider = AnthropicProvider::with_credential_provider(
-                Arc::new(MockOAuthProvider),
-                &config,
-            )
-            .unwrap();
-            provider.complete(&request)
-        })
-        .await
-        .expect("spawn_blocking join");
-
-        assert!(result.is_ok(), "OAuth bearer auth should succeed: {result:?}");
-    }
-
-    #[tokio::test]
-    async fn api_key_credential_sends_x_api_key_header() {
-        let server = MockServer::start().await;
-
-        Mock::given(method("POST"))
-            .and(path("/v1/messages"))
-            .and(wiremock::matchers::header("x-api-key", "test-key"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(valid_wire_response_json()))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let config = test_config_with(&server.uri());
-        let response = complete_on_blocking_thread(config, test_request())
-            .await
-            .expect("complete");
-        assert_eq!(response.id, "msg_test");
-    }
 }
