@@ -8,8 +8,8 @@ use tracing::{info, warn};
 
 use crate::error::{self, Result};
 use crate::portability::{
-    AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo, WorkspaceData,
-    AGENT_FILE_VERSION,
+    AGENT_FILE_VERSION, AgentFile, ExportedMessage, ExportedNote, ExportedSession, NousInfo,
+    WorkspaceData,
 };
 use crate::store::SessionStore;
 use crate::types::SessionStatus;
@@ -124,7 +124,12 @@ fn scan_workspace(workspace_path: &Path) -> Result<WorkspaceData> {
         });
     }
 
-    walk_directory(workspace_path, workspace_path, &mut files, &mut binary_files)?;
+    walk_directory(
+        workspace_path,
+        workspace_path,
+        &mut files,
+        &mut binary_files,
+    )?;
 
     Ok(WorkspaceData {
         files,
@@ -211,8 +216,8 @@ fn walk_directory(
 fn is_binary_path(path: &Path) -> bool {
     const BINARY_EXTENSIONS: &[&str] = &[
         "png", "jpg", "jpeg", "gif", "ico", "svg", "webp", "woff", "woff2", "ttf", "eot", "zip",
-        "tar", "gz", "bz2", "xz", "pdf", "doc", "docx", "xlsx", "db", "sqlite", "sqlite3",
-        "wasm", "so", "dylib", "exe", "dll", "o", "a",
+        "tar", "gz", "bz2", "xz", "pdf", "doc", "docx", "xlsx", "db", "sqlite", "sqlite3", "wasm",
+        "so", "dylib", "exe", "dll", "o", "a",
     ];
 
     path.extension()
@@ -222,11 +227,12 @@ fn is_binary_path(path: &Path) -> bool {
 
 /// Probe file content for null bytes indicating binary data.
 fn is_binary_content(path: &Path) -> bool {
+    use std::io::Read;
+
     let Ok(file) = std::fs::File::open(path) else {
         return true;
     };
 
-    use std::io::Read;
     let mut buf = vec![0u8; BINARY_PROBE_SIZE];
     let Ok(n) = file.take(BINARY_PROBE_SIZE as u64).read(&mut buf) else {
         return true;
@@ -288,8 +294,11 @@ fn get_all_messages(
     let mut stmt = conn.prepare_cached(sql).context(error::DatabaseSnafu)?;
 
     let rows = if max > 0 {
-        stmt.query_map(rusqlite::params![session_id, max as i64], map_exported_message)
-            .context(error::DatabaseSnafu)?
+        stmt.query_map(
+            rusqlite::params![session_id, i64::try_from(max).unwrap_or(i64::MAX)],
+            map_exported_message,
+        )
+        .context(error::DatabaseSnafu)?
     } else {
         stmt.query_map(rusqlite::params![session_id], map_exported_message)
             .context(error::DatabaseSnafu)?
@@ -322,9 +331,7 @@ fn get_session_json_fields(
 ) -> Result<(Option<serde_json::Value>, Option<serde_json::Value>)> {
     let conn = store.conn();
     let mut stmt = conn
-        .prepare_cached(
-            "SELECT working_state, distillation_priming FROM sessions WHERE id = ?1",
-        )
+        .prepare_cached("SELECT working_state, distillation_priming FROM sessions WHERE id = ?1")
         .context(error::DatabaseSnafu)?;
 
     let result = stmt
@@ -335,12 +342,8 @@ fn get_session_json_fields(
         })
         .context(error::DatabaseSnafu)?;
 
-    let working_state = result
-        .0
-        .and_then(|s| serde_json::from_str(&s).ok());
-    let distillation_priming = result
-        .1
-        .and_then(|s| serde_json::from_str(&s).ok());
+    let working_state = result.0.and_then(|s| serde_json::from_str(&s).ok());
+    let distillation_priming = result.1.and_then(|s| serde_json::from_str(&s).ok());
 
     Ok((working_state, distillation_priming))
 }
@@ -412,11 +415,7 @@ mod tests {
     fn scan_skips_ignored_dirs() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("node_modules")).unwrap();
-        std::fs::write(
-            dir.path().join("node_modules/package.json"),
-            "{}",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("node_modules/package.json"), "{}").unwrap();
         std::fs::write(dir.path().join("readme.md"), "hello").unwrap();
 
         let ws = scan_workspace(dir.path()).unwrap();

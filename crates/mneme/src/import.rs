@@ -6,7 +6,7 @@ use snafu::{ResultExt, ensure};
 use tracing::{info, warn};
 
 use crate::error::{self, Result};
-use crate::portability::{AgentFile, AGENT_FILE_VERSION};
+use crate::portability::{AGENT_FILE_VERSION, AgentFile};
 use crate::store::SessionStore;
 
 /// Options controlling import behavior.
@@ -73,11 +73,8 @@ pub fn import_agent(
     };
 
     if !opts.skip_workspace {
-        result.files_restored = restore_workspace(
-            &agent_file.workspace.files,
-            workspace_path,
-            opts.force,
-        )?;
+        result.files_restored =
+            restore_workspace(&agent_file.workspace.files, workspace_path, opts.force)?;
     }
 
     if !opts.skip_sessions {
@@ -88,7 +85,10 @@ pub fn import_agent(
         let vectors = memory.vectors.as_ref().map_or(0, Vec::len);
         let graph = memory.graph.is_some();
         if vectors > 0 || graph {
-            info!(vectors, graph, "memory data present but requires sidecar — skipped");
+            info!(
+                vectors,
+                graph, "memory data present but requires sidecar — skipped"
+            );
         }
     }
 
@@ -183,9 +183,7 @@ fn import_sessions(
     result: &mut ImportResult,
 ) -> Result<()> {
     let conn = store.conn();
-    let timestamp = jiff::Timestamp::now()
-        .strftime("%Y%m%dT%H%M%S")
-        .to_string();
+    let timestamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
 
     for exported in &agent_file.sessions {
         let new_id = id_generator();
@@ -205,8 +203,14 @@ fn import_sessions(
                 exported.token_count_estimate,
                 exported.message_count,
                 exported.distillation_count,
-                exported.working_state.as_ref().map(|v| v.to_string()),
-                exported.distillation_priming.as_ref().map(|v| v.to_string()),
+                exported
+                    .working_state
+                    .as_ref()
+                    .map(serde_json::Value::to_string),
+                exported
+                    .distillation_priming
+                    .as_ref()
+                    .map(serde_json::Value::to_string),
                 exported.created_at,
                 exported.updated_at,
             ],
@@ -287,9 +291,7 @@ mod tests {
                 config: serde_json::json!({}),
             },
             workspace: WorkspaceData {
-                files: HashMap::from([
-                    ("notes.md".to_owned(), "# Notes\n".to_owned()),
-                ]),
+                files: HashMap::from([("notes.md".to_owned(), "# Notes\n".to_owned())]),
                 binary_files: vec![],
             },
             sessions: vec![ExportedSession {
@@ -549,9 +551,8 @@ mod tests {
         let store = test_store();
         let dir = tempfile::tempdir().unwrap();
         let mut agent = minimal_agent_file();
-        agent.workspace.files = HashMap::from([
-            ("../../../etc/passwd".to_owned(), "evil".to_owned()),
-        ]);
+        agent.workspace.files =
+            HashMap::from([("../../../etc/passwd".to_owned(), "evil".to_owned())]);
 
         let id_gen = counter_id_gen();
         let result = import_agent(
@@ -603,7 +604,9 @@ mod tests {
         store
             .append_message("ses-1", Role::Assistant, "hi back", None, None, 40)
             .unwrap();
-        store.add_note("ses-1", "eve", "task", "roundtrip test").unwrap();
+        store
+            .add_note("ses-1", "eve", "task", "roundtrip test")
+            .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("readme.md"), "# Hello").unwrap();

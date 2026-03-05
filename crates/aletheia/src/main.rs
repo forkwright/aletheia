@@ -1088,7 +1088,7 @@ fn export_agent_cmd(
         .with_context(|| format!("failed to write {}", output_path.display()))?;
 
     println!("Exported to: {}", output_path.display());
-    println!("Size: {:.1} KB", json.len() as f64 / 1024.0);
+    println!("Size: {} bytes", json.len());
     println!(
         "Sessions: {}, Workspace: {} text / {} binary",
         agent_file.sessions.len(),

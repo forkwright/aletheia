@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Agent file format version.
 pub const AGENT_FILE_VERSION: u32 = 1;
 
-/// Portable agent file — wire-compatible with the TypeScript AgentFile format.
+/// Portable agent file — wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFile {
@@ -204,14 +204,8 @@ mod tests {
 
         // Session keys
         let session = &value["sessions"][0];
-        assert!(
-            session.get("sessionKey").is_some(),
-            "missing sessionKey"
-        );
-        assert!(
-            session.get("sessionType").is_some(),
-            "missing sessionType"
-        );
+        assert!(session.get("sessionKey").is_some(), "missing sessionKey");
+        assert!(session.get("sessionType").is_some(), "missing sessionType");
         assert!(
             session.get("messageCount").is_some(),
             "missing messageCount"
@@ -224,25 +218,13 @@ mod tests {
             session.get("distillationCount").is_some(),
             "missing distillationCount"
         );
-        assert!(
-            session.get("createdAt").is_some(),
-            "missing createdAt"
-        );
-        assert!(
-            session.get("updatedAt").is_some(),
-            "missing updatedAt"
-        );
+        assert!(session.get("createdAt").is_some(), "missing createdAt");
+        assert!(session.get("updatedAt").is_some(), "missing updatedAt");
 
         // Message keys
         let msg = &session["messages"][0];
-        assert!(
-            msg.get("tokenEstimate").is_some(),
-            "missing tokenEstimate"
-        );
-        assert!(
-            msg.get("isDistilled").is_some(),
-            "missing isDistilled"
-        );
+        assert!(msg.get("tokenEstimate").is_some(), "missing tokenEstimate");
+        assert!(msg.get("isDistilled").is_some(), "missing isDistilled");
         assert!(msg.get("createdAt").is_some(), "missing createdAt");
     }
 
@@ -270,6 +252,9 @@ mod tests {
         let value: serde_json::Value = serde_json::to_value(&agent).unwrap();
         let mem = value.get("memory").unwrap();
         assert!(mem.get("vectors").is_some());
-        assert!(mem.get("graph").is_none(), "graph should be omitted when None");
+        assert!(
+            mem.get("graph").is_none(),
+            "graph should be omitted when None"
+        );
     }
 }
