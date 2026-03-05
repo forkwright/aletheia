@@ -120,6 +120,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         Some(Arc::clone(&session_store)),
         Arc::new(vec![]),
         None,
+        None,
     );
 
     let nous_config = NousConfig {

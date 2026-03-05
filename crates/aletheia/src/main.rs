@@ -34,6 +34,7 @@ use aletheia_oikonomos::maintenance::{
 use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_organon::builtins;
 use aletheia_organon::registry::ToolRegistry;
+use aletheia_organon::types::ToolServices;
 use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::credential::{
@@ -488,6 +489,23 @@ async fn serve(cli: Cli) -> Result<()> {
     // Cross-nous router for inter-agent messaging
     let cross_router = Arc::new(CrossNousRouter::default());
 
+    // Build signal provider early so it can be shared with tool services
+    let signal_provider = build_signal_provider(&config.channels.signal);
+
+    // Build tool services for communication executors
+    let tool_services = {
+        let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
+            Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
+        let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
+            signal_provider
+                .as_ref()
+                .map(|p| Arc::new(tool_adapters::SignalAdapter(Arc::clone(p) as Arc<dyn ChannelProvider>)) as Arc<dyn aletheia_organon::types::MessageService>);
+        Arc::new(ToolServices {
+            cross_nous: Some(cross_nous),
+            messenger,
+        })
+    };
+
     // Spawn nous actors
     // vector_search is None until Phase 2 (prompt 28) lands KnowledgeVectorSearch
     let mut nous_manager = NousManager::new(
@@ -499,6 +517,7 @@ async fn serve(cli: Cli) -> Result<()> {
         Some(Arc::clone(&session_store)),
         Arc::clone(&packs),
         Some(Arc::clone(&cross_router)),
+        Some(tool_services),
     );
 
     if config.agents.list.is_empty() {
@@ -562,7 +581,7 @@ async fn serve(cli: Cli) -> Result<()> {
     // Channel registry + inbound dispatch (gated on ready signal)
     let ready_rx = nous_manager.ready_rx();
     let (_channel_registry, _dispatch_handle) =
-        start_inbound_dispatch(&config, &nous_manager, ready_rx);
+        start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
     // Daemon runners — per-agent background task scheduling
     let (daemon_shutdown_tx, _) = tokio::sync::watch::channel(false);
@@ -806,6 +825,92 @@ async fn handle_credential(
     Ok(())
 }
 
+// -- Tool service adapters -------------------------------------------------
+
+mod tool_adapters {
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use aletheia_agora::types::{ChannelProvider, SendParams};
+    use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
+    use aletheia_organon::types::{CrossNousService, MessageService};
+
+    pub struct CrossNousAdapter(pub Arc<CrossNousRouter>);
+
+    impl CrossNousService for CrossNousAdapter {
+        fn send(
+            &self,
+            from: &str,
+            to: &str,
+            session_key: &str,
+            content: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+            let msg = CrossNousMessage::new(from, to, content).with_target_session(session_key);
+            let router = Arc::clone(&self.0);
+            Box::pin(async move {
+                router
+                    .send(msg)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            })
+        }
+
+        fn ask(
+            &self,
+            from: &str,
+            to: &str,
+            session_key: &str,
+            content: &str,
+            timeout_secs: u64,
+        ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+            let msg = CrossNousMessage::new(from, to, content)
+                .with_target_session(session_key)
+                .with_reply(Duration::from_secs(timeout_secs));
+            let router = Arc::clone(&self.0);
+            Box::pin(async move {
+                router
+                    .ask(msg)
+                    .await
+                    .map(|reply| reply.content)
+                    .map_err(|e| e.to_string())
+            })
+        }
+    }
+
+    pub struct SignalAdapter(pub Arc<dyn ChannelProvider>);
+
+    impl MessageService for SignalAdapter {
+        fn send_message(
+            &self,
+            to: &str,
+            text: &str,
+            _from_nous: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+            let params = SendParams {
+                to: to.to_owned(),
+                text: text.to_owned(),
+                account_id: None,
+                thread_id: None,
+                attachments: None,
+            };
+            let provider = Arc::clone(&self.0);
+            Box::pin(async move {
+                let result = provider.send(&params).await;
+                if result.sent {
+                    Ok(())
+                } else {
+                    Err(result
+                        .error
+                        .unwrap_or_else(|| "unknown send error".to_owned()))
+                }
+            })
+        }
+    }
+}
+
 /// Build a tool registry with all builtins.
 fn build_tool_registry() -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
@@ -819,18 +924,18 @@ fn start_inbound_dispatch(
     config: &aletheia_taxis::config::AletheiaConfig,
     nous_manager: &Arc<NousManager>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
+    signal_provider: Option<&Arc<SignalProvider>>,
 ) -> (Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>) {
     let mut channel_registry = ChannelRegistry::new();
 
-    let signal_provider = build_signal_provider(&config.channels.signal);
-    if let Some(ref provider) = signal_provider {
+    if let Some(provider) = signal_provider {
         channel_registry
             .register(Arc::clone(provider) as Arc<dyn ChannelProvider>)
             .expect("register signal provider");
     }
     let channel_registry = Arc::new(channel_registry);
 
-    let handle = if let Some(ref provider) = signal_provider {
+    let handle = if let Some(provider) = signal_provider {
         let listener = ChannelListener::start(provider, None);
         info!("signal channel listener started");
         let rx = listener.into_receiver();

@@ -512,6 +512,7 @@ mod tests {
             session_id: aletheia_koina::id::SessionId::new(),
             workspace: dir.path().to_path_buf(),
             allowed_roots: vec![],
+            services: None,
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
@@ -540,6 +541,7 @@ mod tests {
             session_id: aletheia_koina::id::SessionId::new(),
             workspace: dir.path().to_path_buf(),
             allowed_roots: vec![],
+            services: None,
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
