@@ -1,0 +1,25 @@
+[package]
+name = "aletheia-dokimion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Behavioral eval framework — scenario-based API testing against a live instance"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snafu = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+owo-colors = "4"
+supports-color = "3"
+
+[dev-dependencies]
+wiremock = { workspace = true }
+static_assertions = { workspace = true }

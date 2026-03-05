@@ -42,6 +42,7 @@ name = "aletheia"
 version = "0.10.0"
 dependencies = [
  "aletheia-agora",
+ "aletheia-dokimion",
  "aletheia-hermeneus",
  "aletheia-koina",
  "aletheia-mneme",
@@ -97,6 +98,22 @@ dependencies = [
  "static_assertions",
  "tempfile",
  "ulid",
+]
+
+[[package]]
+name = "aletheia-dokimion"
+version = "0.10.0"
+dependencies = [
+ "owo-colors",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "snafu",
+ "static_assertions",
+ "supports-color",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

@@ -130,6 +130,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 
 | Crate | Domain | Depends On |
 |-------|--------|------------|
+| `dokimion` | Behavioral eval framework — HTTP scenario runner | nothing (leaf) |
 | `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
 ### Dependency Graph
