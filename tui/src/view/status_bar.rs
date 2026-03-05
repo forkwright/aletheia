@@ -19,10 +19,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 fn render_keybindings(app: &App, width: u16, theme: &ThemePalette) -> Line<'static> {
     let hints = match app.selection {
         SelectionContext::None => ": command │ / filter │ ? help",
-        SelectionContext::UserMessage => "e edit │ d delete │ c copy",
-        SelectionContext::AgentResponse => "c copy │ y yank │ o open",
-        SelectionContext::ToolCall => "a approve │ r reject │ i inspect",
-        SelectionContext::SessionList => "Enter open │ d delete │ n new",
+        SelectionContext::UserMessage { .. } => "e edit │ d delete │ c copy",
+        SelectionContext::AgentResponse { .. } => "c copy │ y yank │ o open",
+        SelectionContext::ToolCall { .. } => "a approve │ r reject │ i inspect",
+        SelectionContext::SessionListItem { .. } => "Enter open │ d delete │ n new",
     };
 
     let hints_width = hints.width();
@@ -147,7 +147,7 @@ fn context_gauge_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
 
             let color = if pct <= 60 {
                 theme.success
-            } else if pct <= 84 {
+            } else if pct <= 80 {
                 theme.warning
             } else {
                 theme.error
