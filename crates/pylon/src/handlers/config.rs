@@ -120,14 +120,17 @@ pub async fn update_section(
         return Err(ApiError::ValidationFailed { errors });
     }
 
-    // Merge into current config
+    // Deep-merge into current config (body patches only changed fields)
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
         message: format!("failed to serialize config: {e}"),
     })?;
 
     if let Value::Object(root) = &mut config_value {
-        root.insert(section.clone(), body);
+        let existing = root
+            .entry(section.clone())
+            .or_insert_with(|| Value::Object(serde_json::Map::default()));
+        deep_merge(existing, body);
     }
 
     // Deserialize back to verify structural validity
@@ -163,4 +166,22 @@ pub async fn update_section(
             restart_required,
         }),
     ))
+}
+
+/// Recursively merge `patch` into `base`. Patch values override base values;
+/// nested objects are merged rather than replaced.
+fn deep_merge(base: &mut Value, patch: Value) {
+    match (base, patch) {
+        (Value::Object(base_map), Value::Object(patch_map)) => {
+            for (key, patch_val) in patch_map {
+                let entry = base_map
+                    .entry(key)
+                    .or_insert(Value::Null);
+                deep_merge(entry, patch_val);
+            }
+        }
+        (base, patch) => {
+            *base = patch;
+        }
+    }
 }

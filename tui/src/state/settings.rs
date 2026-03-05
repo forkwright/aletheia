@@ -101,25 +101,23 @@ impl SettingsOverlay {
     }
 
     pub fn changed_sections(&self) -> HashMap<String, serde_json::Value> {
-        let mut result: HashMap<String, serde_json::Map<String, serde_json::Value>> =
-            HashMap::new();
+        let mut result: HashMap<String, serde_json::Value> = HashMap::new();
         for section in &self.sections {
             for field in &section.fields {
                 if field.value != field.original_value {
                     let parts: Vec<&str> = field.key.splitn(2, '.').collect();
                     if parts.len() == 2 {
-                        result
-                            .entry(parts[0].to_owned())
-                            .or_default()
-                            .insert(parts[1].to_owned(), field.value.clone());
+                        let section_key = parts[0];
+                        let remainder = parts[1];
+                        let section_val = result
+                            .entry(section_key.to_owned())
+                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::default()));
+                        set_nested(section_val, remainder, field.value.clone());
                     }
                 }
             }
         }
         result
-            .into_iter()
-            .map(|(k, v)| (k, serde_json::Value::Object(v)))
-            .collect()
     }
 
     pub fn reset(&mut self) {
@@ -130,6 +128,27 @@ impl SettingsOverlay {
         }
         self.pending_changes.clear();
         self.save_status = SaveStatus::Idle;
+    }
+}
+
+/// Set a value at a dotted path within a JSON object, creating intermediate objects as needed.
+fn set_nested(root: &mut serde_json::Value, dotted_path: &str, value: serde_json::Value) {
+    let parts: Vec<&str> = dotted_path.split('.').collect();
+    let mut current = root;
+    for (i, part) in parts.iter().enumerate() {
+        if i == parts.len() - 1 {
+            if let serde_json::Value::Object(map) = current {
+                map.insert((*part).to_owned(), value);
+            }
+            return;
+        }
+        if let serde_json::Value::Object(map) = current {
+            current = map
+                .entry((*part).to_owned())
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::default()));
+        } else {
+            return;
+        }
     }
 }
 
