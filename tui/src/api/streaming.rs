@@ -14,7 +14,7 @@ pub fn stream_message(
     text: &str,
 ) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
-    let url = format!("{}/api/sessions/stream", base_url.trim_end_matches('/'));
+    let url = format!("{}/api/v1/sessions/stream", base_url.trim_end_matches('/'));
 
     let body = serde_json::json!({
         "message": text,
