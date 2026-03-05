@@ -26,6 +26,11 @@ use aletheia_oikonomos::maintenance::{
 use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
+use aletheia_koina::credential::CredentialProvider;
+use aletheia_symbolon::credential::{
+    CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
+    RefreshingCredentialProvider,
+};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -106,6 +111,19 @@ enum Command {
         #[arg(long, default_value = "http://127.0.0.1:18789")]
         url: String,
     },
+    /// Credential management
+    Credential {
+        #[command(subcommand)]
+        action: CredentialAction,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum CredentialAction {
+    /// Show current credential source, expiry, and token prefix
+    Status,
+    /// Force-refresh OAuth token now
+    Refresh,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -152,6 +170,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::Tls { action }) => return handle_tls(action),
         Some(Command::Status { url }) => return status::run(url, cli.instance_root.as_ref()).await,
+        Some(Command::Credential { action }) => {
+            return handle_credential(action.clone(), cli.instance_root.as_ref()).await;
+        }
         None => {}
     }
 
@@ -301,7 +322,7 @@ async fn serve(cli: Cli) -> Result<()> {
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
     // Build shared registries — single instances used by both NousManager and AppState
-    let provider_registry = Arc::new(build_provider_registry(&config));
+    let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
     let mut tool_registry = build_tool_registry()?;
 
     // Register domain pack tools alongside builtins
@@ -479,13 +500,15 @@ async fn serve(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-/// Build a provider registry with Anthropic if API key is available.
+/// Build a provider registry using the credential resolution chain.
+///
+/// Resolution order: credential file (with OAuth refresh if available) → env var.
 fn build_provider_registry(
     config: &aletheia_taxis::config::AletheiaConfig,
+    oikos: &Oikos,
 ) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
-    // Map taxis pricing config to hermeneus ModelPricing
     let pricing: std::collections::HashMap<String, aletheia_hermeneus::provider::ModelPricing> =
         config
             .pricing
@@ -501,25 +524,128 @@ fn build_provider_registry(
             })
             .collect();
 
-    match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(api_key) if !api_key.is_empty() => {
-            let provider_config = ProviderConfig {
-                api_key: Some(api_key),
-                pricing,
-                ..ProviderConfig::default()
-            };
-            match AnthropicProvider::from_config(&provider_config) {
-                Ok(provider) => {
-                    registry.register(Box::new(provider));
-                    info!("anthropic provider registered");
+    // Build credential chain: file (with refresh) → env
+    let cred_file = oikos.credentials().join("anthropic.json");
+    let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
+
+    if cred_file.exists() {
+        // Check if file has a refresh token for OAuth mode
+        if let Some(cred) = CredentialFile::load(&cred_file) {
+            if cred.has_refresh_token() {
+                if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
+                    info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
+                    chain.push(Box::new(refreshing));
+                } else {
+                    info!(path = %cred_file.display(), "credential file found (static)");
+                    chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
                 }
-                Err(e) => warn!(error = %e, "failed to init anthropic provider"),
+            } else {
+                info!(path = %cred_file.display(), "credential file found (static API key)");
+                chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
             }
         }
-        _ => warn!("ANTHROPIC_API_KEY not set — no LLM provider"),
+    }
+
+    chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
+
+    let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
+
+    // Resolve once at startup for logging
+    match credential_chain.get_credential() {
+        Some(cred) => {
+            info!(source = %cred.source, "credential resolved");
+        }
+        None => {
+            warn!("no credential available — no LLM provider");
+            return registry;
+        }
+    }
+
+    let provider_config = ProviderConfig {
+        pricing,
+        ..ProviderConfig::default()
+    };
+    match AnthropicProvider::with_credential_provider(credential_chain, &provider_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            info!("anthropic provider registered");
+        }
+        Err(e) => warn!(error = %e, "failed to init anthropic provider"),
     }
 
     registry
+}
+
+async fn handle_credential(action: CredentialAction, instance_root: Option<&PathBuf>) -> Result<()> {
+    let oikos = match instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+    let cred_path = oikos.credentials().join("anthropic.json");
+
+    match action {
+        CredentialAction::Status => {
+            match CredentialFile::load(&cred_path) {
+                Some(cred) => {
+                    let token_preview = if cred.token.len() > 10 {
+                        format!("{}...{}", &cred.token[..10], &cred.token[cred.token.len()-3..])
+                    } else {
+                        "***".to_owned()
+                    };
+                    let cred_type = if cred.has_refresh_token() { "OAuth (auto-refresh)" } else { "static API key" };
+                    println!("Source:        file ({})", cred_path.display());
+                    println!("Type:          {cred_type}");
+                    println!("Token:         {token_preview}");
+                    if let Some(remaining) = cred.seconds_remaining() {
+                        let hours = remaining / 3600;
+                        let mins = (remaining % 3600) / 60;
+                        if remaining > 0 {
+                            println!("Expires:       {hours}h {mins}m remaining");
+                        } else {
+                            println!("Expires:       EXPIRED");
+                        }
+                    } else {
+                        println!("Expires:       no expiry set");
+                    }
+                    println!("Refresh token: {}", if cred.has_refresh_token() { "present" } else { "absent" });
+                }
+                None => {
+                    // Check env var fallback
+                    match std::env::var("ANTHROPIC_API_KEY") {
+                        Ok(key) if !key.is_empty() => {
+                            let preview = if key.len() > 10 {
+                                format!("{}...{}", &key[..10], &key[key.len()-3..])
+                            } else {
+                                "***".to_owned()
+                            };
+                            println!("Source:        environment (ANTHROPIC_API_KEY)");
+                            println!("Type:          static API key");
+                            println!("Token:         {preview}");
+                        }
+                        _ => {
+                            println!("No credential found.");
+                            println!("Checked: {} (not found)", cred_path.display());
+                            println!("Checked: ANTHROPIC_API_KEY (not set)");
+                        }
+                    }
+                }
+            }
+        }
+        CredentialAction::Refresh => {
+            println!("Refreshing OAuth token...");
+            match aletheia_symbolon::credential::force_refresh(&cred_path).await {
+                Ok(updated) => {
+                    if let Some(remaining) = updated.seconds_remaining() {
+                        println!("Token refreshed — expires in {}h {}m", remaining / 3600, (remaining % 3600) / 60);
+                    } else {
+                        println!("Token refreshed");
+                    }
+                }
+                Err(e) => anyhow::bail!("refresh failed: {e}"),
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Build a tool registry with all builtins.
