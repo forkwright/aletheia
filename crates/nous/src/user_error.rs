@@ -17,10 +17,7 @@ pub enum UserFacingError {
     /// The conversation exceeded the model's context window.
     ContextOverflow { limit_tokens: u64 },
     /// A tool execution failed.
-    ToolExecutionFailed {
-        tool_name: String,
-        message: String,
-    },
+    ToolExecutionFailed { tool_name: String, message: String },
     /// The session has expired or is invalid.
     SessionExpired { session_id: String },
     /// Rate limited by the provider.
@@ -79,8 +76,8 @@ impl fmt::Display for UserFacingError {
 ///
 /// Returns `None` for internal errors that should not be shown to users.
 pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
-    use aletheia_hermeneus::error::Error as HError;
     use crate::error::Error;
+    use aletheia_hermeneus::error::Error as HError;
 
     match error {
         Error::Llm { source, .. } => match source {
@@ -89,9 +86,7 @@ pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
                 suggestion: "This may be a configuration issue. Please check the API key."
                     .to_owned(),
             }),
-            HError::RateLimited {
-                retry_after_ms, ..
-            } => Some(UserFacingError::RateLimited {
+            HError::RateLimited { retry_after_ms, .. } => Some(UserFacingError::RateLimited {
                 retry_after_secs: Some(retry_after_ms / 1000),
             }),
             HError::ApiError { status, .. } if *status >= 500 => {
@@ -178,10 +173,7 @@ mod tests {
     #[test]
     fn convert_llm_auth_error() {
         let err = crate::error::Error::Llm {
-            source: aletheia_hermeneus::error::AuthFailedSnafu {
-                message: "bad key",
-            }
-            .build(),
+            source: aletheia_hermeneus::error::AuthFailedSnafu { message: "bad key" }.build(),
             location: snafu::Location::new("test", 1, 1),
         };
         let uf = to_user_facing(&err).expect("should convert");

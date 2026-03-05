@@ -100,7 +100,11 @@ impl ProviderHealthTracker {
     /// Current health state.
     #[must_use]
     pub fn health(&self) -> ProviderHealth {
-        self.inner.lock().expect("health lock poisoned").health.clone()
+        self.inner
+            .lock()
+            .expect("health lock poisoned")
+            .health
+            .clone()
     }
 
     /// Check if the provider can accept a request.
@@ -177,7 +181,10 @@ impl ProviderHealthTracker {
                     },
                 };
             }
-            Error::ApiRequest { .. } | Error::ApiError { status: 500..=599, .. } => {
+            Error::ApiRequest { .. }
+            | Error::ApiError {
+                status: 500..=599, ..
+            } => {
                 let now = Timestamp::now();
                 match &inner.health {
                     ProviderHealth::Up => {
@@ -229,10 +236,7 @@ mod tests {
     use snafu::IntoError;
 
     fn api_request_error() -> Error {
-        crate::error::ApiRequestSnafu {
-            message: "timeout",
-        }
-        .build()
+        crate::error::ApiRequestSnafu { message: "timeout" }.build()
     }
 
     fn server_error() -> Error {
@@ -251,10 +255,7 @@ mod tests {
     }
 
     fn rate_limit_error(ms: u64) -> Error {
-        crate::error::RateLimitedSnafu {
-            retry_after_ms: ms,
-        }
-        .build()
+        crate::error::RateLimitedSnafu { retry_after_ms: ms }.build()
     }
 
     fn parse_error() -> Error {
@@ -353,7 +354,12 @@ mod tests {
         t.record_error(&rate_limit_error(5000));
         match t.health() {
             ProviderHealth::Down { reason, .. } => {
-                assert_eq!(reason, DownReason::RateLimited { retry_after_ms: 5000 });
+                assert_eq!(
+                    reason,
+                    DownReason::RateLimited {
+                        retry_after_ms: 5000
+                    }
+                );
             }
             other => panic!("expected Down(RateLimited), got {other:?}"),
         }

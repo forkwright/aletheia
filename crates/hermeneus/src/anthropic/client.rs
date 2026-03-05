@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
-use crate::types::{CompletionRequest, CompletionResponse};
+use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
@@ -329,6 +329,48 @@ impl AnthropicProvider {
         }))
     }
 
+    /// Count tokens for a request via the Anthropic `count_tokens` endpoint.
+    pub fn count_tokens_request(&self, request: &CompletionRequest) -> Result<TokenCount> {
+        #[derive(serde::Deserialize)]
+        struct CountResponse {
+            input_tokens: u64,
+        }
+
+        let wire = WireRequest::from_request(request, None);
+        let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
+        let headers = self.build_headers()?;
+
+        let response = self
+            .client
+            .post(format!("{}/v1/messages/count_tokens", self.base_url))
+            .headers(headers)
+            .body(body)
+            .send()
+            .map_err(|e| {
+                error::ApiRequestSnafu {
+                    message: format!("count_tokens request failed: {e}"),
+                }
+                .build()
+            })?;
+
+        if !response.status().is_success() {
+            return Err(super::error::map_error_response(response));
+        }
+
+        let text = response.text().map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("failed to read count_tokens response: {e}"),
+            }
+            .build()
+        })?;
+
+        let parsed: CountResponse =
+            serde_json::from_str(&text).context(error::ParseResponseSnafu)?;
+        Ok(TokenCount {
+            input_tokens: parsed.input_tokens,
+        })
+    }
+
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
@@ -508,6 +550,18 @@ impl LlmProvider for AnthropicProvider {
     fn name(&self) -> &str {
         "anthropic"
     }
+
+    fn count_tokens(&self, request: &CompletionRequest) -> Result<Option<TokenCount>> {
+        self.count_tokens_request(request).map(Some)
+    }
+
+    fn supports_caching(&self) -> bool {
+        true
+    }
+
+    fn supports_citations(&self) -> bool {
+        true
+    }
 }
 
 /// Estimate cost using config-based pricing, falling back to hardcoded defaults.
@@ -616,6 +670,7 @@ mod tests {
             temperature: None,
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         }
     }
 

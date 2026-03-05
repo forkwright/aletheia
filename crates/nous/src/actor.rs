@@ -447,6 +447,7 @@ mod tests {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from actor!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 100,

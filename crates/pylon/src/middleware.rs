@@ -71,10 +71,7 @@ pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
 ///
 /// Must be placed inside the compression layer so the body is uncompressed.
 pub async fn enrich_error_response(request: Request, next: Next) -> Response {
-    let request_id = request
-        .extensions()
-        .get::<RequestId>()
-        .map(|r| r.0.clone());
+    let request_id = request.extensions().get::<RequestId>().map(|r| r.0.clone());
 
     let response = next.run(request).await;
 
@@ -106,10 +103,7 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     };
 
     if let Some(error) = json.get_mut("error").and_then(|e| e.as_object_mut()) {
-        error.insert(
-            "request_id".to_owned(),
-            serde_json::Value::String(rid),
-        );
+        error.insert("request_id".to_owned(), serde_json::Value::String(rid));
         let new_bytes = serde_json::to_vec(&json).unwrap_or_default();
         return Response::from_parts(parts, Body::from(new_bytes));
     }

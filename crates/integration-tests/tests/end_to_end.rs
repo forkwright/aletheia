@@ -36,6 +36,7 @@ impl MockProvider {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from mock!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
@@ -79,6 +80,7 @@ impl CapturingMockProvider {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from mock!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
@@ -202,7 +204,10 @@ impl TestHarness {
     }
 
     fn router(&self) -> axum::Router {
-        build_router(Arc::clone(&self.state), &aletheia_pylon::security::SecurityConfig::default())
+        build_router(
+            Arc::clone(&self.state),
+            &aletheia_pylon::security::SecurityConfig::default(),
+        )
     }
 
     fn authed_request(

@@ -68,10 +68,7 @@ impl AccountState {
 
     /// Drain all buffered messages in FIFO order.
     pub fn drain_all(&mut self) -> Vec<client::SendParams> {
-        self.buffer
-            .drain(..)
-            .map(|bm| bm.params)
-            .collect()
+        self.buffer.drain(..).map(|bm| bm.params).collect()
     }
 
     /// Number of messages currently buffered.

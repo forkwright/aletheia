@@ -1,8 +1,8 @@
-//! aletheia-hermeneus — LLM provider abstraction
+//! aletheia-hermeneus — Anthropic-native LLM provider
 //!
-//! Hermeneus (Ἑρμηνεύς) — "interpreter." Provides a provider-agnostic interface
-//! for LLM interaction. Anthropic as the primary provider, with the trait
-//! designed for future OpenAI/Ollama backends.
+//! Hermeneus (Ἑρμηνεύς) — "interpreter." Anthropic-native types and client
+//! for LLM interaction. Other providers implement adapters that map to/from
+//! the Anthropic type system.
 //!
 //! Depends only on `aletheia-koina`.
 
@@ -15,5 +15,5 @@ pub mod health;
 pub mod metrics;
 /// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
-/// Provider-agnostic types for LLM requests and responses ([`CompletionRequest`](types::CompletionRequest), [`CompletionResponse`](types::CompletionResponse)).
+/// Anthropic-native types for LLM requests and responses ([`CompletionRequest`](types::CompletionRequest), [`CompletionResponse`](types::CompletionResponse)).
 pub mod types;

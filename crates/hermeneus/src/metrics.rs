@@ -2,10 +2,7 @@
 
 use std::sync::LazyLock;
 
-use prometheus::{
-    CounterVec, IntCounterVec, Opts,
-    register_counter_vec, register_int_counter_vec,
-};
+use prometheus::{CounterVec, IntCounterVec, Opts, register_counter_vec, register_int_counter_vec};
 
 static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(

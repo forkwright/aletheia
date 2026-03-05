@@ -3,8 +3,8 @@
 use std::sync::LazyLock;
 
 use prometheus::{
-    HistogramOpts, HistogramVec, IntCounterVec, Opts,
-    register_histogram_vec, register_int_counter_vec,
+    HistogramOpts, HistogramVec, IntCounterVec, Opts, register_histogram_vec,
+    register_int_counter_vec,
 };
 
 static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -21,7 +21,9 @@ static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
             "aletheia_tool_duration_seconds",
             "Tool execution duration in seconds"
         )
-        .buckets(vec![0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0]),
+        .buckets(vec![
+            0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 120.0
+        ]),
         &["tool_name"]
     )
     .expect("metric registration")

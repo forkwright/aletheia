@@ -75,17 +75,13 @@ struct NousInfo {
 
 async fn fetch_health(url: &str) -> Result<HealthResponse> {
     let endpoint = format!("{url}/api/health");
-    let resp = reqwest::get(&endpoint)
-        .await
-        .context("failed to connect")?;
+    let resp = reqwest::get(&endpoint).await.context("failed to connect")?;
     resp.json().await.context("failed to parse health response")
 }
 
 async fn fetch_nous(url: &str) -> Result<Vec<NousInfo>> {
     let endpoint = format!("{url}/api/v1/nous");
-    let resp = reqwest::get(&endpoint)
-        .await
-        .context("failed to connect")?;
+    let resp = reqwest::get(&endpoint).await.context("failed to connect")?;
     resp.json().await.context("failed to parse nous response")
 }
 
@@ -263,7 +259,10 @@ pub fn format_bytes(bytes: u64) -> String {
         return "0 B".to_owned();
     }
     let units = ["B", "KB", "MB", "GB", "TB"];
-    #[expect(clippy::cast_precision_loss, reason = "file sizes fit comfortably in f64 mantissa")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "file sizes fit comfortably in f64 mantissa"
+    )]
     let mut size = bytes as f64;
     let mut unit_idx = 0;
     while size >= 1024.0 && unit_idx < units.len() - 1 {
