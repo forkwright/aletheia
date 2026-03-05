@@ -12,12 +12,13 @@ name = "aletheia"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["tui"]
 # Recall pipeline: enables KnowledgeStore (CozoDB) for vector search.
 # OFF by default — mneme-engine conflicts with rusqlite bundled sqlite3.
 # Phase 2 (prompt 28) wires KnowledgeVectorSearch behind this gate.
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
 tls = ["aletheia-pylon/tls"]
+tui = ["dep:aletheia-tui"]
 
 [dependencies]
 aletheia-oikonomos = { path = "../daemon" }
@@ -32,6 +33,7 @@ aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
 aletheia-dokimion = { path = "../eval" }
 aletheia-thesauros = { path = "../thesauros" }
+aletheia-tui = { path = "../../tui", optional = true }
 
 tokio = { workspace = true }
 axum = { workspace = true }
