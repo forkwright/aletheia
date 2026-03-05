@@ -134,6 +134,43 @@ enum Command {
         #[arg(long, default_value_t = 30)]
         timeout: u64,
     },
+    /// Export an agent to a portable .agent.json file
+    Export {
+        /// Agent (nous) ID to export
+        nous_id: String,
+        /// Output file path (default: <nous-id>-<date>.agent.json)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Include archived/distilled sessions
+        #[arg(long)]
+        archived: bool,
+        /// Max messages per session (0 = all)
+        #[arg(long, default_value_t = 500)]
+        max_messages: usize,
+        /// Compact JSON (no pretty printing)
+        #[arg(long)]
+        compact: bool,
+    },
+    /// Import an agent from a portable .agent.json file
+    Import {
+        /// Path to .agent.json file
+        file: PathBuf,
+        /// Override the target agent ID
+        #[arg(long)]
+        target_id: Option<String>,
+        /// Skip importing session history
+        #[arg(long)]
+        skip_sessions: bool,
+        /// Skip restoring workspace files
+        #[arg(long)]
+        skip_workspace: bool,
+        /// Overwrite existing workspace files
+        #[arg(long)]
+        force: bool,
+        /// Show what would be imported without making changes
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -198,6 +235,21 @@ async fn main() -> Result<()> {
             json,
             timeout,
         }) => return eval(url, token.clone(), scenario.clone(), *json, *timeout).await,
+        Some(Command::Export {
+            nous_id,
+            output,
+            archived,
+            max_messages,
+            compact,
+        }) => return export_agent_cmd(&cli, nous_id, output.as_ref(), *archived, *max_messages, *compact),
+        Some(Command::Import {
+            file,
+            target_id,
+            skip_sessions,
+            skip_workspace,
+            force,
+            dry_run,
+        }) => return import_agent_cmd(&cli, file, target_id.as_deref(), *skip_sessions, *skip_workspace, *force, *dry_run),
         None => {}
     }
 
@@ -978,6 +1030,157 @@ async fn health(url: &str) -> Result<()> {
     Ok(())
 }
 
+fn export_agent_cmd(
+    cli: &Cli,
+    nous_id: &str,
+    output: Option<&PathBuf>,
+    archived: bool,
+    max_messages: usize,
+    compact: bool,
+) -> Result<()> {
+    let oikos = match &cli.instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+    let config = load_config(&oikos).context("failed to load config")?;
+    let resolved = resolve_nous(&config, nous_id);
+
+    let db_path = oikos.sessions_db();
+    let store = SessionStore::open(&db_path)
+        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+
+    let workspace_path = oikos.nous_dir(nous_id);
+
+    let agent_config = config
+        .agents
+        .list
+        .iter()
+        .find(|a| a.id == nous_id)
+        .map(|a| serde_json::to_value(a).unwrap_or_default())
+        .unwrap_or_default();
+
+    let opts = aletheia_mneme::export::ExportOptions {
+        max_messages_per_session: max_messages,
+        include_archived: archived,
+    };
+    let agent_file = aletheia_mneme::export::export_agent(
+        nous_id,
+        resolved.name.as_deref(),
+        Some(&resolved.model),
+        agent_config,
+        &store,
+        &workspace_path,
+        &opts,
+    )
+    .context("export failed")?;
+
+    let output_path = output.cloned().unwrap_or_else(|| {
+        let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
+        PathBuf::from(format!("{nous_id}-{date}.agent.json"))
+    });
+
+    let json = if compact {
+        serde_json::to_string(&agent_file)?
+    } else {
+        serde_json::to_string_pretty(&agent_file)?
+    };
+    std::fs::write(&output_path, &json)
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+
+    println!("Exported to: {}", output_path.display());
+    println!("Size: {:.1} KB", json.len() as f64 / 1024.0);
+    println!(
+        "Sessions: {}, Workspace: {} text / {} binary",
+        agent_file.sessions.len(),
+        agent_file.workspace.files.len(),
+        agent_file.workspace.binary_files.len()
+    );
+
+    Ok(())
+}
+
+#[expect(clippy::fn_params_excessive_bools, reason = "CLI flag passthrough")]
+fn import_agent_cmd(
+    cli: &Cli,
+    file: &Path,
+    target_id: Option<&str>,
+    skip_sessions: bool,
+    skip_workspace: bool,
+    force: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let json = std::fs::read_to_string(file)
+        .with_context(|| format!("failed to read {}", file.display()))?;
+    let agent_file: aletheia_mneme::portability::AgentFile =
+        serde_json::from_str(&json).context("failed to parse agent file")?;
+
+    let nous_id = target_id.unwrap_or(&agent_file.nous.id);
+
+    if dry_run {
+        println!("Dry run — no changes will be made\n");
+        println!("Agent: {} ({})", nous_id, agent_file.nous.name.as_deref().unwrap_or("unnamed"));
+        println!("Generator: {}", agent_file.generator);
+        println!("Exported at: {}", agent_file.exported_at);
+        println!(
+            "Workspace: {} text files, {} binary files",
+            agent_file.workspace.files.len(),
+            agent_file.workspace.binary_files.len()
+        );
+        println!("Sessions: {}", agent_file.sessions.len());
+        let total_msgs: usize = agent_file.sessions.iter().map(|s| s.messages.len()).sum();
+        let total_notes: usize = agent_file.sessions.iter().map(|s| s.notes.len()).sum();
+        println!("Messages: {total_msgs}");
+        println!("Notes: {total_notes}");
+        if let Some(ref memory) = agent_file.memory {
+            let vectors = memory.vectors.as_ref().map_or(0, Vec::len);
+            let graph = memory.graph.is_some();
+            println!("Memory: {vectors} vectors, graph={graph}");
+        }
+        return Ok(());
+    }
+
+    let oikos = match &cli.instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+
+    let db_path = oikos.sessions_db();
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create data dir {}", parent.display()))?;
+    }
+    let store = SessionStore::open(&db_path)
+        .with_context(|| format!("failed to open session store at {}", db_path.display()))?;
+
+    let workspace_path = oikos.nous_dir(nous_id);
+    std::fs::create_dir_all(&workspace_path)
+        .with_context(|| format!("failed to create workspace {}", workspace_path.display()))?;
+
+    let opts = aletheia_mneme::import::ImportOptions {
+        skip_sessions,
+        skip_workspace,
+        target_nous_id: target_id.map(String::from),
+        force,
+    };
+    let id_gen = || ulid::Ulid::new().to_string();
+    let result = aletheia_mneme::import::import_agent(
+        &agent_file,
+        &store,
+        &workspace_path,
+        &id_gen,
+        &opts,
+    )
+    .context("import failed")?;
+
+    println!("Imported agent: {}", result.nous_id);
+    println!("Files restored: {}", result.files_restored);
+    println!("Sessions: {}", result.sessions_imported);
+    println!("Messages: {}", result.messages_imported);
+    println!("Notes: {}", result.notes_imported);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1079,6 +1282,80 @@ mod tests {
                 assert_eq!(timeout, 60);
             }
             _ => panic!("expected Eval command"),
+
+    fn export_subcommand_parses() {
+        let cli = Cli::parse_from(["aletheia", "export", "syn", "--archived", "--compact"]);
+        match cli.command {
+            Some(Command::Export {
+                nous_id,
+                archived,
+                compact,
+                max_messages,
+                ..
+            }) => {
+                assert_eq!(nous_id, "syn");
+                assert!(archived);
+                assert!(compact);
+                assert_eq!(max_messages, 500);
+            }
+            _ => panic!("expected Export command"),
+        }
+    }
+
+    #[test]
+    fn export_with_output_parses() {
+        let cli = Cli::parse_from([
+            "aletheia",
+            "export",
+            "demiurge",
+            "-o",
+            "/tmp/backup.agent.json",
+            "--max-messages",
+            "100",
+        ]);
+        match cli.command {
+            Some(Command::Export {
+                nous_id,
+                output,
+                max_messages,
+                ..
+            }) => {
+                assert_eq!(nous_id, "demiurge");
+                assert_eq!(output.unwrap(), PathBuf::from("/tmp/backup.agent.json"));
+                assert_eq!(max_messages, 100);
+            }
+            _ => panic!("expected Export command"),
+        }
+    }
+
+    #[test]
+    fn import_subcommand_parses() {
+        let cli = Cli::parse_from([
+            "aletheia",
+            "import",
+            "agent.json",
+            "--target-id",
+            "clone",
+            "--force",
+            "--dry-run",
+        ]);
+        match cli.command {
+            Some(Command::Import {
+                file,
+                target_id,
+                force,
+                dry_run,
+                skip_sessions,
+                skip_workspace,
+            }) => {
+                assert_eq!(file, PathBuf::from("agent.json"));
+                assert_eq!(target_id.as_deref(), Some("clone"));
+                assert!(force);
+                assert!(dry_run);
+                assert!(!skip_sessions);
+                assert!(!skip_workspace);
+            }
+            _ => panic!("expected Import command"),
         }
     }
 }
