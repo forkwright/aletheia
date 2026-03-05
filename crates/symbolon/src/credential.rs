@@ -64,7 +64,7 @@ impl CredentialFile {
         let tmp = path.with_extension("json.tmp");
         let mut file = std::fs::File::create(&tmp)?;
         serde_json::to_writer_pretty(&mut file, self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         file.flush()?;
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;
@@ -88,18 +88,20 @@ impl CredentialFile {
 
     /// Seconds remaining until token expires. Returns `None` if no expiry set.
     #[must_use]
+    #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64 until year 292M")]
     pub fn seconds_remaining(&self) -> Option<i64> {
         let expires_at_ms = self.expires_at?;
+        #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64 until year 584M")]
         let now_ms = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        Some((expires_at_ms as i64) - (now_ms as i64))
-            .map(|ms| ms / 1000)
+        Some((expires_at_ms as i64 - now_ms as i64) / 1000)
     }
 
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
+    #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
     pub fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
             Some(remaining) => remaining < REFRESH_THRESHOLD_SECS as i64,
@@ -254,6 +256,7 @@ impl CredentialProvider for FileCredentialProvider {
         })
     }
 
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
     fn name(&self) -> &str {
         "file"
     }
@@ -333,6 +336,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
         self.file_provider.get_credential()
     }
 
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
     fn name(&self) -> &str {
         "oauth"
     }
@@ -368,25 +372,23 @@ async fn refresh_loop(
 
         // Check if refresh is needed
         let (refresh_token, needs_refresh) = {
-            let guard = match state.read() {
-                Ok(g) => g,
-                Err(_) => continue,
+            let Ok(guard) = state.read() else {
+                continue;
             };
-            match guard.as_ref() {
-                Some(s) => {
-                    let now_ms = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-                    let remaining_secs =
-                        (s.expires_at_ms as i64 - now_ms as i64) / 1000;
-                    (
-                        s.refresh_token.clone(),
-                        remaining_secs < REFRESH_THRESHOLD_SECS as i64,
-                    )
-                }
-                None => continue,
-            }
+            let Some(s) = guard.as_ref() else {
+                continue;
+            };
+            #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
+            let now_ms = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64")]
+            let remaining_secs =
+                (s.expires_at_ms as i64 - now_ms as i64) / 1000;
+            #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
+            let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
+            (s.refresh_token.clone(), needs)
         };
 
         if !needs_refresh {
@@ -397,6 +399,7 @@ async fn refresh_loop(
 
         match do_refresh(&client, &refresh_token).await {
             Some(resp) => {
+                #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
                 let now_ms = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -490,6 +493,7 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .await
         .ok_or("OAuth refresh failed")?;
 
+    #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
     let now_ms = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
@@ -538,7 +542,7 @@ impl CredentialProvider for CredentialChain {
         for provider in &self.providers {
             if let Some(cred) = provider.get_credential() {
                 if let Ok(mut name) = self.resolved_name.write() {
-                    *name = provider.name().to_owned();
+                    provider.name().clone_into(&mut *name);
                 }
                 return Some(cred);
             }
@@ -546,8 +550,8 @@ impl CredentialProvider for CredentialChain {
         None
     }
 
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
     fn name(&self) -> &str {
-        // Return the last resolved name without holding a long lock
         "chain"
     }
 }
@@ -680,7 +684,7 @@ mod tests {
         // Invalidate cache timestamp to force mtime check
         if let Ok(mut guard) = provider.cached.write() {
             if let Some(ref mut c) = *guard {
-                c.checked_at = Instant::now() - Duration::from_secs(60);
+                c.checked_at = Instant::now().checked_sub(Duration::from_secs(60)).unwrap_or(Instant::now());
                 // Also change mtime to force reload
                 c.mtime = SystemTime::UNIX_EPOCH;
             }

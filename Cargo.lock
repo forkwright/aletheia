@@ -318,15 +318,20 @@ dependencies = [
 name = "aletheia-symbolon"
 version = "0.10.0"
 dependencies = [
+ "aletheia-koina",
  "argon2",
  "blake3",
  "jsonwebtoken",
  "rand 0.8.5",
+ "reqwest",
  "rusqlite",
  "secrecy",
  "serde",
+ "serde_json",
  "snafu",
  "static_assertions",
+ "tempfile",
+ "tokio",
  "tracing",
  "ulid",
 ]

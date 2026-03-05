@@ -57,6 +57,8 @@ impl CredentialProvider for StaticCredentialProvider {
             source: CredentialSource::Environment,
         })
     }
+
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
     fn name(&self) -> &str {
         "static"
     }

@@ -551,14 +551,11 @@ fn build_provider_registry(
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
     // Resolve once at startup for logging
-    match credential_chain.get_credential() {
-        Some(cred) => {
-            info!(source = %cred.source, "credential resolved");
-        }
-        None => {
-            warn!("no credential available — no LLM provider");
-            return registry;
-        }
+    if let Some(cred) = credential_chain.get_credential() {
+        info!(source = %cred.source, "credential resolved");
+    } else {
+        warn!("no credential available — no LLM provider");
+        return registry;
     }
 
     let provider_config = ProviderConfig {
