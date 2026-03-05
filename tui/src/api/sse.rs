@@ -14,7 +14,7 @@ pub struct SseConnection {
 impl SseConnection {
     pub fn connect(base_url: &str, token: Option<&str>) -> Self {
         let (tx, rx) = mpsc::channel(256);
-        let url = format!("{}/api/events", base_url.trim_end_matches('/'));
+        let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
         let token_owned = token.map(|t| t.to_string());
 
         let handle = tokio::spawn(async move {

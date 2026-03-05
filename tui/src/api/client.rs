@@ -95,7 +95,7 @@ impl ApiClient {
 
     pub async fn agents(&self) -> Result<Vec<Agent>> {
         let resp = self
-            .request(reqwest::Method::GET, "/api/agents")
+            .request(reqwest::Method::GET, "/api/v1/nous")
             .send()
             .await
             .context("failed to load agents")?;
@@ -112,7 +112,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/sessions?nousId={nous_id}"),
+                &format!("/api/v1/sessions?nousId={nous_id}"),
             )
             .send()
             .await
@@ -128,7 +128,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/sessions/{session_id}/history"),
+                &format!("/api/v1/sessions/{session_id}/history"),
             )
             .send()
             .await
@@ -142,7 +142,7 @@ impl ApiClient {
 
     pub async fn create_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
         let resp = self
-            .request(reqwest::Method::POST, "/api/sessions")
+            .request(reqwest::Method::POST, "/api/v1/sessions")
             .json(&serde_json::json!({
                 "nousId": nous_id,
                 "sessionKey": session_key,
@@ -159,7 +159,7 @@ impl ApiClient {
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/sessions/{session_id}/archive"),
+            &format!("/api/v1/sessions/{session_id}/archive"),
         )
         .send()
         .await
@@ -174,7 +174,7 @@ impl ApiClient {
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/turns/{turn_id}/abort"),
+            &format!("/api/v1/turns/{turn_id}/abort"),
         )
         .send()
         .await
@@ -187,7 +187,7 @@ impl ApiClient {
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/turns/{turn_id}/tools/{tool_id}/approve"),
+            &format!("/api/v1/turns/{turn_id}/tools/{tool_id}/approve"),
         )
         .send()
         .await
@@ -200,7 +200,7 @@ impl ApiClient {
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/turns/{turn_id}/tools/{tool_id}/deny"),
+            &format!("/api/v1/turns/{turn_id}/tools/{tool_id}/deny"),
         )
         .send()
         .await
@@ -215,7 +215,7 @@ impl ApiClient {
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/plans/{plan_id}/approve"),
+            &format!("/api/v1/plans/{plan_id}/approve"),
         )
         .send()
         .await
@@ -228,7 +228,7 @@ impl ApiClient {
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/plans/{plan_id}/cancel"),
+            &format!("/api/v1/plans/{plan_id}/cancel"),
         )
         .send()
         .await
@@ -242,7 +242,7 @@ impl ApiClient {
 
     pub async fn today_cost_cents(&self) -> Result<u32> {
         let resp = self
-            .request(reqwest::Method::GET, "/api/costs/daily")
+            .request(reqwest::Method::GET, "/api/v1/costs/daily")
             .send()
             .await
             .context("failed to load costs")?;
@@ -260,7 +260,7 @@ impl ApiClient {
     pub async fn compact(&self, session_id: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/sessions/{session_id}/distill"),
+            &format!("/api/v1/sessions/{session_id}/distill"),
         )
         .send()
         .await
@@ -276,7 +276,7 @@ impl ApiClient {
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/nous/{nous_id}/recall"),
+                &format!("/api/v1/nous/{nous_id}/recall"),
             )
             .query(&[("q", query)])
             .send()
@@ -326,7 +326,7 @@ impl ApiClient {
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
         self.request(
             reqwest::Method::POST,
-            &format!("/api/sessions/{session_id}/queue"),
+            &format!("/api/v1/sessions/{session_id}/queue"),
         )
         .json(&serde_json::json!({ "text": text }))
         .send()
